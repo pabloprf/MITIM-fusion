@@ -949,7 +949,7 @@ def SLURM(
     commandSBATCH = []
 
     # ******* Basics
-    commandSBATCH.append(f"#!/bin/bash -l")
+    commandSBATCH.append("#!/bin/bash -l")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
     commandSBATCH.append(
         f"#SBATCH --output {folderExecution}/slurm_output{extranamelogs}.dat"
@@ -966,7 +966,7 @@ def SLURM(
 
     if job_array is None:
         if default_exclusive:
-            commandSBATCH.append(f"#SBATCH --exclusive")
+            commandSBATCH.append("#SBATCH --exclusive")
     else:
         commandSBATCH.append(f"#SBATCH --array={job_array}")
 
@@ -1029,7 +1029,7 @@ def SLURM(
         commandSHELL.append(shellPostCommands[i])
     # Evaluate Job performance
     commandSHELL.append(
-        f"python3 $MITIM_PATH/src/mitim/misc_tools/FARMINGtools.py sbatch.out"
+        "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py sbatch.out"
     )
 
     if os.path.exists(fileSHELL):
@@ -1128,6 +1128,7 @@ def SLURMcomplete(
 
     with open(folderLocal + "/sbatch.out", "r") as f:
         aux = f.readlines()
+
     jobid = aux[0].split()[-1]
 
     return jobid
