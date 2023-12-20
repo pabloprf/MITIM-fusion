@@ -99,7 +99,7 @@ class FigureNotebook:
         self.tab_handles.append(new_tab)
 
     def show(self):
-        print(f"\n... [MITIM] Notebook open: {self.windowtitle}", typeMsg="i")
+        print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")
         print("\t- Close the notebook to continue")
         self.app.exec()
 
