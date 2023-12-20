@@ -90,7 +90,9 @@ For example, if TGLF is set up to run in the MIT *eofe7* machine, this means tha
          "scratch":          "/nobackup1/pablorf/scratch/"
          }
 
-If you select to run a code in a given machine, please make sure you have ssh rights to that machine with the login instructions specified, unless you are running it locally. MITIM will attempt to secure-copy and access that machine through a standard SSH connection and it must therefore be set-up prior to launching MITIM jobs. Make sure that you can ssh with ``ssh username@machine``, and it is recommended that no password is required for the SSH keys, but it is up to the user. Otherwise MITIM will ask for the password very often.
+If you select to run a code in a given machine, please make sure you have ssh rights to that machine with the login instructions specified, unless you are running it locally.
+MITIM will attempt to secure-copy and access that machine through a standard SSH connection and it must therefore be set-up prior to launching MITIM jobs. Make sure that you can ssh with ``ssh username@machine``, and it is recommended that no password is required for the SSH keys, but it is up to the user.
+Otherwise MITIM will ask for the password very often.
 
 .. attention::
 
@@ -102,12 +104,10 @@ License and contributions
 MITIM is released under the `MIT License <https://mit-license.org/>`_, one of the most permissive and widely used open-source software licenses.
 Our choice of this license aims to make the package as useful and applicable as possible, in support of the development of fusion energy.
 Embracing the spirit of open-source collaboration, we appreciate users who help increase the visibility of our project by
-starring the `MITIM-fusion <https://github.com/pabloprf/MITIM-fusion/>`_ GitHub repository and support and acknowledge the continuous development of this tool by citing the following works:
+starring the `MITIM-fusion <https://github.com/pabloprf/MITIM-fusion/>`_ GitHub repository and support and acknowledge the continuous development of this tool by citing the following works in any publications, talks and posters:
 
-   - P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
-   - P. Rodriguez-Fernandez, A. E. White, A. J. Creely, M. J. Greenwald, N. T. Howard, F. Sciortino and J. C. Wright, `VITALS: A Surrogate-Based Optimization Framework for the Accelerated Validation of Plasma Transport Codes <https://www.tandfonline.com/doi/abs/10.1080/15361055.2017.1396166>`_, Fusion Science and Technology, 74:1-2, 65-76 (2018).
+[1] P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
+
+[2] P. Rodriguez-Fernandez, A. E. White, A. J. Creely, M. J. Greenwald, N. T. Howard, F. Sciortino and J. C. Wright, `VITALS: A Surrogate-Based Optimization Framework for the Accelerated Validation of Plasma Transport Codes <https://www.tandfonline.com/doi/abs/10.1080/15361055.2017.1396166>`_, Fusion Science and Technology, 74:1-2, 65-76 (2018).
 
 These publications provide foundational insights and methodologies that have significantly contributed to the development of MITIM.
-
-
-

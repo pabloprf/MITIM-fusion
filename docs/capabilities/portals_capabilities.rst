@@ -9,13 +9,25 @@ Once setup has been successful, the following regression test should run smoothl
 
    python3 $MITIM_PATH/tests/PORTALS_workflow.py
 
+.. warning::
+
+   It is recommended that you run first the regression tests for the general optimization workflow and the TGLF interface:
+   
+   .. code-block:: console
+
+      python3 $MITIM_PATH/tests/OPT_workflow.py
+
+      python3 $MITIM_PATH/tests/TGLF_workflow.py
+
+   If both of those tests work, it is highly likely that the PORTALS workflow will work as well.
+
 
 Run a standard profile prediction with PORTALS-TGLF
 ---------------------------------------------------
 
 *Under Development*
 
-In the meantime, please checkout `tutorials/PORTALS_tutorial.py <../../tutorials/PORTALS_tutorial.py>`_
+*(In the meantime, please checkout* `tutorials/PORTALS_tutorial.py <../../tutorials/PORTALS_tutorial.py>`_ *)*
 
 Run a standard profile prediction with PORTALS-CGYRO
 ---------------------------------------------------

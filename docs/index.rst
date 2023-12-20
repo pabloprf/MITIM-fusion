@@ -36,7 +36,7 @@ significantly boosting the efficiency and effectiveness of their studies (see :r
 
 .. toctree::
    :caption: Contents
-   :maxdepth: 2
+   :maxdepth: -1
 
    installation
    capabilities/standalone

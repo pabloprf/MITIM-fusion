@@ -27,7 +27,26 @@ Issues during MITIM setup
 Issues during MITIM tests
 -------------------------
 
-Nothing here yet.
+.. dropdown:: TGLF simulations do not run
+
+   Make sure you do have the full setup to run TGLF available in your machine upon logging-in.
+   For example:
+
+   .. code-block:: console
+      
+      export GACODE_PLATFORM=OSX_MONTEREY
+      export GACODE_ROOT=/Users/$USER/gacode
+      . $GACODE_ROOT/shared/bin/gacode_setup
+      . ${GACODE_ROOT}/platform/env/env.${GACODE_PLATFORM}
+
+   If you still have problems with MITIM execution of TGLF and you have checked that by manually logging-in to the machine you can run TGLF,
+   then it is possible that you have print or echo statements in your ``.bashrc`` or ``.zshrc`` files.
+   Please remove them or add the following:
+
+   .. code-block:: console
+      
+      ! [ -z "$PS1" ] && echo "Example echo statement that only runs in interactive shells"
+
 
 Issues during PORTALS simulations
 ---------------------------------

@@ -12,7 +12,17 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. contents:: Contents
     :local:
-    :depth: 2
+    :depth: 3
+
+Fusion applications
+-------------------
+
+.. toctree:: 
+   :maxdepth: 1
+
+   vitals_capabilities
+   portals_capabilities
+   freegsu_capabilities
 
 
 Optimize a custom function
@@ -118,13 +128,3 @@ Understanding the MITIM outputs
 As a result of the last step of :ref:`Optimize a custom function`, optimization results are plotted...
 
 *Under development*
-
-Fusion applications
--------------------
-
-.. toctree:: 
-   :maxdepth: 1
-
-   vitals_capabilities
-   portals_capabilities
-   freegsu_capabilities
