@@ -1,0 +1,11 @@
+*pyc
+.nfs*
+*.swp
+*/scratch/*
+*.DS_Store*
+config_user.json
+.DS_Store
+*.egg-info/
+docs/build/
+*.bat
+_build/

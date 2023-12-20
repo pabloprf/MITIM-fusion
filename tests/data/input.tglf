@@ -1,0 +1,137 @@
+#-------------------------------------------------------------------------
+# TGLF input file modified by MITIM framework (Rodriguez-Fernandez, 2020)
+#-------------------------------------------------------------------------
+
+# Control parameters
+# ------------------
+
+USE_TRANSPORT_MODEL     = True
+GEOMETRY_FLAG           = 1
+ADIABATIC_ELEC          = False
+SIGN_IT                 = 1
+SIGN_BT                 = 1
+IFLUX                   = True
+THETA_TRAPPED           = 0.7
+NN_MAX_ERROR            = -1.0
+KYGRID_MODEL            = 1
+NKY                     = 12
+KY                      = 0.3
+FIND_WIDTH              = True
+USE_BISECTION           = True
+WIDTH                   = 1.65
+WIDTH_MIN               = 0.3
+NWIDTH                  = 21
+NBASIS_MIN              = 2
+NBASIS_MAX              = 4
+NXGRID                  = 16
+IBRANCH                 = -1
+NMODES                  = 2
+SAT_RULE                = 0
+ETG_FACTOR              = 1.25
+USE_BPER                = False
+USE_BPAR                = False
+USE_MHD_RULE            = True
+XNU_MODEL               = 2
+VPAR_MODEL              = 0
+VPAR_SHEAR_MODEL        = 1
+ALPHA_QUENCH            = 0.0
+ALPHA_E                 = 1.0
+ALPHA_MACH              = 0.0
+ALPHA_P                 = 1.0
+ALPHA_ZF                = 1.0
+DEBYE_FACTOR            = 1.0
+XNU_FACTOR              = 1.0
+PARK                    = 1.0
+GHAT                    = 1.0
+GCHAT                   = 1.0
+DAMP_PSI                = 0.0
+DAMP_SIG                = 0.0
+LINSKER_FACTOR          = 0.0
+GRADB_FACTOR            = 0.0
+WD_ZERO                 = 0.1
+FILTER                  = 2.0
+UNITS                   = GYRO
+
+
+# Geometry parameters
+# ------------------
+
+RMIN_LOC                = 0.55161
+RMAJ_LOC                = 3.17081
+ZMAJ_LOC                = 0.000519669
+DRMINDX_LOC             = 1.0
+DRMAJDX_LOC             = -0.0585508
+DZMAJDX_LOC             = -0.0231605
+Q_LOC                   = 1.15189
+KAPPA_LOC               = 1.26197
+S_KAPPA_LOC             = 0.0515024
+DELTA_LOC               = 0.0155846
+S_DELTA_LOC             = 0.0285159
+ZETA_LOC                = -0.00246073
+S_ZETA_LOC              = -0.0148016
+P_PRIME_LOC             = -0.000485934
+Q_PRIME_LOC             = 5.5957
+KX0_LOC                 = 0.0
+RMIN_SA                 = 0.55161
+RMAJ_SA                 = 3.17081
+Q_SA                    = 1.15189
+SHAT_SA                 = 1.28321
+ALPHA_SA                = 0.0246054
+XWELL_SA                = 0.0
+THETA0_SA               = 0.0
+B_MODEL_SA              = 0
+FT_MODEL_SA             = 1
+
+
+# Plasma parameters
+# ------------------
+
+NS                      = 3
+SIGN_BT                 = 1.0
+SIGN_IT                 = 1.0
+VEXB                    = 0.0
+VEXB_SHEAR              = 0.0024481
+BETAE                   = 0.00141761
+XNUE                    = 0.0392072
+ZEFF                    = 1.80817
+DEBYE                   = 0.0346443
+
+
+# Species
+# -------
+
+# Specie #1 (electrons)
+ZS_1         = -1.0
+MASS_1       = 0.000272445
+RLNS_1       = 0.555028
+RLTS_1       = 2.5144
+TAUS_1       = 1.0
+AS_1         = 1.0
+VPAR_1       = 0.0572454
+VPAR_SHEAR_1 = 0.0162098
+VNS_SHEAR_1  = 0.0
+VTS_SHEAR_1  = 0.0
+
+# Specie #2 (thermal ion)
+ZS_2         = 1.0
+MASS_2       = 1.00026
+RLNS_2       = 0.523895
+RLTS_2       = 1.84165
+TAUS_2       = 0.411332
+AS_2         = 0.835704
+VPAR_2       = 0.0572454
+VPAR_SHEAR_2 = 0.0162098
+VNS_SHEAR_2  = 0.0
+VTS_SHEAR_2  = 0.0
+
+# Specie #3 (thermal ion)
+ZS_3         = 6.0
+MASS_3       = 5.96501
+RLNS_3       = 0.555027
+RLTS_3       = 1.84165
+TAUS_3       = 0.413731
+AS_3         = 0.0269295
+VPAR_3       = 0.0572454
+VPAR_SHEAR_3 = 0.0162098
+VNS_SHEAR_3  = 0.0
+VTS_SHEAR_3  = 0.0

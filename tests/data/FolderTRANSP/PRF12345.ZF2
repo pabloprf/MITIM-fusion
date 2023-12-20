@@ -1,0 +1,17 @@
+ 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X0-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
+ Zeff profile data             ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+         10                    ;-# OF X0 PTS-
+          2                    ;-# OF X1 PTS-
+ 0.000000e+00 1.111111e-01 2.222222e-01 3.333333e-01 4.444444e-01 5.555556e-01
+ 6.666667e-01 7.777778e-01 8.888889e-01 1.000000e+00
+ 0.000000e+00 1.000000e+03
+ 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00
+ 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00
+ 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00 2.100000e+00
+ 2.100000e+00 2.100000e+00
+ ;----END-OF-DATA-----------------COMMENTS:-----------;

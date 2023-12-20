@@ -1,0 +1,55 @@
+{
+    "preferences": {
+        "trxpl":            "mfews",
+        "profiles_gen":     "engaging",
+        "tgyro":            "engaging",
+        "tglf":             "engaging",
+        "cgyro":            "engaging",
+        "eq":               "mfews",
+        "scruncher":        "mfews",
+        "ntcc":             "mfews",
+        "get_fbm":          "mfews",
+        "transp":           "globus", 
+        "idl":              "mfews",
+        "verbose_level":    "1",
+        "dpi_notebook":     "100"
+    },
+    "local": {
+        "machine":    "local",
+        "username":   "exampleusername",
+        "scratch":    "/Users/exampleusername/scratch/"
+    },
+    "engaging": {
+        "machine":          "eofe7.mit.edu", 
+        "username":         "exampleusername",
+        "partition":        "sched_mit_psfc",
+        "identity":         "~/.ssh/id_rsa",
+        "scratch":          "/nobackup1/exampleusername/"
+    },
+    "mfews": {
+        "machine":    "mfews02.psfc.mit.edu", 
+        "username":   "exampleusername",
+        "port":            9224,
+        "scratch":    "/home/exampleusername/scratch/"
+    },
+    "mfews_tunneled": {
+        "machine":          "mfews02.psfc.mit.edu", 
+        "username":         "exampleusername",
+        "tunnel":           "mferws01.psfc.mit.edu",
+        "scratch_tunnel":   "/home/exampleusername/scratch/",
+        "port":             9224,
+        "scratch":          "/home/exampleusername/scratch/"
+    },
+    "iris": {
+        "machine":    "irisa.gat.com", 
+        "username":   "exampleusername",
+        "tunnel":     "cybele.gat.com",
+        "scratch_tunnel": "/home/exampleusername/scratch/",
+        "port":            2039,
+        "scratch":    "/cluster-scratch/exampleusername/"
+    },
+    "globus": {
+        "username":   "exampleusername",
+        "email":      "exampleusername@examplehost"
+    }
+}

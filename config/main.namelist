@@ -1,0 +1,120 @@
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# 						Optimization Settings (MITIM) - MASTER NAMELIST
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# ***************************************************************
+# Problem (this should be changed problem to problem)
+# ***************************************************************
+
+# Objectives
+
+OPT_ofs 	    = [  y0, y1 ]         # Name of variables to use as objective functions (OFs), then, the function to optimize will have information about calibration
+OPT_train_Ystd  = None                # (if FixedNoise) If None: Use results.out.X to grab std-dev. Otherwise, all have this value (e.g. 1E-4)
+
+# Variables
+
+OPT_dvs 	 	= [  x0,  x1 ]        # Free parameters of the problem, design variables (DVs)	
+OPT_dvs_min  	= [ 0.8, 0.8 ]        # Minimum bound of variation
+OPT_BaselineDV 	= None                # (if not None) Evaluate this point as the first one. If typeInitialization=1 or 2, then initialPoints=initialPoints-1
+OPT_dvs_max  	= [ 1.2, 1.2 ]        # Maximum bound of variation
+
+# Constraints (NOT WORKING RIGHT NOW, TO FIX)
+
+OPT_cvs         = []                  # Variables to use as constraints (e.g. OPT_cvs=[P_out,P_LCFS])
+OPT_cvs_min     = []                  # Minimum values for each allowed (-inf removes the minimum constrain)
+OPT_cvs_max     = []                  # Maximum values for each allowed ( inf removes the maximum constrain)
+
+# ***************************************************************
+# Initialization, evaluations and stopping criteria
+# ***************************************************************
+
+# Stopping criteria
+
+OPT_BOiterations       = 5            # Number of BO iterations (1 means only evaluate optimum from initial batch training)
+OPT_minimumResidual    = -1E-3        # (if not None) Residual for the stopping criterion. If negative: relative to base case (e.g. -1E3: 1000x better residual)
+OPT_minimumDVvariation = [10,3,1E-2]  # (if not None) After iteration #0 check #1 in a row of #2 individuals of minimum DV variation (in %) compared to previous
+
+# Initialization
+
+OPT_typeInitialization   = 3          # 1: Latin-HyperCube method inside bounds, 2: grid, 3: try from TabularFile in Outputs first, 4: from Execution
+OPT_initialPoints        = 5          # (if typeInitialization=1,2) Number of points to start with
+OPT_readInitialTabular   = False      # (if typeInitialization=3) Try read result of the initial training regardless of restart=True
+OPT_ensureTrainingBounds = False      # Ensure that the training points are within the bounds (important for cases such as readInitialTabular)
+
+OPT_initializationFun    = None       # (if not None) Function that will generate initial points other than LHC (e.g. SR for mitim)
+OPT_expandBounds 		 = True       # If True, bounds will be expanded to include all training points (good for initialization functions)
+
+# Evaluation
+
+OPT_parallelCalls   	= 1           # If -1, it means that the entire training is parallelized, 1 means serial
+
+# ***************************************************************
+# Surrrogate Optimization
+# ***************************************************************
+
+# Optimization workflows
+
+OPT_acquisitionType = logei_mc 	# Acquisition function (e.g. posterior_mean, ei_mc, logei_mc)
+OPT_optimizers   	= botorch 	# Optimization algorithms used, separated by - (e.g. root_1-ga-botorch)
+OPT_newPoints       = 1		    # New batch of points for next iteration. If -1 = initialPoints
+
+# Stopping criteria (in surrogate optimization -> acquisition works with maximum)
+
+OPT_relativePerformanceSurrogate = 0.02         # (if not None) Relative performance change in surrogate based on previous best to stop surrogate-optimization
+OPT_favorProximityType        	 = 0 	        # 0: Organize by acquisition, 1: favor closest if acquisition change by 100x
+OPT_ensureNewPoints 		  	 = True         # Continue surrogate techniques until newPoints have been found
+
+# Refinements
+
+SO_boundsRefine	= None                          # (if not None) [MITIMstep, change, position], e.g. [15,0.1,-1] from iteration #15, only search solutions within +-10% from last (-1). If position=None: best
+
+# ***************************************************************
+# Surrogate Fitting
+# ***************************************************************
+
+# Surrogate Type
+
+SU_TypeKernel				= 0			# Options for GP Kernels
+SU_TypeMean					= 0			# Options for GP Means
+SU_selectSurrogate			= None 		# FUNCTION that defines a different type of surrogate for each output (e.g. PORTALStools.selectSurrogate() )
+
+# Noise treatment
+
+SU_FixedNoise				= True		# If True, noise is equal to train_Ystd during fitting. Otherwise, only use TypeNoise constraints
+SU_ExtraNoise 				= False 	# (if FixedNoise) If True, allow learn extra noise above the provided one 
+SU_ConstrainNoise 			= -1E-3 	# (if not FixedNoise) If negative, minimum noise (var?). If positive, maximum noise. NORMALIZED
+SU_MinimumRelativeNoise   	= None 		# If not None, minimum std level relative to the *max* actual value for that objective (ystd_min = 1E-3 = 0.001*max(y))
+
+# Corrections
+
+SU_stds_outside 			= None 	        # Remove points that fall within this number of standard deviations (std) from the rest of points
+SU_stds_outside_checker 	= 5 	        # (if stds_outside not None) Check stds_outside only if I have more than this number of samples
+
+# Extra points
+
+SU_extrapointsFile 			= None 			# (if not None) File with *transformed-space* points to add to training of a given surrogate
+
+# ***************************************************************
+# Strategy Options
+# ***************************************************************
+
+# Rules
+
+SO_RandomRangeBounds = 0.5 			         # Range around best to draw random samples if after OPT there are not enough points
+SO_AllowedExcursions = [0.0,0.0] 	         # (e.g. [0.5,0.5]) Applied after each optimization. If None: No removal if outside bounds, and increase bounds. If 0.0: Within bounds only
+											 # 		Note: remember that 0.05 applied to [-100,100] will result in [-110,110]
+SO_ToleranceNiche 	 = 1E-3                  # Remove points that are separated by less than this relative amount
+
+# Corrections
+
+SO_applyCorrections			 = True
+SO_HitBoundsIncrease 		 = [1.0,1.0]	 # If optimized point is at bounds, expand them by this relative amount (lower,upper) for the next iteration (e.g. [1.0,1.25]) 
+SO_SwitchIterationsReduction = [None, None]  # After # of iterations, reduce search space by this relative amount (e.g. [None,0.75])
+
+# TURBO
+
+SO_TURBO 				= False
+SO_TURBO_addPoints		= 32
+SO_TURBO_changeBounds   = [0.75,1.33]
+SO_TURBO_metricsRow 	= [3,3]
+

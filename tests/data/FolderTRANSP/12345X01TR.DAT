@@ -1,0 +1,541 @@
+! Authors: P. Rodriguez-Fernandez and N.T. Howard, 
+
+!==============================================================
+! General settings & Output options
+!==============================================================
+
+NSHOT=12345
+
+mrstrt	= -120     ! Frequency of restart records (-, means x wall clock min)
+
+!----- Time and Spatial ranges
+
+tinit	  =  0.8    ! Changed by PORTALS
+ftime	  =  0.803  ! Changed by PORTALS
+xtend	= 0.05  	! Distance beyond LCFS to extend analysis 
+
+!----- Time buffers
+
+tlim1  = 0		 ! Ignore UF data before this time, extrapolate flat backward in time
+tlim2  = 1000.0 ! Ignore UF data after this time, extrapolate flat forward in time
+
+!----- Resolution
+
+nzones		= 40    ! Number of radial zones in 1D transport eqs
+nzone_nb	= 20	 ! Number of zones in NUBEAM
+nzone_fp	= 20	 ! Number of zones in the FPPMOD
+nzone_fb	= 10	 ! Number of zone rows in fast ion distr function (must be divider of all other)
+
+sedit	= 1.0e-3     ! Control of time resolution of scalar output
+stedit	= 1.0e-3     ! Control of time resolution of profile output
+tgrid1	= 1e-3	 ! Control of time resolution of 1D input data
+tgrid2	= 1e-3 	 ! Control of time resolution of 2D input data
+
+dtmaxg = 0.001 ! Max time step for MHD
+
+!----- MPI Settings
+
+nbi_pserve     =0
+ntoric_pserve  =1
+nptr_pserve    =0
+
+!=============================================================
+! Power balance
+!=============================================================
+
+!------ Electron Power Balance
+
+alph0i  = 0.6    ! Sets ion convection power loss coeff to 3/2
+
+!------ Ion Power Balance
+
+alph0e  = 0.6    ! Sets electron convection power loss coeff to 3/2
+
+nlti2   = T      ! Use Ti input data profiles to determine Xi
+nltipro = T      ! Use Ti input data directly, no predictive calculation
+
+nslvtxi = 2      ! 2: Ti data is average temperature (TIAV)
+
+tixlim0 = 0.0    ! min xi (r/a) of validity of the Ti data
+tixlim    =  0.75     ! Changed by PORTALS
+tidxsw	 = 0.05	  ! Continuous linear transition
+tifacx  = 1.0    ! edge Ti/Te factor
+
+!------ Ti not available
+
+giefac = 1.0     ! Ti = giefac * Te 
+fiefac = 1.0     ! Ti = (1-fiefac)*(giefac*Te)+fiefac*Ti(data)
+
+!=============================================================
+! Plasma Species
+!=============================================================
+
+!----- Background Species
+
+ng      	= 1     ! Number of INITIAL background species   
+ngmax		= 1  	! Maximum FUTURE background species (Pellets,NBI,recy)
+
+backz(1)   = 1.0 	! Charge of background species
+aplasm(1)	= 2.0 	! Atomic mass of background species
+frac(1)    = 1.0  ! Background gas fractions
+
+!----- Impurities
+
+!xzeffi		= 2.0  ! Zeff (if assumed constant in r and t)
+nlzfin    	= F    ! Use 1D Zeff input
+nlzfi2		= T    ! Use 2D Zeff input
+
+xzimps(1)   =  5.0     ! Changed by PORTALS
+aimps(1)    =  11.0     ! Changed by PORTALS
+densim(1)   =  0.01     ! Changed by PORTALS
+nadvsim(1)   =  0     ! Changed by PORTALS
+
+! ----- Minorities
+
+xzmini       =  1.0     ! Changed by PORTALS
+amini        =  1.0     ! Changed by PORTALS
+frmini       =  0.04     ! Changed by PORTALS
+rhminm  	= 1.0E-12   ! Minimum density of a gas present (fraction of ne)
+
+!=============================================================
+! Particle Balance
+!=============================================================
+
+!-----  Particle balance model
+
+ndefine(1)	  = 0  ! Density profile (0=nmodel, 1= D-V from UF, 2= n from UF)
+ndefine(2)	  = 0
+
+
+nmodel        = 1  ! Mixing Model: 1 = same shape, 2 = same Vr, 4 = mixed model
+ndiffi        = 5  ! Input Diffusivity (for nmodel=4)
+
+!----- Particle Source: Recycling model
+
+nrcyopt	= 0       ! Recycling model (0=by species,1=mixed model, 2=)
+nltaup		= F 	  ! (T) UFile, (F) Namelist tauph taupo
+
+taupmn 	= 0.001   ! Minimum allowed confinement time (s)
+tauph(1)	= 0.03     ! Main (hydrogenic) species particle confinement time
+tauph(2)	= 0.03
+tauph(3)	= 0.03
+taupo  	= 0.02     ! Impurity particle confinement time
+taumin     = 1000000.0   	! Minority confinement time
+
+nlrcyc		  = F
+nlrcyx		  = F       ! Enforce for impurities same taup as main ions
+!rfrac(1)	  = 0.5		! Recyling fractions (fraction of "limiter outgas" flux)
+!rfrac(2)	  = 0.5
+!rfrac(3)	  = 0.0
+!recych(1)	  = 0.5		! Fraction of ion outflux of species that is "promptly" recycled
+!recych(2)	  = 0.5
+!recych(3)	  = 0.0
+
+!----- Particle Source: Gas Flow
+
+!gfrac(1)	  = 1.0		 ! gas flow ratio for each species
+!gfrac(2)	  = 0.5
+!gfrac(3)	  = 0.5
+
+!----- Neutrals Transport
+
+nsomod         	= 1	  		! FRANTIC analytic neutral transport model
+!nldbg0 			= T    	! More FRANTIC outputs
+nzones_frantic 	= 20   	  	! Number of radial zones in FRANTIC model
+mod0ed 	       	= 1	  		! 1 = Use time T0 or TIEDGE
+ti0frc 			= 0.0333	! If mod0ed=2, Ti(0) multiplier
+fh0esc	       	= 0.3       ! Fraction of escaping neutrals to return as warm (rest as cold)
+nlreco 			= T	  		! Include recombination volume neutral source 
+
+e0in(1) = 10.0 ! T0 for warm, specie 0
+e0in(2) =  3.0 ! T0 for vol sce, specie 0
+e0in(3) =  3.0 ! T0 for cold, specie 0
+
+e0in(4) = 10.0 ! T0 for warm, specie 1
+e0in(5) =  3.0 ! T0 for vol sce, specie 1
+e0in(6) =  3.0 ! T0 for cold, specie 1
+!=============================================================
+! Radiation Model (Bremsstrahlung, Line and Cyclotron)
+!=============================================================
+
+nprad      =  0     ! Changed by PORTALS
+nlrad_br = T  		! Calculate BR by impurities (Total is always calculated)
+nlrad_li = T  		! Calculate impurity line radiation 
+nlrad_cy = T  		! Calculate cyclotron radiation
+vref_cy  = 0.9  	! Wall reflectivity used in cyclotron radiation formula
+prfac     =  0.2     ! Changed by PORTALS
+
+!===========================================================
+! NCLASS neoclassical Model
+!===========================================================
+
+ncmodel 	= 2 	! 2: Houlbergs NCLASS 2004
+ncmulti	= 2     ! 2= Always use multiple impurities when present
+nltinc 	= T 	! Use average Ti for calculations
+
+!=============================================================
+! MHD equilibrium and Current Diffusion
+!=============================================================
+
+!----- MHD Geometry
+
+levgeo	       = 11    ! 11 = TEQ model from LLNL, 12 = ISOLVER
+
+nteq_mode     = 5   ! Free param to be matched (5= Q,F_edge & loop for Ip)
+nteq_stretch  = 0   ! Radial grid (0 is default)
+nteq_nrho     = 151   ! Radial points in TEQ
+nteq_ntheta   = 127   ! Poloidal points in TEQ
+teq_smooth    = -1.5  ! Smoothing half-width (negative means -val/nzones)
+teq_axsmooth  = 0.15 ! Smoothing half-width near-axis as val*min(1,2-x/val)
+softteq       = 0.3   ! Maximum allowed GS average error
+
+!------ Poloidal field (current) diffusion
+
+nlmdif	  = F    ! Solve poloidal diffusion equation 
+nlpcur	  = T    ! Match total plasma current
+nlvsur	  = F    ! Match surface voltage
+
+nlbccw = False    ! Is Bt counter-clockwise (CCW) seen from above?
+nljccw = False    ! Is Ip counter-clockwise (CCW) seen from above?
+
+!----- Initialization of EM fields
+nefld       =  3     ! Changed by PORTALS
+qefld       =  0.0     ! Changed by PORTALS
+rqefld      =  0.0     ! Changed by PORTALS
+xpefld      =  2.0     ! Changed by PORTALS
+
+!------ q-profile
+
+nlqlim0  = True  ! Place a limit on the max q value possible
+qlim0	  = 5.0  ! Set the max possible q value
+nlqdata  = T    ! Use input q data (cannot be set with nlmdif=T as well)
+
+nqmoda(1)   =  1     ! Changed by PORTALS
+tqmoda(1) = 4.85 ! Time to change to next stage
+
+nqmoda(2) = 1	 ! 4: nlqdata=T, 1: nlmdif=T
+tqmoda(2) = 100.0 ! Time to change to next stage
+
+tauqmod	  = 1e-2 ! Transition window 
+
+!------ Resitivity Model
+
+nmodpoh  = 1		! 1: Standard Poh from EM equations, 2: Poh = eta*j^2
+
+nletaw	  	     = F    ! Use NCLASS resistivity
+nlspiz	  	     = F    ! Use Spitzer resistivity 
+nlrestsc             = F    ! Use neoclass as in TSC
+nlres_sau 	     = T    ! Use Sauter
+
+!sauter_nc_adjust(1) = 1.0  ! Factor that multiplies Sauter resistivity
+xl1nceta  	     = 0.0  ! Do not trust inside this r/a (extrapolate to 0)
+nlrsq1	  	     = F  	! Flatten resistivity profile inside q=1
+nlsaws	  	     = F  	! Flatten resistivity profile inside q=qsaw
+qsaw	  	     = 1.0  ! Specification of q to flatten resistivity inside
+xsaw_eta  	     = 0.0  ! Flattening factor
+nlresis_flatten      = F  	 ! Flatten within xresis_flatten
+xresis_flatten       = 0.0  ! Flattening factor
+
+bpli2max  = 20.0 ! The maximum value of Lambda = li/2 + Beta_p allowed
+
+!=============================================================
+! Boostrap and Current Drive
+!=============================================================
+
+! ---- Current Drive
+
+nmcurb	= 4    ! Beam current drive model (0 = none, 4 = most recent)
+nllh	= F    ! Include LH currents
+
+!=============================================================
+! Boostrap and Current Drive
+!=============================================================
+
+nlboot	    = T     ! Use bootstrap currents in poloidal field eqs
+
+! ---- Boostrap model
+
+
+nlbootw     = F    ! Use NCLASS bootstrap current
+nlboot_sau  = F    ! Use Sauter bootstrap current
+nlboothager = T    ! Use Hager bootstrap current (modification to Sauter)
+nlbootneo   = F    ! Use NEO bootstrap current
+
+xbstrap     = 1.0   ! Anomaly factor
+!xl1ncjbs   = 0.3   ! Do not trust inside this r/a (extrapolate to 0)
+njsmboot    = 0    ! JB moothing Number of zones for sliding triangular weighted average
+
+!===============================================================
+!Sawtooth Modeling
+!===============================================================
+
+!---- Sawtooth crash/redistribution model
+
+nlsaw   = T       ! Sawooth for bulk plasma
+nlsawic = T       ! Sawooth for ICRF minority fast ions
+nlsawe  = T       ! Sawooth for electrons
+nlsawi  = T       ! Sawooth for ions
+nlsawb  = T       ! Sawooth for fast ions
+nlsawf  = T       ! Sawooth for fusion products
+nlsawd  = F       ! For clean sawtooth crashes (U-Files smooth through sawtooth)
+dtsawd  = 0.002   ! Interval around sawtooth to extrapolate input data
+
+nmix_kdsaw     = 4       ! 1= Std Kadomtsev, 3(4) = Porcelli 2 islands with 2(1) energy mixing region
+fporcelli		= 0.63 	  ! Porcelli island width fraction (1 is q=1 to axis, so it is 1-Porcelli definition)
+xswid1         = 0.0     ! Conserve total ion energy (0.0 =yes) in Kad or Por
+xswid2 	    = 0.0     ! Conserve current & q profiles (1.0=yes; 0.0=no, mix them)
+xswidq         = 0.05    ! Finite thickness in x of current sheet width to avoid solver crash 
+xswfrac_dub_te = 1.0 	  ! Fraction of change in Bp energy to assign to electrons
+
+!---- Sawtooth triggering model
+
+nlsaw_trigger      =  False     ! Changed by PORTALS
+nlsaw_diagnostic = F		! diagnose sawtooth conditions but do not crash
+model_sawtrigger   =  0     ! Changed by PORTALS
+t_sawtooth_on    = 0.1	    ! Parameter changed 
+t_sawtooth_off   = 1e3     ! Last sawtooth crash time
+sawtooth_period    =  0     ! Changed by PORTALS
+
+l_sawtooth(1)    = -1     ! 0 = Do not crash if multiple q=1
+xi_sawtooth_min  = 0.0    ! Smallest radius that trigger q=1 sawtooth
+c_sawtooth(2)      =  0     ! Changed by PORTALS
+c_sawtooth(20)   = 1.0    ! Coefficient for d beta_fast / d r
+
+l_sawtooth(32)   = 1   	 ! 1 = Use c_sawtooth(25:29) from namelist
+c_sawtooth(25)   = 0.1    ! shear_minimum (default 0.1)
+c_sawtooth(26)   = 1.0    ! ctrho in Eq 15a             (default porcelli = 1.0)
+c_sawtooth(27)   = 3.0    ! ctstar in Eq 15b            (default porcelli = 3.0)
+c_sawtooth(28)   = 1.0    ! cwrat  in Eq B.8 for dWfast (default porcelli = 1.0)
+c_sawtooth(29)   = 0.4    ! chfast in Eq 13             (default porcelli = 0.4)
+
+!==============================================================================
+! Fusion products, reactions and slowing down
+!==============================================================================
+
+!----- General Model
+
+nalpha  					= 1     ! Fusion products model (0=MC for alphas, 1= fast model)
+nptclf  					= 10000 ! Number of monte carlo particles for fusion product calcs
+nlfatom 					= T     ! Include atomic physics effects on products (e.g. CX)
+nl_ignore_mini_conflicts 	= T		! Ignore issue with He3 product coinciden with ICRF minority
+
+!----- Reactions
+
+nlfhe4  = False       ! Turn on MC slowing-down of He4 from D+T reactions
+plfhe4  = 1e2     ! Source power threshold to run MC (in W)
+
+nlfst   = F       ! Turn on MC slowing-down of T from D+D reactions (D+D=T+p)
+plfst	= 1e0	  ! Source power threshold to run MC NLFST
+
+nlfsp   = F       ! Turn on MC slowing-down of protons from D+D reactions (D+D=T+p)
+plfsp	= 1e0	  ! Source power threshold to run MC for NLFST
+
+nlfhe3  = F       ! Turn on MC slowing-down of He3 from D+D reactions (D+D=He3+n)
+plfhe3  = 1e0     ! Source power threshold to run MC for NLFHE3
+
+!----- From U-File
+
+nlusfa	= F	  ! He4
+nlusft	= F	  ! T from DD
+nlusfp	= F	  ! p from DD
+nlusf3	= F	  ! He3 from DD
+
+!----- Smoothing
+
+dxbsmoo = 0.05	 ! Profile smoothing half-width
+
+!----- Anomalous transport
+nmdifb = 0 	! Anomalous diffusion (0=none, 3=Ufiles D2F & V2F)
+nrip   = 0 	! Ripple loss model (1=old, 2=less old)
+nlfbon = F 	! Fishbone loss model
+!nlfi_mcrf = T   ! Account for wave field caused by ICRF antenna
+
+!----- Orbit physics
+
+nlbflr 	= T 	! Plasma interacts with T=gyro, F=guiding center
+nlbgflr 	= F 	! Model for gyro v.s. guiding displacement
+
+!----- MonteCarlo controls
+!nlseed  =  		! Random number seed for MC
+!dtbeam = 0.01 	! Beam timestep
+!goocon = 10 		! Numeric Goosing
+!dtn_nbi_acc = 1.0e-3 ! Orbit timestep control
+!nptcls = 1000 	! Constant census number of MC ions to retain
+!nlfbm = T 		! Calculate beam distribution function
+!ebdmax = 1e9 		 Maximum energy tracked in distribution function
+!wghta = 1.0 		! MC profile statistics control
+!nznbme = 800 ! Number of energy zones in beam distribution function 
+!ebdfac = 6.0D0 ! Max energy factor
+!nbbcal = 1100000000 ! Number of beam D-D collisions to calculate
+
+!===========================================================
+! Momentum Transport -> Rotation
+!===========================================================
+
+nlvphi	   = T    ! Rotation Moldeing using U-File
+nlomgvtr  = F 	    ! T: Impurity rotation is provided, F: Bulk plasma rotation is provided
+ngvtor    = 0 	    ! 0: Toroidal rotation species given by nvtor_z, xvtor_a
+nvtor_z     =  18     ! Changed by PORTALS
+xvtor_a     =  40.0     ! Changed by PORTALS
+xl1ncvph  = 0.10   ! Minimum r/a
+xl2ncvph  = 0.85   ! Maximum r/a
+
+nlivpo    = F	    ! Radial electrostatic potential and field from U-File
+nlvwnc    = F      ! Compute NCLASS radial electrostatic potential profile
+
+! ----- Vaccum Vessel (reflecting boundary for the wave field)
+
+VVRmom(1) = 64.5
+VVZmom(1) = 0.0
+VVRmom(2) = 35.0
+VVZmom(2) = 57.3
+VVRmom(3) = 3.25
+VVZmom(3) = -3.25
+VVRmom(4) = 0
+VVZmom(4) = 0
+VVRmom(5) = 0
+VVZmom(5) = 0
+
+!=========================================================================
+! Included Input Data Files (Files, coordinate and asymmetry)
+!=========================================================================
+!Note: NRIxxx: -5=sqrt tor flux (rho?), -4=r/a
+
+levtrk	 = 2   ! Limiter locations from lim ufile
+lfixup   = 2   ! Correct U-Files units and axis (=2 according to labels)
+
+preRFP	 = "PRF"
+extRFP	 = "RFP"
+prelim	 = "PRF" 
+extlim	 = "LIM"
+nsyqpr	 = 0
+
+precur	 = "PRF" 
+extcur	 = "CUR"
+prevsf	 = "PRF" 
+extvsf	 = "VSF"
+prerbz	 = "PRF" 
+extrbz	 = "RBZ"
+preter	 = "PRF" 
+extter	 = "TEL"
+nriter	   =  -4     ! Changed by PORTALS
+nsyter	 = 0
+
+preti2	 = "PRF" 
+extti2	 = "TI2"
+nriti2	   =  -4     ! Changed by PORTALS
+nsyti2	 = 0
+
+prener	 = "PRF" 
+extner	 = "NEL"
+nriner	   =  -4     ! Changed by PORTALS
+nsyner	 = 0
+
+prezf2	 = "PRF" 
+extzf2	 = "ZF2"
+nrizf2	 = -5
+nsyzf2	 = 0
+
+pregfd	 = "PRF" 
+extgfd	 = "GFD"
+premry	 = "PRF" 
+extmry	 = "MRY"
+
+!===============================================================
+! Pedestal and Edge Model -> Boundary condition for X > XBOUND
+!===============================================================
+
+!------ General: Te, Ti, T0, Rotation
+
+MODEEDG  = 3        ! 2 = Use TEEDGE, 3 = Exp Te, 5 = NTCC 
+TEEDGE   = 80.0     ! Specify Te (eV) if MODEEDG = 2
+TEPED    = 3050     ! Electron pedestal temperature in eV
+TEPEDW   = -0.0591  ! Electron pedestal width in cm(+) or x(-)
+
+MODIEDG  = 4        ! 1 = Same as neutrals, 2 = TIEDGE, 3 = Exp Te, 4 = Exp Ti, 5 = NTC 
+TIEDGE   = 80.0     ! Specify Ti (eV) if MODIEDG = 2 and for FRANTIC if MOD0ED=1
+TIPED	  = 3050     ! Ion pedestal temperature in eV
+TIPEDW   = -0.0643  ! Ion pedestal width in cm(+) or x(-)
+
+MODNEDG  = 3
+XNEPED   = 3.65E14  ! Electron pedestal density in cm^-3
+XNEPEDW  = -0.0591  ! Electron density pedestal width in cm(+) or x(-)
+
+MODOMEDG = 3        ! Rotation, 2 = use OMEDG (constant), 3 = use OMEGA input data
+
+NMODEL_PED_HEIGHT = 0 ! Ped Height model choice  (1=NTCC, 0=namelist)
+NMODEL_PED_WIDTH  = 0 ! Ped Width model choice  (1=NTCC, 0=namelist)
+
+!------ L-mode, H-mode transitions
+
+NMODEL_L2H_TRANS = 1     ! Model choice (1=NTCC (exp if not enough power), 0=namelist)
+!time_l2h        = 2.0
+!time_h2l        = 3.0
+!tau_lh_trans_x2 = 2.0
+
+!===========================================================
+! Ion Cyclotron Resonance (ICRF)
+!===========================================================
+
+! ----- Main Controls
+
+nlicrf = T   ! Enable ICRF simulation
+nicrf  = 8   ! 8: Modern TORIC
+
+! ----- Resolution
+
+dticrf     = 0.001   ! Max time step for TORIC
+NichChi    = 128   ! Number of poloidal grid points (power of 2)
+NmdToric   = 63   ! Number of poloidal modes (recommended: NichChi/2-1)
+NichPsi    = 320   ! Number of radial grid points
+
+! ----- Model options
+
+ANTLCTR    = 1.6   ! Effective antenna propagation constant
+NFLRTR     = 1	    ! Include ion FLR contribution
+NBPOLTR    = 1     ! Include poloidal magnetic field
+NQTORTR    = 1     ! Include toroidal broadening of the plasma dispersion
+NCOLLTR    = 0     ! Include collisional contribution to  plasma dispersion
+ENHCOLTR   = 1.0   ! Electron collision enhancement factor with NCOLL
+ALFVNTR(1) = 0.0   ! Included (= 1.0) or ignored (= 0.0) collisional broadening of Alfven res
+ALFVNTR(2) = 0.1   ! Enhancement factor (~ 0.1)
+ALFVNTR(3) = 3.0   ! Value of ABS((n//^2 - S)/R) below which damping added
+ALFVNTR(4) = 5.0   ! Value of ABS(w/(k//*v_te)) below which damping calc
+
+! ----- Antenna Parameters
+nicha       = 2         	 ! Number of ICRH antennae
+frqicha     = 80.0e6,78.0e6 ! Frequency of antenna (Hz)
+rfartr      = 2.0           ! Distance (cm) from antenna for Faraday shield
+ngeoant     = 1         	 ! Geometry representation of antenna (1=traditional)
+rmjicha     = 60.8,60.8     ! Major radius of antenna (cm)
+rmnicha     = 32.5,32.5     ! Minor radius of antenna (cm)
+thicha      = 73.3,73.3     ! Theta extent of antenna (degrees)
+sepicha     = 25.6,25.6     ! Toroidal seperation strap to strap (cm)
+widicha     = 10.2,10.2     ! Full toroidal width of each antenna element
+phicha(1,1) = 0,180   		 ! Phasing of antenna elements (deg)
+phicha(1,2) = 0,180
+
+!==================================================================
+xzimps(2)  =  18.0  ! Added by PORTALS
+aimps(2)  =  40.0  ! Added by PORTALS
+densim(2)  =  0.0023  ! Added by PORTALS
+nadvsim(2)  =  0  ! Added by PORTALS
+xzimps(3)  =  31.0  ! Added by PORTALS
+aimps(3)  =  96.0  ! Added by PORTALS
+densim(3)  =  0.0001  ! Added by PORTALS
+nadvsim(3)  =  0  ! Added by PORTALS
+extbol  =  'BOL'  ! Added by PORTALS
+prebol  =  'PRF'  ! Added by PORTALS
+extvp2  =  'VP2'  ! Added by PORTALS
+prevp2  =  'PRF'  ! Added by PORTALS
+nribol  =  -4  ! Added by PORTALS
+nrivp2  =  -4  ! Added by PORTALS
+extsaw  =  'SAW'  ! Added by PORTALS
+presaw  =  'PRF'  ! Added by PORTALS
+inputdir='/home/pablorf/scratch//mitim_tmp_12345X01//FolderTRANSP/'
+MTHDAVG  =  2  ! Added by MITIM
+AVGTIM  =  0.001  ! Added by MITIM
+OUTTIM  =  0.802  ! Added by MITIM
+FI_OUTTIM  =  0.802  ! Added by MITIM
+FE_OUTTIM  =  0.802  ! Added by MITIM
+NLDEP0_GATHER  =  T  ! Added by MITIM

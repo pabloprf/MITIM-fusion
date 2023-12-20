@@ -1,0 +1,22 @@
+.references {
+    font-size: smaller;
+    margin-left: 20px;
+}
+
+/* Customize the dropdown title */
+.sphinx-bs-panel-title {
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+}
+
+/* Customize the dropdown body */
+.sphinx-bs-panel-body {
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+/* Customize the container of the dropdown */
+.sphinx-bs-panels-container {
+    margin-bottom: 1em;
+}

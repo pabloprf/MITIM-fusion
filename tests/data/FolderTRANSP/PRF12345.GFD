@@ -1,0 +1,10 @@
+ 900052D3D  1 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X0-
+ D gas flow rate       /sec    ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          2                    ;-# OF X0 PTS-
+ 0.000000e+00 1.000000e+03
+ 0.000000e+00 0.000000e+00
+ ;----END-OF-DATA-----------------COMMENTS:-----------;

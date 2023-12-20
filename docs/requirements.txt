@@ -1,0 +1,7 @@
+sphinx
+sphinx_rtd_theme
+sphinx-autobuild
+sphinx-copybutton
+sphinx-togglebutton
+sphinx-panels
+sphinxcontrib-images

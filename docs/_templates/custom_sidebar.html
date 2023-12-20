@@ -1,0 +1,11 @@
+{# This is custom_sidebar.html in your _templates directory #}
+
+{# Custom 'Home' link #}
+<div class="custom-home-link" style="padding: 10px 0; text-align: center;">
+    <a href="{{ pathto(master_doc) }}" style="font-weight: bold; font-size: 1.1em;">
+        Home
+    </a>
+</div>
+
+{# Default ToC #}
+{{ toctree() }}

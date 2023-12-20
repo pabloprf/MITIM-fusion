@@ -1,0 +1,8 @@
+[build-system]
+requires = []
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "MITIM"
+authors = [{name = "Pablo RF", email = "pablorf@mit.edu"}]
+dynamic = ["version", "description"]
