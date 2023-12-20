@@ -519,7 +519,11 @@ def runCommand(
     )
     if verbose_level in [4, 5]:
         print(f"\t * process: {commandMain}")
-        machine_info = f"\t * in machine {machine}" if machine != "local" else "\t * locally in this machine"
+        machine_info = (
+            f"\t * in machine {machine}"
+            if machine != "local"
+            else "\t * locally in this machine"
+        )
         if tunnel is not None:
             tunnel_info = f" through {tunnel}"
             if identity is not None:

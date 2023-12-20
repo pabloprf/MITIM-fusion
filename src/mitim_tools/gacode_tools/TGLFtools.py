@@ -70,7 +70,7 @@ class TGLF:
             # Prepare TGLF (this will create input.tglf in the specified folder)
             cdf = tglf.prep('~/testTGLF/')
 
-            # Run standalone TGLF (this will find the input.tglf in the previous folder, 
+            # Run standalone TGLF (this will find the input.tglf in the previous folder,
             # and then copy to this specify TGLF run, and run it there)
             tglf.run(subFolderTGLF='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
 
@@ -97,8 +97,8 @@ class TGLF:
             tglf.readScan(label='scan1',variable='RLTS_2')
 
             # Plot
-            plt.ion(); tglf.plotScan(labels=['scan1'],variableLabel='RLTS_2') 
-            
+            plt.ion(); tglf.plotScan(labels=['scan1'],variableLabel='RLTS_2')
+
         ****************************
         ***** Special analysis *****
         ****************************
@@ -3707,9 +3707,8 @@ class TGLFinput:
         return position
 
     def writeCurrentStatus(self, file=None):
-       
         print("\t- Writting TGLF input file")
-       
+
         maxSpeciesTGLF = 6  # TGLF cannot handle more than 6 species
 
         if file is None:

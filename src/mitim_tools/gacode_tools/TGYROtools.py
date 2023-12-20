@@ -4617,7 +4617,6 @@ class TGYROinput:
         self.loc_n_ion = spec["LOC_N_ION"]
 
     def writeCurrentStatus(self, file=None):
-
         print("\t- Writting TGYRO input file")
 
         if file is None:

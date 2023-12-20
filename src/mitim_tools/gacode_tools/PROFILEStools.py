@@ -1155,7 +1155,6 @@ class PROFILES_GACODE:
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor * ni_orig
 
     def writeCurrentStatus(self, file=None, limitedNames=False):
-        
         print("\t- Writting input.gacode file")
 
         if file is None:
@@ -2501,7 +2500,12 @@ class PROFILES_GACODE:
         GRAPHICStools.autoscale_y(ax)
 
         ax = axs6[6]
-        safe_division = np.divide(self.derived["qi_MWm2"], self.derived["qe_MWm2"], where=self.derived["qe_MWm2"] != 0, out=np.full_like(self.derived["qi_MWm2"], np.nan))
+        safe_division = np.divide(
+            self.derived["qi_MWm2"],
+            self.derived["qe_MWm2"],
+            where=self.derived["qe_MWm2"] != 0,
+            out=np.full_like(self.derived["qi_MWm2"], np.nan),
+        )
         ax.plot(
             self.profiles["rho(-)"],
             safe_division,
@@ -2509,7 +2513,12 @@ class PROFILES_GACODE:
             lw=lw,
             label=extralab + "Q_i/Q_e",
         )
-        safe_division = np.divide(self.derived["qi_aux_MWmiller"], self.derived["qe_MWm2"], where=self.derived["qe_aux_MWmiller"] != 0, out=np.full_like(self.derived["qi_aux_MWmiller"], np.nan))
+        safe_division = np.divide(
+            self.derived["qi_aux_MWmiller"],
+            self.derived["qe_MWm2"],
+            where=self.derived["qe_aux_MWmiller"] != 0,
+            out=np.full_like(self.derived["qi_aux_MWmiller"], np.nan),
+        )
         ax.plot(
             self.profiles["rho(-)"],
             safe_division,

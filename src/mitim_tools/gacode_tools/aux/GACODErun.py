@@ -854,10 +854,10 @@ def runCGYRO(
                 if not os.path.exists(ff):
                     print(f"\t!! file {file} ({fr}) could not be retrived")
                 # else:
-                    # print(
-                    #     f"\t\t~ {file} successfully retrieved, converted into {fr}",
-                    #     verbose=verbose_level,
-                    # )
+                # print(
+                #     f"\t\t~ {file} successfully retrieved, converted into {fr}",
+                #     verbose=verbose_level,
+                # )
 
         os.system(f"mv {fileCGYRO} {finalFolder}/input.cgyro_{rho:.4f}")
 
@@ -998,7 +998,8 @@ def runTGLF(
             if not os.path.exists(final_destination):
                 print(
                     f"\t!! file {file} ({original_file}) could not be retrived",
-                    typeMsg="w",verbose=verbose_level,
+                    typeMsg="w",
+                    verbose=verbose_level,
                 )
                 # else:
                 #     print(
