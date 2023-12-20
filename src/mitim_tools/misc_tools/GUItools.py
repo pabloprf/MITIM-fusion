@@ -14,7 +14,7 @@ try:
     from matplotlib.backends.backend_qtagg import (
         NavigationToolbar2QT as NavigationToolbar,
     )
-    from PyQt6 import QtWidgets, QtCore, QtGui
+    from PyQt6 import QtWidgets, QtCore
     from PyQt6.QtWidgets import QTabWidget, QTabBar
 
     # -----------------------------

@@ -1,4 +1,4 @@
-import os, time, copy, pickle
+import os, copy, pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
@@ -7,7 +7,6 @@ from mitim_tools.misc_tools import (
     IOtools,
     GRAPHICStools,
     PLASMAtools,
-    FARMINGtools,
     GUItools,
 )
 from mitim_tools.gacode_tools.aux import (
@@ -5608,9 +5607,9 @@ class TGLFoutput:
             axs = np.empty((2, 2), dtype=plt.Axes)
 
             axs[0, 0] = fig3.add_subplot(grid[0, 0])
-            axs[1, 0] = fig3.add_subplot(grid[1, 0], sharex=axs3[0, 0])
-            axs[0, 1] = fig3.add_subplot(grid[0, 1], sharex=axs3[0, 0])
-            axs[1, 1] = fig3.add_subplot(grid[1, 1], sharex=axs3[0, 0])
+            axs[1, 0] = fig3.add_subplot(grid[1, 0], sharex=axs[0, 0])
+            axs[0, 1] = fig3.add_subplot(grid[0, 1], sharex=axs[0, 0])
+            axs[1, 1] = fig3.add_subplot(grid[1, 1], sharex=axs[0, 0])
 
         ax = axs[0, 0]
         ax.plot(
