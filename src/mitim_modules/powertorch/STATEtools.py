@@ -196,7 +196,7 @@ class powerstate:
         )
 
         if writeFile is not None:
-            print(f"\n- Writing input.gacode into: {writeFile}")
+            print(f"\t- Writing input.gacode file: {IOtools.clipstr(writeFile)}")
             profiles.writeCurrentStatus(file=writeFile)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
@@ -221,7 +221,7 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def save(self, file):
-        print("\t- Writing power state file", typeMsg="i")
+        print(f"\t- Writing power state file: {IOtools.clipstr(file)}")
         with open(file, "wb") as handle:
             pickle.dump(self, handle)
 

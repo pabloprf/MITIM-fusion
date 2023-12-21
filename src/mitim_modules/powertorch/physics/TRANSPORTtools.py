@@ -380,8 +380,7 @@ def tgyro_model(
 
     for lab in labels_results:
         print(
-            f"\t- Inserting PORTALS powers into {self.tgyro_current.results[lab].profiles_final.file}",
-            typeMsg="i",
+            f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.tgyro_current.results[lab].profiles_final.file)}",
         )
         TRANSFORMtools.insertPowersNew(
             self.tgyro_current.results[lab].profiles_final, state=self
@@ -527,7 +526,7 @@ def profilesToShare(self, extra_params):
         os.system(f"cp {self.file_profs_mod} {fil}")
         os.system(f"cp {self.file_profs} {fil}_unmodified")
         os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
-        print(f"\t- Copied profiles to {fil}")
+        print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")
 

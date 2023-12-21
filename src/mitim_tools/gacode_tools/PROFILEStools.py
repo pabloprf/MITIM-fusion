@@ -1133,10 +1133,7 @@ class PROFILES_GACODE:
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm" and sp != refIon:
                 print(
-                    "\t\t\t- Temperature forcing {0} --> {1}".format(
-                        self.Species[sp]["N"], SpecRef
-                    ),
-                    typeMsg="i",
+                    f"\t\t\t- Temperature forcing {self.Species[sp]['N']} --> {SpecRef}"
                 )
                 self.profiles["ti(keV)"][:, sp] = tiRef
 
@@ -1146,10 +1143,7 @@ class PROFILES_GACODE:
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 print(
-                    "\t\t\t- Scaling density of {0} by an average factor of {1:.3f}".format(
-                        self.Species[sp]["N"], np.mean(scaleFactor)
-                    ),
-                    typeMsg="i",
+                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor):.3f}"
                 )
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor * ni_orig
@@ -1632,9 +1626,7 @@ class PROFILES_GACODE:
 
     def selfconsistentPTOT(self):
         print(
-            "\t\t* Recomputing total pressure and inserting it as ptot(Pa), from p0 = {0:.3f} to {1:.3f} MPa".format(
-                self.profiles["ptot(Pa)"][0] * 1e-6, self.derived["ptot_manual"][0]
-            ),
+            f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",
             typeMsg="i",
         )
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6

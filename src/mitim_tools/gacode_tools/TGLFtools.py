@@ -175,7 +175,7 @@ class TGLF:
             ) = ({}, {}, None, None, None)
 
     def save_pkl(self, file):
-        print("> Saving tglf class as pickle file: ", file)
+        print(f"> Saving tglf class as pickle file: {IOtools.clipstr(file)}")
         try:
             del self.fn  # otherwise it cannot deepcopy
         except:
@@ -469,7 +469,7 @@ class TGLF:
         # Run TGLF
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        print("> Running TGLF")
+        print("\n> Run TGLF")
         if not exists:
             GACODErun.runTGLF(
                 rhosEvaluate,
@@ -3569,7 +3569,7 @@ class TGLFinput:
             self.onlyControl = False
         else:
             print(
-                "\t~ No species parameters in this input.tglf. It is either a controls-only file or there was a problem generating it"
+                "\t- No species in this input.tglf (it is either a controls-only file or there was a problem generating it)"
             )
             self.onlyControl = True
 
@@ -4041,7 +4041,7 @@ def modifyInputToTGLF(
 
         # ~~~~~~~~~~ Change with presets
         print(
-            f" \t\t- Using presets TGLFsettings = {TGLFsettings} ({label})", typeMsg="i"
+            f" \t- Using presets TGLFsettings = {TGLFsettings} ({label})", typeMsg="i"
         )
         TGLFoptions_orig = copy.deepcopy(inputTGLF.controls)
         inputTGLF.controls = TGLFoptions

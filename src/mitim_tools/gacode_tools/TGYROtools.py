@@ -216,7 +216,7 @@ class TGYRO:
 
         # ------------------------------------------------------------------------
 
-        print("> Run TGYRO")
+        print("\n> Run TGYRO")
 
         special_radii_mod = copy.deepcopy(special_radii)
 
@@ -279,23 +279,23 @@ class TGYRO:
             if len(quasineutrality) < 1:
                 print(
                     "\t- TGYRO will be run by removing fast particles (only thermal ones), without correcting for quasineutrality",
-                    typeMsg="w",
+                    typeMsg="i",
                 )
             else:
                 print(
                     f"\t- TGYRO will be run by removing fast particles (only thermal ones), with quasineutrality={quasineutrality}",
-                    typeMsg="w",
+                    typeMsg="i",
                 )
         else:
             if len(quasineutrality) < 1:
                 print(
                     "\t- TGYRO will be run with all species (fast and thermal), without correcting for quasineutrality",
-                    typeMsg="w",
+                    typeMsg="i",
                 )
             else:
                 print(
                     f"\t- TGYRO will be run with all species (fast and thermal), with quasineutrality={quasineutrality}",
-                    typeMsg="w",
+                    typeMsg="i",
                 )
 
         # -----------------------------------
@@ -320,13 +320,21 @@ class TGYRO:
         # Do the required files exist?
         exists = not restart
 
+        txt_nonexist = ''
         if exists:
             for j in self.outputFiles:
                 file = f"{self.FolderTGYRO}{j}"
                 existThis = os.path.exists(file)
                 if not existThis:
-                    print(f"{file}: {existThis}", verbose=verbose_level)
+                    txt_nonexist += f"\t\t- {IOtools.clipstr(file)}\n"
                 exists = exists and existThis
+
+            if not exists:
+                print(
+                    "\t- Some of the required output files did not exist, will run TGYRO again",
+                    typeMsg="i",
+                )
+                #print(txt_nonexist, typeMsg="w")
 
         # ----------------------------------------------------------------
         # ----------------------------------------------------------------
@@ -360,7 +368,7 @@ class TGYRO:
             IOtools.askNewFolder(self.FolderTGYRO_tmp)
 
         print(
-            f"\t\t- Creating only-controls input.tglf file in {self.FolderTGYRO_tmp}input.tglf"
+            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(self.FolderTGYRO_tmp)}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = TGLFtools.modifyInputToTGLF(
@@ -375,7 +383,7 @@ class TGYRO:
         # ------ Write input profiles
         # -----------------------------------
 
-        print(f"\t\t- Using input.profiles from {self.profiles.file}")
+        print(f"\t\t- Using input.profiles from {IOtools.clipstr(self.profiles.file)}")
         fil = "input.gacode"
         self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp + fil)
 
@@ -450,7 +458,7 @@ class TGYRO:
 			"""
             if modify_inputgacodenew:
                 print(
-                    "- It was requested that input.gacode.new is modified according to what TargetType was",
+                    "\t- It was requested that input.gacode.new is modified according to what TargetType was",
                     typeMsg="i",
                 )
 
@@ -1442,7 +1450,7 @@ class TGYROoutput:
             self.tgyro_stds = False
 
         else:
-            print("\t- Errors in TGYRO fluxes and targets found!", typeMsg="i")
+            print("\t- Errors in TGYRO fluxes and targets found, adding to class")
             self.tgyro_stds = True
 
             file = f"{self.FolderTGYRO}/out.tgyro.flux_e_stds"
