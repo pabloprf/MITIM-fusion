@@ -16,7 +16,7 @@ if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
     os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
 
 FolderEvaluation = IOtools.expandPath("$MITIM_PATH/tests/scratch/im_test/")
-IMnamelist = IOtools.expandPath("$MITIM_PATH/config/im.namelist")
+IMnamelist = IOtools.expandPath("$MITIM_PATH/templates/im.namelist")
 
 if restart and os.path.exists(FolderEvaluation):
     os.system(f"rm -r {FolderEvaluation}")

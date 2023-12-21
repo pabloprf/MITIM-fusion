@@ -96,7 +96,7 @@ class FUNmain:
                 typeMsg="i",
             )
 
-            namelist = IOtools.expandPath("$MITIM_PATH/config/main.namelist")
+            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
             self.Optim = IOtools.readOptim_Complete(namelist)
 
             self.Optim = default_namelist_function(self.Optim)

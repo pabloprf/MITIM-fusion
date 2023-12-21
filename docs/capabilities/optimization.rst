@@ -44,7 +44,7 @@ Select the location of the MITIM namelist (see :ref:`Understanding the MITIM nam
 .. code-block:: python
 
    folder    = IOtools.expandPath('$MITIM_PATH/tests/scratch/mitim_tut/')
-   namelist  = IOtools.expandPath('$MITIM_PATH/config/main.namelist')
+   namelist  = IOtools.expandPath('$MITIM_PATH/templates/main.namelist')
 
 Then create your custom optimization object as a child of the parent ``STRATEGYtools.FUNmain`` class.
 You only need to modify what operations need to occur inside the ``run()`` (where operations/simulations happen) and ``scalarized_objective()`` (to define what is the target to maximize) methods.
@@ -118,7 +118,7 @@ Once finished, we can plot the results easily with:
 Understanding the MITIM namelist
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Checkout file ``$MITIM_PATH/config/main.namelist``, which has comprehensive comments.
+Checkout file ``$MITIM_PATH/templates/main.namelist``, which has comprehensive comments.
 
 *Under development*
 
