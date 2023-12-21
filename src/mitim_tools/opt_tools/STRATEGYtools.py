@@ -1,4 +1,4 @@
-import os, copy, datetime, array, traceback, sys, torch
+import os, copy, datetime, array, traceback, torch
 from collections import OrderedDict
 from IPython import embed
 import dill as pickle_dill
@@ -660,7 +660,6 @@ class PRF_BO:
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             # Does the tabular file include at least as many rows as requested to be run in this step?
-            isThisFinalEvaluation = self.numIterations == self.currentIteration
             pointsTabular = len(
                 self.TabularData.data
             )  # Number of points that the Tabular contains
@@ -1158,11 +1157,11 @@ class PRF_BO:
         # Print Optimization Settings
 
         print(
-            f"\n=============================================================================="
+            "\n=============================================================================="
         )
         print(f"  {IOtools.getStringFromTime()}, Starting MITIM Optimization")
         print(
-            f"=============================================================================="
+            "=============================================================================="
         )
 
         print(f"* Folder: {self.folderExecution}")
@@ -1488,8 +1487,6 @@ class PRF_BO:
         else:
             fnprov = True
 
-        colors = GRAPHICStools.listColors()
-
         """
 		****************************************************************
 		Model Stuff
@@ -1634,7 +1631,7 @@ class PRF_BO:
             # Plot model specifics from last model
             self.plotModelStatus(boStep=k, fn=fn, stds=stds)
 
-        print(f"- Finished plotting of step models")
+        print("- Finished plotting of step models")
 
         """
 		****************************************************************

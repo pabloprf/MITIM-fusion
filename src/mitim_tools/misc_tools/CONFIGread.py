@@ -101,13 +101,17 @@ def machineSettings(
         "port": None,
         "identity": None,
         "partition": None,
-        "modules": "source $MITIM_PATH/config/mitim.bashrc",
+        "modules": "source $MITIM_PATH/config/mitim.bashrc", 
         "folderWork": scratch,
         "exclude": s[machine]["exclude"] if "exclude" in s[machine] else None,
         "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
         if "isTunnelSameMachine" in s[machine]
         else False,
     }
+
+    # I can give extra things to load in the config file
+    if "modules" in s[machine] and s[machine]["modules"] is not None and s[machine]["modules"] != "":
+        machineSettings["modules"] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
     checkers = ["identity", "partition", "tunnel", "port"]
     for i in checkers:
@@ -123,13 +127,8 @@ def machineSettings(
     # Specific case of being already in the machine where I need to run
     # ************************************************************************************************************************
 
-    AmIAlreadyHere = (
-        ((machine in ["mfews"]) and ("mfews" in socket.gethostname()))
-        or ((machine in ["iris"]) and ("iris" in socket.gethostname()))
-        or ((machine in ["engaging"]) and (isThisEngaging()))
-    )
-
-    if AmIAlreadyHere:
+    # Am I already in this machine?
+    if machine in socket.gethostname():
         # Avoid tunneling and porting if I'm already there
         machineSettings["tunnel"] = machineSettings["port"] = None
 

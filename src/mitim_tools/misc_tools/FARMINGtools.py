@@ -508,10 +508,6 @@ def runCommand(
         tunnelF = tunnel
         machineF = machine
 
-    # I RMOVED THIS BECAUSE IT'S DONE IN THE SLURM DEFINITION COMMAND
-    # if 'modules' in machineSettings and machineSettings['modules'] is not None and len(machineSettings['modules']) >0:
-    # 	commandMain = machineSettings['modules'] + ' && ' + commandMain
-
     currentTime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     print(
