@@ -547,7 +547,7 @@ def cgyro_trick(
     # **************************************************************************************************************************
 
     if portals_variables is not None:
-        txt = f"\nFluxes to be matched by CGYRO ( TARGETS - NEO ):"
+        txt = "\nFluxes to be matched by CGYRO ( TARGETS - NEO ):"
 
         for var, varn in zip(
             ["r/a  ", "rho  ", "a/LTe", "a/LTi", "a/Lne", "a/LnZ", "a/Lw0"],

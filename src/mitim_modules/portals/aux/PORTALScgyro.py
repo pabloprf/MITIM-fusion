@@ -143,7 +143,7 @@ def cgyroing(
         cont += 1
 
         print(
-            f"~ Modifying {FolderEvaluation} with position {k} in CGYRO results file {file}"
+            f"\t- Modifying {IOtools.clipstr(FolderEvaluation)} with position {k} in CGYRO results file {IOtools.clipstr(file)}"
         )
 
         # Get TGYRO

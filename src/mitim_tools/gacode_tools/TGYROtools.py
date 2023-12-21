@@ -331,7 +331,7 @@ class TGYRO:
 
             if not exists:
                 print(
-                    "\t- Some of the required output files did not exist, will run TGYRO again",
+                    "\t- Some of the required output files did not exist, running TGYRO",
                     typeMsg="i",
                 )
                 #print(txt_nonexist, typeMsg="w")

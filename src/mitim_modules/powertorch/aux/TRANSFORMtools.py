@@ -234,11 +234,9 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
     # Radial positions ----------------------------------------------------------------------------
     roa_array = interpFunction(rho_vec, rho_use, input_gacode.derived["roa"])
     rho_array = interpFunction(rho_vec, rho_use, input_gacode.profiles["rho(-)"])
-    print(f"\t- Producing powerstate")
+    print("\t- Producing powerstate")
     if len(rho_array) < 10:
-        print(
-            f"\t\t@ rho = {[round(i,6) for i in rho_array]}, r/a = {[round(i,6) for i in roa_array]}"
-        )
+        print(f"\t\t@ rho = {[round(i,6) for i in rho_array]}")
         print(f"\t\t@ r/a = {[round(i,6) for i in roa_array]}")
     else:
         print(f"\t\t@ {len(rho_array)} rho points")

@@ -4,8 +4,8 @@ from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools
-from mitim_tools.opt_tools import SURROGATEtools, OPTtools, STEPtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.aux import (
     BOgraphics,
     SBOcorrections,
@@ -92,7 +92,7 @@ class FUNmain:
 
         elif default_namelist_function is not None:
             print(
-                f"\t- Namelist not provided, using MITIM default for this optimization sub-module, using {default_namelist_function}",
+                "\t- Namelist not provided, using MITIM default for this optimization sub-module",
                 typeMsg="i",
             )
 
