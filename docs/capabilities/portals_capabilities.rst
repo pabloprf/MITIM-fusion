@@ -30,6 +30,6 @@ Run a standard profile prediction with PORTALS-TGLF
 *(In the meantime, please checkout* `tutorials/PORTALS_tutorial.py <../../tutorials/PORTALS_tutorial.py>`_ *)*
 
 Run a standard profile prediction with PORTALS-CGYRO
----------------------------------------------------
+----------------------------------------------------
 
 *Under Development*

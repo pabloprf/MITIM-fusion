@@ -1,8 +1,9 @@
 from setuptools import setup, find_packages
+from src.mitim_tools import __version__
 
 setup(
     name="MITIM",
-    version="1.0.0",
+    version=__version__,
     description="MIT Integrated Modeling Suite for Fusion Applications",
     url="https://mitim-fusion.readthedocs.io/",
     author="P. Rodriguez-Fernandez",

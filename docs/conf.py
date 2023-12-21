@@ -8,12 +8,15 @@ import sphinx_rtd_theme
 sys.path.insert(0, os.path.abspath("."))
 sys.path.insert(0, os.path.abspath(".."))
 
+sys.path.insert(0, os.path.abspath('../src'))
+from mitim_tools import __version__
+
 # -- Project information
 project = "MITIM"
 copyright = "2018, Pablo RF"
 author = "Pablo Rodriguez-Fernandez"
-version = "1.0"  # The short X.Y version
-release = "1.0.0"  # The full version, including alpha/beta/rc tags
+release = __version__  # The short X.Y version
+release = __version__  # The full version, including alpha/beta/rc tags
 html_logo = "mitim_logo.png"
 
 # -- General configuration
@@ -48,7 +51,7 @@ master_doc = "index"
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # The name of the Pygments (syntax highlighting) style to use
-pygments_style = "sphinx"  #'arduino'
+pygments_style = "sphinx"
 
 # -- Options for HTML output
 html_theme = "sphinx_rtd_theme"
@@ -68,10 +71,6 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
-
-# html_sidebars = {
-#     '**': ['custom_sidebar.html', 'searchbox.html']
-# }
 
 html_static_path = [
     "_static"
