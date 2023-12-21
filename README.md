@@ -32,7 +32,10 @@ In a nutshell:
 References
 ----------
 
-P. Rodriguez-Fernandez, N.T. Howard and J. Candy, [`Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling](https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2), Nucl. Fusion 62, 076036 (2022).
+P. Rodriguez-Fernandez, N.T. Howard, A. Saltzman, S. Kantamneni, J. Candy, C. Holland, M. Balandat, S. Ament and A.E. White, [`Enhancing predictive capabilities in fusion burning plasmas through surrogate-based optimization in core transport solvers`] (https://arxiv.org/abs/2312.12610), arXiv:2312.12610 (2023).
+
+P. Rodriguez-Fernandez, N.T. Howard and J. Candy, [`Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling`](https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2), Nucl. Fusion 62, 076036 (2022).
+
 
 Documentation
 -------------

@@ -106,9 +106,9 @@ Our choice of this license aims to make the package as useful and applicable as 
 Embracing the spirit of open-source collaboration, we appreciate users who help increase the visibility of our project by
 starring the `MITIM-fusion <https://github.com/pabloprf/MITIM-fusion/>`_ GitHub repository and support and acknowledge the continuous development of this tool by citing the following works in any publications, talks and posters:
 
-[1] P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
+[1] P. Rodriguez-Fernandez, N.T. Howard, A. Saltzman, S. Kantamneni, J. Candy, C. Holland, M. Balandat, S. Ament and A.E. White, `Enhancing predictive capabilities in fusion burning plasmas through surrogate-based optimization in core transport solvers <https://arxiv.org/abs/2312.12610>`_, arXiv:2312.12610 (2023).
 
-[2] P. Rodriguez-Fernandez, A. E. White, A. J. Creely, M. J. Greenwald, N. T. Howard, F. Sciortino and J. C. Wright, `VITALS: A Surrogate-Based Optimization Framework for the Accelerated Validation of Plasma Transport Codes <https://www.tandfonline.com/doi/abs/10.1080/15361055.2017.1396166>`_, Fusion Science and Technology, 74:1-2, 65-76 (2018).
+[2] P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
 
 These publications provide foundational insights and methodologies that have significantly contributed to the development of MITIM.
 
