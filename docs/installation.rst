@@ -13,13 +13,14 @@ Installation
 Instructions
 ------------
 
-Clone the github repository:
+Clone the github repository (do not forget to select **Watch All activity** to receive notifications of new releases and announcements, and **Star** the repository to increase its visibility):
 
 .. code-block:: console
 
    git clone git@github.com:pabloprf/MITIM-fusion.git
 
-Source the configuration file (in *.bashrc* file):
+Source the configuration file (it may be good to add this in your ``.bashrc`` file to load upon login, or with some alias to initialize ``mitim``) by 
+pointing to the folder where you cloned the repository:
 
 .. code-block:: console
 
@@ -68,12 +69,12 @@ In ``$MITIM_PATH/config/``, there is a ``config_user_example.json`` with specifi
    cp $MITIM_PATH/config/config_user_example.json $MITIM_PATH/config/config_user.json
    vim $MITIM_PATH/config/config_user.json
 
-``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM.
+Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM.
 For debugging purposes, it is recommended a maximum verbose level of ``5``.
-For production runs, a minimum verbose level of 1 is recommended so that you only get important messages.
+For production runs, a minimum verbose level of ``1`` is recommended so that you only get important messages.
 ``preferences`` also allows a ``dpi_notebook`` value (in percent from standard), which should be adjusted for each user's screen configuration.
 
-For example, if TGLF is set up to run in the MIT *eofe7* machine, this means that, every time in the MITIM workflow when TGLF needs to run, it will access the MIT *eofe7* machine to do so, and therefore you must specify how to access the engaging machine:
+For example, if TGLF is set up to run in the *eofe7.mit.edu* machine, this means that, every time in the MITIM workflow when TGLF needs to run, it will access *eofe7.mit.edu* machine to do so, and therefore you must specify how to access the engaging machine:
 
 .. code-block:: console
 
@@ -91,8 +92,8 @@ For example, if TGLF is set up to run in the MIT *eofe7* machine, this means tha
          }
 
 If you select to run a code in a given machine, please make sure you have ssh rights to that machine with the login instructions specified, unless you are running it locally.
-MITIM will attempt to secure-copy and access that machine through a standard SSH connection and it must therefore be set-up prior to launching MITIM jobs. Make sure that you can ssh with ``ssh username@machine``, and it is recommended that no password is required for the SSH keys, but it is up to the user.
-Otherwise MITIM will ask for the password very often.
+MITIM will attempt to secure-copy and access that machine through a standard SSH connection and it must therefore be set-up prior to launching MITIM jobs.
+Make sure that you can ssh with ``ssh username@machine`` with no password for the SSH keys or via a proxy connection (otherwise MITIM will ask for the password very often).
 
 .. attention::
 
@@ -101,14 +102,14 @@ Otherwise MITIM will ask for the password very often.
 License and contributions
 -------------------------
 
-MITIM is released under the `MIT License <https://mit-license.org/>`_, one of the most permissive and widely used open-source software licenses.
+MITIM is released under the MIT License, one of the most permissive and widely used open-source software licenses.
 Our choice of this license aims to make the package as useful and applicable as possible, in support of the development of fusion energy.
 Embracing the spirit of open-source collaboration, we appreciate users who help increase the visibility of our project by
 starring the `MITIM-fusion <https://github.com/pabloprf/MITIM-fusion/>`_ GitHub repository and support and acknowledge the continuous development of this tool by citing the following works in any publications, talks and posters:
 
-[1] P. Rodriguez-Fernandez, N.T. Howard, A. Saltzman, S. Kantamneni, J. Candy, C. Holland, M. Balandat, S. Ament and A.E. White, `Enhancing predictive capabilities in fusion burning plasmas through surrogate-based optimization in core transport solvers <https://arxiv.org/abs/2312.12610>`_, arXiv:2312.12610 (2023).
+**[1]** P. Rodriguez-Fernandez, N.T. Howard, A. Saltzman, S. Kantamneni, J. Candy, C. Holland, M. Balandat, S. Ament and A.E. White, `Enhancing predictive capabilities in fusion burning plasmas through surrogate-based optimization in core transport solvers <https://arxiv.org/abs/2312.12610>`_, arXiv:2312.12610 (2023).
 
-[2] P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
+**[2]** P. Rodriguez-Fernandez, N.T. Howard and J. Candy, `Nonlinear gyrokinetic predictions of SPARC burning plasma profiles enabled by surrogate modeling <https://iopscience.iop.org/article/10.1088/1741-4326/ac64b2>`_, Nucl. Fusion 62, 076036 (2022).
 
 These publications provide foundational insights and methodologies that have significantly contributed to the development of MITIM.
 
