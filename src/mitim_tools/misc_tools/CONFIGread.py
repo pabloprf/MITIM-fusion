@@ -72,7 +72,7 @@ def machineSettings(
     forceUsername=None,
 ):
     """
-    This script uses the config json file and completes the information required to run each code (like modules, tunnels)
+    This script uses the config json file and completes the information required to run each code
 
     forceUsername is used to override the json file (for TRANSP PRF), adding also an identity and scratch
     """
@@ -82,7 +82,7 @@ def machineSettings(
     machine = s["preferences"][code]
 
     """
-	Set-up per code and machine (loading modules, tunnels, etc)
+	Set-up per code and machine
 	-------------------------------------------------
 	"""
 
@@ -118,16 +118,6 @@ def machineSettings(
         machineSettings[
             "folderWorkTunnel"
         ] = f"{s[machine]['scratch_tunnel']}/{nameScratch}"
-
-    # ************************************************************************************************************************
-    # Issues
-    # ************************************************************************************************************************
-
-    # For some reason, going into iris does not know what $MITIM_PATH is even if it's defined in bash... so do this trick until I find a solution:
-    if machine == "iris":
-        machineSettings[
-            "modules"
-        ] = f"source /home/{s[machine]['username']}/MITIM/config/mitim.bashrc"
 
     # ************************************************************************************************************************
     # Specific case of being already in the machine where I need to run
