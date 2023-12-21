@@ -111,3 +111,9 @@ starring the `MITIM-fusion <https://github.com/pabloprf/MITIM-fusion/>`_ GitHub 
 [2] P. Rodriguez-Fernandez, A. E. White, A. J. Creely, M. J. Greenwald, N. T. Howard, F. Sciortino and J. C. Wright, `VITALS: A Surrogate-Based Optimization Framework for the Accelerated Validation of Plasma Transport Codes <https://www.tandfonline.com/doi/abs/10.1080/15361055.2017.1396166>`_, Fusion Science and Technology, 74:1-2, 65-76 (2018).
 
 These publications provide foundational insights and methodologies that have significantly contributed to the development of MITIM.
+
+License
+~~~~~~~
+
+.. literalinclude:: LICENSE
+   :language: text
