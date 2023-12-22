@@ -20,3 +20,31 @@
 .sphinx-bs-panels-container {
     margin-bottom: 1em;
 }
+
+img {
+    transition: transform 0.25s ease;
+}
+
+img:hover {
+    transform: scale(1.05); /* Slightly enlarge the image on hover */
+    border-color: #555; /* Change border color on hover */
+}
+
+img {
+    border: 2px solid #888; /* Solid grey border */
+    padding: 5px; /* Space between the image and border */
+    background-color: white; /* Background color inside the frame */
+    box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.2); /* Optional: add shadow for depth */
+}
+
+img {
+    display: inline-block; /* Allows images to sit side by side */
+    margin-right: 2%; /* Add some space between the images */
+    vertical-align: top; /* Aligns images to the top */
+}
+
+.clearfix::after {
+    content: "";
+    display: table;
+    clear: both;
+}

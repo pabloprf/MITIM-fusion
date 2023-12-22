@@ -17,20 +17,23 @@
     "local": {
         "machine":    "local",
         "username":   "exampleusername",
-        "scratch":    "/Users/exampleusername/scratch/"
+        "scratch":    "/Users/exampleusername/scratch/",
+        "modules":    ""
     },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
         "username":         "exampleusername",
         "partition":        "sched_mit_psfc",
         "identity":         "~/.ssh/id_rsa",
-        "scratch":          "/nobackup1/exampleusername/"
+        "scratch":          "/nobackup1/exampleusername/",
+        "modules":    ""
     },
     "mfews": {
         "machine":    "mfews02.psfc.mit.edu", 
         "username":   "exampleusername",
         "port":            9224,
-        "scratch":    "/home/exampleusername/scratch/"
+        "scratch":    "/home/exampleusername/scratch/",
+        "modules":    ""
     },
     "mfews_tunneled": {
         "machine":          "mfews02.psfc.mit.edu", 
@@ -38,7 +41,8 @@
         "tunnel":           "mferws01.psfc.mit.edu",
         "scratch_tunnel":   "/home/exampleusername/scratch/",
         "port":             9224,
-        "scratch":          "/home/exampleusername/scratch/"
+        "scratch":          "/home/exampleusername/scratch/",
+        "modules":    ""
     },
     "iris": {
         "machine":    "irisa.gat.com", 
@@ -46,7 +50,8 @@
         "tunnel":     "cybele.gat.com",
         "scratch_tunnel": "/home/exampleusername/scratch/",
         "port":            2039,
-        "scratch":    "/cluster-scratch/exampleusername/"
+        "scratch":    "/cluster-scratch/exampleusername/",
+        "modules":    ""
     },
     "globus": {
         "username":   "exampleusername",

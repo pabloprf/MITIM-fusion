@@ -72,7 +72,7 @@ def machineSettings(
     forceUsername=None,
 ):
     """
-    This script uses the config json file and completes the information required to run each code (like modules, tunnels)
+    This script uses the config json file and completes the information required to run each code
 
     forceUsername is used to override the json file (for TRANSP PRF), adding also an identity and scratch
     """
@@ -82,7 +82,7 @@ def machineSettings(
     machine = s["preferences"][code]
 
     """
-	Set-up per code and machine (loading modules, tunnels, etc)
+	Set-up per code and machine
 	-------------------------------------------------
 	"""
 
@@ -101,13 +101,17 @@ def machineSettings(
         "port": None,
         "identity": None,
         "partition": None,
-        "modules": "source $MITIM_PATH/config/mitim.bashrc",
+        "modules": "source $MITIM_PATH/config/mitim.bashrc", 
         "folderWork": scratch,
         "exclude": s[machine]["exclude"] if "exclude" in s[machine] else None,
         "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
         if "isTunnelSameMachine" in s[machine]
         else False,
     }
+
+    # I can give extra things to load in the config file
+    if "modules" in s[machine] and s[machine]["modules"] is not None and s[machine]["modules"] != "":
+        machineSettings["modules"] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
     checkers = ["identity", "partition", "tunnel", "port"]
     for i in checkers:
@@ -120,26 +124,11 @@ def machineSettings(
         ] = f"{s[machine]['scratch_tunnel']}/{nameScratch}"
 
     # ************************************************************************************************************************
-    # Issues
-    # ************************************************************************************************************************
-
-    # For some reason, going into iris does not know what $MITIM_PATH is even if it's defined in bash... so do this trick until I find a solution:
-    if machine == "iris":
-        machineSettings[
-            "modules"
-        ] = f"source /home/{s[machine]['username']}/MITIM/config/mitim.bashrc"
-
-    # ************************************************************************************************************************
     # Specific case of being already in the machine where I need to run
     # ************************************************************************************************************************
 
-    AmIAlreadyHere = (
-        ((machine in ["mfews"]) and ("mfews" in socket.gethostname()))
-        or ((machine in ["iris"]) and ("iris" in socket.gethostname()))
-        or ((machine in ["engaging"]) and (isThisEngaging()))
-    )
-
-    if AmIAlreadyHere:
+    # Am I already in this machine?
+    if machine in socket.gethostname():
         # Avoid tunneling and porting if I'm already there
         machineSettings["tunnel"] = machineSettings["port"] = None
 
