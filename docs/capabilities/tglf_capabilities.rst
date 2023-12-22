@@ -14,6 +14,33 @@ Once setup has been successful, the following regression test should run smoothl
     :local:
     :depth: 1
 
+Plot TGLF results
+-----------------
+
+MITIM provides comprehensive utilities to interpret the results of TGLF simulations.
+As will be detailed in :ref:`TGLF aliases`, we can use the ``mitim_plot_tglf`` alias to plot TGLF results that exist in folder ``tglf_run/``:
+
+.. code-block:: bash
+    
+    mitim_plot_tglf tglf_run/
+
+Running this will open an interactive python session and show a comprehensive notebook with all the relevant TGLF outputs:
+
+.. image:: ./figs/TGLF_plot1.png
+   :align: left
+   :width: 46%
+
+.. image:: ./figs/TGLF_plot2.png
+   :align: left
+   :width: 46%
+
+.. raw:: html
+
+   <br><br>
+
+The results can be accessed from the ``tglf.results`` dictionary.
+
+
 Run TGLF from input.gacode
 --------------------------
 

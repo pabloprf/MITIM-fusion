@@ -88,3 +88,14 @@ copybutton_prompt_is_regexp = True
 
 # Change the tooltip text
 copybutton_tooltip_text = "Copy to clipboard"
+
+html_context = {
+    'images_config': {
+        'backend': 'LightBox2',
+        'default_image_width': '50%',
+        'use_placeholder': True,
+        'placeholder': 'placeholder.png',
+        'download': True,
+        'download_text': 'Download',
+    },
+}
