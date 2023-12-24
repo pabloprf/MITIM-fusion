@@ -1,9 +1,7 @@
-import sys, argparse
-import dill as pickle_dill
+import argparse
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.opt_tools import STRATEGYtools
-from mitim_modules.portals.aux import PORTALSplot
+from mitim_modules.portals.aux import PORTALSanalysis
 
 """
 This script is to plot only the convergence figure, not the rest of surrogates that takes long.
@@ -49,37 +47,7 @@ for folderWork in folders:
         else None
     )
 
-    # Read standard OPT
-    opt_fun = STRATEGYtools.FUNmain(folderWork)
-    opt_fun.read_optimization_results(
-        analysis_level=4, plotYN=False, folderRemote=folderRemote
-    )
+    # Read PORTALS
+    portals = PORTALSanalysis.PORTALSanalyzer(folderWork,folderRemote=folderRemote)
 
-    # Analyze mitim results
-    self_complete = opt_fun.plot_optimization_results(analysis_level=4, plotYN=False)
-
-    # Interpret results
-    with open(self_complete.MITIMextra, "rb") as handle:
-        MITIMextra_dict = pickle_dill.load(handle)
-    portals_plot = PORTALSplot.PORTALSresults(
-        self_complete.folder,
-        opt_fun.prfs_model,
-        opt_fun.res,
-        MITIMextra_dict=MITIMextra_dict,
-        indecesPlot=[opt_fun.res.best_absolute_index, 0, index_extra],
-    )
-
-    # Plot
-    plt.ion()
-    fig = plt.figure(figsize=(18, 9))
-    PORTALSplot.plotConvergencePORTALS(
-        portals_plot,
-        fig=fig,
-        indexToMaximize=indexToMaximize,
-        plotAllFluxes=plotAllFluxes,
-    )
-
-    # Save
-
-if file is not None:
-    plt.savefig(file, transparent=True, dpi=300)
+    portals.plotMetrics(indexToMaximize=indexToMaximize,plotAllFluxes=plotAllFluxes,index_extra=index_extra,file_save=file)
