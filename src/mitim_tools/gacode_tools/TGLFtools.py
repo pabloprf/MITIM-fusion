@@ -2113,7 +2113,7 @@ class TGLF:
                 **kwargs_TGLFrun,
             )
 
-            self.read(label=f"{subFolderTGLF}{name}")
+            self.read(label=f"{self.subFolderTGLF_scan}_{name}")
 
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
@@ -2149,7 +2149,17 @@ class TGLF:
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-            if ikey.rpartition(variable)[0] == subFolderTGLF:
+
+            variable_beginning = variable.split('_')[0]
+
+            positions_where_var_is_found = np.where(np.array(ikey.split('_'))==variable_beginning)[0]
+            if len(positions_where_var_is_found)>0:
+                grab_name = '_'.join(ikey.split('_')[:positions_where_var_is_found[-1]])
+                isThisTheRight = grab_name == subFolderTGLF
+            else:
+                isThisTheRight = False
+
+            if isThisTheRight:
                 x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
                     [],
                     [],
@@ -2760,32 +2770,29 @@ class TGLF:
             total_plots < 10
             or (
                 print(
-                    f">> TGLFscan module will plot {total_plots} individual TGLF, you can choose not to plot them invidually",
+                    f">> TGLFscan module wants to *also* plot {total_plots} individual TGLF, are you sure you want to do this?",
                     typeMsg="q",
                 )
             )
         ):
             for contLabel, ikey in enumerate(self.scans):
-                for contrho, rho in enumerate(self.rhos):
-                    labelsExtraPlot, labels_legend = [], []
-                    values_tot = (
-                        self.scans[ikey]["xV"][0]
-                        / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
-                    )
-                    for contVal, val in enumerate(values_tot):
-                        fullres = (
-                            f"{ikey}/{self.scans[ikey]['variable']}_{round(val,7)}"
-                        )
-                        labelsExtraPlot.append(fullres)
-                        labels_legend.append(f"{round(val,7)}")
+                labelsExtraPlot, labels_legend = [], []
+                values_tot = (
+                    self.scans[ikey]["xV"][0]
+                    / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
+                )
+                for val in values_tot:
+                    fullres = f"{ikey}_{self.scans[ikey]['variable']}_{round(val,7)}"
+                    labelsExtraPlot.append(fullres)
+                    labels_legend.append(f"{round(val,7)}")
 
-                    colorsC = np.transpose(
-                        np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
-                    )
-                    colorsC_tuple = []
-                    for i in range(colorsC.shape[0]):
-                        for j in range(colorsC.shape[1]):
-                            colorsC_tuple.append(tuple(colorsC[i, j, :]))
+                colorsC = np.transpose(
+                    np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
+                )
+                colorsC_tuple = []
+                for i in range(colorsC.shape[0]):
+                    for j in range(colorsC.shape[1]):
+                        colorsC_tuple.append(tuple(colorsC[i, j, :]))
 
                 self.plotRun(
                     extratitle=f"{ikey} - ",

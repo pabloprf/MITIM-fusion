@@ -219,7 +219,10 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
 Run 1D scans of TGLF input parameter
 ------------------------------------
 
-*Nothing here yet*
+*Under Development*
+
+*(In the meantime, please checkout* `tutorials/TGLF_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/PORTALS_tutorial.py>`_ *)*
+
 
 TGLF aliases
 ------------
