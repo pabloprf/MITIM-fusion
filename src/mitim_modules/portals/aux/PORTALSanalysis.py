@@ -2,6 +2,7 @@ import os
 import dill as pickle_dill
 import matplotlib.pyplot as plt
 import numpy as np
+from IPython import embed
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import GRAPHICStools,IOtools
 from mitim_tools.gacode_tools import TGLFtools,TGYROtools
@@ -28,8 +29,8 @@ class PORTALSanalyzer:
         self.ilast = ikey - 1
 
         self.ibest = self.opt_fun.res.best_absolute_index
-        self.rhos = self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"]
-        self.roa = self.opt_fun.prfs_model.mainFunction.TGYROparameters["RoaLocations"]
+        self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
+        self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
         self.folder = self.opt_fun.folder
 
     def extractPROFILES(self, based_on_last=False, true_original=True):
@@ -72,7 +73,7 @@ class PORTALSanalyzer:
         if file_save is not None:
             plt.savefig(file_save, transparent=True, dpi=300)
 
-    def plotModelComparison(self,axs = None,GB=True):
+    def plotModelComparison(self,axs = None,GB=True,radial_label=True):
 
         if axs is None:
             plt.ion()
@@ -83,21 +84,24 @@ class PORTALSanalyzer:
                                      quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
                                      labely = '$Q_e^{GB}$' if GB else '$Q_e$',
                                      title = f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='log' if GB else 'linear')
+                                     typeScale='log' if GB else 'linear',
+                                     radial_label = radial_label)
 
         self.plotModelComparison_quantity(axs[1],
                                      quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
                                      quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
                                      labely = '$Q_i^{GB}$' if GB else '$Q_i$',
                                      title =f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='log' if GB else 'linear')
+                                     typeScale='log' if GB else 'linear',
+                                     radial_label = radial_label)
 
         self.plotModelComparison_quantity(axs[2],
                                      quantity=f'Ge{"GB" if GB else ""}_sim_turb',
                                      quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
                                      labely = '$\\Gamma_e^{GB}$' if GB else '$\\Gamma_e$',
                                      title = f"Electron particle flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='linear')
+                                     typeScale='linear',
+                                     radial_label = radial_label)
 
         plt.tight_layout()
 
@@ -108,7 +112,8 @@ class PORTALSanalyzer:
                                      quantity_stds='QeGB_sim_turb_stds',
                                      labely = '',
                                      title = '',
-                                     typeScale='linear'):
+                                     typeScale='linear',
+                                     radial_label = True):
 
         F_tglf = []
         F_cgyro = []
@@ -135,18 +140,18 @@ class PORTALSanalyzer:
                 F_cgyro[:,ir],
                 yerr=F_cgyro_stds[:,ir],
                 c=colors[ir],
-                markersize=4,
-                capsize=3,
+                markersize=2,
+                capsize=2,
                 fmt="s",
                 elinewidth=1.0,
                 capthick=1.0,
-                label=f"$r/a={self.roa[ir]:.2f}$"
+                label=f"$r/a={self.roa[ir]:.2f}$" if radial_label else ""
             )
 
         minFlux = np.min([F_tglf.min(),F_cgyro.min()])
         maxFlux = np.max([F_tglf.max(),F_cgyro.max()])
 
-        ax.plot([minFlux,maxFlux],[minFlux,maxFlux],'--',color='k')
+        if radial_label: ax.plot([minFlux,maxFlux],[minFlux,maxFlux],'--',color='k')
         if typeScale == 'log':
             ax.set_xscale('log')
             ax.set_yscale('log')

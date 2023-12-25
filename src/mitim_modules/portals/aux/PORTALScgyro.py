@@ -1,4 +1,5 @@
-import os, sys, copy
+import os
+import copy
 import numpy as np
 from IPython import embed
 from mitim_tools.misc_tools import IOtools, PLASMAtools
@@ -16,14 +17,14 @@ The CGYRO file must contain GB units, and the gb unit is MW/m^2, 1E19m^2/s
 The CGYRO file must use particle flux. Convective transformation occurs later
 """
 
+trick_hardcoded_f = None
+
 # train_sep is the number of initial runs in it#0 results file. Now, it's usually 1
 # start_num is the number of the first iteration, usually 0
 # trick_harcoded_f is the name of the file until the iteration number. E.g. '/Users/pablorf/PROJECTS/project_2022_mitimalcc/iter/cgyro3/run3_recover/Outputs/cgyro_results/iter_rmp_75_'
 
-train_sep, start_num, trick_hardcoded_f, last_one = 1, 0, None, 100
-
-# includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = False, 1, 0,100, '/Users/pablorf/PROJECTS/project_2023_SPARClmodes/recover2/run13/Outputs/cgyro_results/sparc_l_high_nu_it_'
-
+# e.g.:
+# includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = False, 1, 0,4, '/Users/pablorf/PROJECTS/project_2024_SPARClmodes/runs/run2Zeff4/Outputs/cgyro_results/sparc_l_zeff_2.5_it_'
 
 def evaluateCGYRO(
     PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, rad=4
@@ -41,7 +42,7 @@ def evaluateCGYRO(
     OriginalFimp = PORTALSparameters["fImp_orig"]
 
     print(
-        f"\t- Suggested command to send files (not .new) for CGYRO evaluation:",
+        "\t- Suggested command to send files (not .new) for CGYRO evaluation:",
         typeMsg="i",
     )
     lapfile = f"{IOtools.expandPath(folder,ensurePathValid=True)}/Outputs/ProfilesEvaluated/input.gacode.{numPORTALS}"
