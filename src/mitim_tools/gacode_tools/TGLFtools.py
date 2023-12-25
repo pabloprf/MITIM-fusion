@@ -2121,8 +2121,8 @@ class TGLF:
         if subFolderTGLF is None:
             subFolderTGLF = self.subFolderTGLF_scan
 
-        if subFolderTGLF[-1] != "/":
-            subFolderTGLF += "/"
+        while self.subFolderTGLF_scan[-1] == "/":
+            self.subFolderTGLF_scan = self.subFolderTGLF_scan[:-1]
 
         self.scans[label] = {}
         self.scans[label]["variable"] = variable
@@ -2819,15 +2819,14 @@ class TGLF:
         varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
         for variable in self.variablesDrives:
-            name = subFolderTGLF + "_" + variable
             self.runScan(
-                subFolderTGLF=name + "/",
+                subFolderTGLF=subFolderTGLF,
                 variable=variable,
                 varUpDown=varUpDown,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=name, variable=variable)
+            self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
     def plotScanTurbulenceDrives(self, label="scan1", figs=None):
         labels = []

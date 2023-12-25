@@ -1,3 +1,4 @@
+from genericpath import exists
 import os
 import dill as pickle_dill
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ Set of tools to read PORTALS pickle file and do fun stuff with it
 '''
 
 class PORTALSanalyzer:
-    def __init__(self, folder,folderRemote=None):
+    def __init__(self, folder,folderRemote=None,folderAnalysis=None):
 
         print(f"> Opening PORTALS class in {IOtools.clipstr(folder)}")
 
@@ -31,7 +32,10 @@ class PORTALSanalyzer:
         self.ibest = self.opt_fun.res.best_absolute_index
         self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
         self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
-        self.folder = self.opt_fun.folder
+
+        self.folder = folderAnalysis if folderAnalysis is not None else f'{self.opt_fun.folder}/Analysis/'
+
+        if not os.path.exists(self.folder): os.system(f'mkdir {self.folder}')
 
     def extractPROFILES(self, based_on_last=False, true_original=True):
 
@@ -53,7 +57,7 @@ class PORTALSanalyzer:
 
         # Interpret results
         self.portals_plot = PORTALSplot.PORTALSresults(
-            self.folder, # TO FIX: With remote folder this may fail, fix
+             self.opt_fun.folder, # TO FIX: With remote folder this may fail, fix
             self.opt_fun.prfs_model,
             self.opt_fun.res,
             MITIMextra_dict=self.mitim_runs,
@@ -168,7 +172,7 @@ class PORTALSanalyzer:
     def extractTGYRO_init(self,folder=None,restart=False):
 
         if folder is None:
-            folder = self.folder
+            folder = f'{self.folder}/tgyro_step0/' 
 
         folder = IOtools.expandPath(folder)
         if not os.path.exists(folder): os.system(f'mkdir {folder}')
@@ -205,7 +209,7 @@ class PORTALSanalyzer:
                 rhos.append(self.rhos[i])
 
         if folder is None:
-            folder = self.folder
+            folder = f'{self.folder}/tglf_step{step}/' 
 
         folder = IOtools.expandPath(folder)
 

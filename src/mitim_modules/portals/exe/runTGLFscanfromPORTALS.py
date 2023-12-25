@@ -1,12 +1,9 @@
-import os, argparse, copy
+import argparse
+import copy
 import numpy as np
-from IPython import embed
-from mitim_tools.misc_tools import IOtools
-from mitim_tools.gacode_tools import TGLFtools
-from mitim_tools.opt_tools import STRATEGYtools
+from mitim_modules.portals.aux import PORTALSanalysis
 
 """
-
 This script is useful to understand why MITIM may fail at reproducing TGLF fluxes. You can select the iteration
 to use as base case, and scan parameters to see how TGLF behaves (understand if it has discontinuities)
 	e.g.
@@ -34,34 +31,18 @@ wf = args.wf
 
 # --- Workflow
 
-opt_fun = STRATEGYtools.FUNmain(folder)
-opt_fun.read_optimization_results(analysis_level=4, plotYN=False)
+portals = PORTALSanalysis.PORTALSanalyzer(folder)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos,step=ev)
 
-rhos = []
-for i in pos:
-    rhos.append(opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"][i])
-
-if ev < 0:
-    ev = opt_fun.res.best_absolute_index
-
-inputgacode = f"{folder}/Execution/Evaluation.{ev}/tgyro_complete/input.gacode"
-workingFolder = f"{folder}/scans{ev}/"
 varUpDown = np.linspace(0.9, 1.1, 10)
-
-tglf = TGLFtools.TGLF(rhos=rhos)
-cdf = tglf.prep(workingFolder, restart=False, inputgacode=inputgacode)
 
 labels = []
 for param in params:
-    extraOptions = copy.deepcopy(
-        opt_fun.prfs_model.mainFunction.TGLFparameters["extraOptionsTGLF"]
-    )
-
     tglf.runScan(
-        subFolderTGLF=f"scan_{param}/",
+        subFolderTGLF="scan",
         variable=param,
         varUpDown=varUpDown,
-        TGLFsettings=opt_fun.prfs_model.mainFunction.TGLFparameters["TGLFsettings"],
+        TGLFsettings=TGLFsettings,
         extraOptions=extraOptions,
         restart=False,
         runWaveForms=wf,
@@ -69,7 +50,6 @@ for param in params:
 
     tglf.readScan(label=f"scan_{param}", variable=param)
     labels.append(f"scan_{param}")
-
 
 # --- Extra TGLF plotting
 

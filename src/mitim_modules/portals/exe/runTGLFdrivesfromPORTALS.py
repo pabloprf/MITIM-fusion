@@ -1,11 +1,9 @@
 import argparse
-from IPython import embed
 from mitim_modules.portals.aux import PORTALSanalysis
 
 """
-
-This script is useful to understand why MITIM may fail at reproducing TGLF fluxes. You can select the iteration
-to use as base case to see how TGLF behaves (understand if it has discontinuities)
+This script is useful to understand why surrogates may fail at reproducing TGLF fluxes.
+You can select the iteration to use as base case to see how TGLF behaves (if it has discontinuities)
 	e.g.
 		runTGLFdrivesfrommitim.py --folder run11/ --ev -1 --pos 0 2 --var 0.05  --wf 0.2 1.0
 
@@ -34,7 +32,7 @@ var = args.var
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(folder=f"{folder}/turb_drives/",positions=pos,step=ev)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos,step=ev)
 
 tglf.runScanTurbulenceDrives(
     subFolderTGLF="turb",
