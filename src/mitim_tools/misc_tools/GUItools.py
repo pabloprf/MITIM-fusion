@@ -64,9 +64,9 @@ class FigureNotebook:
         self.MainWindow.resize(int(geometry.split("x")[0]), int(geometry.split("x")[1]))
         self.MainWindow.show()
 
-    def add_figure(self, label=""):
+    def add_figure(self, label="", tab_color=None):
         figure = plt.figure(dpi=dpi_notebook)
-        self.addPlot(label, figure)
+        self.addPlot(label, figure, tab_color=tab_color)
 
         return figure
 
@@ -77,7 +77,7 @@ class FigureNotebook:
 
         return fig, ax
 
-    def addPlot(self, title, figure):
+    def addPlot(self, title, figure, tab_color=None):
         new_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         new_tab.setLayout(layout)
@@ -97,6 +97,11 @@ class FigureNotebook:
         self.canvases.append(new_canvas)
         self.figure_handles.append(figure)
         self.tab_handles.append(new_tab)
+
+        # Set the color for the tab if specified
+        if tab_color:
+            color_style = f"QTabBar {{color: {tab_color};}}"
+            new_tab.setStyleSheet(color_style)
 
     def show(self):
         print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")

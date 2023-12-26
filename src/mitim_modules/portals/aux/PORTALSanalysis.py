@@ -42,18 +42,22 @@ class PORTALSanalyzer:
         self.ibest = self.opt_fun.res.best_absolute_index
         self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
         self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
+        
+        self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
+        self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
+        self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
 
         self.folder = folderAnalysis if folderAnalysis is not None else f'{self.opt_fun.folder}/Analysis/'
 
         if not os.path.exists(self.folder): os.system(f'mkdir {self.folder}')
 
         self.runWithImpurity = (
-            self.opt_fun.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"]
-            if "nZ" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]
+            self.PORTALSparameters["ImpurityOfInterest"]
+            if "nZ" in self.TGYROparameters["ProfilesPredicted"]
             else None
         )
         self.runWithRotation = (
-            "w0" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]
+            "w0" in self.TGYROparameters["ProfilesPredicted"]
         )
 
         print("- Interpreting results...")
@@ -156,13 +160,13 @@ class PORTALSanalyzer:
 
         PORTALSplot.plotExpected(
             self.opt_fun.prfs_model,
+            self.mitim_runs,
             folder=self.opt_fun.folder,
             fig=fig,
             plotPoints=plotPoints,
             plotNext=plotNext,
             labelAssigned=labelAssigned,
             labelsFluxes=self.portals_plot.labelsFluxes,
-            MITIMextra_dict=self.mitim_runs,
             stds=stds,
         )
 
@@ -228,7 +232,7 @@ class PORTALSanalyzer:
         grid = plt.GridSpec(
             2,
             np.max(
-                [3, len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])]
+                [3, len(self.TGYROparameters["ProfilesPredicted"])]
             ),
             hspace=0.3,
             wspace=0.3,
@@ -269,10 +273,10 @@ class PORTALSanalyzer:
                 axs4,
                 color=colors[i],
                 label=label,
-                lastRho=self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"][-1],
+                lastRho=self.TGYROparameters["RhoLocations"][-1],
                 alpha=alpha,
                 useRoa=True,
-                RhoLocationsPlot=self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"],
+                RhoLocationsPlot=self.TGYROparameters["RhoLocations"],
                 plotImpurity=self.runWithImpurity,
                 plotRotation=self.runWithRotation,
             )
@@ -285,7 +289,7 @@ class PORTALSanalyzer:
             plt.ion(); fig = plt.figure()
     
         pps = np.max(
-            [3, len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])]
+            [3, len(self.TGYROparameters["ProfilesPredicted"])]
         )  # Because plotGradients require at least Te, Ti, ne
         grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
         axsR = []
@@ -316,7 +320,7 @@ class PORTALSanalyzer:
         p.plotGradients(
             axsR,
             color="b",
-            lastRho=self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.TGYROparameters["RhoLocations"][-1],
             ms=0,
             lw=1.0,
             label="#0",
@@ -333,7 +337,7 @@ class PORTALSanalyzer:
             p.plotGradients(
                 axsR,
                 color="r",
-                lastRho=self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"][-1],
+                lastRho=self.TGYROparameters["RhoLocations"][-1],
                 ms=0,
                 lw=0.3,
                 ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
@@ -344,7 +348,7 @@ class PORTALSanalyzer:
         p.plotGradients(
             axsR,
             color="g",
-            lastRho=self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.TGYROparameters["RhoLocations"][-1],
             ms=0,
             lw=1.0,
             label=f"#{self.opt_fun.res.best_absolute_index} (best)",
@@ -420,8 +424,8 @@ class PORTALSanalyzer:
         for i in range(len(self.mitim_runs)-2):
             try:
                 F_tglf.append(self.mitim_runs[i]['tgyro'].results['tglf_neo'].__dict__[quantity][0,1:])
-                F_cgyro.append(self.mitim_runs[i]['tgyro'].results['cgyro_neo'].__dict__[quantity][0,1:])
                 F_tglf_stds.append(self.mitim_runs[i]['tgyro'].results['tglf_neo'].__dict__[quantity_stds][0,1:])
+                F_cgyro.append(self.mitim_runs[i]['tgyro'].results['cgyro_neo'].__dict__[quantity][0,1:])
                 F_cgyro_stds.append(self.mitim_runs[i]['tgyro'].results['cgyro_neo'].__dict__[quantity_stds][0,1:])
             except TypeError:
                 break   
@@ -478,12 +482,12 @@ class PORTALSanalyzer:
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True)
 
-        TGLFsettings = self.opt_fun.prfs_model.mainFunction.TGLFparameters["TGLFsettings"]
-        extraOptionsTGLF = self.opt_fun.prfs_model.mainFunction.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.TGLFparameters["TGLFsettings"]
+        extraOptionsTGLF = self.TGLFparameters["extraOptionsTGLF"]
         PredictionSet=[
-                    int("te" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]),
-                    int("ti" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]),
-                    int("ne" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]),
+                    int("te" in self.TGYROparameters["ProfilesPredicted"]),
+                    int("ti" in self.TGYROparameters["ProfilesPredicted"]),
+                    int("ne" in self.TGYROparameters["ProfilesPredicted"]),
                 ]
 
 
@@ -517,8 +521,8 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
 
-        TGLFsettings = self.opt_fun.prfs_model.mainFunction.TGLFparameters["TGLFsettings"]
-        extraOptions = self.opt_fun.prfs_model.mainFunction.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.TGLFparameters["TGLFsettings"]
+        extraOptions = self.TGLFparameters["extraOptionsTGLF"]
 
         return tglf, TGLFsettings, extraOptions
 

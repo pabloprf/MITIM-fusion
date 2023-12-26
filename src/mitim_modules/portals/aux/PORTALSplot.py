@@ -1791,6 +1791,7 @@ def plotVars(
 
 def plotExpected(
     prfs_model,
+    mitim_runs,
     fig = None,
     folder=None,
     labelsFluxes={},
@@ -1798,7 +1799,6 @@ def plotExpected(
     plotPoints=[0],
     labelAssigned=["0"],
     plotNext=True,
-    MITIMextra_dict=None,
     stds=2,
 ):
     
@@ -1828,18 +1828,10 @@ def plotExpected(
             pass
 
     # ---- Get profiles
+    print("\t- Reading profiles from mitim_runs")
     profiles = []
-    if MITIMextra_dict is not None:
-        print(f"\t- Reading TGYRO and PROFILES from MITIMextra_dict")
-        for i in plotPoints:
-            profiles.append(MITIMextra_dict[i]["tgyro"].results["use"].profiles)
-    elif folder is not None:
-        for i in plotPoints:
-            file = f"{folder}/Execution/Evaluation.{i}/model_complete/input.gacode"
-            p = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-            profiles.append(p)
-    else:
-        print('Both mitim_runs and folder are None. No profiles to plot',typeMsg='w')
+    for i in plotPoints:
+        profiles.append(mitim_runs[i]["tgyro"].results["use"].profiles)
 
     profiles_next = None
     if (x_next is not None) and (folder is not None):
