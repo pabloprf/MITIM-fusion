@@ -1,22 +1,22 @@
-import copy, torch
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools, TGYROtools
+from mitim_modules.portals import PORTALStools
 from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 factor_dw0dr = 1e-5
 label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
 
-
 class PORTALSresults:
     def __init__(
         self,
-        folderWork,
         prfs_model,
         ResultsOptimization,
+        folderWork=None,
         MITIMextra_dict=None,
         indecesPlot=[-1, 0, None],
         calculateRicci={"d0": 2.0, "l": 1.0},
@@ -67,7 +67,7 @@ class PORTALSresults:
                 self.profiles.append(
                     MITIMextra_dict[i]["tgyro"].results["use"].profiles_final
                 )
-            else:
+            elif folderWork is not None:
                 # print('\t\t* Reading from scratch from folders (will surely take longer)',typeMsg='i')
                 folderEvaluation = folderWork + f"/Execution/Evaluation.{i}/"
                 self.profiles.append(
@@ -80,6 +80,8 @@ class PORTALSresults:
                         folderEvaluation + "model_complete/", profiles=self.profiles[i]
                     )
                 )
+            else:
+                print("Neither MITIMextra nor folder were provided",typeMsg='w')
 
         if len(self.profiles) <= self.numBest:
             print(
@@ -91,7 +93,7 @@ class PORTALSresults:
 
         # Create some metrics
 
-        print("\t- Process results")
+        print("\t- Processing metrics")
 
         self.evaluations, self.resM = [], []
         self.FusionGain, self.tauE, self.FusionPower = [], [], []
@@ -368,7 +370,6 @@ def calcLinearizedModel(
 
 def plotConvergencePORTALS(
     portals,
-    folderWork=None,
     fig=None,
     stds=2,
     plotAllFluxes=False,
@@ -1790,8 +1791,8 @@ def plotVars(
 
 def plotExpected(
     prfs_model,
-    folder,
-    fn,
+    fig = None,
+    folder=None,
     labelsFluxes={},
     step=-1,
     plotPoints=[0],
@@ -1800,6 +1801,9 @@ def plotExpected(
     MITIMextra_dict=None,
     stds=2,
 ):
+    
+    if fig is None:
+        fig = plt.figure(figsize=(12, 8))
     model = prfs_model.steps[step].GP["combined_model"]
 
     x_train_num = prfs_model.steps[step].train_X.shape[0]
@@ -1829,14 +1833,16 @@ def plotExpected(
         print(f"\t- Reading TGYRO and PROFILES from MITIMextra_dict")
         for i in plotPoints:
             profiles.append(MITIMextra_dict[i]["tgyro"].results["use"].profiles)
-    else:
+    elif folder is not None:
         for i in plotPoints:
             file = f"{folder}/Execution/Evaluation.{i}/model_complete/input.gacode"
             p = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
             profiles.append(p)
+    else:
+        print('Both mitim_runs and folder are None. No profiles to plot',typeMsg='w')
 
     profiles_next = None
-    if x_next is not None:
+    if (x_next is not None) and (folder is not None):
         try:
             file = f"{folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
             profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
@@ -1854,7 +1860,6 @@ def plotExpected(
             pass
 
     # ---- Plot
-    fig = fn.add_figure(label="PORTALS Expected")
 
     numprofs = len(prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
 
@@ -2903,3 +2908,163 @@ def plotFluxComparison(
         MtBest_min,
         MtBest_max,
     )
+
+
+def produceInfoRanges(
+    self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
+):
+    rhos = np.append([0], self_complete.TGYROparameters["RhoLocations"])
+    aLTe, aLTi, aLne, aLnZ, aLw0 = (
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+    )
+    for i in range(len(rhos) - 1):
+        if f"aLte_{i+1}" in bounds:
+            aLTe[i + 1, :] = bounds[f"aLte_{i+1}"]
+        if f"aLti_{i+1}" in bounds:
+            aLTi[i + 1, :] = bounds[f"aLti_{i+1}"]
+        if f"aLne_{i+1}" in bounds:
+            aLne[i + 1, :] = bounds[f"aLne_{i+1}"]
+        if f"aLnZ_{i+1}" in bounds:
+            aLnZ[i + 1, :] = bounds[f"aLnZ_{i+1}"]
+        if f"aLw0_{i+1}" in bounds:
+            aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
+
+    X = torch.zeros(
+        ((len(rhos) - 1) * len(self_complete.TGYROparameters["ProfilesPredicted"]), 2)
+    )
+    l = len(rhos) - 1
+    X[0:l, :] = torch.from_numpy(aLTe[1:, :])
+    X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
+
+    cont = 0
+    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
+        cont += 1
+    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
+        cont += 1
+    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
+        cont += 1
+
+    X = X.transpose(0, 1)
+
+    powerstate = PORTALStools.constructEvaluationProfiles(
+        X, self_complete.surrogate_parameters, recalculateTargets=False
+    )
+
+    GRAPHICStools.fillGraph(
+        axsR[0],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["te"][0],
+        y_up=powerstate.plasma["te"][1],
+        alpha=alpha,
+        color=color,
+        lw=lw,
+        label=label,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[1],
+        rhos,
+        aLTe[:, 0],
+        y_up=aLTe[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+
+    GRAPHICStools.fillGraph(
+        axsR[2],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["ti"][0],
+        y_up=powerstate.plasma["ti"][1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[3],
+        rhos,
+        aLTi[:, 0],
+        y_up=aLTi[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+
+    cont = 0
+    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["ne"][0] * 0.1,
+            y_up=powerstate.plasma["ne"][1] * 0.1,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLne[:, 0],
+            y_up=aLne[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2
+
+    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["nZ"][0] * 0.1,
+            y_up=powerstate.plasma["nZ"][1] * 0.1,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLnZ[:, 0],
+            y_up=aLnZ[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2
+
+    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["w0"][0] * 1e-3,
+            y_up=powerstate.plasma["w0"][1] * 1e-3,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLw0[:, 0],
+            y_up=aLw0[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2

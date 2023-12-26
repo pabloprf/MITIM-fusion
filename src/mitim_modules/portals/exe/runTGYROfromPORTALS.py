@@ -1,4 +1,6 @@
-import argparse, copy, time
+import argparse
+import copy
+import time
 import numpy as np
 from IPython import embed
 from mitim_tools.misc_tools import IOtools, FARMINGtools
@@ -41,7 +43,7 @@ restart = False
 # Preparation
 # ------------------------------------------------------------------------------------------
 
-portals = PORTALSanalysis.PORTALSanalyzer(folderO)
+portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderO)
 
 folder = IOtools.expandPath(folderO + "/tgyro_std_analysis/")
 tgyro,rhos,PredictionSet,TGLFsettings,extraOptionsTGLF = portals.extractTGYRO_init(folder=folder,restart=restart)

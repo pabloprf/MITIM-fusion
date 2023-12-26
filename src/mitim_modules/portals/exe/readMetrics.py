@@ -48,6 +48,6 @@ for folderWork in folders:
     )
 
     # Read PORTALS
-    portals = PORTALSanalysis.PORTALSanalyzer(folderWork,folderRemote=folderRemote)
+    portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderWork,folderRemote=folderRemote)
 
     portals.plotMetrics(indexToMaximize=indexToMaximize,plotAllFluxes=plotAllFluxes,index_extra=index_extra,file_save=file)

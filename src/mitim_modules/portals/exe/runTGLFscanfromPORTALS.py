@@ -31,7 +31,7 @@ wf = args.wf
 
 # --- Workflow
 
-portals = PORTALSanalysis.PORTALSanalyzer(folder)
+portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos,step=ev)
 
 varUpDown = np.linspace(0.9, 1.1, 10)
