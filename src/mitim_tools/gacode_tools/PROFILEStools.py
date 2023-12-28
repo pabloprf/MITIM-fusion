@@ -1,4 +1,5 @@
-import copy, torch
+import copy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -18,7 +19,7 @@ verbose_level = read_verbose_level()
 
 try:
     from mitim_tools.gacode_tools.aux import PORTALSinteraction
-except:
+except ImportError:
     print(
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
@@ -1138,15 +1139,16 @@ class PROFILES_GACODE:
                 self.profiles["ti(keV)"][:, sp] = tiRef
 
     def scaleAllThermalDensities(self, scaleFactor=1.0):
+        
         scaleFactor_ions = scaleFactor
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 print(
-                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor):.3f}"
+                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor_ions):.3f}"
                 )
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
-                self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor * ni_orig
+                self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
     def writeCurrentStatus(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
@@ -3526,7 +3528,7 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
     ax01 = fig.add_subplot(grid[0, 1])
     ax11 = fig.add_subplot(grid[1, 1])
     ax02 = fig.add_subplot(grid[0, 2])
-    ax12 = fig.add_subplot(grid[1, 2])
+    #ax12 = fig.add_subplot(grid[1, 2])
 
     cols = GRAPHICStools.listColors()
 
@@ -3743,7 +3745,7 @@ def ionName(Z, A):
     # elif A == 69: 	return 'Ga'
 
 
-def gradientsMerger(p0, p_true, roa=0.46, blending=0.1, debug=False):
+def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p = copy.deepcopy(p0)
 
     aLTe_true = np.interp(
@@ -3815,28 +3817,6 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1, debug=False):
         .cpu()
         .numpy()[0]
     )
-
-    if debug:
-        fig, axs = plt.subplots(nrows=2)
-        ax = axs[0]
-        ax.plot(p.derived["roa"], p.profiles["te(keV)"], c="b")
-        ax.plot(roa_true, p_true.profiles["te(keV)"], c="r")
-        ax.plot(p.derived["roa"], Te, c="g")
-
-        ax.axvline(x=roa, c="k", ls="--")
-        ax.axvline(x=roa - blending, c="k", ls="--")
-
-        ax = axs[1]
-        ax.plot(p.derived["roa"], p.derived["aLTe"], c="b")
-        ax.plot(p_true.derived["roa"], p_true.derived["aLTe"], c="r")
-        ax.plot(p.derived["roa"], aLTe, c="g")
-
-        ax.axvline(x=roa, c="k", ls="--")
-        ax.axvline(x=roa - blending, c="k", ls="--")
-
-        plt.show()
-
-        embed()
 
     p.profiles["te(keV)"] = Te
     p.profiles["ti(keV)"][:, 0] = Ti

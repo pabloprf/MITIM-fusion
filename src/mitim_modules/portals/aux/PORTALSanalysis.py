@@ -1,21 +1,25 @@
 import os
+import numpy as np
 import dill as pickle_dill
 import matplotlib.pyplot as plt
-import numpy as np
 from IPython import embed
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools import GRAPHICStools,IOtools
+from mitim_tools.misc_tools import IOtools,PLASMAtools
 from mitim_tools.gacode_tools import TGLFtools,TGYROtools,PROFILEStools
+from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_modules.portals.aux import PORTALSplot
 
-'''
-Set of tools to read PORTALS pickle file and do fun stuff with it
-'''
-
 class PORTALSanalyzer:
+
+    # ****************************************************************************
+    # INITIALIZATION
+    # ****************************************************************************
+
     def __init__(self, opt_fun, folderAnalysis=None):
 
+        print('\n************************************')
         print("* Initializing PORTALS analyzer...")
+        print('************************************')
 
         self.opt_fun = opt_fun
         self.prep(folderAnalysis)
@@ -23,19 +27,23 @@ class PORTALSanalyzer:
     @classmethod
     def from_folder(cls,folder,folderRemote=None, folderAnalysis=None):
 
-        print(f"...opening PORTALS class from folder {IOtools.clipstr(folder)}")
+        print(f"\n...opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
         opt_fun = STRATEGYtools.FUNmain(folder)
         opt_fun.read_optimization_results(analysis_level=4, plotYN=False, folderRemote=folderRemote)
 
         return cls(opt_fun, folderAnalysis=folderAnalysis)
 
-    def prep(self,folderAnalysis):
+    # ****************************************************************************
+    # PREPARATION
+    # ****************************************************************************
+
+    def prep(self,folderAnalysis,calculateRicci  = {"d0": 2.0, "l": 1.0}):
         with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
             self.mitim_runs = pickle_dill.load(f)
 
         for ikey in self.mitim_runs:
-            if type(self.mitim_runs[ikey]) != dict:
+            if not isinstance(self.mitim_runs[ikey],dict):
                 break
         self.ilast = ikey - 1
 
@@ -61,13 +69,273 @@ class PORTALSanalyzer:
         )
 
         print("- Interpreting results...")
-        
-        self.portals_plot = PORTALSplot.PORTALSresults(
-            self.opt_fun.prfs_model,
-            self.opt_fun.res,
-            MITIMextra_dict=self.mitim_runs,
-            indecesPlot=[self.opt_fun.res.best_absolute_index, 0, -1],
+
+        includeFast = self.opt_fun.prfs_model.mainFunction.PORTALSparameters["includeFastInQi"]
+        impurityPosition = self.opt_fun.prfs_model.mainFunction.PORTALSparameters[
+            "ImpurityOfInterest"
+        ]
+        self.useConvectiveFluxes = self.opt_fun.prfs_model.mainFunction.PORTALSparameters[
+            "useConvectiveFluxes"
+        ]
+
+        self.numChannels = len(
+            self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]
         )
+        self.numRadius = len(
+            self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"]
+        )
+        self.numBest = self.opt_fun.res.best_absolute_index
+        self.numOrig = 0
+        self.numExtra = self.opt_fun.prfs_model.train_Y.shape[0]-1
+
+        self.sepers = [self.numOrig, self.numBest]
+
+        if (self.numExtra is not None) and (self.numExtra == self.numBest):
+            self.numExtra = None
+
+        self.posZ = self.opt_fun.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"] - 1
+
+        # Profiles and tgyro results
+        print("\t- Reading profiles and tgyros for each evaluation")
+        self.profiles, self.tgyros = [], []
+        for i in range(self.opt_fun.prfs_model.train_Y.shape[0]):
+            # print(f'\t- Reading TGYRO results and PROFILES for evaluation {i}/{self.opt_fun.prfs_model.train_Y.shape[0]-1}')
+            if self.mitim_runs is not None:
+                # print('\t\t* Reading from self.mitim_runs',typeMsg='i')
+                self.tgyros.append(self.mitim_runs[i]["tgyro"].results["use"])
+                self.profiles.append(
+                    self.mitim_runs[i]["tgyro"].results["use"].profiles_final
+                )
+            elif self.opt_fun.folder is not None:
+                # print('\t\t* Reading from scratch from folders (will surely take longer)',typeMsg='i')
+                folderEvaluation = f"{self.opt_fun.folder}/Execution/Evaluation.{i}/"
+                self.profiles.append(
+                    PROFILEStools.PROFILES_GACODE(
+                        folderEvaluation + "/model_complete/input.gacode.new"
+                    )
+                )
+                self.tgyros.append(
+                    TGYROtools.TGYROoutput(
+                        folderEvaluation + "model_complete/", profiles=self.profiles[i]
+                    )
+                )
+            else:
+                print("Neither MITIMextra nor folder were provided",typeMsg='w')
+
+        if len(self.profiles) <= self.numBest:
+            print(
+                "\t- PORTALS was read after new residual was computed but before pickle was written!",
+                typeMsg="w",
+            )
+            self.numBest -= 1
+            self.numExtra = None
+
+        # Create some metrics
+
+        print("\t- Processing metrics")
+
+        self.evaluations, self.resM = [], []
+        self.FusionGain, self.tauE, self.FusionPower = [], [], []
+        self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = [], [], [], [], []
+        if calculateRicci is not None:
+            self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = [], [], []
+        else:
+            self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
+        
+        for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
+
+            print(f"\t\t- Processing evaluation {i}/{len(self.profiles)-1}")
+            
+            self.evaluations.append(i)
+            self.FusionGain.append(p.derived["Q"])
+            self.FusionPower.append(p.derived["Pfus"])
+            self.tauE.append(p.derived["tauE"])
+
+            # ------------------------------------------------
+            # Residual definitions
+            # ------------------------------------------------
+
+            powerstate = self.opt_fun.prfs_model.mainFunction.powerstate
+
+            try:
+                OriginalFimp = powerstate.TransportOptions["ModelOptions"][
+                    "OriginalFimp"
+                ]
+            except:
+                OriginalFimp = 1.0
+
+            portals_variables = t.TGYROmodeledVariables(
+                useConvectiveFluxes=self.useConvectiveFluxes,
+                includeFast=includeFast,
+                impurityPosition=impurityPosition,
+                ProfilesPredicted=self.opt_fun.prfs_model.mainFunction.TGYROparameters[
+                    "ProfilesPredicted"
+                ],
+                UseFineGridTargets=self.opt_fun.prfs_model.mainFunction.PORTALSparameters[
+                    "fineTargetsResolution"
+                ],
+                OriginalFimp=OriginalFimp,
+                forceZeroParticleFlux=self.opt_fun.prfs_model.mainFunction.PORTALSparameters[
+                    "forceZeroParticleFlux"
+                ],
+            )
+
+            if (
+                len(powerstate.plasma["volp"].shape) > 1
+                and powerstate.plasma["volp"].shape[1] > 1
+            ):
+                powerstate.unrepeat(do_fine=False)
+                powerstate.repeat(do_fine=False)
+
+            _, _, source, res = PORTALSinteraction.calculatePseudos(
+                portals_variables["var_dict"],
+                self.opt_fun.prfs_model.mainFunction.PORTALSparameters,
+                self.opt_fun.prfs_model.mainFunction.TGYROparameters,
+                powerstate,
+            )
+
+            # Make sense of tensor "source" which are defining the entire predictive set in
+            Qe_resR = np.zeros(
+                len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+            )
+            Qi_resR = np.zeros(
+                len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+            )
+            Ge_resR = np.zeros(
+                len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+            )
+            GZ_resR = np.zeros(
+                len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+            )
+            Mt_resR = np.zeros(
+                len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+            )
+            cont = 0
+            for prof in self.opt_fun.prfs_model.mainFunction.TGYROparameters[
+                "ProfilesPredicted"
+            ]:
+                for ix in range(
+                    len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
+                ):
+                    if prof == "te":
+                        Qe_resR[ix] = source[0, cont].abs()
+                    if prof == "ti":
+                        Qi_resR[ix] = source[0, cont].abs()
+                    if prof == "ne":
+                        Ge_resR[ix] = source[0, cont].abs()
+                    if prof == "nZ":
+                        GZ_resR[ix] = source[0, cont].abs()
+                    if prof == "w0":
+                        Mt_resR[ix] = source[0, cont].abs()
+
+                    cont += 1
+
+            res = -res.item()
+
+            self.resTe.append(Qe_resR)
+            self.resTi.append(Qi_resR)
+            self.resne.append(Ge_resR)
+            self.resnZ.append(GZ_resR)
+            self.resw0.append(Mt_resR)
+            self.resM.append(res)
+
+            # Ricci Metrics
+            if calculateRicci is not None:
+                try:
+                    (
+                        y1,
+                        y2,
+                        y1_std,
+                        y2_std,
+                    ) = PORTALSinteraction.calculatePseudos_distributions(
+                        portals_variables["var_dict"],
+                        self.opt_fun.prfs_model.mainFunction.PORTALSparameters,
+                        self.opt_fun.prfs_model.mainFunction.TGYROparameters,
+                        powerstate,
+                    )
+
+                    QR, chiR = PLASMAtools.RicciMetric(
+                        y1,
+                        y2,
+                        y1_std,
+                        y2_std,
+                        d0=calculateRicci["d0"],
+                        l=calculateRicci["l"],
+                    )
+                    self.QR_Ricci.append(QR[0])
+                    self.chiR_Ricci.append(chiR[0])
+                    self.points_Ricci.append(
+                        [
+                            y1.cpu().numpy()[0, :],
+                            y2.cpu().numpy()[0, :],
+                            y1_std.cpu().numpy()[0, :],
+                            y2_std.cpu().numpy()[0, :],
+                        ]
+                    )
+                except:
+                    print("\t- Could not calculate Ricci metric", typeMsg="w")
+                    calculateRicci = None
+                    self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
+
+        self.labelsFluxes = portals_variables["labels"]
+
+        self.FusionGain = np.array(self.FusionGain)
+        self.FusionPower = np.array(self.FusionPower)
+        self.tauE = np.array(self.tauE)
+        self.resM = np.array(self.resM)
+        self.evaluations = np.array(self.evaluations)
+        self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = (
+            np.array(self.resTe),
+            np.array(self.resTi),
+            np.array(self.resne),
+            np.array(self.resnZ),
+            np.array(self.resw0),
+        )
+
+        if calculateRicci is not None:
+            self.chiR_Ricci = np.array(self.chiR_Ricci)
+            self.QR_Ricci = np.array(self.QR_Ricci)
+            self.points_Ricci = np.array(self.points_Ricci)
+
+        # Normalized L1 norms
+        self.resTeM = np.abs(self.resTe).mean(axis=1)
+        self.resTiM = np.abs(self.resTi).mean(axis=1)
+        self.resneM = np.abs(self.resne).mean(axis=1)
+        self.resnZM = np.abs(self.resnZ).mean(axis=1)
+        self.resw0M = np.abs(self.resw0).mean(axis=1)
+
+        self.resCheck = (
+            self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
+        ) / len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
+
+        # ---------------------------------------------------------------------------------------------------------------------
+        # Jacobian
+        # ---------------------------------------------------------------------------------------------------------------------
+
+        DeltaQ1 = []
+        for i in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+            if i == "te":
+                DeltaQ1.append(-self.resTe)
+            if i == "ti":
+                DeltaQ1.append(-self.resTi)
+            if i == "ne":
+                DeltaQ1.append(-self.resne)
+        DeltaQ1 = np.array(DeltaQ1)
+        self.DeltaQ = DeltaQ1[0, :, :]
+        for i in range(DeltaQ1.shape[0] - 1):
+            self.DeltaQ = np.append(self.DeltaQ, DeltaQ1[i + 1, :, :], axis=1)
+
+        self.aLTn_perc = aLTi_perc = None
+        # try:	self.aLTn_perc  = aLTi_perc  = calcLinearizedModel(self.opt_fun.prfs_model,self.DeltaQ,numChannels=self.numChannels,numRadius=self.numRadius,sepers=self.sepers)
+        # except:	print('\t- Jacobian calculation failed',typeMsg='w')
+
+        self.DVdistMetric_x = self.opt_fun.res.DVdistMetric_x
+        self.DVdistMetric_y = self.opt_fun.res.DVdistMetric_y
+
+
+    # ****************************************************************************
+    # PLOTTING
+    # ****************************************************************************
 
     def plotPORTALS(self,fn=None):
 
@@ -94,269 +362,23 @@ class PORTALSanalyzer:
             fn.show()
 
     def plotMetrics(self,fig=None,indexToMaximize=None,plotAllFluxes=False,index_extra=None,file_save=None):
-
-        print("- Plotting PORTALS Metrics")
-
-        if index_extra is not None:
-             self.portals_plot.numExtra = index_extra
-        
-        if fig is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-        PORTALSplot.plotConvergencePORTALS(
-            self.portals_plot,
-            fig=fig,
-            indexToMaximize=indexToMaximize,
-            plotAllFluxes=plotAllFluxes,
-        )
-
-        # Save plot
-        if file_save is not None:
-            plt.savefig(file_save, transparent=True, dpi=300)
+        PORTALSplot.PORTALSanalyzer_plotMetrics(self,fig=fig,indexToMaximize=indexToMaximize,plotAllFluxes=plotAllFluxes,index_extra=index_extra,file_save=file_save)
 
     def plotExpected(self,fig=None,stds = 2, max_plot_points=4,plotNext=True):
-
-        print("- Plotting PORTALS Expected")
-
-        if fig is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-        # ----------------------------------------------------------------------
-        # Plot
-        # ----------------------------------------------------------------------
-
-        trained_points = self.opt_fun.prfs_model.steps[-1].train_X.shape[0]
-        indexBest = self.opt_fun.res.best_absolute_index
-
-        # Best point
-        plotPoints = [indexBest]
-        labelAssigned = [f"#{indexBest} (best)"]
-
-        # Last point
-        if (trained_points - 1) != indexBest:
-            plotPoints.append(trained_points - 1)
-            labelAssigned.append(f"#{trained_points-1} (last)")
-
-        # Last ones
-        i = 0
-        while len(plotPoints) < max_plot_points:
-            if (trained_points - 2 - i) < 1:
-                break
-            if (trained_points - 2 - i) != indexBest:
-                plotPoints.append(trained_points - 2 - i)
-                labelAssigned.append(f"#{trained_points-2-i}")
-            i += 1
-
-        # First point
-        if 0 not in plotPoints:
-            if len(plotPoints) == max_plot_points:
-                plotPoints[-1] = 0
-                labelAssigned[-1] = "#0 (base)"
-            else:
-                plotPoints.append(0)
-                labelAssigned.append("#0 (base)")
-
-        PORTALSplot.plotExpected(
-            self.opt_fun.prfs_model,
-            self.mitim_runs,
-            folder=self.opt_fun.folder,
-            fig=fig,
-            plotPoints=plotPoints,
-            plotNext=plotNext,
-            labelAssigned=labelAssigned,
-            labelsFluxes=self.portals_plot.labelsFluxes,
-            stds=stds,
-        )
+        PORTALSplot.PORTALSanalyzer_plotExpected(self,fig=fig,stds=stds,max_plot_points=max_plot_points,plotNext=plotNext)
 
     def plotSummary(self,fn):
-
-        print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
-
-        # -------------------------------------------------------
-        # Plot TGYROs
-        # -------------------------------------------------------
-
-        # It may have changed
-        indecesPlot = [
-            self.portals_plot.numBest,
-            self.portals_plot.numOrig,
-            self.portals_plot.numExtra,
-        ]
-
-        self.portals_plot.tgyros[indecesPlot[1]].plot(
-            fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - "
-        )
-        if indecesPlot[0] < len(self.portals_plot.tgyros):
-            self.portals_plot.tgyros[indecesPlot[0]].plot(
-                fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - "
-            )
-
-        # -------------------------------------------------------
-        # Plot PROFILES
-        # -------------------------------------------------------
-
-        figs = [
-            fn.add_figure(label="PROFILES - Profiles"),
-            fn.add_figure(label="PROFILES - Powers"),
-            fn.add_figure(label="PROFILES - Geometry"),
-            fn.add_figure(label="PROFILES - Gradients"),
-            fn.add_figure(label="PROFILES - Flows"),
-            fn.add_figure(label="PROFILES - Other"),
-            fn.add_figure(label="PROFILES - Impurities"),
-        ]
-
-        if indecesPlot[0] < len(self.portals_plot.profiles):
-            PROFILEStools.plotAll(
-                [
-                    self.portals_plot.profiles[indecesPlot[1]],
-                    self.portals_plot.profiles[indecesPlot[0]],
-                ],
-                figs=figs,
-                extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
-            )
-
-
-        # -------------------------------------------------------
-        # Plot Comparison
-        # -------------------------------------------------------
-
-        profile_original = self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles
-        profile_best = self.mitim_runs[self.ibest]['tgyro'].results['tglf_neo'].profiles
-
-        profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
-        profile_original_0 = self.mitim_runs["profiles_original"]
-
-        fig4 = fn.add_figure(label="PROFILES Comparison")
-        grid = plt.GridSpec(
-            2,
-            np.max(
-                [3, len(self.TGYROparameters["ProfilesPredicted"])]
-            ),
-            hspace=0.3,
-            wspace=0.3,
-        )
-        axs4 = [
-            fig4.add_subplot(grid[0, 0]),
-            fig4.add_subplot(grid[1, 0]),
-            fig4.add_subplot(grid[0, 1]),
-            fig4.add_subplot(grid[1, 1]),
-            fig4.add_subplot(grid[0, 2]),
-            fig4.add_subplot(grid[1, 2]),
-        ]
-
-        cont = 1
-        if  self.runWithImpurity:
-            axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-            axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
-            cont += 1
-        if  self.runWithRotation:
-            axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-            axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
-
-        colors = GRAPHICStools.listColors()
-
-        for i, (profiles, label, alpha) in enumerate(
-            zip(
-                [
-                    profile_original_unCorrected,
-                    profile_original_0,
-                    profile_original,
-                    profile_best,
-                ],
-                ["Original", "Corrected", "Initial", "Final"],
-                [0.2, 1.0, 1.0, 1.0],
-            )
-        ):
-            profiles.plotGradients(
-                axs4,
-                color=colors[i],
-                label=label,
-                lastRho=self.TGYROparameters["RhoLocations"][-1],
-                alpha=alpha,
-                useRoa=True,
-                RhoLocationsPlot=self.TGYROparameters["RhoLocations"],
-                plotImpurity=self.runWithImpurity,
-                plotRotation=self.runWithRotation,
-            )
-
-        axs4[0].legend(loc="best")
+        PORTALSplot.PORTALSanalyzer_plotSummary(self,fn)
 
     def plotRanges(self,fig=None):
+        PORTALSplot.PORTALSanalyzer_plotRanges(self,fig=fig)
 
-        if fig is None:
-            plt.ion(); fig = plt.figure()
-    
-        pps = np.max(
-            [3, len(self.TGYROparameters["ProfilesPredicted"])]
-        )  # Because plotGradients require at least Te, Ti, ne
-        grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
-        axsR = []
-        for i in range(pps):
-            axsR.append(fig.add_subplot(grid[0, i]))
-            axsR.append(fig.add_subplot(grid[1, i]))
-
-        PORTALSplot.produceInfoRanges(
-            self.opt_fun.prfs_model.mainFunction,
-            self.opt_fun.prfs_model.bounds_orig,
-            axsR=axsR,
-            color="k",
-            lw=0.2,
-            alpha=0.05,
-            label="original",
-        )
-        PORTALSplot.produceInfoRanges(
-            self.opt_fun.prfs_model.mainFunction,
-            self.opt_fun.prfs_model.bounds,
-            axsR=axsR,
-            color="c",
-            lw=0.2,
-            alpha=0.05,
-            label="final",
-        )
-
-        p = self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles
-        p.plotGradients(
-            axsR,
-            color="b",
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
-            ms=0,
-            lw=1.0,
-            label="#0",
-            ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
-            plotImpurity=self.runWithImpurity,
-            plotRotation=self.runWithRotation,
-        )
-
-        for ikey in self.mitim_runs:
-            if type(self.mitim_runs[ikey]) != dict:
-                break
-
-            p = self.mitim_runs[ikey]['tgyro'].results['tglf_neo'].profiles
-            p.plotGradients(
-                axsR,
-                color="r",
-                lastRho=self.TGYROparameters["RhoLocations"][-1],
-                ms=0,
-                lw=0.3,
-                ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
-                plotImpurity=self.runWithImpurity,
-                plotRotation=self.runWithRotation,
-            )
-
-        p.plotGradients(
-            axsR,
-            color="g",
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
-            ms=0,
-            lw=1.0,
-            label=f"#{self.opt_fun.res.best_absolute_index} (best)",
-            plotImpurity=self.runWithImpurity,
-            plotRotation=self.runWithRotation,
-        )
-
-        axsR[0].legend(loc="best")
+    def plotModelComparison(self,axs = None,GB=True,radial_label=True):
+        PORTALSplot.PORTALSanalyzer_plotModelComparison(self,axs=axs,GB=GB,radial_label=radial_label)
+        
+    # ****************************************************************************
+    # ADDITIONAL UTILITIES
+    # ****************************************************************************
 
     def extractPROFILES(self, based_on_last=False, true_original=True):
 
@@ -373,99 +395,6 @@ class PORTALSanalyzer:
             p_orig =  self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles_final
 
         return p_orig, p_new
-
-
-    def plotModelComparison(self,axs = None,GB=True,radial_label=True):
-
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=3,figsize=(12,6))
-
-        self.plotModelComparison_quantity(axs[0],
-                                     quantity=f'Qe{"GB" if GB else ""}_sim_turb',
-                                     quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
-                                     labely = '$Q_e^{GB}$' if GB else '$Q_e$',
-                                     title = f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='log' if GB else 'linear',
-                                     radial_label = radial_label)
-
-        self.plotModelComparison_quantity(axs[1],
-                                     quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
-                                     quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
-                                     labely = '$Q_i^{GB}$' if GB else '$Q_i$',
-                                     title =f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='log' if GB else 'linear',
-                                     radial_label = radial_label)
-
-        self.plotModelComparison_quantity(axs[2],
-                                     quantity=f'Ge{"GB" if GB else ""}_sim_turb',
-                                     quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
-                                     labely = '$\\Gamma_e^{GB}$' if GB else '$\\Gamma_e$',
-                                     title = f"Electron particle flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                     typeScale='linear',
-                                     radial_label = radial_label)
-
-        plt.tight_layout()
-
-        return axs
-
-    def plotModelComparison_quantity(self,ax,
-                                     quantity='QeGB_sim_turb',
-                                     quantity_stds='QeGB_sim_turb_stds',
-                                     labely = '',
-                                     title = '',
-                                     typeScale='linear',
-                                     radial_label = True):
-
-        F_tglf = []
-        F_cgyro = []
-        F_tglf_stds = []
-        F_cgyro_stds = []
-        for i in range(len(self.mitim_runs)-2):
-            try:
-                F_tglf.append(self.mitim_runs[i]['tgyro'].results['tglf_neo'].__dict__[quantity][0,1:])
-                F_tglf_stds.append(self.mitim_runs[i]['tgyro'].results['tglf_neo'].__dict__[quantity_stds][0,1:])
-                F_cgyro.append(self.mitim_runs[i]['tgyro'].results['cgyro_neo'].__dict__[quantity][0,1:])
-                F_cgyro_stds.append(self.mitim_runs[i]['tgyro'].results['cgyro_neo'].__dict__[quantity_stds][0,1:])
-            except TypeError:
-                break   
-        F_tglf  = np.array(F_tglf)
-        F_cgyro = np.array(F_cgyro)
-        F_tglf_stds  = np.array(F_tglf_stds)
-        F_cgyro_stds = np.array(F_cgyro_stds)
-
-        colors = GRAPHICStools.listColors()
-
-        for ir in range(F_tglf.shape[1]):
-            ax.errorbar(
-                F_tglf[:,ir],
-                F_cgyro[:,ir],
-                yerr=F_cgyro_stds[:,ir],
-                c=colors[ir],
-                markersize=2,
-                capsize=2,
-                fmt="s",
-                elinewidth=1.0,
-                capthick=1.0,
-                label=f"$r/a={self.roa[ir]:.2f}$" if radial_label else ""
-            )
-
-        minFlux = np.min([F_tglf.min(),F_cgyro.min()])
-        maxFlux = np.max([F_tglf.max(),F_cgyro.max()])
-
-        if radial_label: ax.plot([minFlux,maxFlux],[minFlux,maxFlux],'--',color='k')
-        if typeScale == 'log':
-            ax.set_xscale('log')
-            ax.set_yscale('log')
-        elif typeScale == 'symlog':
-            ax.set_xscale('symlog')#,linthresh=1E-2)
-            ax.set_yscale('symlog')#,linthresh=1E-2)
-        ax.set_xlabel(f'{labely} (TGLF)')
-        ax.set_ylabel(f'{labely} (CGYRO)')
-        ax.set_title(title)
-        GRAPHICStools.addDenseAxis(ax)
-
-        ax.legend()
 
     def extractTGYRO_init(self,folder=None,restart=False):
 
@@ -541,10 +470,7 @@ class PORTALSanalyzer:
 
         tglf.plotRun(labels=['tglf_standalone'])
 
-
     def runCases(self,onlyBest=False,restart=False,fn=None):
-
-        embed()
 
         from mitim_modules.portals.PORTALSmain import runModelEvaluator
 
@@ -627,4 +553,3 @@ def fix_pickledstate(state_to_mod, powerstate_to_add):
 
     with open(state_to_mod, "wb") as f:
         pickle_dill.dump(aux, f)
-

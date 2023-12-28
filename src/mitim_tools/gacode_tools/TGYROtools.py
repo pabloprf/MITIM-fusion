@@ -1,13 +1,11 @@
-import os, copy, pdb
+import os
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from collections import OrderedDict
 from IPython import embed
 from mitim_tools.misc_tools import (
     IOtools,
-    FARMINGtools,
     GRAPHICStools,
-    MATHtools,
     PLASMAtools,
 )
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
@@ -674,7 +672,7 @@ class TGYRO:
             rho: TGLFtools.TGLFinput(file=f"{self.FolderTGYRO}/input.tglf_{rho:.4f}")
         }
 
-        self.tglf[fromlabel] = TGLFtools.TGLF(rhos=rhos)
+        self.tglf[fromlabel] = TGLFtools.TGLF(rhos=[rho])
         self.tglf[fromlabel].prep(
             "tglf_runs/",
             specificInputs=inputsTGLF,
@@ -2141,10 +2139,7 @@ class TGYROoutput:
         )
 
     def useFineGridTargets(self, impurityPosition=1):
-        print(
-            "\t* It has been requested that I calculate targets based on the fine grid of input.gacode.new",
-            typeMsg="i",
-        )
+        print("\t\t\t* Recalculating targets on the fine grid of input.gacode.new")
 
         if self.profiles_final is None:
             print(
