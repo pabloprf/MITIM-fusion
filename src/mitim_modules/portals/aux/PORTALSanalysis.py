@@ -125,7 +125,7 @@ class PORTALSanalyzer:
         x_train_num = self.step.train_X.shape[0]
         file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
         if os.path.exists(file):
-            print("\t\t- Reading next profiles to evaluate (from folders)")
+            print("\t\t- Reading next profile to evaluate (from folder)")
             self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
 
             file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
@@ -135,6 +135,8 @@ class PORTALSanalyzer:
             else:
                 self.profiles_next_new = self.profiles_next
                 self.profiles_next_new.deriveQuantities()
+        else:
+            print("\t\t- Could not read next profile to evaluate (from folder)")
 
         # Create some metrics
         prep_metrics(self)
