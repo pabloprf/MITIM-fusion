@@ -98,7 +98,8 @@ class PORTALSanalyzer:
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
        
-        if self.mitim_runs is not None: print('\t\t* Reading from scratch from folders',typeMsg='i')
+        if self.mitim_runs is None:
+            print('\t\t* Reading from scratch from folders',typeMsg='i')
         
         self.profiles, self.tgyros = [], []
         for i in range(self.ilast+1):

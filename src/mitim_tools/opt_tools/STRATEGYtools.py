@@ -1,4 +1,9 @@
-import os, copy, datetime, array, traceback, torch
+import os
+import copy
+import datetime
+import array
+import traceback
+import torch
 from collections import OrderedDict
 from IPython import embed
 import dill as pickle_dill
@@ -333,7 +338,7 @@ class FUNmain:
                     )
 
         if plotYN and (analysis_level >= 0):
-            print(f"- Plotting took {IOtools.getTimeDifference(time1)}", typeMsg="i")
+            print(f"\n- Plotting took {IOtools.getTimeDifference(time1)}")
 
             if save_folder is not None:
                 self.fn.save(save_folder)

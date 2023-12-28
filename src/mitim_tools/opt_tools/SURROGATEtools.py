@@ -172,6 +172,12 @@ class surrogate_model:
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
 
         # --------------------------------------------------------------------------------------
+        # Make sure that very small variations are not captured
+        # --------------------------------------------------------------------------------------
+
+        self.ensureMinimalVariationSuppressed(input_transform_physics)
+
+        # --------------------------------------------------------------------------------------
         # Make sure at least 2 points
         # --------------------------------------------------------------------------------------
 
@@ -673,6 +679,27 @@ class surrogate_model:
                         )
 
             return axs
+
+    def ensureMinimalVariationSuppressed(self,input_transform_physics,thr=1E-6):
+        '''
+        In some cases, the added data from file might have extremely small variations in some of the fixed
+        inputs, as compared to the trained data of this run. In such a case, modify this variation
+        '''
+
+        # Do dimensions of the non-added points change?
+        x_transform = input_transform_physics(self.train_X)
+        indecesUnchanged = torch.where((x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])/x_transform.mean(axis=0)[0] < thr)[0]
+
+        HasThisBeenApplied = 0
+
+        for i in indecesUnchanged:
+            if ((self.train_X_added[:,i]-x_transform[0,i])/x_transform[0,i]).max() < thr:
+                HasThisBeenApplied += 1
+                for j in range(self.train_X_added.shape[0]):
+                    self.train_X_added[j,i] = x_transform[0,i]
+
+        if HasThisBeenApplied>0:
+            print(f'\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims',typeMsg='w')
 
     def ensureMinimumNoise(self):
         if ("MinimumRelativeNoise" in self.surrogateOptions) and (
