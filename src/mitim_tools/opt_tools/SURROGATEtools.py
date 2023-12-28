@@ -474,6 +474,13 @@ class surrogate_model:
             with open(self.fileTraining, "rb") as f:
                 data_dict = pickle_dill.load(f)
 
+            if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
+                print('\t\t- Points from file have less input dimensions, extending with NaNs for writing new file',typeMsg='w')
+                self.train_X_added_full = torch.cat((self.train_X_added_full,torch.full((self.train_X_added_full.shape[0],train_X_Complete.shape[-1]-self.train_X_added_full.shape[-1]),torch.nan)),axis=-1)
+            elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
+                print('\t\t- Points from file have more input dimensions, removing last dimensions for writing new file',typeMsg='w')
+                self.train_X_added_full = self.train_X_added_full[:,:train_X_Complete.shape[-1]]
+
             x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
             y = torch.cat((self.train_Y_added, train_Y), axis=0)
             yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
