@@ -46,6 +46,12 @@ class PORTALSanalyzer:
 
     def prep(self):
 
+        print("- Grabbing model")
+        self.step =  self.opt_fun.prfs_model.steps[-1]
+        self.gp = self.step.GP["combined_model"]
+
+        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters["powerstate"]
+
         print("- Interpreting PORTALS results")
 
         # Read dictionaries
@@ -77,13 +83,15 @@ class PORTALSanalyzer:
         self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
 
         # Useful flags
+        self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
+
         self.runWithImpurity = (
             self.PORTALSparameters["ImpurityOfInterest"] -1
-            if "nZ" in self.TGYROparameters["ProfilesPredicted"]
+            if "nZ" in self.ProfilesPredicted
             else None
         )
 
-        self.runWithRotation = "w0" in self.TGYROparameters["ProfilesPredicted"]
+        self.runWithRotation = "w0" in self.ProfilesPredicted
         self.includeFast = self.PORTALSparameters["includeFastInQi"]
         self.useConvectiveFluxes = self.PORTALSparameters["useConvectiveFluxes"]
 
@@ -111,6 +119,21 @@ class PORTALSanalyzer:
             )
             self.ibest -= 1
             self.iextra = None
+
+        self.profiles_next = None
+        x_train_num = self.step.train_X.shape[0]
+        file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
+        if os.path.exists(file):
+            print("\t\t- Reading next profiles to evaluate (from folders)")
+            self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+
+            file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
+            if os.path.exists(file):
+                self.profiles_next_new = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+                self.profiles_next_new.printInfo(label="NEXT")
+            else:
+                self.profiles_next_new = self.profiles_next
+                self.profiles_next_new.deriveQuantities()
 
         # Create some metrics
         prep_metrics(self)
@@ -158,22 +181,6 @@ class PORTALSanalyzer:
     # ADDITIONAL UTILITIES
     # ****************************************************************************
 
-    def extractPROFILES(self, based_on_last=False, true_original=True):
-
-        if based_on_last:
-            i = self.ilast
-        else:
-            i = self.ibest
-
-        p_new = self.mitim_runs[i]['tgyro'].results['tglf_neo'].profiles_final
-
-        if true_original:
-            p_orig = self.mitim_runs["profiles_original"]
-        else:
-            p_orig =  self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles_final
-
-        return p_orig, p_new
-
     def extractTGYRO_init(self,folder=None,restart=False):
 
         if folder is None:
@@ -197,9 +204,7 @@ class PORTALSanalyzer:
                     int("ne" in self.TGYROparameters["ProfilesPredicted"]),
                 ]
 
-
         return tgyro,self.rhos,PredictionSet,TGLFsettings,extraOptionsTGLF
-
 
     def extractTGLF(self,folder=None,positions=None,step=-1,restart=False):        
 

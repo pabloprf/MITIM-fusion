@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,6 +26,7 @@ def PORTALSanalyzer_plotMetrics(
         plotFlows=True,
         fontsize_leg=5,
         includeRicci=True,
+        useConvectiveFluxes = False, # By default, plot in real particle units
         file_save=None):
 
     print("- Plotting PORTALS Metrics")
@@ -34,17 +36,9 @@ def PORTALSanalyzer_plotMetrics(
     
     if fig is None:
         plt.ion()
-        fig = plt.figure(figsize=(18, 9))
-
-    labelsFluxes = self.labelsFluxes  # For channel residuals
-
-    useConvectiveFluxes = False  # self.useConvectiveFluxes
-
-    if fig is None:
-        plt.ion()
         fig = plt.figure(figsize=(15, 8))
 
-    numprofs = len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
+    numprofs = len(self.ProfilesPredicted)
 
     grid = plt.GridSpec(nrows=8, ncols=numprofs + 1, hspace=0.3, wspace=0.35)
 
@@ -60,7 +54,7 @@ def PORTALSanalyzer_plotMetrics(
     axTi_f = fig.add_subplot(grid[6:, 1])
 
     cont = 0
-    if "ne" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self.ProfilesPredicted:
         axne = fig.add_subplot(grid[:4, 2 + cont])
         axne.set_title("Electron Density")
         axne_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -69,9 +63,8 @@ def PORTALSanalyzer_plotMetrics(
     else:
         axne = axne_g = axne_f = None
 
-    if "nZ" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        impos = self.opt_fun.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"]
-        labIon = f"Ion {impos} ({self.profiles[0].Species[impos-1]['N']}{int(self.profiles[0].Species[impos-1]['Z'])},{int(self.profiles[0].Species[impos-1]['A'])})"
+    if self.runWithImpurity:
+        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -80,7 +73,7 @@ def PORTALSanalyzer_plotMetrics(
     else:
         axnZ = axnZ_g = axnZ_f = None
 
-    if "w0" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if self.runWithRotation:
         axw0 = fig.add_subplot(grid[:4, 2 + cont])
         axw0.set_title("Rotation")
         axw0_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -96,7 +89,7 @@ def PORTALSanalyzer_plotMetrics(
     if indexToMaximize is None:
         indexToMaximize = self.ibest
     if indexToMaximize < 0:
-        indexToMaximize = self.opt_fun.prfs_model.train_Y.shape[0] + indexToMaximize
+        indexToMaximize = self.ilast+1 + indexToMaximize
 
     # ---------------------------------------------------------------------------------------------------------
     # Plot all profiles
@@ -360,18 +353,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
-        (
-            QeBest_min,
-            QeBest_max,
-            QiBest_min,
-            QiBest_max,
-            GeBest_min,
-            GeBest_max,
-            GZBest_min,
-            GZBest_max,
-            MtBest_min,
-            MtBest_max,
-        ) = plotFluxComparison(
+        plotFluxComparison(
             p,
             t,
             axTe_f,
@@ -379,7 +361,7 @@ def PORTALSanalyzer_plotMetrics(
             axne_f,
             axnZ_f,
             axw0_f,
-            posZ=self.runWithImpurity,
+            runWithImpurity=self.runWithImpurity,
             fontsize_leg=fontsize_leg,
             stds=stds,
             col=col,
@@ -478,7 +460,7 @@ def PORTALSanalyzer_plotMetrics(
         ax.set_xticklabels([])
 
     ax = axC
-    if "te" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "te" in self.ProfilesPredicted:
         v = self.resTeM
         ax.plot(
             self.evaluations,
@@ -487,9 +469,9 @@ def PORTALSanalyzer_plotMetrics(
             lw=0.5,
             c="b",
             markersize=2,
-            label=labelsFluxes["te"],
+            label=self.labelsFluxes["te"],
         )
-    if "ti" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "ti" in self.ProfilesPredicted:
         v = self.resTiM
         ax.plot(
             self.evaluations,
@@ -498,9 +480,9 @@ def PORTALSanalyzer_plotMetrics(
             lw=0.5,
             c="m",
             markersize=2,
-            label=labelsFluxes["ti"],
+            label=self.labelsFluxes["ti"],
         )
-    if "ne" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self.ProfilesPredicted:
         v = self.resneM
         ax.plot(
             self.evaluations,
@@ -509,9 +491,9 @@ def PORTALSanalyzer_plotMetrics(
             lw=0.5,
             c="k",
             markersize=2,
-            label=labelsFluxes["ne"],
+            label=self.labelsFluxes["ne"],
         )
-    if "nZ" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "nZ" in self.ProfilesPredicted:
         v = self.resnZM
         ax.plot(
             self.evaluations,
@@ -520,9 +502,9 @@ def PORTALSanalyzer_plotMetrics(
             lw=0.5,
             c="c",
             markersize=2,
-            label=labelsFluxes["nZ"],
+            label=self.labelsFluxes["nZ"],
         )
-    if "w0" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "w0" in self.ProfilesPredicted:
         v = self.resw0M
         ax.plot(
             self.evaluations,
@@ -531,7 +513,7 @@ def PORTALSanalyzer_plotMetrics(
             lw=0.5,
             c="darkred",
             markersize=2,
-            label=labelsFluxes["w0"],
+            label=self.labelsFluxes["w0"],
         )
 
     for cont, (indexUse, col, lab, mars) in enumerate(
@@ -544,7 +526,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
         if (indexUse is None) or (indexUse >= len(self.profiles)):
             continue
-        if "te" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+        if "te" in self.ProfilesPredicted:
             v = self.resTeM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -553,7 +535,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "ti" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+        if "ti" in self.ProfilesPredicted:
             v = self.resTiM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -562,7 +544,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "ne" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+        if "ne" in self.ProfilesPredicted:
             v = self.resneM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -571,7 +553,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "nZ" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+        if "nZ" in self.ProfilesPredicted:
             v = self.resnZM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -580,7 +562,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "w0" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+        if "w0" in self.ProfilesPredicted:
             v = self.resw0M
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -1036,15 +1018,15 @@ def PORTALSanalyzer_plotExpected(
     # Plot
     # ----------------------------------------------------------------------
 
-    trained_points = self.opt_fun.prfs_model.steps[-1].train_X.shape[0]
-    indexBest = self.opt_fun.res.best_absolute_index
+    trained_points = self.ilast+1
+    self.ibest = self.opt_fun.res.best_absolute_index
 
     # Best point
-    plotPoints = [indexBest]
-    labelAssigned = [f"#{indexBest} (best)"]
+    plotPoints = [self.ibest]
+    labelAssigned = [f"#{self.ibest} (best)"]
 
     # Last point
-    if (trained_points - 1) != indexBest:
+    if (trained_points - 1) != self.ibest:
         plotPoints.append(trained_points - 1)
         labelAssigned.append(f"#{trained_points-1} (last)")
 
@@ -1053,7 +1035,7 @@ def PORTALSanalyzer_plotExpected(
     while len(plotPoints) < max_plot_points:
         if (trained_points - 2 - i) < 1:
             break
-        if (trained_points - 2 - i) != indexBest:
+        if (trained_points - 2 - i) != self.ibest:
             plotPoints.append(trained_points - 2 - i)
             labelAssigned.append(f"#{trained_points-2-i}")
         i += 1
@@ -1066,61 +1048,33 @@ def PORTALSanalyzer_plotExpected(
         else:
             plotPoints.append(0)
             labelAssigned.append("#0 (base)")
-
-    step=-1
     
     if fig is None:
         fig = plt.figure(figsize=(12, 8))
-    model = self.opt_fun.prfs_model.steps[step].GP["combined_model"]
 
-    x_train_num = self.opt_fun.prfs_model.steps[step].train_X.shape[0]
+    model = self.step.GP["combined_model"]
 
-    posZ = self.opt_fun.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"] - 1
+    x_train_num = self.step.train_X.shape[0]
 
     # ---- Training
-    x_train = torch.from_numpy(self.opt_fun.prfs_model.steps[step].train_X).to(model.train_X)
-    y_trainreal = torch.from_numpy(self.opt_fun.prfs_model.steps[step].train_Y).to(model.train_X)
-    yL_trainreal = torch.from_numpy(self.opt_fun.prfs_model.steps[step].train_Ystd).to(model.train_X)
-    yU_trainreal = torch.from_numpy(self.opt_fun.prfs_model.steps[step].train_Ystd).to(model.train_X)
+    x_train = torch.from_numpy(self.step.train_X).to(model.train_X)
+    y_trainreal = torch.from_numpy(self.step.train_Y).to(model.train_X)
+    yL_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
+    yU_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
 
-    y_train, yU_train, yL_train, _ = model.predict(x_train)
+    y_train = model.predict(x_train)[0]
 
     # ---- Next
-    x_next = y_next = yU_next = yL_next = None
+    y_next = yU_next = yL_next = None
     if plotNext:
         try:
-            x_next = self.opt_fun.prfs_model.steps[step].x_next
-            y_next, yU_next, yL_next, _ = model.predict(x_next)
-        except:
-            pass
-
-    # ---- Get profiles
-    print("\t- Reading profiles from mitim_runs")
-    profiles = []
-    for i in plotPoints:
-        profiles.append(self.mitim_runs[i]["tgyro"].results["use"].profiles)
-
-    profiles_next = None
-    if (x_next is not None) and (self.opt_fun.folder is not None):
-        try:
-            file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
-            profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-
-            try:
-                file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
-                profiles_next_new = PROFILEStools.PROFILES_GACODE(
-                    file, calculateDerived=True
-                )
-                profiles_next_new.printInfo(label="NEXT")
-            except:
-                profiles_next_new = profiles_next
-                profiles_next_new.deriveQuantities()
+            y_next, yU_next, yL_next, _ = model.predict(self.step.x_next)
         except:
             pass
 
     # ---- Plot
 
-    numprofs = len(self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
+    numprofs = len(self.ProfilesPredicted)
 
     if numprofs <= 4:
         wspace = 0.3
@@ -1142,7 +1096,7 @@ def PORTALSanalyzer_plotExpected(
     axTi_r = fig.add_subplot(grid[3, 1], sharex=axTe)
 
     cont = 0
-    if "ne" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self.ProfilesPredicted:
         axne = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axne.set_title("Electron Density")
         axne_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1151,9 +1105,8 @@ def PORTALSanalyzer_plotExpected(
         cont += 1
     else:
         axne = axne_g = axne_f = axne_r = None
-    if "nZ" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        impos = self.opt_fun.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"]
-        labIon = f"Ion {impos} ({profiles[0].Species[impos-1]['N']}{int(profiles[0].Species[impos-1]['Z'])},{int(profiles[0].Species[impos-1]['A'])})"
+    if self.runWithImpurity:
+        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1163,7 +1116,7 @@ def PORTALSanalyzer_plotExpected(
     else:
         axnZ = axnZ_g = axnZ_f = axnZ_r = None
 
-    if "w0" in self.opt_fun.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if self.runWithRotation:
         axw0 = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axw0.set_title("Rotation")
         axw0_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1189,18 +1142,18 @@ def PORTALSanalyzer_plotExpected(
                 coli += 1
             colors.append(colorsA[coli])
 
-    rho = profiles[0].profiles["rho(-)"]
-    roa = profiles[0].derived["roa"]
-    rhoVals = self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"]
+    rho = self.profiles[0].profiles["rho(-)"]
+    roa = self.profiles[0].derived["roa"]
+    rhoVals = self.TGYROparameters["RhoLocations"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
     # ---- Plot profiles
     cont = -1
-    for i in range(len(profiles)):
+    for i in plotPoints:
         cont += 1
 
-        p = profiles[i]
+        p = self.profiles[i]
 
         ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
 
@@ -1232,7 +1185,7 @@ def PORTALSanalyzer_plotExpected(
             ax = axnZ
             ax.plot(
                 p.derived["roa"],
-                p.profiles["ni(10^19/m^3)"][:, posZ] * 1e-1,
+                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                 "-",
                 c=colors[cont],
                 lw=lw,
@@ -1280,7 +1233,7 @@ def PORTALSanalyzer_plotExpected(
             ax = axnZ_g
             ax.plot(
                 p.derived["roa"][:ix],
-                p.derived["aLni"][:ix, posZ],
+                p.derived["aLni"][:ix, self.runWithImpurity],
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1301,10 +1254,10 @@ def PORTALSanalyzer_plotExpected(
 
     # ---- Plot profiles next
 
-    if profiles_next is not None:
-        p = profiles_next
-        roa = profiles_next_new.derived["roa"]
-        dw0dr = profiles_next_new.derived["dw0dr"]
+    if self.profiles_next is not None:
+        p = self.profiles_next
+        roa = self.profiles_next_new.derived["roa"]
+        dw0dr = self.profiles_next_new.derived["dw0dr"]
 
         ix = np.argmin(np.abs(roa - lastX)) + 1
 
@@ -1327,7 +1280,7 @@ def PORTALSanalyzer_plotExpected(
 
         if axnZ is not None:
             ax = axnZ
-            ax.plot(roa, p.profiles["ni(10^19/m^3)"][:, posZ] * 1e-1, "-", c="k", lw=lw)
+            ax.plot(roa, p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1, "-", c="k", lw=lw)
         if axw0 is not None:
             ax = axw0
             ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
@@ -1344,7 +1297,7 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             ax = axnZ_g
             ax.plot(
-                roa[:ix], p.derived["aLni"][:ix, posZ], "-o", c="k", markersize=0, lw=lw
+                roa[:ix], p.derived["aLni"][:ix, self.runWithImpurity], "-o", c="k", markersize=0, lw=lw
             )
         if axw0_g is not None:
             ax = axw0_g
@@ -1357,11 +1310,11 @@ def PORTALSanalyzer_plotExpected(
 
         ranges = [-30, 30]
 
-        rho = profiles_next_new.profiles["rho(-)"]
-        rhoVals = self.opt_fun.prfs_model.mainFunction.TGYROparameters["RhoLocations"]
+        rho = self.profiles_next_new.profiles["rho(-)"]
+        rhoVals = self.TGYROparameters["RhoLocations"]
         roaVals = np.interp(rhoVals, rho, roa)
 
-        p0 = profiles[0]
+        p0 = self.profiles[0]
         zVals = []
         z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
         for roai in roaVals:
@@ -1369,7 +1322,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = profiles[1]
+            p0 = self.profiles[1]
             zVals = []
             z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
             for roai in roaVals:
@@ -1379,7 +1332,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.set_ylim(ranges)
         axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
 
-        p0 = profiles[0]
+        p0 = self.profiles[0]
         zVals = []
         z = (
             (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1390,7 +1343,7 @@ def PORTALSanalyzer_plotExpected(
         axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = profiles[1]
+            p0 = self.profiles[1]
             zVals = []
             z = (
                 (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1409,7 +1362,7 @@ def PORTALSanalyzer_plotExpected(
         if axne_g is not None:
             axne_g_twin = axne_g.twinx()
 
-            p0 = profiles[0]
+            p0 = self.profiles[0]
             zVals = []
             z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
             for roai in roaVals:
@@ -1417,7 +1370,7 @@ def PORTALSanalyzer_plotExpected(
             axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
+                p0 = self.profiles[1]
                 zVals = []
                 z = (
                     (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
@@ -1436,22 +1389,22 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             axnZ_g_twin = axnZ_g.twinx()
 
-            p0 = profiles[0]
+            p0 = self.profiles[0]
             zVals = []
             z = (
-                (p.derived["aLni"][:, posZ] - p0.derived["aLni"][:, posZ])
-                / p0.derived["aLni"][:, posZ]
+                (p.derived["aLni"][:, self.runWithImpurity] - p0.derived["aLni"][:, self.runWithImpurity])
+                / p0.derived["aLni"][:, self.runWithImpurity]
             ) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
             axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
+                p0 = self.profiles[1]
                 zVals = []
                 z = (
-                    (p.derived["aLni"][:, posZ] - p0.derived["aLni"][:, posZ])
-                    / p0.derived["aLni"][:, posZ]
+                    (p.derived["aLni"][:, self.runWithImpurity] - p0.derived["aLni"][:, self.runWithImpurity])
+                    / p0.derived["aLni"][:, self.runWithImpurity]
                 ) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
@@ -1467,7 +1420,7 @@ def PORTALSanalyzer_plotExpected(
         if axw0_g is not None:
             axw0_g_twin = axw0_g.twinx()
 
-            p0 = profiles[0]
+            p0 = self.profiles[0]
             zVals = []
             z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
             for roai in roaVals:
@@ -1475,7 +1428,7 @@ def PORTALSanalyzer_plotExpected(
             axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
+                p0 = self.profiles[1]
                 zVals = []
                 z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
                 for roai in roaVals:
@@ -1576,7 +1529,7 @@ def PORTALSanalyzer_plotExpected(
         GRAPHICStools.addDenseAxis(ax, n=n)
 
     roacoarse = (
-        self.opt_fun.prfs_model.mainFunction.surrogate_parameters["powerstate"]
+        self.powerstate
         .plasma["roa"][0, 1:]
         .cpu()
         .numpy()
@@ -1808,7 +1761,7 @@ def PORTALSanalyzer_plotSummary(
     grid = plt.GridSpec(
         2,
         np.max(
-            [3, len(self.TGYROparameters["ProfilesPredicted"])]
+            [3, len(self.ProfilesPredicted)]
         ),
         hspace=0.3,
         wspace=0.3,
@@ -1867,7 +1820,7 @@ def PORTALSanalyzer_plotRanges(
         plt.ion(); fig = plt.figure()
 
     pps = np.max(
-        [3, len(self.TGYROparameters["ProfilesPredicted"])]
+        [3, len(self.ProfilesPredicted)]
     )  # Because plotGradients require at least Te, Ti, ne
     grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
     axsR = []
@@ -2470,7 +2423,7 @@ def plotFluxComparison(
     axne_f,
     axnZ_f,
     axw0_f,
-    posZ=3,
+    runWithImpurity=3,
     labZ="Z",
     includeFirst=True,
     alpha=1.0,
@@ -2487,6 +2440,7 @@ def plotFluxComparison(
     useRoa=False,
     locLeg="upper left",
 ):
+    
     labelsFluxesF = {
         "te": "$Q_e$ ($MW/m^2$)",
         "ti": "$Q_i$ ($MW/m^2$)",
@@ -2630,22 +2584,22 @@ def plotFluxComparison(
     if axnZ_f is not None:
         if useConvectiveFluxes:
             GZ, GZ_tar = (
-                t.Ci_sim_turb[posZ, :, :] + t.Ci_sim_neo[posZ, :, :],
+                t.Ci_sim_turb[runWithImpurity, :, :] + t.Ci_sim_neo[runWithImpurity, :, :],
                 t.Ge_tar * 0.0,
             )
             try:
                 sigma = (
-                    t.Ci_sim_turb_stds[posZ, 0][ixF:] + t.Ci_sim_neo_stds[posZ, 0][ixF:]
+                    t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:] + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
             GZ, GZ_tar = (
-                t.Gi_sim_turb[posZ, :, :] + t.Gi_sim_neo[posZ, :, :]
+                t.Gi_sim_turb[runWithImpurity, :, :] + t.Gi_sim_neo[runWithImpurity, :, :]
             ), t.Ge_tar * 0.0
             try:
                 sigma = (
-                    t.Gi_sim_turb_stds[posZ, 0][ixF:] + t.Gi_sim_neo_stds[posZ, 0][ixF:]
+                    t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:] + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
@@ -2870,20 +2824,6 @@ def plotFluxComparison(
                 Qmin -= np.abs(Qmin) * 0.5
                 Q = np.max([np.abs(Qmin), np.abs(Qmax)])
                 axw0_f.set_ylim([-Q, Q])
-
-    return (
-        QeBest_min,
-        QeBest_max,
-        QiBest_min,
-        QiBest_max,
-        GeBest_min,
-        GeBest_max,
-        GZBest_min,
-        GZBest_max,
-        MtBest_min,
-        MtBest_max,
-    )
-
 
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
