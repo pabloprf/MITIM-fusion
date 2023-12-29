@@ -175,7 +175,8 @@ class surrogate_model:
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
 
-        self.ensureMinimalVariationSuppressed(input_transform_physics)
+        if self.train_X_added.shape[0]>0:
+            self.ensureMinimalVariationSuppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
         # Make sure at least 2 points
@@ -691,7 +692,7 @@ class surrogate_model:
         indecesUnchanged = torch.where((x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])/x_transform.mean(axis=0)[0] < thr)[0]
 
         HasThisBeenApplied = 0
-
+        
         for i in indecesUnchanged:
             if ((self.train_X_added[:,i]-x_transform[0,i])/x_transform[0,i]).max() < thr:
                 HasThisBeenApplied += 1
