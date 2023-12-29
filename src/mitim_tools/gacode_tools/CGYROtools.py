@@ -1,21 +1,14 @@
-import os, time, copy
+import os
 import numpy as np
 from IPython import embed
 import matplotlib.pyplot as plt
-
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.gacode_tools.aux import GACODEplotting
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from pygacode.cgyro.data import cgyrodata
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
-
-"""
- 
-"""
-
 
 class CGYRO:
     def __init__(
@@ -212,7 +205,6 @@ class CGYRO:
         t = cgyro.tnorm
 
         # Flux
-        usec = cgyro.getflux("auto")
         ys = np.sum(cgyro.ky_flux, axis=(2, 3))
         if moment == "n":
             y = ys[ispec, 0, :]
@@ -366,7 +358,7 @@ class CGYRO:
             lw=lw,
             ls=ls[0],
         )
-        ax.set_title(f"Ion particle fluxes")
+        ax.set_title("Ion particle fluxes")
 
         # Extra
         ax = axs["C"]

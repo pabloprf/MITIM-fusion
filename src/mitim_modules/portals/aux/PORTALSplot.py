@@ -595,8 +595,8 @@ def PORTALSanalyzer_plotMetrics(
         ratio=0.9,
         withleg=True,
         size=fontsize_leg * 1.5,
-        title="Channels $\\widehat{L_1}$",
-    )  # ax.legend(prop={'size':fontsize_leg},loc='lower left')
+        title="Channels $\\fract{1}{n}L_1$",
+    )
     ax.set_xticklabels([])
 
     if separator is not None:
@@ -621,7 +621,7 @@ def PORTALSanalyzer_plotMetrics(
 
     for resChosen, label, c in zip(
         [self.resM, self.resCheck],
-        ["$\\widehat{L_2}$", "$\\widehat{L_1}$"],
+        ["OF: $\\frac{1}{n}L_2$", "$\\frac{1}{n}L_1$"],
         ["olive", "rebeccapurple"],
     ):
         ax.plot(
@@ -665,15 +665,15 @@ def PORTALSanalyzer_plotMetrics(
 
     GRAPHICStools.addDenseAxis(ax, n=5)
     ax.set_xlabel("Iterations (calls/radius)")
-    ax.set_ylabel("Residual Definitions")
+    ax.set_ylabel("Residual")
     ax.set_xlim(left=0)
     try:
         ax.set_yscale("log")
     except:
         pass
     GRAPHICStools.addLegendApart(
-        ax, ratio=0.9, withleg=True, size=fontsize_leg * 2.0
-    )  # ax.legend(prop={'size':fontsize_leg},loc='lower left')
+        ax, ratio=0.9, withleg=True, size=fontsize_leg * 2.0,title="Residuals",
+    )
 
     ax = axA
 

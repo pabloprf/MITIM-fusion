@@ -467,7 +467,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
     # Source term is (TARGET - TRANSPORT)
     source = cal - of
 
-    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2 or L1
+    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2
     res = -1 / source.shape[-1] * torch.norm(source, p=2, dim=-1)
 
     return of, cal, source, res
