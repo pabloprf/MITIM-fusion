@@ -342,13 +342,12 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
         except:
             OriginalFimp = 1.0
 
-        impurityPosition = self.runWithImpurity if self.runWithImpurity is not None else 1
+        impurityPosition = self.runWithImpurity+1 if self.runWithImpurity is not None else 1
 
         portals_variables = t.TGYROmodeledVariables(
             useConvectiveFluxes=self.useConvectiveFluxes,
             includeFast=self.includeFast,
             impurityPosition=impurityPosition,
-            ProfilesPredicted=self.TGYROparameters["ProfilesPredicted"],
             UseFineGridTargets=self.PORTALSparameters["fineTargetsResolution"],
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=self.PORTALSparameters["forceZeroParticleFlux"],
@@ -426,6 +425,7 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
                     d0=calculateRicci["d0"],
                     l=calculateRicci["l"],
                 )
+
                 self.qR_Ricci.append(QR[0])
                 self.chiR_Ricci.append(chiR[0])
                 self.points_Ricci.append(

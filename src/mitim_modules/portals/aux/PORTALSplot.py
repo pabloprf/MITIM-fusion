@@ -595,7 +595,7 @@ def PORTALSanalyzer_plotMetrics(
         ratio=0.9,
         withleg=True,
         size=fontsize_leg * 1.5,
-        title="Channels $\\fract{1}{n}L_1$",
+        title="Channels $\\frac{1}{n}L_1$",
     )
     ax.set_xticklabels([])
 

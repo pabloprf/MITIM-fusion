@@ -128,19 +128,19 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
 def TGYROmodeledVariables(
     self,
     useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
     includeFast=False,
     impurityPosition=1,
-    ProfilesPredicted=["te", "ti" "ne"],
-    provideTurbulentExchange=True,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
     dfT=torch.Tensor(),
 ):
+    '''
+    impurityPosition will be substracted one
+    '''
     if "tgyro_stds" not in self.__dict__:
         self.tgyro_stds = False
 
