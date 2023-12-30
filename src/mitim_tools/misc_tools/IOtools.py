@@ -42,7 +42,7 @@ class speeder(object):
         )
 
 
-def clipstr(txt, chars=30):
+def clipstr(txt, chars=40):
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
 
 
