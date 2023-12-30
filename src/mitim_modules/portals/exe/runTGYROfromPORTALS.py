@@ -46,7 +46,7 @@ restart = False
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderO)
 
 folder = IOtools.expandPath(folderO + "/tgyro_std_analysis/")
-tgyro,rhos,PredictionSet,TGLFsettings,extraOptionsTGLF = portals.extractTGYRO_init(folder=folder,restart=restart)
+tgyro,rhos,PredictionSet,TGLFsettings,extraOptionsTGLF = portals.extractTGYRO(folder=folder,restart=restart,step=0)
 
 # ------------------------------------------------------------------------------------------
 # Run TGYRO (function prep)

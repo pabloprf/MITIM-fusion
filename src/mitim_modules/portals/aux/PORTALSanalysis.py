@@ -54,91 +54,6 @@ class PORTALSanalyzer:
 
         print("- Interpreting PORTALS results")
 
-        # Read dictionaries
-        with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
-            self.mitim_runs = pickle_dill.load(f)
-
-        # What's the last iteration?
-        # self.opt_fun.prfs_model.train_Y.shape[0]
-        for ikey in self.mitim_runs:
-            if not isinstance(self.mitim_runs[ikey],dict):
-                break
-
-        # Store indeces
-        self.ibest = self.opt_fun.res.best_absolute_index
-        self.i0 = 0
-        self.ilast = ikey - 1
-        
-        if self.ilast == self.ibest:
-            self.iextra = None
-        else:                        
-            self.iextra = self.ilast
-        
-        # Store setup of TGYRO run
-        self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
-        self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
-        
-        self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
-        self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
-        self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
-
-        # Useful flags
-        self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
-
-        self.runWithImpurity = (
-            self.PORTALSparameters["ImpurityOfInterest"] -1
-            if "nZ" in self.ProfilesPredicted
-            else None
-        )
-
-        self.runWithRotation = "w0" in self.ProfilesPredicted
-        self.includeFast = self.PORTALSparameters["includeFastInQi"]
-        self.useConvectiveFluxes = self.PORTALSparameters["useConvectiveFluxes"]
-
-        # Profiles and tgyro results
-        print("\t- Reading profiles and tgyros for each evaluation")
-       
-        if self.mitim_runs is None:
-            print('\t\t* Reading from scratch from folders',typeMsg='i')
-        
-        self.profiles, self.tgyros = [], []
-        for i in range(self.ilast+1):
-            if self.mitim_runs is not None:
-               t = self.mitim_runs[i]["tgyro"].results["use"]
-               p = t.profiles_final
-            else:
-                p = PROFILEStools.PROFILES_GACODE(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/input.gacode.new")
-                t = TGYROtools.TGYROoutput(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/", profiles=p)
-
-            self.tgyros.append(t)
-            self.profiles.append(p)
-
-        if len(self.profiles) <= self.ibest:
-            print(
-                "\t- PORTALS was read after new residual was computed but before pickle was written!",
-                typeMsg="w",
-            )
-            self.ibest -= 1
-            self.iextra = None
-
-        self.profiles_next = None
-        x_train_num = self.step.train_X.shape[0]
-        file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
-        if os.path.exists(file):
-            print("\t\t- Reading next profile to evaluate (from folder)")
-            self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-
-            file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
-            if os.path.exists(file):
-                self.profiles_next_new = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-                self.profiles_next_new.printInfo(label="NEXT")
-            else:
-                self.profiles_next_new = self.profiles_next
-                self.profiles_next_new.deriveQuantities()
-        else:
-            print("\t\t- Could not read next profile to evaluate (from folder)")
-
-        # Create some metrics
         prep_metrics(self)
 
     # ****************************************************************************
@@ -184,17 +99,20 @@ class PORTALSanalyzer:
     # ADDITIONAL UTILITIES
     # ****************************************************************************
 
-    def extractTGYRO_init(self,folder=None,restart=False):
+    def extractTGYRO(self,folder=None,restart=False,step=0):
+
+        if step < 0:
+            step = self.ibest
 
         if folder is None:
-            folder = f'{self.folder}/tgyro_step0/' 
+            folder = f'{self.folder}/tgyro_step{step}/' 
 
         folder = IOtools.expandPath(folder)
         if not os.path.exists(folder): os.system(f'mkdir {folder}')
 
-        print(f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)}")
+        print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
-        profiles = self.mitim_runs[0]["tgyro"].profiles
+        profiles = self.mitim_runs[step]["tgyro"].profiles
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True)
@@ -309,7 +227,92 @@ class PORTALSanalyzer:
             tgyroB.plotRun(fn=fn, labels=[name])
 
 def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}): 
+
+    # Read dictionaries
+    with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
+        self.mitim_runs = pickle_dill.load(f)
+
+    # What's the last iteration?
+    # self.opt_fun.prfs_model.train_Y.shape[0]
+    for ikey in self.mitim_runs:
+        if not isinstance(self.mitim_runs[ikey],dict):
+            break
+
+    # Store indeces
+    self.ibest = self.opt_fun.res.best_absolute_index
+    self.i0 = 0
+    self.ilast = ikey - 1
     
+    if self.ilast == self.ibest:
+        self.iextra = None
+    else:                        
+        self.iextra = self.ilast
+    
+    # Store setup of TGYRO run
+    self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
+    self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
+    
+    self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
+    self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
+    self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
+
+    # Useful flags
+    self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
+
+    self.runWithImpurity = (
+        self.PORTALSparameters["ImpurityOfInterest"] -1
+        if "nZ" in self.ProfilesPredicted
+        else None
+    )
+
+    self.runWithRotation = "w0" in self.ProfilesPredicted
+    self.includeFast = self.PORTALSparameters["includeFastInQi"]
+    self.useConvectiveFluxes = self.PORTALSparameters["useConvectiveFluxes"]
+
+    # Profiles and tgyro results
+    print("\t- Reading profiles and tgyros for each evaluation")
+    
+    if self.mitim_runs is None:
+        print('\t\t* Reading from scratch from folders',typeMsg='i')
+    
+    self.profiles, self.tgyros = [], []
+    for i in range(self.ilast+1):
+        if self.mitim_runs is not None:
+            t = self.mitim_runs[i]["tgyro"].results["use"]
+            p = t.profiles_final
+        else:
+            p = PROFILEStools.PROFILES_GACODE(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/input.gacode.new")
+            t = TGYROtools.TGYROoutput(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/", profiles=p)
+
+        self.tgyros.append(t)
+        self.profiles.append(p)
+
+    if len(self.profiles) <= self.ibest:
+        print(
+            "\t- PORTALS was read after new residual was computed but before pickle was written!",
+            typeMsg="w",
+        )
+        self.ibest -= 1
+        self.iextra = None
+
+    self.profiles_next = None
+    x_train_num = self.step.train_X.shape[0]
+    file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
+    if os.path.exists(file):
+        print("\t\t- Reading next profile to evaluate (from folder)")
+        self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+
+        file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
+        if os.path.exists(file):
+            self.profiles_next_new = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+            self.profiles_next_new.printInfo(label="NEXT")
+        else:
+            self.profiles_next_new = self.profiles_next
+            self.profiles_next_new.deriveQuantities()
+    else:
+        print("\t\t- Could not read next profile to evaluate (from folder)")
+
+
     print("\t- Processing metrics")
 
     self.evaluations, self.resM = [], []
