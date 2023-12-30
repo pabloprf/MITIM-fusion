@@ -99,6 +99,39 @@ Make sure that you can ssh with ``ssh username@machine`` with no password for th
 
    Note that MITIM does not maintain or develop the simulation codes that are used within it, such as those from `GACODE <http://gafusion.github.io/doc/index.html>`_ or `TRANSP <hhttps://transp.pppl.gov/index.html>`_. It assumes that proper permissions have been obtained and that working versions of those codes exist in the machine configured to run them.
 
+Please note that MITIM will try to run the codes with standard commands that the shell must understand.
+For example, to run the TGLF code, MITIM will want to execute the command ``tglf`` in the shell.
+There are several ways to make sure that the shell understands the command:
+
+.. dropdown:: 1. Use MITIM automatic machine configuration (limited)
+
+   First, MITIM will automatically try to source ``$MITIM_PATH/config/mitim.bashrc``. If the machine you are running the code
+   in is listed in ``$MITIM_PATH/config/machine_sources/``, this will also source a machine-specific file.
+   Specifications to run certain codes (e.g. the GACODE suite) could be available there, but the number of machines that are
+   automatically available in the public repository is, obviously, limited.
+
+   Please note that this option is only valid if **MITIM repository is available also in that machine** (not only from the one you are launching the code).
+
+.. dropdown:: 2. Source at shell initialization (recommended)
+
+   Is the commands are available upon login in that machine (e.g. in your personal ``.bashrc`` file), MITIM will be able to run them.
+
+.. dropdown:: 3. Send specific commands per code
+
+   Finally, you can populate the ``modules`` option per machine in your ``config_user.json`` file. For example:
+
+   .. code-block:: console
+
+      "engaging": {
+         ...
+         "modules": "export GACODE_ROOT=/home/$USER/gacode && . ${GACODE_ROOT}/shared/bin/gacode_setup"
+         ...
+      }
+
+   MITIM will execute those commands immediately after ``source $MITIM_PATH/config/mitim.bashrc`` and before running any code.
+
+
+
 License and contributions
 -------------------------
 
