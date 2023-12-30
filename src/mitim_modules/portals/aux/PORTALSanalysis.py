@@ -109,6 +109,51 @@ class PORTALSanalyzer:
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
+    def extractPORTALS(self, step=-1, folder=None):
+        if step < 0:
+            step = self.ibest
+
+        if folder is None:
+            folder = f"{self.folder}/portals_step{step}/"
+
+        folder = IOtools.expandPath(folder)
+        if not os.path.exists(folder):
+            os.system(f"mkdir {folder}")
+
+        # Original class
+        portals_fun_original = self.opt_fun.prfs_model.mainFunction
+
+        # Start from the profiles of that step
+        fileGACODE = f'{folder}/input.gacode_tramsferred'
+        p = self.mitim_runs[step]["tgyro"].profiles
+        p.writeCurrentStatus(file=fileGACODE)
+       
+        # New class
+        from mitim_modules.portals.PORTALSmain import evaluatePORTALS
+        portals_fun  = evaluatePORTALS(folder)
+
+        # Transfer settings
+        portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
+        portals_fun.TGYROparameters = portals_fun_original.TGYROparameters
+        portals_fun.TGLFparameters = portals_fun_original.TGLFparameters
+        
+        # PRINTING
+        print(
+f'''
+\n
+****************************************************************************************************
+> MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
+    1. Modify any parameter as required
+                portals_fun.PORTALSparameters, portals_fun.TGYROparameters, portals_fun.TGLFparameters, portals_fun.Optim
+    2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
+                portals_fun.prep(fileGACODE,folder)
+    3. Run PORTALS with:
+                prf_bo = STRATEGYtools.PRF_BO(portals_fun);     prf_bo.run()
+****************************************************************************************************\n
+''',typeMsg='i')
+
+        return portals_fun,fileGACODE,folder
+
     def extractTGYRO(self, folder=None, restart=False, step=0):
         if step < 0:
             step = self.ibest
