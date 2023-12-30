@@ -2149,12 +2149,15 @@ class TGLF:
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
+            variable_beginning = variable.split("_")[0]
 
-            variable_beginning = variable.split('_')[0]
-
-            positions_where_var_is_found = np.where(np.array(ikey.split('_'))==variable_beginning)[0]
-            if len(positions_where_var_is_found)>0:
-                grab_name = '_'.join(ikey.split('_')[:positions_where_var_is_found[-1]])
+            positions_where_var_is_found = np.where(
+                np.array(ikey.split("_")) == variable_beginning
+            )[0]
+            if len(positions_where_var_is_found) > 0:
+                grab_name = "_".join(
+                    ikey.split("_")[: positions_where_var_is_found[-1]]
+                )
                 isThisTheRight = grab_name == subFolderTGLF
             else:
                 isThisTheRight = False

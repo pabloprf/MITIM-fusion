@@ -175,7 +175,7 @@ class surrogate_model:
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
 
-        if self.train_X_added.shape[0]>0:
+        if self.train_X_added.shape[0] > 0:
             self.ensureMinimalVariationSuppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
@@ -482,11 +482,32 @@ class surrogate_model:
                 data_dict = pickle_dill.load(f)
 
             if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
-                print('\t\t- Points from file have less input dimensions, extending with NaNs for writing new file',typeMsg='w')
-                self.train_X_added_full = torch.cat((self.train_X_added_full,torch.full((self.train_X_added_full.shape[0],train_X_Complete.shape[-1]-self.train_X_added_full.shape[-1]),torch.nan)),axis=-1)
+                print(
+                    "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
+                    typeMsg="w",
+                )
+                self.train_X_added_full = torch.cat(
+                    (
+                        self.train_X_added_full,
+                        torch.full(
+                            (
+                                self.train_X_added_full.shape[0],
+                                train_X_Complete.shape[-1]
+                                - self.train_X_added_full.shape[-1],
+                            ),
+                            torch.nan,
+                        ),
+                    ),
+                    axis=-1,
+                )
             elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
-                print('\t\t- Points from file have more input dimensions, removing last dimensions for writing new file',typeMsg='w')
-                self.train_X_added_full = self.train_X_added_full[:,:train_X_Complete.shape[-1]]
+                print(
+                    "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
+                    typeMsg="w",
+                )
+                self.train_X_added_full = self.train_X_added_full[
+                    :, : train_X_Complete.shape[-1]
+                ]
 
             x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
             y = torch.cat((self.train_Y_added, train_Y), axis=0)
@@ -681,26 +702,35 @@ class surrogate_model:
 
             return axs
 
-    def ensureMinimalVariationSuppressed(self,input_transform_physics,thr=1E-6):
-        '''
+    def ensureMinimalVariationSuppressed(self, input_transform_physics, thr=1e-6):
+        """
         In some cases, the added data from file might have extremely small variations in some of the fixed
         inputs, as compared to the trained data of this run. In such a case, modify this variation
-        '''
+        """
 
         # Do dimensions of the non-added points change?
         x_transform = input_transform_physics(self.train_X)
-        indecesUnchanged = torch.where((x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])/x_transform.mean(axis=0)[0] < thr)[0]
+        indecesUnchanged = torch.where(
+            (x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])
+            / x_transform.mean(axis=0)[0]
+            < thr
+        )[0]
 
         HasThisBeenApplied = 0
-        
+
         for i in indecesUnchanged:
-            if ((self.train_X_added[:,i]-x_transform[0,i])/x_transform[0,i]).max() < thr:
+            if (
+                (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
+            ).max() < thr:
                 HasThisBeenApplied += 1
                 for j in range(self.train_X_added.shape[0]):
-                    self.train_X_added[j,i] = x_transform[0,i]
+                    self.train_X_added[j, i] = x_transform[0, i]
 
-        if HasThisBeenApplied>0:
-            print(f'\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims',typeMsg='w')
+        if HasThisBeenApplied > 0:
+            print(
+                f"\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims",
+                typeMsg="w",
+            )
 
     def ensureMinimumNoise(self):
         if ("MinimumRelativeNoise" in self.surrogateOptions) and (

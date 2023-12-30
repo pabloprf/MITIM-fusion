@@ -3,40 +3,45 @@ import torch
 import numpy as np
 import dill as pickle_dill
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools import IOtools,PLASMAtools
-from mitim_tools.gacode_tools import TGLFtools,TGYROtools,PROFILEStools
+from mitim_tools.misc_tools import IOtools, PLASMAtools
+from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_modules.portals.aux import PORTALSplot
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
-class PORTALSanalyzer:
+from IPython import embed
 
+
+class PORTALSanalyzer:
     # ****************************************************************************
     # INITIALIZATION
     # ****************************************************************************
 
     def __init__(self, opt_fun, folderAnalysis=None):
-
-        print('\n************************************')
+        print("\n************************************")
         print("* Initializing PORTALS analyzer...")
-        print('************************************')
+        print("************************************")
 
         self.opt_fun = opt_fun
         self.prep()
-    
-        self.folder = folderAnalysis if folderAnalysis is not None else f'{self.opt_fun.folder}/Analysis/'
-        if not os.path.exists(self.folder): os.system(f'mkdir {self.folder}')
+
+        self.folder = (
+            folderAnalysis
+            if folderAnalysis is not None
+            else f"{self.opt_fun.folder}/Analysis/"
+        )
+        if not os.path.exists(self.folder):
+            os.system(f"mkdir {self.folder}")
 
     @classmethod
-    def from_folder(cls,folder,folderRemote=None, folderAnalysis=None):
-
+    def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
         opt_fun = STRATEGYtools.FUNmain(folder)
-        opt_fun.read_optimization_results(analysis_level=4, plotYN=False, folderRemote=folderRemote)
+        opt_fun.read_optimization_results(
+            analysis_level=4, plotYN=False, folderRemote=folderRemote
+        )
 
         return cls(opt_fun, folderAnalysis=folderAnalysis)
 
@@ -45,12 +50,13 @@ class PORTALSanalyzer:
     # ****************************************************************************
 
     def prep(self):
-
         print("- Grabbing model")
-        self.step =  self.opt_fun.prfs_model.steps[-1]
+        self.step = self.opt_fun.prfs_model.steps[-1]
         self.gp = self.step.GP["combined_model"]
 
-        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters["powerstate"]
+        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters[
+            "powerstate"
+        ]
 
         print("- Interpreting PORTALS results")
 
@@ -60,11 +66,11 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self,fn=None):
-
+    def plotPORTALS(self, fn=None):
         if fn is None:
             plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
+
             fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
             fnprov = False
         else:
@@ -86,49 +92,54 @@ class PORTALSanalyzer:
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
+
     def plotExpected(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotExpected(self, **kwargs)
+
     def plotSummary(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotSummary(self, **kwargs)
+
     def plotRanges(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotRanges(self, **kwargs)
+
     def plotModelComparison(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotModelComparison(self, **kwargs)
-    
+
     # ****************************************************************************
-    # ADDITIONAL UTILITIES
+    # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
-    def extractTGYRO(self,folder=None,restart=False,step=0):
-
+    def extractTGYRO(self, folder=None, restart=False, step=0):
         if step < 0:
             step = self.ibest
 
         if folder is None:
-            folder = f'{self.folder}/tgyro_step{step}/' 
+            folder = f"{self.folder}/tgyro_step{step}/"
 
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder): os.system(f'mkdir {folder}')
+        if not os.path.exists(folder):
+            os.system(f"mkdir {folder}")
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
         profiles = self.mitim_runs[step]["tgyro"].profiles
 
         tgyro = TGYROtools.TGYRO()
-        tgyro.prep(folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True)
+        tgyro.prep(
+            folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True
+        )
 
         TGLFsettings = self.TGLFparameters["TGLFsettings"]
         extraOptionsTGLF = self.TGLFparameters["extraOptionsTGLF"]
-        PredictionSet=[
-                    int("te" in self.TGYROparameters["ProfilesPredicted"]),
-                    int("ti" in self.TGYROparameters["ProfilesPredicted"]),
-                    int("ne" in self.TGYROparameters["ProfilesPredicted"]),
-                ]
+        PredictionSet = [
+            int("te" in self.TGYROparameters["ProfilesPredicted"]),
+            int("ti" in self.TGYROparameters["ProfilesPredicted"]),
+            int("ne" in self.TGYROparameters["ProfilesPredicted"]),
+        ]
 
-        return tgyro,self.rhos,PredictionSet,TGLFsettings,extraOptionsTGLF
+        return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self,folder=None,positions=None,step=-1,restart=False):        
-
+    def extractTGLF(self, folder=None, positions=None, step=-1, restart=False):
         if step < 0:
             step = self.ibest
 
@@ -140,16 +151,19 @@ class PORTALSanalyzer:
                 rhos.append(self.rhos[i])
 
         if folder is None:
-            folder = f'{self.folder}/tglf_step{step}/' 
+            folder = f"{self.folder}/tglf_step{step}/"
 
         folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(folder): os.system(f'mkdir {folder}')
+        if not os.path.exists(folder):
+            os.system(f"mkdir {folder}")
 
-        print(f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from step #{step}")
+        print(
+            f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from step #{step}"
+        )
 
         inputgacode = f"{folder}/input.gacode.start"
-        self.mitim_runs[step]['tgyro'].profiles.writeCurrentStatus(file=inputgacode)
+        self.mitim_runs[step]["tgyro"].profiles.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
@@ -159,9 +173,14 @@ class PORTALSanalyzer:
 
         return tglf, TGLFsettings, extraOptions
 
-    def runTGLF(self,folder=None,positions=None,step=-1,restart=False):
+    # ****************************************************************************
+    # UTILITIES for post-analysis
+    # ****************************************************************************
 
-        tglf, TGLFsettings, extraOptions = self.extractTGLF(folder=folder,positions=positions,step=step,restart=restart)
+    def runTGLF(self, folder=None, positions=None, step=-1, restart=False):
+        tglf, TGLFsettings, extraOptions = self.extractTGLF(
+            folder=folder, positions=positions, step=step, restart=restart
+        )
 
         tglf.run(
             subFolderTGLF="tglf_standalone/",
@@ -170,12 +189,11 @@ class PORTALSanalyzer:
             restart=restart,
         )
 
-        tglf.read(label='tglf_standalone')
+        tglf.read(label="tglf_standalone")
 
-        tglf.plotRun(labels=['tglf_standalone'])
+        tglf.plotRun(labels=["tglf_standalone"])
 
-    def runCases(self,onlyBest=False,restart=False,fn=None):
-
+    def runCases(self, onlyBest=False, restart=False, fn=None):
         from mitim_modules.portals.PORTALSmain import runModelEvaluator
 
         variations_best = self.opt_fun.res.best_absolute_full["x"]
@@ -196,7 +214,12 @@ class PORTALSanalyzer:
             name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
 
             resultsO, tgyroO, powerstateO, _ = runModelEvaluator(
-                self.opt_fun.prfs_model.mainFunction, FolderEvaluation, 0, dictDVs, name0, restart=restart
+                self.opt_fun.prfs_model.mainFunction,
+                FolderEvaluation,
+                0,
+                dictDVs,
+                name0,
+                restart=restart,
             )
 
         print(f"\t- Running best case #{self.opt_fun.res.best_absolute_index}")
@@ -226,8 +249,13 @@ class PORTALSanalyzer:
                 tgyroO.plotRun(fn=fn, labels=[name0])
             tgyroB.plotRun(fn=fn, labels=[name])
 
-def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}): 
 
+# ****************************************************************************
+# Helpers
+# ****************************************************************************
+
+
+def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
     # Read dictionaries
     with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
         self.mitim_runs = pickle_dill.load(f)
@@ -235,23 +263,23 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
     # What's the last iteration?
     # self.opt_fun.prfs_model.train_Y.shape[0]
     for ikey in self.mitim_runs:
-        if not isinstance(self.mitim_runs[ikey],dict):
+        if not isinstance(self.mitim_runs[ikey], dict):
             break
 
     # Store indeces
     self.ibest = self.opt_fun.res.best_absolute_index
     self.i0 = 0
     self.ilast = ikey - 1
-    
+
     if self.ilast == self.ibest:
         self.iextra = None
-    else:                        
+    else:
         self.iextra = self.ilast
-    
+
     # Store setup of TGYRO run
-    self.rhos = self.mitim_runs[0]['tgyro'].results['tglf_neo'].rho[0,1:]
-    self.roa = self.mitim_runs[0]['tgyro'].results['tglf_neo'].roa[0,1:]
-    
+    self.rhos = self.mitim_runs[0]["tgyro"].results["tglf_neo"].rho[0, 1:]
+    self.roa = self.mitim_runs[0]["tgyro"].results["tglf_neo"].roa[0, 1:]
+
     self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
     self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
     self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
@@ -260,7 +288,7 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
     self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
 
     self.runWithImpurity = (
-        self.PORTALSparameters["ImpurityOfInterest"] -1
+        self.PORTALSparameters["ImpurityOfInterest"] - 1
         if "nZ" in self.ProfilesPredicted
         else None
     )
@@ -271,18 +299,23 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
 
     # Profiles and tgyro results
     print("\t- Reading profiles and tgyros for each evaluation")
-    
+
     if self.mitim_runs is None:
-        print('\t\t* Reading from scratch from folders',typeMsg='i')
-    
+        print("\t\t* Reading from scratch from folders", typeMsg="i")
+
     self.profiles, self.tgyros = [], []
-    for i in range(self.ilast+1):
+    for i in range(self.ilast + 1):
         if self.mitim_runs is not None:
             t = self.mitim_runs[i]["tgyro"].results["use"]
             p = t.profiles_final
         else:
-            p = PROFILEStools.PROFILES_GACODE(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/input.gacode.new")
-            t = TGYROtools.TGYROoutput(f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/", profiles=p)
+            p = PROFILEStools.PROFILES_GACODE(
+                f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/input.gacode.new"
+            )
+            t = TGYROtools.TGYROoutput(
+                f"{self.opt_fun.folder}/Execution/Evaluation.{i}/model_complete/",
+                profiles=p,
+            )
 
         self.tgyros.append(t)
         self.profiles.append(p)
@@ -304,14 +337,15 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
 
         file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
         if os.path.exists(file):
-            self.profiles_next_new = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+            self.profiles_next_new = PROFILEStools.PROFILES_GACODE(
+                file, calculateDerived=False
+            )
             self.profiles_next_new.printInfo(label="NEXT")
         else:
             self.profiles_next_new = self.profiles_next
             self.profiles_next_new.deriveQuantities()
     else:
         print("\t\t- Could not read next profile to evaluate (from folder)")
-
 
     print("\t- Processing metrics")
 
@@ -322,11 +356,10 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
         self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = [], [], []
     else:
         self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
-    
-    for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
 
+    for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
         print(f"\t\t- Processing evaluation {i}/{len(self.profiles)-1}")
-        
+
         self.evaluations.append(i)
         self.FusionGain.append(p.derived["Q"])
         self.FusionPower.append(p.derived["Pfus"])
@@ -339,13 +372,13 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
         powerstate = self.opt_fun.prfs_model.mainFunction.powerstate
 
         try:
-            OriginalFimp = powerstate.TransportOptions["ModelOptions"][
-                "OriginalFimp"
-            ]
+            OriginalFimp = powerstate.TransportOptions["ModelOptions"]["OriginalFimp"]
         except:
             OriginalFimp = 1.0
 
-        impurityPosition = self.runWithImpurity+1 if self.runWithImpurity is not None else 1
+        impurityPosition = (
+            self.runWithImpurity + 1 if self.runWithImpurity is not None else 1
+        )
 
         portals_variables = t.TGYROmodeledVariables(
             useConvectiveFluxes=self.useConvectiveFluxes,
@@ -377,12 +410,8 @@ def prep_metrics(self,calculateRicci  = {"d0": 2.0, "l": 1.0}):
         GZ_resR = np.zeros(self.rhos.shape[0])
         Mt_resR = np.zeros(self.rhos.shape[0])
         cont = 0
-        for prof in self.TGYROparameters[
-            "ProfilesPredicted"
-        ]:
-            for ix in range(
-                self.rhos.shape[0]
-            ):
+        for prof in self.TGYROparameters["ProfilesPredicted"]:
+            for ix in range(self.rhos.shape[0]):
                 if prof == "te":
                     Qe_resR[ix] = source[0, cont].abs()
                 if prof == "ti":
@@ -531,6 +560,7 @@ def fix_pickledstate(state_to_mod, powerstate_to_add):
 
     with open(state_to_mod, "wb") as f:
         pickle_dill.dump(aux, f)
+
 
 def calcLinearizedModel(
     prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]

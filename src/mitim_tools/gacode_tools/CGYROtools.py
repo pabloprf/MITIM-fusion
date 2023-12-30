@@ -10,6 +10,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 
+
 class CGYRO:
     def __init__(
         self, alreadyRun=None, cdf=None, time=100.0, rhos=[0.4, 0.6], avTime=0.0

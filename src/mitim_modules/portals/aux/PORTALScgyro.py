@@ -26,6 +26,7 @@ trick_hardcoded_f = None
 # e.g.:
 # includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2023_PRISAd3d/cgyro_recover3/run1//Outputs/cgyro_results/d3d_5chan_it_'
 
+
 def evaluateCGYRO(
     PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, rad=4
 ):

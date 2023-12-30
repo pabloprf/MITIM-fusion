@@ -15,24 +15,25 @@ label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
 # Plotting methods for PORTALS class
 # ---------------------------------------------------------------------------------------------------------------------
 
-def PORTALSanalyzer_plotMetrics(
-        self,
-        fig=None,
-        indexToMaximize=None,
-        plotAllFluxes=False,
-        index_extra=None,
-        stds=2,
-        plotFlows=True,
-        fontsize_leg=5,
-        includeRicci=True,
-        useConvectiveFluxes = False, # By default, plot in real particle units
-        file_save=None):
 
+def PORTALSanalyzer_plotMetrics(
+    self,
+    fig=None,
+    indexToMaximize=None,
+    plotAllFluxes=False,
+    index_extra=None,
+    stds=2,
+    plotFlows=True,
+    fontsize_leg=5,
+    includeRicci=True,
+    useConvectiveFluxes=False,  # By default, plot in real particle units
+    file_save=None,
+):
     print("- Plotting PORTALS Metrics")
 
     if index_extra is not None:
-            self.iextra = index_extra
-    
+        self.iextra = index_extra
+
     if fig is None:
         plt.ion()
         fig = plt.figure(figsize=(15, 8))
@@ -88,7 +89,7 @@ def PORTALSanalyzer_plotMetrics(
     if indexToMaximize is None:
         indexToMaximize = self.ibest
     if indexToMaximize < 0:
-        indexToMaximize = self.ilast+1 + indexToMaximize
+        indexToMaximize = self.ilast + 1 + indexToMaximize
 
     # ---------------------------------------------------------------------------------------------------------
     # Plot all profiles
@@ -112,9 +113,7 @@ def PORTALSanalyzer_plotMetrics(
                 lab = ""
 
             ix = np.argmin(
-                np.abs(
-                    p.profiles["rho(-)"] - self.tgyros[self.i0].rho[0][-1]
-                )
+                np.abs(p.profiles["rho(-)"] - self.tgyros[self.i0].rho[0][-1])
             )
             axTe.plot(
                 p.profiles["rho(-)"],
@@ -572,9 +571,7 @@ def PORTALSanalyzer_plotMetrics(
             )
 
     # Plot las point as check
-    ax.plot(
-        [self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k"
-    )
+    ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
     separator = self.opt_fun.prfs_model.Optim["initialPoints"] + 0.5 - 1
 
@@ -672,7 +669,11 @@ def PORTALSanalyzer_plotMetrics(
     except:
         pass
     GRAPHICStools.addLegendApart(
-        ax, ratio=0.9, withleg=True, size=fontsize_leg * 2.0,title="Residuals",
+        ax,
+        ratio=0.9,
+        withleg=True,
+        size=fontsize_leg * 2.0,
+        title="Residuals",
     )
 
     ax = axA
@@ -1000,13 +1001,10 @@ def PORTALSanalyzer_plotMetrics(
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
 
-def PORTALSanalyzer_plotExpected(
-    self,
-    fig=None,
-    stds = 2, 
-    max_plot_points=4,
-    plotNext=True):
 
+def PORTALSanalyzer_plotExpected(
+    self, fig=None, stds=2, max_plot_points=4, plotNext=True
+):
     print("- Plotting PORTALS Expected")
 
     if fig is None:
@@ -1017,7 +1015,7 @@ def PORTALSanalyzer_plotExpected(
     # Plot
     # ----------------------------------------------------------------------
 
-    trained_points = self.ilast+1
+    trained_points = self.ilast + 1
     self.ibest = self.opt_fun.res.best_absolute_index
 
     # Best point
@@ -1047,7 +1045,7 @@ def PORTALSanalyzer_plotExpected(
         else:
             plotPoints.append(0)
             labelAssigned.append("#0 (base)")
-    
+
     if fig is None:
         fig = plt.figure(figsize=(12, 8))
 
@@ -1279,7 +1277,13 @@ def PORTALSanalyzer_plotExpected(
 
         if axnZ is not None:
             ax = axnZ
-            ax.plot(roa, p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1, "-", c="k", lw=lw)
+            ax.plot(
+                roa,
+                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                "-",
+                c="k",
+                lw=lw,
+            )
         if axw0 is not None:
             ax = axw0
             ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
@@ -1296,7 +1300,12 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             ax = axnZ_g
             ax.plot(
-                roa[:ix], p.derived["aLni"][:ix, self.runWithImpurity], "-o", c="k", markersize=0, lw=lw
+                roa[:ix],
+                p.derived["aLni"][:ix, self.runWithImpurity],
+                "-o",
+                c="k",
+                markersize=0,
+                lw=lw,
             )
         if axw0_g is not None:
             ax = axw0_g
@@ -1391,7 +1400,10 @@ def PORTALSanalyzer_plotExpected(
             p0 = self.profiles[0]
             zVals = []
             z = (
-                (p.derived["aLni"][:, self.runWithImpurity] - p0.derived["aLni"][:, self.runWithImpurity])
+                (
+                    p.derived["aLni"][:, self.runWithImpurity]
+                    - p0.derived["aLni"][:, self.runWithImpurity]
+                )
                 / p0.derived["aLni"][:, self.runWithImpurity]
             ) * 100.0
             for roai in roaVals:
@@ -1402,7 +1414,10 @@ def PORTALSanalyzer_plotExpected(
                 p0 = self.profiles[1]
                 zVals = []
                 z = (
-                    (p.derived["aLni"][:, self.runWithImpurity] - p0.derived["aLni"][:, self.runWithImpurity])
+                    (
+                        p.derived["aLni"][:, self.runWithImpurity]
+                        - p0.derived["aLni"][:, self.runWithImpurity]
+                    )
                     / p0.derived["aLni"][:, self.runWithImpurity]
                 ) * 100.0
                 for roai in roaVals:
@@ -1527,12 +1542,7 @@ def PORTALSanalyzer_plotExpected(
         ax.set_ylabel("$w_0$ (krad/s)")
         GRAPHICStools.addDenseAxis(ax, n=n)
 
-    roacoarse = (
-        self.powerstate
-        .plasma["roa"][0, 1:]
-        .cpu()
-        .numpy()
-    )
+    roacoarse = self.powerstate.plasma["roa"][0, 1:].cpu().numpy()
 
     ax = axTe_g
     ax.set_xlim([0, 1])
@@ -1697,10 +1707,8 @@ def PORTALSanalyzer_plotExpected(
     except:
         pass
 
-def PORTALSanalyzer_plotSummary(
-        self,
-        fn=None):
 
+def PORTALSanalyzer_plotSummary(self, fn=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
     indecesPlot = [
@@ -1713,13 +1721,9 @@ def PORTALSanalyzer_plotSummary(
     # Plot TGYROs
     # -------------------------------------------------------
 
-    self.tgyros[indecesPlot[1]].plot(
-        fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - "
-    )
+    self.tgyros[indecesPlot[1]].plot(fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ")
     if indecesPlot[0] < len(self.tgyros):
-        self.tgyros[indecesPlot[0]].plot(
-            fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - "
-        )
+        self.tgyros[indecesPlot[0]].plot(fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ")
 
     # -------------------------------------------------------
     # Plot PROFILES
@@ -1745,13 +1749,12 @@ def PORTALSanalyzer_plotSummary(
             extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
         )
 
-
     # -------------------------------------------------------
     # Plot Comparison
     # -------------------------------------------------------
 
-    profile_original = self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles
-    profile_best = self.mitim_runs[self.ibest]['tgyro'].results['tglf_neo'].profiles
+    profile_original = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
+    profile_best = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
 
     profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
     profile_original_0 = self.mitim_runs["profiles_original"]
@@ -1759,9 +1762,7 @@ def PORTALSanalyzer_plotSummary(
     fig4 = fn.add_figure(label="PROFILES Comparison")
     grid = plt.GridSpec(
         2,
-        np.max(
-            [3, len(self.ProfilesPredicted)]
-        ),
+        np.max([3, len(self.ProfilesPredicted)]),
         hspace=0.3,
         wspace=0.3,
     )
@@ -1775,11 +1776,11 @@ def PORTALSanalyzer_plotSummary(
     ]
 
     cont = 1
-    if  self.runWithImpurity:
+    if self.runWithImpurity:
         axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
         axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
         cont += 1
-    if  self.runWithRotation:
+    if self.runWithRotation:
         axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
         axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
 
@@ -1811,12 +1812,11 @@ def PORTALSanalyzer_plotSummary(
 
     axs4[0].legend(loc="best")
 
-def PORTALSanalyzer_plotRanges(
-        self,
-        fig=None):
 
+def PORTALSanalyzer_plotRanges(self, fig=None):
     if fig is None:
-        plt.ion(); fig = plt.figure()
+        plt.ion()
+        fig = plt.figure()
 
     pps = np.max(
         [3, len(self.ProfilesPredicted)]
@@ -1846,7 +1846,7 @@ def PORTALSanalyzer_plotRanges(
         label="final",
     )
 
-    p = self.mitim_runs[0]['tgyro'].results['tglf_neo'].profiles
+    p = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="b",
@@ -1863,7 +1863,7 @@ def PORTALSanalyzer_plotRanges(
         if type(self.mitim_runs[ikey]) != dict:
             break
 
-        p = self.mitim_runs[ikey]['tgyro'].results['tglf_neo'].profiles
+        p = self.mitim_runs[ikey]["tgyro"].results["tglf_neo"].profiles
         p.plotGradients(
             axsR,
             color="r",
@@ -1888,114 +1888,132 @@ def PORTALSanalyzer_plotRanges(
 
     axsR[0].legend(loc="best")
 
-def PORTALSanalyzer_plotModelComparison(
-        self,
-        axs = None,
-        GB=True,
-        radial_label=True):
 
+def PORTALSanalyzer_plotModelComparison(self, axs=None, GB=True, radial_label=True):
     if axs is None:
         plt.ion()
-        fig, axs = plt.subplots(ncols=3,figsize=(12,6))
+        fig, axs = plt.subplots(ncols=3, figsize=(12, 6))
 
-    self.plotModelComparison_quantity(axs[0],
-                                    quantity=f'Qe{"GB" if GB else ""}_sim_turb',
-                                    quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
-                                    labely = '$Q_e^{GB}$' if GB else '$Q_e$',
-                                    title = f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                    typeScale='log' if GB else 'linear',
-                                    radial_label = radial_label)
+    self.plotModelComparison_quantity(
+        axs[0],
+        quantity=f'Qe{"GB" if GB else ""}_sim_turb',
+        quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
+        labely="$Q_e^{GB}$" if GB else "$Q_e$",
+        title=f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
+        typeScale="log" if GB else "linear",
+        radial_label=radial_label,
+    )
 
-    self.plotModelComparison_quantity(axs[1],
-                                    quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
-                                    quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
-                                    labely = '$Q_i^{GB}$' if GB else '$Q_i$',
-                                    title =f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                    typeScale='log' if GB else 'linear',
-                                    radial_label = radial_label)
+    self.plotModelComparison_quantity(
+        axs[1],
+        quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
+        quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
+        labely="$Q_i^{GB}$" if GB else "$Q_i$",
+        title=f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
+        typeScale="log" if GB else "linear",
+        radial_label=radial_label,
+    )
 
-    self.plotModelComparison_quantity(axs[2],
-                                    quantity=f'Ge{"GB" if GB else ""}_sim_turb',
-                                    quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
-                                    labely = '$\\Gamma_e^{GB}$' if GB else '$\\Gamma_e$',
-                                    title = f"Electron particle flux {'(GB)' if GB else '($MW/m^2$)'}",
-                                    typeScale='linear',
-                                    radial_label = radial_label)
+    self.plotModelComparison_quantity(
+        axs[2],
+        quantity=f'Ge{"GB" if GB else ""}_sim_turb',
+        quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
+        labely="$\\Gamma_e^{GB}$" if GB else "$\\Gamma_e$",
+        title=f"Electron particle flux {'(GB)' if GB else '($MW/m^2$)'}",
+        typeScale="linear",
+        radial_label=radial_label,
+    )
 
     plt.tight_layout()
 
     return axs
 
-def plotModelComparison_quantity(
-        self,
-        ax,
-        quantity='QeGB_sim_turb',
-        quantity_stds='QeGB_sim_turb_stds',
-        labely = '',
-        title = '',
-        typeScale='linear',
-        radial_label = True):
 
-    resultsX = 'tglf_neo'
-    if 'cgyro_neo' in self.mitim_runs[0]['tgyro'].results:
-        resultsY = 'cgyro_neo'
-        labely_resultsY = '(CGYRO)'
+def plotModelComparison_quantity(
+    self,
+    ax,
+    quantity="QeGB_sim_turb",
+    quantity_stds="QeGB_sim_turb_stds",
+    labely="",
+    title="",
+    typeScale="linear",
+    radial_label=True,
+):
+    resultsX = "tglf_neo"
+    if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
+        resultsY = "cgyro_neo"
+        labely_resultsY = "(CGYRO)"
     else:
-        resultsY = 'tglf_neo'
-        labely_resultsY = '(TGLF)'
+        resultsY = "tglf_neo"
+        labely_resultsY = "(TGLF)"
 
     F_tglf = []
     F_cgyro = []
     F_tglf_stds = []
     F_cgyro_stds = []
-    for i in range(len(self.mitim_runs)-2):
+    for i in range(len(self.mitim_runs) - 2):
         try:
-            F_tglf.append(self.mitim_runs[i]['tgyro'].results[resultsX].__dict__[quantity][0,1:])
-            F_tglf_stds.append(self.mitim_runs[i]['tgyro'].results[resultsX].__dict__[quantity_stds][0,1:])
-            F_cgyro.append(self.mitim_runs[i]['tgyro'].results[resultsY].__dict__[quantity][0,1:])
-            F_cgyro_stds.append(self.mitim_runs[i]['tgyro'].results[resultsY].__dict__[quantity_stds][0,1:])
+            F_tglf.append(
+                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantity][0, 1:]
+            )
+            F_tglf_stds.append(
+                self.mitim_runs[i]["tgyro"]
+                .results[resultsX]
+                .__dict__[quantity_stds][0, 1:]
+            )
+            F_cgyro.append(
+                self.mitim_runs[i]["tgyro"].results[resultsY].__dict__[quantity][0, 1:]
+            )
+            F_cgyro_stds.append(
+                self.mitim_runs[i]["tgyro"]
+                .results[resultsY]
+                .__dict__[quantity_stds][0, 1:]
+            )
         except TypeError:
-            break   
-    F_tglf  = np.array(F_tglf)
+            break
+    F_tglf = np.array(F_tglf)
     F_cgyro = np.array(F_cgyro)
-    F_tglf_stds  = np.array(F_tglf_stds)
+    F_tglf_stds = np.array(F_tglf_stds)
     F_cgyro_stds = np.array(F_cgyro_stds)
 
     colors = GRAPHICStools.listColors()
 
     for ir in range(F_tglf.shape[1]):
         ax.errorbar(
-            F_tglf[:,ir],
-            F_cgyro[:,ir],
-            yerr=F_cgyro_stds[:,ir],
+            F_tglf[:, ir],
+            F_cgyro[:, ir],
+            yerr=F_cgyro_stds[:, ir],
             c=colors[ir],
             markersize=2,
             capsize=2,
             fmt="s",
             elinewidth=1.0,
             capthick=1.0,
-            label=f"$r/a={self.roa[ir]:.2f}$" if radial_label else ""
+            label=f"$r/a={self.roa[ir]:.2f}$" if radial_label else "",
         )
 
-    minFlux = np.min([F_tglf.min(),F_cgyro.min()])
-    maxFlux = np.max([F_tglf.max(),F_cgyro.max()])
+    minFlux = np.min([F_tglf.min(), F_cgyro.min()])
+    maxFlux = np.max([F_tglf.max(), F_cgyro.max()])
 
-    if radial_label: ax.plot([minFlux,maxFlux],[minFlux,maxFlux],'--',color='k')
-    if typeScale == 'log':
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-    elif typeScale == 'symlog':
-        ax.set_xscale('symlog')#,linthresh=1E-2)
-        ax.set_yscale('symlog')#,linthresh=1E-2)
-    ax.set_xlabel(f'{labely} (TGLF)')
-    ax.set_ylabel(f'{labely} {labely_resultsY}')
+    if radial_label:
+        ax.plot([minFlux, maxFlux], [minFlux, maxFlux], "--", color="k")
+    if typeScale == "log":
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+    elif typeScale == "symlog":
+        ax.set_xscale("symlog")  # ,linthresh=1E-2)
+        ax.set_yscale("symlog")  # ,linthresh=1E-2)
+    ax.set_xlabel(f"{labely} (TGLF)")
+    ax.set_ylabel(f"{labely} {labely_resultsY}")
     ax.set_title(title)
     GRAPHICStools.addDenseAxis(ax)
 
     ax.legend()
 
+
 # ---------------------------------------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------------------------------------------
+
 
 def varToReal(y, prfs_model):
     """
@@ -2414,6 +2432,7 @@ def plotVars(
 
     return contP
 
+
 def plotFluxComparison(
     p,
     t,
@@ -2439,7 +2458,6 @@ def plotFluxComparison(
     useRoa=False,
     locLeg="upper left",
 ):
-    
     labelsFluxesF = {
         "te": "$Q_e$ ($MW/m^2$)",
         "ti": "$Q_i$ ($MW/m^2$)",
@@ -2583,22 +2601,26 @@ def plotFluxComparison(
     if axnZ_f is not None:
         if useConvectiveFluxes:
             GZ, GZ_tar = (
-                t.Ci_sim_turb[runWithImpurity, :, :] + t.Ci_sim_neo[runWithImpurity, :, :],
+                t.Ci_sim_turb[runWithImpurity, :, :]
+                + t.Ci_sim_neo[runWithImpurity, :, :],
                 t.Ge_tar * 0.0,
             )
             try:
                 sigma = (
-                    t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:] + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
+                    t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:]
+                    + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
             GZ, GZ_tar = (
-                t.Gi_sim_turb[runWithImpurity, :, :] + t.Gi_sim_neo[runWithImpurity, :, :]
+                t.Gi_sim_turb[runWithImpurity, :, :]
+                + t.Gi_sim_neo[runWithImpurity, :, :]
             ), t.Ge_tar * 0.0
             try:
                 sigma = (
-                    t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:] + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
+                    t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:]
+                    + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
@@ -2823,6 +2845,7 @@ def plotFluxComparison(
                 Qmin -= np.abs(Qmin) * 0.5
                 Q = np.max([np.abs(Qmin), np.abs(Qmax)])
                 axw0_f.set_ylim([-Q, Q])
+
 
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05

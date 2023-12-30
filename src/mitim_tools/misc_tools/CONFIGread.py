@@ -101,7 +101,7 @@ def machineSettings(
         "port": None,
         "identity": None,
         "partition": None,
-        "modules": "source $MITIM_PATH/config/mitim.bashrc", 
+        "modules": "source $MITIM_PATH/config/mitim.bashrc",
         "folderWork": scratch,
         "exclude": s[machine]["exclude"] if "exclude" in s[machine] else None,
         "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
@@ -110,8 +110,14 @@ def machineSettings(
     }
 
     # I can give extra things to load in the config file
-    if "modules" in s[machine] and s[machine]["modules"] is not None and s[machine]["modules"] != "":
-        machineSettings["modules"] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
+    if (
+        "modules" in s[machine]
+        and s[machine]["modules"] is not None
+        and s[machine]["modules"] != ""
+    ):
+        machineSettings[
+            "modules"
+        ] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
     checkers = ["identity", "partition", "tunnel", "port"]
     for i in checkers:

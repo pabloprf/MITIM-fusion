@@ -1,16 +1,15 @@
-import os, copy, time
+import os
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from IPython import embed
 from mitim_tools.transp_tools.tools import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
-from mitim_tools.gacode_tools.aux import GACODEdefaults
 from mitim_tools.misc_tools import CONFIGread
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -520,7 +519,7 @@ def buildDictFromInput(inputFile):
                     parsed[splits[0].split()[0]] = splits[1].split()[0]
 
     for i in parsed:
-        if type(parsed[i]) == str:
+        if isinstance(parsed[i], str):
             if (
                 parsed[i].lower() == "t"
                 or parsed[i].lower() == "true"

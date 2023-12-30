@@ -53,7 +53,7 @@ class TGYRO:
         if cdf is not None:
             _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
         else:
-            self.nameRunid = "12345A01"
+            self.nameRunid = "mitim"
 
         self.time, self.avTime = time, avTime
 
@@ -318,7 +318,7 @@ class TGYRO:
         # Do the required files exist?
         exists = not restart
 
-        txt_nonexist = ''
+        txt_nonexist = ""
         if exists:
             for j in self.outputFiles:
                 file = f"{self.FolderTGYRO}{j}"
@@ -332,7 +332,7 @@ class TGYRO:
                     "\t- Some of the required output files did not exist, running TGYRO",
                     typeMsg="i",
                 )
-                #print(txt_nonexist, typeMsg="w")
+                # print(txt_nonexist, typeMsg="w")
 
         # ----------------------------------------------------------------
         # ----------------------------------------------------------------
@@ -1186,29 +1186,6 @@ class TGYRO:
 
         if (not fnProvided) and (not doNotShow):
             self.fn.show()
-
-    def analysisTGLF(self, label):
-        # TO FIX
-
-        inputgacode = self.results[label].profiles_final.file
-
-        # rhos 			= [0.5] 		# rho locations
-        # TGLFsettings 	= 4        		# settings to run tglf
-        # restartTGLF     = False # Restart the TGLF run
-
-        # # --- Workflow
-
-        # workingFolder   = '~/PRF/REGS/scratchs/tglf_case6/'
-        # if not os.path.exists(workingFolder):  IOtools.askNewFolder(workingFolder)
-        # inputgacode_new = '{0}/input.gacode'.format(workingFolder)
-        # os.system('cp {0} {1}'.format(inputgacode,inputgacode_new))
-
-        # tglf = TGLFtools.TGLF(rhos=rhos)
-        # cdf = tglf.prep(workingFolder,restart=False)
-        # tglf.run(subFolderTGLF='run1/',TGLFsettings=TGLFsettings,restart=restartTGLF)
-        # tglf.read(label='run1')
-
-        # tglf.plotRun(labels=['run1'])
 
 
 class TGYROoutput:
@@ -2300,10 +2277,6 @@ class TGYROoutput:
         ax.set_xlabel("$r/a$")
         ax.set_xlim([0, 1])
         ax.set_ylabel("$a/L_T$")
-        min0 = np.min(self.aLte[0])
-        min1 = np.min(self.aLte[-1])
-        max0 = np.max(self.aLte[0])
-        max1 = np.max(self.aLte[-1])
         ax.set_title("Electron Temperature Gradient")
 
         GRAPHICStools.addDenseAxis(ax)
@@ -2430,10 +2403,6 @@ class TGYROoutput:
         ax.set_xlabel("$r/a$")
         ax.set_xlim([0, 1])
         ax.set_ylabel("$a/L_T$")
-        min0 = np.min(self.aLti[0])
-        min1 = np.min(self.aLti[-1])
-        max0 = np.max(self.aLti[0])
-        max1 = np.max(self.aLti[-1])
         ax.set_title("Ion Temperature Gradient")
 
         GRAPHICStools.addDenseAxis(ax)
@@ -2563,10 +2532,6 @@ class TGYROoutput:
         ax.set_xlabel("$r/a$")
         ax.set_xlim([0, 1])
         ax.set_ylabel("$a/L_n$")
-        min0 = np.min(self.aLne[0])
-        min1 = np.min(self.aLne[-1])
-        max0 = np.max(self.aLne[0])
-        max1 = np.max(self.aLne[-1])
         ax.set_title("Density Gradient")
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3323,7 +3288,7 @@ class TGYROoutput:
         # ax.set_xlabel('$r/a$')
         ax.axhline(y=0, lw=0.5, c="k", ls="--")
         ax.legend(prop={"size": 6}, loc="best")
-        ax.set_title("Ions".format(i + 1))
+        ax.set_title("Ions")
 
         GRAPHICStools.addDenseAxis(ax)
 
@@ -4522,7 +4487,7 @@ class TGYROoutput:
         GRAPHICStools.addDenseAxis(ax)
         # GRAPHICStools.autoscale_y(ax)
 
-        ax2 = GRAPHICStools.addXaxis(
+        _ = GRAPHICStools.addXaxis(
             ax,
             self.iterations,
             self.calls_solver,

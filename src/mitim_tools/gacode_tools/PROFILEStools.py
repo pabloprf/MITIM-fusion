@@ -1139,7 +1139,6 @@ class PROFILES_GACODE:
                 self.profiles["ti(keV)"][:, sp] = tiRef
 
     def scaleAllThermalDensities(self, scaleFactor=1.0):
-        
         scaleFactor_ions = scaleFactor
 
         for sp in range(len(self.Species)):
@@ -3528,7 +3527,7 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
     ax01 = fig.add_subplot(grid[0, 1])
     ax11 = fig.add_subplot(grid[1, 1])
     ax02 = fig.add_subplot(grid[0, 2])
-    #ax12 = fig.add_subplot(grid[1, 2])
+    # ax12 = fig.add_subplot(grid[1, 2])
 
     cols = GRAPHICStools.listColors()
 

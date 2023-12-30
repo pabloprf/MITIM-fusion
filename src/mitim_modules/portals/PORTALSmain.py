@@ -459,7 +459,9 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         analysis_level = 2: Standard as other classes. Run best case, plot TGYRO
         analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
         """
-        return analyze_results(self,plotYN=plotYN, fn=fn, restart=restart, analysis_level=analysis_level)
+        return analyze_results(
+            self, plotYN=plotYN, fn=fn, restart=restart, analysis_level=analysis_level
+        )
 
     def reuseTrainingTabular(
         self, folderRead, folderNew, reevaluateTargets=0, restartIfExists=False
@@ -575,6 +577,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
             Tabular_Read.updateFile()
             TabularErrors_Read.updateFile()
+
 
 def runModelEvaluator(
     self,
@@ -705,7 +708,9 @@ def runModelEvaluator(
     return tgyro_current_results, tgyro_current, powerstate, dictOFs
 
 
-def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False):
+def analyze_results(
+    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False
+):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")
@@ -722,7 +727,6 @@ def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2,
     # ----------------------------------------------------------------------------------------------------------------
 
     if plotYN:
-
         portals_full.plotPORTALS(fn=fn)
 
     # ----------------------------------------------------------------------------------------------------------------
@@ -730,7 +734,6 @@ def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2,
     # ----------------------------------------------------------------------------------------------------------------
 
     if analysis_level in [2, 5]:
-
-        portals_full.runCases(onlyBest=onlyBest,restart=restart,fn=fn)
+        portals_full.runCases(onlyBest=onlyBest, restart=restart, fn=fn)
 
     return portals_full.opt_fun.prfs_model.mainFunction
