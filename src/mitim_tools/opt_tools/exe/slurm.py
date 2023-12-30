@@ -1,5 +1,5 @@
-import sys, os, argparse
-import numpy as np
+import os
+import argparse
 from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 
