@@ -5,8 +5,8 @@ Frequently Asked Questions
    :local:
    :depth: 1
 
-Issues during MITIM setup
--------------------------
+Issues during MITIM installation
+--------------------------------
 
 .. dropdown:: ``pyqt`` fails to install 
 
@@ -23,6 +23,14 @@ Issues during MITIM setup
    .. code-block:: console
       
       pip3 install -e $MITIM_PATH\[pyqt\]
+
+.. dropdown:: ``ERROR: Wheel`` error in pip:
+
+   Make sure you are getting the fresh packages, by using the ``--no-cache`` option:
+   
+   .. code-block:: console
+      
+      pip3 install -e $MITIM_PATH\[pyqt\] --no-cache
 
 Issues during MITIM tests
 -------------------------
