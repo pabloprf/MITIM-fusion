@@ -592,7 +592,7 @@ def PORTALSanalyzer_plotMetrics(
         ratio=0.9,
         withleg=True,
         size=fontsize_leg * 1.5,
-        title="Channels $\\frac{1}{n}L_1$",
+        title="Channels $\\frac{1}{N_c}L_1$",
     )
     ax.set_xticklabels([])
 
@@ -618,7 +618,7 @@ def PORTALSanalyzer_plotMetrics(
 
     for resChosen, label, c in zip(
         [self.resM, self.resCheck],
-        ["OF: $\\frac{1}{n}L_2$", "$\\frac{1}{n}L_1$"],
+        ["OF: $\\frac{1}{N}L_2$", "$\\frac{1}{N}L_1$"],
         ["olive", "rebeccapurple"],
     ):
         ax.plot(

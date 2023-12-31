@@ -348,13 +348,23 @@ class simple_model_portals:
 
     def __call__(self,x,samples=None):
             
+        numpy_provided =False
+        if isinstance(x, np.ndarray):
+            x = torch.Tensor(x)
+            numpy_provided = True
+
         mean, upper, lower, samples = self.gp.predict(x,produceFundamental=True,nSamples=samples)
 
         if samples is None:
-            return mean[...,0].detach(), upper[...,0].detach(), lower[...,0].detach()
+            if numpy_provided:
+                return mean[...,0].detach().cpu().numpy(), upper[...,0].detach().cpu().numpy(), lower[...,0].detach().cpu().numpy()
+            else:
+                return mean[...,0].detach(), upper[...,0].detach(), lower[...,0].detach()
         else:
-            return samples[...,0].detach()
-
+            if numpy_provided:
+                return samples[...,0].detach().cpu().numpy()   
+            else:
+                return samples[...,0].detach()
 
 def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
     # Read dictionaries
