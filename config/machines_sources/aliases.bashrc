@@ -13,7 +13,7 @@ alias mitim_run_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/ex
 # Optimizations
 alias mitim_plot_opt="ipython3 -i -- $MITIM_PATH/src/mitim_tools/opt_tools/exe/read.py --type 4 --resolution 20 --folders $1"
 alias mitim_plot_portalsSR="ipython3 -i -- $MITIM_PATH/src/mitim_modules/portals/exe/check_initialization.py $1"
-alias mitim_plot_portals="mitim_plot_opt $1"
+alias mitim_plot_portals="ipython3 -i -- $MITIM_PATH/src/mitim_modules/portals/exe/readMetrics.py --folders $1"
 
 # TRANSP
 alias mitim_trcheck="python3 $MITIM_PATH/src/mitim_tools/transp_tools/exe/run_check.py $1"		# mitim_trcheck pablorf
