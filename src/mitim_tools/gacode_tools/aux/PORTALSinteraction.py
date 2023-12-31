@@ -306,8 +306,6 @@ def TGYROmodeledVariables(
         self.EXe_sim_turb_stds[:, :] if self.tgyro_stds else None
     )
 
-    # portals_variables['PexchTurbFlux'] 	= self.Qe_tarMW_expwd/self.dvoldr 		# MW/m^2
-
     if forceZeroParticleFlux:
         portals_variables["Ge"] = self.Ge_tar[:, :] * 0.0
 

@@ -224,7 +224,7 @@ def PORTALSanalyzer_plotMetrics(
 
             if axne_f is not None:
                 axne_f.plot(t.rho[0], Ge[0], "-", c=col, lw=lwt, alpha=alph)
-                axne_f.plot(t.rho[0], Ge_tar[0], "--", c=col, lw=lwt, alpha=alph)
+                axne_f.plot(t.rho[0], Ge_tar[0]*(1-int(self.forceZeroParticleFlux)), "--", c=col, lw=lwt, alpha=alph)
 
             if axnZ_f is not None:
                 if useConvectiveFluxes:
@@ -365,6 +365,7 @@ def PORTALSanalyzer_plotMetrics(
             col=col,
             lab=lab,
             msFlux=msFlux,
+            forceZeroParticleFlux=self.forceZeroParticleFlux,
             useConvectiveFluxes=useConvectiveFluxes,
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
@@ -2016,9 +2017,6 @@ def plotModelComparison_quantity(
 
 
 def varToReal(y, prfs_model):
-    """
-    NEO
-    """
 
     of, cal, res = prfs_model.mainFunction.scalarized_objective(
         torch.Tensor(y).to(prfs_model.mainFunction.dfT).unsqueeze(0)
@@ -2441,6 +2439,7 @@ def plotFluxComparison(
     axne_f,
     axnZ_f,
     axw0_f,
+    forceZeroParticleFlux=False,
     runWithImpurity=3,
     labZ="Z",
     includeFirst=True,
@@ -2568,6 +2567,9 @@ def plotFluxComparison(
             sigma = t.Ge_sim_turb_stds[0][ixF:] + t.Ge_sim_neo_stds[0][ixF:]
         except:
             sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+
+    if forceZeroParticleFlux:
+        Ge_tar = Ge_tar * 0.0
 
     if axne_f is not None:
         axne_f.plot(

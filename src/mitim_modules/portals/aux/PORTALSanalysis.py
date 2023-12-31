@@ -407,6 +407,7 @@ def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
     self.runWithRotation = "w0" in self.ProfilesPredicted
     self.includeFast = self.PORTALSparameters["includeFastInQi"]
     self.useConvectiveFluxes = self.PORTALSparameters["useConvectiveFluxes"]
+    self.forceZeroParticleFlux = self.PORTALSparameters["forceZeroParticleFlux"]
 
     # Profiles and tgyro results
     print("\t- Reading profiles and tgyros for each evaluation")

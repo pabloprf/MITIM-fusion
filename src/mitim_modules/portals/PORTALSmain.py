@@ -371,16 +371,14 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         )
 
         a, b = IOtools.reducePathLevel(self.folder, level=1)
-        name = f"portals_{b}_ev{numPORTALS}".format(
-            b, numPORTALS
-        )  # e.g. portals_jet37_ev0
+        name = f"portals_{b}_ev{numPORTALS}"    # e.g. portals_jet37_ev0
 
         # Specify the number of PORTALS evaluation. Copy in case of parallel run
         extra_params_model = copy.deepcopy(self.extra_params)
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, tgyro, powerstate, dictOFs = runModelEvaluator(
+        _, tgyro, _, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             numPORTALS,
@@ -433,7 +431,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
         var_dict = {}
         for of in ofs_ordered_names:
-            var, pos = of.split("_")
+            var, _ = of.split("_")
             if var not in var_dict:
                 var_dict[var] = torch.Tensor().to(Y)
             var_dict[var] = torch.cat(

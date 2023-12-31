@@ -856,6 +856,10 @@ class powerstate:
                 self.plasma["te"], self.plasma["CZ"]
             )  # MW/m^2
 
+        if ('forceZeroParticleFlux' in self.TransportOptions['ModelOptions']) and \
+        self.TransportOptions['ModelOptions']['forceZeroParticleFlux']:
+            self.plasma["Ce"] = self.plasma["Ce"] * 0
+
         """
 		**************************************************************************************************
 		GB Normalized

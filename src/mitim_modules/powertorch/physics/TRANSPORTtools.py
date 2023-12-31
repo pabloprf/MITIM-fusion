@@ -103,7 +103,6 @@ def tgyro_model(
     includeFast = ModelOptions["includeFastInQi"]
     impurityPosition = ModelOptions["impurityPosition"]
     useConvectiveFluxes = ModelOptions["useConvectiveFluxes"]
-    ProfilesPredicted = TGYROparameters["ProfilesPredicted"]
     UseFineGridTargets = ModelOptions["UseFineGridTargets"]
 
     launchTGYROviaSlurm = ModelOptions.get("launchTGYROviaSlurm", False)
@@ -157,7 +156,7 @@ def tgyro_model(
         print("\t- Launching TGYRO evaluation as a terminal job")
 
     self.tgyro_current.run(
-        subFolderTGYRO=f"tglf_neo_original/",
+        subFolderTGYRO="tglf_neo_original/",
         restart=restart,
         forceIfRestart=True,
         special_radii=RadiisToRun,
@@ -271,7 +270,7 @@ def tgyro_model(
             dfT=self.dfT,
         )
 
-        print(f"\t- Checking model modifications:")
+        print("\t- Checking model modifications:")
         for r in ["Qe_turb", "Qi_turb", "Ge_turb", "GZ_turb", "Mt_turb", "PexchTurb"]:
             print(
                 f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(portals_variables_orig[r][0][1:],portals_variables_orig[r+'_stds'][0][1:]) ])}"
