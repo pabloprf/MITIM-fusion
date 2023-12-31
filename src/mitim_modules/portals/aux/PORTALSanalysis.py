@@ -109,6 +109,38 @@ class PORTALSanalyzer:
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
+    def extractModels(self, step=-1):
+        if step < 0:
+            step = len(self.opt_fun.prfs_model.steps)-1
+
+        gps =  self.opt_fun.prfs_model.steps[step].GP["individual_models"]
+
+        # Make dictionary
+        models = {}
+        for i,gp in enumerate(gps):
+            models[gp.output] = simple_model_portals(gp)
+
+        # PRINTING
+        print(
+f'''
+****************************************************************************************************
+> MITIM has extracted {len(models)} GP models as a dictionary (only returned variable), to proceed:
+    1. Look at the dictionary keys to see which models are available:
+                models.keys()
+    2. Select one model and print its information (e.g. variable labels and order):
+                m = models['QeTurb_1']
+                m.printInfo()
+    3. Trained points are stored as m.x, m.y, m.yvar, and you can make predictions with:
+                x_test = m.x
+                mean, upper, lower = m(x_test)
+    4. Extract samples from the GP with:
+                x_test = m.x
+                samples = m(x_test,samples=100)
+****************************************************************************************************
+''',typeMsg='i')
+
+        return models
+
     def extractPORTALS(self, step=-1, folder=None):
         if step < 0:
             step = self.ibest
@@ -140,7 +172,6 @@ class PORTALSanalyzer:
         # PRINTING
         print(
 f'''
-\n
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
@@ -149,7 +180,7 @@ f'''
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
                 prf_bo = STRATEGYtools.PRF_BO(portals_fun);     prf_bo.run()
-****************************************************************************************************\n
+****************************************************************************************************
 ''',typeMsg='i')
 
         return portals_fun,fileGACODE,folder
@@ -298,6 +329,31 @@ f'''
 # ****************************************************************************
 # Helpers
 # ****************************************************************************
+
+class simple_model_portals:
+    def __init__(self, gp):
+        self.gp = gp
+
+        self.x =self.gp.gpmodel.train_X_usedToTrain
+        self.y =self.gp.gpmodel.train_Y_usedToTrain
+        self.yvar =self.gp.gpmodel.train_Yvar_usedToTrain
+
+        #self.printInfo()
+
+    def printInfo(self):
+
+        print(f'> Model for {self.gp.output} created')
+        print(f'\t- Fitted to {len(self.gp.variables)} variables in this order: {self.gp.variables}')
+        print(f'\t- Trained with {self.x.shape[0]} points')
+
+    def __call__(self,x,samples=None):
+            
+        mean, upper, lower, samples = self.gp.predict(x,produceFundamental=True,nSamples=samples)
+
+        if samples is None:
+            return mean[...,0].detach(), upper[...,0].detach(), lower[...,0].detach()
+        else:
+            return samples[...,0].detach()
 
 
 def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
