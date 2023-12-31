@@ -1,6 +1,5 @@
 import os
 import argparse
-from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 """
@@ -33,7 +32,7 @@ def commander(
         f"python3 {script} {folderWork} --seed {seed}",
     ]
 
-    comm, fileSBTACH, fileSHELL = FARMINGtools.SLURM(
+    _, fileSBTACH, _ = FARMINGtools.SLURM(
         command,
         folderWork,
         None,
