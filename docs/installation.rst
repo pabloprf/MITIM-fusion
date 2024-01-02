@@ -77,7 +77,8 @@ For production runs, a minimum verbose level of ``1`` is recommended so that you
 For example, if TGLF is set up to run in the *eofe7.mit.edu* machine, this means that, every time in the MITIM workflow when TGLF needs to run, it will access *eofe7.mit.edu* machine to do so, and therefore you must specify how to access the engaging machine:
 
 .. code-block:: console
-
+   
+   {
       "preferences": {
          "tglf":             "engaging",
          "verbose_level":    "5",
@@ -90,6 +91,7 @@ For example, if TGLF is set up to run in the *eofe7.mit.edu* machine, this means
          "identity":         "~/.ssh/id_rsa",
          "scratch":          "/nobackup1/pablorf/scratch/"
          }
+   }
 
 If you select to run a code in a given machine, please make sure you have ssh rights to that machine with the login instructions specified, unless you are running it locally.
 MITIM will attempt to secure-copy and access that machine through a standard SSH connection and it must therefore be set-up prior to launching MITIM jobs.
