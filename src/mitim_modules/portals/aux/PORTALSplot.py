@@ -28,6 +28,7 @@ def PORTALSanalyzer_plotMetrics(
     includeRicci=True,
     useConvectiveFluxes=False,  # By default, plot in real particle units
     file_save=None,
+    **kwargs,
 ):
     print("- Plotting PORTALS Metrics")
 

@@ -28,12 +28,7 @@ args = parser.parse_args()
 
 folders = args.folders
 
-
-size = 8
-plt.rc("font", family="serif", serif="Times", size=size)
-plt.rc("xtick.minor", size=size)
-plt.close("all")
-
+portals_total = []
 for folderWork in folders:
     folderRemote_reduced = args.remote
     file = args.file
@@ -51,10 +46,40 @@ for folderWork in folders:
     portals = PORTALSanalysis.PORTALSanalyzer.from_folder(
         folderWork, folderRemote=folderRemote
     )
+
+    portals_total.append(portals)
     
-    portals.plotMetrics(
+# PLOTTING
+
+size = 8
+plt.rc("font", family="serif", serif="Times", size=size)
+plt.rc("xtick.minor", size=size)
+plt.close("all")
+
+if len(folders) == 1:
+    plt.ion()
+    fig = plt.figure(figsize=(15, 8))
+    fn = None
+else:
+    from mitim_tools.misc_tools.GUItools import FigureNotebook
+    plt.ioff()
+    fn = FigureNotebook(0, "PORTALS", geometry="1500x800")
+
+
+
+for i in range(len(folders)):
+
+    if len(folders) > 1:
+        fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folderWork)[-1]}")
+
+    portals_total[i].plotMetrics(
+        fig = fig,
+        fn = fn,
         indexToMaximize=indexToMaximize,
         plotAllFluxes=plotAllFluxes,
         index_extra=index_extra,
-        file_save=file,
+        file_save=file if len(folders) == 1 else None,
     )
+
+if len(folders) > 1:    
+    fn.show()
