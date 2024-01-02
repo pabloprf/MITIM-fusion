@@ -64,7 +64,7 @@ then
 	# --------------------------------------------------------------------------------
 
 	export GACODE_PLATFORM=PSFC_EOFE_RPP
-	export GACODE_ROOT=/home/$USER/gacode_sparc
+	export GACODE_ROOT=/home/$USER/gacode_rpp
 
 	# --------------------------------------------------------------------------------
 	#               ASTRA
