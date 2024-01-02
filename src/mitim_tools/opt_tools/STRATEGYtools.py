@@ -853,6 +853,12 @@ class PRF_BO:
             if "evaluators" in copyClass.steps[i].__dict__:
                 del copyClass.steps[i].evaluators
 
+        # -------------------------------------------------------------------------------------------------
+        # Add time stamp
+        # -------------------------------------------------------------------------------------------------
+
+        copyClass.timeStamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         return copyClass
 
     def prepare_for_read_PRFBO(self, copyClass):
@@ -871,7 +877,7 @@ class PRF_BO:
 
         return copyClass
 
-    def save(self, storeClass=True, name="MITIMstate.pkl"):
+    def save(self, name="MITIMstate.pkl"):
         print("* Proceeding to save new MITIM state pickle file")
         stateFile = f"{self.folderOutputs}/{name}"
         stateFile_tmp = f"{self.folderOutputs}/{name}_tmp"
