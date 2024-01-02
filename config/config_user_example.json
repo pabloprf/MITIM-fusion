@@ -53,6 +53,13 @@
         "scratch":    "/cluster-scratch/exampleusername/",
         "modules":    ""
     },
+    "spark": {
+        "machine":    "spark.pppl.gov",
+        "username":   "exampleusername",
+        "port":            22,
+        "scratch":    "/scratch/local/exampleusername/",
+        "modules":    ""
+    },
     "globus": {
         "username":   "exampleusername",
         "email":      "exampleusername@examplehost"
