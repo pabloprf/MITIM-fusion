@@ -13,7 +13,7 @@ Installation
 Instructions
 ------------
 
-Clone the `GitHub repository  <https://github.com/pabloprf/MITIM-fusion>`_ (do not forget to select **Watch All activity** to receive notifications of new releases and announcements, and **Star** the repository to increase its visibility):
+Clone the `GitHub repository  <https://github.com/pabloprf/MITIM-fusion>`_ (do not forget to select the appropriate settings to receive notifications of new releases and announcements, and **Star** the repository to increase its visibility):
 
 .. code-block:: console
 
