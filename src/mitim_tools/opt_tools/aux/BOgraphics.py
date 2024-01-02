@@ -583,7 +583,7 @@ def plotSensitivities_surrogate_model(
 
 
 def plotTraining_surrogate_model(
-    self, axs=None, relative_to=-1, figIndex_inner=0, stds=2.0
+    self, axs=None, relative_to=-1, figIndex_inner=0, stds=2.0, legYN=True
 ):
     colors = GRAPHICStools.listColors()
 
@@ -636,7 +636,7 @@ def plotTraining_surrogate_model(
             label=newLabels[j],
         )
 
-    ax2.plot(x, trainYtr[:, 0], "-s", markersize=3, color="b")
+    ax2.plot(x, trainYtr[:, 0], "-s", markersize=3, color="b",label="train")
     ax2.errorbar(
         x,
         trainYtr[:, 0],
@@ -648,7 +648,7 @@ def plotTraining_surrogate_model(
 
     mean, upper, lower, _ = self.predict(train_X, produceFundamental=True)
     mean = mean[:, 0].detach().cpu().numpy()
-    ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3)
+    ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3,label="model")
     ax2.errorbar(
         x,
         mean,
@@ -681,6 +681,9 @@ def plotTraining_surrogate_model(
     ax2.set_xlabel("Evaluation")
     GRAPHICStools.addDenseAxis(ax2)
     ax2.set_xlim(left=0)
+
+    if legYN:
+        ax2.legend(loc="best",prop={'size': 4})
 
 
 def localBehavior_surrogate_model(
@@ -834,6 +837,11 @@ def retrieveResults(
 
     print("\t\t--> Opening MITIMstate.pkl")
     prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/MITIMstate.pkl")
+     
+    if "timeStamp" in prfs_model.__dict__:
+        print(f'\t\t\t- Time stamp of MITIMstate.pkl: {prfs_model.timeStamp}')
+    else:
+        print('\t\t\t- Time stamp of MITIMstate.pkl not found')
 
     # ---------------- Read ResultsOptimization
     fileOutputs = folderWork + "/Outputs/ResultsOptimization.out"

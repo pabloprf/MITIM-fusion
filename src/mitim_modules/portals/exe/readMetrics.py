@@ -22,6 +22,10 @@ parser.add_argument(
 parser.add_argument(
     "--file", type=str, required=False, default=None
 )  # File to save .eps
+parser.add_argument(
+    "--complete", type=bool, required=False, default=False
+)
+
 
 args = parser.parse_args()
 
@@ -35,6 +39,7 @@ for folderWork in folders:
     indexToMaximize = args.max
     index_extra = args.index_extra
     plotAllFluxes = args.all
+    complete = args.complete
 
     folderRemote = (
         f"{folderRemote_reduced}/{IOtools.reducePathLevel(folderWork)[-1]}/"
@@ -56,7 +61,7 @@ plt.rc("font", family="serif", serif="Times", size=size)
 plt.rc("xtick.minor", size=size)
 plt.close("all")
 
-if len(folders) == 1:
+if (len(folders) == 1) and (not complete):
     plt.ion()
     fig = plt.figure(figsize=(15, 8))
     fn = None
@@ -69,17 +74,20 @@ else:
 
 for i in range(len(folders)):
 
-    if len(folders) > 1:
-        fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folderWork)[-1]}")
+    if (not complete) or isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer):
+        if len(folders) > 1:
+            fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folderWork)[-1]}")
 
-    portals_total[i].plotMetrics(
-        fig = fig,
-        fn = fn,
-        indexToMaximize=indexToMaximize,
-        plotAllFluxes=plotAllFluxes,
-        index_extra=index_extra,
-        file_save=file if len(folders) == 1 else None,
-    )
+        portals_total[i].plotMetrics(
+            fig = fig,
+            fn = fn,
+            indexToMaximize=indexToMaximize,
+            plotAllFluxes=plotAllFluxes,
+            index_extra=index_extra,
+            file_save=file if len(folders) == 1 else None,
+        )
+    else:
+        portals_total[i].plotPORTALS(fn=fn)
 
-if len(folders) > 1:    
+if (len(folders) > 1) or complete:    
     fn.show()

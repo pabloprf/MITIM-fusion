@@ -1936,7 +1936,8 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         radial_label=radial_label,
     )
 
-    if not figprov: plt.tight_layout()
+    if not figprov:
+        plt.tight_layout()
 
     return axs
 
