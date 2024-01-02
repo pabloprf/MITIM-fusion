@@ -1862,7 +1862,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     )
 
     for ikey in self.mitim_runs:
-        if type(self.mitim_runs[ikey]) != dict:
+        if not isinstance(self.mitim_runs[ikey], dict):
             break
 
         p = self.mitim_runs[ikey]["tgyro"].results["tglf_neo"].profiles
@@ -1891,12 +1891,20 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     axsR[0].legend(loc="best")
 
 
-def PORTALSanalyzer_plotModelComparison(self, axs=None, GB=True, radial_label=True):
-    if axs is None:
+def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True):
+    
+    if (fig is None) and (axs is None):
         plt.ion()
-        fig, axs = plt.subplots(ncols=3, figsize=(12, 6))
+        fig = plt.figure()
+        figprov = False
+    else:
+        figprov = True
+    
+    if axs is None:
+        axs = fig.subplots(ncols=3)
 
-    self.plotModelComparison_quantity(
+    plotModelComparison_quantity(
+        self,
         axs[0],
         quantity=f'Qe{"GB" if GB else ""}_sim_turb',
         quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
@@ -1906,7 +1914,8 @@ def PORTALSanalyzer_plotModelComparison(self, axs=None, GB=True, radial_label=Tr
         radial_label=radial_label,
     )
 
-    self.plotModelComparison_quantity(
+    plotModelComparison_quantity(
+        self,
         axs[1],
         quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
         quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
@@ -1916,7 +1925,8 @@ def PORTALSanalyzer_plotModelComparison(self, axs=None, GB=True, radial_label=Tr
         radial_label=radial_label,
     )
 
-    self.plotModelComparison_quantity(
+    plotModelComparison_quantity(
+        self,
         axs[2],
         quantity=f'Ge{"GB" if GB else ""}_sim_turb',
         quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
@@ -1926,7 +1936,7 @@ def PORTALSanalyzer_plotModelComparison(self, axs=None, GB=True, radial_label=Tr
         radial_label=radial_label,
     )
 
-    plt.tight_layout()
+    if not figprov: plt.tight_layout()
 
     return axs
 
@@ -1984,6 +1994,7 @@ def plotModelComparison_quantity(
         ax.errorbar(
             F_tglf[:, ir],
             F_cgyro[:, ir],
+            xerr=F_tglf_stds[:, ir],
             yerr=F_cgyro_stds[:, ir],
             c=colors[ir],
             markersize=2,

@@ -95,6 +95,9 @@ class PORTALSanalyzer:
         fig = fn.add_figure(label="PORTALS Expected")
         self.plotExpected(fig=fig)
 
+        fig = fn.add_figure(label="PORTALS Simulation")
+        self.plotModelComparison(fig=fig)
+
         if not fnprov:
             fn.show()
 
