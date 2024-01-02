@@ -1,13 +1,15 @@
+from math import e
 import os
 import torch
 import numpy as np
 import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools import IOtools, PLASMAtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_modules.portals.aux import PORTALSplot
+from mitim_modules.powertorch import STATEtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 from IPython import embed
@@ -39,11 +41,17 @@ class PORTALSanalyzer:
         print(f"\n...opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
         opt_fun = STRATEGYtools.FUNmain(folder)
-        opt_fun.read_optimization_results(
-            analysis_level=4, plotYN=False, folderRemote=folderRemote
-        )
 
-        return cls(opt_fun, folderAnalysis=folderAnalysis)
+        try:
+            opt_fun.read_optimization_results(
+                analysis_level=4, plotYN=False, folderRemote=folderRemote
+            )
+
+            return cls(opt_fun, folderAnalysis=folderAnalysis)
+        except (FileNotFoundError,AttributeError):
+            print("\n> Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
+
+            return PORTALSinitializer(folder)
 
     # ****************************************************************************
     # PREPARATION
@@ -750,3 +758,117 @@ def calcLinearizedModel(
     ]
 
     return aLTn_perc
+
+class PORTALSinitializer:
+    
+    def __init__(self, folder):
+
+        self.folder = IOtools.expandPath(folder)
+
+        # Read powerstates
+        self.powerstates = []
+        self.profiles = []
+        for i in range(10):
+            try:
+                prof = PROFILEStools.PROFILES_GACODE(f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}")
+                p = STATEtools.read_saved_state(
+                    f"{self.folder}/Initialization/initialization_simple_relax/portals_{IOtools.reducePathLevel(self.folder)[1]}_ev{i}/powerstate.pkl"
+                )
+            except FileNotFoundError:
+                break
+
+            self.profiles.append(prof)
+            p.profiles.deriveQuantities()
+            self.powerstates.append(p)
+
+    def plotMetrics(self, fn = None, **kwargs):
+
+        if fn is None:
+            plt.ioff()
+            from mitim_tools.misc_tools.GUItools import FigureNotebook
+            fn = FigureNotebook(0, "PowerState", geometry="1800x900")
+            fnprov = False
+        else:
+            fnprov = True
+
+        figMain = fn.add_figure(label="PowerState")
+        figG = fn.add_figure(label="Sequence")
+
+        grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.4)
+        axs = [
+            figMain.add_subplot(grid[0, 1]),
+            figMain.add_subplot(grid[0, 2]),
+            figMain.add_subplot(grid[0, 3]),
+            figMain.add_subplot(grid[0, 4]),
+            figMain.add_subplot(grid[0, 5]),
+            figMain.add_subplot(grid[1, 1]),
+            figMain.add_subplot(grid[1, 2]),
+            figMain.add_subplot(grid[1, 3]),
+            figMain.add_subplot(grid[1, 4]),
+            figMain.add_subplot(grid[1, 5]),
+            figMain.add_subplot(grid[2, 1]),
+            figMain.add_subplot(grid[2, 2]),
+            figMain.add_subplot(grid[2, 3]),
+            figMain.add_subplot(grid[2, 4]),
+            figMain.add_subplot(grid[2, 5]),
+            figMain.add_subplot(grid[3, 1]),
+            figMain.add_subplot(grid[3, 2]),
+            figMain.add_subplot(grid[3, 3]),
+            figMain.add_subplot(grid[3, 4]),
+            figMain.add_subplot(grid[3, 5]),
+        ]
+
+        axsRes = figMain.add_subplot(grid[:, 0])
+
+        colors = GRAPHICStools.listColors()
+
+        # POWERPLOT
+
+        for i in range(len(self.powerstates)):
+            self.powerstates[i].plot(axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}")
+
+        axs[0].legend(prop={"size": 8})
+
+        axsRes.set_xlim([0, i])
+
+        # GRADIENTS
+
+        grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
+        axsGrads = []
+        for j in range(5):
+            for i in range(2):
+                axsGrads.append(figG.add_subplot(grid[i, j]))
+        for i, p in enumerate(self.profiles):
+            p.plotGradients(
+                axsGrads,
+                color=colors[i],
+                plotImpurity=3,
+                plotRotation=True,
+                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+            )
+
+        axsGrads_extra = [
+            axs[0],
+            axs[5],
+            axs[1],
+            axs[6],
+            axs[2],
+            axs[7],
+            axs[3],
+            axs[8],
+            axs[4],
+            axs[9],
+        ]
+        for i, p in enumerate(self.profiles):
+            p.plotGradients(
+                axsGrads_extra,
+                color=colors[i],
+                plotImpurity=3,
+                plotRotation=True,
+                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                lw=0.5,
+                ms=0,
+            )
+
+        if not fnprov:
+            fn.show()

@@ -51,7 +51,7 @@ for folderWork in folders:
     portals = PORTALSanalysis.PORTALSanalyzer.from_folder(
         folderWork, folderRemote=folderRemote
     )
-
+    
     portals.plotMetrics(
         indexToMaximize=indexToMaximize,
         plotAllFluxes=plotAllFluxes,
