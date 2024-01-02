@@ -825,31 +825,9 @@ def retrieveResults(
         print(" - Grabbing remote")
         if not os.path.exists(folderWork):
             os.system(f"mkdir {folderWork}")
-        if not os.path.exists(folderWork + "/Outputs/"):
-            os.system(f"mkdir {folderWork}/Outputs/")
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/ResultsOptimization.out {folderWork}/Outputs/."
-        )
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIM.log {folderWork}/Outputs/."
-        )
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIMstate* {folderWork}/Outputs/."
-        )
-        if analysis_level >= 0:
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/TabularData.dat {folderWork}/Outputs/."
-            )
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/TabularDataStds.dat {folderWork}/Outputs/."
-            )
-        if analysis_level > 0:
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIMextra* {folderWork}/Outputs/."
-            )
 
-        resFile = f"{folderWork}/ResultsOptimization.out"
-
+        os.system(f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}")
+        
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow
     # ----------------------------------------------------------------------------------------------------------------
