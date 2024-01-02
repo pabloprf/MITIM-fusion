@@ -49,17 +49,18 @@ def commander(
 
 def run_slurm(
     script,
-    num,
+    folder,
     partition,
     venv,
     seeds=1,
-    MainFolder="./",
     hours=8,
     n=32,
     seed_specific=0,
 ):
     script = IOtools.expandPath(script)
-    folderWork = IOtools.expandPath(f"{MainFolder}/{num}")
+    folderWork = IOtools.expandPath(folder)
+
+    num = folder.split("/")[-1]
 
     if seeds > 1:
         for i in range(seeds):
@@ -91,25 +92,24 @@ def run_slurm(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("script", type=str)
-    parser.add_argument("name", type=str)
+    parser.add_argument("--folder", type=str, required=False, default='run1/')
     parser.add_argument(
-        "--partition", type=str, required=False, default="sched_mit_psfc"
+        "--partition", type=str, required=False, default=IOtools.expandPath("$MITIM_PARTITION")
     )
     parser.add_argument("--seeds", type=int, required=False, default=1)
+    parser.add_argument("--env", type=str, required=False, default=IOtools.expandPath("~/.env/mitim-env"))
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=64)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)
 
     args = parser.parse_args()
 
-    venv = IOtools.expandPath("~/.env/mitim-env")
-
     # Run
     run_slurm(
         args.script,
-        args.name,
+        args.folder,
         args.partition,
-        venv,
+        args.env,
         seeds=args.seeds,
         hours=args.hours,
         n=args.n,
