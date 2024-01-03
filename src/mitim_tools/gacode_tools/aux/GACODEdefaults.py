@@ -1,6 +1,5 @@
 import numpy as np
 from IPython import embed
-from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
 

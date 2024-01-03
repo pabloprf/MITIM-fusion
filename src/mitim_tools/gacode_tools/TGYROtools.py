@@ -212,7 +212,7 @@ class TGYRO:
         )  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
         quasineutrality = TGYRO_physics_options.get("quasineutrality", [])
 
-        if (iterations == 0) and (TGYRO_solver_options['tgyro_method'] != 1):
+        if (iterations == 0) and ('tgyro_method' in TGYRO_solver_options) and (TGYRO_solver_options['tgyro_method'] != 1):
             print(f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",typeMsg='w')
             TGYRO_solver_options['tgyro_method'] = 1
 
@@ -233,10 +233,11 @@ class TGYRO:
             ]
 
         if vectorRange[2] == 1:
-            print(" -> TGYRO cannot run with only one point, adding 0.9", typeMsg="w")
-            vectorRange[2], vectorRange[1] = 2, 0.9
+            extra_add = vectorRange[0]+1E-3
+            print(f" -> TGYRO cannot run with only one point ({vectorRange[0]}), adding {extra_add}", typeMsg="w")
+            vectorRange[2], vectorRange[1] = 2, extra_add
             if special_radii_mod is not None:
-                special_radii_mod = np.append(special_radii_mod, [0.9])
+                special_radii_mod = np.append(special_radii_mod, [extra_add])
 
         self.rhosToSimulate = (
             special_radii_mod
