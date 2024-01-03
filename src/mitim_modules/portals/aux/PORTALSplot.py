@@ -1891,18 +1891,26 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     axsR[0].legend(loc="best")
 
 
-def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True):
+def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True, includeErrors=True):
     
+    print("- Plotting PORTALS Simulations - Model comparison")
+
     if (fig is None) and (axs is None):
         plt.ion()
         fig = plt.figure()
         figprov = False
     else:
         figprov = True
-    
-    if axs is None:
-        axs = fig.subplots(ncols=3)
 
+    if axs is None:
+        if len(self.ProfilesPredicted)<4:
+            axs = fig.subplots(ncols=3)
+        else:
+            axs = fig.subplots(ncols=3,nrows=2)
+
+    axs = axs.flatten()
+
+    # te
     plotModelComparison_quantity(
         self,
         axs[0],
@@ -1912,8 +1920,10 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         title=f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
         typeScale="log" if GB else "linear",
         radial_label=radial_label,
+        includeErrors=includeErrors,
     )
 
+    # ti
     plotModelComparison_quantity(
         self,
         axs[1],
@@ -1923,18 +1933,68 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         title=f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
         typeScale="log" if GB else "linear",
         radial_label=radial_label,
+        includeErrors=includeErrors,
     )
 
+    # ne
     plotModelComparison_quantity(
         self,
         axs[2],
         quantity=f'Ge{"GB" if GB else ""}_sim_turb',
         quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
         labely="$\\Gamma_e^{GB}$" if GB else "$\\Gamma_e$",
-        title=f"Electron particle flux {'(GB)' if GB else '($MW/m^2$)'}",
+        title=f"Electron particle flux {'(GB)' if GB else '($?$)'}",
         typeScale="linear",
         radial_label=radial_label,
+        includeErrors=includeErrors,
     )
+
+    cont = 1
+    if 'nZ' in self.ProfilesPredicted:
+        # nZ
+        plotModelComparison_quantity(
+            self,
+            axs[2+cont],
+            quantity=f'Gi{"GB" if GB else ""}_sim_turb',
+            quantity_stds=f'Gi{"GB" if GB else ""}_sim_turb_stds',
+            labely="$\\Gamma_Z^{GB}$" if GB else "$\\Gamma_Z$",
+            title=f"Impurity particle flux {'(GB)' if GB else '($?$)'}",
+            typeScale="linear",
+            radial_label=radial_label,
+            runWithImpurity = self.runWithImpurity,
+            includeErrors=includeErrors,
+        )
+        cont += 1
+    
+    if 'w0' in self.ProfilesPredicted:
+        # w0
+        plotModelComparison_quantity(
+            self,
+            axs[2+cont],
+            quantity=f'Mt{"GB" if GB else ""}_sim_turb',
+            quantity_stds=f'Mt{"GB" if GB else ""}_sim_turb_stds',
+            labely="$M_T^{GB}$" if GB else "$M_T$",
+            title=f"Torque {'(GB)' if GB else '($?$)'}",
+            typeScale="linear",
+            radial_label=radial_label,
+            includeErrors=includeErrors,
+        )
+        cont += 1
+
+    if self.PORTALSparameters['surrogateForTurbExch']:
+        # Sexch
+        plotModelComparison_quantity(
+            self,
+            axs[2+cont],
+            quantity=f'EXe{"GB" if GB else ""}_sim_turb',
+            quantity_stds=f'EXe{"GB" if GB else ""}_sim_turb_stds',
+            labely="$S_{exch}^{GB}$" if GB else "$S_{exch}$",
+            title=f"Turbulent Exchange {'(GB)' if GB else '(?)'}",
+            typeScale="linear",
+            radial_label=radial_label,
+            includeErrors=includeErrors,
+        )
+        cont += 1
 
     if not figprov:
         plt.tight_layout()
@@ -1951,6 +2011,8 @@ def plotModelComparison_quantity(
     title="",
     typeScale="linear",
     radial_label=True,
+    runWithImpurity=None,
+    includeErrors=True,
 ):
     resultsX = "tglf_neo"
     if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
@@ -1967,20 +2029,20 @@ def plotModelComparison_quantity(
     for i in range(len(self.mitim_runs) - 2):
         try:
             F_tglf.append(
-                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantity][0, 1:]
+                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantity][(... if runWithImpurity is None else runWithImpurity),0, 1:]
             )
             F_tglf_stds.append(
                 self.mitim_runs[i]["tgyro"]
                 .results[resultsX]
-                .__dict__[quantity_stds][0, 1:]
+                .__dict__[quantity_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
             )
             F_cgyro.append(
-                self.mitim_runs[i]["tgyro"].results[resultsY].__dict__[quantity][0, 1:]
+                self.mitim_runs[i]["tgyro"].results[resultsY].__dict__[quantity][... if runWithImpurity is None else runWithImpurity,0, 1:]
             )
             F_cgyro_stds.append(
                 self.mitim_runs[i]["tgyro"]
                 .results[resultsY]
-                .__dict__[quantity_stds][0, 1:]
+                .__dict__[quantity_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
             )
         except TypeError:
             break
@@ -1995,8 +2057,8 @@ def plotModelComparison_quantity(
         ax.errorbar(
             F_tglf[:, ir],
             F_cgyro[:, ir],
-            xerr=F_tglf_stds[:, ir],
-            yerr=F_cgyro_stds[:, ir],
+            xerr=F_tglf_stds[:, ir] if includeErrors else None,
+            yerr=F_cgyro_stds[:, ir] if includeErrors else None,
             c=colors[ir],
             markersize=2,
             capsize=2,

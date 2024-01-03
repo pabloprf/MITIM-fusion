@@ -9,7 +9,7 @@ It also does it on a separate figure, so easy to manage (e.g. for saving as .eps
 """
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--folders", required=True, type=str, nargs="*")
+parser.add_argument("folders", type=str, nargs="*")
 parser.add_argument("--remote", type=str, required=False, default=None)
 
 parser.add_argument(
@@ -17,13 +17,13 @@ parser.add_argument(
 )  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
 parser.add_argument("--index_extra", type=int, required=False, default=None)
 parser.add_argument(
-    "--all", type=bool, required=False, default=False
+    "--all", required=False, default=False, action='store_true'
 )  # Plot all fluxes?
 parser.add_argument(
     "--file", type=str, required=False, default=None
 )  # File to save .eps
 parser.add_argument(
-    "--complete", type=bool, required=False, default=False
+    "--complete", "-c", required=False, default=False, action='store_true'
 )
 
 
@@ -56,9 +56,10 @@ for folderWork in folders:
     
 # PLOTTING
 
-size = 8
-plt.rc("font", family="serif", serif="Times", size=size)
-plt.rc("xtick.minor", size=size)
+if not complete:
+    size = 8
+    plt.rc("font", family="serif", serif="Times", size=size)
+    plt.rc("xtick.minor", size=size)
 plt.close("all")
 
 if (len(folders) == 1) and (not complete):
@@ -68,7 +69,7 @@ if (len(folders) == 1) and (not complete):
 else:
     from mitim_tools.misc_tools.GUItools import FigureNotebook
     plt.ioff()
-    fn = FigureNotebook(0, "PORTALS", geometry="1500x800")
+    fn = FigureNotebook(0, "PORTALS", geometry="1600x1000")
 
 
 
