@@ -1786,6 +1786,12 @@ class TGYROoutput:
             ev_profs, ev_extras = nprof, nr
         elif self.inputs["TGYRO_ITERATION_METHOD"] == "6":
             ev_profs, ev_extras = 1, 0
+        else:
+            print(
+                f"\t- TGYRO_ITERATION_METHOD={self.inputs['TGYRO_ITERATION_METHOD']} logic not implemented yet, assuming same as 1",
+                typeMsg="w",
+            )
+            ev_profs, ev_extras = nprof, nr
 
         ev_calls = ev_profs * nr + ev_extras
 
@@ -4395,7 +4401,7 @@ class TGYROoutput:
         ax.set_ylabel("Residual (GB)")
         ax.set_yscale("log")
         whichticks = ax.get_xticks()
-        ax2 = GRAPHICStools.addXaxis(
+        _ = GRAPHICStools.addXaxis(
             ax,
             self.iterations,
             self.calls_solver,
