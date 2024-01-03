@@ -212,6 +212,10 @@ class TGYRO:
         )  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
         quasineutrality = TGYRO_physics_options.get("quasineutrality", [])
 
+        if (iterations == 0) and (TGYRO_solver_options['tgyro_method'] != 1):
+            print(f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",typeMsg='w')
+            TGYRO_solver_options['tgyro_method'] = 1
+
         # ------------------------------------------------------------------------
 
         print("\n> Run TGYRO")
@@ -3789,11 +3793,10 @@ class TGYROoutput:
             "--o",
             c="blue",
             label="exch",
-            markersize=1,
-            lw=0.5,
+            markersize=3,
         )
         ax.plot(
-            self.roa[-1], self.Qe_tarMW_exch[-1], "--o", c="red", markersize=1, lw=0.5
+            self.roa[-1], self.Qe_tarMW_exch[-1], "--o", c="red", markersize=3,
         )
         ax.plot(
             self.roa[0],
@@ -3801,11 +3804,10 @@ class TGYROoutput:
             "-.o",
             c="blue",
             label="expwd",
-            markersize=1,
-            lw=0.5,
+            markersize=3,
         )
         ax.plot(
-            self.roa[-1], self.Qe_tarMW_expwd[-1], "-.o", c="red", markersize=1, lw=0.5
+            self.roa[-1], self.Qe_tarMW_expwd[-1], "-.o", c="red", markersize=3,
         )
 
         ax.plot(
