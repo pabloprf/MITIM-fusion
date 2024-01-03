@@ -6,7 +6,7 @@ e.g.	plot_cgyro.py folder
 """
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--folders", required=True, type=str, nargs="*")
+parser.add_argument("folders", type=str, nargs="*")
 args = parser.parse_args()
 
 folders = args.folders

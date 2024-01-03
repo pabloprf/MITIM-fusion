@@ -3,10 +3,13 @@
 # ---------------------------------------------------------------------------------------------------------------------
 
 # mitim_tools interfaces: read, run, plot
+
 alias mitim_plot_gacode="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/read_gacodes.py --files $1"
 alias mitim_plot_tgyro="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/read_tgyros.py --folders $1"
 alias mitim_plot_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/read_tglf.py --folder $1" 		 # [--suffix _0.55] [--gacode input.gacode]
 alias mitim_plot_eq="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gs_tools/exe/read_eqs.py --files $1"
+alias mitim_plot_cgyro="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/plot_cgyro.py $1"
+
 alias mitim_read_transp="ipython3 -i -- $MITIM_PATH/src/mitim_tools/transp_tools/exe/read_transp.py --files $1"
 alias mitim_run_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/run_tglf.py --folder $1 --tglf $2" #[--gacode input.gacode] [--scan RLTS_2] [--drives True]
 

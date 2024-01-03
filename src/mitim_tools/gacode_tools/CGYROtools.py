@@ -202,6 +202,7 @@ class CGYRO:
         cgyro = self.results[label]
 
         # Time
+        usec = cgyro.getflux()
         cgyro.getnorm("elec")
         t = cgyro.tnorm
 
