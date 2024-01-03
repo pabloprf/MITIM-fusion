@@ -2085,6 +2085,9 @@ def plotModelComparison_quantity(
 
     ax.legend(prop={"size": 8})
 
+    rmse = np.sqrt(np.mean((F_tglf - F_cgyro)**2))
+    ax.text(0.5, 0.95, f'RMSE: {rmse:.2f}', ha='left', va='top', transform=ax.transAxes, 
+        bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------------------------------------------
