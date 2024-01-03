@@ -1,4 +1,10 @@
-import os, json, socket, warnings, logging, getpass, numpy
+import os
+import json
+import socket
+import warnings
+import logging
+import getpass
+
 from IPython import embed
 
 # PRF Note: Do not load IOtools, otherwise circularity problem
@@ -82,9 +88,9 @@ def machineSettings(
     machine = s["preferences"][code]
 
     """
-	Set-up per code and machine
-	-------------------------------------------------
-	"""
+    Set-up per code and machine
+    -------------------------------------------------
+    """
 
     if forceUsername is not None:
         username = forceUsername

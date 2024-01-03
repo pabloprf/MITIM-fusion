@@ -4,7 +4,6 @@ extensively by PRF.
 """
 
 import sys
-from IPython import embed
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
@@ -18,7 +17,7 @@ try:
     from PyQt6.QtWidgets import QTabWidget, QTabBar
 
     # -----------------------------
-except:
+except ImportError:
     print(
         " > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",
         typeMsg="w",
@@ -33,6 +32,7 @@ except:
 
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.CONFIGread import read_dpi
+from IPython import embed
 
 plt.rcParams["figure.max_open_warning"] = False
 

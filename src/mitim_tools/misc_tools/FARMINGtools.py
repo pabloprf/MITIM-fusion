@@ -1,10 +1,18 @@
 """
 
-	Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
+    Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 
 """
 
-import os, sys, subprocess, socket, signal, pickle, datetime, torch, copy
+import os
+import sys
+import subprocess
+import socket
+import signal
+import pickle
+import datetime
+import torch
+import copy
 import numpy as np
 from IPython import embed
 from contextlib import contextmanager
@@ -833,9 +841,9 @@ Usage:
 """
 
 
-def init(l):
+def init(l_lock):
     global lock
-    lock = l
+    lock = l_lock
 
 
 class PRF_ParallelClass_reduced(object):
@@ -865,8 +873,8 @@ def ParallelProcedure(
 	so that for instance not two at the same time open and write the same file.
 	"""
 
-    l = multiprocessing.Lock()
-    pool = multiprocessing.Pool(initializer=init, initargs=(l,), processes=parallel)
+    l0 = multiprocessing.Lock()
+    pool = multiprocessing.Pool(initializer=init, initargs=(l0,), processes=parallel)
 
     if array:
         print(
@@ -922,7 +930,7 @@ def SLURM(
 ):
     if folder_local is None:
         folder_local = folder_remote
-    if type(command) == str:
+    if isinstance(command, str):
         command = [command]
 
     folderExecution = IOtools.expandPath(folder_remote)
