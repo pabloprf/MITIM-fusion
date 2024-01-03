@@ -2071,8 +2071,7 @@ def plotModelComparison_quantity(
     minFlux = np.min([F_tglf.min(), F_cgyro.min()])
     maxFlux = np.max([F_tglf.max(), F_cgyro.max()])
 
-    if radial_label:
-        ax.plot([minFlux, maxFlux], [minFlux, maxFlux], "--", color="k")
+    ax.plot([minFlux*0.8, maxFlux*1.2], [minFlux*0.8, maxFlux*1.2], "-", color="k",lw=0.5)
     if typeScale == "log":
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -2084,7 +2083,7 @@ def plotModelComparison_quantity(
     ax.set_title(title)
     GRAPHICStools.addDenseAxis(ax)
 
-    ax.legend()
+    ax.legend(prop={"size": 8})
 
 
 # ---------------------------------------------------------------------------------------------------------------------
