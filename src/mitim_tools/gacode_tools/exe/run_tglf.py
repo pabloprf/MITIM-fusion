@@ -24,7 +24,7 @@ parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--tglf", required=True, type=str)
 parser.add_argument("--gacode", required=False, type=str, default=None)
 parser.add_argument("--scan", required=False, type=str, default=None)
-parser.add_argument("--drives", required=False, type=bool, default=False)
+parser.add_argument("--drives", required=False, default=False, action='store_true')
 
 args = parser.parse_args()
 

@@ -827,51 +827,52 @@ class PORTALSinitializer:
 
         # POWERPLOT
 
-        for i in range(len(self.powerstates)):
-            self.powerstates[i].plot(axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}")
+        if len(self.powerstates) > 0:
+            for i in range(len(self.powerstates)):
+                self.powerstates[i].plot(axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}")
 
-        axs[0].legend(prop={"size": 8})
+            axs[0].legend(prop={"size": 8})
 
-        axsRes.set_xlim([0, i])
+            axsRes.set_xlim([0, i])
 
         # GRADIENTS
+        if len(self.profiles) > 0:
+            grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
+            axsGrads = []
+            for j in range(5):
+                for i in range(2):
+                    axsGrads.append(figG.add_subplot(grid[i, j]))
+            for i, p in enumerate(self.profiles):
+                p.plotGradients(
+                    axsGrads,
+                    color=colors[i],
+                    plotImpurity=3,
+                    plotRotation=True,
+                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                )
 
-        grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
-        axsGrads = []
-        for j in range(5):
-            for i in range(2):
-                axsGrads.append(figG.add_subplot(grid[i, j]))
-        for i, p in enumerate(self.profiles):
-            p.plotGradients(
-                axsGrads,
-                color=colors[i],
-                plotImpurity=3,
-                plotRotation=True,
-                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-            )
-
-        axsGrads_extra = [
-            axs[0],
-            axs[5],
-            axs[1],
-            axs[6],
-            axs[2],
-            axs[7],
-            axs[3],
-            axs[8],
-            axs[4],
-            axs[9],
-        ]
-        for i, p in enumerate(self.profiles):
-            p.plotGradients(
-                axsGrads_extra,
-                color=colors[i],
-                plotImpurity=3,
-                plotRotation=True,
-                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                lw=0.5,
-                ms=0,
-            )
+            axsGrads_extra = [
+                axs[0],
+                axs[5],
+                axs[1],
+                axs[6],
+                axs[2],
+                axs[7],
+                axs[3],
+                axs[8],
+                axs[4],
+                axs[9],
+            ]
+            for i, p in enumerate(self.profiles):
+                p.plotGradients(
+                    axsGrads_extra,
+                    color=colors[i],
+                    plotImpurity=3,
+                    plotRotation=True,
+                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                    lw=0.5,
+                    ms=0,
+                )
 
         if not fnprov:
             fn.show()
