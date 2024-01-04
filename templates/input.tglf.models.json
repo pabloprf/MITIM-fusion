@@ -40,8 +40,17 @@
             "USE_BPER": true
         }
     },
+    "6": {
+        "label": "SAT3",
+        "controls": {
+            "SAT_RULE": 3,
+            "UNITS": "CGYRO",
+            "XNU_MODEL": 3,
+            "WDIA_TRAPPED": 1.0
+        }
+    },
     "101": {
-        "label": "SAT2em basis",
+        "label": "[Experimentation] SAT3em basis",
         "controls": {
             "SAT_RULE": 2,
             "UNITS": "CGYRO",

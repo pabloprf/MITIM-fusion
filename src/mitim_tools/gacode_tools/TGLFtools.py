@@ -563,6 +563,7 @@ class TGLF:
                             extraOptions_WF = copy.deepcopy(extraOptions)
 
                             extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
+                            extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
                             extraOptions_WF["KY"] = ky_single
                             extraOptions_WF[
                                 "VEXB_SHEAR"
