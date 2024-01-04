@@ -1,149 +1,10 @@
+import json
 import numpy as np
+from mitim_tools.misc_tools import IOtools
+
 from IPython import embed
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
-
-def constructStandardTGLF(NS=2):
-    """
-    Consistent with localdump of TGLF
-    """
-
-    TGLFoptions = {
-        "USE_TRANSPORT_MODEL": True,
-        "GEOMETRY_FLAG": 1,  # 0: s-a, 1: Miller, 2: Fourier, 3: ELITE
-        "ADIABATIC_ELEC": False,  # T: Use adiabatic electrons.
-        "SIGN_IT": 1,  # Sign of 𝐼𝑇 with repsect to CCW toroidal direction from top.
-        "SIGN_BT": 1,  # Sign of 𝐵𝑇 with repsect to CCW toroidal direction from top.
-        "IFLUX": True,  # Compute quasilinear weights and mode amplitudes.
-        "THETA_TRAPPED": 0.7,  # Parameter to adjust trapped fraction model.
-        "NN_MAX_ERROR": -1.0,  # Threshold for TGLF-NN execution versus full TGLF calculation
-    }
-
-    """
-	Wavenumber grid
-	-----------------------
-	"""
-    TGLFoptions["KYGRID_MODEL"] = 1  # 1: Standard grid
-    TGLFoptions["NKY"] = 19  # Number of poloidal modes in the high-k spectrum
-    TGLFoptions["KY"] = 0.3  # ky for single-mode call to TGLF.
-
-    """
-	Hermite basis functions
-	-----------------------
-	"""
-    TGLFoptions[
-        "FIND_WIDTH"
-    ] = True  # T: Find the width that maximizes the growth rate, F: Use WIDTH
-    TGLFoptions[
-        "USE_BISECTION"
-    ] = True  # T: Use bisection search method to find width that maximizes growth rate
-    TGLFoptions[
-        "WIDTH"
-    ] = 1.65  # Max. width to search for Hermite polynomial basis (1.65 default, <1.5 recommended in Staebler PoP05)
-    TGLFoptions[
-        "WIDTH_MIN"
-    ] = 0.3  # Min. width to search for Hermite polynomial basis (0.3 default)
-    TGLFoptions["NWIDTH"] = 21  # Number of search points
-    TGLFoptions["NBASIS_MIN"] = 2  # Minimum number of parallel basis functions
-    TGLFoptions["NBASIS_MAX"] = 4  # Maximum number of parallel basis functions
-    TGLFoptions["NXGRID"] = 16  # Number of nodes in Gauss-Hermite quadrature.
-
-    """
-	Modes options
-	-----------------------
-	"""
-    TGLFoptions[
-        "IBRANCH"
-    ] = (
-        -1
-    )  # 0  = find two most unstable modes one for each sign of frequency, electron drift direction (1), ion drift direction (2),
-    # -1 = sort the unstable modes by growthrate in rank order
-    TGLFoptions["NMODES"] = int(
-        NS + 2
-    )  # For IBRANCH=-1, number of modes to store. ASTRA uses NS+2
-
-    """
-	Saturation model
-	-----------------------
-	"""
-    TGLFoptions["SAT_RULE"] = 0
-    TGLFoptions["ETG_FACTOR"] = 1.25
-
-    """
-	Physics included
-	-----------------------
-	"""
-    TGLFoptions[
-        "USE_BPER"
-    ] = False  # Include transverse magnetic fluctuations, 𝛿𝐴‖. 					-> PERPENDICULAR FLUCTUATIONS
-    TGLFoptions[
-        "USE_BPAR"
-    ] = False  # Include compressional magnetic fluctuations, \delta B_{\lVert }}  -> COMPRESSIONAL EFFECTS
-    TGLFoptions[
-        "USE_MHD_RULE"
-    ] = False  # Ignore pressure gradient contribution to curvature drift.
-    TGLFoptions["XNU_MODEL"] = 2  # Collision model (2=new)
-    TGLFoptions["VPAR_MODEL"] = 0  # 0=low-Mach-number limit (DEPRECATED?)
-    TGLFoptions["VPAR_SHEAR_MODEL"] = 1
-
-    """
-	ExB shear model
-	-----------------------
-	"""
-    TGLFoptions[
-        "ALPHA_QUENCH"
-    ] = 0.0  # 1.0 = use quench rule, 0.0 = use new spectral shift model (0.0 recommeded by Gary, 05/11/2020)
-    TGLFoptions[
-        "ALPHA_E"
-    ] = 1.0  # Multiplies ExB velocity shear for spectral shift model (1.0 ecommeded by Gary, 05/11/2020)
-
-    TGLFoptions["ALPHA_MACH"] = 0.0
-    TGLFoptions["ALPHA_ZF"] = 1.0
-
-    """
-	Multipliers
-	-----------------------
-	"""
-
-    TGLFoptions["DEBYE_FACTOR"] = 1.0  # Multiplies the debye length
-    TGLFoptions[
-        "XNU_FACTOR"
-    ] = 1.0  # Multiplies the trapped/passing boundary electron-ion collision terms
-    TGLFoptions["ALPHA_P"] = 1.0  # Multiplies parallel velocity shear for all species
-    TGLFoptions["PARK"] = 1.0  # Multiplies the parallel gradient term.
-    TGLFoptions["GHAT"] = 1.0  # Multiplies the curvature drift closure terms.
-    TGLFoptions["GCHAT"] = 1.0  # Multiplies the curvature drift irreducible terms.
-
-    # WHY?
-    TGLFoptions["DAMP_PSI"] = 0.0  # Damping factor for psi
-    TGLFoptions["DAMP_SIG"] = 0.0  # Damping factor for sig
-    TGLFoptions["LINSKER_FACTOR"] = 0.0  # Multiplies the Linsker terms
-    TGLFoptions["GRADB_FACTOR"] = 0.0  # Multiplies the gradB terms
-
-    TGLFoptions[
-        "WD_ZERO"
-    ] = 0.1  # Cutoff for curvature drift eigenvalues to prevent zero.
-    TGLFoptions[
-        "FILTER"
-    ] = 2.0  # Sets threshold for frequency/drift frequency to filter out non-driftwave instabilities.
-    TGLFoptions["WDIA_TRAPPED"] = 0.0
-
-    """
-	Other Options
-	-----------------------
-	"""
-
-    TGLFoptions[
-        "USE_AVE_ION_GRID"
-    ] = False  # T:Use weighted average charge of ions for the gyroradius reference, F: Use first ion
-    TGLFoptions[
-        "USE_INBOARD_DETRAPPED"
-    ] = False  # Set trapped fraction to zero if eigenmode is inward ballooning.
-
-    TGLFoptions["RLNP_CUTOFF"] = 18.0  # Limits SAT2 factor of R/Lp < RLNP_CUTOFF
-
-    return TGLFoptions
 
 
 def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
@@ -170,7 +31,9 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 
     # Define every flag
     else:
-        TGLFoptions = constructStandardTGLF(NS=NS)
+
+        TGLFoptions = IOtools.generateMITIMNamelist('$MITIM_PATH/templates/input.tglf.controls',caseInsensitive=False)
+        TGLFoptions["NMODES"] =  NS + 2
 
     """
 	********************************************************************************
@@ -179,81 +42,17 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    label = "unspecified"
-
-    # SAT1 ----- Old SAT1 standard to recover previous results
-    if TGLFsettings == 1:
-        TGLFoptions["SAT_RULE"] = 1
-        TGLFoptions["UNITS"] = "GYRO"
-
-        label = "SAT1"
-
-    # SAT0 ----- Old SAT0 standard to recover previous results
-    if TGLFsettings == 2:
-        TGLFoptions["SAT_RULE"] = 0
-        TGLFoptions[
-            "UNITS"
-        ] = "GYRO"  # In SAT0, this is the only option, see tglf.startup.f90
-        TGLFoptions["ETG_FACTOR"] = 1.25
-
-        label = "SAT0"
-
-    # SAT1geo ----- SAT1 standard (CGYRO)
-    if TGLFsettings == 3:
-        TGLFoptions["SAT_RULE"] = 1
-        TGLFoptions["UNITS"] = "CGYRO"
-
-        label = "SAT1geo"
-
-    # SAT2 ----- SAT2 standard
-    if TGLFsettings == 4:
-        label = "SAT2"
-
-        # SAT2
-        TGLFoptions["SAT_RULE"] = 2
-        TGLFoptions[
-            "UNITS"
-        ] = "CGYRO"  # In SAT2, CGYRO/GENE are the only options, see tglf.startup.f90
-        TGLFoptions["XNU_MODEL"] = 3  # This is forced anyway, see tglf.startup.f90
-        TGLFoptions["WDIA_TRAPPED"] = 1.0  # This is forced anyway, see tglf.startup.f90
-
-    # SAT2em
-    if TGLFsettings == 5:
-        label = "SAT2em"
-
-        # SAT2
-        TGLFoptions["SAT_RULE"] = 2
-        TGLFoptions[
-            "UNITS"
-        ] = "CGYRO"  # In SAT2, CGYRO/GENE are the only options, see tglf.startup.f90
-        TGLFoptions["XNU_MODEL"] = 3  # This is forced anyway, see tglf.startup.f90
-        TGLFoptions["WDIA_TRAPPED"] = 1.0  # This is forced anyway, see tglf.startup.f90
-
-        # EM
-        TGLFoptions["USE_BPER"] = True
-
-    # ------------------------
-    # PRF's Experiments
-    # ------------------------
-
-    # SAT2em with higher resolution
-    if TGLFsettings == 101:
-        # SAT2
-        TGLFoptions["SAT_RULE"] = 2
-        TGLFoptions[
-            "UNITS"
-        ] = "CGYRO"  # In SAT2, CGYRO/GENE are the only options, see tglf.startup.f90
-        TGLFoptions["XNU_MODEL"] = 3  # This is forced anyway, see tglf.startup.f90
-        TGLFoptions["WDIA_TRAPPED"] = 1.0  # This is forced anyway, see tglf.startup.f90
-
-        # EM
-        TGLFoptions["USE_BPER"] = True
-
-        # Extra
-        TGLFoptions["KYGRID_MODEL"] = 4
-        TGLFoptions["NBASIS_MAX"] = 6
-
-        label = "SAT2em basis"
+    with open(IOtools.expandPath('$MITIM_PATH/templates/input.tglf.models.json'), "r") as f:
+        settings = json.load(f)
+    
+    if str(TGLFsettings) in settings:
+        sett = settings[str(TGLFsettings)]
+        label = sett['label']
+        for ikey in sett['controls']:
+            TGLFoptions[ikey] = sett['controls'][ikey]
+    else:
+        print('\t- TGLFsettings not found in input.tglf.models.json, using defaults',typeMsg='w')
+        label = "unspecified"
 
     # --------------------------------
     # From dictionary to text

@@ -1,26 +1,37 @@
-import re, os, shutil, sys, time, datetime, socket, random, zipfile, cProfile, termios, tty, h5py
+import re
+import os
+import shutil
+import sys
+import time
+import datetime
+import socket
+import random
+import zipfile
+import cProfile
+import termios
+import tty
+import h5py
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
 
 try:
     import pandas
-except:
+except ImportError:
     pass
 
 try:
     from IPython import embed
-except:
+except ImportError:
     pass
+
+import urllib.request as urlREQ  # urllibR
+import urllib.error as urlERR  # urllibE
 
 # Running here globally because most mitim use at some point IOtools
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
 verbose_level = read_verbose_level()
-
-import urllib.request as urlREQ  # urllibR
-import urllib.error as urlERR  # urllibE
-
 
 class speeder(object):
     def __init__(self, file):

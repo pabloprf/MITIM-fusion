@@ -1,0 +1,71 @@
+#-------------------------------------------------------------------------
+# Template input.tglf file (controls-only)
+#-------------------------------------------------------------------------
+
+USE_TRANSPORT_MODEL     = True
+GEOMETRY_FLAG           = 1          # 0: s-a, 1: Miller, 2: Fourier, 3: ELITE
+ADIABATIC_ELEC          = False      # T: Use adiabatic electrons
+SIGN_IT                 = 1          # Sign of 𝐼𝑇 with repsect to CCW toroidal direction from top
+SIGN_BT                 = 1          # Sign of 𝐵𝑇 with repsect to CCW toroidal direction from top
+IFLUX                   = True       # Compute quasilinear weights and mode amplitudes
+THETA_TRAPPED           = 0.7        # Parameter to adjust trapped fraction model
+NN_MAX_ERROR            = -1.0       # Threshold for TGLF-NN execution versus full TGLF calculation
+
+# ~~~ Wavenumber grid
+KYGRID_MODEL            = 1          # 1: Standard grid
+NKY                     = 19         # Number of poloidal modes in the high-k spectrum
+KY                      = 0.3        # ky for single-mode call to TGLF
+
+# ~~~ Hermite basis functions
+FIND_WIDTH              = True       # T: Find the width that maximizes the growth rate, F: Use WIDTH
+USE_BISECTION           = True       # T: Use bisection search method to find width that maximizes growth rate
+WIDTH                   = 1.65       # Max. width to search for Hermite polynomial basis (1.65 default, <1.5 recommended in Staebler PoP05)
+WIDTH_MIN               = 0.3        # Min. width to search for Hermite polynomial basis (0.3 default)
+NWIDTH                  = 21         # Number of search points
+NBASIS_MIN              = 2          # Minimum number of parallel basis functions
+NBASIS_MAX              = 4          # Maximum number of parallel basis functions
+NXGRID                  = 16         # Number of nodes in Gauss-Hermite quadrature
+
+# ~~~ Modes options
+IBRANCH                 = -1         # 0  = find two most unstable modes one for each sign of frequency, electron drift direction (1), ion drift direction (2), -1 = sort the unstable modes by growthrate in rank order
+NMODES                  = 5          # For IBRANCH=-1, number of modes to store. ASTRA uses NS+2
+
+# ~~~ Saturation model
+SAT_RULE                = 0
+ETG_FACTOR              = 1.25
+
+# ~~~ Physics included
+USE_BPER                = True      # Include transverse magnetic fluctuations, 𝛿𝐴‖ -> PERPENDICULAR FLUCTUATIONS
+USE_BPAR                = False     # Include compressional magnetic fluctuations, \delta B_{\lVert }}  -> COMPRESSIONAL EFFECTS
+USE_MHD_RULE            = False     # Ignore pressure gradient contribution to curvature drift
+XNU_MODEL               = 2         # Collision model (2=new)
+VPAR_MODEL              = 0         # 0=low-Mach-number limit (DEPRECATED?)
+VPAR_SHEAR_MODEL        = 1
+
+# ~~~ ExB shear model
+ALPHA_QUENCH            = 0.0       # 1.0 = use quench rule, 0.0 = use new spectral shift model (0.0 recommeded by Gary, 05/11/2020)
+ALPHA_E                 = 1.0       # Multiplies ExB velocity shear for spectral shift model (1.0 ecommeded by Gary, 05/11/2020)
+ALPHA_MACH              = 0.0
+ALPHA_ZF                = 1.0
+
+# ~~~ Multipliers
+DEBYE_FACTOR            = 1.0       # Multiplies the debye length
+XNU_FACTOR              = 1.0       # Multiplies the trapped/passing boundary electron-ion collision terms
+ALPHA_P                 = 1.0       # Multiplies parallel velocity shear for all species
+PARK                    = 1.0       # Multiplies the parallel gradient term
+GHAT                    = 1.0       # Multiplies the curvature drift closure terms
+GCHAT                   = 1.0       # Multiplies the curvature drift irreducible terms
+
+DAMP_PSI                = 0.0
+DAMP_SIG                = 0.0
+LINSKER_FACTOR          = 0.0
+GRADB_FACTOR            = 0.0
+
+WD_ZERO                 = 0.1       # Cutoff for curvature drift eigenvalues to prevent zero
+FILTER                  = 2.0       # Sets threshold for frequency/drift frequency to filter out non-driftwave instabilities
+WDIA_TRAPPED            = 0.0
+
+# ~~~ Other Options
+USE_AVE_ION_GRID        = False     # T:Use weighted average charge of ions for the gyroradius reference, F: Use first ion
+USE_INBOARD_DETRAPPED   = False     # Set trapped fraction to zero if eigenmode is inward ballooning.
+RLNP_CUTOFF             = 18.0      # Limits SAT2 factor of R/Lp < RLNP_CUTOFF

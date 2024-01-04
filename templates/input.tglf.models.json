@@ -1,0 +1,55 @@
+{
+    "1": {
+        "label": "SAT1",
+        "controls": {
+            "SAT_RULE": 1,
+            "UNITS": "GYRO"
+        }
+    },
+    "2": {
+        "label": "SAT0",
+        "controls": {
+            "SAT_RULE": 0,
+            "UNITS": "GYRO",
+            "ETG_FACTOR": 1.25
+        }
+    },
+    "3": {
+        "label": "SAT1geo",
+        "controls": {
+            "SAT_RULE": 1,
+            "UNITS": "CGYRO"
+        }
+    },
+    "4": {
+        "label": "SAT2",
+        "controls": {
+            "SAT_RULE": 2,
+            "UNITS": "CGYRO",
+            "XNU_MODEL": 3,
+            "WDIA_TRAPPED": 1.0
+        }
+    },
+    "5": {
+        "label": "SAT2em",
+        "controls": {
+            "SAT_RULE": 2,
+            "UNITS": "CGYRO",
+            "XNU_MODEL": 3,
+            "WDIA_TRAPPED": 1.0,
+            "USE_BPER": true
+        }
+    },
+    "101": {
+        "label": "SAT2em basis",
+        "controls": {
+            "SAT_RULE": 2,
+            "UNITS": "CGYRO",
+            "XNU_MODEL": 3,
+            "WDIA_TRAPPED": 1.0,
+            "USE_BPER": true,
+            "KYGRID_MODEL": 4,
+            "NBASIS_MAX": 6
+        }
+    }
+}

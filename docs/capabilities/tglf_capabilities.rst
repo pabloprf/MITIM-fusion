@@ -76,7 +76,8 @@ To generate the input files (input.tglf) to TGLF at each radial location, MITIM 
 
 Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``restart`` flag can be provided.
 The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
-First, the argument ``TGLFsettings`` (which goes from 1 to 5 as of now) indicates the base case to start with. The user is referred to ``GACODEdefaults.py`` to understand the meaning of each setting.
+First, the argument ``TGLFsettings`` indicates the base case to start with.
+The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
 Second, the argument ``extraOptions`` can be passed as a dictionary of variables to change.
 For example, the following two commands will run TGLF with saturation rule number 2 with and without electromagnetic effets. After each ``run()`` command, a ``read()`` is needed, to populate the *tglf.results* dictionary with the TGLF outputs (``label`` refers to the dictionary key for each run):
 
@@ -95,19 +96,6 @@ For example, the following two commands will run TGLF with saturation rule numbe
               restart       = False )
 
     tglf.read( label = 'no_em' )
-
-.. note::
-
-    One can change every TGLF input with the ``extraOptions = {}`` dictionary, as shown earlier. However, ``GACODEdefaults.py`` contains a list of presets for TGLF that can be selected by simply passing the argument ``TGLFsettings`` to the ``.run()`` method. Available preset are:
-
-    - TGLFsettings = 0: Minimal working example
-    - TGLFsettings = 1: "Old" ES SAT1
-    - TGLFsettings = 2: ES SAT0
-    - TGLFsettings = 3: ES SAT1 (a.k.a. SAT1geo)
-    - TGLFsettings = 4: ES SAT2
-    - TGLFsettings = 5: EM SAT2
-
-    The user is not limited to use those combinations. One can start with a given ``TGLFsettings`` option, and then modify as many parameters as needed with the ``extraOptions`` dictionary.
 
 .. tip::
 

@@ -1891,7 +1891,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     axsR[0].legend(loc="best")
 
 
-def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True, includeErrors=True):
+def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True, includeErrors=True, includeMetric=True):
     
     print("- Plotting PORTALS Simulations - Model comparison")
 
@@ -1921,6 +1921,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         typeScale="log" if GB else "linear",
         radial_label=radial_label,
         includeErrors=includeErrors,
+        includeMetric=includeMetric,
     )
 
     # ti
@@ -1934,6 +1935,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         typeScale="log" if GB else "linear",
         radial_label=radial_label,
         includeErrors=includeErrors,
+        includeMetric=includeMetric,
     )
 
     # ne
@@ -1947,6 +1949,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         typeScale="linear",
         radial_label=radial_label,
         includeErrors=includeErrors,
+        includeMetric=includeMetric,
     )
 
     cont = 1
@@ -1963,6 +1966,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
             radial_label=radial_label,
             runWithImpurity = self.runWithImpurity,
             includeErrors=includeErrors,
+            includeMetric=includeMetric,
         )
         cont += 1
     
@@ -1978,6 +1982,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
             typeScale="linear",
             radial_label=radial_label,
             includeErrors=includeErrors,
+            includeMetric=includeMetric,
         )
         cont += 1
 
@@ -1993,6 +1998,7 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
             typeScale="linear",
             radial_label=radial_label,
             includeErrors=includeErrors,
+            includeMetric=includeMetric,
         )
         cont += 1
 
@@ -2013,6 +2019,7 @@ def plotModelComparison_quantity(
     radial_label=True,
     runWithImpurity=None,
     includeErrors=True,
+    includeMetric=True,
 ):
     resultsX = "tglf_neo"
     if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
@@ -2085,9 +2092,10 @@ def plotModelComparison_quantity(
 
     ax.legend(prop={"size": 8})
 
-    rmse = np.sqrt(np.mean((F_tglf - F_cgyro)**2))
-    ax.text(0.5, 0.95, f'RMSE: {rmse:.2f}', ha='left', va='top', transform=ax.transAxes, 
-        bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
+    if includeMetric:
+        rmse = np.sqrt(np.mean((F_tglf - F_cgyro)**2))
+        ax.text(0.5, 0.95, f'RMSE: {rmse:.2f}', ha='left', va='top', transform=ax.transAxes, 
+            bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------------------------------------------
