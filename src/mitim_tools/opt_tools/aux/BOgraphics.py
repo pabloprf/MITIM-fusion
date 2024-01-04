@@ -1326,7 +1326,7 @@ class ResultsOptimization:
 
     def read(self):
         print(
-            f"\t\t--> Opening {self.file[-30:]}{'...' if len(self.file) > 30 else ''}"
+            f"\t\t--> Opening {IOtools.clipstr(self.file)}"
         )
 
         with open(self.file, "r") as f:

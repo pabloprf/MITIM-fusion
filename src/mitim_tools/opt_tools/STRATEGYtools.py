@@ -940,7 +940,7 @@ class PRF_BO:
 
             step = aux.steps[iteration]
             print(
-                f"\t* Read {stateFile[-30:]}{'...' if len(stateFile) > 30 else ''} state file, grabbed step #{iteration}",
+                f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",
                 typeMsg="f",
             )
         except:

@@ -10,7 +10,7 @@ It also does it on a separate figure, so easy to manage (e.g. for saving as .eps
 
 parser = argparse.ArgumentParser()
 parser.add_argument("folders", type=str, nargs="*")
-parser.add_argument("--remote", type=str, required=False, default=None)
+parser.add_argument("--remote","-r", type=str, required=False, default=None)
 
 parser.add_argument(
     "--max", type=int, required=False, default=None
@@ -77,7 +77,7 @@ for i in range(len(folders)):
 
     if (not complete) or isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer):
         if len(folders) > 1:
-            fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folderWork)[-1]}")
+            fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folders[i])[-1]}")
 
         portals_total[i].plotMetrics(
             fig = fig,
