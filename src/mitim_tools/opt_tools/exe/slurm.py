@@ -97,7 +97,7 @@ if __name__ == "__main__":
         "--partition", type=str, required=False, default=IOtools.expandPath("$MITIM_PARTITION")
     )
     parser.add_argument("--seeds", type=int, required=False, default=1)
-    parser.add_argument("--env", type=str, required=False, default=IOtools.expandPath("~/.env/mitim-env"))
+    parser.add_argument("--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env"))
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=64)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)

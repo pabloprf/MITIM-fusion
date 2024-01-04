@@ -367,7 +367,7 @@ class OPTstep:
             self.GP["individual_models"], self.GP["combined_model"]
         )
         print("--> Launching tests evaluate accuracy on training set (absolute units)")
-        self.GP["combined_model"].testTraining(printYN=False)
+        self.GP["combined_model"].testTraining()
 
         txt_time = IOtools.getTimeDifference(time1)
 
