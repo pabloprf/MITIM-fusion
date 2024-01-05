@@ -19,8 +19,9 @@ parser.add_argument("--ev", type=int, required=False, default=-1)
 parser.add_argument("--pos", type=int, required=False, default=[0], nargs="*")
 parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
-    "--var", type=float, required=False, default=0.05
+    "--var", type=float, required=False, default=0.01
 )  # Variation in inputs (1% default)
+parser.add_argument("-r", required=False, default=False, action='store_true')
 
 args = parser.parse_args()
 folder = args.folder
@@ -28,6 +29,7 @@ ev = args.ev
 pos = args.pos
 wf = args.wf
 var = args.var
+restart = args.r
 
 # --- Workflow
 
@@ -41,7 +43,7 @@ tglf.runScanTurbulenceDrives(
     variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
     TGLFsettings=TGLFsettings,
     extraOptions=extraOptions,
-    restart=False,
+    restart=restart,
     runWaveForms=wf,
 )
 
