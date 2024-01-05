@@ -2763,7 +2763,7 @@ class TGLF:
         # --------------------------------------------------------
 
         total_plots = 0
-        for ikey in self.scans:
+        for ikey in labels:
             total_plots += self.scans[ikey]["Qe_gb"].size
 
         if plotTGLFs and (
@@ -2775,7 +2775,7 @@ class TGLF:
                 )
             )
         ):
-            for contLabel, ikey in enumerate(self.scans):
+            for contLabel, ikey in enumerate(labels):
                 labelsExtraPlot, labels_legend = [], []
                 values_tot = (
                     self.scans[ikey]["xV"][0]
