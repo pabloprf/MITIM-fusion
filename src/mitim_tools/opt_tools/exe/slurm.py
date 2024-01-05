@@ -16,7 +16,6 @@ To call:
 
 """
 
-
 def commander(
     script, folderWork0, num, partition, venv, n=32, hours=8, seed=0, extra_name=""
 ):

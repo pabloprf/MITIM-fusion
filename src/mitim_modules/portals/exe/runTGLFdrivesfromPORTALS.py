@@ -16,10 +16,10 @@ Notes:
 parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--ev", type=int, required=False, default=-1)
-parser.add_argument("--pos", type=int, required=False, default=[0.5], nargs="*")
+parser.add_argument("--pos", type=int, required=False, default=[0], nargs="*")
 parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
-    "--var", type=float, required=False, default=0.01
+    "--var", type=float, required=False, default=0.05
 )  # Variation in inputs (1% default)
 
 args = parser.parse_args()

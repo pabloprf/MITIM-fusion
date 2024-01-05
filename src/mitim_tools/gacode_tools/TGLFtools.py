@@ -1,7 +1,8 @@
-import os, copy, pickle
+import os
+import copy
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools.misc_tools import (
     IOtools,
@@ -19,6 +20,8 @@ from mitim_tools.gacode_tools.aux import (
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -2062,7 +2065,7 @@ class TGLF:
         # -------------------------------------
         if (1.0 not in varUpDown) and relativeChanges:
             print(
-                f"\n* Since variations vector did not include base case, I am adding it",
+                "\n* Since variations vector did not include base case, I am adding it",
                 typeMsg="i",
             )
             varUpDown_new = []
@@ -2080,7 +2083,7 @@ class TGLF:
                 varUpDown_new[i] = round(varUpDown_new[i], 3)
 
         print(f"\n- Proceeding to scan {variable}:")
-        for mult in varUpDown_new:
+        for cont_mult,mult in enumerate(varUpDown_new):
             mult = round(mult, 6)
 
             if relativeChanges:
@@ -2101,16 +2104,19 @@ class TGLF:
 
             if not relativeChanges:
                 for ikey in multipliers_mod:
-                    extraOptions[ikey] = multipliers_mod[ikey]
+                    kwargs_TGLFrun['extraOptions'][ikey] = multipliers_mod[ikey]
                 multipliers_mod = {}
 
             # Force ensure quasineutrality if the
             if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
-                Quasineutral = True
+                kwargs_TGLFrun['Quasineutral'] = True
+
+            # Only ask the restart in the first round
+            kwargs_TGLFrun['forceIfRestart'] = cont_mult>0 or ('forceIfRestart' in kwargs_TGLFrun and kwargs_TGLFrun['forceIfRestart'])
 
             self.run(
                 subFolderTGLF=f"{self.subFolderTGLF_scan}_{name}",
-                multipliers=multipliers_mod,  # forceIfRestart=True,
+                multipliers=multipliers_mod,
                 **kwargs_TGLFrun,
             )
 
@@ -2150,20 +2156,10 @@ class TGLF:
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-            variable_beginning = variable.split("_")[0]
 
-            positions_where_var_is_found = np.where(
-                np.array(ikey.split("_")) == variable_beginning
-            )[0]
-            if len(positions_where_var_is_found) > 0:
-                grab_name = "_".join(
-                    ikey.split("_")[: positions_where_var_is_found[-1]]
-                )
-                isThisTheRight = grab_name == subFolderTGLF
-            else:
-                isThisTheRight = False
+            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable == '_'.join(ikey.split("_")[:-1]).split(subFolderTGLF+'_')[-1])
 
-            if isThisTheRight:
+            if isThisTheRightReadResults:
                 x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
                     [],
                     [],
@@ -2786,7 +2782,7 @@ class TGLF:
                     / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
                 )
                 for val in values_tot:
-                    fullres = f"{ikey}_{self.scans[ikey]['variable']}_{round(val,7)}"
+                    fullres = f"{ikey}_{round(val,7)}"
                     labelsExtraPlot.append(fullres)
                     labels_legend.append(f"{round(val,7)}")
 
@@ -2829,7 +2825,11 @@ class TGLF:
 
         varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
-        for variable in self.variablesDrives:
+        for cont,variable in enumerate(self.variablesDrives):
+
+            # Only ask the restart in the first round
+            kwargs_TGLFrun['forceIfRestart'] = cont>0 or ('forceIfRestart' in kwargs_TGLFrun and kwargs_TGLFrun['forceIfRestart'])
+
             self.runScan(
                 subFolderTGLF=subFolderTGLF,
                 variable=variable,
