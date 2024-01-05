@@ -1,5 +1,4 @@
 import argparse
-import copy
 import numpy as np
 from mitim_modules.portals.aux import PORTALSanalysis
 
@@ -38,7 +37,7 @@ restart = args.r
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, step=ev)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
 
 varUpDown = np.linspace(1.0-var, 1.0+var, 10)
 
