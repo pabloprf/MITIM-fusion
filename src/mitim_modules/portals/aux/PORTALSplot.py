@@ -1891,7 +1891,11 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     axsR[0].legend(loc="best")
 
 
-def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, radial_label=True, includeErrors=True, includeMetric=True):
+def PORTALSanalyzer_plotModelComparison(
+        self,
+        fig=None, axs = None,
+        UseTGLFfull_x = None,
+        radial_label=True, includeErrors=True, includeMetric=True):
     
     print("- Plotting PORTALS Simulations - Model comparison")
 
@@ -1911,41 +1915,59 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
     axs = axs.flatten()
 
     # te
+    quantityX='QeGB_sim_turb' if UseTGLFfull_x is None else '[TGLF]Qe'
+    quantityX_stds='QeGB_sim_turb_stds' if UseTGLFfull_x is None else None
+    quantityY='QeGB_sim_turb'
+    quantityY_stds='QeGB_sim_turb_stds'
     plotModelComparison_quantity(
         self,
         axs[0],
-        quantity=f'Qe{"GB" if GB else ""}_sim_turb',
-        quantity_stds=f'Qe{"GB" if GB else ""}_sim_turb_stds',
-        labely="$Q_e^{GB}$" if GB else "$Q_e$",
-        title=f"Electron energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-        typeScale="log" if GB else "linear",
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$Q_e^{GB}$",
+        title="Electron energy flux (GB)",
+        typeScale="log",
         radial_label=radial_label,
         includeErrors=includeErrors,
         includeMetric=includeMetric,
     )
 
     # ti
+    quantityX='QiGBIons_sim_turb_thr' if UseTGLFfull_x is None else '[TGLF]Qi'
+    quantityX_stds='QiGBIons_sim_turb_thr_stds' if UseTGLFfull_x is None else None
+    quantityY='QiGBIons_sim_turb_thr'
+    quantityY_stds='QiGBIons_sim_turb_thr_stds'
     plotModelComparison_quantity(
         self,
         axs[1],
-        quantity=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr',
-        quantity_stds=f'Qi{"GB" if GB else ""}Ions_sim_turb_thr_stds',
-        labely="$Q_i^{GB}$" if GB else "$Q_i$",
-        title=f"Ion energy flux {'(GB)' if GB else '($MW/m^2$)'}",
-        typeScale="log" if GB else "linear",
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$Q_i^{GB}$",
+        title="Ion energy flux (GB)",
+        typeScale="log",
         radial_label=radial_label,
         includeErrors=includeErrors,
         includeMetric=includeMetric,
     )
 
     # ne
+    quantityX='GeGB_sim_turb' if UseTGLFfull_x is None else '[TGLF]Ge'
+    quantityX_stds='GeGB_sim_turb_stds' if UseTGLFfull_x is None else None
+    quantityY='GeGB_sim_turb'
+    quantityY_stds='GeGB_sim_turb_stds'
     plotModelComparison_quantity(
         self,
         axs[2],
-        quantity=f'Ge{"GB" if GB else ""}_sim_turb',
-        quantity_stds=f'Ge{"GB" if GB else ""}_sim_turb_stds',
-        labely="$\\Gamma_e^{GB}$" if GB else "$\\Gamma_e$",
-        title=f"Electron particle flux {'(GB)' if GB else '($?$)'}",
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$\\Gamma_e^{GB}$",
+        title="Electron particle flux (GB)",
         typeScale="linear",
         radial_label=radial_label,
         includeErrors=includeErrors,
@@ -1955,13 +1977,19 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
     cont = 1
     if 'nZ' in self.ProfilesPredicted:
         # nZ
+        quantityX='GiGB_sim_turb' if UseTGLFfull_x is None else '[TGLF]GiAll'
+        quantityX_stds='GiGB_sim_turb_stds' if UseTGLFfull_x is None else None
+        quantityY='GiGB_sim_turb'
+        quantityY_stds='GiGB_sim_turb_stds'
         plotModelComparison_quantity(
             self,
             axs[2+cont],
-            quantity=f'Gi{"GB" if GB else ""}_sim_turb',
-            quantity_stds=f'Gi{"GB" if GB else ""}_sim_turb_stds',
-            labely="$\\Gamma_Z^{GB}$" if GB else "$\\Gamma_Z$",
-            title=f"Impurity particle flux {'(GB)' if GB else '($?$)'}",
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$\\Gamma_Z^{GB}$",
+            title="Impurity particle flux (GB)",
             typeScale="linear",
             radial_label=radial_label,
             runWithImpurity = self.runWithImpurity,
@@ -1971,14 +1999,22 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         cont += 1
     
     if 'w0' in self.ProfilesPredicted:
+        if UseTGLFfull_x is None:
+            raise Exception('Momentum plot not implemented yet')
         # w0
+        quantityX='MtGB_sim_turb'
+        quantityX_stds='MtGB_sim_turb_stds'
+        quantityY='MtGB_sim_turb'
+        quantityY_stds='MtGB_sim_turb_stds'
         plotModelComparison_quantity(
             self,
             axs[2+cont],
-            quantity=f'Mt{"GB" if GB else ""}_sim_turb',
-            quantity_stds=f'Mt{"GB" if GB else ""}_sim_turb_stds',
-            labely="$M_T^{GB}$" if GB else "$M_T$",
-            title=f"Torque {'(GB)' if GB else '($?$)'}",
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$M_T^{GB}$",
+            title="Torque (GB)",
             typeScale="linear",
             radial_label=radial_label,
             includeErrors=includeErrors,
@@ -1987,14 +2023,22 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
         cont += 1
 
     if self.PORTALSparameters['surrogateForTurbExch']:
+        if UseTGLFfull_x is None:
+            raise Exception('Turbulent exchange plot not implemented yet')
         # Sexch
+        quantityX='EXeGB_sim_turb'
+        quantityX_stds='EXeGB_sim_turb_stds'
+        quantityY='EXeGB_sim_turb'
+        quantityY_stds='EXeGB_sim_turb_stds'
         plotModelComparison_quantity(
             self,
             axs[2+cont],
-            quantity=f'EXe{"GB" if GB else ""}_sim_turb',
-            quantity_stds=f'EXe{"GB" if GB else ""}_sim_turb_stds',
-            labely="$S_{exch}^{GB}$" if GB else "$S_{exch}$",
-            title=f"Turbulent Exchange {'(GB)' if GB else '(?)'}",
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$S_{exch}^{GB}$",
+            title="Turbulent Exchange (GB)",
             typeScale="linear",
             radial_label=radial_label,
             includeErrors=includeErrors,
@@ -2011,9 +2055,11 @@ def PORTALSanalyzer_plotModelComparison(self, fig=None, axs = None, GB=True, rad
 def plotModelComparison_quantity(
     self,
     ax,
-    quantity="QeGB_sim_turb",
-    quantity_stds="QeGB_sim_turb_stds",
-    labely="",
+    quantityX="QeGB_sim_turb",
+    quantityX_stds="QeGB_sim_turb_stds",
+    quantityY="QeGB_sim_turb",
+    quantityY_stds="QeGB_sim_turb_stds",
+    quantity_label="",
     title="",
     typeScale="linear",
     radial_label=True,
@@ -2024,59 +2070,101 @@ def plotModelComparison_quantity(
     resultsX = "tglf_neo"
     if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
         resultsY = "cgyro_neo"
-        labely_resultsY = "(CGYRO)"
+        quantity_label_resultsY = "(CGYRO)"
     else:
         resultsY = "tglf_neo"
-        labely_resultsY = "(TGLF)"
+        quantity_label_resultsY = "(TGLF)"
 
-    F_tglf = []
-    F_cgyro = []
-    F_tglf_stds = []
-    F_cgyro_stds = []
-    for i in range(len(self.mitim_runs) - 2):
-        try:
-            F_tglf.append(
-                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantity][(... if runWithImpurity is None else runWithImpurity),0, 1:]
+    X, X_stds = [], []
+    Y, Y_stds = [], []
+    for i in range(self.ilast + 1):
+        '''
+        Read the fluxes to be plotted in Y from the TGYRO results
+        '''
+        t = self.mitim_runs[i]["tgyro"].results[resultsY]
+        Y.append(
+            t.__dict__[quantityY][... if runWithImpurity is None else runWithImpurity,0, 1:]
+        )
+        Y_stds.append(
+            t.__dict__[quantityY_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
+        )
+
+        '''
+        Read the fluxes to be plotted in X from...
+        '''
+        # From the TGLF full results
+        if '[TGLF]' in quantityX:
+            X.append([self.tglf_full.results[f'ev{i}']['TGLFout'][j].__dict__[quantityX.replace('[TGLF]', '')] for j in range(len(self.rhos))])
+            X_stds.append([np.nan for j in range(len(self.rhos))])
+        
+        # From the TGLF results
+        else:
+            X.append(
+                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantityX][(... if runWithImpurity is None else runWithImpurity),0, 1:]
             )
-            F_tglf_stds.append(
+            X_stds.append(
                 self.mitim_runs[i]["tgyro"]
                 .results[resultsX]
-                .__dict__[quantity_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
+                .__dict__[quantityX_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
             )
-            F_cgyro.append(
-                self.mitim_runs[i]["tgyro"].results[resultsY].__dict__[quantity][... if runWithImpurity is None else runWithImpurity,0, 1:]
-            )
-            F_cgyro_stds.append(
-                self.mitim_runs[i]["tgyro"]
-                .results[resultsY]
-                .__dict__[quantity_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
-            )
-        except TypeError:
-            break
-    F_tglf = np.array(F_tglf)
-    F_cgyro = np.array(F_cgyro)
-    F_tglf_stds = np.array(F_tglf_stds)
-    F_cgyro_stds = np.array(F_cgyro_stds)
+
+    X = np.array(X)
+    Y = np.array(Y)
+    X_stds = np.array(X_stds)
+    Y_stds = np.array(Y_stds)
+
+    plot_fluxes_together(
+        X,
+        Y,
+        X_stds,
+        Y_stds,
+        ax,
+        self.roa,
+        quantity_label=quantity_label,
+        title=title,
+        typeScale=typeScale,
+        radial_label=radial_label,
+        includeErrors=includeErrors,
+        includeMetric=includeMetric,
+        quantity_label_resultsY=quantity_label_resultsY,
+    )
+
+def plot_fluxes_together(
+        X,
+        Y,
+        X_stds,
+        Y_stds,
+        ax,
+        roa,
+        quantity_label="",
+        title="",
+        typeScale="linear",
+        radial_label=True,
+        includeErrors=True,
+        includeMetric=True,
+        quantity_label_resultsX="(TGLF)",
+        quantity_label_resultsY="(TGLF)"
+        ):
 
     colors = GRAPHICStools.listColors()
 
-    for ir in range(F_tglf.shape[1]):
+    for ir in range(X.shape[1]):
         ax.errorbar(
-            F_tglf[:, ir],
-            F_cgyro[:, ir],
-            xerr=F_tglf_stds[:, ir] if includeErrors else None,
-            yerr=F_cgyro_stds[:, ir] if includeErrors else None,
+            X[:, ir],
+            Y[:, ir],
+            xerr=X_stds[:, ir] if includeErrors else None,
+            yerr=Y_stds[:, ir] if includeErrors else None,
             c=colors[ir],
             markersize=2,
             capsize=2,
             fmt="s",
             elinewidth=1.0,
             capthick=1.0,
-            label=f"$r/a={self.roa[ir]:.2f}$" if radial_label else "",
+            label=f"$r/a={roa[ir]:.2f}$" if radial_label else "",
         )
 
-    minFlux = np.min([F_tglf.min(), F_cgyro.min()])
-    maxFlux = np.max([F_tglf.max(), F_cgyro.max()])
+    minFlux = np.min([X.min(), Y.min()])
+    maxFlux = np.max([X.max(), Y.max()])
 
     ax.plot([minFlux*0.8, maxFlux*1.2], [minFlux*0.8, maxFlux*1.2], "-", color="k",lw=0.5)
     if typeScale == "log":
@@ -2085,18 +2173,17 @@ def plotModelComparison_quantity(
     elif typeScale == "symlog":
         ax.set_xscale("symlog")  # ,linthresh=1E-2)
         ax.set_yscale("symlog")  # ,linthresh=1E-2)
-    ax.set_xlabel(f"{labely} (TGLF)")
-    ax.set_ylabel(f"{labely} {labely_resultsY}")
+    ax.set_xlabel(f"{quantity_label} {quantity_label_resultsX}")
+    ax.set_ylabel(f"{quantity_label} {quantity_label_resultsY}")
     ax.set_title(title)
     GRAPHICStools.addDenseAxis(ax)
 
     ax.legend(prop={"size": 8})
 
     if includeMetric:
-        rmse = np.sqrt(np.mean((F_tglf - F_cgyro)**2))
+        rmse = np.sqrt(np.mean((X - Y)**2))
         ax.text(0.5, 0.95, f'RMSE: {rmse:.2f}', ha='left', va='top', transform=ax.transAxes, 
-            bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
-
+            bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.5'))
 # ---------------------------------------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------------------------------------------
 

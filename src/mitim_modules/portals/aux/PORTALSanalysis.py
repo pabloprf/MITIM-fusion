@@ -1,5 +1,5 @@
-from math import e
 import os
+import copy
 import torch
 import numpy as np
 import dill as pickle_dill
@@ -113,8 +113,28 @@ class PORTALSanalyzer:
     def plotRanges(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotRanges(self, **kwargs)
 
-    def plotModelComparison(self, **kwargs):
-        PORTALSplot.PORTALSanalyzer_plotModelComparison(self, **kwargs)
+    def plotModelComparison(self, UseThisTGLFfull = None, **kwargs):
+
+        UseTGLFfull_x = None
+
+        if UseThisTGLFfull is not None:
+            '''
+            UseThisTGLFfull should be a tuple (folder,label) where to read the
+            results of running the method runTGLFfull() below.
+            Note that it could be [None, label]
+            '''
+            folder, label = UseThisTGLFfull
+            if folder is None:
+                folder = f"{self.folder}/tglf_full/"
+            self.tglf_full = TGLFtools.TGLF(rhos=self.rhos)
+            for ev in range(self.ilast + 1):
+                self.tglf_full.read(folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"ev{ev}")
+            UseTGLFfull_x = label
+
+        PORTALSplot.PORTALSanalyzer_plotModelComparison(
+            self,
+            UseTGLFfull_x=UseTGLFfull_x,
+            **kwargs)
 
     # ****************************************************************************
     # UTILITIES to extract aspects of PORTALS
@@ -226,9 +246,9 @@ f'''
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self, folder=None, positions=None, step=-1, restart=False):
-        if step < 0:
-            step = self.ibest
+    def extractTGLF(self, folder=None, positions=None, evaluation=-1, restart=False):
+        if evaluation < 0:
+            evaluation = self.ibest
 
         if positions is None:
             rhos = self.rhos
@@ -238,7 +258,7 @@ f'''
                 rhos.append(self.rhos[i])
 
         if folder is None:
-            folder = f"{self.folder}/tglf_step{step}/"
+            folder = f"{self.folder}/tglf_ev{evaluation}/"
 
         folder = IOtools.expandPath(folder)
 
@@ -246,11 +266,11 @@ f'''
             os.system(f"mkdir {folder}")
 
         print(
-            f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from step #{step}"
+            f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}"
         )
 
         inputgacode = f"{folder}/input.gacode.start"
-        self.mitim_runs[step]["tgyro"].profiles.writeCurrentStatus(file=inputgacode)
+        self.mitim_runs[evaluation]["tgyro"].profiles.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
@@ -264,21 +284,45 @@ f'''
     # UTILITIES for post-analysis
     # ****************************************************************************
 
-    def runTGLF(self, folder=None, positions=None, step=-1, restart=False):
-        tglf, TGLFsettings, extraOptions = self.extractTGLF(
-            folder=folder, positions=positions, step=step, restart=restart
-        )
+    def runTGLFfull(self, folder=None, restart=False, label = 'default',tglf_object=None, **kwargsTGLF):
+        '''
+        This runs TGLF for all evaluations, all radii.
+        This is convenient if I want to re=run TGLF with different settings, e.g. different TGLFsettings,
+        that you can provide as keyword arguments.
+        '''
 
-        tglf.run(
-            subFolderTGLF="tglf_standalone/",
-            TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            restart=restart,
-        )
+        if folder is None:
+            folder = f"{self.folder}/tglf_full/"
 
-        tglf.read(label="tglf_standalone")
+        if not os.path.exists(folder):
+            os.system(f"mkdir {folder}")
 
-        tglf.plotRun(labels=["tglf_standalone"])
+        for ev in range(self.ilast + 1):
+            tglf, TGLFsettings, extraOptions = self.extractTGLF(
+                folder=f"{folder}/Evaluation.{ev}/", evaluation=ev, restart=restart
+            )
+
+            kwargsTGLF_this = copy.deepcopy(kwargsTGLF)
+
+            if 'TGLFsettings' not in kwargsTGLF_this:
+                kwargsTGLF_this['TGLFsettings'] = TGLFsettings
+            if 'extraOptions' not in kwargsTGLF_this:
+                kwargsTGLF_this['extraOptions'] = extraOptions
+
+            tglf.run(
+                subFolderTGLF=f"tglf_{label}/",
+                restart=restart,
+                **kwargsTGLF_this
+            )
+
+        # Read all previously run cases into a single class
+        if tglf_object is None:
+            tglf_object = copy.deepcopy(tglf)
+        
+        for ev in range(self.ilast + 1):
+            tglf_object.read(folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"{label}_ev{ev}")
+
+        return tglf_object
 
     def runCases(self, onlyBest=False, restart=False, fn=None):
         from mitim_modules.portals.PORTALSmain import runModelEvaluator
@@ -335,7 +379,6 @@ f'''
             if not onlyBest:
                 tgyroO.plotRun(fn=fn, labels=[name0])
             tgyroB.plotRun(fn=fn, labels=[name])
-
 
 # ****************************************************************************
 # Helpers
@@ -651,7 +694,6 @@ def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
     self.DVdistMetric_x = self.opt_fun.res.DVdistMetric_x
     self.DVdistMetric_y = self.opt_fun.res.DVdistMetric_y
 
-
 def fix_pickledstate(state_to_mod, powerstate_to_add):
     """
     If I have modified the source code of powerstate, it won't be able to load an old PORTALS
@@ -683,7 +725,6 @@ def fix_pickledstate(state_to_mod, powerstate_to_add):
 
     with open(state_to_mod, "wb") as f:
         pickle_dill.dump(aux, f)
-
 
 def calcLinearizedModel(
     prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
