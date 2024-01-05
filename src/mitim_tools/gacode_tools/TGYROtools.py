@@ -4707,9 +4707,9 @@ def produceInputs_TGYROworkflow(
     print("\t- Testing... do TGYRO files already exist?")
     if os.path.exists(f"{finalFolder}/{file_to_look}"):
         ProfilesGenerated, StateGenerated = True, True
-        print(f"\t\t+++++++ {file_to_look} already generated")
+        print(f"\t\t+++++++ {IOtools.clipstr(file_to_look)} already generated")
     else:
-        print(f"\t\t+++++++ {finalFolder}/{file_to_look} file not found")
+        print(f"\t\t+++++++ {IOtools.clipstr(f'{finalFolder}/{file_to_look}')} file not found")
         ProfilesGenerated = False
         if os.path.exists(finalFolder + "/10001.cdf"):
             StateGenerated = True

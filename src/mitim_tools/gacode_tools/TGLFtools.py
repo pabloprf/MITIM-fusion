@@ -174,22 +174,39 @@ class TGLF:
                 self.scans,
                 self.tgyro,
                 self.ky_single,
-                self.NormalizationSets,
-            ) = ({}, {}, None, None, None)
+            ) = ({}, {}, None, None)
 
-    def save_pkl(self, file):
-        print(f"> Saving tglf class as pickle file: {IOtools.clipstr(file)}")
-        try:
+            self.NormalizationSets = {
+                'TRANSP': None,
+                'PROFILES': None,
+                'TGYRO': None,
+                'EXP': None,
+                'input_gacode': None,
+                'SELECTED': None}
+
+    def prepare_for_save_TGLF(self):
+        """
+        This is a function that will be called when saving the class as pickle.
+        It will delete things that are not easily pickled.
+        """
+        
+        if 'fn' in self.__dict__:
             del self.fn  # otherwise it cannot deepcopy
-        except:
-            pass
+
         tglf_copy = copy.deepcopy(self)
 
-        # Delete things that are not easily pickled
         del tglf_copy.convolution_fun_fluct
         for label in tglf_copy.results:
             if "convolution_fun_fluct" in tglf_copy.results[label]:
                 tglf_copy.results[label]["convolution_fun_fluct"] = None
+        
+        return tglf_copy
+
+    def save_pkl(self, file):
+        print(f"> Saving tglf class as pickle file: {IOtools.clipstr(file)}")
+
+        # Prepare
+        tglf_copy = self.prepare_for_save_TGLF()
 
         # Write
         with open(file, "wb") as handle:
@@ -257,7 +274,7 @@ class TGLF:
                     inp = TGLFinput(fii)
                     exists = exists and not inp.onlyControl
                 else:
-                    print(f"\t\t- Running scans because it does not exist file {fii}")
+                    print(f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}")
                     exists = False
             if exists:
                 print(
@@ -346,18 +363,29 @@ class TGLF:
         # Main folder where things are
         self.FolderGACODE = IOtools.expandPath(FolderGACODE)
 
-        # input_tglf_file
-        inputclass = TGLFinput(file=input_tglf_file)
-
-        self.rhos = [inputclass.geom["RMIN_LOC"]]
-        self.inputsTGLF = {self.rhos[0]: inputclass}
-        print(f"\t- This file correspond to {self.rhos[0]} according to RMIN_LOC")
-
+        # Main folder where things are
         self.NormalizationSets, _ = NORMtools.normalizations(
             PROFILEStools.PROFILES_GACODE(input_gacode)
             if input_gacode is not None
             else None
         )
+
+        # input_tglf_file
+        inputclass = TGLFinput(file=input_tglf_file)
+
+        roa = inputclass.geom["RMIN_LOC"]
+        print(f"\t- This file correspond to r/a={roa} according to RMIN_LOC")
+
+        if self.NormalizationSets['input_gacode'] is not None:
+            rho = np.interp(roa, self.NormalizationSets['input_gacode'].derived['roa'], self.NormalizationSets['input_gacode'].profiles['rho(-)'])
+            print(f"\t\t- rho={rho:.4f}, using input.gacode for conversion")
+        else:
+            print("\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",typeMsg='w')
+            rho = roa
+
+        self.rhos = [rho]
+
+        self.inputsTGLF = {self.rhos[0]: inputclass}
 
     def run(
         self,
@@ -611,13 +639,13 @@ class TGLF:
         self,
         label="tglf1",
         folder=None,  # If None, search in the previously run folder
-        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho
+        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
     ):
         print("> Reading TGLF results")
 
         if d_perp_cm is not None:
-            if type(d_perp_cm) is float:
+            if isinstance(d_perp_cm, float):
                 self.d_perp_dict = {}
                 for rho in self.rhos:
                     self.d_perp_dict[rho] = d_perp_cm
@@ -3338,7 +3366,7 @@ class TGLF:
             for i in self.rhos:
                 self.DRMAJDX_LOC[i] = 0.0
             print(
-                " ~~ Using DRMAJDX_LOC=0 because no input file was stored", typeMsg="w"
+                "\t- [convolution] Using DRMAJDX_LOC =0 because no input file was stored", typeMsg="i"
             )
         else:
             for i in self.latest_inputsFileTGLFDict:
@@ -4183,6 +4211,7 @@ def readTGLFresults(
     TGLFstd_TGLFout, inputclasses, parsed = [], [], []
 
     for rho in rhos:
+
         # Read full folder
         TGLFout = TGLFoutput(
             FolderGACODE_tmp, suffix=f"_{rho:.4f}" if suffix is None else suffix
@@ -4225,7 +4254,7 @@ class TGLFoutput:
                 f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
             )
 
-        self.inputclass = TGLFinput(file=self.FolderGACODE + "input.tglf" + self.suffix)
+        self.inputclass = TGLFinput(file=f'{self.FolderGACODE}/input.tglf{self.suffix}')
         self.roa = self.inputclass.geom["RMIN_LOC"]
 
         self.read()
