@@ -14,7 +14,7 @@ alias mitim_read_transp="ipython3 -i -- $MITIM_PATH/src/mitim_tools/transp_tools
 alias mitim_run_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/run_tglf.py --folder $1 --tglf $2" #[--gacode input.gacode] [--scan RLTS_2] [--drives True]
 
 # Optimizations
-alias mitim_plot_opt="ipython3 -i -- $MITIM_PATH/src/mitim_tools/opt_tools/exe/read.py --type 4 --resolution 20 --folders $1"
+alias mitim_plot_opt="ipython3 -i -- $MITIM_PATH/src/mitim_tools/opt_tools/exe/read.py --type 4 --resolution 20 $1"
 alias mitim_plot_portals="ipython3 -i -- $MITIM_PATH/src/mitim_modules/portals/exe/readMetrics.py $1"
 alias mitim_slurm="python3 $MITIM_PATH/src/mitim_tools/opt_tools/exe/slurm.py $1"
 

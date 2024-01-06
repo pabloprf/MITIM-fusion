@@ -28,7 +28,7 @@ def PORTALSanalyzer_plotMetrics(
     includeRicci=True,
     useConvectiveFluxes=False,  # By default, plot in real particle units
     file_save=None,
-    **kwargs,
+    **kwargs # To allow pass fn that may be used in another plotMetrics method
 ):
     print("- Plotting PORTALS Metrics")
 
@@ -1912,6 +1912,8 @@ def PORTALSanalyzer_plotModelComparison(
         else:
             axs = fig.subplots(ncols=3,nrows=2)
 
+        plt.subplots_adjust(wspace=0.25, hspace=0.25)
+
     axs = axs.flatten()
 
     # te
@@ -2046,11 +2048,7 @@ def PORTALSanalyzer_plotModelComparison(
         )
         cont += 1
 
-    if not figprov:
-        plt.tight_layout()
-
     return axs
-
 
 def plotModelComparison_quantity(
     self,

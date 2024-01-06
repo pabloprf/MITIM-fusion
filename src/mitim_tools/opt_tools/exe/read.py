@@ -1,13 +1,14 @@
-import sys, argparse, copy, torch
+import argparse
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
-from IPython import embed
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -43,8 +44,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--type", type=int, required=False, default=-1
 )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
-parser.add_argument("--folders", required=True, type=str, nargs="*")
-parser.add_argument("--remote", type=str, required=False, default=None)
+parser.add_argument("folders", type=str, nargs="*")
+parser.add_argument("--remote","-r", type=str, required=False, default=None)
 parser.add_argument("--seeds", type=int, required=False, default=None)
 parser.add_argument("--resolution", type=int, required=False, default=50)
 parser.add_argument("--save", type=str, required=False, default=None)
