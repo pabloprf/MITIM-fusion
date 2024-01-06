@@ -26,7 +26,6 @@ class PORTALSanalyzer:
         print("************************************")
 
         self.opt_fun = opt_fun
-        self.prep()
 
         self.folder = (
             folderAnalysis
@@ -35,6 +34,17 @@ class PORTALSanalyzer:
         )
         if not os.path.exists(self.folder):
             os.system(f"mkdir {self.folder}")
+
+        # Preparation
+        print("- Grabbing model")
+        self.step = self.opt_fun.prfs_model.steps[-1]
+        self.gp = self.step.GP["combined_model"]
+
+        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters[
+            "powerstate"
+        ]
+
+        prep_metrics(self)
 
     @classmethod
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
@@ -52,23 +62,6 @@ class PORTALSanalyzer:
             print("\n> Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
 
             return PORTALSinitializer(folder)
-
-    # ****************************************************************************
-    # PREPARATION
-    # ****************************************************************************
-
-    def prep(self):
-        print("- Grabbing model")
-        self.step = self.opt_fun.prfs_model.steps[-1]
-        self.gp = self.step.GP["combined_model"]
-
-        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters[
-            "powerstate"
-        ]
-
-        print("- Interpreting PORTALS results")
-
-        prep_metrics(self)
 
     # ****************************************************************************
     # PLOTTING
@@ -421,6 +414,8 @@ class simple_model_portals:
                 return samples[...,0].detach()
 
 def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
+    print("- Interpreting PORTALS results")
+
     # Read dictionaries
     with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
         self.mitim_runs = pickle_dill.load(f)
@@ -693,38 +688,6 @@ def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}):
 
     self.DVdistMetric_x = self.opt_fun.res.DVdistMetric_x
     self.DVdistMetric_y = self.opt_fun.res.DVdistMetric_y
-
-def fix_pickledstate(state_to_mod, powerstate_to_add):
-    """
-    If I have modified the source code of powerstate, it won't be able to load an old PORTALS
-    What you can do here is to insert an updated class. You can do this by running a bit the code restarting, to get portals_fun
-    and then apply this:
-
-    E.g.:
-            fix_pickledstate('sparc_cgyro1/Outputs/MITIMstate.pkl',portals_fun.surrogate_parameters['powerstate'])
-    """
-
-    with open(state_to_mod, "rb") as f:
-        aux = pickle_dill.load(f)
-
-    # Powerstate is stored at the highest level
-    aux.surrogate_parameters["powerstate"] = powerstate_to_add
-    aux.mainFunction.powerstate = powerstate_to_add
-
-    for i in range(len(aux.steps)):
-        # Surrogate parameters are used in stepSettings at each step
-        aux.steps[i].stepSettings["surrogate_parameters"][
-            "powerstate"
-        ] = powerstate_to_add
-
-        # Surrogate parameters are passed to each individual surrogate model, at each step, in surrogate_parameters_extended
-        for j in range(len(aux.steps[i].GP["individual_models"])):
-            aux.steps[i].GP["individual_models"][j].surrogate_parameters_step[
-                "powerstate"
-            ] = powerstate_to_add
-
-    with open(state_to_mod, "wb") as f:
-        pickle_dill.dump(aux, f)
 
 def calcLinearizedModel(
     prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
