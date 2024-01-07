@@ -1895,16 +1895,13 @@ def PORTALSanalyzer_plotModelComparison(
         self,
         fig=None, axs = None,
         UseTGLFfull_x = None,
-        radial_label=True, includeErrors=True, includeMetric=True):
+        includeErrors=True, includeMetric=True,includeLegAll=True):
     
     print("- Plotting PORTALS Simulations - Model comparison")
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure()
-        figprov = False
-    else:
-        figprov = True
+        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)<4 else 10))
 
     if axs is None:
         if len(self.ProfilesPredicted)<4:
@@ -1930,11 +1927,13 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds=quantityY_stds,
         quantity_label="$Q_e^{GB}$",
         title="Electron energy flux (GB)",
-        typeScale="log",
-        radial_label=radial_label,
         includeErrors=includeErrors,
         includeMetric=includeMetric,
+        includeLeg=True,
     )
+
+    axs[0].set_xscale("log")
+    axs[0].set_yscale("log")
 
     # ti
     quantityX='QiGBIons_sim_turb_thr' if UseTGLFfull_x is None else '[TGLF]Qi'
@@ -1950,11 +1949,13 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds=quantityY_stds,
         quantity_label="$Q_i^{GB}$",
         title="Ion energy flux (GB)",
-        typeScale="log",
-        radial_label=radial_label,
         includeErrors=includeErrors,
         includeMetric=includeMetric,
+        includeLeg=includeLegAll,
     )
+
+    axs[1].set_xscale("log")
+    axs[1].set_yscale("log")
 
     # ne
     quantityX='GeGB_sim_turb' if UseTGLFfull_x is None else '[TGLF]Ge'
@@ -1970,11 +1971,20 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds=quantityY_stds,
         quantity_label="$\\Gamma_e^{GB}$",
         title="Electron particle flux (GB)",
-        typeScale="linear",
-        radial_label=radial_label,
         includeErrors=includeErrors,
         includeMetric=includeMetric,
+        includeLeg=includeLegAll,
     )
+
+    if UseTGLFfull_x is None:
+        val_calc = self.mitim_runs[0]["tgyro"].results['use'].__dict__[quantityX][0,1:]
+    else:
+        val_calc =np.array([self.tglf_full.results['ev0']['TGLFout'][j].__dict__[quantityX.replace('[TGLF]', '')] for j in range(len(self.rhos))])
+
+    thre = 10**round(np.log10(np.abs(val_calc).min()))
+    axs[2].set_xscale("symlog",linthresh=thre)
+    axs[2].set_yscale("symlog",linthresh=thre)
+    axs[2].tick_params(axis='both', which='major', labelsize=8)
 
     cont = 1
     if 'nZ' in self.ProfilesPredicted:
@@ -1992,16 +2002,26 @@ def PORTALSanalyzer_plotModelComparison(
             quantityY_stds=quantityY_stds,
             quantity_label="$\\Gamma_Z^{GB}$",
             title="Impurity particle flux (GB)",
-            typeScale="linear",
-            radial_label=radial_label,
             runWithImpurity = self.runWithImpurity,
             includeErrors=includeErrors,
             includeMetric=includeMetric,
+            includeLeg=includeLegAll,
         )
-        cont += 1
-    
-    if 'w0' in self.ProfilesPredicted:
+       
         if UseTGLFfull_x is None:
+            val_calc = self.mitim_runs[0]["tgyro"].results['use'].__dict__[quantityX][self.runWithImpurity,0,1:]
+        else:
+            val_calc =np.array([self.tglf_full.results['ev0']['TGLFout'][j].__dict__[quantityX.replace('[TGLF]', '')] for j in range(len(self.rhos))])[self.runWithImpurity]
+
+        thre = 10**round(np.log10(np.abs(val_calc).min()))
+        axs[2+cont].set_xscale("symlog",linthresh=thre)
+        axs[2+cont].set_yscale("symlog",linthresh=thre)
+        axs[2+cont].tick_params(axis='both', which='major', labelsize=8)
+
+        cont += 1
+
+    if 'w0' in self.ProfilesPredicted:
+        if UseTGLFfull_x is not None:
             raise Exception('Momentum plot not implemented yet')
         # w0
         quantityX='MtGB_sim_turb'
@@ -2016,16 +2036,21 @@ def PORTALSanalyzer_plotModelComparison(
             quantityY=quantityY,
             quantityY_stds=quantityY_stds,
             quantity_label="$M_T^{GB}$",
-            title="Torque (GB)",
-            typeScale="linear",
-            radial_label=radial_label,
+            title="Momentum Flux (GB)",
             includeErrors=includeErrors,
             includeMetric=includeMetric,
+            includeLeg=includeLegAll,
         )
+
+        thre = 10**round(np.log10(np.abs(self.mitim_runs[0]["tgyro"].results['use'].__dict__[quantityX][0,1:]).min()))
+        axs[2+cont].set_xscale("symlog",linthresh=thre)
+        axs[2+cont].set_yscale("symlog",linthresh=thre)
+        axs[2+cont].tick_params(axis='both', which='major', labelsize=8)
+
         cont += 1
 
     if self.PORTALSparameters['surrogateForTurbExch']:
-        if UseTGLFfull_x is None:
+        if UseTGLFfull_x is not None:
             raise Exception('Turbulent exchange plot not implemented yet')
         # Sexch
         quantityX='EXeGB_sim_turb'
@@ -2041,11 +2066,16 @@ def PORTALSanalyzer_plotModelComparison(
             quantityY_stds=quantityY_stds,
             quantity_label="$S_{exch}^{GB}$",
             title="Turbulent Exchange (GB)",
-            typeScale="linear",
-            radial_label=radial_label,
             includeErrors=includeErrors,
             includeMetric=includeMetric,
+            includeLeg=includeLegAll,
         )
+        
+        thre = 10**round(np.log10(np.abs(self.mitim_runs[0]["tgyro"].results['use'].__dict__[quantityX][0,1:]).min()))
+        axs[2+cont].set_xscale("symlog",linthresh=thre)
+        axs[2+cont].set_yscale("symlog",linthresh=thre)
+        axs[2+cont].tick_params(axis='both', which='major', labelsize=8)
+
         cont += 1
 
     return axs
@@ -2059,19 +2089,20 @@ def plotModelComparison_quantity(
     quantityY_stds="QeGB_sim_turb_stds",
     quantity_label="",
     title="",
-    typeScale="linear",
-    radial_label=True,
     runWithImpurity=None,
     includeErrors=True,
     includeMetric=True,
+    includeLeg=True,
 ):
     resultsX = "tglf_neo"
+    quantity_label_resultsX="(TGLF)"
+
     if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
         resultsY = "cgyro_neo"
         quantity_label_resultsY = "(CGYRO)"
     else:
-        resultsY = "tglf_neo"
-        quantity_label_resultsY = "(TGLF)"
+        resultsY = resultsX
+        quantity_label_resultsY = quantity_label_resultsX
 
     X, X_stds = [], []
     Y, Y_stds = [], []
@@ -2079,31 +2110,30 @@ def plotModelComparison_quantity(
         '''
         Read the fluxes to be plotted in Y from the TGYRO results
         '''
-        t = self.mitim_runs[i]["tgyro"].results[resultsY]
+        t = self.mitim_runs[i]["tgyro"].results
         Y.append(
-            t.__dict__[quantityY][... if runWithImpurity is None else runWithImpurity,0, 1:]
+            t[resultsY].__dict__[quantityY][... if runWithImpurity is None else runWithImpurity,0, 1:]
         )
         Y_stds.append(
-            t.__dict__[quantityY_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
+            t[resultsY].__dict__[quantityY_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
         )
 
         '''
         Read the fluxes to be plotted in X from...
         '''
-        # From the TGLF full results
+
+        # ...from the TGLF full results
         if '[TGLF]' in quantityX:
             X.append([self.tglf_full.results[f'ev{i}']['TGLFout'][j].__dict__[quantityX.replace('[TGLF]', '')] for j in range(len(self.rhos))])
             X_stds.append([np.nan for j in range(len(self.rhos))])
         
-        # From the TGLF results
+        # ...from the TGLF results
         else:
             X.append(
-                self.mitim_runs[i]["tgyro"].results[resultsX].__dict__[quantityX][(... if runWithImpurity is None else runWithImpurity),0, 1:]
+                t[resultsX].__dict__[quantityX][(... if runWithImpurity is None else runWithImpurity),0, 1:]
             )
             X_stds.append(
-                self.mitim_runs[i]["tgyro"]
-                .results[resultsX]
-                .__dict__[quantityX_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
+                t[resultsX].__dict__[quantityX_stds][... if runWithImpurity is None else runWithImpurity,0, 1:]
             )
 
     X = np.array(X)
@@ -2111,42 +2141,15 @@ def plotModelComparison_quantity(
     X_stds = np.array(X_stds)
     Y_stds = np.array(Y_stds)
 
-    plot_fluxes_together(
-        X,
-        Y,
-        X_stds,
-        Y_stds,
-        ax,
-        self.roa,
-        quantity_label=quantity_label,
-        title=title,
-        typeScale=typeScale,
-        radial_label=radial_label,
-        includeErrors=includeErrors,
-        includeMetric=includeMetric,
-        quantity_label_resultsY=quantity_label_resultsY,
-    )
-
-def plot_fluxes_together(
-        X,
-        Y,
-        X_stds,
-        Y_stds,
-        ax,
-        roa,
-        quantity_label="",
-        title="",
-        typeScale="linear",
-        radial_label=True,
-        includeErrors=True,
-        includeMetric=True,
-        quantity_label_resultsX="(TGLF)",
-        quantity_label_resultsY="(TGLF)"
-        ):
-
     colors = GRAPHICStools.listColors()
 
     for ir in range(X.shape[1]):
+
+        label = f"$r/a={self.roa[ir]:.2f}$"
+        if includeMetric:
+            metric,lab_metric = add_metric(None,X[:, ir],Y[:, ir])
+            label += f", {lab_metric}: {metric:.2f}"
+
         ax.errorbar(
             X[:, ir],
             Y[:, ir],
@@ -2158,33 +2161,48 @@ def plot_fluxes_together(
             fmt="s",
             elinewidth=1.0,
             capthick=1.0,
-            label=f"$r/a={roa[ir]:.2f}$" if radial_label else "",
+            label=label,
         )
+
+    # -------------------------------------------------------
+    # Decorations
+    # -------------------------------------------------------
 
     minFlux = np.min([X.min(), Y.min()])
     maxFlux = np.max([X.max(), Y.max()])
 
-    ax.plot([minFlux*0.8, maxFlux*1.2], [minFlux*0.8, maxFlux*1.2], "-", color="k",lw=0.5)
-    if typeScale == "log":
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-    elif typeScale == "symlog":
-        ax.set_xscale("symlog")  # ,linthresh=1E-2)
-        ax.set_yscale("symlog")  # ,linthresh=1E-2)
+    minFlux = minFlux - 0.25 * (maxFlux - minFlux)
+    maxFlux = maxFlux + 0.25 * (maxFlux - minFlux)
+
+    ax.plot([minFlux, maxFlux], [minFlux, maxFlux], "-", color="k",lw=0.5)
+
     ax.set_xlabel(f"{quantity_label} {quantity_label_resultsX}")
     ax.set_ylabel(f"{quantity_label} {quantity_label_resultsY}")
     ax.set_title(title)
     GRAPHICStools.addDenseAxis(ax)
 
-    ax.legend(prop={"size": 8})
-
+    if includeLeg:
+        legend = ax.legend(loc='best',prop={"size": 8})
+    
     if includeMetric:
-        rmse = np.sqrt(np.mean((X - Y)**2))
-        ax.text(0.5, 0.95, f'RMSE: {rmse:.2f}', ha='left', va='top', transform=ax.transAxes, 
-            bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.5'))
-# ---------------------------------------------------------------------------------------------------------------------
+        metric,lab_metric = add_metric(ax if not includeLeg else None,X,Y)
+        if includeLeg:
+            legend.set_title(f"{lab_metric}: {metric:.2f}")
+            plt.setp(legend.get_title(), bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.2'))
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 
+def add_metric(ax,X,Y,typeM='RMSE'):
+
+    if typeM=='RMSE':
+        metric = np.sqrt(np.mean((X - Y)**2))
+        metric_lab = 'RMSE'
+        if ax is not None:
+            ax.text(0.05, 0.95, f'{metric_lab}: {metric:.2f}', ha='left', va='top', transform=ax.transAxes, 
+                bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.2'), fontsize=8)
+            
+    return metric, metric_lab
 
 def varToReal(y, prfs_model):
 
