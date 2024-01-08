@@ -76,7 +76,7 @@ for i in range(len(folders)):
     lab = f"{IOtools.reducePathLevel(folders[i])[-1]}"
 
     if (not complete) or (isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
-        if (len(folders) > 1) and (not isinstance(portals_total[0],PORTALSanalysis.PORTALSinitializer)):
+        if (len(folders) > 1) and (not isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
             fig = fn.add_figure(label=lab)
         else:
             fig = None

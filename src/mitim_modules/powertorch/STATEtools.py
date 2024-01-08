@@ -15,7 +15,7 @@ UseCUDAifAvailable = True
 
 
 def read_saved_state(file):
-    print(f"- Reading state file {IOtools.clipstr(file)}")
+    print(f"\t- Reading state file {IOtools.clipstr(file)}")
     with open(file, "rb") as handle:
         state = pickle.load(handle)
     return state
