@@ -62,7 +62,7 @@ if not complete:
     plt.rc("xtick.minor", size=size)
 plt.close("all")
 
-if (len(folders) == 1) and (not complete):
+if (len(folders) == 1) and (not complete) and (not isinstance(portals_total[0],PORTALSanalysis.PORTALSinitializer)):
     plt.ion()
     fig = plt.figure(figsize=(15, 8))
     fn = None
@@ -71,13 +71,15 @@ else:
     plt.ioff()
     fn = FigureNotebook(0, "PORTALS", geometry="1600x1000")
 
-
-
 for i in range(len(folders)):
 
-    if (not complete) or isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer):
-        if len(folders) > 1:
-            fig = fn.add_figure(label=f"{IOtools.reducePathLevel(folders[i])[-1]}")
+    lab = f"{IOtools.reducePathLevel(folders[i])[-1]}"
+
+    if (not complete) or (isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
+        if (len(folders) > 1) and (not isinstance(portals_total[0],PORTALSanalysis.PORTALSinitializer)):
+            fig = fn.add_figure(label=lab)
+        else:
+            fig = None
 
         portals_total[i].plotMetrics(
             fig = fig,
@@ -86,6 +88,7 @@ for i in range(len(folders)):
             plotAllFluxes=plotAllFluxes,
             index_extra=index_extra,
             file_save=file if len(folders) == 1 else None,
+            extra_lab = lab,
         )
     else:
         portals_total[i].plotPORTALS(fn=fn)

@@ -63,7 +63,7 @@ class PORTALSanalyzer:
 
             return cls(opt_fun, folderAnalysis=folderAnalysis)
         except (FileNotFoundError,AttributeError):
-            print("\n> Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
+            print("- Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
             return PORTALSinitializer(folder)
 
     @classmethod
@@ -813,7 +813,7 @@ class PORTALSinitializer:
             p.profiles.deriveQuantities()
             self.powerstates.append(p)
 
-    def plotMetrics(self, fn = None, **kwargs):
+    def plotMetrics(self, fn = None, extra_lab = '', **kwargs):
 
         if fn is None:
             plt.ioff()
@@ -823,8 +823,8 @@ class PORTALSinitializer:
         else:
             fnprov = True
 
-        figMain = fn.add_figure(label="PowerState")
-        figG = fn.add_figure(label="Sequence")
+        figMain = fn.add_figure(label=f"{extra_lab} - PowerState")
+        figG = fn.add_figure(label=f"{extra_lab} - Sequence")
 
         grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.4)
         axs = [

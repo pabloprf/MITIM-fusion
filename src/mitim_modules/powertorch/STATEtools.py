@@ -1,19 +1,21 @@
-import copy, torch, datetime
+import copy
+import torch
+import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython import embed
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
 from mitim_modules.powertorch.physics import TARGETStools, TRANSPORTtools, CALCtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 UseCUDAifAvailable = True
 
 
 def read_saved_state(file):
-    print(f" - Reading state file {file}")
+    print(f"- Reading state file {IOtools.clipstr(file)}")
     with open(file, "rb") as handle:
         state = pickle.load(handle)
     return state

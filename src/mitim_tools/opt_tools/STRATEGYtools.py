@@ -922,7 +922,6 @@ class PRF_BO:
             # If I don't create an Individual attribute I cannot unpickle GA information
             try:
                 import deap
-
                 deap.creator.create("Individual", array.array)
             except:
                 pass
@@ -943,9 +942,8 @@ class PRF_BO:
                 f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",
                 typeMsg="f",
             )
-        except:
-            print(f"\n\nCould not read {stateFile} state file, because:", typeMsg="w")
-            print(traceback.format_exc())
+        except FileNotFoundError:
+            print(f"\t- State file {stateFile} not found", typeMsg="w")
             step, aux = None, None
 
         return aux if provideFullClass else step
