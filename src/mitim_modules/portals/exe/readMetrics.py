@@ -2,6 +2,7 @@ import argparse
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.portals.aux import PORTALSanalysis
+from IPython import embed
 
 """
 This script is to plot only the convergence figure, not the rest of surrogates that takes long.
@@ -62,24 +63,30 @@ if not complete:
     plt.rc("xtick.minor", size=size)
 plt.close("all")
 
-if (len(folders) == 1) and (not complete) and (not isinstance(portals_total[0],PORTALSanalysis.PORTALSinitializer)):
-    plt.ion()
-    fig = plt.figure(figsize=(15, 8))
-    fn = None
-else:
+is_any_ini = False
+for i in range(len(folders)):
+    is_any_ini = is_any_ini or isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)
+
+requiresFN = (len(folders) > 1) or complete or is_any_ini
+
+if requiresFN: 
     from mitim_tools.misc_tools.GUItools import FigureNotebook
     plt.ioff()
     fn = FigureNotebook(0, "PORTALS", geometry="1600x1000")
+else:
+    plt.ion()
+    fn = None
 
 for i in range(len(folders)):
 
     lab = f"{IOtools.reducePathLevel(folders[i])[-1]}"
 
+    if requiresFN and (not complete):
+        fig = fn.add_figure(label=lab)
+    else:
+        fig = plt.figure(figsize=(15, 8))
+
     if (not complete) or (isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
-        if (len(folders) > 1) and (not isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
-            fig = fn.add_figure(label=lab)
-        else:
-            fig = None
 
         portals_total[i].plotMetrics(
             fig = fig,
