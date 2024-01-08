@@ -64,7 +64,6 @@ class PORTALSanalyzer:
             return cls(opt_fun, folderAnalysis=folderAnalysis)
         except (FileNotFoundError,AttributeError):
             print("\n> Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
-
             return PORTALSinitializer(folder)
 
     @classmethod

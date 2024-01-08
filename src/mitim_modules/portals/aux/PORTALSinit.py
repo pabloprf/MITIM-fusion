@@ -1,13 +1,14 @@
-import os, torch, copy
+import os
+import torch
+import copy
 import numpy as np
 from collections import OrderedDict
-from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def initializeProblem(
     portals_fun,
@@ -69,7 +70,7 @@ def initializeProblem(
     if "RoaLocations" in portals_fun.TGYROparameters:
         roa = portals_fun.TGYROparameters["RoaLocations"]
         rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
-        print(f"\t * r/a provided, transforming to rho:")
+        print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
         portals_fun.TGYROparameters["RhoLocations"] = rho
