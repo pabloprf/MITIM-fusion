@@ -1,5 +1,4 @@
-import argparse, socket
-import numpy as np
+import argparse
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import CDFtools
 
@@ -8,7 +7,7 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 verbose_level = read_verbose_level()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--files", required=True, type=str, nargs="*")
+parser.add_argument("files", type=str, nargs="*")
 args = parser.parse_args()
 
 expl = args.files

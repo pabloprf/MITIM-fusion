@@ -8,7 +8,7 @@ e.g.
 """
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--files", required=True, type=str, nargs="*")
+parser.add_argument("files", type=str, nargs="*")
 args = parser.parse_args()
 
 files = args.files

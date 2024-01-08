@@ -1,8 +1,8 @@
-import sys, argparse
+import argparse
 from mitim_tools.gs_tools import GEQtools
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--files", required=True, type=str, nargs="*")
+parser.add_argument("files", vtype=str, nargs="*")
 args = parser.parse_args()
 
 files = args.files

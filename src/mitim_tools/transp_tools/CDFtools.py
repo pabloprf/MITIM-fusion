@@ -1,12 +1,15 @@
-import sys, os, pickle, copy, datetime, netCDF4, warnings
+import os
+import pickle
+import copy
+import datetime
+import netCDF4
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from collections import OrderedDict
-from IPython import embed
 from mitim_tools.misc_tools import (
     IOtools,
-    FARMINGtools,
     MATHtools,
     PLASMAtools,
     GRAPHICStools,
@@ -25,6 +28,7 @@ from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 

@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGLFtools
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--folder", required=True, type=str)
+parser.add_argument("folder", type=str)
 parser.add_argument("--suffix", required=False, type=str, default="")
 parser.add_argument("--gacode", required=False, type=str, default=None)
 
