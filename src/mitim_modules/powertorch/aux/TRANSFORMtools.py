@@ -1,15 +1,15 @@
-import copy, torch
+import copy
+import torch
 import numpy as np
-from IPython import embed
 from mitim_modules.powertorch.aux import PARAMtools
 from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpFunction
+from IPython import embed
 
 verbose_level = read_verbose_level()
-
-from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpFunction
 
 """
 --------------------------------------------------------------------------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def fromPowerToGacode(
     # ------------------------------------------------------------------------------------------
 
     if "w0" in ProfilesPredicted:
-        print(f"\t- Changing w0")
+        print("\t- Changing w0")
         factor_mult = 1 / factorMult_w0(self)
         x, y = self.deparametrizers["w0"](
             self.plasma["roa"][PositionInBatch, :],
@@ -493,6 +493,16 @@ def defineMovingGradients(self, profiles):
     )
     self.plasma["aLw0"] = aLy_coarse[:-1, 1]
 
+    # ----------------------------------------------------------------------------------------------------
+    # Check that it's not completely zero
+    # ----------------------------------------------------------------------------------------------------
+
+    for key in ['aLte','aLti','aLne','aLnZ','aLw0']:
+        if key[2:] in self.ProfilesPredicted:
+            if self.plasma[key].sum() == 0.0:
+                addT = 1E-15
+                print(f'\t- All values of {key} detected to be zero, to avoid NaNs, inserting {addT} at the edge',typeMsg='w')
+                self.plasma[key][...,-1] += addT
 
 def factorMult_w0(self):
     """
