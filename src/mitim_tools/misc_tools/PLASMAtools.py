@@ -2,7 +2,8 @@
 Plasma physics models/info/approximations
 """
 
-import scipy, torch
+import scipy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed

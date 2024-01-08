@@ -2181,26 +2181,28 @@ def plotModelComparison_quantity(
     ax.set_title(title)
     GRAPHICStools.addDenseAxis(ax)
 
+    sizeLeg = 7
+
     if includeLeg:
-        legend = ax.legend(loc='best',prop={"size": 8})
+        legend = ax.legend(loc='best',prop={"size": sizeLeg})
     
     if includeMetric:
-        metric,lab_metric = add_metric(ax if not includeLeg else None,X,Y)
+        metric,lab_metric = add_metric(ax if not includeLeg else None,X,Y,fontsize=sizeLeg)
         if includeLeg:
             legend.set_title(f"{lab_metric}: {metric:.2f}")
             plt.setp(legend.get_title(), bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.2'))
-
+            legend.get_title().set_fontsize(sizeLeg)
 
 # ---------------------------------------------------------------------------------------------------------------------
 
-def add_metric(ax,X,Y,typeM='RMSE'):
+def add_metric(ax,X,Y,typeM='RMSE', fontsize=8):
 
     if typeM=='RMSE':
         metric = np.sqrt(np.mean((X - Y)**2))
         metric_lab = 'RMSE'
         if ax is not None:
             ax.text(0.05, 0.95, f'{metric_lab}: {metric:.2f}', ha='left', va='top', transform=ax.transAxes, 
-                bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.2'), fontsize=8)
+                bbox=dict(facecolor='lightgreen', alpha=0.3, edgecolor='black', boxstyle='round,pad=0.2'), fontsize=fontsize)
             
     return metric, metric_lab
 
