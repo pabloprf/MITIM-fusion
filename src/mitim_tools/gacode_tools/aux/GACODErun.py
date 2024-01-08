@@ -433,10 +433,9 @@ def runPROFILES_GEN(
 
 
 def runVGEN(
-    inputgacode_file,
     workingFolder,
-    numcores=32,
-    minutes=15,
+    numcores=8,
+    minutes=30,
     vgenOptions={
         "er": 2,
         "vel": 1,
@@ -444,7 +443,7 @@ def runVGEN(
         "matched_ion": 1,
         "nth": "17,39",
     },
-    nameChange="",
+    name_run="vgen1",
 ):
     """
     Driver for the vgen (velocity-generation) capability of NEO.
@@ -465,6 +464,12 @@ def runVGEN(
             -nth: Minimum and maximum theta resolutions (e.g. 17,39)
     """
 
+    print(
+        f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
+    )
+    print(f"\t\t> Matching ion {vgenOptions['matched_ion']} Vtor")
+
+
     options = f"-er {vgenOptions['er']} -vel {vgenOptions['vel']} -in {vgenOptions['numspecies']} -ix {vgenOptions['matched_ion']} -nth {vgenOptions['nth']}"
 
     # ***********************************
@@ -473,9 +478,11 @@ def runVGEN(
         f"\t\t- Proceeding to generate Er from NEO run using profiles_gen ({options})"
     )
 
+    inputgacode_file = f'{workingFolder}/input.gacode'
+
     _, nameFile = IOtools.reducePathLevel(inputgacode_file, level=1, isItFile=True)
     machineSettings = CONFIGread.machineSettings(
-        code="profiles_gen", nameScratch=f"mitim_tmp_vgen_{nameChange}_{nameFile}/"
+        code="profiles_gen", nameScratch=f"mitim_tmp_vgen_{name_run}/"
     )
 
     command = f"cd {machineSettings['folderWork']} && bash profiles_vgen.sh"
@@ -489,16 +496,12 @@ def runVGEN(
         ["slurm_output.dat", "slurm_error.dat"],
         minutes,
         numcores,
-        f"neo_vgen_{nameChange}_{nameFile}",
+        f"neo_vgen_{name_run}",
         machineSettings,
         outputFolders=["vgen/"],
     )
 
-    if len(nameChange) > 0:
-        os.system(f"mv {workingFolder}/vgen {workingFolder}/vgen_{nameChange}")
-        file_new = f"{workingFolder}/vgen_{nameChange}/input.gacode"
-    else:
-        file_new = f"{workingFolder}/vgen/input.gacode"
+    file_new = f"{workingFolder}/vgen/input.gacode"
 
     return file_new
 

@@ -8,7 +8,8 @@ from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.gacode_tools.aux import TRANSPinteraction, PROFILEStoMODELS, GACODErun
+from mitim_tools.gacode_tools import NEOtools
+from mitim_tools.gacode_tools.aux import TRANSPinteraction, PROFILEStoMODELS
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.im_tools.modules import PEDmodule
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -108,31 +109,22 @@ class PROFILES_GACODE:
             folderTRANSP, machine=machine
         )
 
-    def runNEOforEr(
-        self,
-        folder,
-        vgenOptions={
-            "er": 2,
-            "vel": 1,
-            "numspecies": None,
-            "matched_ion": 1,
-            "nth": "17,39",
-        },
-        name="",
-    ):
-        if vgenOptions["numspecies"] is None:
-            vgenOptions["numspecies"] = len(self.Species)
+    def calculate_Er(self, folder, vgenOptions={}, name="vgen1",includeAll=False):
+        
+        self.neo = NEOtools.NEO()
+        self.neo.prep(copy.deepcopy(self), folder)
+        self.neo.run_vgen(subfolder=name,vgenOptions=vgenOptions)
 
-        print(
-            f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
-        )
-        print(f"\t\t> Matching ion {vgenOptions['matched_ion']} Vtor")
+        # Get the information from the NEO run
 
-        file_new = GACODErun.runVGEN(
-            self.file, folder, vgenOptions=vgenOptions, nameChange=name
-        )
+        variables = ['w0(rad/s)']
+        if includeAll:
+            variables += ['vpol(m/s)', 'vtor(m/s)','jbs(MA/m^2)','jbstor(MA/m^2)','johm(MA/m^2)']
 
-        self.__init__(file_new, calculateDerived=True, mi_ref=self.mi_ref)
+        for ikey in variables:
+            if ikey in self.neo.inputgacode_vgen.profiles:
+                print(f'\t- Inserting {ikey} from NEO run')
+                self.profiles[ikey] = self.neo.inputgacode_vgen.profiles[ikey]
 
     # *****************
 
@@ -1085,7 +1077,7 @@ class PROFILES_GACODE:
                     )
                 )
             print(
-                "Operational point (<ne>,<Te> = [{0:.2f},{1:.2f}) and species:".format(
+                "Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(
                     self.derived["ne_vol20"], self.derived["Te_vol"]
                 )
             )
@@ -1103,7 +1095,7 @@ class PROFILES_GACODE:
                 )
             )
             print(
-                f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.4f}]"
+                f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]"
             )
             print(f"\tMach  = {self.derived['MachNum_vol']:.2f} (vol avg)")
             print("Content:")
