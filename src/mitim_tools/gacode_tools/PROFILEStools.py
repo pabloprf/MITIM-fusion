@@ -911,7 +911,7 @@ class PROFILES_GACODE:
         self.derived["BetaN"] = (
             Beta
             / (
-                float(self.profiles["current(MA)"][-1])
+                np.abs(float(self.profiles["current(MA)"][-1]))
                 / (self.derived["a"] * self.derived["B0"])
             )
             * 100.0
