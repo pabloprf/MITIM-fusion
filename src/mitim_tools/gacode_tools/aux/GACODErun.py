@@ -434,7 +434,7 @@ def runPROFILES_GEN(
 
 def runVGEN(
     workingFolder,
-    numcores=8,
+    numcores=32,
     minutes=30,
     vgenOptions={
         "er": 2,

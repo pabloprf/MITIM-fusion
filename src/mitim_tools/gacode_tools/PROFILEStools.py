@@ -109,10 +109,16 @@ class PROFILES_GACODE:
             folderTRANSP, machine=machine
         )
 
-    def calculate_Er(self, folder, vgenOptions={}, name="vgen1",includeAll=False):
+    def calculate_Er(self, folder, rhos = None, vgenOptions={}, name="vgen1",includeAll=False,write_new_file=None):
         
+        profiles = copy.deepcopy(self)
+
+        # Resolution?
+        if rhos is None:
+            profiles.changeResolution(rho_new=rhos)
+
         self.neo = NEOtools.NEO()
-        self.neo.prep(copy.deepcopy(self), folder)
+        self.neo.prep(profiles, folder)
         self.neo.run_vgen(subfolder=name,vgenOptions=vgenOptions)
 
         # Get the information from the NEO run
@@ -126,6 +132,9 @@ class PROFILES_GACODE:
                 print(f'\t- Inserting {ikey} from NEO run')
                 self.profiles[ikey] = self.neo.inputgacode_vgen.profiles[ikey]
 
+        if write_new_file is not None:
+            self.writeCurrentStatus(file=write_new_file)
+
     # *****************
 
     def readHeader(self):
@@ -135,6 +144,9 @@ class PROFILES_GACODE:
         self.header = self.lines[:istartProfs]
 
     def readProfiles(self):
+
+        singleLine, title, var = None, None, None # for ruff complaints
+
         # ---
         found = False
         self.profiles = OrderedDict()
