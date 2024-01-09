@@ -47,6 +47,8 @@ Issues during MITIM tests
       . $GACODE_ROOT/shared/bin/gacode_setup
       . ${GACODE_ROOT}/platform/env/env.${GACODE_PLATFORM}
 
+      \# Add also modules that are required to run MPI instances in your machine
+
    If you still have problems with MITIM execution of TGLF and you have checked that by manually logging-in to the machine you can run TGLF,
    then it is possible that you have print or echo statements in your ``.bashrc`` or ``.zshrc`` files.
    Please remove them or add the following:

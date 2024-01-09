@@ -1,3 +1,7 @@
+# This is a setup file for the EOFE cluster. Remember (see Installation guide) that this is not
+# stricly necessary. However, it is convenient to have it here, so that you can load the modules
+# with a single command. If you do not want to use this file, you can load the modules manually
+# if you have these lines in your .bashrc (or equivalent)
 
 module use /home/software/psfc/modulefiles/
 

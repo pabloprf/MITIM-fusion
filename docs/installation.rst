@@ -113,6 +113,7 @@ There are several ways to make sure that the shell understands the command:
    automatically available in the public repository is, obviously, limited.
 
    Please note that this option is only valid if **MITIM repository is available also in that machine** (not only from the one you are launching the code).
+   However, if you prefer to use options 2 or 3, the sourcing of a non-existing file will not cause any issues.
 
 .. dropdown:: 2. Source at shell initialization (recommended)
 

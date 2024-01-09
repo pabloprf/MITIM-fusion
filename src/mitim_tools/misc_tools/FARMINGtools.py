@@ -313,7 +313,8 @@ def sendCommand_remote(
         if not isItFolders:
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
         else:
-            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r -O {file} {userCommand}{machine}:{folderWork}/."
+            addSolutionForPathCanonicalization = ' -O' # This was needed for iris for a particular user
+            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r{addSolutionForPathCanonicalization} {file} {userCommand}{machine}:{folderWork}/."
         # run_subprocess(commai,localRun=True)
         os.system(commai)
     else:
