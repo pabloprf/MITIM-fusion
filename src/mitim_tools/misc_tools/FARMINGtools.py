@@ -313,7 +313,7 @@ def sendCommand_remote(
         if not isItFolders:
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
         else:
-            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r {file} {userCommand}{machine}:{folderWork}/."
+            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r -O {file} {userCommand}{machine}:{folderWork}/."
         # run_subprocess(commai,localRun=True)
         os.system(commai)
     else:
