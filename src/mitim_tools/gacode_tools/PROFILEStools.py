@@ -109,17 +109,23 @@ class PROFILES_GACODE:
             folderTRANSP, machine=machine
         )
 
-    def calculate_Er(self, folder, rhos = None, vgenOptions={}, name="vgen1",includeAll=False,write_new_file=None):
+    def calculate_Er(self, folder, rhos = None, vgenOptions={}, name="vgen1",includeAll=False,write_new_file=None,restart=False):
         
         profiles = copy.deepcopy(self)
 
         # Resolution?
-        if rhos is None:
+        resol_changed = False
+        if rhos is not None:
             profiles.changeResolution(rho_new=rhos)
+            resol_changed = True
 
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
-        self.neo.run_vgen(subfolder=name,vgenOptions=vgenOptions)
+        self.neo.run_vgen(subfolder=name,vgenOptions=vgenOptions,restart=restart)
+
+        profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
+        if resol_changed:
+            profiles_new.changeResolution(rho_new=self.profiles['rho(-)'])
 
         # Get the information from the NEO run
 
@@ -128,9 +134,11 @@ class PROFILES_GACODE:
             variables += ['vpol(m/s)', 'vtor(m/s)','jbs(MA/m^2)','jbstor(MA/m^2)','johm(MA/m^2)']
 
         for ikey in variables:
-            if ikey in self.neo.inputgacode_vgen.profiles:
-                print(f'\t- Inserting {ikey} from NEO run')
-                self.profiles[ikey] = self.neo.inputgacode_vgen.profiles[ikey]
+            if ikey in profiles_new.profiles:
+                print(f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}')
+                self.profiles[ikey] = profiles_new.profiles[ikey]
+
+        self.deriveQuantities()
 
         if write_new_file is not None:
             self.writeCurrentStatus(file=write_new_file)
@@ -1281,7 +1289,7 @@ class PROFILES_GACODE:
         self.deriveQuantities(mi_ref=self.derived["mi_ref"])
 
         print(
-            f"\t- Resolution of profiles changed to {n} points with function {interpFunction}"
+            f"\t\t- Resolution of profiles changed to {n} points with function {interpFunction}"
         )
 
     def DTplasma(self):

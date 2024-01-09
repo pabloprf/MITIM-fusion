@@ -134,6 +134,10 @@ def tgyro_model(
         applyCorrections=TGYROparameters["applyCorrections"],
     )
 
+    # VGEN?
+    
+
+
     # copy for future modifications
     self.file_profs_mod = f"{self.file_profs}_modified"
     os.system(f"cp {self.file_profs} {self.file_profs_mod}")
@@ -170,7 +174,7 @@ def tgyro_model(
         forcedName=name,
     )
 
-    self.tgyro_current.read(label=f"tglf_neo_original")
+    self.tgyro_current.read(label="tglf_neo_original")
 
     # Copy one with evaluated targets
     self.file_profs_targets = f"{self.tgyro_current.FolderTGYRO}/input.gacode.new"
@@ -188,7 +192,7 @@ def tgyro_model(
 
     # Add errors and merge fluxes as we would do if this was a CGYRO run
     curateTGYROfiles(
-        self.tgyro_current.results[f"tglf_neo_original"],
+        self.tgyro_current.results["tglf_neo_original"],
         f"{FolderEvaluation_TGYRO}/tglf_neo/",
         percentError,
         impurityPosition=impurityPosition,
@@ -197,7 +201,7 @@ def tgyro_model(
 
     # Read again to capture errors
     self.tgyro_current.read(
-        label=f"tglf_neo", folder=f"{FolderEvaluation_TGYRO}/tglf_neo/"
+        label="tglf_neo", folder=f"{FolderEvaluation_TGYRO}/tglf_neo/"
     )
     labels_results.append("tglf_neo")
 

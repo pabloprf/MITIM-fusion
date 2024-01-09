@@ -1,7 +1,10 @@
 import os
+from pdb import run
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.aux import GACODErun
+from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 class NEO:
     def __init__(self):
@@ -13,13 +16,16 @@ class NEO:
         self.inputgacode = inputgacode
         self.folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(self.folder): os.system(f'mkdir {self.folder}')
+        if not os.path.exists(self.folder):
+            os.system(f'mkdir {self.folder}')
 
-    def run_vgen(self, subfolder="vgen1",vgenOptions={}):
+    def run_vgen(self, subfolder="vgen1",vgenOptions={},restart=False):
         
         while subfolder[-1] == "/":
             subfolder = subfolder[:-1]
         
+        self.folder_vgen = f'{self.folder}/{subfolder}/'
+
         # ---- Default options
         
         vgenOptions.setdefault("er", 2)
@@ -30,19 +36,39 @@ class NEO:
 
         # ---- Prepare
 
-        self.folder_vgen = f'{self.folder}/{subfolder}/'
+        runThisCase = check_if_files_exist(
+            self.folder_vgen,
+            ['vgen/input.gacode','vgen/input.neo.gen','out.vgen.neoequil00','out.vgen.neoexpnorm00',
+             'out.vgen.neontheta00','vgen.dat'])
 
-        if not os.path.exists(self.folder_vgen): os.system(f'mkdir {self.folder_vgen}')
+        if (not runThisCase) and restart:
+            runThisCase = print('\t- Files found in folder, but restart requested. Are you sure?',typeMsg='q')
+            
+            if runThisCase: 
+                IOtools.askNewFolder(self.folder_vgen,force=True)
 
         self.inputgacode.writeCurrentStatus(file=f"{self.folder_vgen}/input.gacode")
 
         # ---- Run
 
-        file_new = GACODErun.runVGEN(self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder)
+        if runThisCase:
+            file_new = GACODErun.runVGEN(self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder)
+        else:
+            print(f"\t- Required files found in {subfolder}, not running VGEN",typeMsg='i')
+            file_new = f'{self.folder_vgen}/vgen/input.gacode'
 
         # ---- Postprocess
         
         self.inputgacode_vgen = PROFILEStools.PROFILES_GACODE(file_new, calculateDerived=True, mi_ref=self.inputgacode.mi_ref)
 
 
+def check_if_files_exist(folder, list_files):
+
+    folder = IOtools.expandPath(folder)
+
+    for file in list_files:
+        if not os.path.exists(f"{folder}/{file}"):
+            return False
+    
+    return True
 

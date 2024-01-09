@@ -435,14 +435,8 @@ def runPROFILES_GEN(
 def runVGEN(
     workingFolder,
     numcores=32,
-    minutes=30,
-    vgenOptions={
-        "er": 2,
-        "vel": 1,
-        "numspecies": None,
-        "matched_ion": 1,
-        "nth": "17,39",
-    },
+    minutes=60,
+    vgenOptions={},
     name_run="vgen1",
 ):
     """
@@ -469,13 +463,12 @@ def runVGEN(
     )
     print(f"\t\t> Matching ion {vgenOptions['matched_ion']} Vtor")
 
-
     options = f"-er {vgenOptions['er']} -vel {vgenOptions['vel']} -in {vgenOptions['numspecies']} -ix {vgenOptions['matched_ion']} -nth {vgenOptions['nth']}"
 
     # ***********************************
 
     print(
-        f"\t\t- Proceeding to generate Er from NEO run using profiles_gen ({options})"
+        f"\t\t- Proceeding to generate Er from NEO run using profiles_gen -vgen ({options})"
     )
 
     inputgacode_file = f'{workingFolder}/input.gacode'
