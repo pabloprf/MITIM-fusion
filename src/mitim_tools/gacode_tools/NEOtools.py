@@ -1,5 +1,4 @@
 import os
-from pdb import run
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.aux import GACODErun
