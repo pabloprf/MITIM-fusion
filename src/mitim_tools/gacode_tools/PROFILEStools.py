@@ -1804,6 +1804,7 @@ class PROFILES_GACODE:
         lsFlows="-",
         legFlows=True,
         showtexts=True,
+        lastRhoGradients = 0.89,
     ):
         if axs1 is None:
             if fn is None:
@@ -2453,7 +2454,7 @@ class PROFILES_GACODE:
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         # Derived
-        self.plotGradients(axs4, color=color, lw=lw)
+        self.plotGradients(axs4, color=color, lw=lw, lastRho=lastRhoGradients)
 
         # Others
         ax = axs6[0]
@@ -3562,7 +3563,7 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
         )
 
 
-def plotAll(profiles_list, figs=None, extralabs=None):
+def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
     if figs is not None:
         figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = figs
     else:
@@ -3681,6 +3682,7 @@ def plotAll(profiles_list, figs=None, extralabs=None):
             lsFlows=ls[i],
             legFlows=i == 0,
             showtexts=False,
+            lastRhoGradients=lastRhoGradients,
         )
 
     if figs is None:
