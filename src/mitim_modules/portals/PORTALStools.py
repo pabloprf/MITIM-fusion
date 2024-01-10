@@ -1,12 +1,7 @@
-import torch, pickle, copy
-from collections import OrderedDict
+import torch
 import numpy as np
-from IPython import embed
-from mitim_tools.opt_tools import SURROGATEtools
-from mitim_tools.opt_tools.aux import BOgraphics, SAMPLINGtools
-from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def selectSurrogate(output, surrogateOptions):
     if output is not None:
@@ -82,7 +77,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 # ----------------------------------------------------------------------
 
 
-def transformmitim(X, surrogate_parameters, output):
+def transformPORTALS(X, surrogate_parameters, output):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
@@ -103,7 +98,7 @@ def transformmitim(X, surrogate_parameters, output):
     )
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
-    factorGB = GBfromXnorm(X, surrogate_parameters, output, powerstate)
+    factorGB = GBfromXnorm(X, output, powerstate)
     # --- Ratio of fluxes (quasilinear)
     factorRat = ratioFactor(X, surrogate_parameters, output, powerstate)
     # --- Specific to output
@@ -159,7 +154,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     return PexchTurb_integrated
 
 
-# def transformmitim(X,Y,Yvar,surrogate_parameters,output):
+# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
 # 	'''
 # 	Transform direct evaluation output to something that the model understands better.
 
@@ -178,14 +173,14 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return Ytr,Ytr_var
 
 
-# def untransformmitim(X, mean, upper, lower, surrogate_parameters, output):
+# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
 # 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformmitim)
+# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
 
 # 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
 # 		- Transforms and produces Y and confidence bounds (batch1,...,)
 
-# 	This untransforms whatever has happened in the transformmitim function
+# 	This untransforms whatever has happened in the transformPORTALS function
 # 	'''
 
 # 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)
@@ -197,7 +192,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return mean, upper, lower
 
 
-def GBfromXnorm(x, surrogate_parameters, output, powerstate):
+def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
     varFull = output.split("_")[0]
     pos = int(output.split("_")[1])

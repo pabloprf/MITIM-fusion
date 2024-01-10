@@ -883,7 +883,7 @@ class CDFreactor:
 
         self.TGLF_a = constant_radius(self.a, lenX=len(self.x_lw))
 
-        self.TGLF_Qgb, self.TGLF_Ggb, _, _ = PLASMAtools.gyrobohmUnits(
+        self.TGLF_Qgb, self.TGLF_Ggb, _, _, _ = PLASMAtools.gyrobohmUnits(
             self.TGLF_Te, self.TGLF_ne, self.TGLF_mref, self.TGLF_Bunit_x, self.TGLF_a
         )
 

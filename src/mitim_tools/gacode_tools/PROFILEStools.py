@@ -441,7 +441,7 @@ class PROFILES_GACODE:
             self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"]
         )
 
-        self.derived["q_gb"], self.derived["g_gb"], _, _ = PLASMAtools.gyrobohmUnits(
+        self.derived["q_gb"], self.derived["g_gb"], _, _, _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
             self.profiles["ne(10^19/m^3)"] * 1e-1,
             self.derived["mi_ref"],
