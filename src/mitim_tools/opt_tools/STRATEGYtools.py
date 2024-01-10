@@ -1517,18 +1517,20 @@ class PRF_BO:
                 f"- Plotting MITIM step #{k} information ({ck+1}/{len(rangePlot)})... {len(self.outputs)} GP models need to be plotted ({pointsEvaluateEachGPdimension} points/dim)..."
             )
 
+            tab_color = ck + 5
+
             figsFund, figs, figsFundTrain = [], [], []
             for i in range(Tabs_needed):
                 figsFund.append(
-                    fn.add_figure(label=f"#{k} Fundamental Surr. ({i+1}/{Tabs_needed})")
+                    fn.add_figure(label=f"#{k} Fundamental Surr. ({i+1}/{Tabs_needed})",tab_color=tab_color)
                 )
             for i in range(Tabs_needed):
                 figsFundTrain.append(
-                    fn.add_figure(label=f"#{k} Fundamental Train ({i+1}/{Tabs_needed})")
+                    fn.add_figure(label=f"#{k} Fundamental Train ({i+1}/{Tabs_needed})",tab_color=tab_color)
                 )
             for i in range(Tabs_needed):
                 figs.append(
-                    fn.add_figure(label=f"#{k} Surrogate ({i+1}/{Tabs_needed})")
+                    fn.add_figure(label=f"#{k} Surrogate ({i+1}/{Tabs_needed})",tab_color=tab_color)
                 )
 
             grid = plt.GridSpec(
@@ -1638,7 +1640,7 @@ class PRF_BO:
                 )
 
             # Plot model specifics from last model
-            self.plotModelStatus(boStep=k, fn=fn, stds=stds)
+            self.plotModelStatus(boStep=k, fn=fn, stds=stds,tab_color=tab_color)
 
         print("- Finished plotting of step models")
 
@@ -1649,7 +1651,7 @@ class PRF_BO:
 		"""
 
         # ---- Trust region ----------------------------------------------------------
-        figTR = fn.add_figure(label="Trust Region")
+        figTR = fn.add_figure(label="Trust Region",tab_color=tab_color)
         try:
             SBOcorrections.plotTrustRegionInformation(self, fig=figTR)
         except:
@@ -1663,20 +1665,20 @@ class PRF_BO:
                 logFile = self.logFile
             else:
                 logFile = None
-            self.ResultsOptimization.plot(fn=fn, doNotShow=True, log=logFile)
+            self.ResultsOptimization.plot(fn=fn, doNotShow=True, log=logFile,tab_color=tab_color)
 
         if (not fnprov) and (not doNotShow):
             fn.show()
 
         return fn
 
-    def plotModelStatus(self, fn=None, boStep=-1, plotsPerFigure=20, stds=2):
+    def plotModelStatus(self, fn=None, boStep=-1, plotsPerFigure=20, stds=2,tab_color=None):
         step = self.steps[boStep]
 
         GP = step.GP["combined_model"]
 
         # ---- Jacobian -------------------------------------------------------
-        fig = fn.add_figure(label=f"#{boStep}: Jacobian")
+        fig = fn.add_figure(label=f"#{boStep}: Jacobian",tab_color=tab_color)
         maxPoints = 1  # 4
         xExplore = []
         if "x_next" in step.__dict__.keys():
@@ -1711,7 +1713,7 @@ class PRF_BO:
         figsQuality = []
         for i in range(numfigs):
             figsQuality.append(
-                fn.add_figure(label=f"#{boStep}: Quality {i+1}/{numfigs}")
+                fn.add_figure(label=f"#{boStep}: Quality {i+1}/{numfigs}",tab_color=tab_color)
             )
 
         axs = GP.testTraining(
@@ -1734,8 +1736,8 @@ class PRF_BO:
         if "InfoOptimization" not in step.__dict__.keys():
             return
 
-        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.")
-        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim Ranges")
+        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.",tab_color=tab_color)
+        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim Ranges",tab_color=tab_color)
         self.plotSurrogateOptimization(fig1=figOPT1, fig2=figOPT2, boStep=boStep)
         # ---------------------------------------------------------------------
 

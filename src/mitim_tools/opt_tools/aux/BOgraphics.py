@@ -1688,7 +1688,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 except:
                     break
 
-    def plot(self, fn=None, doNotShow=True, separateOFs=False, log=None):
+    def plot(self, fn=None, doNotShow=True, separateOFs=False, log=None,tab_color=None):
         if fn is None:
             plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -1698,16 +1698,16 @@ Workflow start time: {IOtools.getStringFromTime()}
         else:
             fnprov = True
 
-        fig1 = fn.add_figure(label="Complete")
-        fig1e = fn.add_figure(label="Complete (rel.)")
-        fig2 = fn.add_figure(label="Metrics")
-        fig3 = fn.add_figure(label="Deviations")
-        fig3b = fn.add_figure(label="Separate")
-        fig3c = fn.add_figure(label="Together")
-        fig3cE = fn.add_figure(label="Together All")
-        fig4 = fn.add_figure(label="Improvement")
+        fig1 = fn.add_figure(label="Complete",tab_color=tab_color)
+        fig1e = fn.add_figure(label="Complete (rel.)",tab_color=tab_color)
+        fig2 = fn.add_figure(label="Metrics",tab_color=tab_color)
+        fig3 = fn.add_figure(label="Deviations",tab_color=tab_color)
+        fig3b = fn.add_figure(label="Separate",tab_color=tab_color)
+        fig3c = fn.add_figure(label="Together",tab_color=tab_color)
+        fig3cE = fn.add_figure(label="Together All",tab_color=tab_color)
+        fig4 = fn.add_figure(label="Improvement",tab_color=tab_color)
         if log is not None:
-            figTimes = fn.add_figure(label="Times")
+            figTimes = fn.add_figure(label="Times",tab_color=tab_color)
             grid = plt.GridSpec(1, 2, hspace=0.3, wspace=0.3)
             axsTimes = [figTimes.add_subplot(grid[0]), figTimes.add_subplot(grid[1])]
 
@@ -1728,7 +1728,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             onlyFinals=False,
         )
         self.plotMetrics(fig2)
-        self.plotCalibrations(figs=[fig3, fig3b, fig3c, fig3cE])
+        self.plotCalibrations(figs=[fig3, fig3b, fig3c, fig3cE],tab_color=tab_color)
 
         grid = plt.GridSpec(1, 3, hspace=0.3, wspace=0.3)
         ax0 = fig4.add_subplot(grid[0, 0])
@@ -2216,17 +2216,17 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         return ax1
 
-    def plotCalibrations(self, figs=None):
+    def plotCalibrations(self, figs=None,tab_color=None):
         if figs is None:
             plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
             fnprov = False
-            fig3 = fn.add_figure(label="Deviations")
-            fig3b = fn.add_figure(label="Separate")
-            fig3c = fn.add_figure(label="Together")
-            fig3c = fn.add_figure(label="Together All")
+            fig3 = fn.add_figure(label="Deviations",tab_color=tab_color)
+            fig3b = fn.add_figure(label="Separate",tab_color=tab_color)
+            fig3c = fn.add_figure(label="Together",tab_color=tab_color)
+            fig3c = fn.add_figure(label="Together All",tab_color=tab_color)
         else:
             [fig3, fig3b, fig3c, fig3cE] = figs
             fnprov = True

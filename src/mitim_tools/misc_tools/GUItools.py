@@ -135,7 +135,7 @@ class TabBar(QTabBar):
         self.tab_colors = {}
 
         if self.vertical:
-            self.setFixedSize(xextend, 150)
+            self.setFixedSize(xextend, 170)
         else:
             self.setFixedSize(xextend, 30)
 
