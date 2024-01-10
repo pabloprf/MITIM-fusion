@@ -52,7 +52,7 @@ class PORTALSanalyzer:
 
     @classmethod
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
-        print(f"\n...opening PORTALS class from folder {IOtools.clipstr(folder)}")
+        print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
         opt_fun = STRATEGYtools.FUNmain(folder)
 
@@ -62,8 +62,10 @@ class PORTALSanalyzer:
             )
 
             return cls(opt_fun, folderAnalysis=folderAnalysis)
-        except (FileNotFoundError,AttributeError):
-            print("- Could not read optimization results, trying to read PORTALS initialization...",typeMsg='w')
+        except (FileNotFoundError, AttributeError) as e:
+            print("- Could not read optimization results due to error:", typeMsg='w')
+            print(e)
+            print("- Trying to read PORTALS initialization...", typeMsg='w')
             return PORTALSinitializer(folder)
 
     @classmethod
