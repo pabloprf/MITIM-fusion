@@ -205,9 +205,9 @@ def GBfromXnorm(x, output, powerstate):
     elif varFull[:2] == "Mt":
         quantity = "Pgb"
     elif varFull[:2] == "Ge":
-        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb"
+        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb_convection"
     elif varFull[:2] == "GZ":
-        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb"
+        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb_convection"
     elif varFull[:5] == "Pexch":
         quantity = "Sgb"
 

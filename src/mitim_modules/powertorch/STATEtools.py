@@ -649,6 +649,7 @@ class powerstate:
             self.plasma["Ggb"],
             self.plasma["Pgb"],
             self.plasma["Sgb"],
+            self.plasma["Qgb_convection"],
         ) = PLASMAtools.gyrobohmUnits(
             self.plasma["te"],
             self.plasma["ne"] * 1e-1,
