@@ -762,7 +762,7 @@ class TGYRO:
 
         return res
 
-    def plotRun(self, fn=None, labels=["tgyro1"], doNotShow=False):
+    def plotRun(self, fn=None, labels=["tgyro1"], doNotShow=False,fn_color=None):
         if fn is None:
             plt.rcParams["figure.max_open_warning"] = False
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -786,7 +786,7 @@ class TGYRO:
 
         # **** Final real
 
-        fig1 = self.fn.add_figure(label="Final Comp.")
+        fig1 = self.fn.add_figure(tab_color=fn_color,label="Final Comp.")
         grid = plt.GridSpec(3, 4, hspace=0.4, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
         ax01 = fig1.add_subplot(grid[0, 1])
@@ -1061,12 +1061,12 @@ class TGYRO:
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0.0)
 
-        figProf_1 = self.fn.add_figure(label="GACODE-Prof.")
-        figProf_2 = self.fn.add_figure(label="GACODE-Power")
-        figProf_3 = self.fn.add_figure(label="GACODE-Geom.")
-        figProf_4 = self.fn.add_figure(label="GACODE-Grad.")
-        figProf_6 = self.fn.add_figure(label="GACODE-Other")
-        figProf_7 = self.fn.add_figure(label="GACODE-Impurities")
+        figProf_1 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Prof.")
+        figProf_2 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Power")
+        figProf_3 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Geom.")
+        figProf_4 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Grad.")
+        figProf_6 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Other")
+        figProf_7 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Impurities")
 
         grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
         axsProf_1 = [
@@ -1173,7 +1173,7 @@ class TGYRO:
                 print("Could not plot profiles_final", typeMsg="w")
 
             try:
-                figFlows = self.fn.add_figure(label="GACODE-FlowsFin")
+                figFlows = self.fn.add_figure(tab_color=fn_color,label="GACODE-FlowsFin")
                 self.results[label].plotBalance(fig=figFlows)
             except:
                 print("Could not plot final flows", typeMsg="w")
@@ -2172,7 +2172,7 @@ class TGYROoutput:
     def TGYROmodeledVariables(self, **kwargs):
         return PORTALSinteraction.TGYROmodeledVariables(self, **kwargs)
 
-    def plot(self, fn=None, label="", prelabel=""):
+    def plot(self, fn=None, label="", prelabel="",fn_color=None):
         if fn is None:
             plt.rcParams["figure.max_open_warning"] = False
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -2188,7 +2188,7 @@ class TGYROoutput:
         # Summary 1
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Overview" + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Overview" + label)
 
         grid = plt.GridSpec(3, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[:, 0])
@@ -2596,7 +2596,7 @@ class TGYROoutput:
         # Summary 2
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Match" + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Match" + label)
 
         grid = plt.GridSpec(4, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -3187,7 +3187,7 @@ class TGYROoutput:
         # Convergence
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Convergence" + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Convergence" + label)
 
         try:
             self.plotConvergence(fig1=fig1)
@@ -3201,7 +3201,7 @@ class TGYROoutput:
         # Fluxes
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Fluxes" + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Fluxes" + label)
 
         grid = plt.GridSpec(4, self.Qi_sim_turb.shape[0] + 3, hspace=0.3, wspace=0.3)
 
@@ -3604,7 +3604,7 @@ class TGYROoutput:
         # Powers
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Powers" + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Powers" + label)
 
         grid = plt.GridSpec(2, 5, hspace=0.2, wspace=0.4)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -4112,7 +4112,7 @@ class TGYROoutput:
         # Metrics
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(label=prelabel + "Perform." + label)
+        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Perform." + label)
         grid = plt.GridSpec(2, 2, hspace=0.45, wspace=0.3)
 
         # Fusion Gain
@@ -4313,7 +4313,7 @@ class TGYROoutput:
             # Final
             # ------------------------------------------------------------------------------
 
-            fig1 = fn.add_figure(label=prelabel + "Flows" + label)
+            fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Flows" + label)
             self.plotBalance(fig=fig1)
 
         if not fnprovided:

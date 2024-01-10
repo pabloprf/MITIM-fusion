@@ -372,24 +372,23 @@ class PORTALSanalyzer:
         if fn is None:
             plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-
             fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
             fnprov = False
         else:
             fnprov = True
 
-        fig = fn.add_figure(label="PROFILES Ranges")
+        fig = fn.add_figure(label="PROFILES Ranges",tab_color=0)
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=fn)
+        self.plotSummary(fn=fn,fn_color=1)
 
-        fig = fn.add_figure(label="PORTALS Metrics")
+        fig = fn.add_figure(label="PORTALS Metrics",tab_color=2)
         self.plotMetrics(fig=fig)
 
-        fig = fn.add_figure(label="PORTALS Expected")
+        fig = fn.add_figure(label="PORTALS Expected",tab_color=3)
         self.plotExpected(fig=fig)
 
-        fig = fn.add_figure(label="PORTALS Simulation")
+        fig = fn.add_figure(label="PORTALS Simulation",tab_color=4)
         self.plotModelComparison(fig=fig)
 
         if not fnprov:

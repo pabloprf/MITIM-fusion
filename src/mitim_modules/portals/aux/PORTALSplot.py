@@ -1710,7 +1710,7 @@ def PORTALSanalyzer_plotExpected(
         pass
 
 
-def PORTALSanalyzer_plotSummary(self, fn=None):
+def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
     indecesPlot = [
@@ -1723,22 +1723,22 @@ def PORTALSanalyzer_plotSummary(self, fn=None):
     # Plot TGYROs
     # -------------------------------------------------------
 
-    self.tgyros[indecesPlot[1]].plot(fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ")
+    self.tgyros[indecesPlot[1]].plot(fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ",fn_color=fn_color)
     if indecesPlot[0] < len(self.tgyros):
-        self.tgyros[indecesPlot[0]].plot(fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ")
+        self.tgyros[indecesPlot[0]].plot(fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ",fn_color=fn_color)
 
     # -------------------------------------------------------
     # Plot PROFILES
     # -------------------------------------------------------
 
     figs = [
-        fn.add_figure(label="PROFILES - Profiles"),
-        fn.add_figure(label="PROFILES - Powers"),
-        fn.add_figure(label="PROFILES - Geometry"),
-        fn.add_figure(label="PROFILES - Gradients"),
-        fn.add_figure(label="PROFILES - Flows"),
-        fn.add_figure(label="PROFILES - Other"),
-        fn.add_figure(label="PROFILES - Impurities"),
+        fn.add_figure(label="PROFILES - Profiles",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Powers",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Geometry",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Gradients",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Flows",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Other",tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Impurities",tab_color=fn_color),
     ]
 
     if indecesPlot[0] < len(self.profiles):
@@ -1761,7 +1761,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None):
     profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
     profile_original_0 = self.mitim_runs["profiles_original"]
 
-    fig4 = fn.add_figure(label="PROFILES Comparison")
+    fig4 = fn.add_figure(label="PROFILES Comparison",tab_color=fn_color)
     grid = plt.GridSpec(
         2,
         np.max([3, len(self.ProfilesPredicted)]),

@@ -75,7 +75,11 @@ class FigureNotebook:
 
         return fig, ax
 
-    def addPlot(self, title, figure, tab_color=None):
+    def addPlot(self, title, figure, tab_color=None, tab_alpha=0.2):
+        '''
+        tab_color can be a color name or an integer to grab colors in order
+        '''
+        
         new_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         new_tab.setLayout(layout)
@@ -97,9 +101,10 @@ class FigureNotebook:
         self.tab_handles.append(new_tab)
 
         # Set the color for the tab if specified
-        tab_color_hex = GRAPHICStools.convert_to_hex(tab_color)
-
+        tab_color_hex = GRAPHICStools.convert_to_hex_soft(tab_color)
         if tab_color_hex:
+            tab_color_hex = QtGui.QColor(tab_color_hex)
+            tab_color_hex.setAlphaF(tab_alpha)
             self.tabs.tabBar().setTabColor(self.tabs.count() - 1, tab_color_hex)
 
     def show(self):
@@ -140,13 +145,13 @@ class TabBar(QTabBar):
                         font-size:           9pt;
                         }
                     QTabBar::tab:selected {
-                        background:          #90EE90;
+                        background:          #00FF00;
                         color:               #191970;
                         font:                bold;
                         }
                     QTabBar::tab:hover {
-                        background: #ADD8E6;
-                        color: #000000;
+                        background:          #90EE90;
+                        color:               #191970;
                         }
                             """
         )
