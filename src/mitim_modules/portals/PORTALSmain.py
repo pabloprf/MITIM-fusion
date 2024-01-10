@@ -159,60 +159,9 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         """
 		Physics-informed parameters to fit surrogates
 		---------------------------------------------
-			Note: Dict value indicates what variables need to change at this location to add this one (only one of them is needed)
-			Note 2: index key indicates when to transition to next (in terms of number of individuals available for fitting)
-			Things to add:
-					'aLte': ['aLte'],   'aLti': ['aLti'],      'aLne': ['aLne'],
-					'nuei': ['te','ne'],'tite': ['te','ti'],   'c_s': ['te'],      'w0_n': ['w0'],
-					'beta_e':  ['te','ne']
-
-			transition_evaluations is the number of points to be fitted that require a parameter transition.
-				Note that this ignores ExtraData or ExtraPoints.
-					- transition_evaluations[0]: max to only consider gradients
-					- transition_evaluations[1]: no beta_e
-					- transition_evaluations[2]: full
 		"""
 
-        transition_evaluations = [10, 30, 100]
-        physicsBasedParams = {
-            transition_evaluations[0]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                }
-            ),
-            transition_evaluations[1]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                    "nuei": ["te", "ne"],
-                    "tite": ["te", "ti"],
-                    "w0_n": ["w0"],
-                }
-            ),
-            transition_evaluations[2]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                    "nuei": ["te", "ne"],
-                    "tite": ["te", "ti"],
-                    "w0_n": ["w0"],
-                    "beta_e": ["te", "ne"],
-                }
-            ),
-        }
-
-        # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
-        physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
-        physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
-        physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
-        physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+        physicsBasedParams, physicsBasedParams_trace = PORTALStools.default_physicsBasedParams()
 
         """
 		Parameters to run PORTALS
