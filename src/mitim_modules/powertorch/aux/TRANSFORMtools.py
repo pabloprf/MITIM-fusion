@@ -26,7 +26,6 @@ def fromPowerToGacode(
     insertPowers=True,
     rederive=True,
     ProfilesPredicted=["te", "ti", "ne"],
-    impurityPosition=1,
 ):
     """
     Notes:

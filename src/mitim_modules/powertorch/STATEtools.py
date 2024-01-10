@@ -194,7 +194,6 @@ class powerstate:
             insertPowers=insertPowers,
             rederive=rederive_profiles,
             ProfilesPredicted=self.ProfilesPredicted,
-            impurityPosition=self.impurityPosition,
         )
 
         if writeFile is not None:
