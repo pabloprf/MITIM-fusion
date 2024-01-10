@@ -1650,12 +1650,14 @@ class PRF_BO:
 		****************************************************************
 		"""
 
+        tab_color = ck + 5 + 1
+
         # ---- Trust region ----------------------------------------------------------
         figTR = fn.add_figure(label="Trust Region",tab_color=tab_color)
         try:
             SBOcorrections.plotTrustRegionInformation(self, fig=figTR)
         except:
-            print("Problem plotting trust region")
+            print("\t- Problem plotting trust region",typeMsg="w")
 
         # ---- ResultsOptimization ---------------------------------------------------
         if plotResultsOptimization:
