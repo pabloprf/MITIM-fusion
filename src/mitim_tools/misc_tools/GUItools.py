@@ -13,7 +13,7 @@ try:
     from matplotlib.backends.backend_qtagg import (
         NavigationToolbar2QT as NavigationToolbar,
     )
-    from PyQt6 import QtWidgets, QtCore
+    from PyQt6 import QtWidgets, QtCore, QtGui
     from PyQt6.QtWidgets import QTabWidget, QTabBar
 
     # -----------------------------
@@ -29,7 +29,6 @@ except ImportError:
     class QTabBar:
         pass
 
-
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.CONFIGread import read_dpi
 from IPython import embed
@@ -37,7 +36,6 @@ from IPython import embed
 plt.rcParams["figure.max_open_warning"] = False
 
 dpi_notebook = read_dpi()
-
 
 class FigureNotebook:
     def __init__(
@@ -99,9 +97,10 @@ class FigureNotebook:
         self.tab_handles.append(new_tab)
 
         # Set the color for the tab if specified
-        if tab_color:
-            color_style = f"QTabBar {{color: {tab_color};}}"
-            new_tab.setStyleSheet(color_style)
+        tab_color_hex = GRAPHICStools.convert_to_hex(tab_color)
+
+        if tab_color_hex:
+            self.tabs.tabBar().setTabColor(self.tabs.count() - 1, tab_color_hex)
 
     def show(self):
         print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")
@@ -128,6 +127,7 @@ class TabBar(QTabBar):
         super().__init__(parent)
 
         self.vertical = vertical
+        self.tab_colors = {}
 
         if self.vertical:
             self.setFixedSize(xextend, 150)
@@ -151,6 +151,10 @@ class TabBar(QTabBar):
                             """
         )
 
+    def setTabColor(self, index, color):
+        self.tab_colors[index] = color
+        self.update()
+
     def tabSizeHint(self, i):
         if self.vertical:
             tw = int(self.width() / (self.count()))
@@ -166,6 +170,8 @@ class TabBar(QTabBar):
 
             for i in range(self.count()):
                 self.initStyleOption(opt, i)
+                if i in self.tab_colors:
+                    opt.palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(self.tab_colors[i]))
                 painter.drawControl(
                     QtWidgets.QStyle.ControlElement.CE_TabBarTabShape, opt
                 )

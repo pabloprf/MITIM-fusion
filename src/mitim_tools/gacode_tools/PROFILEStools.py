@@ -2454,7 +2454,7 @@ class PROFILES_GACODE:
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         # Derived
-        self.plotGradients(axs4, color=color, lw=lw, lastRho=lastRhoGradients)
+        self.plotGradients(axs4, color=color, lw=lw, lastRho=lastRhoGradients,label=extralab)
 
         # Others
         ax = axs6[0]
@@ -2779,6 +2779,7 @@ class PROFILES_GACODE:
         ax.set_ylabel("$T_e$ (keV)")
         ax.set_xlabel(labelx)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
+        ax.legend(loc="best", fontsize=7)
         ax = axs4[2]
         ax.set_ylabel("$T_i$ (keV)")
         ax.set_xlabel(labelx)

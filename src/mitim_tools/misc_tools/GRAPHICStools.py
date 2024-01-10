@@ -16,6 +16,43 @@ def aroundZeroLims(zlims):
 
     return zlims
 
+def convert_to_hex(color):
+    # chatGPT created this dictionary to convert to hex colors
+    color_hex = {
+        'k': '#000000',
+        'black': '#000000',
+        'w': '#FFFFFF',
+        'white': '#FFFFFF',
+        'r': '#FF0000',
+        'red': '#FF0000',
+        'g': '#008000',
+        'green': '#008000',
+        'b': '#0000FF',
+        'blue': '#0000FF',
+        'c': '#00FFFF',
+        'cyan': '#00FFFF',
+        'm': '#FF00FF',
+        'magenta': '#FF00FF',
+        'y': '#FFFF00',
+        'yellow': '#FFFF00',
+        'l': '#00FF00',
+        'lime': '#00FF00',
+        'n': '#000080',
+        'navy': '#000080',
+        'o': '#808000',
+        'olive': '#808000',
+        'p': '#800080',
+        'purple': '#800080',
+        't': '#008080',
+        'teal': '#008080',
+        's': '#C0C0C0',
+        'silver': '#C0C0C0'
+    }
+
+    if (color is not None) and (color in color_hex):
+        return color_hex[color]
+    else:
+        return None
 
 def plotRange(
     t,
