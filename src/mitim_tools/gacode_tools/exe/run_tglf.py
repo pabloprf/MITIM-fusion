@@ -1,7 +1,7 @@
 """
 This example runs TGLF from an already existing file (no normalizations if no input_gacode file provided)
 
-	run_tglf.py --folder run0/ --tglf input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives True]
+	run_tglf.py --folder run0/ --tglf input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives] [--restart]
 
 Sequence:
 	- If drives: do drives analysis

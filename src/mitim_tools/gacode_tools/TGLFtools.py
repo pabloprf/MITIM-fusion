@@ -2867,12 +2867,34 @@ class TGLF:
 
             self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
-    def plotScanTurbulenceDrives(self, label="scan1", figs=None):
+    def plotScanTurbulenceDrives(self, label="scan1", figs=None,**kwargs_TGLFscanPlot):
         labels = []
         for variable in self.variablesDrives:
             labels.append(f"{label}_{variable}")
 
-        self.plotScan(labels=labels, figs=figs, variableLabel="X", relativeX=True)
+        if figs is None:
+            plt.rcParams["figure.max_open_warning"] = False
+            #plt.ioff()
+            self.fn = GUItools.FigureNotebook(
+                0, "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
+            )
+            fig1 = self.fn.add_figure(label="Fluxes - Relative")
+            fig2 = self.fn.add_figure(label="Fluxes (GB) - Relative")
+            fig3 = self.fn.add_figure(label="Linear Stability - Relative")
+            figs1 = [fig1, fig2, fig3]
+            fig1 = self.fn.add_figure(label="Fluxes")
+            fig2 = self.fn.add_figure(label="Fluxes (GB)")
+            fig3 = self.fn.add_figure(label="Linear Stability")
+            figs2 = [fig1, fig2, fig3]
+        else:
+            figs1, figs2 = None, None
+
+        kwargs_TGLFscanPlot.pop('figs', None)
+
+        self.plotScan(labels=labels, figs=figs1, variableLabel="X", relativeX=True, **kwargs_TGLFscanPlot)
+
+        kwargs_TGLFscanPlot['plotTGLFs'] = False
+        self.plotScan(labels=labels, figs=figs2, variableLabel="X",**kwargs_TGLFscanPlot)
 
     def runAnalysis(
         self,

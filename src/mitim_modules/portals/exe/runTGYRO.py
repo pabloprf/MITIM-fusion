@@ -2,16 +2,15 @@ import argparse
 import copy
 import time
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_modules.portals.aux import PORTALSanalysis
 from mitim_modules.portals.exe.comparePORTALS import compareSolvers
-
+from IPython import embed
 
 """
 This script will run TGYRO using the settings used for mitim. It will do it in a subfolder of the
 mitim run.
-e.g.:           runTGYROfrommitim.py --folder run1/ --seeds 5 --methods 1 6
+e.g.:           runTGYRO.py --folder run1/ --seeds 5 --methods 1 6
 
 It will run 16 in parallel
 

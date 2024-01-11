@@ -546,6 +546,7 @@ f'''
             evaluation = self.ibest
 
         '''
+        NOTE on radial location extraction:
         Two possible options for the rho locations to use:
             1. self.TGYROparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
