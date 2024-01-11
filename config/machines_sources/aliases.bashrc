@@ -12,7 +12,7 @@ alias mitim_plot_cgyro="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/
 alias mitim_plot_eq="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gs_tools/exe/read_eqs.py $1"
 
 alias mitim_read_transp="ipython3 -i -- $MITIM_PATH/src/mitim_tools/transp_tools/exe/read_transp.py $1"
-alias mitim_run_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/run_tglf.py --folder $1 --tglf $2" #[--gacode input.gacode] [--scan RLTS_2] [--drives True]
+alias mitim_run_tglf="ipython3 -i -- $MITIM_PATH/src/mitim_tools/gacode_tools/exe/run_tglf.py $1 $2" # (folder input.tglf)  [--gacode input.gacode] [--scan RLTS_2] [--drives True]
 
 # Optimizations
 alias mitim_plot_opt="ipython3 -i -- $MITIM_PATH/src/mitim_tools/opt_tools/exe/read.py --type 4 --resolution 20 $1"

@@ -20,11 +20,13 @@ from mitim_tools.gacode_tools import TGLFtools
 # ------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--folder", required=True, type=str)
-parser.add_argument("--tglf", required=True, type=str)
+parser.add_argument("folder", type=str)
+parser.add_argument("tglf", type=str)
 parser.add_argument("--gacode", required=False, type=str, default=None)
 parser.add_argument("--scan", required=False, type=str, default=None)
 parser.add_argument("--drives", required=False, default=False, action='store_true')
+parser.add_argument("--restart","-r", required=False, default=False, action='store_true')
+
 
 args = parser.parse_args()
 
@@ -33,6 +35,7 @@ input_tglf = IOtools.expandPath(args.tglf)
 input_gacode = IOtools.expandPath(args.gacode) if args.gacode is not None else None
 scan = args.scan
 drives = args.drives
+restart = args.restart
 
 # ------------------------------------------------------------------------------
 #  Preparation
@@ -55,11 +58,12 @@ elif scan is not None:
         variable=scan,
         varUpDown=np.linspace(0.2, 2.0, 5),
         TGLFsettings=None,
+        restart=restart
     )
     tglf.readScan(label="scan1", variable=scan)
     tglf.plotScan(labels=["scan1"], variableLabel=scan)
 
 else:
-    tglf.run(subFolderTGLF="run1/", TGLFsettings=None)
+    tglf.run(subFolderTGLF="run1/", TGLFsettings=None, restart=restart)
     tglf.read(label="run1")
     tglf.plotRun(labels=["run1"])

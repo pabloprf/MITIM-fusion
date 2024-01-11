@@ -228,7 +228,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
     pos = int(output.split("_")[1])
 
     if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
-        factor = nZ = powerstate.plasma["ni"][
+        factor = powerstate.plasma["ni"][
             : x.shape[0],
             powerstate.indexes_simulation[pos],
             powerstate.impurityPosition - 1,
@@ -249,44 +249,44 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
 
     v = torch.ones(tuple(X.shape[:-1]) + (1,)).to(X)
 
-    """
-	Apply diffusivities (not real value, just capturing dependencies,
-	work on normalization, like e_J). Or maybe calculate gradients within powerstate
-	Remember that for Ti I'm using ne...
-	"""
-    if surrogate_parameters["useDiffusivities"]:
-        pos = int(output.split("_")[-1])
-        var = output.split("_")[0]
+    # """
+	# Apply diffusivities (not real value, just capturing dependencies,
+	# work on normalization, like e_J). Or maybe calculate gradients within powerstate
+	# Remember that for Ti I'm using ne...
+	# """
+    # if surrogate_parameters["useDiffusivities"]:
+    #     pos = int(output.split("_")[-1])
+    #     var = output.split("_")[0]
 
-        if var == "te":
-            grad = x[:, i] * (
-                powerstate.plasma["te"][:, powerstate.indexes_simulation[pos]]
-                / powerstate.plasma["a"]
-            )  # keV/m
-            v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
+    #     if var == "te":
+    #         grad = x[:, i] * (
+    #             powerstate.plasma["te"][:, powerstate.indexes_simulation[pos]]
+    #             / powerstate.plasma["a"]
+    #         )  # keV/m
+    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
 
-        if var == "ti":
-            grad = x[:, i] * (
-                powerstate.plasma["ti"][:, powerstate.indexes_simulation[pos]]
-                / powerstate.plasma["a"]
-            )  # keV/m
-            v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
+    #     if var == "ti":
+    #         grad = x[:, i] * (
+    #             powerstate.plasma["ti"][:, powerstate.indexes_simulation[pos]]
+    #             / powerstate.plasma["a"]
+    #         )  # keV/m
+    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
 
-        # if var == 'ne':
-        #     grad = x[:,i] * ( powerstate.plasma['ne'][:,pos]/powerstate.plasma['a']) # keV/m
-        #     v[:] = grad
+    #     # if var == 'ne':
+    #     #     grad = x[:,i] * ( powerstate.plasma['ne'][:,pos]/powerstate.plasma['a']) # keV/m
+    #     #     v[:] = grad
 
-    """
-	Apply flux ratios
-	For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
-	"""
+    # """
+	# Apply flux ratios
+	# For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
+	# """
 
-    if surrogate_parameters["useFluxRatios"]:
-        """
-        Not ready yet... since my code is not dealing with other outputs at a time so
-        I don't know Qi if I'm evaluating other fluxes...
-        """
-        pass
+    # if surrogate_parameters["useFluxRatios"]:
+    #     """
+    #     Not ready yet... since my code is not dealing with other outputs at a time so
+    #     I don't know Qi if I'm evaluating other fluxes...
+    #     """
+    #     pass
 
     return v
 
