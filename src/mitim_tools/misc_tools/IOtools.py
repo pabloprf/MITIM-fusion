@@ -1297,11 +1297,15 @@ def ArrayToString(ll):
 
 
 def expandPath(txt, fixSpaces=False, ensurePathValid=False):
+
+    while txt[-2:] == "//":
+        txt = txt[:-1]
+
     if txt[0] == ".":
-        if len(txt) > 1:
-            txt = os.path.realpath(txt)
-        else:
+        if (len(txt) == 1) or (len(txt) == 2 and txt[-1] == "/"):
             txt = os.path.realpath(txt) + "/"
+        else:
+            txt = os.path.realpath(txt)
 
     if ensurePathValid and (txt[0] not in ["~", "/"]):
         txt = os.path.realpath("./" + txt + "/")
