@@ -355,7 +355,7 @@ class powerstate:
         if axs is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
+             
             fn = FigureNotebook(0, "PowerState", geometry="1800x900")
             figMain = fn.add_figure(label="PowerState")
 
@@ -395,14 +395,7 @@ class powerstate:
 
             axsRes = figMain.add_subplot(grid[:, 0])
 
-            provided = False
-        else:
-            provided = True
-
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
-
-        if not provided:
-            fn.show()
 
     # ------------------------------------------------------------------
     # Main tools

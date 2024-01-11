@@ -204,7 +204,7 @@ def writeBoundaryFiles(
 
     # ~~~ Plot boundary
     if saveFigure:
-        plt.ioff()
+         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, "-o", markersize=0.5, lw=0.5, c="m", label="LCFS")
     else:
@@ -1025,7 +1025,7 @@ def extractBoundaries_TSC(
 
     # ~~~ Plot boundary
     if saveFigure and not onlyExtractGfiles:
-        plt.ioff()
+         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, lw=4, c="m", label="LCFS")
         for ikey in rsT:
@@ -1070,7 +1070,7 @@ def extractBoundaries_Sweep(gfileNames, times, folderOutput, saveFigure=True):
 
     # ~~~ Plot boundary
     if saveFigure:
-        plt.ioff()
+         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, lw=4, c="m", label="LCFS")
         ax.plot(rs1, zs1, lw=3, c="b", label="e1")

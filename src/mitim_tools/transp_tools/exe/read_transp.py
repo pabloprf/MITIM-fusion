@@ -22,7 +22,7 @@ ZerothTime = False
 printCheckPoints = False
 readGEQDSK = True
 
-plt.ioff()
+ 
 
 for i in expl:
     if ":" in i:

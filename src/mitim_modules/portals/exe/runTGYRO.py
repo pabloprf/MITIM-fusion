@@ -186,5 +186,3 @@ tgyro.plotRun(labels=names, doNotShow=True)
 compareSolvers(
     folderO, folders, nice_names, fig=tgyro.fn.add_figure(label="mitim COMPARISON")
 )
-
-tgyro.fn.show()

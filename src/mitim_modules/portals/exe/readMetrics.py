@@ -71,7 +71,7 @@ requiresFN = (len(folders) > 1) or complete or is_any_ini
 
 if requiresFN: 
     from mitim_tools.misc_tools.GUItools import FigureNotebook
-    plt.ioff()
+     
     fn = FigureNotebook(0, "PORTALS", geometry="1600x1000")
 else:
     plt.ion()
@@ -100,5 +100,3 @@ for i in range(len(folders)):
     else:
         portals_total[i].plotPORTALS(fn=fn)
 
-if (len(folders) > 1) or complete:    
-    fn.show()

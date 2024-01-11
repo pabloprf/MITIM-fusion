@@ -794,8 +794,6 @@ class TGLF:
                     if not (il in max_fields):
                         max_fields.append(il)
 
-        plt.rcParams["figure.max_open_warning"] = False
-        plt.ioff()
         if fn is None:
             fnsh, self.fn = True, GUItools.FigureNotebook(
                 0, "TGLF MITIM Notebook", geometry="1700x900", vertical=True
@@ -2061,9 +2059,6 @@ class TGLF:
                     legYN=contLab == 0,
                 )
 
-        if fnsh:
-            self.fn.show()
-
     # ~~~~~~~~~~~~~~ Scan options
 
     def runScan(
@@ -2349,8 +2344,7 @@ class TGLF:
             )
 
         if figs is None:
-            plt.rcParams["figure.max_open_warning"] = False
-            plt.ioff()
+
             self.fn = GUItools.FigureNotebook(
                 0, "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
             )
@@ -2833,9 +2827,6 @@ class TGLF:
                     plotGACODE=False,
                 )
 
-        if figs is None:
-            self.fn.show()
-
     # ~~~~~~~~~~~~~~ Extra complete analysis options
 
     def runScanTurbulenceDrives(
@@ -2873,8 +2864,7 @@ class TGLF:
             labels.append(f"{label}_{variable}")
 
         if figs is None:
-            plt.rcParams["figure.max_open_warning"] = False
-            #plt.ioff()
+             
             self.fn = GUItools.FigureNotebook(
                 0, "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
             )
@@ -3075,8 +3065,7 @@ class TGLF:
 
     def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
         if figs is None:
-            plt.rcParams["figure.max_open_warning"] = False
-            plt.ioff()
+             
             self.fn = GUItools.FigureNotebook(
                 0, "TGLF Analysis MITIM Notebook", geometry="1500x900"
             )
@@ -3378,9 +3367,6 @@ class TGLF:
             ax.set_xlim([0, 1])
             ax.set_title(f"Integrated profile using BC={BC}")
             GRAPHICStools.addDenseAxis(ax)
-
-        if figs is None:
-            self.fn.show()
 
     def updateConvolution(self):
         self.DRMAJDX_LOC = {}

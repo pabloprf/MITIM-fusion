@@ -389,7 +389,7 @@ def combined_analysis(
     # Plot
 
     if fn is None:
-        plt.ioff()
+         
         fn = GUItools.FigureNotebook(0, "Combined analysis")
 
     fig1 = fn.add_figure(label="FreeGSU - Eq. & Coils")

@@ -5674,7 +5674,7 @@ class CDFreactor:
     def plotISOLVER(self, fn=None, time=None):
         if fn is None:
             std = True
-            plt.ioff()
+             
             fn = FigureNotebook(0, f"ISOLVER Notebook, run #{self.nameRunid}")
         else:
             std = False
@@ -5759,8 +5759,6 @@ class CDFreactor:
 
         self.isolver.plotEquilibria(time, fig=fig1)
 
-        if std:
-            fn.show()
 
     def plotTGLF(self, figGR=None, figFL=None):
         ax1, ax2, ax3 = self.TGLF.plotComplete_GR(fig=figGR)
@@ -13131,7 +13129,7 @@ class CDFreactor:
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
     def plotRun(self, time=None, timesAv=None, plot_analysis=True):
-        plt.ioff()
+         
 
         if time is None:
             time = self.t[self.ind_saw]
@@ -13468,8 +13466,6 @@ class CDFreactor:
             if len(self.tlastsawU) > 1:
                 fig = fn.add_figure(label="ANALYSIS - sawtooth")
                 self.analyze_sawtooth(fig=fig)
-
-        fn.show()
 
     # --------------------------------------
     # Additional analysis
@@ -13849,7 +13845,7 @@ class CDFreactor:
         # -----------------------------------------------------------------------------------
 
         if plotCompare:
-            plt.ioff()
+             
             fn = FigureNotebook(
                 0, "TGLF-TRANSP Notebook", geometry="1500x900", vertical=True
             )
@@ -13862,8 +13858,6 @@ class CDFreactor:
             self.plotGRTRANSP(fig=fig2, tglfRun=labelTGLF, time=time)
             fig3 = fn.add_figure(label="Comparison FL")
             self.plotFLTRANSP(fig=fig3, tglfRun=labelTGLF, time=time)
-
-            fn.show()
 
         return self.TGLFstd[nameF]
 
@@ -14468,7 +14462,7 @@ class CDFreactor:
         # Plot
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         if plotYN:
-            plt.ioff()
+             
 
             fn = FigureNotebook(0, f"mitim Notebook, run #{self.nameRunid}")
             fig1 = fn.add_figure(label="Compare")
@@ -14546,8 +14540,6 @@ class CDFreactor:
 
             # Plot TGLF calculation details
             self.ChiPert_tglf.plotAnalysis(labels=["chi_pert"], fig=fig3)
-
-            fn.show()
 
     # --------
 

@@ -372,12 +372,9 @@ class PORTALSanalyzer:
 
     def plotPORTALS(self, fn=None):
         if fn is None:
-            plt.ioff()
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
             fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
-            fnprov = False
-        else:
-            fnprov = True
 
         fig = fn.add_figure(label="PROFILES Ranges",tab_color=0)
         self.plotRanges(fig=fig)
@@ -392,9 +389,6 @@ class PORTALSanalyzer:
 
         fig = fn.add_figure(label="PORTALS Simulation",tab_color=4)
         self.plotModelComparison(fig=fig)
-
-        if not fnprov:
-            fn.show()
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
@@ -827,12 +821,9 @@ class PORTALSinitializer:
     def plotMetrics(self, fn = None, extra_lab = '', **kwargs):
 
         if fn is None:
-            plt.ioff()
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
             fn = FigureNotebook(0, "PowerState", geometry="1800x900")
-            fnprov = False
-        else:
-            fnprov = True
 
         figMain = fn.add_figure(label=f"{extra_lab} - PowerState")
         figG = fn.add_figure(label=f"{extra_lab} - Sequence")
@@ -914,5 +905,3 @@ class PORTALSinitializer:
                     ms=0,
                 )
 
-        if not fnprov:
-            fn.show()

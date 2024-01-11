@@ -436,10 +436,9 @@ class CGYRO:
                 )
 
     def plot(self, labels=[""]):
-        plt.rcParams["figure.max_open_warning"] = False
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        plt.ioff()
+         
         fn = FigureNotebook(0, "CGYRO Notebook", geometry="1600x1000")
 
         colors = GRAPHICStools.listColors()
@@ -460,17 +459,15 @@ class CGYRO:
                 plotLegend=j == len(labels) - 1,
             )
 
-        fn.show()
-
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
 
         if fig is None:
             # fig = plt.figure(figsize=(15,9))
-            plt.rcParams["figure.max_open_warning"] = False
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
+             
             fn = FigureNotebook(
                 0,
                 f"CGYRO Notebook, run #{self.nameRunid}, time {self.time:3f}s",
@@ -629,9 +626,6 @@ class CGYRO:
         for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-        fn.show()
-
 
 def changeANDwrite_CGYRO(rhos, ky, FolderCGYRO, CGYROsettings=1):
     inputFilesCGYRO = {}

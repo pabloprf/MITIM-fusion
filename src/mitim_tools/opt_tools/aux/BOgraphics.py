@@ -1691,7 +1691,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def plot(self, fn=None, doNotShow=True, separateOFs=False, log=None,tab_color=None):
         if fn is None:
-            plt.ioff()
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
@@ -1742,9 +1742,6 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         if log is not None:
             log.plot(axs=[axsTimes[0], axsTimes[1]])
-
-        if (not fnprov) and (not doNotShow):
-            fn.show()
 
         return fn
 
@@ -2219,18 +2216,16 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def plotCalibrations(self, figs=None,tab_color=None):
         if figs is None:
-            plt.ioff()
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
-            fnprov = False
             fig3 = fn.add_figure(label="Deviations",tab_color=tab_color)
             fig3b = fn.add_figure(label="Separate",tab_color=tab_color)
             fig3c = fn.add_figure(label="Together",tab_color=tab_color)
             fig3c = fn.add_figure(label="Together All",tab_color=tab_color)
         else:
             [fig3, fig3b, fig3c, fig3cE] = figs
-            fnprov = True
 
         # ---------------- Plot stuff
 
@@ -3343,7 +3338,7 @@ def plotGA_results(
 
 
 def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subname=""):
-    plt.ioff()
+     
     if fn is None:
         fn = GUItools.FigureNotebook(0, "MITIM GA Notebook", geometry="1500x1000")
 

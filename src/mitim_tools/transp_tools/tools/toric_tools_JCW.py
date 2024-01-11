@@ -638,7 +638,7 @@ class toric_analysis:
         #     ax.text(-0.2,-0.2,sublabel,transform = ax.transAxes)
 
         # print ("interactive off while plotting")
-        #        plt.ioff()
+        #         
 
         if logl > 0:
             title = "log10 " + title

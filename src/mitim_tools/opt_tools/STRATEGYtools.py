@@ -286,9 +286,6 @@ class FUNmain:
                 f"\t- Perform extra analysis for this sub-module (analysis level {analysis_level})"
             )
 
-        if plotYN:
-            plt.ioff()
-
         self.read_optimization_results(
             plotYN=plotYN and (analysis_level >= 0),
             folderRemote=folderRemote,
@@ -300,7 +297,7 @@ class FUNmain:
 
         self_complete = None
         if analysis_level > 1:
-            plt.ioff()
+             
             """
 			If the analyze_results exists, I'm in a child class, so just proceed to analyze.
 			Otherwise, let's grab the method from the pickled
@@ -342,8 +339,6 @@ class FUNmain:
 
             if save_folder is not None:
                 self.fn.save(save_folder)
-
-            self.fn.show()
 
         return self_complete
 
@@ -1484,17 +1479,17 @@ class PRF_BO:
 
         GPs = self.steps
 
-        if fn is None:
+        if doNotShow:
             plt.ioff()
+
+        if fn is None:
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             geometry = (
                 "1200x1000" if len(GPs[0].GP["individual_models"]) == 1 else "1700x1000"
             )
             fn = FigureNotebook(0, "MITIM BO Strategy", geometry=geometry)
-            fnprov = False
-        else:
-            fnprov = True
 
         """
 		****************************************************************
@@ -1669,9 +1664,6 @@ class PRF_BO:
                 logFile = None
             self.ResultsOptimization.plot(fn=fn, doNotShow=True, log=logFile,tab_color=tab_color)
 
-        if (not fnprov) and (not doNotShow):
-            fn.show()
-
         return fn
 
     def plotModelStatus(self, fn=None, boStep=-1, plotsPerFigure=20, stds=2,tab_color=None):
@@ -1763,16 +1755,12 @@ class PRF_BO:
         colors = GRAPHICStools.listColors()
 
         if fig1 is None:
-            plt.ioff()
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook(0, "PRF BO Strategy", geometry="1700x1000")
             fig2 = fn.add_figure(label=f"#{boStep}: Optim Ranges")
             fig1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.")
-            fnprov = False
-
-        else:
-            fnprov = True
 
         grid = plt.GridSpec(nrows=2, ncols=2, hspace=0.2, wspace=0.2)
         ax0_r = fig2.add_subplot(grid[:, 0])
@@ -1899,10 +1887,6 @@ class PRF_BO:
 
         for i in range(len(axs)):
             GRAPHICStools.addDenseAxis(axs[i])
-
-        if not fnprov:
-            fn.show()
-
 
 def read_from_scratch(file):
     """

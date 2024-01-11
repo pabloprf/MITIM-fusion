@@ -245,10 +245,10 @@ class MITIMgeqdsk:
     def plot(self, fn=None, extraLabel=""):
         if fn is None:
             wasProvided = False
-            plt.rcParams["figure.max_open_warning"] = False
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
+             
             fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
         else:
             wasProvided = True
@@ -367,9 +367,6 @@ class MITIMgeqdsk:
         ax4 = fig.add_subplot(grid[1, 1])
 
         self.plotGeometry(axs=[ax1, ax2, ax3, ax4])
-
-        if not wasProvided:
-            fn.show()
 
         return ax_plasma
 
@@ -1136,10 +1133,10 @@ def plotSurfaces(
 def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     if fn is None:
         wasProvided = False
-        plt.rcParams["figure.max_open_warning"] = False
+         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        plt.ioff()
+         
         fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
     else:
         wasProvided = True
@@ -1202,9 +1199,6 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
             color=cols[i],
             label=f"{labelsGs[i]} ",
         )
-
-    if not wasProvided:
-        fn.show()
 
     return ax_plasma
 

@@ -762,14 +762,12 @@ class TGYRO:
 
     def plotRun(self, fn=None, labels=["tgyro1"], doNotShow=False,fn_color=None):
         if fn is None:
-            plt.rcParams["figure.max_open_warning"] = False
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
+             
             self.fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
-            fnProvided = False
         else:
-            fnProvided = True
             self.fn = fn
 
         # **** Plot the TGYRO output for all the labels
@@ -1186,10 +1184,6 @@ class TGYRO:
                     extratitle="TGLF_" + label,
                     plotGACODE=False,
                 )
-
-        if (not fnProvided) and (not doNotShow):
-            self.fn.show()
-
 
 class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
@@ -2172,15 +2166,11 @@ class TGYROoutput:
 
     def plot(self, fn=None, label="", prelabel="",fn_color=None):
         if fn is None:
-            plt.rcParams["figure.max_open_warning"] = False
+             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
+             
             fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
-            fnprovided = False
-
-        else:
-            fnprovided = True
 
         # ------------------------------------------------------------------------------
         # Summary 1
@@ -4314,9 +4304,6 @@ class TGYROoutput:
             fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Flows" + label)
             self.plotBalance(fig=fig1)
 
-        if not fnprovided:
-            fn.show()
-
     """
 		Note that input.gacode and TGYRO may differ in Pfus, Prad, Exch, etc because TGYRO has internal calculations.
 		I believe those are passed to the output of tgyro, even though the tgyro option is static.
@@ -4544,26 +4531,15 @@ class TGYROoutput:
 
 def plotAll(TGYROoutputs, labels=None, fn=None):
     if fn is None:
-        # fig = plt.figure(figsize=(15,9))
-        plt.rcParams["figure.max_open_warning"] = False
+         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        plt.ioff()
         fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
-        fnprovided = False
-
-    else:
-        fnprovided = True
 
     if labels is None:
         labels = [f" {i}" for i in np.arange(1, len(TGYROoutputs) + 1, 1)]
 
     for i, TGYROoutput in enumerate(TGYROoutputs):
         TGYROoutput.plot(fn=fn, label=labels[i])
-
-    if not fnprovided:
-        fn.show()
-
 
 class TGYROinput:
     def __init__(self, input_profiles, file=None, onlyThermal=False, limitSpecies=100):

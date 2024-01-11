@@ -1808,14 +1808,12 @@ class PROFILES_GACODE:
     ):
         if axs1 is None:
             if fn is None:
-                plt.rcParams["figure.max_open_warning"] = False
+                 
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-                plt.ioff()
+                 
                 fn = FigureNotebook(0, "PROFILES Notebook", geometry="1600x1000")
-                wasProvided = False
-            else:
-                wasProvided = True
+
 
             fig = fn.add_figure(label="Profiles" + fnlab)
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
@@ -1906,8 +1904,6 @@ class PROFILES_GACODE:
                 fig7.add_subplot(grid[1, 2]),
             ]
 
-        else:
-            wasProvided = True
 
         [ax00, ax10, ax20, ax01, ax11, ax21, ax02, ax12, ax22] = axs1
         [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b] = axs2
@@ -2671,9 +2667,6 @@ class PROFILES_GACODE:
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-        if not wasProvided:
-            fn.show()
 
     def plotGradients(
         self,
@@ -3478,7 +3471,7 @@ class PROFILES_GACODE:
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
 
         if debugPlot:
-            plt.ioff()
+             
             fig, axq = plt.subplots()
 
             ne = self.profiles["ne(10^19/m^3)"]
@@ -3568,10 +3561,10 @@ def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
     if figs is not None:
         figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = figs
     else:
-        plt.rcParams["figure.max_open_warning"] = False
+         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        plt.ioff()
+         
         fn = FigureNotebook(0, "Profiles", geometry="1800x900")
         figProf_1 = fn.add_figure(label="Profiles")
         figProf_2 = fn.add_figure(label="Powers")
@@ -3685,10 +3678,6 @@ def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
             showtexts=False,
             lastRhoGradients=lastRhoGradients,
         )
-
-    if figs is None:
-        fn.show()
-
 
 def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
     with open(file) as f:
