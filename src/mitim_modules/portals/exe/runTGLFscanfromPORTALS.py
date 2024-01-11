@@ -25,6 +25,7 @@ parser.add_argument(
 )  # Variation in inputs (10% default)
 parser.add_argument("-r", required=False, default=False, action='store_true')
 
+
 args = parser.parse_args()
 folder = args.folder
 ev = args.ev

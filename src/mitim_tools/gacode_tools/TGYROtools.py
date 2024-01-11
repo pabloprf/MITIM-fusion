@@ -125,9 +125,7 @@ class TGYRO:
 
         if (not os.path.exists(self.FolderGACODE)) or restart:
             print(
-                "\t- Folder {0} does not exist, or restart has been requested... creating folder to store".format(
-                    FolderGACODE
-                )
+                f"\t- Folder {FolderGACODE} does not exist, or restart has been requested... creating folder to store"
             )
             IOtools.askNewFolder(
                 self.FolderGACODE, force=forceIfRestart or (not restart)
@@ -505,9 +503,9 @@ class TGYRO:
 
                 inputgacode_new.writeCurrentStatus()
             # ------------------------------------------------------------------------------------------------------------------------
-
-            # Copy those files that I'm interested in into the main folder
-            for file in self.outputFiles:
+                
+            # Copy those files that I'm interested in, plus the extra file, into the main folder
+            for file in self.outputFiles + ['input.tgyro']:
                 os.system(f"cp {self.FolderTGYRO_tmp}/{file} {self.FolderTGYRO}/{file}")
 
             # Rename the input.tglf.news to the actual rho they where at

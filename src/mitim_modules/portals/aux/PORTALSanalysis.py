@@ -482,7 +482,7 @@ f'''
         portals_fun_original = self.opt_fun.prfs_model.mainFunction
 
         # Start from the profiles of that step
-        fileGACODE = f'{folder}/input.gacode_tramsferred'
+        fileGACODE = f'{folder}/input.gacode_transferred'
         p = self.mitim_runs[step]["tgyro"].profiles
         p.writeCurrentStatus(file=fileGACODE)
        
@@ -545,12 +545,21 @@ f'''
         if evaluation < 0:
             evaluation = self.ibest
 
+        '''
+        Two possible options for the rho locations to use:
+            1. self.TGYROparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
+            2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
+        Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
+        However, this should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable # TO FIX
+        '''
+        rhos_considered = self.TGYROparameters["RhoLocations"]
+
         if positions is None:
-            rhos = self.rhos
+            rhos = rhos_considered
         else:
             rhos = []
             for i in positions:
-                rhos.append(self.rhos[i])
+                rhos.append(rhos_considered[i])
 
         if folder is None:
             folder = f"{self.folder}/tglf_ev{evaluation}/"

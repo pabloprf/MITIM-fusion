@@ -1,11 +1,12 @@
-import os, copy, datetime, time
+import os
+import datetime
+import time
 import numpy as np
 from IPython import embed
 from mitim_tools.transp_tools.src import TRANSPmain
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.tools import NMLtools
-from mitim_tools.transp_tools import CDFtools
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
