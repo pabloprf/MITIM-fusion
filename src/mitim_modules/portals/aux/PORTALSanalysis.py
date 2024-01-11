@@ -461,12 +461,14 @@ f'''
 
         return models
 
-    def extractPORTALS(self, step=-1, folder=None):
-        if step < 0:
-            step = self.ibest
+    def extractPORTALS(self, evaluation=None, folder=None):
+        if evaluation is None:
+            evaluation = self.ibest
+        elif evaluation < 0:
+            evaluation = self.ilast
 
         if folder is None:
-            folder = f"{self.folder}/portals_step{step}/"
+            folder = f"{self.folder}/portals_step{evaluation}/"
 
         folder = IOtools.expandPath(folder)
         if not os.path.exists(folder):
@@ -477,7 +479,7 @@ f'''
 
         # Start from the profiles of that step
         fileGACODE = f'{folder}/input.gacode_transferred'
-        p = self.mitim_runs[step]["tgyro"].profiles
+        p = self.mitim_runs[evaluation]["tgyro"].profiles
         p.writeCurrentStatus(file=fileGACODE)
        
         # New class
@@ -505,12 +507,14 @@ f'''
 
         return portals_fun,fileGACODE,folder
 
-    def extractTGYRO(self, folder=None, restart=False, step=0):
-        if step < 0:
-            step = self.ibest
+    def extractTGYRO(self, folder=None, restart=False, evaluation=0):
+        if evaluation is None:
+            evaluation = self.ibest
+        elif evaluation < 0:
+            evaluation = self.ilast
 
         if folder is None:
-            folder = f"{self.folder}/tgyro_step{step}/"
+            folder = f"{self.folder}/tgyro_step{evaluation}/"
 
         folder = IOtools.expandPath(folder)
         if not os.path.exists(folder):
@@ -518,7 +522,7 @@ f'''
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
-        profiles = self.mitim_runs[step]["tgyro"].profiles
+        profiles = self.mitim_runs[evaluation]["tgyro"].profiles
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(
@@ -535,9 +539,12 @@ f'''
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self, folder=None, positions=None, evaluation=-1, restart=False):
-        if evaluation < 0:
+    def extractTGLF(self, folder=None, positions=None, evaluation=None, restart=False):
+        
+        if evaluation is None:
             evaluation = self.ibest
+        elif evaluation < 0:
+            evaluation = self.ilast 
 
         '''
         NOTE on radial location extraction:
