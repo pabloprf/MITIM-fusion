@@ -297,7 +297,7 @@ class FUNmain:
 
         self_complete = None
         if analysis_level > 1:
-             
+
             """
 			If the analyze_results exists, I'm in a child class, so just proceed to analyze.
 			Otherwise, let's grab the method from the pickled
@@ -1663,6 +1663,7 @@ class PRF_BO:
             else:
                 logFile = None
             self.ResultsOptimization.plot(fn=fn, doNotShow=True, log=logFile,tab_color=tab_color)
+
 
         return fn
 

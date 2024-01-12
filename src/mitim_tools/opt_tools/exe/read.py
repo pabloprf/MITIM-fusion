@@ -252,7 +252,7 @@ if len(foldersWork) > 1:
 else:
     retrieval_level = analysis_level
 
-txt = f"***************************************************************************\n"
+txt = "***************************************************************************\n"
 for folderWork in foldersWork:
     txt += f"* Reading results in {folderWork}\n"
 
@@ -320,7 +320,7 @@ if seeds is not None:
         print(f"Plotting Violin with {xf.shape[0]} points")
         GRAPHICStools.plotViolin([xf], labels=["run"], ax=ax, colors=["b"])
 
-        ax.set_xlabel(f"Number of evaluations to converge")
+        ax.set_xlabel("Number of evaluations to converge")
         # ax.set_title(f'Residual reduced by x{1/percent:.0f}')
         ax.set_xlim([0, 50])
 

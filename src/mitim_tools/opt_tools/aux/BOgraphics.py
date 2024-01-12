@@ -1695,9 +1695,6 @@ Workflow start time: {IOtools.getStringFromTime()}
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
-            fnprov = False
-        else:
-            fnprov = True
 
         fig1 = fn.add_figure(label="Complete",tab_color=tab_color)
         fig1e = fn.add_figure(label="Complete (rel.)",tab_color=tab_color)
@@ -2203,7 +2200,6 @@ Workflow start time: {IOtools.getStringFromTime()}
         axDiff.axhline(y=1, ls="--", c="k", lw=1)
 
     def plotMetrics(self, fig):
-        plt.ion()
 
         grid = plt.GridSpec(nrows=2, ncols=1, hspace=0.4, wspace=0.4)
 

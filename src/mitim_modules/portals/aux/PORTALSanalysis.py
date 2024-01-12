@@ -576,7 +576,8 @@ f'''
         )
 
         inputgacode = f"{folder}/input.gacode.start"
-        self.mitim_runs[evaluation]["tgyro"].profiles.writeCurrentStatus(file=inputgacode)
+        self.mitim_runs[evaluation]["tgyro"].profiles
+        #self.mitim_runs[evaluation]["tgyro"].results['use'].profiles_final.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)

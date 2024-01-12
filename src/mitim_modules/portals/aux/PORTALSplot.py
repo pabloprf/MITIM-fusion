@@ -1324,7 +1324,7 @@ def PORTALSanalyzer_plotExpected(
         rhoVals = self.TGYROparameters["RhoLocations"]
         roaVals = np.interp(rhoVals, rho, roa)
 
-        p0 = self.profiles[0]
+        p0 = self.profiles[plotPoints[0]]
         zVals = []
         z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
         for roai in roaVals:
@@ -1332,7 +1332,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.profiles[1]
+            p0 = self.profiles[plotPoints[1]]
             zVals = []
             z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
             for roai in roaVals:
@@ -1342,7 +1342,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.set_ylim(ranges)
         axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
 
-        p0 = self.profiles[0]
+        p0 = self.profiles[plotPoints[0]]
         zVals = []
         z = (
             (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1353,7 +1353,7 @@ def PORTALSanalyzer_plotExpected(
         axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.profiles[1]
+            p0 = self.profiles[plotPoints[1]]
             zVals = []
             z = (
                 (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1372,7 +1372,7 @@ def PORTALSanalyzer_plotExpected(
         if axne_g is not None:
             axne_g_twin = axne_g.twinx()
 
-            p0 = self.profiles[0]
+            p0 = self.profiles[plotPoints[0]]
             zVals = []
             z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
             for roai in roaVals:
@@ -1380,7 +1380,7 @@ def PORTALSanalyzer_plotExpected(
             axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[1]
+                p0 = self.profiles[plotPoints[1]]
                 zVals = []
                 z = (
                     (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
@@ -1399,7 +1399,7 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             axnZ_g_twin = axnZ_g.twinx()
 
-            p0 = self.profiles[0]
+            p0 = self.profiles[plotPoints[0]]
             zVals = []
             z = (
                 (
@@ -1413,7 +1413,7 @@ def PORTALSanalyzer_plotExpected(
             axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[1]
+                p0 = self.profiles[plotPoints[1]]
                 zVals = []
                 z = (
                     (
@@ -1436,7 +1436,7 @@ def PORTALSanalyzer_plotExpected(
         if axw0_g is not None:
             axw0_g_twin = axw0_g.twinx()
 
-            p0 = self.profiles[0]
+            p0 = self.profiles[plotPoints[0]]
             zVals = []
             z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
             for roai in roaVals:
@@ -1444,7 +1444,7 @@ def PORTALSanalyzer_plotExpected(
             axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[1]
+                p0 = self.profiles[plotPoints[1]]
                 zVals = []
                 z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
                 for roai in roaVals:

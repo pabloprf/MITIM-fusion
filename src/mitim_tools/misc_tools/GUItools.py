@@ -42,6 +42,7 @@ class FigureNotebook:
         self, dummy, windowtitle, parent=None, geometry="1800x900", vertical=True
     ):
         #plt.rcParams["figure.max_open_warning"] = False
+        plt.ioff()
 
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
