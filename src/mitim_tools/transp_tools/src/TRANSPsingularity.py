@@ -556,7 +556,7 @@ cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar res
     transp_job.prep(
             TRANSPcommand,
             output_files=["TRANSPresults.tar"],
-             extranamelogs="_finish",
+            label_log_files="_finish",
         )
 
     transp_job.run(waitYN=True)

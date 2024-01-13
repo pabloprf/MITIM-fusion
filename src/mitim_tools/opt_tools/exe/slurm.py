@@ -31,7 +31,7 @@ def commander(
         f"python3 {script} {folderWork} --seed {seed}",
     ]
 
-    _, fileSBTACH, _ = FARMINGtools.SLURM(
+    _, fileSBTACH, _ = FARMINGtools.create_slurm_execution_files(
         command,
         folderWork,
         None,

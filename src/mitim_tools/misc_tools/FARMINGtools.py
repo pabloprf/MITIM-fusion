@@ -1,7 +1,5 @@
 """
-
-    Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
-
+Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
 import os
@@ -14,11 +12,11 @@ import datetime
 import torch
 import copy
 import numpy as np
-from IPython import embed
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools,CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -62,7 +60,6 @@ class mitim_job:
         self.slurm_settings.setdefault('job_array',None)
         self.slurm_settings.setdefault('nodes',None)
         self.slurm_settings.setdefault('cpuspertask',1)
-        self.slurm_settings.setdefault('email',"noemail")
         self.slurm_settings.setdefault('minutes',10)
         self.slurm_settings.setdefault('ntasks',1)
         self.slurm_settings.setdefault('nodes',1)
@@ -78,8 +75,7 @@ class mitim_job:
             output_folders=[],
             shellPreCommands=[],
             shellPostCommands=[],
-            extranamelogs="",
-            default_exclusive=False
+            label_log_files="",
             ):
 
         # Pass to class
@@ -91,20 +87,16 @@ class mitim_job:
         
         self.shellPreCommands = shellPreCommands
         self.shellPostCommands = shellPostCommands
-        self.extranamelogs = extranamelogs
-        self.default_exclusive = default_exclusive
+        self.label_log_files = label_log_files
 
     def run(self,waitYN=True):
-
-        self.machineSettings["clear"] = False
-
 
         if not waitYN:
             # If I'm not waiting, make sure i don't clear the folder
             self.machineSettings["clear"] = False
 
         # ****** Prepare SLURM job *****************************
-        comm, fileSBTACH, fileSHELL = SLURM(
+        comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
             self.command,
             self.machineSettings["folderWork"],
             self.machineSettings['modules'],
@@ -119,9 +111,7 @@ class mitim_job:
             cpuspertask=self.slurm_settings['cpuspertask'],
             slurm=self.machineSettings["slurm"],
             launchSlurm=self.launchSlurm,
-            email=self.slurm_settings['email'],
-            extranamelogs=self.extranamelogs,
-            default_exclusive=self.default_exclusive,
+            label_log_files=self.label_log_files,
             waitYN=waitYN,
         )
         # ******************************************************
@@ -143,11 +133,10 @@ class mitim_job:
             machineSettings=self.machineSettings
             )
 
+        # Get jobid
         with open(self.folder_local + "/sbatch.out", "r") as f:
             aux = f.readlines()
-
         self.jobid = aux[0].split()[-1]
-
 
     def check(self):
         '''
@@ -182,7 +171,6 @@ class mitim_job:
 
 def raise_timeout(signum, frame):
     raise TimeoutError
-
 
 @contextmanager
 def timeout(time, proc=None):
@@ -1044,7 +1032,7 @@ def SerialProcedure(Function, Params, howmany):
     return y, yE
 
 
-def SLURM(
+def create_slurm_execution_files(
     command,
     folder_remote,
     modules_remote,
@@ -1059,10 +1047,8 @@ def SLURM(
     cpuspertask=4,
     job_array=None,
     nodes=None,
-    email="noemail",
+    label_log_files="",
     waitYN=True,
-    extranamelogs="",
-    default_exclusive=False,
 ):
     if folder_local is None:
         folder_local = folder_remote
@@ -1077,6 +1063,7 @@ def SLURM(
     minutes = int(minutes)
 
     partition = slurm.setdefault("partition",None)
+    email = slurm.setdefault("noemail",None)
     exclude = slurm.setdefault("exclude",None)
     account = slurm.setdefault("account",None)
     constraint = slurm.setdefault("constraint",None)
@@ -1103,10 +1090,10 @@ def SLURM(
     commandSBATCH.append("#!/bin/bash -l")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
     commandSBATCH.append(
-        f"#SBATCH --output {folderExecution}/slurm_output{extranamelogs}.dat"
+        f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat"
     )
     commandSBATCH.append(
-        f"#SBATCH --error {folderExecution}/slurm_error{extranamelogs}.dat"
+        f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat"
     )
     if email != "noemail":
         commandSBATCH.append("#SBATCH --mail-user=" + email)
@@ -1125,8 +1112,7 @@ def SLURM(
     commandSBATCH.append(f"#SBATCH --time {time_com}")
 
     if job_array is None:
-        if default_exclusive:
-            commandSBATCH.append("#SBATCH --exclusive")
+        commandSBATCH.append("#SBATCH --exclusive")
     else:
         commandSBATCH.append(f"#SBATCH --array={job_array}")
 

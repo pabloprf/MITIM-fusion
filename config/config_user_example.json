@@ -29,7 +29,8 @@
             "account":      "m3195_g",
             "partition":    "debug",
             "constraint":   "gpu",
-            "mem":          "4GB" 
+            "mem":          "4GB",
+            "email":      "optional@email"
         }
     },
     "engaging": {
