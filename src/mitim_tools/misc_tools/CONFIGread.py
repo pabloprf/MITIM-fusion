@@ -73,7 +73,6 @@ def isThisEngaging():
 
 def machineSettings(
     code="tgyro",
-    gacode_compilation="gacode",
     nameScratch="mitim_tmp/",
     forceUsername=None,
 ):
