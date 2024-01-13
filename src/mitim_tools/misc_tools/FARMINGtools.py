@@ -313,7 +313,7 @@ def sendCommand_remote(
         if not isItFolders:
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
         else:
-            addSolutionForPathCanonicalization = ' -O' # This was needed for iris for a particular user
+            addSolutionForPathCanonicalization = ''#' -O' # This was needed for iris for a particular user
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r{addSolutionForPathCanonicalization} {file} {userCommand}{machine}:{folderWork}/."
         # run_subprocess(commai,localRun=True)
         os.system(commai)
@@ -912,12 +912,12 @@ def SLURM(
     command,
     folder_remote,
     modules_remote,
+    slurm={},
     folder_local=None,
     shellPreCommands=[],
     shellPostCommands=[],
     launchSlurm=True,
     nameJob="test",
-    partition="sched_mit_psfc",
     minutes=5,
     ntasks=1,
     cpuspertask=4,
@@ -926,7 +926,6 @@ def SLURM(
     email="noemail",
     waitYN=True,
     extranamelogs="",
-    exclude=None,
     default_exclusive=False,
 ):
     if folder_local is None:
@@ -940,6 +939,12 @@ def SLURM(
     fileSBTACH_remote = f"{folder_remote}/bash.src"
 
     minutes = int(minutes)
+
+    partition = slurm['partition']
+    exclude = slurm.setdefault("exclude",None)
+    account = slurm.setdefault("account",None)
+    constraint = slurm.setdefault("constraint",None)
+
 
     """
 	********************************************************************************************
@@ -971,6 +976,12 @@ def SLURM(
 
     # ******* Partition / Billing
     commandSBATCH.append(f"#SBATCH --partition {partition}")
+
+    if account is not None:
+        commandSBATCH.append(f"#SBATCH --account {account}")
+    if constraint is not None:
+        commandSBATCH.append(f"#SBATCH --constraint {constraint}")
+
     commandSBATCH.append(f"#SBATCH --time {time_com}")
 
     if job_array is None:
@@ -1079,20 +1090,20 @@ def SLURMcomplete(
     extranamelogs="",
     default_exclusive=False,
 ):
-    folderWork, modules, partition = (
+    folderWork, modules, slurm = (
         machineSettings["folderWork"],
         machineSettings["modules"],
-        machineSettings["partition"],
+        machineSettings["slurm"],
     )
 
     if not waitYN:
         # If I'm not waiting, make sure i don't clear the folder
         machineSettings["clear"] = False
 
-    if launchSlurm and (partition is None):
+    if launchSlurm and (len(slurm) == 0):
         launchSlurm = False
         print(
-            "\t- slurm requested but no partition assigned to this machine in config... not doing slurm",
+            "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
             typeMsg="w",
         )
 
@@ -1110,12 +1121,11 @@ def SLURMcomplete(
         nodes=nodes,
         ntasks=ntasks,
         cpuspertask=cpuspertask,
-        partition=partition,
+        slurm=slurm,
         launchSlurm=launchSlurm,
         email=email,
         waitYN=waitYN,
         extranamelogs=extranamelogs,
-        exclude=machineSettings["exclude"],
         default_exclusive=default_exclusive,
     )
     # ******************************************************

@@ -917,7 +917,7 @@ def runTGLF(
 
     total_tglf_cores = int(cores_tglf * len(rhos))
 
-    if launchSlurm and (machineSettings["partition"] is not None):
+    if launchSlurm and ("partition" in machineSettings["slurm"]):
         typeRun = "job" if total_tglf_cores <= 32 else "array"
     else:
         typeRun = "bash"

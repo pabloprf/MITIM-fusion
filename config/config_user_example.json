@@ -23,14 +23,21 @@
     "perlmutter": {
         "machine":          "perlmutter.nersc.gov", 
         "username":         "exampleusername",
-        "partition":        "debug",
         "scratch":          "/pscratch/sd/p/exampleusername/",
-        "identity":         "$HOME/.ssh/nersc"
+        "identity":         "$HOME/.ssh/nersc",
+        "slurm": {
+            "account":      "m3195_g",
+            "partition":    "debug",
+            "constraint":   "gpu"
+        }
     },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
         "username":         "exampleusername",
-        "partition":        "sched_mit_psfc",
+        "slurm": {
+            "partition":    "sched_mit_psfc",
+            "exclude":      "node584"
+        },
         "identity":         "~/.ssh/id_rsa",
         "scratch":          "/nobackup1/exampleusername/",
         "modules":    ""

@@ -106,10 +106,9 @@ def machineSettings(
         "tunnel": None,
         "port": None,
         "identity": None,
-        "partition": None,
         "modules": "source $MITIM_PATH/config/mitim.bashrc",
         "folderWork": scratch,
-        "exclude": s[machine]["exclude"] if "exclude" in s[machine] else None,
+        "slurm": {},
         "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
         if "isTunnelSameMachine" in s[machine]
         else False,
@@ -125,7 +124,7 @@ def machineSettings(
             "modules"
         ] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
-    checkers = ["identity", "partition", "tunnel", "port"]
+    checkers = ["slurm","identity", "tunnel", "port"]
     for i in checkers:
         if i in s[machine]:
             machineSettings[i] = s[machine][i]
