@@ -452,10 +452,9 @@ def sendCommand_remote(
         if not isItFolders:
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
         else:
-            addSolutionForPathCanonicalization = ' -O' # This was needed for iris for a particular user
+            addSolutionForPathCanonicalization = '' #' -O' # This was needed for iris for a particular user
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r{addSolutionForPathCanonicalization} {file} {userCommand}{machine}:{folderWork}/."
-        # run_subprocess(commai,localRun=True)
-        os.system(commai)
+        error, result = run_subprocess(commai, localRun=True)
     else:
         # Send files to tunnel
         sendCommand_remote(
@@ -1078,6 +1077,7 @@ def SLURM(
     exclude = slurm.setdefault("exclude",None)
     account = slurm.setdefault("account",None)
     constraint = slurm.setdefault("constraint",None)
+    memory_req = slurm.setdefault("mem",None)
 
 
     """
@@ -1115,6 +1115,9 @@ def SLURM(
         commandSBATCH.append(f"#SBATCH --account {account}")
     if constraint is not None:
         commandSBATCH.append(f"#SBATCH --constraint {constraint}")
+
+    if memory_req is not None:
+        commandSBATCH.append(f"#SBATCH --mem {memory_req}")
 
     commandSBATCH.append(f"#SBATCH --time {time_com}")
 

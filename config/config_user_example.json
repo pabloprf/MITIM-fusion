@@ -28,7 +28,8 @@
         "slurm": {
             "account":      "m3195_g",
             "partition":    "debug",
-            "constraint":   "gpu"
+            "constraint":   "gpu",
+            "mem":          "4GB" 
         }
     },
     "engaging": {
