@@ -429,6 +429,36 @@ class PORTALSanalyzer:
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
+    def extractProfiles(self, evaluation=None, correct_targets=True):
+        if evaluation is None:
+            evaluation = self.ibest
+        elif evaluation < 0:
+            evaluation = self.ilast
+
+        p0 = self.mitim_runs[evaluation]["tgyro"].results['use'].profiles
+    
+        p = copy.deepcopy(p0)
+
+        if correct_targets:
+            print(
+                "\t- Replacing powers from input.gacode to have the same as input.gacode.new",typeMsg='i'
+            )
+            
+            p1 = self.mitim_runs[evaluation]["tgyro"].results['use'].profiles_final
+
+            for ikey in [
+                    "qei(MW/m^3)",
+                    "qbrem(MW/m^3)",
+                    "qsync(MW/m^3)",
+                    "qline(MW/m^3)",
+                    "qfuse(MW/m^3)",
+                    "qfusi(MW/m^3)",
+                ]:
+
+                p.profiles[ikey] = p1.profiles[ikey]
+
+        return p
+
     def extractModels(self, step=-1):
         if step < 0:
             step = len(self.opt_fun.prfs_model.steps)-1
@@ -437,7 +467,7 @@ class PORTALSanalyzer:
 
         # Make dictionary
         models = {}
-        for i,gp in enumerate(gps):
+        for gp in gps:
             models[gp.output] = simple_model_portals(gp)
 
         # PRINTING
@@ -479,7 +509,7 @@ f'''
 
         # Start from the profiles of that step
         fileGACODE = f'{folder}/input.gacode_transferred'
-        p = self.mitim_runs[evaluation]["tgyro"].profiles
+        p = self.extractProfiles(evaluation=evaluation)
         p.writeCurrentStatus(file=fileGACODE)
        
         # New class
@@ -522,7 +552,7 @@ f'''
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
-        profiles = self.mitim_runs[evaluation]["tgyro"].profiles
+        profiles = self.extractProfiles(evaluation=evaluation)
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(
@@ -576,9 +606,9 @@ f'''
         )
 
         inputgacode = f"{folder}/input.gacode.start"
-        self.mitim_runs[evaluation]["tgyro"].profiles
-        #self.mitim_runs[evaluation]["tgyro"].results['use'].profiles_final.writeCurrentStatus(file=inputgacode)
-
+        p = self.extractProfiles(evaluation=evaluation)
+        p.writeCurrentStatus(file=inputgacode)
+        
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
 
