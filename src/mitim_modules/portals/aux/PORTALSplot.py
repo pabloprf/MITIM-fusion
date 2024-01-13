@@ -1742,7 +1742,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     ]
 
     if indecesPlot[0] < len(self.profiles):
-        fn = PROFILEStools.plotAll(
+        _ = PROFILEStools.plotAll(
             [
                 self.profiles[indecesPlot[1]],
                 self.profiles[indecesPlot[0]],

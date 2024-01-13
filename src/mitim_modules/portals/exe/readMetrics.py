@@ -71,32 +71,36 @@ requiresFN = (len(folders) > 1) or complete or is_any_ini
 
 if requiresFN: 
     from mitim_tools.misc_tools.GUItools import FigureNotebook
-     
     fn = FigureNotebook( "PORTALS", geometry="1600x1000")
 else:
-    plt.ion()
     fn = None
 
 for i in range(len(folders)):
 
     lab = f"{IOtools.reducePathLevel(folders[i])[-1]}"
 
-    if requiresFN and (not complete):
-        fig = fn.add_figure(label=lab)
-    else:
-        fig = plt.figure(figsize=(15, 8))
+    portals_total[i].fn = fn
 
+    # Plot metrics
     if (not complete) or (isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer)):
+
+        if isinstance(portals_total[i],PORTALSanalysis.PORTALSinitializer):
+            fig = None
+        elif requiresFN:
+            fig = fn.add_figure(label=lab)
+        else:
+            plt.ion()
+            fig = plt.figure(figsize=(15, 8))
 
         portals_total[i].plotMetrics(
             fig = fig,
-            fn = fn,
             indexToMaximize=indexToMaximize,
             plotAllFluxes=plotAllFluxes,
             index_extra=index_extra,
             file_save=file if len(folders) == 1 else None,
             extra_lab = lab,
         )
-    else:
-        portals_total[i].plotPORTALS(fn=fn)
 
+    # Plot PORTALS
+    else:
+        portals_total[i].plotPORTALS()

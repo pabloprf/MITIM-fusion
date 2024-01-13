@@ -3560,11 +3560,10 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
 def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
     if figs is not None:
         figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = figs
+        fn = None
     else:
          
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-         
         fn = FigureNotebook( "Profiles", geometry="1800x900")
         figProf_1 = fn.add_figure(label="Profiles")
         figProf_2 = fn.add_figure(label="Powers")

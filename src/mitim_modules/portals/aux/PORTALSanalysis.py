@@ -62,7 +62,7 @@ class PORTALSanalyzer:
             opt_fun.read_optimization_results(
                 analysis_level=4, plotYN=False, folderRemote=folderRemote
             )
-            
+
             return cls(opt_fun, folderAnalysis=folderAnalysis)
         
         except (FileNotFoundError, AttributeError) as e:
@@ -374,6 +374,7 @@ class PORTALSanalyzer:
     # ****************************************************************************
 
     def plotPORTALS(self):
+
         if self.fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -846,7 +847,7 @@ class PORTALSinitializer:
         # Read powerstates
         self.powerstates = []
         self.profiles = []
-        for i in range(10):
+        for i in range(100):
             try:
                 prof = PROFILEStools.PROFILES_GACODE(f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}")
                 p = STATEtools.read_saved_state(
@@ -861,7 +862,7 @@ class PORTALSinitializer:
 
         self.fn = None
 
-    def plotMetrics(self, fn = None, extra_lab = '', **kwargs):
+    def plotMetrics(self, extra_lab = '', **kwargs):
 
         if self.fn is None:
              
