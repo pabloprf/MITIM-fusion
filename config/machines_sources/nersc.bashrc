@@ -3,11 +3,9 @@
 # with a single command. If you do not want to use this file, you can load the modules manually
 # if you have these lines in your .bashrc (or equivalent)
 
-if [ "$NERSC_HOST" = perlmutter ] ]
+if [ "$NERSC_HOST" = perlmutter ]
 then
 	! [ -z "$PS1" ] && echo "              * PERLMUTTER"
-
-    export MITIM_PARTITION=m3195_g
 
     # ------------------------------------------------------------------------------------------------
     #               GACODE
@@ -17,8 +15,6 @@ then
     export GACODE_ROOT=$HOME/gacode
     . $GACODE_ROOT/shared/bin/gacode_setup
     . ${GACODE_ROOT}/platform/env/env.$GACODE_PLATFORM
-
-
-export MITIM_PARTITIONS_ALL="m3195_g"
+fi
 
 source $MITIM_PATH/config/machines_sources/slurm_aliases.bashrc

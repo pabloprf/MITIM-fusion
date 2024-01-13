@@ -41,7 +41,7 @@ elif [ "${HOSTNAME:0:3}" = toki ]
 then
 	source $MITIM_PATH/config/machines_sources/toki.bashrc
 # NERSC
-elif [ "$NERSC_HOST" = perlmutter ] ]
+elif [ "$NERSC_HOST" = perlmutter ]
 then
 	source $MITIM_PATH/config/machines_sources/nersc.bashrc
 # None of the above

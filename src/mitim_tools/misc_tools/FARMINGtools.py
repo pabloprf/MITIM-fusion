@@ -96,6 +96,9 @@ class mitim_job:
 
     def run(self,waitYN=True):
 
+        self.machineSettings["clear"] = False
+
+
         if not waitYN:
             # If I'm not waiting, make sure i don't clear the folder
             self.machineSettings["clear"] = False
