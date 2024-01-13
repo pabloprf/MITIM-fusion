@@ -1063,7 +1063,7 @@ def create_slurm_execution_files(
     minutes = int(minutes)
 
     partition = slurm.setdefault("partition",None)
-    email = slurm.setdefault("noemail",None)
+    email = slurm.setdefault("email",None)
     exclude = slurm.setdefault("exclude",None)
     account = slurm.setdefault("account",None)
     constraint = slurm.setdefault("constraint",None)
@@ -1095,7 +1095,7 @@ def create_slurm_execution_files(
     commandSBATCH.append(
         f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat"
     )
-    if email != "noemail":
+    if email is not None:
         commandSBATCH.append("#SBATCH --mail-user=" + email)
 
     # ******* Partition / Billing
