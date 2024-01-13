@@ -20,6 +20,13 @@
         "scratch":    "/Users/exampleusername/scratch/",
         "modules":    ""
     },
+    "perlmutter": {
+        "machine":          "perlmutter.nersc.gov", 
+        "username":         "exampleusername",
+        "partition":        "debug",
+        "scratch":          "/pscratch/sd/p/exampleusername/",
+        "identity":         "$HOME/.ssh/nersc"
+    },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
         "username":         "exampleusername",
