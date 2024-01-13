@@ -39,19 +39,33 @@ class mitim_job:
             code,
             nameScratch,
             launchSlurm=True,
+            slurm_settings={},
             ):
 
         self.launchSlurm = launchSlurm
+        self.slurm_settings = slurm_settings
+
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
             )
 
-        if not self.launchSlurm:
-            self.machineSettings["machine"], self.machineSettings["folderWork"] = (
-                "local",
-                self.folder_local + "tmp_run/",
+        if self.launchSlurm and (len(self.machineSettings['slurm']) == 0):
+            self.launchSlurm = False
+            print(
+                "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
+                typeMsg="w",
             )
+
+        # Defaults for slurm (give them even in LaunchSlurm=False)
+        self.slurm_settings.setdefault('name','mitim_job')
+        self.slurm_settings.setdefault('job_array',None)
+        self.slurm_settings.setdefault('nodes',None)
+        self.slurm_settings.setdefault('cpuspertask',1)
+        self.slurm_settings.setdefault('email',"noemail")
+        self.slurm_settings.setdefault('minutes',10)
+        self.slurm_settings.setdefault('ntasks',1)
+        self.slurm_settings.setdefault('nodes',1)
 
         self.folderExecution = self.machineSettings["folderWork"]
 
@@ -62,7 +76,6 @@ class mitim_job:
             input_folders=[],
             output_files=[],
             output_folders=[],
-            slurm_settings={},
             shellPreCommands=[],
             shellPostCommands=[],
             extranamelogs="",
@@ -75,51 +88,63 @@ class mitim_job:
         self.input_folders = input_folders
         self.output_files = output_files
         self.output_folders = output_folders
-        self.slurm_settings = slurm_settings
-
+        
         self.shellPreCommands = shellPreCommands
         self.shellPostCommands = shellPostCommands
         self.extranamelogs = extranamelogs
         self.default_exclusive = default_exclusive
 
+    def run(self,waitYN=True):
 
-        # Defaults
-        self.slurm_settings.setdefault('name','mitim_job')
-        self.slurm_settings.setdefault('job_array',None)
-        self.slurm_settings.setdefault('nodes',None)
-        self.slurm_settings.setdefault('cpuspertask',1)
-        self.slurm_settings.setdefault('email',"noemail")
-        self.slurm_settings.setdefault('minutes',10)
-        self.slurm_settings.setdefault('ntasks',1)
-        self.slurm_settings.setdefault('nodes',1)
+        if not waitYN:
+            # If I'm not waiting, make sure i don't clear the folder
+            self.machineSettings["clear"] = False
 
-    def run(self,waitYN=True,clearFilesRemote=None):
-
-        if clearFilesRemote is not None:
-            self.machineSettings["clear"] = clearFilesRemote
-
-        self.jobid = SLURMcomplete(
+        # ****** Prepare SLURM job *****************************
+        comm, fileSBTACH, fileSHELL = SLURM(
             self.command,
-            self.folder_local,
-            self.input_files,
-            self.output_files,
-            self.slurm_settings['minutes'],
-            self.slurm_settings['ntasks'],
-            self.slurm_settings['name'],
-            self.machineSettings,
-            cpuspertask=self.slurm_settings['cpuspertask'],
-            inputFolders=self.input_folders,
-            outputFolders=self.output_folders,
+            self.machineSettings["folderWork"],
+            self.machineSettings['modules'],
+            job_array=self.slurm_settings['job_array'],
+            folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            launchSlurm=self.launchSlurm,
-            job_array=self.slurm_settings['job_array'],
+            nameJob=self.slurm_settings['name'],
+            minutes=self.slurm_settings['minutes'],
             nodes=self.slurm_settings['nodes'],
+            ntasks=self.slurm_settings['ntasks'],
+            cpuspertask=self.slurm_settings['cpuspertask'],
+            slurm=self.machineSettings["slurm"],
+            launchSlurm=self.launchSlurm,
             email=self.slurm_settings['email'],
             extranamelogs=self.extranamelogs,
             default_exclusive=self.default_exclusive,
             waitYN=waitYN,
         )
+        # ******************************************************
+
+        if fileSBTACH not in self.input_files:
+            self.input_files.append(fileSBTACH)
+        if fileSHELL not in self.input_files:
+            self.input_files.append(fileSHELL)
+
+        self.output_files = curateOutFiles(self.output_files)
+
+        runCommand(
+            comm,
+            self.input_files,
+            inputFolders=self.input_folders,
+            outputFiles=self.output_files,
+            outputFolders=self.output_folders,
+            whereOutput=self.folder_local,
+            machineSettings=self.machineSettings
+            )
+
+        with open(self.folder_local + "/sbatch.out", "r") as f:
+            aux = f.readlines()
+
+        self.jobid = aux[0].split()[-1]
+
 
     def check(self):
         '''
@@ -468,7 +493,6 @@ def sendCommand_remote(
             ) as p:
                 result, error = p.communicate()
 
-
 def receiveCommand_remote(
     file,
     folderWork,
@@ -594,7 +618,6 @@ def runCommand(
     machineSettings={"machine": "local", "folderWork": "~/", "clear": False},
     timeoutSecs=1e6,
     whereFiles=None,
-    pauseBeforeCommand=False,
 ):
     timeOut_txt = (
         f", will timeout execution in {timeoutSecs}s" if timeoutSecs < 1e6 else ""
@@ -741,14 +764,12 @@ def runCommand(
 
     # ------------ Run command
 
-    if pauseBeforeCommand:
-        embed()
-
     error, result = "", ""
     contStep += 1
     print(f"\t\t{contStep}. Running command")
     if verbose_level in [4, 5]:
         print(f"\t\t\t{commandMain}")
+        
     error, result = runCommand_remote(
         commandMain,
         machine=machine,
@@ -1179,92 +1200,6 @@ def SLURM(
     comm = f"cd {folderExecution} && bash mitim.sh > sbatch.out"
 
     return comm, fileSBTACH, fileSHELL
-
-
-def SLURMcomplete(
-    command,
-    folderLocal,
-    inputFiles,
-    outputFiles,
-    minutes,
-    ntasks,
-    nameJob,
-    machineSettings,
-    job_array=None,
-    nodes=None,
-    launchSlurm=True,
-    cpuspertask=1,
-    inputFolders=[],
-    outputFolders=[],
-    shellPreCommands=[],
-    shellPostCommands=[],
-    email="noemail",
-    waitYN=True,
-    extranamelogs="",
-    default_exclusive=False,
-):
-    folderWork, modules, slurm = (
-        machineSettings["folderWork"],
-        machineSettings["modules"],
-        machineSettings["slurm"],
-    )
-
-    if not waitYN:
-        # If I'm not waiting, make sure i don't clear the folder
-        machineSettings["clear"] = False
-
-    if launchSlurm and (len(slurm) == 0):
-        launchSlurm = False
-        print(
-            "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
-            typeMsg="w",
-        )
-
-    # ****** Prepare SLURM job *****************************
-    comm, fileSBTACH, fileSHELL = SLURM(
-        command,
-        folderWork,
-        modules,
-        job_array=job_array,
-        folder_local=folderLocal,
-        shellPreCommands=shellPreCommands,
-        shellPostCommands=shellPostCommands,
-        nameJob=nameJob,
-        minutes=minutes,
-        nodes=nodes,
-        ntasks=ntasks,
-        cpuspertask=cpuspertask,
-        slurm=slurm,
-        launchSlurm=launchSlurm,
-        email=email,
-        waitYN=waitYN,
-        extranamelogs=extranamelogs,
-        default_exclusive=default_exclusive,
-    )
-    # ******************************************************
-
-    inputFiles.append(fileSBTACH)
-    inputFiles.append(fileSHELL)
-
-    outputFiles = curateOutFiles(outputFiles)
-
-    runCommand(
-        comm,
-        inputFiles,
-        inputFolders=inputFolders,
-        outputFiles=outputFiles,
-        outputFolders=outputFolders,
-        whereOutput=folderLocal,
-        machineSettings=machineSettings,
-    )
-
-    with open(folderLocal + "/sbatch.out", "r") as f:
-        aux = f.readlines()
-
-    jobid = aux[0].split()[-1]
-
-    return jobid
-
 
 def curateOutFiles(outputFiles):
     # Avoid repetitions, otherwise, e.g., they will fail to rename

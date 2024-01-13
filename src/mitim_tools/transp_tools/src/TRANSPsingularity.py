@@ -91,6 +91,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         # ------------------
         # Organize AC files
         # ------------------
+        retrieveAC = False
         if retrieveAC:
             print("Checker AC, work on it")
             embed()
@@ -243,11 +244,6 @@ def runSINGULARITY(
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 
-    transp_job.define_machine(
-            'transp',
-            f"transp_{tok}_{runid}/",
-        )
-
     # ---------------------------------------------------------------------------------------------------------------------------------------
     # Number of cores (must be inside 1 node)
     # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -256,6 +252,17 @@ def runSINGULARITY(
         nparallel = int(np.max([nparallel, mpis[j]]))
         if mpis[j] == 1:
             mpis[j] = 0  # definition used for the transp-source
+
+
+    transp_job.define_machine(
+            'transp',
+            f"transp_{tok}_{runid}/",
+            slurm_settings={
+                    'minutes':5,
+                    'ntasks':nparallel,
+                    'name':nameJob,
+                },
+        )
 
     NMLtools.adaptNML(folderWork, runid, shotnumber, transp_job.folderExecution)
 
@@ -390,11 +397,6 @@ singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/
                 input_files=inputFiles,
                 input_folders=inputFolders,
                 output_files=[f"{runid}tr_dat.log"],
-                slurm_settings={
-                    'minutes':5,
-                    'ntasks':nparallel,
-                    'name':nameJob,
-                },
                 shellPreCommands=shellPreCommands,
             )
 
@@ -416,11 +418,6 @@ singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/
             TRANSPcommand,
             input_files=inputFiles,
             input_folders=inputFolders,
-            slurm_settings={
-                'minutes':5,
-                'ntasks':nparallel,
-                'name':nameJob,
-            },
             shellPreCommands=shellPreCommands,
         )
 
@@ -526,6 +523,11 @@ def runSINGULARITY_finish(folderWork, runid, tok, minutes=60):
     transp_job.define_machine(
             'transp',
             f"transp_{tok}_{runid}/",
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':1,
+                'name':nameJob,
+            },
         )
 
     # ---------------
@@ -554,15 +556,10 @@ cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar res
     transp_job.prep(
             TRANSPcommand,
             output_files=["TRANSPresults.tar"],
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':1,
-                'name':nameJob,
-            },
              extranamelogs="_finish",
         )
 
-    transp_job.run(waitYN=True,clearFilesRemote=False)
+    transp_job.run(waitYN=True)
 
     os.system(
         f"cd {folderWork} && tar -xzvf TRANSPresults.tar && cp -r results/{tok}.00/* ."
@@ -578,6 +575,11 @@ def runSINGULARITY_look(folderWork, runid, tok, folderExecution, minutes=60):
     transp_job.define_machine(
             'transp_look',
             f"{nameJob}/",
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':1,
+                'name':nameJob,
+            },
         )
 
     # ---------------
@@ -607,11 +609,6 @@ cd {transp_job.machineSettings['folderWork']} && cp {folderExecution}/*PLN {fold
     transp_job.prep(
             TRANSPcommand,
             output_files=outputFiles,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':1,
-                'name':nameJob,
-            },
         )
 
     transp_job.run(waitYN=True)

@@ -39,6 +39,12 @@ def runTGYRO(
             'tgyro',
             f"mitim_tmp_{nameRunid}/",
             launchSlurm=launchSlurm,
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':1,
+                'name':nameJob,
+                'cpuspertask':nparallel,
+            },
         )
 
     # ------ Run TGYRO
@@ -76,21 +82,12 @@ def runTGYRO(
     # Execute
     # ---------------------------------------------
 
-    ntasks = 1
-    cores_tgyro = nparallel
-
     tgyro_job.prep(
             TGYROcommand,
             input_files=inputFiles,
             output_files=outputFiles,
             shellPreCommands=shellPreCommands,
             shellPostCommands=shellPostCommands,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':ntasks,
-                'name':nameJob,
-                'cpuspertask':cores_tgyro,
-            },
         )
 
     tgyro_job.run(waitYN=True)
@@ -255,6 +252,11 @@ def executeCGYRO(
     cgyro_job.define_machine(
             'cgyro',
             f"mitim_cgyro_{name}/",
+            slurm_settings={
+                'minutes':60,
+                'ntasks':numcores,
+                'name':name,
+            },
         )
 
     # ---------------
@@ -282,11 +284,6 @@ def executeCGYRO(
             CGYROcommand,
             input_files=i[fileProfiles, fileCGYRO],
             output_files=outputFiles,
-            slurm_settings={
-                'minutes':60,
-                'ntasks':numcores,
-                'name':name,
-            },
             shellPreCommands=shellPreCommands,
         )
 
@@ -351,7 +348,6 @@ def runTRXPL(
         outputFiles=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
         whereOutput=FolderTRXPL,
         machineSettings=machineSettings,
-        pauseBeforeCommand=not sendState,
     )
 
 
@@ -456,6 +452,11 @@ def runVGEN(
     vgen_job.define_machine(
             'profiles_gen',
             f"mitim_tmp_vgen_{name_run}/",
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':numcores,
+                'name':f"neo_vgen_{name_run}",
+            },
         )
 
     print(
@@ -488,11 +489,6 @@ def runVGEN(
             command,
             input_files=[inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
             output_files=["slurm_output.dat", "slurm_error.dat"],
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':numcores,
-                'name':f"neo_vgen_{name_run}",
-            },
         )
 
     vgen_job.run(waitYN=True)
@@ -880,6 +876,7 @@ def runTGLF(
             'tglf',
             f"mitim_tmp_{name}/",
             launchSlurm=launchSlurm,
+            slurm_settings={}, # Will define them later
         )
 
     # ---------------------------------------------
@@ -943,10 +940,10 @@ def runTGLF(
     # Execute
     # ---------------------------------------------
 
-    tglf_job.prep(
-            TGLFcommand,
-            input_folders=folders,
-            output_folders=folders_red,
+    tglf_job.define_machine(
+            'tglf',
+            f"mitim_tmp_{name}/",
+            launchSlurm=launchSlurm,
             slurm_settings={
                 'minutes':minutes,
                 'ntasks':ntasks,
@@ -955,6 +952,12 @@ def runTGLF(
                 'job_array':rho_array,
                 'nodes':1,
             },
+        )
+
+    tglf_job.prep(
+            TGLFcommand,
+            input_folders=folders,
+            output_folders=folders_red,
         )
 
     tglf_job.run(waitYN=True)
