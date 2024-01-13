@@ -377,7 +377,7 @@ class PORTALSanalyzer:
         if self.fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            self.fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
+            self.fn = FigureNotebook( "PORTALS Summary", geometry="1700x1000")
 
         fig = self.fn.add_figure(label="PROFILES Ranges",tab_color=0)
         self.plotRanges(fig=fig)
@@ -866,7 +866,7 @@ class PORTALSinitializer:
         if self.fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            self.fn = FigureNotebook(0, "PowerState", geometry="1800x900")
+            self.fn = FigureNotebook( "PowerState", geometry="1800x900")
 
         figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
         figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")

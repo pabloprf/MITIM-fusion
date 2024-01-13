@@ -766,7 +766,7 @@ class TGYRO:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            self.fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
+            self.fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
         else:
             self.fn = fn
 
@@ -2170,7 +2170,7 @@ class TGYROoutput:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            self.fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
+            self.fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
 
         else:
             self.fn = fn
@@ -4536,7 +4536,7 @@ def plotAll(TGYROoutputs, labels=None, fn=None):
     if fn is None:
          
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-        fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
+        fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
 
     if labels is None:
         labels = [f" {i}" for i in np.arange(1, len(TGYROoutputs) + 1, 1)]

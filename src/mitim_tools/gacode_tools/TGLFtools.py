@@ -796,7 +796,7 @@ class TGLF:
 
         if fn is None:
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF MITIM Notebook", geometry="1700x900", vertical=True
+                "TGLF MITIM Notebook", geometry="1700x900", vertical=True
             )
         else:
             self.fn = fn
@@ -2346,7 +2346,7 @@ class TGLF:
         if figs is None:
 
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
+                "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
             )
             if unnormalization_successful:
                 fig1 = self.fn.add_figure(label="Fluxes")
@@ -2866,7 +2866,7 @@ class TGLF:
         if figs is None:
              
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
+                "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
             )
             fig1 = self.fn.add_figure(label="Fluxes - Relative")
             fig2 = self.fn.add_figure(label="Fluxes (GB) - Relative")
@@ -3067,7 +3067,7 @@ class TGLF:
         if figs is None:
              
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF Analysis MITIM Notebook", geometry="1500x900"
+                "TGLF Analysis MITIM Notebook", geometry="1500x900"
             )
             fig1 = self.fn.add_figure(label="Analysis")
             fig2 = self.fn.add_figure(label="Fluxes")

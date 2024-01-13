@@ -1489,7 +1489,7 @@ class PRF_BO:
             geometry = (
                 "1200x1000" if len(GPs[0].GP["individual_models"]) == 1 else "1700x1000"
             )
-            fn = FigureNotebook(0, "MITIM BO Strategy", geometry=geometry)
+            fn = FigureNotebook( "MITIM BO Strategy", geometry=geometry)
 
         """
 		****************************************************************
@@ -1759,7 +1759,7 @@ class PRF_BO:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook(0, "PRF BO Strategy", geometry="1700x1000")
+            fn = FigureNotebook( "PRF BO Strategy", geometry="1700x1000")
             fig2 = fn.add_figure(label=f"#{boStep}: Optim Ranges")
             fig1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.")
 

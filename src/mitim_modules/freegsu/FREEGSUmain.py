@@ -390,7 +390,7 @@ def combined_analysis(
 
     if fn is None:
          
-        fn = GUItools.FigureNotebook(0, "Combined analysis")
+        fn = GUItools.FigureNotebook( "Combined analysis")
 
     fig1 = fn.add_figure(label="FreeGSU - Eq. & Coils")
     fig2 = fn.add_figure(label="FreeGSU - Metrics")

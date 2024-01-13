@@ -438,7 +438,7 @@ class CGYRO:
     def plot(self, labels=[""]):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
         
-        self.fn = FigureNotebook(0, "CGYRO Notebook", geometry="1600x1000")
+        self.fn = FigureNotebook( "CGYRO Notebook", geometry="1600x1000")
 
         colors = GRAPHICStools.listColors()
 
@@ -468,7 +468,6 @@ class CGYRO:
 
              
             self.fnLS = FigureNotebook(
-                0,
                 f"CGYRO Notebook, run #{self.nameRunid}, time {self.time:3f}s",
                 geometry="1600x1000",
             )

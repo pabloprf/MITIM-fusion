@@ -39,9 +39,9 @@ dpi_notebook = read_dpi()
 
 class FigureNotebook:
     def __init__(
-        self, dummy, windowtitle, parent=None, geometry="1800x900", vertical=True
+        self, windowtitle, parent=None, geometry="1800x900", vertical=True
     ):
-        #plt.rcParams["figure.max_open_warning"] = False
+
         plt.ioff()
 
         self.app = QtWidgets.QApplication.instance()

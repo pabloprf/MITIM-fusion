@@ -1812,7 +1812,7 @@ class PROFILES_GACODE:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
 
                  
-                self.fn = FigureNotebook(0, "PROFILES Notebook", geometry="1600x1000")
+                self.fn = FigureNotebook( "PROFILES Notebook", geometry="1600x1000")
 
 
             fig = self.fn.add_figure(label="Profiles" + fnlab)
@@ -3565,7 +3565,7 @@ def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
          
-        fn = FigureNotebook(0, "Profiles", geometry="1800x900")
+        fn = FigureNotebook( "Profiles", geometry="1800x900")
         figProf_1 = fn.add_figure(label="Profiles")
         figProf_2 = fn.add_figure(label="Powers")
         figProf_3 = fn.add_figure(label="Geometry")

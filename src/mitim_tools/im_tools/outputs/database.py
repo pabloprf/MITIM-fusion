@@ -811,5 +811,5 @@ if __name__ == "__main__":
             print("problem " + str(i))
 
      
-    fn = GUItools.FigureNotebook(0, "SPARC scenarios", geometry="1700x900")
+    fn = GUItools.FigureNotebook( "SPARC scenarios", geometry="1700x900")
     figs = plotDB(cdfs, runIDs=runIDs, fn=fn)

@@ -1694,7 +1694,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
+            self.fn = FigureNotebook( "Calibration", geometry="1600x1000")
         else:
             self.fn = fn
 
@@ -2217,7 +2217,7 @@ Workflow start time: {IOtools.getStringFromTime()}
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fnCals = FigureNotebook(0, "Calibration", geometry="1600x1000")
+            self.fnCals = FigureNotebook( "Calibration", geometry="1600x1000")
             fig3 = self.fnCals.add_figure(label="Deviations",tab_color=tab_color)
             fig3b = self.fnCals.add_figure(label="Separate",tab_color=tab_color)
             fig3c = self.fnCals.add_figure(label="Together",tab_color=tab_color)
@@ -3266,7 +3266,7 @@ def plotGA_results(
     plot_colors = GRAPHICStools.listColors()
 
     if fn is None:
-        fn = GUItools.FigureNotebook(0, "MITIM GA Notebook", geometry="1500x1000")
+        fn = GUItools.FigureNotebook( "MITIM GA Notebook", geometry="1500x1000")
 
     fig = fn.add_figure(label="Pareto Front" + subname)
 
@@ -3339,7 +3339,7 @@ def plotGA_results(
 def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subname=""):
      
     if fn is None:
-        fn = GUItools.FigureNotebook(0, "MITIM GA Notebook", geometry="1500x1000")
+        fn = GUItools.FigureNotebook( "MITIM GA Notebook", geometry="1500x1000")
 
     if plotAllmembers:
         members = GAOF["All_x"]

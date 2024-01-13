@@ -249,7 +249,7 @@ class MITIMgeqdsk:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            self.fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
+            self.fn = FigureNotebook( "GEQDSK Notebook", geometry="1600x1000")
         else:
             wasProvided = True
             self.fn = fn
@@ -1137,7 +1137,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
          
-        fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
+        fn = FigureNotebook( "GEQDSK Notebook", geometry="1600x1000")
     else:
         wasProvided = True
 

@@ -172,7 +172,7 @@ def plotResult(
     if figs is None:
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        fn = FigureNotebook(0, "FreeGS Notebook", geometry="1600x1000")
+        fn = FigureNotebook( "FreeGS Notebook", geometry="1600x1000")
 
         fig1 = fn.add_figure(label="Eq. & Coils")
         fig2 = fn.add_figure(label="Metrics")

@@ -356,7 +356,7 @@ class powerstate:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            self.fn = FigureNotebook(0, "PowerState", geometry="1800x900")
+            self.fn = FigureNotebook( "PowerState", geometry="1800x900")
             figMain = self.fn.add_figure(label="PowerState")
 
             figProf_1 = self.fn.add_figure(label="Profiles")

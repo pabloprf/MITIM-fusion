@@ -5673,7 +5673,7 @@ class CDFreactor:
 
     def plotISOLVER(self, fn=None, time=None):
         if fn is None:
-            self.fnIsolver = FigureNotebook(0, f"ISOLVER Notebook, run #{self.nameRunid}")
+            self.fnIsolver = FigureNotebook( f"ISOLVER Notebook, run #{self.nameRunid}")
         else:
             self.fnIsolver = fn
 
@@ -13132,7 +13132,7 @@ class CDFreactor:
             time = self.t[self.ind_saw]
 
         name = f"MITIM Notebook, run #{self.nameRunid}, profiles at time t={time:.3f}s"
-        self.fn = FigureNotebook(0, name)
+        self.fn = FigureNotebook( name)
 
         # Machine
         fig = self.fn.add_figure(label="Machine")
@@ -13844,7 +13844,7 @@ class CDFreactor:
         if plotCompare:
              
             self.fn_std = FigureNotebook(
-                0, "TGLF-TRANSP Notebook", geometry="1500x900", vertical=True
+                "TGLF-TRANSP Notebook", geometry="1500x900", vertical=True
             )
 
             self.TGLFstd[nameF].plotRun(labels=[labelTGLF], fn=self.fn_std)
@@ -14461,7 +14461,7 @@ class CDFreactor:
         if plotYN:
              
 
-            self.fnChiPert = FigureNotebook(0, f"mitim Notebook, run #{self.nameRunid}")
+            self.fnChiPert = FigureNotebook( f"mitim Notebook, run #{self.nameRunid}")
             fig1 = self.fnChiPert.add_figure(label="Compare")
             fig2 = self.fnChiPert.add_figure(label="Pulse")
             fig3 = self.fnChiPert.add_figure(label="TGLF")
