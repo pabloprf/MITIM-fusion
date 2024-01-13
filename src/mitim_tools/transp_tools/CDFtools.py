@@ -10118,18 +10118,20 @@ class CDFreactor:
 
             ax.set_ylim([0, self.fZAVE_Z[it, 0] + 5])
 
-    def diagramSpecies(self, time=None, fn=None, label=""):
+    def diagramSpecies(self, time=None, fn=None, label="",fn_color=None):
         if time is None:
             it = self.ind_saw
         else:
             it = np.argmin(np.abs(self.t - time))
 
         if fn is None:
+            plt.ion()
             _, axs = plt.subplots(
                 ncols=1, sharex=True, sharey=False, figsize=(14, 9)
             )
         else:
-            _, axs = fn.subplots(ncols=1, sharex=True, sharey=False, label=label)
+            fig = fn.add_figure(label=label,tab_color=fn_color)
+            axs = fig.subplots(ncols=1, sharex=True, sharey=False)
 
         ax = axs
         ax.axis("off")
@@ -10527,7 +10529,7 @@ class CDFreactor:
                     transform=ax.transAxes,
                 )
 
-    def diagramFlows(self, axs=None, time=None, fn=None, label=""):
+    def diagramFlows(self, axs=None, time=None, fn=None, label="",fn_color=None):
         if time is None:
             it = self.ind_saw
         else:
@@ -10539,7 +10541,9 @@ class CDFreactor:
                     ncols=1, sharex=True, sharey=False, figsize=(14, 9)
                 )
             else:
-                fig, axs = fn.subplots(ncols=1, sharex=True, sharey=False, label=label)
+                fig = fn.add_figure(label=label,tab_color=fn_color)
+                axs = fig.subplots(ncols=1, sharex=True, sharey=False)
+
 
         ax = axs
         ax.axis("off")
@@ -13125,243 +13129,248 @@ class CDFreactor:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plotRun(self, time=None, timesAv=None, plot_analysis=True):
+    def plotRun(self, fn = None, time=None, timesAv=None, plot_analysis=True, counter=0):
          
 
         if time is None:
             time = self.t[self.ind_saw]
 
         name = f"MITIM Notebook, run #{self.nameRunid}, profiles at time t={time:.3f}s"
-        self.fn = FigureNotebook( name)
+        fn_color = counter if counter>0 else None
 
+        if fn is None:
+            self.fn = FigureNotebook( name)
+        else:
+            self.fn  = fn
+            
         # Machine
-        fig = self.fn.add_figure(label="Machine")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Machine")
         self.plotMachine(fig=fig, time=time)
 
         # Equil
-        fig = self.fn.add_figure(label="Equilibrium")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Equilibrium")
         self.plotEquilParams(fig=fig, time=time)
 
         # GS
-        fig = self.fn.add_figure(label="Grad-Shafranov")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Grad-Shafranov")
         self.plotGS(fig=fig, time=time)
 
         # Geometry
-        fig = self.fn.add_figure(label="Geometry")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Geometry")
         self.plotGEO(fig=fig, time=time)
 
         # Profiles
-        fig = self.fn.add_figure(label="Profiles")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Profiles")
         self.plotProfiles(fig=fig, time=time)
 
         # PRESSURES
-        fig = self.fn.add_figure(label="Pressure")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Pressure")
         self.plotPressures(fig=fig, time=time)
 
         # Systems
-        fig = self.fn.add_figure(label="Power (Auxiliary)")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Power (Auxiliary)")
         self.plotSeparateSystems(fig=fig)
 
         # Heating
-        fig = self.fn.add_figure(label="Power (Total)")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Power (Total)")
         self.plotHeating(fig=fig)
 
         # Radial Powe3
-        fig = self.fn.add_figure(label="Power (Radial)")
-        fig2 = self.fn.add_figure(label="Power (Cumul.)")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Power (Radial)")
+        fig2 = self.fn.add_figure(tab_color=fn_color,label="Power (Cumul.)")
         self.plotRadialPower(time=time, fig=fig, figCum=fig2)
 
         # ICRF
         if np.sum(self.PichT) > 0.0 + self.eps00 * (len(self.t) + 1):
-            fig = self.fn.add_figure(label="ICRF (Total)")
+            fig = self.fn.add_figure(tab_color=fn_color,label="ICRF (Total)")
             self.plotICRF_t(fig=fig)
-            fig = self.fn.add_figure(label="ICRF (Radial)")
+            fig = self.fn.add_figure(tab_color=fn_color,label="ICRF (Radial)")
             self.plotICRF(fig=fig, time=time)
 
         # ECRF
         if np.sum(self.PechT) > 0.0 + self.eps00 * (len(self.t) + 1):
-            fig = self.fn.add_figure(label="ECRF")
+            fig = self.fn.add_figure(tab_color=fn_color,label="ECRF")
             self.plotECRF(fig=fig, time=time)
 
         # NBI
         if np.sum(self.PnbiT) > 0.0 + self.eps00 * (len(self.t) + 1):
-            fig = self.fn.add_figure(label="NBI")
+            fig = self.fn.add_figure(tab_color=fn_color,label="NBI")
             self.plotNBI(fig=fig, time=time)
 
         # LH
         if np.sum(self.PlhT) > 0.0 + 2 * self.eps00 * (len(self.t) + 1):
-            fig = self.fn.add_figure(label="LowerHyb")
+            fig = self.fn.add_figure(tab_color=fn_color,label="LowerHyb")
             self.plotLowerHybrid(fig=fig, time=time)
 
         # Transport
-        fig = self.fn.add_figure(label="Transport")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Transport")
         self.plotTransport(fig=fig, time=time)
 
         # Derivatives
-        fig = self.fn.add_figure(label="Gradients")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Gradients")
         self.plotDerivatives(fig=fig, time=time)
 
         # Porcelli
-        fig = self.fn.add_figure(label="Sawtooth Trigger")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Sawtooth Trigger")
         self.plotSawtooth(fig=fig, time=time)
 
         # Around sawtooth
         # try:
-        fig = self.fn.add_figure(label="Sawtooth Effect")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Sawtooth Effect")
         try:
             self.plotAroundSawtoothQuantities(fig=fig)
         except:
             print("Could not plot plotAroundSawtoothQuantities", typeMsg="w")
 
-        fig = self.fn.add_figure(label="Sawtooth Mixing")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Sawtooth Mixing")
         self.plotSawtoothMixing(fig=fig)
 
         # Electric Field
-        fig = self.fn.add_figure(label="Current Diffusion")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Current Diffusion")
         self.plotEM(fig=fig, time=time)
 
-        fig = self.fn.add_figure(label="Poynting")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Poynting")
         self.plotUmag(fig=fig, time=time)
 
         # Fundamental
-        fig = self.fn.add_figure(label="Fundamental Plasma")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Fundamental Plasma")
         self.plotFundamental(fig=fig, time=time)
 
         # Stability
-        fig = self.fn.add_figure(label="MHD Stability")
+        fig = self.fn.add_figure(tab_color=fn_color,label="MHD Stability")
         self.plotStability(fig=fig, time=time)
 
         # Electric Field
-        fig = self.fn.add_figure(label="Electric Field")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Electric Field")
         self.plotElectricField(fig=fig, time=time)
 
         # Rotation
-        fig = self.fn.add_figure(label="Rotation")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Rotation")
         self.plotRotation(fig=fig, time=time)
 
         # Time scales
         try:
-            fig = self.fn.add_figure(label="Time Scales")
+            fig = self.fn.add_figure(tab_color=fn_color,label="Time Scales")
             self.plotTimeScales(fig=fig, time=time)
         except:
             pass
 
-        fig = self.fn.add_figure(label="Averaging")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Averaging")
         self.plotTimeAverages(fig=fig, times=timesAv)
 
         # Impurities
-        fig = self.fn.add_figure(label="Impurities")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Impurities")
         self.plotImpurities(fig=fig, time=time)
 
         # Radiation
-        fig = self.fn.add_figure(label="Radiation")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Radiation")
         self.plotRadiation(fig=fig, time=time)
 
         # Convergence
-        fig = self.fn.add_figure(label="Flux Matching")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Flux Matching")
         self.checkRun(fig=fig, time=time, printYN=False)
 
         # LH
-        fig = self.fn.add_figure(label="LH Transition")
+        fig = self.fn.add_figure(tab_color=fn_color,label="LH Transition")
         self.plotLH(fig=fig, time=time)
 
         # Particle Balance
-        fig = self.fn.add_figure(label="Particle Balance")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Particle Balance")
         self.plotParticleBalance(fig=fig, time=time)
 
-        fig = self.fn.add_figure(label="Ions Balance")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Ions Balance")
         self.plotIonsBalance(fig=fig, time=time)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
-            fig = self.fn.add_figure(label="Slow Down")
+            fig = self.fn.add_figure(tab_color=fn_color,label="Slow Down")
             self.plotSlowDown(fig=fig, time=time)
 
         # Fast
-        fig = self.fn.add_figure(label="Fast (Radial)")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Fast (Radial)")
         self.plotFast(fig=fig, time=time)
 
         # Fast
-        fig = self.fn.add_figure(label="Fast (Stabilization)")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Fast (Stabilization)")
         self.plotFast2(fig=fig, time=time)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
-            fig = self.fn.add_figure(label="Fast (Transport)")
+            fig = self.fn.add_figure(tab_color=fn_color,label="Fast (Transport)")
             self.plotFastTransport(fig=fig, time=time)
 
         # Neutrals
-        fig = self.fn.add_figure(label="Neutrals")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Neutrals")
         self.plotNeutrals(fig=fig, time=time)
 
         # Performance
-        fig = self.fn.add_figure(label="Performance")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Performance")
         self.plotPerformance(fig=fig, time=time)
 
         # Nuclear
-        fig = self.fn.add_figure(label="Neutrons")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Neutrons")
         self.plotNuclear(fig=fig, time=time)
 
         # Boundary
-        fig = self.fn.add_figure(label="Boundary")
+        fig = self.fn.add_figure(tab_color=fn_color,label="Boundary")
         self.plotDivertor(fig=fig, time=time)
 
         # ----------- DIAGRAMS
 
         # Species
-        self.diagramSpecies(time=time, fn=self.fn, label="Species")
+        self.diagramSpecies(time=time, fn=self.fn, label="Species",fn_color=fn_color)
 
         # Flows
-        self.diagramFlows(time=time, fn=self.fn, label="Flows")
+        self.diagramFlows(time=time, fn=self.fn, label="Flows",fn_color=fn_color)
 
         # CPU
-        fig = self.fn.add_figure(label="CPU usage")
+        fig = self.fn.add_figure(tab_color=fn_color,label="CPU usage")
         self.plotCPUperformance(fig=fig, time=time)
 
         # ----------- EXTRA
 
         # TORIC
         for i, toric in enumerate(self.torics):
-            fig = self.fn.add_figure(label=f"TORIC #{i+1}")
+            fig = self.fn.add_figure(tab_color=fn_color,label=f"TORIC #{i+1}")
             self.plotTORIC(fig=fig, position=i)
 
         # FBM
 
         if self.fbm_He4_gc is not None:
-            fig = self.fn.add_figure(label="FBM He4 GC")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM He4 GC")
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_gc, finalProfile=self.nfusHe4
             )
-            fig = self.fn.add_figure(label="FBM He4 PO")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM He4 PO")
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_po, finalProfile=self.nfusHe4
             )
 
         if self.fbm_Dbeam_gc is not None:
-            fig = self.fn.add_figure(label="FBM Dbeam GC")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM Dbeam GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_gc, finalProfile=self.nbD)
-            fig = self.fn.add_figure(label="FBM Dbeam PO")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM Dbeam PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_po, finalProfile=self.nbD)
 
             if self.fbm_Dbeam_gc.birth is not None:
-                fig = self.fn.add_figure(label="BIRTH D")
+                fig = self.fn.add_figure(tab_color=fn_color,label="BIRTH D")
                 self.plotBirth(particleFile=self.fbm_Dbeam_gc, fig=fig)
 
         if self.fbm_T_gc is not None:
-            fig = self.fn.add_figure(label="FBM T GC")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM T GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_gc, finalProfile=self.nfusT)
-            fig = self.fn.add_figure(label="FBM T PO")
+            fig = self.fn.add_figure(tab_color=fn_color,label="FBM T PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_po, finalProfile=self.nfusT)
 
         # TGLF
         if hasattr(self, "TGLF") and self.TGLF is not None:
-            figGR = self.fn.add_figure(label="TGLF1")
-            figFL = self.fn.add_figure(label="TGLF2")
+            figGR = self.fn.add_figure(tab_color=fn_color,label="TGLF1")
+            figFL = self.fn.add_figure(tab_color=fn_color,label="TGLF2")
             self.plotTGLF(figGR=figGR, figFL=figFL)
 
         # ~~~~~~~~~~~~~ Comparisons
         if hasattr(self, "exp") and self.exp is not None:
-            fig = self.fn.add_figure(label="EXP")
+            fig = self.fn.add_figure(tab_color=fn_color,label="EXP")
             self.plotComparison(fig=fig)
 
         # ~~~~~~~~~~~~~ Comparisons
@@ -13452,16 +13461,16 @@ class CDFreactor:
         if plot_analysis:
             # Pulse
             try:
-                fig = self.fn.add_figure(label="ANALYSIS - Heat Pulse")
+                fig = self.fn.add_figure(tab_color=fn_color,label="ANALYSIS - Heat Pulse")
                 self.plotPulse(fig=fig)
             except:
                 pass
 
-            fig = self.fn.add_figure(label="ANALYSIS - initial")
+            fig = self.fn.add_figure(tab_color=fn_color,label="ANALYSIS - initial")
             self.analyze_initial(fig=fig)
 
             if len(self.tlastsawU) > 1:
-                fig = self.fn.add_figure(label="ANALYSIS - sawtooth")
+                fig = self.fn.add_figure(tab_color=fn_color,label="ANALYSIS - sawtooth")
                 self.analyze_sawtooth(fig=fig)
 
     # --------------------------------------
