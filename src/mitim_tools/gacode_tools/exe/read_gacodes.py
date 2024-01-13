@@ -25,4 +25,4 @@ for file in files:
 
 # Plot
 
-PROFILEStools.plotAll(profs,lastRhoGradients=rho)
+fn = PROFILEStools.plotAll(profs,lastRhoGradients=rho)

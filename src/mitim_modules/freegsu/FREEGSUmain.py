@@ -422,6 +422,8 @@ def combined_analysis(
             fn=fn,
         )
 
+    return fn
+
 
 def apply_rangeVar(
     setCoils, coilLimits, function_parameters, rangeVar, turns_real=None

@@ -356,16 +356,16 @@ class powerstate:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            fn = FigureNotebook(0, "PowerState", geometry="1800x900")
-            figMain = fn.add_figure(label="PowerState")
+            self.fn = FigureNotebook(0, "PowerState", geometry="1800x900")
+            figMain = self.fn.add_figure(label="PowerState")
 
-            figProf_1 = fn.add_figure(label="Profiles")
-            figProf_2 = fn.add_figure(label="Powers")
-            figProf_3 = fn.add_figure(label="Geometry")
-            figProf_4 = fn.add_figure(label="Gradients")
-            figFlows = fn.add_figure(label="Flows")
-            figProf_6 = fn.add_figure(label="Other")
-            fig7 = fn.add_figure(label="Impurities")
+            figProf_1 = self.fn.add_figure(label="Profiles")
+            figProf_2 = self.fn.add_figure(label="Powers")
+            figProf_3 = self.fn.add_figure(label="Geometry")
+            figProf_4 = self.fn.add_figure(label="Gradients")
+            figFlows = self.fn.add_figure(label="Flows")
+            figProf_6 = self.fn.add_figure(label="Other")
+            fig7 = self.fn.add_figure(label="Impurities")
             figs = figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7
 
             grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.3)

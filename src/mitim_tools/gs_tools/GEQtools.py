@@ -249,20 +249,20 @@ class MITIMgeqdsk:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
+            self.fn = FigureNotebook(0, "GEQDSK Notebook", geometry="1600x1000")
         else:
             wasProvided = True
-
+            self.fn = fn
         # -----------------------------------------------------------------------------
         # OMFIT Summary
         # -----------------------------------------------------------------------------
-        # fig = fn.add_figure(label=extraLabel+'OMFIT Summ')
+        # fig = self.fn.add_figure(label=extraLabel+'OMFIT Summ')
         # self.g.plot()
 
         # -----------------------------------------------------------------------------
         # Flux
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Surfaces")
+        fig = self.fn.add_figure(label=extraLabel + "Surfaces")
         grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[:, 0])
         ax2 = fig.add_subplot(grid[:, 1])
@@ -274,7 +274,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Currents
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Currents")
+        fig = self.fn.add_figure(label=extraLabel + "Currents")
         grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[2, 0])
         ax2 = fig.add_subplot(grid[:2, 0])
@@ -294,7 +294,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Fields
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Fields")
+        fig = self.fn.add_figure(label=extraLabel + "Fields")
         grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[2, 0])
         ax2 = fig.add_subplot(grid[:2, 0])
@@ -314,7 +314,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Checks
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "GS Quality")
+        fig = self.fn.add_figure(label=extraLabel + "GS Quality")
         grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[0, 0])
         ax1E = ax1.twinx()
@@ -328,7 +328,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Parameterization
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Parameteriz.")
+        fig = self.fn.add_figure(label=extraLabel + "Parameteriz.")
         grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[:, 0])
         ax2 = fig.add_subplot(grid[0, 1])
@@ -341,7 +341,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Plasma
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Plasma")
+        fig = self.fn.add_figure(label=extraLabel + "Plasma")
         grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
 
         ax_plasma = [
@@ -359,7 +359,7 @@ class MITIMgeqdsk:
         # -----------------------------------------------------------------------------
         # Geometry
         # -----------------------------------------------------------------------------
-        fig = fn.add_figure(label=extraLabel + "Geometry")
+        fig = self.fn.add_figure(label=extraLabel + "Geometry")
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax1 = fig.add_subplot(grid[0, 0])
         ax2 = fig.add_subplot(grid[0, 1])
@@ -1200,7 +1200,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
             label=f"{labelsGs[i]} ",
         )
 
-    return ax_plasma
+    return ax_plasma,fn
 
 
 def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="k"):

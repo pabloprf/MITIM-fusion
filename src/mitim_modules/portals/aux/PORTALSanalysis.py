@@ -35,6 +35,8 @@ class PORTALSanalyzer:
         if not os.path.exists(self.folder):
             os.system(f"mkdir {self.folder}")
 
+        self.fn = None
+
         # Preparation
         print("- Grabbing model")
         self.step = self.opt_fun.prfs_model.steps[-1]
@@ -60,8 +62,9 @@ class PORTALSanalyzer:
             opt_fun.read_optimization_results(
                 analysis_level=4, plotYN=False, folderRemote=folderRemote
             )
-
+            
             return cls(opt_fun, folderAnalysis=folderAnalysis)
+        
         except (FileNotFoundError, AttributeError) as e:
             print("- Could not read optimization results due to error:", typeMsg='w')
             print(e)
@@ -370,24 +373,24 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self, fn=None):
-        if fn is None:
+    def plotPORTALS(self):
+        if self.fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
+            self.fn = FigureNotebook(0, "PORTALS Summary", geometry="1700x1000")
 
-        fig = fn.add_figure(label="PROFILES Ranges",tab_color=0)
+        fig = self.fn.add_figure(label="PROFILES Ranges",tab_color=0)
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=fn,fn_color=1)
+        self.plotSummary(fn=self.fn,fn_color=1)
 
-        fig = fn.add_figure(label="PORTALS Metrics",tab_color=2)
+        fig = self.fn.add_figure(label="PORTALS Metrics",tab_color=2)
         self.plotMetrics(fig=fig)
 
-        fig = fn.add_figure(label="PORTALS Expected",tab_color=3)
+        fig = self.fn.add_figure(label="PORTALS Expected",tab_color=3)
         self.plotExpected(fig=fig)
 
-        fig = fn.add_figure(label="PORTALS Simulation",tab_color=4)
+        fig = self.fn.add_figure(label="PORTALS Simulation",tab_color=4)
         self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
@@ -856,15 +859,17 @@ class PORTALSinitializer:
             p.profiles.deriveQuantities()
             self.powerstates.append(p)
 
+        self.fn = None
+
     def plotMetrics(self, fn = None, extra_lab = '', **kwargs):
 
-        if fn is None:
+        if self.fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            fn = FigureNotebook(0, "PowerState", geometry="1800x900")
+            self.fn = FigureNotebook(0, "PowerState", geometry="1800x900")
 
-        figMain = fn.add_figure(label=f"{extra_lab} - PowerState")
-        figG = fn.add_figure(label=f"{extra_lab} - Sequence")
+        figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
+        figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
 
         grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.4)
         axs = [

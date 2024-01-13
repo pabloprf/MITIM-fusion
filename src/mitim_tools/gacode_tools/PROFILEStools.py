@@ -1812,10 +1812,10 @@ class PROFILES_GACODE:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
 
                  
-                fn = FigureNotebook(0, "PROFILES Notebook", geometry="1600x1000")
+                self.fn = FigureNotebook(0, "PROFILES Notebook", geometry="1600x1000")
 
 
-            fig = fn.add_figure(label="Profiles" + fnlab)
+            fig = self.fn.add_figure(label="Profiles" + fnlab)
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
             axs1 = [
                 fig.add_subplot(grid[0, 0]),
@@ -1829,7 +1829,7 @@ class PROFILES_GACODE:
                 fig.add_subplot(grid[2, 2]),
             ]
 
-            fig2 = fn.add_figure(label="Powers" + fnlab)
+            fig2 = self.fn.add_figure(label="Powers" + fnlab)
             grid = plt.GridSpec(3, 2, hspace=0.3, wspace=0.3)
             axs2 = [
                 fig2.add_subplot(grid[0, 0]),
@@ -1840,7 +1840,7 @@ class PROFILES_GACODE:
                 fig2.add_subplot(grid[2, 1]),
             ]
 
-            fig3 = fn.add_figure(label="Geometry" + fnlab)
+            fig3 = self.fn.add_figure(label="Geometry" + fnlab)
             grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.5)
             ax00c = fig3.add_subplot(grid[0, 0])
             axs3 = [
@@ -1858,7 +1858,7 @@ class PROFILES_GACODE:
                 fig3.add_subplot(grid[2, 3], sharex=ax00c),
             ]
 
-            fig4 = fn.add_figure(label="Gradients" + fnlab)
+            fig4 = self.fn.add_figure(label="Gradients" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axs4 = [
                 fig4.add_subplot(grid[0, 0]),
@@ -1869,7 +1869,7 @@ class PROFILES_GACODE:
                 fig4.add_subplot(grid[1, 2]),
             ]
 
-            fig5 = fn.add_figure(label="Flows" + fnlab)
+            fig5 = self.fn.add_figure(label="Flows" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
 
             axsFlows = [
@@ -1881,7 +1881,7 @@ class PROFILES_GACODE:
                 fig5.add_subplot(grid[1, 2]),
             ]
 
-            fig6 = fn.add_figure(label="Other" + fnlab)
+            fig6 = self.fn.add_figure(label="Other" + fnlab)
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axs6 = [
                 fig6.add_subplot(grid[0, 0]),
@@ -1893,7 +1893,7 @@ class PROFILES_GACODE:
                 fig6.add_subplot(grid[1, 3]),
             ]
 
-            fig7 = fn.add_figure(label="Impurities" + fnlab)
+            fig7 = self.fn.add_figure(label="Impurities" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axsImps = [
                 fig7.add_subplot(grid[0, 0]),
@@ -3678,6 +3678,8 @@ def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
             showtexts=False,
             lastRhoGradients=lastRhoGradients,
         )
+
+    return fn
 
 def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
     with open(file) as f:

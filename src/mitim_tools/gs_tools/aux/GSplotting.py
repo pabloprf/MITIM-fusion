@@ -52,7 +52,7 @@ def writeResults(
     gs = write_gfiles(prfs, whereOutput)
 
     if plotGs:
-        GEQtools.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
+        axs,fn = GEQtools.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
 
     # ------------- Pickles
     file = f"{whereOutput}/{namePkl}.pkl"
@@ -512,6 +512,7 @@ def plotResult(
     except:
         pass
 
+    return fn
 
 def plotMetricsPRFS(
     axs,

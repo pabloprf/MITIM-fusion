@@ -1691,21 +1691,23 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def plot(self, fn=None, doNotShow=True, separateOFs=False, log=None,tab_color=None):
         if fn is None:
-             
+            
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
+            self.fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
+        else:
+            self.fn = fn
 
-        fig1 = fn.add_figure(label="Complete",tab_color=tab_color)
-        fig1e = fn.add_figure(label="Complete (rel.)",tab_color=tab_color)
-        fig2 = fn.add_figure(label="Metrics",tab_color=tab_color)
-        fig3 = fn.add_figure(label="Deviations",tab_color=tab_color)
-        fig3b = fn.add_figure(label="Separate",tab_color=tab_color)
-        fig3c = fn.add_figure(label="Together",tab_color=tab_color)
-        fig3cE = fn.add_figure(label="Together All",tab_color=tab_color)
-        fig4 = fn.add_figure(label="Improvement",tab_color=tab_color)
+        fig1 = self.fn.add_figure(label="Complete",tab_color=tab_color)
+        fig1e = self.fn.add_figure(label="Complete (rel.)",tab_color=tab_color)
+        fig2 = self.fn.add_figure(label="Metrics",tab_color=tab_color)
+        fig3 = self.fn.add_figure(label="Deviations",tab_color=tab_color)
+        fig3b = self.fn.add_figure(label="Separate",tab_color=tab_color)
+        fig3c = self.fn.add_figure(label="Together",tab_color=tab_color)
+        fig3cE = self.fn.add_figure(label="Together All",tab_color=tab_color)
+        fig4 = self.fn.add_figure(label="Improvement",tab_color=tab_color)
         if log is not None:
-            figTimes = fn.add_figure(label="Times",tab_color=tab_color)
+            figTimes = self.fn.add_figure(label="Times",tab_color=tab_color)
             grid = plt.GridSpec(1, 2, hspace=0.3, wspace=0.3)
             axsTimes = [figTimes.add_subplot(grid[0]), figTimes.add_subplot(grid[1])]
 
@@ -1740,7 +1742,7 @@ Workflow start time: {IOtools.getStringFromTime()}
         if log is not None:
             log.plot(axs=[axsTimes[0], axsTimes[1]])
 
-        return fn
+        return self.fn
 
     def plotDVs(
         self,
@@ -2215,11 +2217,11 @@ Workflow start time: {IOtools.getStringFromTime()}
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
-            fig3 = fn.add_figure(label="Deviations",tab_color=tab_color)
-            fig3b = fn.add_figure(label="Separate",tab_color=tab_color)
-            fig3c = fn.add_figure(label="Together",tab_color=tab_color)
-            fig3c = fn.add_figure(label="Together All",tab_color=tab_color)
+            self.fnCals = FigureNotebook(0, "Calibration", geometry="1600x1000")
+            fig3 = self.fnCals.add_figure(label="Deviations",tab_color=tab_color)
+            fig3b = self.fnCals.add_figure(label="Separate",tab_color=tab_color)
+            fig3c = self.fnCals.add_figure(label="Together",tab_color=tab_color)
+            fig3c = self.fnCals.add_figure(label="Together All",tab_color=tab_color)
         else:
             [fig3, fig3b, fig3c, fig3cE] = figs
 
@@ -3332,6 +3334,7 @@ def plotGA_results(
     ax = figAnalysis.add_subplot(grid[1, 0])
     plotGA_fitness(info, ax=ax)
 
+    return fn
 
 def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subname=""):
      
@@ -3342,7 +3345,7 @@ def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subn
         members = GAOF["All_x"]
     else:
         members = None
-    plotGA_results(
+    fn = plotGA_results(
         GAOF["Paretos_x"],
         GAOF["fitness"],
         GAOF["toolbox"],
@@ -3353,6 +3356,8 @@ def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subn
         selected=GAOF["selected"],
         trained=GAOF["trained"],
     )
+
+    return fn
 
 
 def printConstraint(constraint_name, constraint, extralab=""):

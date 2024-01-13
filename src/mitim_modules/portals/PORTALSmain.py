@@ -674,7 +674,8 @@ def analyze_results(
     # ----------------------------------------------------------------------------------------------------------------
 
     if plotYN:
-        portals_full.plotPORTALS(fn=fn)
+        portals_full.fn = fn
+        portals_full.plotPORTALS()
 
     # ----------------------------------------------------------------------------------------------------------------
     # Running cases: Original and Best

@@ -2170,13 +2170,16 @@ class TGYROoutput:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
              
-            fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
+            self.fn = FigureNotebook(0, "TGYRO Output Notebook", geometry="1800x900")
+
+        else:
+            self.fn = fn
 
         # ------------------------------------------------------------------------------
         # Summary 1
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Overview" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Overview" + label)
 
         grid = plt.GridSpec(3, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[:, 0])
@@ -2584,7 +2587,7 @@ class TGYROoutput:
         # Summary 2
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Match" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Match" + label)
 
         grid = plt.GridSpec(4, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -3175,7 +3178,7 @@ class TGYROoutput:
         # Convergence
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Convergence" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Convergence" + label)
 
         try:
             self.plotConvergence(fig1=fig1)
@@ -3189,7 +3192,7 @@ class TGYROoutput:
         # Fluxes
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Fluxes" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Fluxes" + label)
 
         grid = plt.GridSpec(4, self.Qi_sim_turb.shape[0] + 3, hspace=0.3, wspace=0.3)
 
@@ -3592,7 +3595,7 @@ class TGYROoutput:
         # Powers
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Powers" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Powers" + label)
 
         grid = plt.GridSpec(2, 5, hspace=0.2, wspace=0.4)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -4100,7 +4103,7 @@ class TGYROoutput:
         # Metrics
         # ------------------------------------------------------------------------------
 
-        fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Perform." + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Perform." + label)
         grid = plt.GridSpec(2, 2, hspace=0.45, wspace=0.3)
 
         # Fusion Gain
@@ -4301,7 +4304,7 @@ class TGYROoutput:
             # Final
             # ------------------------------------------------------------------------------
 
-            fig1 = fn.add_figure(tab_color=fn_color,label=prelabel + "Flows" + label)
+            fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Flows" + label)
             self.plotBalance(fig=fig1)
 
     """
