@@ -12,7 +12,8 @@ Notes:
 In engaging, with 32 cores, should take ~1h20min
 """
 
-import os, sys, random
+import os
+import random
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools.misc_tools import CONFIGread

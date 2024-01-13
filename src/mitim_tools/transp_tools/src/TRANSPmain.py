@@ -230,9 +230,7 @@ class TRANSPgeneric:
 
             if first:
                 print(
-                    ">> Simulation just submitted, will check status in {0}min (at {1})".format(
-                        checkMin, tt
-                    )
+                    f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
                 )
             else:
                 print(

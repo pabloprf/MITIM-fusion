@@ -101,7 +101,6 @@ class CGYRO:
         kys=[0.3],
         cores_per_ky=32,
         restart=False,
-        gacodeCGYRO="gacode",
         forceIfRestart=False,
         extra_name="",
     ):
@@ -112,7 +111,6 @@ class CGYRO:
         self.kys = kys
         numcores = int(len(self.kys) * cores_per_ky)
 
-        self.gacodeCGYRO = gacodeCGYRO
         self.FolderCGYRO = IOtools.expandPath(self.FolderGACODE + subFolderCGYRO + "/")
         self.FolderCGYRO_tmp = self.FolderCGYRO + "/tmp_standard/"
 
@@ -159,7 +157,6 @@ class CGYRO:
                 numcores=numcores,
                 filesToRetrieve=self.ResultsFiles,
                 name=f'cgyro_{self.nameRunid}_{subFolderCGYRO.strip("/")}{extra_name}',
-                gacode_compilation=self.gacodeCGYRO,
             )
 
     def read(self, label="cgyro1", folder=None):

@@ -35,7 +35,7 @@ physics_options = {"TargetType": 2}
 
 tgyro.run(
     subFolderTGYRO="run1/",
-    iterations=5,
+    iterations=3,
     restart=True,
     forceIfRestart=True,
     special_radii=rhos,

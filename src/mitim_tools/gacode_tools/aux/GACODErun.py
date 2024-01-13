@@ -31,15 +31,15 @@ def runTGYRO(
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    gacode_compilation = "gacode"
-
     # This routine assumes that folderWork contains input.profiles and input.tgyro already
 
-    machineSettings = CONFIGread.machineSettings(
-        code="tgyro",
-        gacode_compilation=gacode_compilation,
-        nameScratch=f"mitim_tmp_{nameRunid}/",
-    )
+    tgyro_job = FARMINGtools.mitim_job(folderWork)
+
+    tgyro_job.define_machine(
+            'tgyro',
+            f"mitim_tmp_{nameRunid}/",
+            launchSlurm=launchSlurm,
+        )
 
     # ------ Run TGYRO
 
@@ -51,7 +51,7 @@ def runTGYRO(
     # Execution command
     # ---------------
 
-    folderExecution = machineSettings["folderWork"]
+    folderExecution = tgyro_job.machineSettings["folderWork"]
 
     TGYROcommand = f"tgyro -e . -n {nparallel} -p {folderExecution}"
 
@@ -72,29 +72,28 @@ def runTGYRO(
         "done",
     ]
 
-    # ---------------
+    # ---------------------------------------------
     # Execute
-    # ---------------
+    # ---------------------------------------------
 
     ntasks = 1
     cores_tgyro = nparallel
 
-    # machineSettings['clear'] = False
-    FARMINGtools.SLURMcomplete(
-        TGYROcommand,
-        folderWork,
-        inputFiles,
-        outputFiles,
-        minutes,
-        ntasks,
-        nameJob,
-        machineSettings,
-        cpuspertask=cores_tgyro,
-        shellPreCommands=shellPreCommands,
-        shellPostCommands=shellPostCommands,
-        launchSlurm=launchSlurm,
-    )
+    tgyro_job.prep(
+            TGYROcommand,
+            input_files=inputFiles,
+            output_files=outputFiles,
+            shellPreCommands=shellPreCommands,
+            shellPostCommands=shellPostCommands,
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':ntasks,
+                'name':nameJob,
+                'cpuspertask':cores_tgyro,
+            },
+        )
 
+    tgyro_job.run(waitYN=True)
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
@@ -154,11 +153,8 @@ def prepareTGYRO(
         code="trxpl", nameScratch=f"mitim_tmp_{nameRunid}/"
     )
 
-    gacode_compilation = "gacode"
-
     machineSettingsPROF = CONFIGread.machineSettings(
         code="profiles_gen",
-        gacode_compilation=gacode_compilation,
         nameScratch=f"mitim_tmp_{nameRunid}/",
     )
 
@@ -246,19 +242,20 @@ def executeCGYRO(
     FolderCGYRO,
     linesCGYRO,
     fileProfiles,
-    gacode_compilation="gacode",
     outputFiles=["out.cgyro.run"],
     name="",
     numcores=32,
 ):
-    machineSettings = CONFIGread.machineSettings(
-        code="cgyro",
-        nameScratch=f"mitim_tmp_{name}/",
-        gacode_compilation=gacode_compilation,
-    )
 
     if not os.path.exists(FolderCGYRO):
         os.system(f"mkdir {FolderCGYRO}")
+
+    cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
+
+    cgyro_job.define_machine(
+            'cgyro',
+            f"mitim_cgyro_{name}/",
+        )
 
     # ---------------
     # Prepare files
@@ -272,7 +269,7 @@ def executeCGYRO(
     # Execution command
     # ---------------
 
-    folderExecution = machineSettings["folderWork"]
+    folderExecution = cgyro_job.machineSettings["folderWork"]
     CGYROcommand = f"cgyro -e . -n {numcores} -p {folderExecution}"
 
     shellPreCommands = []
@@ -281,23 +278,19 @@ def executeCGYRO(
     # Execute
     # ---------------
 
-    inputFiles = [fileProfiles, fileCGYRO]
-    minutes = 60  # NTH
-    nparallel = numcores
-    nameJob = name
+    cgyro_job.prep(
+            CGYROcommand,
+            input_files=i[fileProfiles, fileCGYRO],
+            output_files=outputFiles,
+            slurm_settings={
+                'minutes':60,
+                'ntasks':numcores,
+                'name':name,
+            },
+            shellPreCommands=shellPreCommands,
+        )
 
-    FARMINGtools.SLURMcomplete(
-        CGYROcommand,
-        FolderCGYRO,
-        inputFiles,
-        outputFiles,
-        minutes,
-        nparallel,
-        nameJob,
-        machineSettings,
-        shellPreCommands=shellPreCommands,
-    )
-
+    cgyro_job.run(waitYN=True)
 
 def runTRXPL(
     FolderTRXPL,
@@ -458,6 +451,13 @@ def runVGEN(
             -nth: Minimum and maximum theta resolutions (e.g. 17,39)
     """
 
+    vgen_job = FARMINGtools.mitim_job(workingFolder)
+
+    vgen_job.define_machine(
+            'profiles_gen',
+            f"mitim_tmp_vgen_{name_run}/",
+        )
+
     print(
         f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
     )
@@ -474,30 +474,32 @@ def runVGEN(
     inputgacode_file = f'{workingFolder}/input.gacode'
 
     _, nameFile = IOtools.reducePathLevel(inputgacode_file, level=1, isItFile=True)
-    machineSettings = CONFIGread.machineSettings(
-        code="profiles_gen", nameScratch=f"mitim_tmp_vgen_{name_run}/"
-    )
 
-    command = f"cd {machineSettings['folderWork']} && bash profiles_vgen.sh"
+    command = f"cd {vgen_job.machineSettings['folderWork']} && bash profiles_vgen.sh"
     with open(f"{workingFolder}/profiles_vgen.sh", "w") as f:
         f.write(f"profiles_gen -vgen -i {nameFile} {options} -n {numcores}")
 
-    FARMINGtools.SLURMcomplete(
-        command,
-        workingFolder,
-        [inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
-        ["slurm_output.dat", "slurm_error.dat"],
-        minutes,
-        numcores,
-        f"neo_vgen_{name_run}",
-        machineSettings,
-        outputFolders=["vgen/"],
-    )
+
+    # ---------------
+    # Execute
+    # ---------------
+        
+    vgen_job.prep(
+            command,
+            input_files=[inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
+            output_files=["slurm_output.dat", "slurm_error.dat"],
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':numcores,
+                'name':f"neo_vgen_{name_run}",
+            },
+        )
+
+    vgen_job.run(waitYN=True)
 
     file_new = f"{workingFolder}/vgen/input.gacode"
 
     return file_new
-
 
 def buildDictFromInput(inputFile):
     parsed = {}
@@ -818,7 +820,6 @@ def runCGYRO(
     extraFlag="",
     filesToRetrieve=["cgyro/out.cgyro.info"],
     name="",
-    gacode_compilation="gacode",
 ):
     MaxRunsWithoutWait, timewaitSendRun = 4, 10
 
@@ -831,7 +832,6 @@ def runCGYRO(
             tmpFolder,
             inputFilesCGYRO[rho],
             inputGacode,
-            gacode_compilation=gacode_compilation,
             numcores=numcores,
             outputFiles=filesToRetrieve,
             name=name,
@@ -867,7 +867,6 @@ def runTGLF(
     extraFlag="",
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
-    gacode_compilation="gacode",
     launchSlurm=True,
 ):
     """
@@ -875,22 +874,13 @@ def runTGLF(
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    machineSettings = CONFIGread.machineSettings(
-        code="tglf",
-        nameScratch=f"mitim_tmp_{name}/",
-        gacode_compilation=gacode_compilation,
-    )
+    tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
-    if not os.path.exists(tmpFolder):
-        os.system(f"mkdir {tmpFolder}")
-
-    if not launchSlurm:
-        machineSettings["machine"], machineSettings["folderWork"] = (
-            "local",
-            tmpFolder + "tmp_run/",
+    tglf_job.define_machine(
+            'tglf',
+            f"mitim_tmp_{name}/",
+            launchSlurm=launchSlurm,
         )
-
-    folderExecution = machineSettings["folderWork"]
 
     # ---------------------------------------------
     # Prepare files and folders
@@ -917,7 +907,7 @@ def runTGLF(
 
     total_tglf_cores = int(cores_tglf * len(rhos))
 
-    if launchSlurm and ("partition" in machineSettings["slurm"]):
+    if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
         typeRun = "job" if total_tglf_cores <= 32 else "array"
     else:
         typeRun = "bash"
@@ -926,7 +916,7 @@ def runTGLF(
         TGLFcommand = ""
         for i, rho in enumerate(rhos):
             TGLFcommand += (
-                f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {folderExecution}/ &\n"
+                f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
             )
 
         TGLFcommand += (
@@ -944,7 +934,7 @@ def runTGLF(
         )
 
         rho_array = ",".join([f"{int(rho*1E4)}" for rho in rhos])
-        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID"/ -n {cores_tglf} -p {folderExecution}/ 1> {folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
+        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID"/ -n {cores_tglf} -p {tglf_job.folderExecution}/ 1> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
 
         ntasks = 1
         cpuspertask = cores_tglf
@@ -953,24 +943,21 @@ def runTGLF(
     # Execute
     # ---------------------------------------------
 
-    # machineSettings["clear"] = False
-    FARMINGtools.SLURMcomplete(
-        TGLFcommand,
-        tmpFolder,
-        [],
-        [],
-        minutes,
-        ntasks,
-        name,
-        machineSettings,
-        cpuspertask=cpuspertask,
-        inputFolders=folders,
-        outputFolders=folders_red,
-        shellPreCommands=[],
-        launchSlurm=launchSlurm,
-        job_array=rho_array,
-        nodes=1,
-    )
+    tglf_job.prep(
+            TGLFcommand,
+            input_folders=folders,
+            output_folders=folders_red,
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':ntasks,
+                'name':name,
+                'cpuspertask':cpuspertask,
+                'job_array':rho_array,
+                'nodes':1,
+            },
+        )
+
+    tglf_job.run(waitYN=True)
 
     # ---------------------------------------------
     # Organize

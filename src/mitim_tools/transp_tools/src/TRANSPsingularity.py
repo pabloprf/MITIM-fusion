@@ -40,7 +40,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.nml_file, self.nml_file_ptsolver, self.mpisettings
         )
 
-        self.job_id = runSINGULARITY(
+        self.job = runSINGULARITY(
             self.FolderTRANSP,
             self.runid,
             self.shotnumber,
@@ -51,12 +51,15 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             restartFromPrevious=restartFromPrevious,
         )
 
-    def check(self, **kargs):
-        infoSLURM, self.job_id, self.log_file = getRunInformation(
-            self.job_id, self.FolderTRANSP, self.job_name, self.folderExecution
-        )
+        self.jobid = self.job.jobid
 
-        info, status = interpretRun(infoSLURM, self.log_file)
+    def check(self, **kargs):
+
+        self.job.check()
+
+        info, status = interpretRun(self.job.infoSLURM, self.job.log_file)
+
+        self.jobid = self.job.jobid_found
 
         return info, status, None
 
@@ -66,7 +69,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         retrieveAC=False,
         fullRequest=True,
         minutesAllocation=60,
-        **kargs,
+        **kwargs,
     ):
         runSINGULARITY_look(
             self.FolderTRANSP,
@@ -236,11 +239,14 @@ def runSINGULARITY(
     nameJob="transp",
     restartFromPrevious=False,
 ):
-    machineSettings = CONFIGread.machineSettings(
-        code="transp", nameScratch=f"transp_{tok}_{runid}/"
-    )
+    
 
-    folderExecution = machineSettings["folderWork"]
+    transp_job = FARMINGtools.mitim_job(folderWork)
+
+    transp_job.define_machine(
+            'transp',
+            f"transp_{tok}_{runid}/",
+        )
 
     # ---------------------------------------------------------------------------------------------------------------------------------------
     # Number of cores (must be inside 1 node)
@@ -251,7 +257,7 @@ def runSINGULARITY(
         if mpis[j] == 1:
             mpis[j] = 0  # definition used for the transp-source
 
-    NMLtools.adaptNML(folderWork, runid, shotnumber, folderExecution)
+    NMLtools.adaptNML(folderWork, runid, shotnumber, transp_job.folderExecution)
 
     # ----------------------------------------------------------------------------------------------------------------------------------------
     # Common things
@@ -259,7 +265,7 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
-    if "nobackup1" in folderExecution:
+    if "nobackup1" in transp_job.folderExecution:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -300,7 +306,7 @@ def runSINGULARITY(
         with open(file, "w") as f:
             f.write(
                 "{0}/results/\n{0}/data/\n{0}/tmp/\ny\ny\n{1}\n{2}\n{3}\n{4}\n0\n0".format(
-                    folderExecution,
+                    transp_job.folderExecution,
                     nparallel,
                     mpis["trmpi"],
                     mpis["toricmpi"],
@@ -313,12 +319,12 @@ def runSINGULARITY(
         inputFiles.append(file)
         ENVcommand = f"""
 export WORKDIR=./
-export RESULTDIR={folderExecution}/results/
-mkdir -p {folderExecution}/results/
-export DATADIR={folderExecution}/data/
-mkdir -p {folderExecution}/data/
-export TMPDIR_TR={folderExecution}/tmp/
-mkdir -p {folderExecution}/tmp/
+export RESULTDIR={transp_job.folderExecution}/results/
+mkdir -p {transp_job.folderExecution}/results/
+export DATADIR={transp_job.folderExecution}/data/
+mkdir -p {transp_job.folderExecution}/data/
+export TMPDIR_TR={transp_job.folderExecution}/tmp/
+mkdir -p {transp_job.folderExecution}/tmp/
 export NPROCS={nparallel}
 export NBI_NPROCS={mpis["trmpi"]}
 export NTOR_NPROCS={mpis["toricmpi"]}
@@ -341,17 +347,17 @@ export NCQL3D_NPROCS=0
         # ---------------
 
         TRANSPcommand_prep = f"""
-#singularity run --app environ $TRANSP_SINGULARITY < {folderExecution}/env_prf
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {folderExecution}/pre_prf
+#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_prf
+singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 """
 
         TRANSPcommand = f"""
-#singularity run --app environ $TRANSP_SINGULARITY < {folderExecution}/env_prf
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {folderExecution}/pre_prf
+#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_prf
+singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {folderExecution}/{runid}tr.log
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
 """
 
     # ********** Start from previous
@@ -364,7 +370,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
         TRANSPcommand = """
 singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/{3}tr.log
 """.format(
-            folderExecution, tok, txt, runid, txt_bind
+            transp_job.folderExecution, tok, txt, runid, txt_bind
         )
 
     # ------------------
@@ -378,19 +384,21 @@ singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/
         os.system(f"rm {folderWork}/tmp_inputs/bash.src")
         os.system(f"rm {folderWork}/tmp_inputs/mitim.sh")
 
-        jobid = FARMINGtools.SLURMcomplete(
-            TRANSPcommand_prep,
-            folderWork,
-            inputFiles,
-            [f"{runid}tr_dat.log"],
-            5,
-            nparallel,
-            nameJob,
-            machineSettings,
-            shellPreCommands=shellPreCommands,
-            inputFolders=inputFolders,
-            waitYN=True,
-        )
+
+        transp_job.prep(
+                TRANSPcommand_prep,
+                input_files=inputFiles,
+                input_folders=inputFolders,
+                output_files=[f"{runid}tr_dat.log"],
+                slurm_settings={
+                    'minutes':5,
+                    'ntasks':nparallel,
+                    'name':nameJob,
+                },
+                shellPreCommands=shellPreCommands,
+            )
+
+        transp_job.run(waitYN=True)
 
         # Interpret
         NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
@@ -404,23 +412,23 @@ singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/
     # Execute Full
     # ---------------
 
-    jobid = FARMINGtools.SLURMcomplete(
-        TRANSPcommand,
-        folderWork,
-        inputFiles,
-        [],
-        minutes,
-        nparallel,
-        nameJob,
-        machineSettings,
-        shellPreCommands=shellPreCommands,
-        inputFolders=inputFolders,
-        waitYN=False,
-    )
+    transp_job.prep(
+            TRANSPcommand,
+            input_files=inputFiles,
+            input_folders=inputFolders,
+            slurm_settings={
+                'minutes':5,
+                'ntasks':nparallel,
+                'name':nameJob,
+            },
+            shellPreCommands=shellPreCommands,
+        )
+
+    transp_job.run(waitYN=False)
 
     os.system(f"rm -r {folderWork}/tmp_inputs")
 
-    return jobid
+    return transp_job
 
 
 def getRunInformation(jobid, folder, job_name, folderExecution):
@@ -512,15 +520,19 @@ def pringLogTail(log_file, howmanylines=50):
 def runSINGULARITY_finish(folderWork, runid, tok, minutes=60):
     nameJob = f"transp_{tok}_{runid}_finish"
 
-    machineSettings = CONFIGread.machineSettings(
-        code="transp_look", nameScratch=f"transp_{tok}_{runid}/"
-    )
+
+    transp_job = FARMINGtools.mitim_job(folderWork)
+
+    transp_job.define_machine(
+            'transp',
+            f"transp_{tok}_{runid}/",
+        )
 
     # ---------------
     # Execution command
     # ---------------
 
-    if "nobackup1" in machineSettings["folderWork"]:
+    if "nobackup1" in transp_job.machineSettings["folderWork"]:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -528,9 +540,9 @@ def runSINGULARITY_finish(folderWork, runid, tok, minutes=60):
         txt_bind = ""
 
     TRANSPcommand = f"""
-cd {machineSettings['folderWork']} && singularity run {txt_bind}--app trlook $TRANSP_SINGULARITY {tok} {runid}
-cd {machineSettings['folderWork']} && singularity run {txt_bind}--app finishup $TRANSP_SINGULARITY {runid}
-cd {machineSettings['folderWork']} && tar -czvf TRANSPresults.tar results/{tok}.00
+cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app trlook $TRANSP_SINGULARITY {tok} {runid}
+cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app finishup $TRANSP_SINGULARITY {runid}
+cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar results/{tok}.00
 """
 
     # ---------------
@@ -539,18 +551,18 @@ cd {machineSettings['folderWork']} && tar -czvf TRANSPresults.tar results/{tok}.
 
     print('* Submitting a "finish" request to the cluster', typeMsg="i")
 
-    machineSettings["clear"] = False
-    jobid = FARMINGtools.SLURMcomplete(
-        TRANSPcommand,
-        folderWork,
-        [],
-        ["TRANSPresults.tar"],
-        minutes,
-        1,
-        nameJob,
-        machineSettings,
-        extranamelogs="_finish",
-    )
+    transp_job.prep(
+            TRANSPcommand,
+            output_files=["TRANSPresults.tar"],
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':1,
+                'name':nameJob,
+            },
+             extranamelogs="_finish",
+        )
+
+    transp_job.run(waitYN=True,clearFilesRemote=False)
 
     os.system(
         f"cd {folderWork} && tar -xzvf TRANSPresults.tar && cp -r results/{tok}.00/* ."
@@ -561,15 +573,18 @@ cd {machineSettings['folderWork']} && tar -czvf TRANSPresults.tar results/{tok}.
 def runSINGULARITY_look(folderWork, runid, tok, folderExecution, minutes=60):
     nameJob = f"transp_{tok}_{runid}_look"
 
-    machineSettings = CONFIGread.machineSettings(
-        code="transp_look", nameScratch=f"{nameJob}/"
-    )
+    transp_job = FARMINGtools.mitim_job(folderWork)
+
+    transp_job.define_machine(
+            'transp_look',
+            f"{nameJob}/",
+        )
 
     # ---------------
     # Execution command
     # ---------------
 
-    if "nobackup1" in machineSettings["folderWork"]:
+    if "nobackup1" in transp_job.machineSettings["folderWork"]:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -578,7 +593,7 @@ def runSINGULARITY_look(folderWork, runid, tok, folderExecution, minutes=60):
 
     # I have to do the look in another folder (I think it fails if I simply grab, so I copy things)
     TRANSPcommand = f"""
-cd {machineSettings['folderWork']} && cp {folderExecution}/*PLN {folderExecution}/transp-bashrc {machineSettings['folderWork']}/. && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+cd {transp_job.machineSettings['folderWork']} && cp {folderExecution}/*PLN {folderExecution}/transp-bashrc {transp_job.machineSettings['folderWork']}/. && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -589,10 +604,17 @@ cd {machineSettings['folderWork']} && cp {folderExecution}/*PLN {folderExecution
 
     outputFiles = [f"{runid}.CDF"]
 
-    jobid = FARMINGtools.SLURMcomplete(
-        TRANSPcommand, folderWork, [], outputFiles, minutes, 1, nameJob, machineSettings
-    )
+    transp_job.prep(
+            TRANSPcommand,
+            output_files=outputFiles,
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':1,
+                'name':nameJob,
+            },
+        )
 
+    transp_job.run(waitYN=True)
 
 def organizeACfiles(
     runid, FolderTRANSP, nummax=1, ICRF=False, NUBEAM=False, TORBEAM=False

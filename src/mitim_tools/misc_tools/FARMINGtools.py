@@ -16,7 +16,7 @@ import copy
 import numpy as np
 from IPython import embed
 from contextlib import contextmanager
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools,CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
@@ -29,6 +29,121 @@ else:
 
 UseCUDAifAvailable = True
 
+class mitim_job:
+    def __init__(self,folder_local):
+
+        self.folder_local = folder_local
+
+    def define_machine(
+            self,
+            code,
+            nameScratch,
+            launchSlurm=True,
+            ):
+
+        self.launchSlurm = launchSlurm
+        self.machineSettings = CONFIGread.machineSettings(
+            code=code,
+            nameScratch=nameScratch,
+            )
+
+        if not self.launchSlurm:
+            self.machineSettings["machine"], self.machineSettings["folderWork"] = (
+                "local",
+                self.folder_local + "tmp_run/",
+            )
+
+        self.folderExecution = self.machineSettings["folderWork"]
+
+    def prep(
+            self,
+            command,
+            input_files=[],
+            input_folders=[],
+            output_files=[],
+            output_folders=[],
+            slurm_settings={},
+            shellPreCommands=[],
+            shellPostCommands=[],
+            extranamelogs="",
+            default_exclusive=False
+            ):
+
+        # Pass to class
+        self.command = command
+        self.input_files = input_files
+        self.input_folders = input_folders
+        self.output_files = output_files
+        self.output_folders = output_folders
+        self.slurm_settings = slurm_settings
+
+        self.shellPreCommands = shellPreCommands
+        self.shellPostCommands = shellPostCommands
+        self.extranamelogs = extranamelogs
+        self.default_exclusive = default_exclusive
+
+
+        # Defaults
+        self.slurm_settings.setdefault('name','mitim_job')
+        self.slurm_settings.setdefault('job_array',None)
+        self.slurm_settings.setdefault('nodes',None)
+        self.slurm_settings.setdefault('cpuspertask',1)
+        self.slurm_settings.setdefault('email',"noemail")
+        self.slurm_settings.setdefault('minutes',10)
+        self.slurm_settings.setdefault('ntasks',1)
+        self.slurm_settings.setdefault('nodes',1)
+
+    def run(self,waitYN=True,clearFilesRemote=None):
+
+        if clearFilesRemote is not None:
+            self.machineSettings["clear"] = clearFilesRemote
+
+        self.jobid = SLURMcomplete(
+            self.command,
+            self.folder_local,
+            self.input_files,
+            self.output_files,
+            self.slurm_settings['minutes'],
+            self.slurm_settings['ntasks'],
+            self.slurm_settings['name'],
+            self.machineSettings,
+            cpuspertask=self.slurm_settings['cpuspertask'],
+            inputFolders=self.input_folders,
+            outputFolders=self.output_folders,
+            shellPreCommands=self.shellPreCommands,
+            shellPostCommands=self.shellPostCommands,
+            launchSlurm=self.launchSlurm,
+            job_array=self.slurm_settings['job_array'],
+            nodes=self.slurm_settings['nodes'],
+            email=self.slurm_settings['email'],
+            extranamelogs=self.extranamelogs,
+            default_exclusive=self.default_exclusive,
+            waitYN=waitYN,
+        )
+
+    def check(self):
+        '''
+        Check job status slurm
+        '''
+
+        # Grab slurm state and log file from TRANSP
+        self.infoSLURM = getSLURMstatus(
+            self.folder_local,
+            self.machineSettings,
+            jobid=self.jobid,
+            grablog=f"{self.folderExecution}/slurm_output.dat",
+            name=self.slurm_settings['name'],
+        )
+
+        with open(self.folder_local + "/slurm_output.dat", "r") as f:
+            self.log_file = f.readlines()
+
+        # If jobid was given as None, I retrieved the info from the job_name, but now provide here the actual id
+        if self.infoSLURM is not None:
+            self.jobid_found = self.infoSLURM["JOBID"]
+        else:
+            self.jobid_found = None
+
 """ 
 	Timeout function
 	- I just need to add a function:
@@ -36,7 +151,6 @@ UseCUDAifAvailable = True
 			do things
 	- I don't recommend that "do things" includes a context manager like with Popen or it won't work... not sure why
 """
-
 
 def raise_timeout(signum, frame):
     raise TimeoutError
@@ -313,7 +427,7 @@ def sendCommand_remote(
         if not isItFolders:
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
         else:
-            addSolutionForPathCanonicalization = ''#' -O' # This was needed for iris for a particular user
+            addSolutionForPathCanonicalization = ' -O' # This was needed for iris for a particular user
             commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r{addSolutionForPathCanonicalization} {file} {userCommand}{machine}:{folderWork}/."
         # run_subprocess(commai,localRun=True)
         os.system(commai)
@@ -435,8 +549,6 @@ def receiveCommand_remote(
             commandExecute = f"{scpCommand} -r {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."  # https://unix.stackexchange.com/questions/708517/scp-multiple-files-with-single-command
         else:
             commandExecute = f"{scpCommand} {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."
-        # if verbose_level in [4, 5]:
-        #    print(f'\t\t\t{commandExecute}')
         os.system(commandExecute)
     else:
         # Execute command to retrieve files from remote to tunnel (this ssh connections is better to do file by file)
@@ -758,6 +870,7 @@ def bringFiles(
     scpCommand,
     contStep=0,
 ):
+    
     if len(outputFiles) > 0:
         contStep += 1
         print(f"\t\t{contStep}. Receiving files")
@@ -940,7 +1053,7 @@ def SLURM(
 
     minutes = int(minutes)
 
-    partition = slurm['partition']
+    partition = slurm.setdefault("partition",None)
     exclude = slurm.setdefault("exclude",None)
     account = slurm.setdefault("account",None)
     constraint = slurm.setdefault("constraint",None)
