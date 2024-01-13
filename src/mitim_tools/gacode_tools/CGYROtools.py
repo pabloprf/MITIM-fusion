@@ -437,13 +437,12 @@ class CGYRO:
 
     def plot(self, labels=[""]):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-         
-        fn = FigureNotebook(0, "CGYRO Notebook", geometry="1600x1000")
+        
+        self.fn = FigureNotebook(0, "CGYRO Notebook", geometry="1600x1000")
 
         colors = GRAPHICStools.listColors()
 
-        fig = fn.add_figure(label="Fluxes Time Traces")
+        fig = self.fn.add_figure(label="Fluxes Time Traces")
         axsFluxes_t = fig.subplot_mosaic(
             """
 									 ABC
