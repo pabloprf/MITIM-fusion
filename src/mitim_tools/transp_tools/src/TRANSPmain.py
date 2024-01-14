@@ -61,19 +61,19 @@ class TRANSPgeneric:
 	------------------------------------------------------------------------------------------------------
 	"""
 
-    def run(self, *args, **kargs):
+    def run(self, *args, **kwargs):
         pass
 
-    def check(self, *args, **kargs):
+    def check(self, *args, **kwargs):
         pass
 
-    def get(self, *args, **kargs):
+    def get(self, *args, **kwargs):
         pass
 
-    def fetch(self, *args, **kargs):
+    def fetch(self, *args, **kwargs):
         pass
 
-    def delete(self, *args, **kargs):
+    def delete(self, *args, **kwargs):
         pass
 
     def automatic(*args, **kwargs):

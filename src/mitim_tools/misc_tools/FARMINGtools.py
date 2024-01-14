@@ -31,6 +31,7 @@ class mitim_job:
     def __init__(self,folder_local):
 
         self.folder_local = folder_local
+        self.jobid = None
 
     def define_machine(
             self,

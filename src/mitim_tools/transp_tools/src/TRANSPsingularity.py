@@ -17,8 +17,8 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         self.job_id, self.job_name = None, None
 
-    def defineRunParameters(self, *args, **kargs):
-        super().defineRunParameters(*args, **kargs)
+    def defineRunParameters(self, *args, minutesAllocation=60 * 10, **kwargs):
+        super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
 
@@ -28,32 +28,46 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         )
         self.folderExecution = machineSettings["folderWork"]
 
-    """
-	------------------------------------------------------------------------------------------------------
-		Main routines
-	------------------------------------------------------------------------------------------------------
-	"""
-
-    def run(self, restartFromPrevious=False, minutesAllocation=60 * 10, **kargs):
         # Make sure that the MPIs are set up properly
         self.mpisettings = TRANSPmain.ensureMPIcompatibility(
             self.nml_file, self.nml_file_ptsolver, self.mpisettings
         )
 
-        self.job = runSINGULARITY(
-            self.FolderTRANSP,
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+        # Number of cores (must be inside 1 node)
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+        nparallel = 1
+        for j in self.mpisettings:
+            nparallel = int(np.max([nparallel, self.mpisettings[j]]))
+            if self.mpisettings[j] == 1:
+                self.mpisettings[j] = 0  # definition used for the transp-source
+
+        self.job = FARMINGtools.mitim_job(self.FolderTRANSP)
+
+        self.job.define_machine(
+                'transp',
+                f"transp_{self.tok}_{self.runid}/",
+                slurm_settings={
+                        'minutes':minutesAllocation,
+                        'ntasks':nparallel,
+                        'name':self.job_name,
+                    },
+            )
+
+    def run(self, restartFromPrevious=False, **kwargs):
+
+        runSINGULARITY(
+            self.job,
             self.runid,
             self.shotnumber,
             self.tok,
             self.mpisettings,
-            nameJob=self.job_name,
-            minutes=minutesAllocation,
             restartFromPrevious=restartFromPrevious,
         )
 
         self.jobid = self.job.jobid
 
-    def check(self, **kargs):
+    def check(self, **kwargs):
 
         self.job.check()
 
@@ -83,7 +97,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
 
-    def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kargs):
+    def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kwargs):
         runSINGULARITY_finish(
             self.FolderTRANSP, self.runid, self.tok, minutes=minutesAllocation
         )
@@ -91,7 +105,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         # ------------------
         # Organize AC files
         # ------------------
-        retrieveAC = False
+
         if retrieveAC:
             print("Checker AC, work on it")
             embed()
@@ -106,7 +120,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         return self.cdfs[label]
 
-    def delete(self, howManyCancel=1, MinWaitDeletion=0, **kargs):
+    def delete(self, howManyCancel=1, MinWaitDeletion=0, **kwargs):
         machineSettings = CONFIGread.machineSettings(
             code="transp", nameScratch=f"transp_{self.tok}_{self.runid}/"
         )
@@ -127,7 +141,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         phasetxt="",
         automaticProcess=False,
         retrieveAC=False,
-        **kargs,
+        **kwargs,
     ):
         # Launch run
         self.run(restartFromPrevious=False)
@@ -229,40 +243,17 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 ------------------------------------------------------------------------------------------------------
 """
 
-
 def runSINGULARITY(
-    folderWork,
+    transp_job,
     runid,
     shotnumber,
     tok,
     mpis,
-    minutes=60,
-    nameJob="transp",
     restartFromPrevious=False,
 ):
     
-
-    transp_job = FARMINGtools.mitim_job(folderWork)
-
-    # ---------------------------------------------------------------------------------------------------------------------------------------
-    # Number of cores (must be inside 1 node)
-    # ---------------------------------------------------------------------------------------------------------------------------------------
-    nparallel = 1
-    for j in mpis:
-        nparallel = int(np.max([nparallel, mpis[j]]))
-        if mpis[j] == 1:
-            mpis[j] = 0  # definition used for the transp-source
-
-
-    transp_job.define_machine(
-            'transp',
-            f"transp_{tok}_{runid}/",
-            slurm_settings={
-                    'minutes':5,
-                    'ntasks':nparallel,
-                    'name':nameJob,
-                },
-        )
+    folderWork = transp_job.folder_local
+    nparallel = transp_job.slurm_settings["ntasks"]
 
     NMLtools.adaptNML(folderWork, runid, shotnumber, transp_job.folderExecution)
 
@@ -374,11 +365,9 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
 
         TRANSPcommand_prep = None
 
-        TRANSPcommand = """
-singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/{3}tr.log
-""".format(
-            transp_job.folderExecution, tok, txt, runid, txt_bind
-        )
+        TRANSPcommand = f"""
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R |& tee {transp_job.folderExecution}/{runid}tr.log
+"""
 
     # ------------------
     # Execute pre-checks
@@ -424,9 +413,6 @@ singularity run {4}--cleanenv --app transp $TRANSP_SINGULARITY {3} R |& tee {0}/
     transp_job.run(waitYN=False)
 
     os.system(f"rm -r {folderWork}/tmp_inputs")
-
-    return transp_job
-
 
 def getRunInformation(jobid, folder, job_name, folderExecution):
     print('* Submitting a "check" request to the cluster', typeMsg="i")
