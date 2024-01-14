@@ -18,7 +18,6 @@ fullYN = args.full
 cdfs = []
 
 ZerothTime = False
-printCheckPoints = False
 if fullYN:
     readFBM = True
     readTGLF = True
@@ -41,7 +40,6 @@ for i in expl:
             CDFtools.CDFreactor(
                 i.split(":")[1],
                 ssh=i.split(":")[0],
-                printCheckPoints=printCheckPoints,
                 readFBM=readFBM,
                 readTGLF=readTGLF,
                 readTORIC=readTORIC,
@@ -55,7 +53,6 @@ for i in expl:
         cdfs.append(
             CDFtools.CDFreactor(
                 i,
-                printCheckPoints=printCheckPoints,
                 readFBM=readFBM,
                 readTGLF=readTGLF,
                 readTORIC=readTORIC,

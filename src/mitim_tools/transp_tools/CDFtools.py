@@ -38,7 +38,6 @@ class CDFreactor:
         self,
         netCDFfile,
         ssh=None,
-        printCheckPoints=False,
         ZerothTime=False,
         readFBM=False,
         readTGLF=False,
@@ -65,10 +64,6 @@ class CDFreactor:
         self.mainLegendSize = 8
 
         np.seterr(under="ignore")
-
-        if printCheckPoints:
-            timeInitial = datetime.datetime.now()
-            itcheck = 1
 
         netCDFfile = IOtools.expandPath(netCDFfile, ensurePathValid=True)
 
@@ -13129,7 +13124,7 @@ class CDFreactor:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plotRun(self, fn = None, time=None, timesAv=None, plot_analysis=True, counter=0):
+    def plotRun(self, fn = None, time=None, timesAv=None, plot_analysis=False, counter=0):
          
 
         if time is None:
