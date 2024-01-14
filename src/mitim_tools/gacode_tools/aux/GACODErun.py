@@ -856,7 +856,6 @@ def runCGYRO(
 def runTGLF(
     rhos,
     finalFolder,
-    tmpFolder,
     inputFilesTGLF,
     minutes=5,
     cores_tglf=4,
@@ -869,6 +868,9 @@ def runTGLF(
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
+
+    tmpFolder = finalFolder + "/tmp_tglf/"
+    IOtools.askNewFolder(tmpFolder)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
@@ -986,13 +988,6 @@ def runTGLF(
                     typeMsg="w",
                     verbose=verbose_level,
                 )
-                # else:
-                #     print(
-                #         f"\t\t~ {file} successfully retrieved, converted into {original_file}",
-                #         verbose=verbose_level,
-                #     )
-
-        # os.system(f"mv {fileTGLF} {finalFolder}/rho_{rho:.4f}/input.tglf_{rho:.4f}")
 
     if fineall:
         print("\t\t- All files were successfully retrieved")

@@ -24,7 +24,7 @@ _ = tglf.prep(folder, restart=restart)
 tglf.run(
     subFolderTGLF="runBase/",
     TGLFsettings=5,
-    runWaveForms=[0.3],
+    runWaveForms=[0.1,0.3],
     restart=restart,
     forceIfRestart=True,
 )
@@ -33,7 +33,7 @@ tglf.read(label="runBase", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 tglf.run(
     subFolderTGLF="runSAT0/",
     TGLFsettings=2,
-    runWaveForms=[0.3],
+    runWaveForms=[0.1,0.3],
     restart=restart,
     forceIfRestart=True,
 )

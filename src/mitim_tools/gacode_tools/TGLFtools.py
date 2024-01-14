@@ -409,7 +409,6 @@ class TGLF:
         inputs = copy.deepcopy(self.inputsTGLF)
 
         self.FolderTGLF = IOtools.expandPath(self.FolderGACODE + subFolderTGLF + "/")
-        self.FolderTGLF_tmp = self.FolderTGLF + "/tmp_tglf/"
 
         ResultsFiles_new = []
         for i in self.ResultsFiles:
@@ -436,7 +435,6 @@ class TGLF:
 
         if len(rhosEvaluate) == len(self.rhos):
             IOtools.askNewFolder(self.FolderTGLF, force=forceIfRestart)
-            IOtools.askNewFolder(self.FolderTGLF_tmp)
         else:
             if not exists:
                 print(
@@ -505,12 +503,11 @@ class TGLF:
             GACODErun.runTGLF(
                 rhosEvaluate,
                 self.FolderTGLF,
-                self.FolderTGLF_tmp,
                 self.latest_inputsFileTGLF,
                 filesToRetrieve=self.ResultsFiles,
                 minutes=slurm_setup["minutes"],
                 cores_tglf=slurm_setup["cores"],
-                name=f"tglf_{self.nameRunid}_{subFolderTGLF.strip('/')}{extra_name}",
+                name=f"tglf_{self.nameRunid}_{subFolderTGLF.replace('/','_')}{extra_name}",
                 launchSlurm=launchSlurm,
             )
         else:
@@ -541,11 +538,11 @@ class TGLF:
 
                     self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old)
 
-                    self.FoldersTGLF_WF[f"ky{ky_single0}"] = {}
-                    for i, ir in enumerate(self.rhos):
-                        self.FolderTGLF = f"{FolderTGLF_old}/wf_{ir}_{ky_single0}/"
-                        self.FoldersTGLF_WF[f"ky{ky_single0}"][ir] = self.FolderTGLF
+                    self.FolderTGLF = f"{FolderTGLF_old}/ky{ky_single0}/"
+                    self.FoldersTGLF_WF[f"ky{ky_single0}"] = self.FolderTGLF
 
+                    ky_singles = []
+                    for i, ir in enumerate(self.rhos):
                         # -------- Get the closest unstable mode to the one requested
                         if forceClosestUnstableWF:
                             # Only unstable ones
@@ -577,53 +574,39 @@ class TGLF:
                             ky_single = closest_ky
                         else:
                             ky_single = ky_single0
+
+                        ky_singles.append(ky_single)
                         # ------------------------------------------------------------
 
-                        existsWF = not restart
-                        for j in self.ResultsFiles:
-                            existsWF = existsWF and os.path.exists(
-                                f"{self.FolderTGLF}{j}_{ir:.4f}"
-                            )
+                    extraOptions_WF = copy.deepcopy(extraOptions)
 
-                        if not existsWF:
-                            IOtools.askNewFolder(self.FolderTGLF, force=forceIfRestart)
-                            os.system(
-                                f"cp {FolderTGLF_old}/input.tglf* {self.FolderTGLF}/"
-                            )
+                    extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
+                    extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
+                    extraOptions_WF["KY"] = ky_singles
+                    extraOptions_WF[
+                        "VEXB_SHEAR"
+                    ] = 0.0  # See email from G. Staebler on 05/16/2021
 
-                            extraOptions_WF = copy.deepcopy(extraOptions)
+                    tglf_wf = copy.deepcopy(self)
 
-                            extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
-                            extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
-                            extraOptions_WF["KY"] = ky_single
-                            extraOptions_WF[
-                                "VEXB_SHEAR"
-                            ] = 0.0  # See email from G. Staebler on 05/16/2021
-                            inputFileTGLF, _ = changeANDwrite_TGLF(
-                                [ir],
-                                {ir: inputs[ir]},
-                                self.FolderTGLF,
-                                TGLFsettings=TGLFsettings,
-                                extraOptions=extraOptions_WF,
-                                multipliers=multipliers,
-                                ApplyCorrections=ApplyCorrections,
-                                Quasineutral=Quasineutral,
-                            )
-
-                            GACODErun.runTGLF(
-                                [ir],
-                                self.FolderTGLF,
-                                self.FolderTGLF_tmp,
-                                inputFileTGLF,
-                                filesToRetrieve=self.ResultsFiles,
-                                minutes=slurm_setup["minutes"],
-                                cores_tglf=slurm_setup["cores"],
-                                name=f"{self.nameRunid}_{subFolderTGLF.strip('/')}",
-                                launchSlurm=launchSlurm,
-                            )
+                    tglf_wf.run(
+                        f"{subFolderTGLF}/ky{ky_single0}",
+                        TGLFsettings=TGLFsettings,
+                        extraOptions=extraOptions_WF,
+                        multipliers=multipliers,
+                        runWaveForms=[],
+                        ApplyCorrections=ApplyCorrections,
+                        Quasineutral=Quasineutral,
+                        launchSlurm=launchSlurm,
+                        restart=restart,
+                        forceIfRestart=forceIfRestart,
+                        extra_name=extra_name,
+                        slurm_setup=slurm_setup
+                    )
 
                     del self.results[f"ky{ky_single0}"]
         except FileNotFoundError:
+            embed()
             self.ky_single = None
             print(
                 "> Waveform analysis FAILED (maybe due to TGLF version?)", typeMsg="w"
@@ -712,20 +695,19 @@ class TGLF:
         self.results[label]["wavefunction"] = {}
         if self.ky_single is not None:
             for ky_single0 in self.ky_single:
-                self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 if f"ky{ky_single0}" not in self.FoldersTGLF_WF:
                     continue
+
+                self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 for ir in self.rhos:
-                    if ir not in self.FoldersTGLF_WF[f"ky{ky_single0}"]:
-                        continue
 
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
 
                     self.results[label]["wavefunction"][f"ky{ky_single0}"][
                         ir
                     ] = GACODEinterpret.Waveform_read(
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][ir]}/out.tglf.wavefunction{suffix0}",
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][ir]}/out.tglf.run{suffix0}",
+                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}']}/out.tglf.wavefunction{suffix0}",
+                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}']}/out.tglf.run{suffix0}",
                     )
 
     def plotRun(
@@ -1848,7 +1830,6 @@ class TGLF:
                         theta = wf["theta"] / np.pi
 
                         markers = GRAPHICStools.listmarkers()
-                        typeline = GRAPHICStools.listmarkersLS()
 
                         # ES
                         max0, min0 = GACODEplotting.plotWaveform(
@@ -1985,7 +1966,7 @@ class TGLF:
                     )
                 ax.set_title("Growth Rate")
                 ax.set_xlim(
-                    [self.ky_single[kycont] * 0.8, self.ky_single[kycont] * 1.2]
+                    [self.ky_single[kycont] -2.0, self.ky_single[kycont] +2]
                 )
                 # ax.set_yscale('log')
 
@@ -1997,7 +1978,7 @@ class TGLF:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
                 ax.set_xlim(
-                    [self.ky_single[kycont] * 0.8, self.ky_single[kycont] * 1.2]
+                    [self.ky_single[kycont] -2.0, self.ky_single[kycont] +2]
                 )
 
                 ax = ax01
@@ -3459,7 +3440,7 @@ def changeANDwrite_TGLF(
 
     modInputTGLF = {}
     ns_max = []
-    for rho in rhos:
+    for i,rho in enumerate(rhos):
         print(f"\t- Changing input file for rho={rho:.4f}")
         NS = inputs[rho].plasma["NS"]
         inputTGLF_rho = modifyInputToTGLF(
@@ -3468,6 +3449,7 @@ def changeANDwrite_TGLF(
             extraOptions=extraOptions,
             multipliers=multipliers,
             NS=NS,
+            position_change = i,
         )
 
         newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
@@ -4078,7 +4060,7 @@ def identifySpecie(dict_species, dict_find):
 
 
 def modifyInputToTGLF(
-    inputTGLF, TGLFsettings=None, extraOptions={}, multipliers={}, NS=2
+    inputTGLF, TGLFsettings=None, extraOptions={}, multipliers={}, NS=2, position_change=0
 ):
     if TGLFsettings is not None:
         _, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(
@@ -4089,7 +4071,6 @@ def modifyInputToTGLF(
         print(
             f" \t- Using presets TGLFsettings = {TGLFsettings} ({label})", typeMsg="i"
         )
-        TGLFoptions_orig = copy.deepcopy(inputTGLF.controls)
         inputTGLF.controls = TGLFoptions
 
     else:
@@ -4104,6 +4085,12 @@ def modifyInputToTGLF(
     if len(extraOptions) > 0:
         print("\t- External options:")
     for ikey in extraOptions:
+
+        if isinstance(extraOptions[ikey], (list, np.ndarray)):
+            value_to_change_to =extraOptions[ikey][position_change]
+        else:
+            value_to_change_to = extraOptions[ikey]
+
         # is a specie one?
         try:
             isspecie = ikey.split("_")[0] in inputTGLF.species[1]
@@ -4114,20 +4101,20 @@ def modifyInputToTGLF(
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = inputTGLF.species[specie][varK]
-            var_new = extraOptions[ikey]
+            var_new = value_to_change_to
             inputTGLF.species[specie][varK] = var_new
         else:
             if ikey in inputTGLF.controls:
                 var_orig = inputTGLF.controls[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.controls[ikey] = var_new
             elif ikey in inputTGLF.geom:
                 var_orig = inputTGLF.geom[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.geom[ikey] = var_new
             elif ikey in inputTGLF.plasma:
                 var_orig = inputTGLF.plasma[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.plasma[ikey] = var_new
             else:
                 # If the variable in extraOptions wasn't in there, consider it a control param
@@ -4136,7 +4123,7 @@ def modifyInputToTGLF(
                     typeMsg="i",
                 )
                 var_orig = None
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.controls[ikey] = var_new
 
         print(
