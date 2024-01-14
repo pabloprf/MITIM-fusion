@@ -11,6 +11,8 @@ import pickle
 import datetime
 import torch
 import copy
+import paramiko
+import tarfile
 import numpy as np
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools,CONFIGread
@@ -124,20 +126,242 @@ class mitim_job:
 
         self.output_files = curateOutFiles(self.output_files)
 
-        runCommand(
-            comm,
-            self.input_files,
-            inputFolders=self.input_folders,
-            outputFiles=self.output_files,
-            outputFolders=self.output_folders,
-            whereOutput=self.folder_local,
-            machineSettings=self.machineSettings
-            )
+        # Relative paths TO FIX
+        self.input_files = [os.path.relpath(path, self.folder_local) for path in self.input_files]
+        self.input_folders = [os.path.relpath(path, self.folder_local) for path in self.input_folders]
 
+        # Process
+        self.full_process(comm)
+        
         # Get jobid
         with open(self.folder_local + "/sbatch.out", "r") as f:
             aux = f.readlines()
         self.jobid = aux[0].split()[-1]
+
+    # --------------------------------------------------------------------
+    # SSH executions
+    # --------------------------------------------------------------------
+
+    def full_process(self,comm, timeoutSecs=1e6):
+
+        if timeoutSecs < 1e6:
+            timeOut_txt = f", will timeout execution in {timeoutSecs}s"
+        else:
+            timeOut_txt = ""
+
+        time_init = datetime.datetime.now()
+
+        print(
+        f"\n\t------------------------ Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) ------------------------")
+        
+        self.connect(log_file=f'{self.folder_local}/paramiko.log')
+        self.create_folder()
+        self.send()
+        self.execute(comm, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
+        self.retrieve()
+        self.remove_folder()
+        self.close()
+
+        print(
+            f"\t------------------------ Finished process (took {IOtools.getTimeDifference(time_init)}) ------------------------\n"
+        )
+
+    def connect(self, *args, **kwargs):
+
+        if self.machineSettings["machine"] != 'local':
+            return self.connect_ssh(*args, **kwargs)
+        else:
+            self.jump_client = None
+            self.ssh = None
+            self.sftp = None
+
+    def connect_ssh(self, log_file = None):
+
+        jump_host = self.machineSettings["tunnel"]
+        jump_user = self.machineSettings['user']
+
+        target_host = self.machineSettings["machine"]
+        target_user = self.machineSettings['user']
+
+        print('\t 1. Connecting to remote server:')
+        print(f'\t\t{target_user}@{target_host}{f", via tunnel {jump_user}@" +jump_host  if jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port: " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
+
+        # Create a new SSH client for the target machine
+        if log_file is not None:
+            paramiko.util.log_to_file(log_file)
+        self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if jump_host is not None:
+
+            # Create an SSH client instance for the jump host
+            self.jump_client = paramiko.SSHClient()
+            self.jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # Connect to the jump host
+            self.jump_client.connect(
+                jump_host, 
+                username=jump_user, 
+                port=self.machineSettings['port'] if self.machineSettings['port'] is not None else 22,
+                key_filename=self.machineSettings['identity'], 
+                allow_agent=True
+                )
+
+            # Use the existing transport of self.jump_client for tunneling
+            transport = self.jump_client.get_transport()
+
+            # Create a channel to the target through the tunnel
+            channel = transport.open_channel("direct-tcpip", (target_host, 22), (target_host, 0))
+
+            # Connect to the target machine through the tunnel
+            self.ssh.connect(
+                target_host,
+                username=target_user,
+                disabled_algorithms={'pubkeys': ['rsa-sha2-512', 'rsa-sha2-256']}, # This was needed for iris.gat.com
+                port=22,
+                sock=channel,
+                allow_agent=True,
+                ) 
+
+        else:
+
+            self.jump_client = None
+
+            # Connect to the host
+            self.ssh.connect(target_host, username=target_user, key_filename=self.machineSettings['identity'], port=self.machineSettings['port'] if self.machineSettings['port'] is not None else 22)
+            self.sftp = self.ssh.open_sftp()
+
+        self.sftp = self.ssh.open_sftp()
+
+    def create_folder(self):
+        
+        print(f'\t 2. Creating{" remote" if self.ssh is not None else ""} folder:')
+        print(f'\t\t{self.machineSettings["folderWork"]}')
+
+        command = 'mkdir -p ' + self.machineSettings['folderWork']
+
+        output, error =  self.execute(command)
+
+    def send(self):
+
+        print(f'\t 3. Sending files{" to remove server" if self.ssh is not None else ""}:')
+        print('\t\tmitim_send.tar.gz')
+
+        # Create a tarball of the local directory
+        with tarfile.open(os.path.join(self.folder_local, 'mitim_send.tar.gz'), 'w:gz') as tar:
+            for file in os.listdir(self.folder_local):
+                tar.add(os.path.join(self.folder_local, file), arcname=file)
+
+        # Send it
+        if self.ssh is not None:
+            self.sftp.put(os.path.join(self.folder_local, 'mitim_send.tar.gz'), os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+        else:
+            os.system('cp ' + os.path.join(self.folder_local, 'mitim_send.tar.gz') + ' ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+
+        # Extract it
+        self.execute('tar -xzf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz') + ' -C ' + self.machineSettings['folderWork'])
+
+        # Remove tarballs
+        os.remove(os.path.join(self.folder_local, 'mitim_send.tar.gz'))
+        self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+
+    def execute(self,*args,**kwargs):
+
+        if self.ssh is not None:
+            return self.execute_remote(*args,**kwargs)
+        else:
+            return self.execute_local(*args,**kwargs)
+
+    def execute_remote(self, command_str, printYN=False, timeoutSecs=None):
+
+        if printYN:
+            print('\t 4. Executing (remote):')
+            print(f'\t\t{command_str}')
+
+        try:
+            stdin, stdout, stderr = self.ssh.exec_command(command_str,timeout=timeoutSecs)
+        except socket.timeout:
+            print("Command timed out")
+            return None, None
+
+        # Wait for the command to complete and read the output
+        stdin.close()
+        output = stdout.read()
+        error = stderr.read()
+
+        return output, error
+
+    def execute_local(self, command_str, printYN=False, timeoutSecs=None):
+
+        if printYN:
+            print('\t 4. Executing (local):')
+            print(f'\t\t{command_str}')
+
+        p = subprocess.Popen(
+            [command_str],
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            executable="/bin/bash",
+        )
+
+        output, error = None, None
+        if timeoutSecs is not None:
+            with timeout(timeoutSecs, proc=p):
+                output, error = p.communicate()
+                p.stdout.close()
+                p.stderr.close()
+        else:
+            output, error = p.communicate()
+            p.stdout.close()
+            p.stderr.close()
+
+        return output, error
+
+    def retrieve(self):
+
+        print(f'\t 5.  Retrieving files{" from remote server" if self.ssh is not None else ""}:')
+        print('\t\tmitim_receive.tar.gzz')
+
+        # Create a tarball of the output files and folders on the remote machine
+        self.execute('tar -czf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' -C ' + self.machineSettings['folderWork'] + ' ' + ' '.join(self.output_files + self.output_folders))
+
+        # Download the tarball
+        if self.ssh is not None:
+            self.sftp.get(os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'), os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
+        else:
+            os.system('cp ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' ' + os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
+
+        # Extract the tarball locally
+        with tarfile.open(os.path.join(self.folder_local, 'mitim_receive.tar.gz'), 'r:gz') as tar:
+            tar.extractall(path=self.folder_local)
+
+        # Remove tarballs
+        os.remove(os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
+        self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'))
+
+    def remove_folder(self):
+
+        print(f'\t 6. Removing{" remote" if self.ssh is not None else ""} folder:')
+
+        output, error = self.execute('rm -rf ' + self.machineSettings['folderWork'])
+
+    def close(self, *args, **kwargs):
+
+        if self.machineSettings["machine"] != 'local':
+            return self.close_ssh(*args, **kwargs)
+        
+    def close_ssh(self):
+
+        print('\t 7. Closing connection')
+
+        self.sftp.close()
+        self.ssh.close()
+
+        if self.jump_client is not None:
+            self.jump_client.close()
+
+    # --------------------------------------------------------------------
 
     def check(self):
         '''
@@ -650,7 +874,6 @@ def runCommand(
         f"\n\t------------------------ Running process ({currentTime}{timeOut_txt}) ------------------------"
     )
     if verbose_level in [4, 5]:
-        print(f"\t * process: {commandMain}")
         machine_info = (
             f"\t * in machine {machine}"
             if machine != "local"
@@ -1176,9 +1399,9 @@ def create_slurm_execution_files(
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
     # Evaluate Job performance
-    commandSHELL.append(
-        "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py sbatch.out"
-    )
+    # commandSHELL.append(
+    #     "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py sbatch.out"
+    # )
 
     if os.path.exists(fileSHELL):
         os.system(f"rm {fileSHELL}")
