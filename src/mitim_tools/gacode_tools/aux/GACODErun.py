@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from mitim_tools.transp_tools.tools import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
@@ -146,15 +145,6 @@ def prepareTGYRO(
 ):
     nameWork = "10001"
 
-    machineSettingsTRXPL = CONFIGread.machineSettings(
-        code="trxpl", nameScratch=f"mitim_tmp_{nameRunid}/"
-    )
-
-    machineSettingsPROF = CONFIGread.machineSettings(
-        code="profiles_gen",
-        nameScratch=f"mitim_tmp_{nameRunid}/",
-    )
-
     if not StateGenerated:
         print("\t- Running TRXPL to extract g-file and plasmastate")
         CDFtoTRXPLoutput(
@@ -165,7 +155,6 @@ def prepareTGYRO(
             BtIp_dirs=BtIp_dirs,
             nameOutputs=nameWork,
             folderWork=folderWork,
-            machineSettings=machineSettingsTRXPL,
             grids=gridsTRXPL,
             sendState=sendState,
         )
@@ -173,7 +162,6 @@ def prepareTGYRO(
     print("\t- Running PROFILES_GEN to generate input.profiles/input.gacode files")
     runPROFILES_GEN(
         folderWork,
-        machineSettings=machineSettingsPROF,
         nameFiles=nameWork,
         UsePRFmodification=fixPlasmaState,
         includeGEQ=includeGEQ,
@@ -188,7 +176,6 @@ def CDFtoTRXPLoutput(
     BtIp_dirs=[0, 0],
     nameOutputs="10001",
     folderWork="~/scratchFolder/",
-    machineSettings={"machine": "local", "folderWork": "~/"},
     grids=[151, 101, 101],
     sendState=True,
 ):
@@ -207,7 +194,6 @@ def CDFtoTRXPLoutput(
         IpDir=BtIp_dirs[1],
         avTime=avTime,
         nameFiles=nameFiles,
-        machineSettings=machineSettings,
         sendState=sendState,
         nameOutputs=nameOutputs,
         grids=grids,
@@ -228,7 +214,6 @@ def CDFtoTRXPLoutput(
             IpDir=BtIp_dirs[1],
             avTime=avTime,
             nameFiles=nameFiles,
-            machineSettings=machineSettings,
             sendState=sendState,
             nameOutputs=nameOutputs,
             grids=grids,
@@ -297,7 +282,6 @@ def runTRXPL(
     avTime=0.0,
     nameFiles="10000",
     nameOutputs="10001",
-    machineSettings={"machine": "local", "folderWork": "~/"},
     sendState=True,
     grids=[151, 101, 101],
 ):
@@ -341,20 +325,25 @@ def runTRXPL(
         ),
         typeMsg="i",
     )
-    command = f"cd {machineSettings['folderWork']} && trxpl < trxpl.in"
-    FARMINGtools.runCommand(
-        command,
-        inputFiles,
-        outputFiles=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
-        whereOutput=FolderTRXPL,
-        machineSettings=machineSettings,
-    )
 
+    trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
+    trxpl_job.define_machine(
+            'trxpl',
+            f"mitim_trxpl_{nameOutputs}/",
+        )
+    
+    command = f"cd {trxpl_job.folderExecution} && trxpl < trxpl.in"
+
+    trxpl_job.prep(
+            command,
+            input_files=inputFiles,
+            output_files=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
+        )
+    trxpl_job.run(waitYN=True)
 
 def runPROFILES_GEN(
     FolderTGLF,
     nameFiles="10001",
-    machineSettings={"machine": "local", "folderWork": "~/"},
     UsePRFmodification=False,
     includeGEQ=True,
 ):
@@ -374,8 +363,6 @@ def runPROFILES_GEN(
     if includeGEQ:
         inputFiles.append(FolderTGLF + f"{nameFiles}.geq")
 
-    command = f"cd {machineSettings['folderWork']} && bash profiles_gen.sh"
-
     # **** Write command
     txt = f"profiles_gen -i {nameFiles}.cdf"
     if includeGEQ:
@@ -387,13 +374,21 @@ def runPROFILES_GEN(
     # ******************
 
     print(f"\t\t- Proceeding to run PROFILES_GEN with: {txt}")
-    FARMINGtools.runCommand(
-        command,
-        inputFiles,
-        outputFiles=["input.gacode"],
-        whereOutput=FolderTGLF,
-        machineSettings=machineSettings,
-    )
+
+    pgen_job = FARMINGtools.mitim_job(FolderTGLF)
+    pgen_job.define_machine(
+            'profiles_gen',
+            f"mitim_profiles_gen_{nameFiles}/",
+        )
+    
+    command = f"cd {pgen_job.folderExecution} && bash profiles_gen.sh"
+
+    pgen_job.prep(
+            command,
+            input_files=inputFiles,
+            output_files=["input.gacode"],
+        )
+    pgen_job.run(waitYN=True)
 
     if (
         runWithoutEqIfFail
@@ -412,13 +407,7 @@ def runPROFILES_GEN(
         # ******************
 
         print(f"\t\t- Proceeding to run PROFILES_GEN with: {txt}")
-        FARMINGtools.runCommand(
-            command,
-            inputFiles,
-            outputFiles=["input.gacode"],
-            whereOutput=FolderTGLF,
-            machineSettings=machineSettings,
-        )
+        pgen_job.run(waitYN=True)
 
 
 def runVGEN(

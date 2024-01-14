@@ -134,9 +134,12 @@ class mitim_job:
         self.full_process(comm)
         
         # Get jobid
-        with open(self.folder_local + "/sbatch.out", "r") as f:
-            aux = f.readlines()
-        self.jobid = aux[0].split()[-1]
+        if self.launchSlurm:
+            with open(self.folder_local + "/sbatch.out", "r") as f:
+                aux = f.readlines()
+            self.jobid = aux[0].split()[-1]
+        else:
+            self.jobid = None
 
     # --------------------------------------------------------------------
     # SSH executions
@@ -155,11 +158,12 @@ class mitim_job:
         f"\n\t------------------------ Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) ------------------------")
         
         self.connect(log_file=f'{self.folder_local}/paramiko.log')
-        self.create_folder()
+        self.remove_scratch_folder()
+        self.create_scratch_folder()
         self.send()
         self.execute(comm, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
         self.retrieve()
-        self.remove_folder()
+        self.remove_scratch_folder()
         self.close()
 
         print(
@@ -233,7 +237,7 @@ class mitim_job:
 
         self.sftp = self.ssh.open_sftp()
 
-    def create_folder(self):
+    def create_scratch_folder(self):
         
         print(f'\t 2. Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f'\t\t{self.machineSettings["folderWork"]}')
@@ -340,9 +344,9 @@ class mitim_job:
         os.remove(os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
         self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'))
 
-    def remove_folder(self):
+    def remove_scratch_folder(self):
 
-        print(f'\t 6. Removing{" remote" if self.ssh is not None else ""} folder:')
+        print(f'\t 6. Removing{" remote" if self.ssh is not None else ""} folder')
 
         output, error = self.execute('rm -rf ' + self.machineSettings['folderWork'])
 
@@ -427,92 +431,6 @@ def timeout(time, proc=None):
 
 
 # -------------------------------------
-
-
-def runFunction_Complete(
-    FunctionToRun,
-    Params_in,
-    WhereIsFunction="",
-    machineSettings={"machine": "local", "folderWork": "~/", "clear": False},
-    scratchFolder="~/scratch/",
-):
-    """
-    Runs function externally.
-    Important note... this will use the function as is at the time of execution
-    """
-
-    txt = f"""
-import sys,pickle
-{WhereIsFunction}
-
-paramF 		= sys.argv[1]
-Params_in 	= pickle.load(open(paramF,'rb'))
-print(' ~~ Parameters successfully read')
-
-Params_for_function = Params_in[:-2]
-folder 				= Params_in[-2]
-
-Params_out = {FunctionToRun}(*Params_for_function)
-
-with open(folder+'/Params_out.pkl','wb') as handle:	pickle.dump(Params_out,handle,protocol=2)
-"""
-
-    IOtools.askNewFolder(scratchFolder, force=True)
-    fileExe = scratchFolder + "/exe.py"
-    with open(fileExe, "w") as f:
-        f.write(txt)
-
-    ScriptToRun = f'python3 {machineSettings["folderWork"]}/exe.py'
-
-    Params_out = runFunction(
-        ScriptToRun,
-        Params_in,
-        InputFiles=[fileExe],
-        machineSettings=machineSettings,
-        scratchFolder=scratchFolder,
-    )
-
-    return Params_out
-
-
-def runFunction(
-    ScriptToRun,
-    Params_in,
-    InputFiles=[],
-    machineSettings={"machine": "local", "folderWork": "~/", "clear": False},
-    scratchFolder="~/scratch/",
-):
-    """
-    Params_in is tuple
-    """
-
-    scratchFolder = IOtools.expandPath(scratchFolder)
-
-    if not os.path.exists(scratchFolder):
-        IOtools.askNewFolder(scratchFolder, force=True)
-
-    # First, put parameters into a pickle
-    Params_in += (machineSettings["folderWork"],)
-    pickF = "parameters_in.pkl"
-    with open(scratchFolder + "/" + pickF, "wb") as handle:
-        pickle.dump(Params_in, handle, protocol=1)
-
-    # Then, run function that takes the location of Params.pkl and creates Params_out.pkl
-    commandMain = f'{ScriptToRun} {machineSettings["folderWork"]}/{pickF}'
-    InputFiles.append(scratchFolder + "/" + pickF)
-    runCommand(
-        commandMain,
-        InputFiles,
-        outputFiles=["Params_out.pkl"],
-        whereOutput=scratchFolder,
-        machineSettings=machineSettings,
-    )
-
-    # Read output
-    Params_out = pickle.load(open(scratchFolder + "/Params_out.pkl", "rb"))
-
-    return Params_out
-
 
 def run_subprocess(commandExecute, shell=False, timeoutSecs=None, localRun=False):
     """
