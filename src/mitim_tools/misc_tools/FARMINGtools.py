@@ -564,7 +564,8 @@ def receiveCommand_remote(
             commandExecute = f"{scpCommand} -r {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."  # https://unix.stackexchange.com/questions/708517/scp-multiple-files-with-single-command
         else:
             commandExecute = f"{scpCommand} {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."
-        os.system(commandExecute)
+        #os.system(commandExecute)
+        error, result = run_subprocess(commandExecute, localRun=True)
     else:
         # Execute command to retrieve files from remote to tunnel (this ssh connections is better to do file by file)
         for file_mod_extra in outputFiles:

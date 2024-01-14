@@ -102,21 +102,25 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.FolderTRANSP, self.runid, self.tok, minutes=minutesAllocation
         )
 
+        # Get reactor to call for ACs as well
+        self.cdfs[label] = TRANSPmain.storeCDF(
+            self.FolderTRANSP, self.runid, retrieveAC=False
+        )
+
         # ------------------
         # Organize AC files
         # ------------------
 
         if retrieveAC:
-            print("Checker AC, work on it")
-            embed()
-            ICRF, TORBEAM, NUBEAM = self.determineACs()
+            ICRF, TORBEAM, NUBEAM = self.determineACs(self.cdfs[label])
             organizeACfiles(
                 self.runid, self.FolderTRANSP, ICRF=ICRF, TORBEAM=TORBEAM, NUBEAM=NUBEAM
             )
 
-        self.cdfs[label] = TRANSPmain.storeCDF(
-            self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
-        )
+            # Re-Read again
+            self.cdfs[label] = TRANSPmain.storeCDF(
+                self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
+            )
 
         return self.cdfs[label]
 

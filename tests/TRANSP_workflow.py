@@ -62,11 +62,8 @@ t.run()
 
 # Check
 c = t.checkUntilFinished(
-    label="run1", checkMin=5, grabIntermediateEachMin=20, retrieveAC=False
+    label="run1", checkMin=5, grabIntermediateEachMin=20, retrieveAC=True
 )
-
-# Write outputs of TRANSP (optional)
-c.writeOutput(time=1e4, avTime=0.001)
 
 # Plot
 t.plot(label="run1")
