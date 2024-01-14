@@ -4,7 +4,7 @@ from mitim_tools.transp_tools import CDFtools
 parser = argparse.ArgumentParser()
 parser.add_argument("files", type=str, nargs="*")
 parser.add_argument(
-    "--full", "-f", required=False, default=False, action='store_true' # Full read
+    "--full", "-f", required=False, default=True, action='store_true' # Full read
 )
 parser.add_argument(
     "--read", "-r", required=False, default=False, action='store_true' # Only read
