@@ -4,7 +4,7 @@ import socket
 import warnings
 import logging
 import getpass
-
+from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
 # PRF Note: Do not load IOtools, otherwise circularity problem
@@ -147,6 +147,9 @@ def machineSettings(
             machineSettings["machine"] = "local"
 
     # ************************************************************************************************************************
+
+    if machineSettings['machine'] == 'local':
+        machineSettings['folderWork'] = IOtools.expandPath(machineSettings['folderWork'])
 
     if forceUsername is not None:
         machineSettings["identity"] = f"~/.ssh/id_rsa_{forceUsername}"

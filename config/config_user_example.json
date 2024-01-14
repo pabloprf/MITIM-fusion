@@ -55,7 +55,6 @@
         "machine":          "mfews02.psfc.mit.edu", 
         "username":         "exampleusername",
         "tunnel":           "mferws01.psfc.mit.edu",
-        "scratch_tunnel":   "/home/exampleusername/scratch/",
         "port":             9224,
         "scratch":          "/home/exampleusername/scratch/",
         "modules":    ""
@@ -64,7 +63,6 @@
         "machine":    "irisa.gat.com", 
         "username":   "exampleusername",
         "tunnel":     "cybele.gat.com",
-        "scratch_tunnel": "/home/exampleusername/scratch/",
         "port":            2039,
         "scratch":    "/cluster-scratch/exampleusername/",
         "modules":    ""

@@ -773,7 +773,7 @@ class TGLF:
                 )
 
                 for il in self.results[label]["TGLFout"][irho].fields:
-                    if not (il in max_fields):
+                    if il not in max_fields:
                         max_fields.append(il)
 
         if fn is None:
