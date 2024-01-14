@@ -41,7 +41,7 @@ tglf.run(
 tglf.read(label="no_em")
 
 # Plot the two cases together
-tglf.plotRun(labels=["yes_em", "no_em"])
+tglf.plot(labels=["yes_em", "no_em"])
 
 '''
 ***************************************************************************
@@ -109,4 +109,4 @@ for i in[1,2,3,4,5,101]:
         restart       = False)
     tglf.read(label=f'settings{i}')
 
-tglf.plotRun(labels=[f'settings{i}' for i in range(1,6)])
+tglf.plot(labels=[f'settings{i}' for i in range(1,6)])

@@ -81,7 +81,7 @@ class TGLF:
             tglf.read(label='run1',folder='~/testTGLF/tglf1/')
 
             # Plot
-            plt.ion();	tglf.plotRun(labels=['run1'])
+            plt.ion();	tglf.plot(labels=['run1'])
 
         *********************************
         ***** Example use for scans *****
@@ -710,7 +710,7 @@ class TGLF:
                         f"{self.FoldersTGLF_WF[f'ky{ky_single0}']}/out.tglf.run{suffix0}",
                     )
 
-    def plotRun(
+    def plot(
         self,
         fn=None,
         labels=["tglf1"],
@@ -2797,7 +2797,7 @@ class TGLF:
                     for j in range(colorsC.shape[1]):
                         colorsC_tuple.append(tuple(colorsC[i, j, :]))
 
-                self.plotRun(
+                self.plot(
                     extratitle=f"{ikey} - ",
                     labels=labelsExtraPlot,
                     labels_legend=labels_legend,

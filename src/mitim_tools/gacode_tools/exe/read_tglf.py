@@ -32,4 +32,4 @@ tglf.prep_from_tglf(folders[0], f"{folders[0]}/input.tglf{suffixes[0]}", input_g
 for i,folder in enumerate(folders):
 	tglf.read(folder=f"{folder}/", suffix=suffixes[i], label=f"run{i}")
 
-tglf.plotRun(labels=[f"run{i}" for i in range(len(folders))])
+tglf.plot(labels=[f"run{i}" for i in range(len(folders))])

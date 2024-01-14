@@ -181,7 +181,7 @@ for method in methods:
 # Plot
 # ------------------------------------------------------------------------------------------
 
-tgyro.plotRun(labels=names, doNotShow=True)
+tgyro.plot(labels=names, doNotShow=True)
 
 compareSolvers(
     folderO, folders, nice_names, fig=tgyro.fn.add_figure(label="mitim COMPARISON")

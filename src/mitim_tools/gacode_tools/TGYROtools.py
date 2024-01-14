@@ -760,7 +760,7 @@ class TGYRO:
 
         return res
 
-    def plotRun(self, fn=None, labels=["tgyro1"], doNotShow=False,fn_color=None):
+    def plot(self, fn=None, labels=["tgyro1"], doNotShow=False,fn_color=None):
         if fn is None:
              
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -1176,7 +1176,7 @@ class TGYRO:
 
         for label in labels:
             if label in self.tglf:
-                self.tglf[label].plotRun(
+                self.tglf[label].plot(
                     fn=self.fn,
                     labels=[f"{self.nameRuns_default}_tglf1"],
                     fontsizeLeg=5,

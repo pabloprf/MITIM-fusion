@@ -66,4 +66,4 @@ elif scan is not None:
 else:
     tglf.run(subFolderTGLF="run1/", TGLFsettings=None, restart=restart)
     tglf.read(label="run1")
-    tglf.plotRun(labels=["run1"])
+    tglf.plot(labels=["run1"])

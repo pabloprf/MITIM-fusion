@@ -45,4 +45,4 @@ tglf.NormalizationSets["EXP"]["exp_TeFluct_error"] = 0.2
 tglf.NormalizationSets["EXP"]["exp_Qe_error"] = 0.005
 tglf.NormalizationSets["EXP"]["exp_Qi_error"] = 0.005
 
-tglf.plotRun(labels=["runBase", "runSAT0"])
+tglf.plot(labels=["runBase", "runSAT0"])

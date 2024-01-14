@@ -45,4 +45,4 @@ tgyro.run(
     TGYRO_physics_options=physics_options,
 )
 tgyro.read(label="run1")
-tgyro.plotRun(labels=["run1"])
+tgyro.plot(labels=["run1"])

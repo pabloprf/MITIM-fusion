@@ -209,7 +209,7 @@ class TRANSPgeneric:
 
     def plot(self, label="run1", time=None):
         if self.cdfs[label] is not None:
-            self.cdfs[label].plotRun(time=time)
+            self.cdfs[label].plot(time=time)
 
     def checkUntilFinished(
         self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False

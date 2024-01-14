@@ -105,7 +105,7 @@ TGLF results can be plotted together by indicating what labels to plot:
     
 .. code-block:: python
 
-    tglf.plotRun( labels = ['yes_em', 'no_em'] )
+    tglf.plot( labels = ['yes_em', 'no_em'] )
 
 As a result, a TGLF notebook with different tabs will be opened with all relevant output quantities:
 
@@ -150,7 +150,7 @@ Similarly as in the previous section, you need to run the ``prep()`` command, bu
     - **PROFILES_GEN** to generate an *input.gacode* file from the *plasmastate.cdf* and *.geq* files. This file is standard within the GACODE suite and contains all plasma information that is required to run core transport codes.
 
 
-The rest of the workflow is identical to the previous section, including ``.run()``, ``.read()`` and ``.plotRun()``.
+The rest of the workflow is identical to the previous section, including ``.run()``, ``.read()`` and ``.plot()``.
 
 
 Run TGLF from input.tglf file
@@ -170,7 +170,7 @@ If you have a input.tglf file already, you can still use this script to run it.
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
 
-The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plotRun()``.
+The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plot()``.
 
 .. tip::
 
@@ -192,7 +192,7 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         tglf = TGLFtools.TGLF()
         tglf.prep_from_tglf( folder, inputtglf_file )
         tglf.read (folder = f'{folder}/', label = 'yes_em' )
-        tglf.plotRun( labels = ['yes_em'] )
+        tglf.plot( labels = ['yes_em'] )
 
     Please note that the previous code will only work is TGLF was run using MITIM. This is because MITIM stores the results
     with a suffix that indicates the radial location (``rho``) where the run was performed.

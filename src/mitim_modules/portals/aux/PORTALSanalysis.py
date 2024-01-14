@@ -718,8 +718,8 @@ f'''
         # Plot
         if fn is not None:
             if not onlyBest:
-                tgyroO.plotRun(fn=fn, labels=[name0])
-            tgyroB.plotRun(fn=fn, labels=[name])
+                tgyroO.plot(fn=fn, labels=[name0])
+            tgyroB.plot(fn=fn, labels=[name])
 
 # ****************************************************************************
 # Helpers

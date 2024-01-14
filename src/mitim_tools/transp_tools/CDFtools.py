@@ -13124,7 +13124,7 @@ class CDFreactor:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plotRun(self, fn = None, time=None, timesAv=None, plot_analysis=False, counter=0):
+    def plot(self, fn = None, time=None, timesAv=None, plot_analysis=False, counter=0):
          
 
         if time is None:
@@ -13851,7 +13851,7 @@ class CDFreactor:
                 "TGLF-TRANSP Notebook", geometry="1500x900", vertical=True
             )
 
-            self.TGLFstd[nameF].plotRun(labels=[labelTGLF], fn=self.fn_std)
+            self.TGLFstd[nameF].plot(labels=[labelTGLF], fn=self.fn_std)
 
             fig1 = self.fn_std.add_figure(label="Comparison Flux")
             self.plotStdTRANSP(fig=fig1, tglfRun=labelTGLF, time=time)
