@@ -165,7 +165,7 @@ class TGLF:
             if self.LocationCDF is not None:
                 _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
             else:
-                self.nameRunid = "mitim"
+                self.nameRunid = "0"
             self.time, self.avTime = time, avTime
             self.rhos = np.array(rhos)
 
@@ -400,7 +400,7 @@ class TGLF:
         launchSlurm=True,
         restart=False,
         forceIfRestart=False,
-        extra_name="",
+        extra_name="exe",
         slurm_setup={
             "cores": 4,
             "minutes": 5,
@@ -507,7 +507,7 @@ class TGLF:
                 filesToRetrieve=self.ResultsFiles,
                 minutes=slurm_setup["minutes"],
                 cores_tglf=slurm_setup["cores"],
-                name=f"tglf_{self.nameRunid}_{subFolderTGLF.replace('/','_')}{extra_name}",
+                name=f"tglf_{self.nameRunid}{subFolderTGLF.replace('/','_')}{extra_name}",
                 launchSlurm=launchSlurm,
             )
         else:

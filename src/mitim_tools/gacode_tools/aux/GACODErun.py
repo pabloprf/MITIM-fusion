@@ -36,7 +36,7 @@ def runTGYRO(
 
     tgyro_job.define_machine(
             'tgyro',
-            f"mitim_tmp_{nameRunid}/",
+            f"mitim_{nameRunid}/",
             launchSlurm=launchSlurm,
             slurm_settings={
                 'minutes':minutes,
@@ -440,7 +440,7 @@ def runVGEN(
 
     vgen_job.define_machine(
             'profiles_gen',
-            f"mitim_tmp_vgen_{name_run}/",
+            f"mitim_vgen_{name_run}/",
             slurm_settings={
                 'minutes':minutes,
                 'ntasks':numcores,
@@ -865,7 +865,7 @@ def runTGLF(
 
     tglf_job.define_machine(
             'tglf',
-            f"mitim_tmp_{name}/",
+            f"mitim_{name}/",
             launchSlurm=launchSlurm,
             slurm_settings={}, # Will define them later
         )
@@ -933,7 +933,7 @@ def runTGLF(
 
     tglf_job.define_machine(
             'tglf',
-            f"mitim_tmp_{name}/",
+            f"mitim_{name}/",
             launchSlurm=launchSlurm,
             slurm_settings={
                 'minutes':minutes,

@@ -29,6 +29,40 @@ else:
 
 UseCUDAifAvailable = True
 
+'''
+New handling of jobs in remote or local clusters. Example use:
+
+    folderWork = path_to_local_folder
+
+    # Define job
+    job = FARMINGtools.mitim_job(folderWork)
+
+    # Define machine
+    job.define_machine(
+            code_name,  # must be defined in config_user.json
+            job_name,   # name you want to give to the job
+            slurm_settings={
+                'minutes':minutes,
+                'ntasks':ntasks,
+                'name':job_name,
+            },
+        )
+
+    # Prepare job (remember that you can get job.folderExecution, which is where the job will be executed remotely)
+    job.prep(
+            Command_to_execute_as_string, # e.g. f'cd {job.folderExecution} && python3 job.py' 
+            output_files=outputFiles,
+            input_files=inputFiles,
+            input_folders=inputFolders,
+            output_folders=outputFolders,
+        )
+
+    # Run job
+    job.run()
+
+'''
+
+
 class mitim_job:
     def __init__(self,folder_local):
 

@@ -759,7 +759,7 @@ def fit_pedestal_mtanh(
 
     pedestal_job.define_machine(
             'idl',
-            f"mitim_tmp_idl_{nameRunid}/",
+            f"mitim_idl_{nameRunid}/",
             launchSlurm=False,
         )
 

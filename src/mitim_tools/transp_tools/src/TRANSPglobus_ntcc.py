@@ -34,7 +34,7 @@ def tr_start(
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
     
@@ -142,7 +142,7 @@ def tr_dat(runid, tok, FolderTRANSP):
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
     
@@ -197,7 +197,7 @@ def tr_send(FolderTRANSP, runid, tok):
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
 
@@ -249,7 +249,7 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
 
@@ -300,7 +300,7 @@ def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False)
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
 
@@ -347,7 +347,7 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
 
     transp_job.define_machine(
             "ntcc",
-            f"mitim_tmp_{runid}/",
+            f"mitim_{runid}/",
             launchSlurm=False,
         )
 
