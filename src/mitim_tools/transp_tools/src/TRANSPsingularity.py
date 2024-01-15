@@ -393,8 +393,8 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         os.system(f"rm {folderWork}/{runid}tr_dat.log")
 
         # Run first the prep (with tr_dat)
-        os.system(f"rm {folderWork}/tmp_inputs/bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim.sh")
+        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
 
         transp_job.prep(
@@ -412,8 +412,8 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
         #
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        os.system(f"rm {folderWork}/tmp_inputs/bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim.sh")
+        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
     # ---------------
     # Execute Full

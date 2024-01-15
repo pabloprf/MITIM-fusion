@@ -33,4 +33,4 @@ alias runmitim="python3 $MITIM_PATH/mitim_opt/scenarios_tools/routines/runMITIM_
 
 # Others
 alias compare_nml="python3 $MITIM_PATH/src/mitim_tools/transp_tools/routines/compareNML.py $1"
-alias eff_job="python3 $MITIM_PATH/src/mitim_tools/misc_tools/PARALLELtools.py $1" # Give sbatch.out or slurm_output.dat
+alias eff_job="python3 $MITIM_PATH/src/mitim_tools/misc_tools/PARALLELtools.py $1" # Give mitim.out or slurm_output.dat

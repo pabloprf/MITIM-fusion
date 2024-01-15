@@ -135,7 +135,7 @@ class mitim_job:
         
         # Get jobid
         if self.launchSlurm:
-            with open(self.folder_local + "/sbatch.out", "r") as f:
+            with open(self.folder_local + "/mitim.out", "r") as f:
                 aux = f.readlines()
             self.jobid = aux[0].split()[-1]
         else:
@@ -164,8 +164,14 @@ class mitim_job:
         self.send()
         output, error = self.execute(comm, waitYN=waitYN, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
         self.retrieve()
-        if waitYN and removeScratchFolders:
-            self.remove_scratch_folder()
+        received = self.check_all_received()
+
+        if received:
+            if waitYN and removeScratchFolders:
+                self.remove_scratch_folder()
+        else:
+            print("\t* Not all expected files received, not removing scratch folder",typeMsg='q')
+        
         self.close()
 
         print(
@@ -308,7 +314,7 @@ class mitim_job:
         else:
             return self.execute_local(*args,**kwargs)
 
-    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, waitYN=True):
+    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, waitYN=True,**kwargs):
 
         if printYN:
             print('\t* Executing (remote):',typeMsg="i")
@@ -329,7 +335,7 @@ class mitim_job:
 
         return output, error
 
-    def execute_local(self, command_str, printYN=False, timeoutSecs=None):
+    def execute_local(self, command_str, printYN=False, timeoutSecs=None,**kwargs):
 
         if printYN:
             print('\t* Executing (local):')
@@ -428,6 +434,21 @@ class mitim_job:
             self.jobid_found = self.infoSLURM["JOBID"]
         else:
             self.jobid_found = None
+
+    def check_all_received(self):
+
+        received = True
+        for file in self.output_files:
+            if not os.path.exists(os.path.join(self.folder_local, file)):
+                print(f"\t\t- File {file} not received",typeMsg='w')
+                received = False
+        for folder in self.output_folders:
+            if not os.path.exists(os.path.join(self.folder_local, folder)):
+                print(f"\t\t- Folder {folder} not received",typeMsg='w')
+                received = False
+
+        return received
+
 class TqdmUpTo(tqdm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -627,9 +648,9 @@ def create_slurm_execution_files(
         command = [command]
 
     folderExecution = IOtools.expandPath(folder_remote)
-    fileSBTACH = f"{folder_local}/bash.src"
-    fileSHELL = f"{folder_local}/mitim.sh"
-    fileSBTACH_remote = f"{folder_remote}/bash.src"
+    fileSBTACH = f"{folder_local}/mitim_bash.src"
+    fileSHELL = f"{folder_local}/mitim_shell_executor.sh"
+    fileSBTACH_remote = f"{folder_remote}/mitim_bash.src"
 
     minutes = int(minutes)
 
@@ -643,7 +664,7 @@ def create_slurm_execution_files(
 
     """
 	********************************************************************************************
-	Write bash.src file to execute
+	Write mitim_bash.src file to execute
 	********************************************************************************************
 		- Contains sourcing of mitim.bashrc, so that it's done at node level
 	"""
@@ -731,7 +752,7 @@ def create_slurm_execution_files(
 
     """
 	********************************************************************************************
-	Write mitim.sh file that handles the execution of the bash.src with pre and post commands
+	Write mitim_shell_executor.sh file that handles the execution of the mitim_bash.src with pre and post commands
 	********************************************************************************************
 		- Contains sourcing of mitim.bashrc, so that it's done at machine level
 	"""
@@ -746,7 +767,7 @@ def create_slurm_execution_files(
         commandSHELL.append(shellPostCommands[i])
     # Evaluate Job performance
     # commandSHELL.append(
-    #     "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py sbatch.out"
+    #     "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py mitim.out"
     # )
 
     if os.path.exists(fileSHELL):
@@ -760,15 +781,15 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folderExecution} && bash mitim.sh > sbatch.out"
+    comm = f"cd {folderExecution} && bash mitim_shell_executor.sh > mitim.out"
 
     return comm, fileSBTACH, fileSHELL
 
 def curateOutFiles(outputFiles):
     # Avoid repetitions, otherwise, e.g., they will fail to rename
 
-    if "sbatch.out" not in outputFiles:
-        outputFiles.append("sbatch.out")
+    if "mitim.out" not in outputFiles:
+        outputFiles.append("mitim.out")
 
     outputFiles_new = []
     for file in outputFiles:
@@ -780,7 +801,7 @@ def curateOutFiles(outputFiles):
 
 def printEfficiencySLURM(out_file):
     """
-    It reads jobid from sbatch.out or slurm_output.dat
+    It reads jobid from mitim.out or slurm_output.dat
     """
 
     with open(out_file, "r") as f:

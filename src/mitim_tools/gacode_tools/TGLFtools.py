@@ -412,7 +412,7 @@ class TGLF:
 
         ResultsFiles_new = []
         for i in self.ResultsFiles:
-            if "sbatch.out" not in i:
+            if "mitim.out" not in i:
                 ResultsFiles_new.append(i)
         self.ResultsFiles = ResultsFiles_new
 
