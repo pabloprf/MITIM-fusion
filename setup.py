@@ -32,6 +32,7 @@ setup(
         "multiprocessing_on_dill",
         "deap",
         "paramiko",
+        "tqdm",
         "botorch==0.9.4",  # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.1.1
         "scikit-image",  # Stricly not for MITIM, but good to have for pygacode
     ],

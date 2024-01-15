@@ -2,7 +2,7 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
-import dis
+from tqdm import tqdm
 import os
 import sys
 import subprocess
@@ -162,7 +162,7 @@ class mitim_job:
             self.remove_scratch_folder()
         self.create_scratch_folder()
         self.send()
-        output, error = self.execute(comm, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
+        output, error = self.execute(comm, waitYN=waitYN, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
         self.retrieve()
         if waitYN and removeScratchFolders:
             self.remove_scratch_folder()
@@ -188,7 +188,7 @@ class mitim_job:
         self.target_user = self.machineSettings['user']
 
         print('\t* Connecting to remote server:')
-        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port: " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
+        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
 
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
@@ -273,23 +273,31 @@ class mitim_job:
     def send(self):
 
         print(f'\t* Sending files{" to remove server" if self.ssh is not None else ""}:')
-        print('\t\tmitim_send.tar.gz')
 
         # Create a tarball of the local directory
+        print('\t\t- Tarballing')
         with tarfile.open(os.path.join(self.folder_local, 'mitim_send.tar.gz'), 'w:gz') as tar:
             for file in os.listdir(self.folder_local):
                 tar.add(os.path.join(self.folder_local, file), arcname=file)
 
         # Send it
+        print('\t\t- Sending')
         if self.ssh is not None:
-            self.sftp.put(os.path.join(self.folder_local, 'mitim_send.tar.gz'), os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+            with TqdmUpTo(unit='B', unit_scale=True, miniters=1,
+                        desc='mitim_send.tar.gz',bar_format=' '*20+'{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]') as t:
+                self.sftp.put(
+                    os.path.join(self.folder_local, 'mitim_send.tar.gz'),
+                    os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'),
+                    callback=lambda sent, total_size: t.update_to(sent, total_size))
         else:
             os.system('cp ' + os.path.join(self.folder_local, 'mitim_send.tar.gz') + ' ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
 
         # Extract it
+        print('\t\t- Extracting')
         self.execute('tar -xzf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz') + ' -C ' + self.machineSettings['folderWork'])
 
         # Remove tarballs
+        print('\t\t- Removing tarballs')
         os.remove(os.path.join(self.folder_local, 'mitim_send.tar.gz'))
         self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
 
@@ -300,22 +308,24 @@ class mitim_job:
         else:
             return self.execute_local(*args,**kwargs)
 
-    def execute_remote(self, command_str, printYN=False, timeoutSecs=None):
+    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, waitYN=True):
 
         if printYN:
-            print('\t* Executing (remote):')
+            print('\t* Executing (remote):',typeMsg="i")
             print(f'\t\t{command_str}')
+
+        output = None
+        error = None
 
         try:
             stdin, stdout, stderr = self.ssh.exec_command(command_str,timeout=timeoutSecs)
+            # Wait for the command to complete and read the output
+            if waitYN:
+                stdin.close()
+                output = stdout.read()
+                error = stderr.read()
         except socket.timeout:
             print("Command timed out")
-            return None, None
-
-        # Wait for the command to complete and read the output
-        stdin.close()
-        output = stdout.read()
-        error = stderr.read()
 
         return output, error
 
@@ -332,22 +342,30 @@ class mitim_job:
     def retrieve(self):
 
         print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
-        print('\t\tmitim_receive.tar.gzz')
-
+        
         # Create a tarball of the output files and folders on the remote machine
+        print('\t\t- Tarballing')
         self.execute('tar -czf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' -C ' + self.machineSettings['folderWork'] + ' ' + ' '.join(self.output_files + self.output_folders))
 
         # Download the tarball
+        print('\t\t- Downloading')
         if self.ssh is not None:
-            self.sftp.get(os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'), os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
+            with TqdmUpTo(unit='B', unit_scale=True, miniters=1,
+                        desc='mitim_receive.tar.gz',bar_format=' '*20+'{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]') as t:
+                self.sftp.get(
+                    os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'),
+                    os.path.join(self.folder_local, 'mitim_receive.tar.gz'),
+                    callback=lambda sent, total_size: t.update_to(sent, total_size))
         else:
             os.system('cp ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' ' + os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
 
         # Extract the tarball locally
+        print('\t\t- Extracting')
         with tarfile.open(os.path.join(self.folder_local, 'mitim_receive.tar.gz'), 'r:gz') as tar:
             tar.extractall(path=self.folder_local)
 
         # Remove tarballs
+        print('\t\t- Removing tarballs')
         os.remove(os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
         self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'))
 
@@ -410,6 +428,16 @@ class mitim_job:
             self.jobid_found = self.infoSLURM["JOBID"]
         else:
             self.jobid_found = None
+class TqdmUpTo(tqdm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.initialized = False
+        
+    def update_to(self, sent, total_size):
+        if not self.initialized:
+            self.total = total_size
+            self.initialized = True
+        self.update(sent - self.n)  # will also set self.n = sent
 
 """ 
 	Timeout function
