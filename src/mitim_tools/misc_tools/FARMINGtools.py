@@ -77,14 +77,11 @@ class mitim_job:
             launchSlurm=True,
             slurm_settings={},
             ):
+        
+        # Separated in case I need to quickly grab the machine settings
+        self.define_machine_quick(code,nameScratch,slurm_settings=slurm_settings)
 
         self.launchSlurm = launchSlurm
-        self.slurm_settings = slurm_settings
-
-        self.machineSettings = CONFIGread.machineSettings(
-            code=code,
-            nameScratch=nameScratch,
-            )
 
         if self.launchSlurm and (len(self.machineSettings['slurm']) == 0):
             self.launchSlurm = False
@@ -93,15 +90,37 @@ class mitim_job:
                 typeMsg="w",
             )
 
-        # Defaults for slurm (give them even in LaunchSlurm=False)
-        self.slurm_settings.setdefault('name','mitim_job')
-        self.slurm_settings.setdefault('job_array',None)
-        self.slurm_settings.setdefault('nodes',None)
-        self.slurm_settings.setdefault('cpuspertask',1)
-        self.slurm_settings.setdefault('minutes',10)
-        self.slurm_settings.setdefault('ntasks',1)
-        self.slurm_settings.setdefault('nodes',1)
+        # Print Slurm info
+        if self.launchSlurm:
+            print('\t- Slurm Settings:')
+            print('\t\t- Job settings:')
+            for key in self.slurm_settings:
+                if self.slurm_settings[key] is not None:
+                    print(f'\t\t\t- {key}: {self.slurm_settings[key]}')
+            print('\t\t- Partition settings:')
+            print(f'\t\t\t- machine: {self.machineSettings["machine"]}')
+            print(f'\t\t\t- username: {self.machineSettings["user"]}')
+            for key in self.machineSettings['slurm']:
+                print(f'\t\t\t- {key}: {self.machineSettings["slurm"][key]}')
 
+    def define_machine_quick(self,code,nameScratch,slurm_settings={}):
+        
+        self.slurm_settings = slurm_settings
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Defaults for slurm
+        self.slurm_settings.setdefault('name','mitim_job')
+        self.slurm_settings.setdefault('minutes',10)
+        self.slurm_settings.setdefault('cpuspertask',1)
+        self.slurm_settings.setdefault('ntasks',1)
+        self.slurm_settings.setdefault('nodes',None)
+        self.slurm_settings.setdefault('job_array',None)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self.machineSettings = CONFIGread.machineSettings(
+            code=code,
+            nameScratch=nameScratch,
+            )
         self.folderExecution = self.machineSettings["folderWork"]
 
     def prep(
@@ -206,12 +225,13 @@ class mitim_job:
 
         output, error = self.execute(comm, make_relative=True,wait_for_all_commands=wait_for_all_commands, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
         
-        for tries in range(2):
+        for _ in range(2):
             self.retrieve()
             received = self.check_all_received()
             if received: 
+                print('\t\t- All correct')
                 break
-            print('\t* Not all expected files received, trying again',typeMsg='w')
+            print('\t\t- Not all received, trying again',typeMsg='w')
             time.sleep(10)
 
         if received:
@@ -220,7 +240,7 @@ class mitim_job:
         else:
             cont = print("\t* Not all expected files received, not removing scratch folder",typeMsg='q')
             if not cont:
-                print('[mitim] stopped with embed(), you can look at output and error',typeMsg='w')
+                print('[mitim] Stopped with embed(), you can look at output and error',typeMsg='w')
                 embed()
 
         self.close()
@@ -245,7 +265,7 @@ class mitim_job:
         self.target_user = self.machineSettings['user']
 
         print('\t* Connecting to remote server:')
-        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
+        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}')
 
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
@@ -334,7 +354,7 @@ class mitim_job:
         # Create a tarball of the local directory
         print('\t\t- Tarballing')
         with tarfile.open(os.path.join(self.folder_local, 'mitim_send.tar.gz'), 'w:gz') as tar:
-            for file in os.listdir(self.folder_local):
+            for file in self.input_files + self.input_folders:
                 tar.add(os.path.join(self.folder_local, file), arcname=file)
 
         # Send it
@@ -494,6 +514,7 @@ class mitim_job:
 
     def check_all_received(self):
 
+        print('\t* Checking if all expected files and folders were received')
         received = True
         for file in self.output_files:
             if not os.path.exists(os.path.join(self.folder_local, file)):

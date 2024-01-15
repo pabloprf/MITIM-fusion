@@ -1,10 +1,8 @@
 import os
-from mitim_tools.misc_tools import IOtools, FARMINGtools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
-
 
 def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
     nml_file = f"{FolderTRANSP}/{runid}TR.DAT"

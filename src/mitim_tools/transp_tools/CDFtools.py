@@ -32,7 +32,6 @@ from IPython import embed
 
 verbose_level = read_verbose_level()
 
-
 class CDFreactor:
     def __init__(
         self,
@@ -6887,10 +6886,11 @@ class CDFreactor:
         # Detail
         if self.calcualtePorcelli:
             self.plotPorcelliInternals(ax=ax1s)
+            GRAPHICStools.addLegendApart(ax1s, ratio=0.7)
         ax1s.set_title("Porcelli Parameters")
         ax1s.set_xlabel("Time (s)")
         GRAPHICStools.addDenseAxis(ax1s)
-        GRAPHICStools.addLegendApart(ax1s, ratio=0.7)
+        
 
         ax2s.plot(self.t, self.porcelli_s1, c="b", label="$s_1$")
         ax2s.legend(loc="upper left", prop={"size": self.mainLegendSize})
@@ -8143,7 +8143,7 @@ class CDFreactor:
             # ax1.set_ylim([0,20])
             # ax1.set_ylabel('Error (%)')
 
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+            ax.legend(loc="best", prop={"size": self.mainLegendSize})
         ax.set_title("ICRF")
         ax.set_ylabel("Power Antenna ($MW$)")
         ax.set_ylim(bottom=0)
@@ -8154,7 +8154,7 @@ class CDFreactor:
         if np.sum(self.PichT) > 1.0e-5:
             for i in range(len(self.FichT_ant)):
                 ax.plot(self.t, self.FichT_ant[i], lw=2, label=f"{i + 1}")
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+            ax.legend(loc="best", prop={"size": self.mainLegendSize})
         ax.set_ylabel("Frequency Antenna ($MHz$)")
         ax.set_xlabel("Time (s)")
         ax.set_ylim(bottom=0)

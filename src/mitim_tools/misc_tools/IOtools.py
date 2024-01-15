@@ -28,11 +28,6 @@ except ImportError:
 import urllib.request as urlREQ  # urllibR
 import urllib.error as urlERR  # urllibE
 
-# Running here globally because most mitim use at some point IOtools
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-verbose_level = read_verbose_level()
-
 class speeder(object):
     def __init__(self, file):
         self.file = file
@@ -654,6 +649,8 @@ def findFileByExtension(
             )
             fileReturn = None
     else:
+        from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+        verbose_level = read_verbose_level()        
         printMsg(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
             verbose=verbose_level,

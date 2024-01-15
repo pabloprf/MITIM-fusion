@@ -1,4 +1,5 @@
 import os
+import copy
 import datetime
 import time
 import numpy as np
@@ -9,7 +10,6 @@ from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.tools import NMLtools
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
 
 class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
@@ -81,7 +81,6 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self,
         label="run1",
         retrieveAC=False,
-        fullRequest=True,
         minutesAllocation=60,
         **kwargs,
     ):
@@ -96,6 +95,14 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self.cdfs[label] = TRANSPmain.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
+
+        dictInfo, _, _ = self.check()
+
+        # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
+        if dictInfo["info"]["status"] == "finished":
+            self.statusStop = -2
+        else:
+            self.statusStop = 0
 
     def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kwargs):
         runSINGULARITY_finish(
@@ -153,7 +160,6 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         convCriteria,
         minWait=60,
         timeStartPrediction=0,
-        FolderOutputs=None,
         phasetxt="",
         automaticProcess=False,
         retrieveAC=False,
@@ -162,33 +168,32 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         # Launch run
         self.run(restartFromPrevious=False)
 
-        statusStop = -1
+        self.statusStop = -1
 
         # If run is not found on the grid (-1: not found, 0: running, 1: stopped, -2: success)
-        while statusStop == -1:
+        while self.statusStop == -1:
+
             # ~~~~~ Check status of run before sending look (to avoid problem with OUTTIMES)
             if retrieveAC:
-                dictInfo, _ = self.check()
+                dictInfo, _, _ = self.check()
                 infoCheck = dictInfo["info"]["status"]
                 while infoCheck != "finished":
                     mins = 10
                     currentTime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     print(
-                        " >>>>>>>>>>> {0}, run not finished yet, but wait for AC generation (wait {1} min for next check)".format(
-                            currentTime, mins
-                        )
+                        f" >>>>>>>>>>> {currentTime}, run not finished yet, but wait for AC generation (wait {mins} min for next check)"
                     )
                     time.sleep(60.0 * mins)
-                    dictInfo, _ = self.check()
+                    dictInfo, _, _ = self.check()
                     infoCheck = dictInfo["info"]["status"]
 
-                statusStop = -2
+                self.statusStop = -2
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~ Standard convergence test
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             else:
-                ConvergedRun, statusStop = self.convergence(
+                ConvergedRun, self.statusStop = self.convergence(
                     convCriteria,
                     minWait=minWait,
                     timeStartPrediction=timeStartPrediction,
@@ -208,27 +213,23 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         # ---------------------------------------------------------------------------
 
         # If run has stopped
-        if statusStop == 1:
+        if self.statusStop == 1:
             print(f" >>>>>>>>>>> Run {self.runid} has STOPPED")
             HasItFailed = True
 
         # If run has finished running
-        elif statusStop == -2:
+        elif self.statusStop == -2:
             print(
-                " >>>>>>>>>>> Run {0} has finished in the grid, assume converged".format(
-                    self.runid
-                )
+                f" >>>>>>>>>>> Run {self.runid} has finished in the grid, assume converged"
             )
             HasItFailed = False
 
             self.fetch(label="run1", retrieveAC=retrieveAC)
 
         # If run is for some reason stuck and does not admit looks, repeat process
-        elif statusStop == 10:
+        elif self.statusStop == 10:
             print(
-                " >>>>>>>>>>> Run {0} does not admit looks, removing and running loop again".format(
-                    self.runid
-                )
+                f" >>>>>>>>>>> Run {self.runid} does not admit looks, removing and running loop again"
             )
             self.delete(howManyCancel=2, MinWaitDeletion=2)
 
@@ -279,12 +280,15 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
-    if "pool001" in transp_job.folderExecution:
+    start_folder =transp_job.folderExecution.split('/')[1] # e.g. pool001, nobackup1
+
+    if start_folder not in ['home','Users']:
         txt_bind = (
-            "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
+            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
         )
     else:
         txt_bind = ""
+
 
     txt = ""
     if nparallel > 1:
@@ -319,13 +323,7 @@ def runSINGULARITY(
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write(
-                "{0}/results/\n{0}/data/\n{0}/tmp/\ny\ny\n{1}\n{2}\n{3}\n{4}\n0\n0".format(
-                    transp_job.folderExecution,
-                    nparallel,
-                    mpis["trmpi"],
-                    mpis["toricmpi"],
-                    mpis["ptrmpi"],
-                )
+                f"{transp_job.folderExecution}/results/\n{transp_job.folderExecution}/data/\n{transp_job.folderExecution}/tmp/\ny\ny\n{nparallel}\n{mpis['trmpi']}\n{mpis['toricmpi']}\n{mpis['ptrmpi']}\n0\n0"
             )
 
         # Direct env (dirty fix until Jai fixes the env app)
@@ -405,7 +403,13 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
                 shellPreCommands=shellPreCommands,
             )
 
+        #tr_dat doesn't need slurm
+        lS = copy.deepcopy(transp_job.launchSlurm)
+        transp_job.launchSlurm = False
+
         transp_job.run()
+
+        transp_job.launchSlurm = lS # Back to original
 
         # Interpret
         NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
@@ -462,10 +466,9 @@ def interpretRun(infoSLURM, log_file):
             info["info"]["status"] = "finished"
         else:
             print(
-                "Not identified status... assume for the moment that it has finished?",
+                "Not identified status... assume for the moment that it has finished",
                 typeMsg="w",
             )
-            embed()
             pringLogTail(log_file)
             status = 1
             info["info"]["status"] = "finished"
@@ -497,20 +500,18 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
     transp_job.define_machine(
             'transp',
             job_name,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':1,
-                'name':f"transp_{tok}_{runid}_finish",
-            },
+            launchSlurm=False,
         )
 
     # ---------------
     # Execution command
     # ---------------
 
-    if "pool001" in transp_job.machineSettings["folderWork"]:
+    start_folder = transp_job.machineSettings["folderWork"].split('/')[1] # e.g. pool001, nobackup1
+
+    if start_folder not in ['home','Users']:
         txt_bind = (
-            "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
+            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
         )
     else:
         txt_bind = ""
@@ -545,27 +546,24 @@ def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
     transp_job.define_machine(
             'transp',
             job_name,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':1,
-                'name':f"transp_{tok}_{runid}_look",
-            },
+            launchSlurm=False,
         )
 
     # ---------------
     # Execution command
     # ---------------
 
-    if "pool001" in transp_job.machineSettings["folderWork"]:
+    start_folder = transp_job.machineSettings["folderWork"].split('/')[1] # e.g. pool001, nobackup1
+
+    if start_folder not in ['home','Users']:
         txt_bind = (
-            "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
+            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
         )
     else:
         txt_bind = ""
-
-    # I have to do the look in another folder (I think it fails if I simply grab, so I copy things)
+        
     TRANSPcommand = f"""
-cd {transp_job.machineSettings['folderWork']} && cp {transp_job.folderExecution}/*PLN {transp_job.folderExecution}/transp-bashrc {transp_job.machineSettings['folderWork']}/. && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+cd {transp_job.folderExecution} && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -594,22 +592,22 @@ def organizeACfiles(
     if NUBEAM:
         for i in range(nummax):
             name = runid + f".DATA{i + 1}"
-            os.system("mv {0}/{1} {0}/NUBEAM_folder".format(FolderTRANSP, name))
+            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
             name = runid + f"_birth.cdf{i + 1}"
-            os.system("mv {0}/{1} {0}/NUBEAM_folder".format(FolderTRANSP, name))
+            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
 
     if ICRF:
         for i in range(nummax):
             name = runid + f"_ICRF_TAR.GZ{i + 1}"
-            os.system("mv {0}/{1} {0}/TORIC_folder".format(FolderTRANSP, name))
+            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORIC_folder")
 
             name = runid + f"_FI_TAR.GZ{i + 1}"
-            os.system("mv {0}/{1} {0}/FI_folder".format(FolderTRANSP, name))
+            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/FI_folder")
 
         name = runid + "FPPRF.DATA"
-        os.system("mv {0}/{1} {0}/NUBEAM_folder".format(FolderTRANSP, name))
+        os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
 
     if TORBEAM:
         for i in range(nummax):
             name = runid + f"_TOR_TAR.GZ{i + 1}"
-            os.system("mv {0}/{1} {0}/TORBEAM_folder".format(FolderTRANSP, name))
+            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORBEAM_folder")

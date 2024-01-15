@@ -267,7 +267,7 @@ def executeCGYRO(
 
     cgyro_job.prep(
             CGYROcommand,
-            input_files=i[fileProfiles, fileCGYRO],
+            input_files=[fileProfiles, fileCGYRO],
             output_files=outputFiles,
             shellPreCommands=shellPreCommands,
         )
@@ -861,11 +861,9 @@ def runTGLF(
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
-    tglf_job.define_machine(
+    tglf_job.define_machine_quick(
             'tglf',
             f"mitim_{name}/",
-            launchSlurm=launchSlurm,
-            slurm_settings={}, # Will define them later
         )
 
     # ---------------------------------------------

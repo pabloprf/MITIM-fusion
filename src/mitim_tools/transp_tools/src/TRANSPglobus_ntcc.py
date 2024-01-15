@@ -278,7 +278,7 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     transp_job.prep(
             Command,
             input_files=inputFiles,
-            input_folders=inputFolders,
+            output_files=outputFiles,
         )
     transp_job.run( timeoutSecs=waitseconds)
 
