@@ -180,7 +180,7 @@ def tr_dat(runid, tok, FolderTRANSP):
     NMLtools.interpret_trdat(f"{FolderTRANSP}/outputtrdat.txt")
 
 
-def tr_send(FolderTRANSP, runid, tok, waitseconds=1 * 60):
+def tr_send(FolderTRANSP, runid, tok):
     """
     Kill look command after waitseconds
     """
@@ -231,7 +231,7 @@ def tr_send(FolderTRANSP, runid, tok, waitseconds=1 * 60):
             input_files=inputFiles,
         )
 
-    transp_job.run(waitYN=True, timeoutSecs=waitseconds)
+    transp_job.run(waitYN=False) # A send command gets out as soon as it's sent
 
 def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     """
@@ -378,13 +378,11 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
                 input_files=inputFiles,
             )
 
-        transp_job.run(waitYN=True, timeoutSecs=5)
+        transp_job.run(waitYN=False)
 
 
     # Leave some more time for deletion
     print(
-        ">> Cancel request has been submitted, but waiting now {0}min to allow for deletion to happen properly".format(
-            MinWaitDeletion
-        )
+        f">> Cancel request has been submitted, but waiting now {MinWaitDeletion}min to allow for deletion to happen properly"
     )
     time.sleep(MinWaitDeletion * 60.0)
