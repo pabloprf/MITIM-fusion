@@ -331,21 +331,21 @@ def runGetFBM(
         print("\t\t\t- [First running AC corrector]")
 
         fbm_job.prep(
-                f"cd {fbm_job.folderExecution} && {commandOrder} && mv {fileonly} {fileonly}_converted",
+                f"{commandOrder} && mv {fileonly} {fileonly}_converted",
                 output_files=[f"{fileonly}_converted"],
                 input_files=[file],
             )
-        fbm_job.run(waitYN=True,timeoutSecs=MaxSeconds)
+        fbm_job.run(timeoutSecs=MaxSeconds)
 
         os.system(f"mv {file} {file}_original")
         os.system(f"mv {file}_converted {file}")
 
     fbm_job.prep(
-            f"cd {fbm_job.folderExecution} && {commandMain}",
+            commandMain,
             output_files=[finFile2],
             input_files=[file],
         )
-    fbm_job.run(waitYN=True,timeoutSecs=MaxSeconds)
+    fbm_job.run(timeoutSecs=MaxSeconds)
 
 
 class birthCDF:

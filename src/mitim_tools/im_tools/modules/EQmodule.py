@@ -280,12 +280,12 @@ def generateMRY(
         )
     
     scruncher_job.prep(
-             f"cd {scruncher_job.folderExecution} && scruncher < scrunch_in",
+            "scruncher < scrunch_in",
             output_files=["M123456.MRY"],
             input_files=filesInput,
         )
 
-    scruncher_job.run(waitYN=True)
+    scruncher_job.run()
 
     fileUF = f"{FolderMRY}/PRF{nameBaseShot}.MRY"
     os.system(f"cp {FolderEquilibrium}/M123456.MRY {fileUF}")

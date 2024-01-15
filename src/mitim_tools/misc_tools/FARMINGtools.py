@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import time
 import sys
 import subprocess
 import socket
@@ -126,11 +127,10 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self,waitYN=True,removeScratchFolders=True, timeoutSecs=1e6):
+    def run(self,waitYN=True,timeoutSecs=1e6,removeScratchFolders=True):
 
         if not waitYN:
-            # If I'm not waiting, make sure i don't clear the folder
-            self.machineSettings["clear"] = False
+            removeScratchFolders = False
 
         # ****** Prepare SLURM job *****************************
         comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
@@ -149,7 +149,7 @@ class mitim_job:
             slurm=self.machineSettings["slurm"],
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
-            waitYN=waitYN,
+            wait_until_sbatch=waitYN,
         )
         # ******************************************************
 
@@ -165,7 +165,7 @@ class mitim_job:
         self.input_folders = [os.path.relpath(path, self.folder_local) for path in self.input_folders]
 
         # Process
-        self.full_process(comm,waitYN=waitYN,removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs)
+        self.full_process(comm,removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs)
         
         # Get jobid
         if self.launchSlurm:
@@ -179,7 +179,14 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self,comm, timeoutSecs=1e6, waitYN=True, removeScratchFolders=True):
+    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True):
+
+        '''
+        My philosophy is to always wait for the execution of all commands. If I need
+        to not wait, that's handled by a slurm submission without --wait, but I still
+        want to execute that.
+        '''
+        wait_for_all_commands = True
 
         if timeoutSecs < 1e6:
             timeOut_txt = f", will timeout execution in {timeoutSecs}s"
@@ -196,16 +203,26 @@ class mitim_job:
             self.remove_scratch_folder()
         self.create_scratch_folder()
         self.send()
-        output, error = self.execute(comm, waitYN=waitYN, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
-        self.retrieve()
-        received = self.check_all_received()
+
+        output, error = self.execute(comm, make_relative=True,wait_for_all_commands=wait_for_all_commands, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
+        
+        for tries in range(2):
+            self.retrieve()
+            received = self.check_all_received()
+            if received: 
+                break
+            print('\t* Not all expected files received, trying again',typeMsg='w')
+            time.sleep(10)
 
         if received:
-            if waitYN and removeScratchFolders:
+            if wait_for_all_commands and removeScratchFolders:
                 self.remove_scratch_folder()
         else:
-            print("\t* Not all expected files received, not removing scratch folder",typeMsg='q')
-        
+            cont = print("\t* Not all expected files received, not removing scratch folder",typeMsg='q')
+            if not cont:
+                print('[mitim] stopped with embed(), you can look at output and error',typeMsg='w')
+                embed()
+
         self.close()
 
         print(
@@ -333,7 +350,7 @@ class mitim_job:
             os.system('cp ' + os.path.join(self.folder_local, 'mitim_send.tar.gz') + ' ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
 
         # Extract it
-        print('\t\t- Extracting')
+        print('\t\t- Extracting tarball')
         self.execute('tar -xzf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz') + ' -C ' + self.machineSettings['folderWork'])
 
         # Remove tarballs
@@ -341,14 +358,20 @@ class mitim_job:
         os.remove(os.path.join(self.folder_local, 'mitim_send.tar.gz'))
         self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
 
-    def execute(self,*args,**kwargs):
+    def execute(self,command_str,make_relative=False,**kwargs):
+
+        # Always start by going to the folder
+        if make_relative:
+            command_str_mod = f'cd {self.folderExecution} && {command_str}'
+        else:
+            command_str_mod = command_str
 
         if self.ssh is not None:
-            return self.execute_remote(*args,**kwargs)
+            return self.execute_remote(command_str_mod,**kwargs)
         else:
-            return self.execute_local(*args,**kwargs)
+            return self.execute_local(command_str_mod,**kwargs)
 
-    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, waitYN=True,**kwargs):
+    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, wait_for_all_commands=True,**kwargs):
 
         if printYN:
             print('\t* Executing (remote):',typeMsg="i")
@@ -360,7 +383,7 @@ class mitim_job:
         try:
             stdin, stdout, stderr = self.ssh.exec_command(command_str,timeout=timeoutSecs)
             # Wait for the command to complete and read the output
-            if waitYN:
+            if wait_for_all_commands:
                 stdin.close()
                 output = stdout.read()
                 error = stderr.read()
@@ -400,7 +423,7 @@ class mitim_job:
             os.system('cp ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' ' + os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
 
         # Extract the tarball locally
-        print('\t\t- Extracting')
+        print('\t\t- Extracting tarball')
         with tarfile.open(os.path.join(self.folder_local, 'mitim_receive.tar.gz'), 'r:gz') as tar:
             tar.extractall(path=self.folder_local)
 
@@ -674,7 +697,7 @@ def create_slurm_execution_files(
     job_array=None,
     nodes=None,
     label_log_files="",
-    waitYN=True,
+    wait_until_sbatch=True,
 ):
     if folder_local is None:
         folder_local = folder_remote
@@ -773,7 +796,7 @@ def create_slurm_execution_files(
 
     commandSBATCH.append("")
 
-    wait_txt = " --wait" if waitYN else ""
+    wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
         comm, launch = commandSBATCH, "sbatch" + wait_txt
     else:
@@ -815,7 +838,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folderExecution} && bash mitim_shell_executor.sh > mitim.out"
+    comm = "bash mitim_shell_executor.sh > mitim.out"
 
     return comm, fileSBTACH, fileSHELL
 

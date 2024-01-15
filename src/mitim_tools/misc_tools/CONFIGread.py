@@ -101,7 +101,6 @@ def machineSettings(
     machineSettings = {
         "machine": s[machine]["machine"],
         "user": username,
-        "clear": True,
         "tunnel": None,
         "port": None,
         "identity": None,

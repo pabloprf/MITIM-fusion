@@ -115,7 +115,7 @@ def tr_start(
             input_folders=inputFolders,
         )
 
-    transp_job.run(waitYN=True, timeoutSecs=timeoutSecs)
+    transp_job.run( timeoutSecs=timeoutSecs)
 
     # --------------------------------
     # Checker
@@ -171,7 +171,7 @@ def tr_dat(runid, tok, FolderTRANSP):
 
         )
 
-    transp_job.run(waitYN=True, timeoutSecs=timeoutSecs)
+    transp_job.run( timeoutSecs=timeoutSecs)
 
     # --------------------------------
     # Interpret
@@ -280,7 +280,7 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
             input_files=inputFiles,
             input_folders=inputFolders,
         )
-    transp_job.run(waitYN=True, timeoutSecs=waitseconds)
+    transp_job.run( timeoutSecs=waitseconds)
 
 def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False):
     """
@@ -332,7 +332,7 @@ def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False)
             input_files=inputFiles,
         )
 
-    transp_job.run(waitYN=True)
+    transp_job.run()
 
 
 def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):

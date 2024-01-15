@@ -144,7 +144,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             )
 
         for i in range(howManyCancel):
-             transp_job.run(waitYN=True)
+             transp_job.run()
 
         time.sleep(MinWaitDeletion * 60.0)
 
@@ -279,7 +279,7 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
-    if "nobackup1" in transp_job.folderExecution:
+    if "pool001" in transp_job.folderExecution:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -405,7 +405,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
                 shellPreCommands=shellPreCommands,
             )
 
-        transp_job.run(waitYN=True)
+        transp_job.run()
 
         # Interpret
         NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
@@ -508,7 +508,7 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
     # Execution command
     # ---------------
 
-    if "nobackup1" in transp_job.machineSettings["folderWork"]:
+    if "pool001" in transp_job.machineSettings["folderWork"]:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -518,7 +518,6 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
     TRANSPcommand = f"""
 cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app trlook $TRANSP_SINGULARITY {tok} {runid}
 cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app finishup $TRANSP_SINGULARITY {runid}
-cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar results/{tok}.00
 """
 
     # ---------------
@@ -529,17 +528,15 @@ cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar res
 
     transp_job.prep(
             TRANSPcommand,
-            output_files=["TRANSPresults.tar"],
+            output_folders=["results/"],
             label_log_files="_finish",
         )
 
-    transp_job.run(waitYN=True,removeScratchFolders=False)
+    transp_job.run(removeScratchFolders=False) # Because it needs to read what it was there from run()
 
     os.system(
-        f"cd {folderWork} && tar -xzvf TRANSPresults.tar && cp -r results/{tok}.00/* ."
+        f"cd {folderWork}&& cp -r results/{tok}.00/* ."
     )
-    os.system(f"rm -r {folderWork}/TRANSPresults.tar {folderWork}/results/")
-
 
 def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
 
@@ -559,7 +556,7 @@ def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
     # Execution command
     # ---------------
 
-    if "nobackup1" in transp_job.machineSettings["folderWork"]:
+    if "pool001" in transp_job.machineSettings["folderWork"]:
         txt_bind = (
             "--bind /nobackup1 "  # As Jai suggestion to solve problem with nobackup1
         )
@@ -568,7 +565,7 @@ def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
 
     # I have to do the look in another folder (I think it fails if I simply grab, so I copy things)
     TRANSPcommand = f"""
-cd {transp_job.machineSettings['folderWork']} && cp {folderExecution}/*PLN {folderExecution}/transp-bashrc {transp_job.machineSettings['folderWork']}/. && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+cd {transp_job.machineSettings['folderWork']} && cp {transp_job.folderExecution}/*PLN {transp_job.folderExecution}/transp-bashrc {transp_job.machineSettings['folderWork']}/. && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -584,7 +581,7 @@ cd {transp_job.machineSettings['folderWork']} && cp {folderExecution}/*PLN {fold
             output_files=outputFiles,
         )
 
-    transp_job.run(waitYN=True,removeScratchFolders=False)
+    transp_job.run(removeScratchFolders=False) # Because it needs to read what it was there from run()
 
 def organizeACfiles(
     runid, FolderTRANSP, nummax=1, ICRF=False, NUBEAM=False, TORBEAM=False

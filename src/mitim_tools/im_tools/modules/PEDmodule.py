@@ -779,7 +779,7 @@ def fit_pedestal_mtanh(
     command = f"cd {path} && {start} && idl < idl_in"
 
     inputFiles = [folderWork + "/idl_in", plasmastate]
-    outputFiles = ["/mtanh_fits"]
+    outputFiles = ["mtanh_fits"]
 
     print(f"\t\t- Proceeding to run idl pedestal fitter (psi_pol = {width_top:.3f})")
 
@@ -790,7 +790,7 @@ def fit_pedestal_mtanh(
             input_files=inputFiles,
         )
 
-    pedestal_job.run(waitYN=True, timeoutSecs=30)
+    pedestal_job.run( timeoutSecs=30)
 
 
     x, ne, Te, Ti = read_mtanh(folderWork + "/mtanh_fits")

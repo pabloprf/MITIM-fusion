@@ -89,7 +89,7 @@ def runTGYRO(
             shellPostCommands=shellPostCommands,
         )
 
-    tgyro_job.run(waitYN=True)
+    tgyro_job.run()
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
@@ -272,7 +272,7 @@ def executeCGYRO(
             shellPreCommands=shellPreCommands,
         )
 
-    cgyro_job.run(waitYN=True)
+    cgyro_job.run()
 
 def runTRXPL(
     FolderTRXPL,
@@ -332,14 +332,14 @@ def runTRXPL(
             f"mitim_trxpl_{nameOutputs}/",
         )
     
-    command = f"cd {trxpl_job.folderExecution} && trxpl < trxpl.in"
+    command = "trxpl < trxpl.in"
 
     trxpl_job.prep(
             command,
             input_files=inputFiles,
             output_files=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
         )
-    trxpl_job.run(waitYN=True)
+    trxpl_job.run()
 
 def runPROFILES_GEN(
     FolderTGLF,
@@ -380,15 +380,13 @@ def runPROFILES_GEN(
             'profiles_gen',
             f"mitim_profiles_gen_{nameFiles}/",
         )
-    
-    command = f"cd {pgen_job.folderExecution} && bash profiles_gen.sh"
 
     pgen_job.prep(
-            command,
+            "bash profiles_gen.sh",
             input_files=inputFiles,
             output_files=["input.gacode"],
         )
-    pgen_job.run(waitYN=True)
+    pgen_job.run()
 
     if (
         runWithoutEqIfFail
@@ -407,7 +405,7 @@ def runPROFILES_GEN(
         # ******************
 
         print(f"\t\t- Proceeding to run PROFILES_GEN with: {txt}")
-        pgen_job.run(waitYN=True)
+        pgen_job.run()
 
 
 def runVGEN(
@@ -480,7 +478,7 @@ def runVGEN(
             output_files=["slurm_output.dat", "slurm_error.dat"],
         )
 
-    vgen_job.run(waitYN=True)
+    vgen_job.run()
 
     file_new = f"{workingFolder}/vgen/input.gacode"
 
@@ -951,7 +949,7 @@ def runTGLF(
             output_folders=folders_red,
         )
 
-    tglf_job.run(waitYN=True)
+    tglf_job.run()
 
     # ---------------------------------------------
     # Organize
