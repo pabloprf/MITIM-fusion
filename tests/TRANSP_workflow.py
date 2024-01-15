@@ -62,7 +62,7 @@ t.run()
 
 # Check
 c = t.checkUntilFinished(
-    label="run1", checkMin=5, grabIntermediateEachMin=20, retrieveAC=True
+    label="run1", checkMin=1, grabIntermediateEachMin=20, retrieveAC=True
 )
 
 # Plot

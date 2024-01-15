@@ -2,12 +2,12 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
+import dis
 import os
 import sys
 import subprocess
 import socket
 import signal
-import pickle
 import datetime
 import torch
 import copy
@@ -92,7 +92,7 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self,waitYN=True):
+    def run(self,waitYN=True,removeScratchFolders=True, timeoutSecs=1e6):
 
         if not waitYN:
             # If I'm not waiting, make sure i don't clear the folder
@@ -131,7 +131,7 @@ class mitim_job:
         self.input_folders = [os.path.relpath(path, self.folder_local) for path in self.input_folders]
 
         # Process
-        self.full_process(comm)
+        self.full_process(comm,waitYN=waitYN,removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs)
         
         # Get jobid
         if self.launchSlurm:
@@ -145,7 +145,7 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self,comm, timeoutSecs=1e6):
+    def full_process(self,comm, timeoutSecs=1e6, waitYN=True, removeScratchFolders=True):
 
         if timeoutSecs < 1e6:
             timeOut_txt = f", will timeout execution in {timeoutSecs}s"
@@ -155,19 +155,21 @@ class mitim_job:
         time_init = datetime.datetime.now()
 
         print(
-        f"\n\t------------------------ Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) ------------------------")
-        
+        f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) --------------")
+
         self.connect(log_file=f'{self.folder_local}/paramiko.log')
-        self.remove_scratch_folder()
+        if removeScratchFolders:
+            self.remove_scratch_folder()
         self.create_scratch_folder()
         self.send()
-        self.execute(comm, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
+        output, error = self.execute(comm, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
         self.retrieve()
-        self.remove_scratch_folder()
+        if waitYN and removeScratchFolders:
+            self.remove_scratch_folder()
         self.close()
 
         print(
-            f"\t------------------------ Finished process (took {IOtools.getTimeDifference(time_init)}) ------------------------\n"
+            f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n"
         )
 
     def connect(self, *args, **kwargs):
@@ -175,28 +177,56 @@ class mitim_job:
         if self.machineSettings["machine"] != 'local':
             return self.connect_ssh(*args, **kwargs)
         else:
-            self.jump_client = None
-            self.ssh = None
-            self.sftp = None
+            self.jump_client, self.ssh, self.sftp = None, None, None
 
     def connect_ssh(self, log_file = None):
 
-        jump_host = self.machineSettings["tunnel"]
-        jump_user = self.machineSettings['user']
+        self.jump_host = self.machineSettings["tunnel"]
+        self.jump_user = self.machineSettings['user']
 
-        target_host = self.machineSettings["machine"]
-        target_user = self.machineSettings['user']
+        self.target_host = self.machineSettings["machine"]
+        self.target_user = self.machineSettings['user']
 
-        print('\t 1. Connecting to remote server:')
-        print(f'\t\t{target_user}@{target_host}{f", via tunnel {jump_user}@" +jump_host  if jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port: " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
+        print('\t* Connecting to remote server:')
+        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}{" with port: " + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}')
 
-        # Create a new SSH client for the target machine
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
+
+        try:
+            self.define_jump()
+            self.define_server()
+        except (paramiko.ssh_exception.AuthenticationException):
+            # If it fails, try to disable rsa-sha2-512 and rsa-sha2-256 (e.g. for iris.gat.com)
+            self.define_jump()
+            self.define_server(disabled_algorithms={'pubkeys': ['rsa-sha2-512', 'rsa-sha2-256']})
+
+    def define_server(self, disabled_algorithms=None):
+
+        # Create a new SSH client for the target machine
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-        if jump_host is not None:
+        # Connect to the host
+        self.ssh.connect(
+            self.target_host,
+            username=self.target_user,
+            disabled_algorithms=disabled_algorithms,
+            key_filename=self.key_filename,
+            port=self.port,
+            sock=self.sock,
+            allow_agent=True,
+            )
+
+        try:
+            self.sftp = self.ssh.open_sftp()
+        except (paramiko.sftp.SFTPError):
+            raise Exception("[mitim] SFTPError: Your bashrc on the server likely contains print statements")
+
+
+    def define_jump(self):
+
+        if self.jump_host is not None:
 
             # Create an SSH client instance for the jump host
             self.jump_client = paramiko.SSHClient()
@@ -204,8 +234,8 @@ class mitim_job:
 
             # Connect to the jump host
             self.jump_client.connect(
-                jump_host, 
-                username=jump_user, 
+                self.jump_host, 
+                username=self.jump_user, 
                 port=self.machineSettings['port'] if self.machineSettings['port'] is not None else 22,
                 key_filename=self.machineSettings['identity'], 
                 allow_agent=True
@@ -215,40 +245,34 @@ class mitim_job:
             transport = self.jump_client.get_transport()
 
             # Create a channel to the target through the tunnel
-            channel = transport.open_channel("direct-tcpip", (target_host, 22), (target_host, 0))
+            create_port_in_tunnel = 22
+            channel = transport.open_channel("direct-tcpip", (self.target_host, create_port_in_tunnel), (self.target_host, 0))
 
-            # Connect to the target machine through the tunnel
-            self.ssh.connect(
-                target_host,
-                username=target_user,
-                disabled_algorithms={'pubkeys': ['rsa-sha2-512', 'rsa-sha2-256']}, # This was needed for iris.gat.com
-                port=22,
-                sock=channel,
-                allow_agent=True,
-                ) 
-
+            # to pass to self.ssh
+            self.port = create_port_in_tunnel
+            self.sock = channel
+            self.key_filename = None
+ 
         else:
-
-            self.jump_client = None
-
-            # Connect to the host
-            self.ssh.connect(target_host, username=target_user, key_filename=self.machineSettings['identity'], port=self.machineSettings['port'] if self.machineSettings['port'] is not None else 22)
-            self.sftp = self.ssh.open_sftp()
-
-        self.sftp = self.ssh.open_sftp()
+            self.jump_client    = None
+            self.port           = self.machineSettings['port'] if self.machineSettings['port'] is not None else 22
+            self.sock           = None
+            self.key_filename   = self.machineSettings['identity']
 
     def create_scratch_folder(self):
         
-        print(f'\t 2. Creating{" remote" if self.ssh is not None else ""} folder:')
+        print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f'\t\t{self.machineSettings["folderWork"]}')
 
         command = 'mkdir -p ' + self.machineSettings['folderWork']
 
         output, error =  self.execute(command)
 
+        return output, error
+
     def send(self):
 
-        print(f'\t 3. Sending files{" to remove server" if self.ssh is not None else ""}:')
+        print(f'\t* Sending files{" to remove server" if self.ssh is not None else ""}:')
         print('\t\tmitim_send.tar.gz')
 
         # Create a tarball of the local directory
@@ -279,7 +303,7 @@ class mitim_job:
     def execute_remote(self, command_str, printYN=False, timeoutSecs=None):
 
         if printYN:
-            print('\t 4. Executing (remote):')
+            print('\t* Executing (remote):')
             print(f'\t\t{command_str}')
 
         try:
@@ -298,33 +322,16 @@ class mitim_job:
     def execute_local(self, command_str, printYN=False, timeoutSecs=None):
 
         if printYN:
-            print('\t 4. Executing (local):')
+            print('\t* Executing (local):')
             print(f'\t\t{command_str}')
 
-        p = subprocess.Popen(
-            [command_str],
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            executable="/bin/bash",
-        )
-
-        output, error = None, None
-        if timeoutSecs is not None:
-            with timeout(timeoutSecs, proc=p):
-                output, error = p.communicate()
-                p.stdout.close()
-                p.stderr.close()
-        else:
-            output, error = p.communicate()
-            p.stdout.close()
-            p.stderr.close()
+        output, error = run_subprocess([command_str], timeoutSecs=timeoutSecs, localRun=True)
 
         return output, error
 
     def retrieve(self):
 
-        print(f'\t 5.  Retrieving files{" from remote server" if self.ssh is not None else ""}:')
+        print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
         print('\t\tmitim_receive.tar.gzz')
 
         # Create a tarball of the output files and folders on the remote machine
@@ -346,9 +353,11 @@ class mitim_job:
 
     def remove_scratch_folder(self):
 
-        print(f'\t 6. Removing{" remote" if self.ssh is not None else ""} folder')
+        print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
         output, error = self.execute('rm -rf ' + self.machineSettings['folderWork'])
+
+        return output, error
 
     def close(self, *args, **kwargs):
 
@@ -357,7 +366,7 @@ class mitim_job:
         
     def close_ssh(self):
 
-        print('\t 7. Closing connection')
+        print('\t* Closing connection')
 
         self.sftp.close()
         self.ssh.close()
@@ -372,14 +381,26 @@ class mitim_job:
         Check job status slurm
         '''
 
-        # Grab slurm state and log file from TRANSP
-        self.infoSLURM = getSLURMstatus(
-            self.folder_local,
-            self.machineSettings,
-            jobid=self.jobid,
-            grablog=f"{self.folderExecution}/slurm_output.dat",
-            name=self.slurm_settings['name'],
-        )
+        if self.jobid is not None:
+            txt_look = f"-j {self.jobid}"
+        else:
+            txt_look = f"-n {self.slurm_settings['name']}"
+
+        command = f'squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" '
+
+        self.connect()
+        self.output_files.append('slurm_output.dat')
+        output, error = self.execute(command,printYN=True)
+        self.retrieve() # Retrieve self.output_files too
+        self.close()
+
+        output = str(output)[3:].split('\\n')
+        if len(output[1].split()) ==1:
+            self.infoSLURM = None
+        else:
+            self.infoSLURM = {}
+            for i in range(len(output[0].split())):
+                self.infoSLURM[output[0].split()[i]] = output[1].split()[i]
 
         with open(self.folder_local + "/slurm_output.dat", "r") as f:
             self.log_file = f.readlines()
@@ -429,10 +450,7 @@ def timeout(time, proc=None):
         # Unregister the signal so it won't be triggered if the timeout is not reached.
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
-
-# -------------------------------------
-
-def run_subprocess(commandExecute, shell=False, timeoutSecs=None, localRun=False):
+def run_subprocess(commandExecute, timeoutSecs=None, localRun=False):
     """
     Note that before I had a context such as "with Popen() as p:" but that failed to catch time outs!
     So, even though I don't know why... I'm doing this directly, with opening and closing it
@@ -445,12 +463,11 @@ def run_subprocess(commandExecute, shell=False, timeoutSecs=None, localRun=False
     """
 
     if localRun:
-        print("\t\t\t++ Running local process")
         shell = True
-
-    executable = (
-        "/bin/bash" if shell else None
-    )  # If I'm simply running on the shell, then it's better to indicate bash
+        executable = "/bin/bash"
+    else:
+        shell = False
+        executable = None
 
     p = subprocess.Popen(
         commandExecute,
@@ -471,624 +488,7 @@ def run_subprocess(commandExecute, shell=False, timeoutSecs=None, localRun=False
         p.stdout.close()
         p.stderr.close()
 
-    return error, result
-
-
-def runCommand_remote(
-    command,
-    machine="local",
-    user=None,
-    tunnel=None,
-    userTunnel=None,
-    port=None,
-    identity=None,
-    shell=False,
-    timeoutSecs=None,
-):
-    # Building command for port and identity options --------------
-
-    sshCommand = ["ssh"]
-
-    if port is not None:
-        portCommand = f"-p {port}"
-        sshCommand.append(portCommand)
-    else:
-        portCommand = ""
-    if identity is not None:
-        sshCommand.append("-i")
-        sshCommand.append(identity)
-
-    if user is None:
-        userCommand = ""
-    else:
-        userCommand = user + "@"
-
-    if userTunnel is None:
-        userTunnelCommand = ""
-    else:
-        userTunnelCommand = userTunnel + "@"
-
-    # --------------------------------------------------------------
-
-    if machine == "local" or machine == socket.gethostname():
-        error, result = run_subprocess(command, localRun=True)
-    else:
-        if tunnel is None or len(tunnel) == 0:
-            commandExecute = [f"{userCommand}{machine}", command]
-        else:
-            commandExecute = [
-                f"{userTunnelCommand}{tunnel}",
-                f'ssh {user}@{machine} "{command}"',
-            ]
-
-        sshCommand.extend(commandExecute)
-        error, result = run_subprocess(sshCommand, shell=shell, timeoutSecs=timeoutSecs)
-
-    return error, result
-
-
-def sendCommand_remote(
-    file,
-    folderWork,
-    machine="local",
-    user=None,
-    tunnel=None,
-    userTunnel=None,
-    folderWorkTunnel=None,
-    port=None,
-    identity=None,
-    isItFolders=False,
-):
-    # Building command for port and identity options --------------
-
-    sshCommand = ["ssh"]
-
-    if port is not None:
-        portCommand = f"-p {port}"
-        sshCommand.append(portCommand)
-    else:
-        portCommand = ""
-    if identity is not None:
-        identityCommand = f"-i {identity}"
-        sshCommand.append(identityCommand)
-    else:
-        identityCommand = ""
-
-    if user is None:
-        userCommand = ""
-    else:
-        userCommand = user + "@"
-
-    if userTunnel is None:
-        userTunnelCommand = ""
-    else:
-        userTunnelCommand = userTunnel + "@"
-
-    if folderWorkTunnel is None:
-        folderWorkTunnel = folderWork
-
-    if machine == "local" and not isItFolders:
-        inFiles = file[1:-1].split(",")
-    else:
-        inFiles = file.split(" ")
-
-    # --------------------------------------------------------------
-
-    if machine == "local" or machine == socket.gethostname():
-        if not isItFolders:
-            for file0 in inFiles:
-                if len(file0) > 0:
-                    os.system(f"cp {file0} {folderWork}/.")
-        else:
-            for file0 in inFiles:
-                os.system(f"cp -r {file0} {folderWork}/.")
-    elif tunnel is None:
-        if not isItFolders:
-            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} {file} {userCommand}{machine}:{folderWork}/."
-        else:
-            addSolutionForPathCanonicalization = '' #' -O' # This was needed for iris for a particular user
-            commai = f"scp {quiet_tag}{portCommand.upper()} {identityCommand} -r{addSolutionForPathCanonicalization} {file} {userCommand}{machine}:{folderWork}/."
-        error, result = run_subprocess(commai, localRun=True)
-    else:
-        # Send files to tunnel
-        sendCommand_remote(
-            file,
-            folderWorkTunnel,
-            machine=tunnel,
-            user=userTunnel,
-            tunnel=None,
-            port=port,
-            isItFolders=isItFolders,
-        )
-
-        # Send files from tunnel to remote (this ssh connections is better to do file by file)
-
-        for file0 in inFiles:
-            if not isItFolders:
-                if len(file0.split("/")) > 1:
-                    file1 = IOtools.reducePathLevel(file0, level=1, isItFile=True)[1]
-                else:
-                    file1 = file0
-                commandExecute = [
-                    f"{userTunnelCommand}{tunnel}",
-                    f"scp {quiet_tag}{folderWorkTunnel}/{file1} {userCommand}{machine}:{folderWork}/.",
-                ]
-            else:
-                file1 = IOtools.reducePathLevel(file0, level=1, isItFile=False)[1]
-                commandExecute = [
-                    f"{userTunnelCommand}{tunnel}",
-                    f"scp -r {quiet_tag}{folderWorkTunnel}/{file1} {userCommand}{machine}:{folderWork}/.",
-                ]
-            sshCommand.extend(commandExecute)
-
-            with subprocess.Popen(
-                sshCommand, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            ) as p:
-                result, error = p.communicate()
-
-def receiveCommand_remote(
-    file,
-    folderWork,
-    f2,
-    machine="local",
-    user=None,
-    tunnel=None,
-    userTunnel=None,
-    port=None,
-    identity=None,
-    whereFiles=None,
-    folderWorkTunnel=None,
-    isItFolders=False,
-    scpCommand="scp -TO",
-):
-    if folderWorkTunnel is None:
-        folderWorkTunnel = folderWork
-
-    if whereFiles is None:
-        folderWork_extra = folderWork
-    else:
-        folderWork_extra = whereFiles
-
-    # Building command for port and identity options --------------
-
-    sshCommand = ["ssh"]
-
-    if port is not None:
-        portCommand = f"-p {port}"
-        sshCommand.append(portCommand)
-    else:
-        portCommand = ""
-    if identity is not None:
-        identityCommand = f"-i {identity}"
-        sshCommand.append(identityCommand)
-    else:
-        identityCommand = ""
-
-    # ----
-    if not isItFolders:
-        outputFiles = file[1:-1].split(",")
-    else:
-        outputFiles = [file]
-    for i in range(len(outputFiles)):
-        outputFiles[i] = folderWork + outputFiles[i]
-
-    if len(outputFiles) < 2:
-        file_mod = outputFiles[0]
-    else:
-        # file_mod = '{'+','.join(outputFiles)+'}'
-        file_mod = '"' + " ".join(outputFiles) + '"'
-
-    # --------------------------------------------------------------
-
-    if user is None:
-        userCommand = ""
-    else:
-        userCommand = user + "@"
-
-    if userTunnel is None:
-        userTunnelCommand = ""
-    else:
-        userTunnelCommand = userTunnel + "@"
-
-    if machine == "local":
-        if verbose_level in [4, 5]:
-            print("\t\t\t++ Copying local file")
-        for file0 in outputFiles:
-            if isItFolders:
-                os.system(f"cp -r {file0} {f2}/.")
-            else:
-                os.system(f"cp {file0} {f2}/.")
-    elif tunnel is None:
-        if verbose_level in [4, 5]:
-            print(f"\t\t\t- Secure ssh copy from {machine}:{folderWork} to local")
-        port_iden = f"{portCommand.upper()} {identityCommand}"
-        if isItFolders:
-            commandExecute = f"{scpCommand} -r {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."  # https://unix.stackexchange.com/questions/708517/scp-multiple-files-with-single-command
-        else:
-            commandExecute = f"{scpCommand} {quiet_tag}{port_iden} {userCommand}{machine}:{file_mod} {f2}/."
-        #os.system(commandExecute)
-        error, result = run_subprocess(commandExecute, localRun=True)
-    else:
-        # Execute command to retrieve files from remote to tunnel (this ssh connections is better to do file by file)
-        for file_mod_extra in outputFiles:
-            if verbose_level in [4, 5]:
-                print(
-                    f"\t\t\t- In {tunnel}: Secure ssh copy from {machine}:{folderWork_extra} to {tunnel}:{folderWorkTunnel}"
-                )
-            if isItFolders:
-                comm = f"scp -r {quiet_tag}{userCommand}{machine}:{file_mod_extra} {folderWorkTunnel}/."
-            else:
-                comm = f"scp {quiet_tag}{userCommand}{machine}:{file_mod_extra} {folderWorkTunnel}/."
-
-            commandExecute = [f"{userTunnelCommand}{tunnel}", comm]
-            sshCommand.extend(commandExecute)
-
-            with subprocess.Popen(
-                sshCommand, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            ) as p:
-                result, error = p.communicate()
-
-        # Execute command to retrieve files from tunnel to local
-        receiveCommand_remote(
-            file,
-            folderWorkTunnel,
-            f2,
-            machine=tunnel,
-            user=userTunnel,
-            tunnel=None,
-            port=port,
-            isItFolders=isItFolders,
-            scpCommand=scpCommand,
-        )
-
-
-def runCommand(
-    commandMain,
-    inputFiles,
-    outputFiles=[],
-    inputFolders=[],
-    outputFolders=[],
-    whereOutput="~/.",
-    machineSettings={"machine": "local", "folderWork": "~/", "clear": False},
-    timeoutSecs=1e6,
-    whereFiles=None,
-):
-    timeOut_txt = (
-        f", will timeout execution in {timeoutSecs}s" if timeoutSecs < 1e6 else ""
-    )
-
-    machine = machineSettings["machine"]
-    folderWork = machineSettings["folderWork"]
-
-    clearYN = machineSettings.setdefault("clear", False)
-    user = machineSettings.setdefault("user", None)
-    tunnel = machineSettings.setdefault("tunnel", None)
-    port = machineSettings.setdefault("port", None)
-    identity = machineSettings.setdefault("identity", None)
-    userTunnel = machineSettings.setdefault("userTunnel", user)
-    folderWorkTunnel = machineSettings.setdefault("folderWorkTunnel", folderWork)
-
-    isTunnelSameMachine = machineSettings.setdefault("isTunnelSameMachine", 0)
-
-    # --- If I am at the tunnel, do not tunnel!
-    if (tunnel is not None) and (socket.gethostname() in tunnel):
-        tunnel = None
-    # ----
-
-    if (tunnel is not None) and isTunnelSameMachine:
-        print(
-            "\t- Tunnel and machine share the same file system, do not tunnel for file handling",
-            typeMsg="i",
-        )
-        tunnelF = None
-        machineF = tunnel
-    else:
-        tunnelF = tunnel
-        machineF = machine
-
-    currentTime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    print(
-        f"\n\t------------------------ Running process ({currentTime}{timeOut_txt}) ------------------------"
-    )
-    if verbose_level in [4, 5]:
-        machine_info = (
-            f"\t * in machine {machine}"
-            if machine != "local"
-            else "\t * locally in this machine"
-        )
-        if tunnel is not None:
-            tunnel_info = f" through {tunnel}"
-            if identity is not None:
-                tunnel_info += f" with identity {identity}"
-            if port is not None:
-                tunnel_info += f" with port {port}"
-            machine_info += tunnel_info
-
-        print(machine_info)
-
-        print("\t * following these steps:")
-
-    # ------------ Create temporal folders if they do not exist
-
-    contStep = 1
-
-    print(f"\t\t{contStep}. Creating temporal folders")
-
-    if tunnelF is not None:
-        # -------- Sometimes cybele doesn't have scratch... not sure why
-        folderScratch = IOtools.reducePathLevel(
-            folderWorkTunnel, level=1, isItFile=False
-        )[0]
-        command = f"mkdir {folderScratch}"
-        error, result = runCommand_remote(
-            command,
-            machine=tunnel,
-            user=userTunnel,
-            userTunnel=None,
-            tunnel=None,
-            port=port,
-            identity=identity,
-        )
-        # ---------------------------
-
-        command = f"mkdir {folderWorkTunnel}"
-        error, result = runCommand_remote(
-            command,
-            machine=tunnel,
-            user=userTunnel,
-            userTunnel=None,
-            tunnel=None,
-            port=port,
-            identity=identity,
-        )
-
-    command = f"mkdir {folderWork}"
-    error, result = runCommand_remote(
-        command,
-        machine=machineF,
-        user=user,
-        tunnel=tunnelF,
-        userTunnel=userTunnel,
-        port=port,
-        identity=identity,
-    )
-
-    # ------------ Send files to machine
-
-    if len(inputFiles) > 0:
-        contStep += 1
-        print(f"\t\t{contStep}. Sending required files")
-        if machine == "local":
-            combined_files = "{" + ",".join(inputFiles) + ",}"
-        else:
-            combined_files = " ".join(inputFiles)
-        sendCommand_remote(
-            combined_files,
-            folderWork,
-            folderWorkTunnel=folderWorkTunnel,
-            machine=machineF,
-            user=user,
-            tunnel=tunnelF,
-            userTunnel=userTunnel,
-            port=port,
-            identity=identity,
-            isItFolders=False,
-        )
-
-    # ------------ Send folders to machine
-
-    if len(inputFolders) > 0:
-        contStep += 1
-        print(f"\t\t{contStep}. Sending required folders")
-        combined_folders = " ".join(inputFolders)
-        sendCommand_remote(
-            combined_folders,
-            folderWork,
-            folderWorkTunnel=folderWorkTunnel,
-            machine=machineF,
-            user=user,
-            tunnel=tunnelF,
-            userTunnel=userTunnel,
-            port=port,
-            identity=identity,
-            isItFolders=True,
-        )
-
-    # ------------ Run command
-
-    error, result = "", ""
-    contStep += 1
-    print(f"\t\t{contStep}. Running command")
-    if verbose_level in [4, 5]:
-        print(f"\t\t\t{commandMain}")
-        
-    error, result = runCommand_remote(
-        commandMain,
-        machine=machine,
-        user=user,
-        userTunnel=userTunnel,
-        tunnel=tunnel,
-        port=port,
-        identity=identity,
-        timeoutSecs=timeoutSecs,
-    )
-
-    # ---------------------------------------------------------------
-    # ------------ Bring files from machine
-    # ---------------------------------------------------------------
-
-    scpCommand = "scp -TO"
-    allFilesCorrect = bringFiles(
-        outputFiles,
-        outputFolders,
-        folderWork,
-        whereOutput,
-        folderWorkTunnel,
-        machineF,
-        user,
-        tunnelF,
-        userTunnel,
-        port,
-        identity,
-        whereFiles,
-        scpCommand,
-        contStep=contStep,
-    )
-
-    if not allFilesCorrect:
-        print(
-            "* Exploring SCP option -T instead of -TO because retrieval failed",
-            typeMsg="w",
-        )
-        scpCommand = "scp -T"
-        allFilesCorrect = bringFiles(
-            outputFiles,
-            outputFolders,
-            folderWork,
-            whereOutput,
-            folderWorkTunnel,
-            machineF,
-            user,
-            tunnelF,
-            userTunnel,
-            port,
-            identity,
-            whereFiles,
-            scpCommand,
-            contStep=contStep,
-        )
-
-    if not allFilesCorrect:
-        print(
-            "\t- Not all output files received from remote computer, printing process error:",
-            typeMsg="w",
-        )
-        try:
-            print("".join(error))
-        except:
-            print(error)
-        print("\t- Printing process result:")
-        try:
-            print("".join(result))
-        except:
-            print(result)
-        print(
-            "\t- For easy debugging, I am not clearing the remote folder", typeMsg="w"
-        )
-        clearYN = False
-
-    # Clear stuff
-    if clearYN:
-        command = f"rm -r {folderWork}"
-
-        error, result = runCommand_remote(
-            command,
-            machine=machine,
-            user=user,
-            userTunnel=userTunnel,
-            tunnel=tunnel,
-            port=port,
-            identity=identity,
-        )
-        if tunnelF is not None:
-            command = f"rm -r {folderWorkTunnel}"
-            error, result = runCommand_remote(
-                command,
-                machine=tunnel,
-                user=user,
-                tunnel=None,
-                port=port,
-                identity=identity,
-            )
-
-    print(
-        f"\t------------------------ Finished process ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ------------------------"
-    )
-    print("\n")
-
-
-def bringFiles(
-    outputFiles,
-    outputFolders,
-    folderWork,
-    whereOutput,
-    folderWorkTunnel,
-    machine,
-    user,
-    tunnel,
-    userTunnel,
-    port,
-    identity,
-    whereFiles,
-    scpCommand,
-    contStep=0,
-):
-    
-    if len(outputFiles) > 0:
-        contStep += 1
-        print(f"\t\t{contStep}. Receiving files")
-        combined_files = "{" + ",".join(outputFiles) + "}"
-        receiveCommand_remote(
-            combined_files,
-            folderWork,
-            whereOutput,
-            isItFolders=False,
-            folderWorkTunnel=folderWorkTunnel,
-            machine=machine,
-            user=user,
-            tunnel=tunnel,
-            userTunnel=userTunnel,
-            port=port,
-            identity=identity,
-            whereFiles=whereFiles,
-            scpCommand=scpCommand,
-        )
-
-    if len(outputFolders) > 0:
-        contStep += 1
-        print(f"\t\t{contStep}. Receiving folders")
-        for outputFolder in outputFolders:
-            # First remove current folders
-            upo = 0
-            tester = f"{whereOutput}/{outputFolder}_old{upo}"
-            while os.path.exists(f"{whereOutput}/{outputFolder}"):
-                if os.path.exists(tester):
-                    upo += 1
-                    tester = f"{whereOutput}/{outputFolder}_old{upo}"
-                else:
-                    os.system(f"mv {whereOutput}/{outputFolder} {tester}")
-
-            receiveCommand_remote(
-                outputFolder,
-                folderWork,
-                whereOutput,
-                isItFolders=True,
-                folderWorkTunnel=folderWorkTunnel,
-                machine=machine,
-                user=user,
-                tunnel=tunnel,
-                userTunnel=userTunnel,
-                port=port,
-                identity=identity,
-                whereFiles=whereFiles,
-                scpCommand=scpCommand,
-            )
-
-    allFilesCorrect = True
-    for file in outputFiles:
-        fileF = os.path.exists(f"{whereOutput}/{file}")
-        allFilesCorrect = allFilesCorrect and fileF
-        if not fileF:
-            print(f"\t\t\t- File {file} not found", typeMsg="w")
-    for folder in outputFolders:
-        folderF = os.path.exists(f"{whereOutput}/{folder}")
-        allFilesCorrect = allFilesCorrect and folderF
-        if not folderF:
-            print(f"\t\t\t- Folder {folder} not found", typeMsg="w")
-
-    return allFilesCorrect
-
+    return result, error
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
@@ -1348,47 +748,6 @@ def curateOutFiles(outputFiles):
             outputFiles_new.append(file)
 
     return outputFiles_new
-
-
-def getSLURMstatus(FolderSLURM, machineSettings, jobid=None, name=None, grablog=None):
-    """
-    Search by jobid or by name
-    """
-
-    folderWork = machineSettings["folderWork"]
-
-    if jobid is not None:
-        txt_look = f"-j {jobid}"
-    else:
-        txt_look = f"-n {name}"
-
-    command = f'cd {folderWork} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue.out'
-
-    outputFiles = ["squeue.out"]
-
-    if grablog is not None:
-        command += f" && cp {grablog} {folderWork}/."
-        outputFiles.append(IOtools.reducePathLevel(grablog)[-1])
-
-    runCommand(
-        command,
-        [],
-        outputFiles=outputFiles,
-        machineSettings=machineSettings,
-        whereOutput=FolderSLURM,
-    )
-
-    with open(f"{FolderSLURM}/squeue.out", "r") as f:
-        aux = f.readlines()
-
-    if len(aux) > 1:
-        info = {}
-        for i in range(len(aux[0].split())):
-            info[aux[0].split()[i]] = aux[1].split()[i]
-    else:
-        info = None
-
-    return info
 
 
 def printEfficiencySLURM(out_file):

@@ -755,15 +755,20 @@ def fit_pedestal_mtanh(
 
     """
 
-    machineSettings = CONFIGread.machineSettings(
-        code="idl", nameScratch=f"mitim_tmp_idl_{nameRunid}/"
-    )
+    pedestal_job = FARMINGtools.mitim_job(folderWork)
 
-    path = machineSettings["folderWork"]
+    pedestal_job.define_machine(
+            'idl',
+            f"mitim_tmp_idl_{nameRunid}/",
+            launchSlurm=False,
+        )
+
+
+    path = pedestal_job.folderExecution
     plasmastate_path = path + IOtools.reducePathLevel(plasmastate, isItFile=True)[-1]
 
     with open(folderWork + "/idl_in", "w") as f:
-        f.write(f".r /home/nthoward/SPARC_mtanh/make_pedestal_profiles_portals.pro\n")
+        f.write(".r /home/nthoward/SPARC_mtanh/make_pedestal_profiles_portals.pro\n")
         f.write(
             f"make_profiles,[{width_top},{netop},{p1},{ptop}],'{plasmastate_path}','{path}'\n\n"
         )
@@ -777,14 +782,16 @@ def fit_pedestal_mtanh(
     outputFiles = ["/mtanh_fits"]
 
     print(f"\t\t- Proceeding to run idl pedestal fitter (psi_pol = {width_top:.3f})")
-    FARMINGtools.runCommand(
-        command,
-        inputFiles,
-        outputFiles=outputFiles,
-        whereOutput=folderWork,
-        machineSettings=machineSettings,
-        timeoutSecs=30,
-    )  # For some reason, if I don't time out, it just doesn't come back...
+
+    
+    pedestal_job.prep(
+            command,
+            output_files=outputFiles,
+            input_files=inputFiles,
+        )
+
+    pedestal_job.run(waitYN=True, timeoutSecs=30)
+
 
     x, ne, Te, Ti = read_mtanh(folderWork + "/mtanh_fits")
 

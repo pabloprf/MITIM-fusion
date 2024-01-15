@@ -270,17 +270,22 @@ def generateMRY(
         f">> Running scruncher with {momentsScruncher} moments to create MRY file from boundary files..."
     )
 
-    machineSettings = CONFIGread.machineSettings(
-        code="scruncher", nameScratch=f"tmp_scruncher_{name}/"
-    )
 
-    FARMINGtools.runCommand(
-        f"cd {machineSettings['folderWork']} && scruncher < scrunch_in",
-        filesInput,
-        outputFiles=["M123456.MRY"],
-        whereOutput=FolderEquilibrium,
-        machineSettings=machineSettings,
-    )
+    scruncher_job = FARMINGtools.mitim_job(FolderEquilibrium)
+
+    scruncher_job.define_machine(
+            'scruncher',
+            f"tmp_scruncher_{name}/",
+            launchSlurm=False,
+        )
+    
+    scruncher_job.prep(
+             f"cd {scruncher_job.folderExecution} && scruncher < scrunch_in",
+            output_files=["M123456.MRY"],
+            input_files=filesInput,
+        )
+
+    scruncher_job.run(waitYN=True)
 
     fileUF = f"{FolderMRY}/PRF{nameBaseShot}.MRY"
     os.system(f"cp {FolderEquilibrium}/M123456.MRY {fileUF}")

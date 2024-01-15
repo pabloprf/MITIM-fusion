@@ -974,6 +974,7 @@ def getZeff_neo(
         f.write(str(shotNumber))
 
     Command = f"cd {folder} && idl < idl_in"
+    # FIX
     error, result = FARMINGtools.runCommand_remote(
         Command, machine=socket.gethostname()
     )
@@ -1008,6 +1009,7 @@ def getMMX(shotNumber, runid, folderWork):
         f.write(f"CMOD\n{shotNumber}\nA\nA\nQ\nY\nP\nPRF\nW\nQ")
 
     Command = f"cd {folderScratch} && scrunch2 < scrunch.in"
+    # FIX
     error, result = FARMINGtools.runCommand_remote(
         Command, machine=socket.gethostname()
     )

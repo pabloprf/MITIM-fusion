@@ -89,7 +89,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.FolderTRANSP,
             self.runid,
             self.tok,
-            self.folderExecution,
+            self.job_name,
             minutes=minutesAllocation,
         )
 
@@ -99,7 +99,11 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
     def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kwargs):
         runSINGULARITY_finish(
-            self.FolderTRANSP, self.runid, self.tok, minutes=minutesAllocation
+            self.FolderTRANSP,
+            self.runid,
+            self.tok,
+            self.job_name,
+            minutes=minutesAllocation
         )
 
         # Get reactor to call for ACs as well
@@ -125,14 +129,22 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         return self.cdfs[label]
 
     def delete(self, howManyCancel=1, MinWaitDeletion=0, **kwargs):
-        machineSettings = CONFIGread.machineSettings(
-            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}/"
-        )
-        machineSettings["clear"] = True
-        for i in range(howManyCancel):
-            FARMINGtools.runCommand(
-                f"scancel {self.job_id}", [], machineSettings=machineSettings
+
+        transp_job = FARMINGtools.mitim_job(self.FolderTRANSP)
+
+        transp_job.define_machine(
+                'transp',
+                self.job_name,
+                launchSlurm=False,
             )
+
+        transp_job.prep(
+                f"scancel {self.job_id}",
+                label_log_files="_finish",
+            )
+
+        for i in range(howManyCancel):
+             transp_job.run(waitYN=True)
 
         time.sleep(MinWaitDeletion * 60.0)
 
@@ -418,32 +430,6 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     os.system(f"rm -r {folderWork}/tmp_inputs")
 
-def getRunInformation(jobid, folder, job_name, folderExecution):
-    print('* Submitting a "check" request to the cluster', typeMsg="i")
-
-    machineSettings = CONFIGread.machineSettings(
-        code="transp", nameScratch=f"transp_{jobid}_check/"
-    )
-
-    # Grab slurm state and log file from TRANSP
-    infoSLURM = FARMINGtools.getSLURMstatus(
-        folder,
-        machineSettings,
-        jobid=jobid,
-        grablog=f"{folderExecution}/slurm_output.dat",
-        name=job_name,
-    )
-
-    with open(folder + "/slurm_output.dat", "r") as f:
-        log_file = f.readlines()
-
-    # If jobid was given as None, I retrieved the info from the job_name, but now provide here the actual id
-    if infoSLURM is not None:
-        jobid = infoSLURM["JOBID"]
-
-    return infoSLURM, jobid, log_file
-
-
 def interpretRun(infoSLURM, log_file):
     # status gives 0 for active or submitted, -1 for stopped, 1 for success
 
@@ -504,19 +490,17 @@ def pringLogTail(log_file, howmanylines=50):
     print(txt, typeMsg="w")
 
 
-def runSINGULARITY_finish(folderWork, runid, tok, minutes=60):
-    nameJob = f"transp_{tok}_{runid}_finish"
-
+def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
             'transp',
-            f"transp_{tok}_{runid}/",
+            job_name,
             slurm_settings={
                 'minutes':minutes,
                 'ntasks':1,
-                'name':nameJob,
+                'name':f"transp_{tok}_{runid}_finish",
             },
         )
 
@@ -549,7 +533,7 @@ cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar res
             label_log_files="_finish",
         )
 
-    transp_job.run(waitYN=True)
+    transp_job.run(waitYN=True,removeScratchFolders=False)
 
     os.system(
         f"cd {folderWork} && tar -xzvf TRANSPresults.tar && cp -r results/{tok}.00/* ."
@@ -557,18 +541,17 @@ cd {transp_job.machineSettings['folderWork']} && tar -czvf TRANSPresults.tar res
     os.system(f"rm -r {folderWork}/TRANSPresults.tar {folderWork}/results/")
 
 
-def runSINGULARITY_look(folderWork, runid, tok, folderExecution, minutes=60):
-    nameJob = f"transp_{tok}_{runid}_look"
+def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
-            'transp_look',
-            f"{nameJob}/",
+            'transp',
+            job_name,
             slurm_settings={
                 'minutes':minutes,
                 'ntasks':1,
-                'name':nameJob,
+                'name':f"transp_{tok}_{runid}_look",
             },
         )
 
@@ -601,7 +584,7 @@ cd {transp_job.machineSettings['folderWork']} && cp {folderExecution}/*PLN {fold
             output_files=outputFiles,
         )
 
-    transp_job.run(waitYN=True)
+    transp_job.run(waitYN=True,removeScratchFolders=False)
 
 def organizeACfiles(
     runid, FolderTRANSP, nummax=1, ICRF=False, NUBEAM=False, TORBEAM=False
