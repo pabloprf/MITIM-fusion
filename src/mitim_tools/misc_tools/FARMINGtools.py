@@ -148,13 +148,19 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True):
+    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, make_relative=True):
         if not waitYN:
             removeScratchFolders = False
 
+        # Always start by going to the folder
+        if make_relative:
+            command_str_mod = f"cd {self.folderExecution} && {self.command}"
+        else:
+            command_str_mod = self.command
+
         # ****** Prepare SLURM job *****************************
         comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
-            self.command,
+            command_str_mod,
             self.machineSettings["folderWork"],
             self.machineSettings["modules"],
             job_array=self.slurm_settings["job_array"],
@@ -190,7 +196,7 @@ class mitim_job:
 
         # Process
         self.full_process(
-            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs
+            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs, check_if_files_received=waitYN,
         )
 
         # Get jobid
@@ -205,7 +211,7 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True):
+    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
@@ -232,20 +238,24 @@ class mitim_job:
 
         output, error = self.execute(
             comm,
-            make_relative=True,
             wait_for_all_commands=wait_for_all_commands,
             printYN=True,
             timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
         )
 
-        for _ in range(2):
-            self.retrieve()
-            received = self.check_all_received()
-            if received:
-                print("\t\t- All correct")
-                break
-            print("\t\t- Not all received, trying again", typeMsg="w")
-            time.sleep(10)
+        self.retrieve()
+
+        if check_if_files_received:
+            for _ in range(2):
+                received = self.check_all_received()
+                if received:
+                    print("\t\t- All correct")
+                    break
+                print("\t\t- Not all received, trying again", typeMsg="w")
+                time.sleep(10)
+                self.retrieve()
+        else:
+            received = True
 
         if received:
             if wait_for_all_commands and removeScratchFolders:
@@ -447,17 +457,12 @@ class mitim_job:
             + os.path.join(self.machineSettings["folderWork"], "mitim_send.tar.gz")
         )
 
-    def execute(self, command_str, make_relative=False, **kwargs):
-        # Always start by going to the folder
-        if make_relative:
-            command_str_mod = f"cd {self.folderExecution} && {command_str}"
-        else:
-            command_str_mod = command_str
+    def execute(self, command_str, **kwargs):
 
         if self.ssh is not None:
-            return self.execute_remote(command_str_mod, **kwargs)
+            return self.execute_remote(command_str, **kwargs)
         else:
-            return self.execute_local(command_str_mod, **kwargs)
+            return self.execute_local(command_str, **kwargs)
 
     def execute_remote(
         self,
@@ -597,33 +602,59 @@ class mitim_job:
             txt_look = f"-n {self.slurm_settings['name']}"
 
         command = (
-            f'squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" '
+            f'squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
         )
-
         self.connect()
-        self.output_files.append("slurm_output.dat")
+        if "slurm_output.dat" not in self.output_files:
+            self.output_files.append("slurm_output.dat")
+        if "squeue_output.dat" not in self.output_files:
+            self.output_files.append("squeue_output.dat")
         output, error = self.execute(command, printYN=True)
         self.retrieve()  # Retrieve self.output_files too
         self.close()
+        self.interpret_status(output)
 
-        output = str(output)[3:].split("\\n")
-        if len(output[1].split()) == 1:
+    def interpret_status(self,output_squeue):
+
+        # -------------------------------
+        # Read output of squeue command
+        # -------------------------------
+        with open(self.folder_local + "/squeue_output.dat", "r") as f:
+            output_squeue = f.read()
+
+        embed()
+
+
+        output_squeue = str(output_squeue)[3:].split("\\n")
+        if len(output_squeue[1].split()) == 1:
             self.infoSLURM = None
         else:
             self.infoSLURM = {}
-            for i in range(len(output[0].split())):
-                self.infoSLURM[output[0].split()[i]] = output[1].split()[i]
+            for i in range(len(output_squeue[0].split())):
+                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
+        try:
+            # If jobid was given as None, I retrieved the info from the job_name, but now provide here the actual id
+            if self.infoSLURM is not None:
+                self.jobid_found = self.infoSLURM["JOBID"]
+            else:
+                self.jobid_found = None
+        except:
+            embed()
 
-        with open(self.folder_local + "/slurm_output.dat", "r") as f:
-            self.log_file = f.readlines()
+        # ------------------------------------------------------------
+        # If it was available, read the status of the ACTUAL slurm job
+        # ------------------------------------------------------------
 
-        # If jobid was given as None, I retrieved the info from the job_name, but now provide here the actual id
-        if self.infoSLURM is not None:
-            self.jobid_found = self.infoSLURM["JOBID"]
+        if os.path.exists(self.folder_local + "/slurm_output.dat"):
+            with open(self.folder_local + "/slurm_output.dat", "r") as f:
+                self.log_file = f.readlines()
         else:
-            self.jobid_found = None
+            self.log_file = None
 
-        # Print info
+        # ------------------------------------------------------------
+        # Print info to screen
+        # ------------------------------------------------------------
+
         txt = "\t- Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
             txt += f' (jobid {self.jobid_found}, found from name "{self.slurm_settings["name"]}")'
