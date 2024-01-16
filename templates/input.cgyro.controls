@@ -1,0 +1,134 @@
+#=============================================================
+#CGYRO ion-scale input file 
+#=============================================================
+# 
+#Simulation notes: ITER Baseline Scenario  ~134 x 118 rho_s_D box ;
+#0.053 < k_theta rhos_D <1.2. Focused on r/a=0.55
+#ExB shear on and new profiles set at 430 acs
+#Startup phase starts with ExB shear on.  Profiles adopted from
+#Holland JPP 2023 and Mantica PPCF 2020
+#-------------------------------------------------------------
+
+#============================
+#Basic Simulation Parameters
+#============================
+
+#Simulation Type (0=Linear, 1=Nonlinear)
+NONLINEAR_FLAG=1
+
+#Radius used for simulation
+RMIN=0.55
+
+#Use Experimental or Specified Inputs
+PROFILE_MODEL=2
+
+#Geometry type (1=s-alpha,2=MXH)
+EQUILIBRIUM_MODEL=2
+
+#Fluctuating fields evolved (1=phi, 2=phi+A_par,3=phi+A_par+B_par)
+N_FIELD=1
+
+#Data field output flag
+MOMENT_PRINT_FLAG=1
+
+#Velocity Order
+#VELOCITY_ORDER=2
+
+#Toroidal modes per processor
+#TOROIDALS_PER_PROC=1
+
+#===================================
+#Numerical Resolutions and Box Setup
+#===================================
+
+#Minimum Simulated Ky
+KY=0.106
+
+#Number of simulated Toroidal Modes
+N_TOROIDAL=12
+
+#Radial Box Size (Integer)
+BOX_SIZE=4
+
+#Number of radial modes
+N_RADIAL=128
+
+#Number of pitch-angle points
+N_XI=16
+
+#Number of poloidal grid points
+N_THETA=16
+
+#Number of points in energy
+N_ENERGY=8
+
+#Maximum energy considered
+E_MAX=8
+
+#Initial amplitude for n>0
+AMP=0.0001
+
+#Initial amplitude for n=0
+AMP0=0.0
+
+#Scale and order of theta numerical diss.
+UP_THETA=1.0
+NUP_THETA=3
+
+#Scale and order of radial numerical diss.
+UP_RADIAL=1.0
+NUP_RADIAL=3
+
+#Scale and order of alpha numerical diss.
+UP_ALPHA=0.0
+NUP_ALPHA=3
+
+#================================
+#Time Stepping/Data Output Setup
+#================================
+
+#Adaptive(1) or fixed time step (0)
+DELTA_T_METHOD=1
+
+#Time Step (units a/c_s)
+DELTA_T=0.01
+
+#How many timesteps before a data output
+PRINT_STEP=100
+
+#Max simulation time (units a/c_s)
+MAX_TIME=900
+
+#Number of data outputs before saving a restart (DELTA_T*PRINT_STEP is one data output)
+RESTART_STEP=10
+
+#===============================
+#Physics Flags
+#===============================
+
+# Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugma
+#5 = Fast diagonal Lorentz)
+COLLISION_MODEL=1
+
+#Rotation Scaling of Exp. Values
+ROTATION_MODEL=2
+SHEAR_METHOD=2
+GAMMA_E_SCALE=0.0
+GAMMA_P_SCALE=0.0
+MACH_SCALE=0.0
+
+#Scaling of Electron beta and Lambda Debye
+BETAE_UNIT_SCALE=1.0
+BETA_STAR_SCALE=1.0
+LAMBDA_STAR_SCALE=1.0
+
+
+#==============================
+#Species Specification
+#==============================
+
+#Number of gyrokinetic species
+N_SPECIES=2
+
+EXCH_FLAG=1
+
