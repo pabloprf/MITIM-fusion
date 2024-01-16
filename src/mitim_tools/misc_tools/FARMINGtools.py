@@ -508,7 +508,16 @@ class mitim_job:
             f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
         )
 
-        # Create a tarball of the output files and folders on the remote machine
+        # Create a tarball of the output files & folders on the remote machine
+        print("\t\t- Removing local output files & folders that potentially exist from previous runs")
+        for file in self.output_files:
+            if os.path.exists(os.path.join(self.folder_local, file)):
+                os.remove(os.path.join(self.folder_local, file))
+        for folder in self.output_folders:
+            if os.path.exists(os.path.join(self.folder_local, folder)):
+                os.system(f"rm -rf {os.path.join(self.folder_local, folder)}")
+
+        # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing")
         self.execute(
             "tar -czf "
@@ -606,13 +615,13 @@ class mitim_job:
 
         output_files_backup = copy.deepcopy(self.output_files)
         self.output_files = [
-            "slurm_output.dat",     # The slurm results of the main job!
+            "slurm_output.dat",    # The slurm results of the main job!
             "squeue_output.dat"    # The output of the squeue command
         ]
 
         self.connect()
         output, error = self.execute(command, printYN=True)
-        self.retrieve()  # Retrieve self.output_files too
+        self.retrieve()
         self.close()
         self.interpret_status()
 
@@ -664,7 +673,7 @@ class mitim_job:
         print(txt)
 
     def check_all_received(self):
-        print("\t* Checking if all expected files and folders were received")
+        print("\t* Checking if all expected files & folders were received")
         received = True
         for file in self.output_files:
             if not os.path.exists(os.path.join(self.folder_local, file)):
