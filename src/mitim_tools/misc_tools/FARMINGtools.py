@@ -190,7 +190,7 @@ class mitim_job:
 
         # Process
         self.full_process(
-            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs
+            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs, check_if_files_received=waitYN,
         )
 
         # Get jobid
@@ -205,7 +205,7 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True):
+    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
@@ -240,12 +240,15 @@ class mitim_job:
 
         for _ in range(2):
             self.retrieve()
-            received = self.check_all_received()
-            if received:
-                print("\t\t- All correct")
-                break
-            print("\t\t- Not all received, trying again", typeMsg="w")
-            time.sleep(10)
+            if check_if_files_received:
+                received = self.check_all_received()
+                if received:
+                    print("\t\t- All correct")
+                    break
+                print("\t\t- Not all received, trying again", typeMsg="w")
+                time.sleep(10)
+            else:
+                received = True
 
         if received:
             if wait_for_all_commands and removeScratchFolders:
