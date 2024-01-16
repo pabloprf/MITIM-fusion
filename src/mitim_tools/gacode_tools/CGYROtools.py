@@ -95,7 +95,7 @@ class CGYRO:
 
         while True:
             self.cgyro_job.check()
-            print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.infoSLURM["STATE"]})')
+            print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})')
             if self.cgyro_job.status == 2:
                 break
             else:
@@ -108,7 +108,11 @@ class CGYRO:
         For a job that has been submitted but not waited for, once it is done, get the results
         '''
 
+        self.cgyro_job.connect()
         self.cgyro_job.retrieve()
+        self.cgyro_job.close()
+
+
 
 class CGYRO2:
     def __init__(

@@ -651,7 +651,7 @@ class mitim_job:
             output_squeue = f.read()
         output_squeue = str(output_squeue)[3:].split("\n")
         
-        if len(output_squeue[0].split()) == 0:
+        if (len(output_squeue[0].split()) == 0) or (len(output_squeue[1])==0):
             self.infoSLURM = {'STATE': 'NOT FOUND'}
             self.jobid_found = None
         else:
