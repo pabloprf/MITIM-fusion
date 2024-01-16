@@ -54,7 +54,9 @@ t = TRANSPtools.TRANSP(folder, "CMOD")
 
 # Define user and run parameters
 t.defineRunParameters(
-    "12345" + runid, "12345", mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 32}
+    "12345" + runid, "12345",
+    mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 32},
+    minutesAllocation = 10
 )
 
 # Submit run
@@ -62,7 +64,7 @@ t.run()
 
 # Check
 c = t.checkUntilFinished(
-    label="run1", checkMin=1, grabIntermediateEachMin=20, retrieveAC=True
+    label="run1", checkMin=2, grabIntermediateEachMin=20, retrieveAC=True
 )
 
 # Plot

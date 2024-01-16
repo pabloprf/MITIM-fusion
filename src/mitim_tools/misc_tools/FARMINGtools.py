@@ -134,6 +134,11 @@ class mitim_job:
             shellPostCommands=[],
             label_log_files="",
             ):
+        '''
+        command:
+            Option 1: string with commands to execute separated by &&
+            Option 2: list of strings with commands to execute
+        '''
 
         # Pass to class
         self.command = command
@@ -480,6 +485,12 @@ class mitim_job:
     def check(self):
         '''
         Check job status slurm
+
+            - If the job was launched with run(waitYN=False), then the script will not
+                wait for the full slurm execution, but will launch it and retrieve the jobid,
+                which the check command uses to check the status of the job.
+            - If the class was initiated but not run, it will not have the jobid, so it will
+                try to find it from the job_name, which must match the submitted one.
         '''
 
         if self.jobid is not None:
@@ -511,6 +522,20 @@ class mitim_job:
             self.jobid_found = self.infoSLURM["JOBID"]
         else:
             self.jobid_found = None
+
+        # Print info
+        txt = '\t- Job was checked'
+        if (self.jobid is None) and (self.jobid_found is not None):
+            txt += f' (jobid {self.jobid_found}, found from name "{self.slurm_settings["name"]}")'
+        elif self.jobid is not None:
+            txt += f' (jobid {self.jobid})'
+        if self.infoSLURM is not None:
+            txt += f', is {self.infoSLURM["STATE"]} (job.infoSLURM)'
+        else:
+            txt += ', is not on the grid (job.infoSLURM is None)'
+        if self.log_file is not None:
+            txt += f'. Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines'
+        print(txt)
 
     def check_all_received(self):
 

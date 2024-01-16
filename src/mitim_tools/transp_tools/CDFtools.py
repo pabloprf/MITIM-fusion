@@ -202,6 +202,17 @@ class CDFreactor:
                 if self.fbm_He4_gc is not None:
                     print("\t\t- Gathered He4 FBM files")
 
+            # T (D+D)
+            if self.nfusT_avol.max() > thr:
+                self.fbm_T_gc, self.fbm_T_po = FBMtools.getFBMprocess(
+                    self.folderWork,
+                    self.nameRunid,
+                    datanum=datanum,
+                    FBMparticle="T_FUSN",
+                )
+                if self.fbm_T_gc is not None:
+                    print("\t\t- Gathered T FBM files")
+
             # D beam
             if self.nbD_avol.max() > thr:
                 self.fbm_Dbeam_gc, self.fbm_Dbeam_po = FBMtools.getFBMprocess(
@@ -213,16 +224,6 @@ class CDFreactor:
                 if self.fbm_Dbeam_gc is not None:
                     print("\t\t- Gathered D beam FBM files")
 
-            # T (D+D)
-            if self.nfusT_avol.max() > thr:
-                self.fbm_T_gc, self.fbm_T_po = FBMtools.getFBMprocess(
-                    self.folderWork,
-                    self.nameRunid,
-                    datanum=datanum,
-                    FBMparticle="T_FUSN",
-                )
-                if self.fbm_T_gc is not None:
-                    print("\t\t- Gathered T FBM files")
 
         # ~~~~~~~~ TORIC ~~~~~~~~
 
@@ -1330,19 +1331,25 @@ class CDFreactor:
             self.nfusHe3_avol = (
                 volumeAverage(self.f, "FDENS_3") * 1e6 * 1e-20
             )  # in 10^20m^-3
+        except KeyError:
+            self.nfusHe3 = self.nD * 0.0 + self.eps00
+            self.nfusHe3_avol = self.nD_avol * 0.0 + self.eps00
+
+        try:
             self.nfusT = self.f["FDENS_T"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfusT_avol = (
                 volumeAverage(self.f, "FDENS_T") * 1e6 * 1e-20
             )  # in 10^20m^-3
+        except KeyError:
+            self.nfusT = self.nD * 0.0 + self.eps00
+            self.nfusT_avol = self.nD_avol * 0.0 + self.eps00
+
+        try:
             self.nfusH = self.f["FDENS_P"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfusH_avol = (
                 volumeAverage(self.f, "FDENS_P") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except:
-            self.nfusHe3 = self.nD * 0.0 + self.eps00
-            self.nfusHe3_avol = self.nD_avol * 0.0 + self.eps00
-            self.nfusT = self.nD * 0.0 + self.eps00
-            self.nfusT_avol = self.nD_avol * 0.0 + self.eps00
+        except KeyError:
             self.nfusH = self.nD * 0.0 + self.eps00
             self.nfusH_avol = self.nD_avol * 0.0 + self.eps00
 
