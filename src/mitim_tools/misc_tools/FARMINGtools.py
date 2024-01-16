@@ -328,6 +328,13 @@ class mitim_job:
             self.jump_client = paramiko.SSHClient()
             self.jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
+            key_jump = IOtools.expandPath(self.machineSettings["identity"])
+
+            if key_jump is not None:
+                if not os.path.exists(key_jump):
+                    if print('Key file "' + key_jump + '" does not exist, continue without key',typeMsg='q'):
+                        key_jump = None
+                        
             # Connect to the jump host
             self.jump_client.connect(
                 self.jump_host,
@@ -335,7 +342,7 @@ class mitim_job:
                 port=self.machineSettings["port"]
                 if self.machineSettings["port"] is not None
                 else 22,
-                key_filename=self.machineSettings["identity"],
+                key_filename=key_jump,
                 allow_agent=True,
             )
 
@@ -363,7 +370,14 @@ class mitim_job:
                 else 22
             )
             self.sock = None
-            self.key_filename = self.machineSettings["identity"]
+
+            self.key_filename = IOtools.expandPath(self.machineSettings["identity"])
+
+            if self.key_filename is not None:
+                if not os.path.exists(self.key_filename):
+                    if print('Key file "' + self.key_filename + '" does not exist, continue without key',typeMsg='q'):
+                        self.key_filename = None
+                        
 
     def create_scratch_folder(self):
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
