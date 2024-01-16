@@ -1,404 +1,45 @@
-import copy, torch
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
-from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
-from mitim_tools.gacode_tools import PROFILEStools, TGYROtools
-from mitim_tools.gacode_tools.aux import PORTALSinteraction
+from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.gacode_tools import PROFILEStools
+from mitim_modules.portals import PORTALStools
+
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 factor_dw0dr = 1e-5
 label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
 
-
-class PORTALSresults:
-    def __init__(
-        self,
-        folderWork,
-        prfs_model,
-        ResultsOptimization,
-        MITIMextra_dict=None,
-        indecesPlot=[-1, 0, None],
-        calculateRicci={"d0": 2.0, "l": 1.0},
-    ):
-        self.prfs_model = prfs_model
-        self.ResultsOptimization = ResultsOptimization
-
-        includeFast = self.prfs_model.mainFunction.PORTALSparameters["includeFastInQi"]
-        impurityPosition = self.prfs_model.mainFunction.PORTALSparameters[
-            "ImpurityOfInterest"
-        ]
-        self.useConvectiveFluxes = self.prfs_model.mainFunction.PORTALSparameters[
-            "useConvectiveFluxes"
-        ]
-
-        self.numChannels = len(
-            self.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]
-        )
-        self.numRadius = len(
-            self.prfs_model.mainFunction.TGYROparameters["RhoLocations"]
-        )
-        self.numBest = (
-            indecesPlot[0]
-            if (indecesPlot[0] > 0)
-            else (self.prfs_model.train_Y.shape[0] + indecesPlot[0])
-        )
-        self.numOrig = indecesPlot[1]
-        self.numExtra = (
-            indecesPlot[2]
-            if (indecesPlot[2] is None or indecesPlot[2] > 0)
-            else (self.prfs_model.train_Y.shape[0] + indecesPlot[2])
-        )
-        self.sepers = [self.numOrig, self.numBest]
-
-        if (self.numExtra is not None) and (self.numExtra == self.numBest):
-            self.numExtra = None
-
-        self.posZ = prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"] - 1
-
-        # Profiles and tgyro results
-        print("\t- Reading profiles and tgyros for each evaluation")
-        self.profiles, self.tgyros = [], []
-        for i in range(self.prfs_model.train_Y.shape[0]):
-            # print(f'\t- Reading TGYRO results and PROFILES for evaluation {i}/{self.prfs_model.train_Y.shape[0]-1}')
-            if MITIMextra_dict is not None:
-                # print('\t\t* Reading from MITIMextra_dict',typeMsg='i')
-                self.tgyros.append(MITIMextra_dict[i]["tgyro"].results["use"])
-                self.profiles.append(
-                    MITIMextra_dict[i]["tgyro"].results["use"].profiles_final
-                )
-            else:
-                # print('\t\t* Reading from scratch from folders (will surely take longer)',typeMsg='i')
-                folderEvaluation = folderWork + f"/Execution/Evaluation.{i}/"
-                self.profiles.append(
-                    PROFILEStools.PROFILES_GACODE(
-                        folderEvaluation + "/model_complete/input.gacode.new"
-                    )
-                )
-                self.tgyros.append(
-                    TGYROtools.TGYROoutput(
-                        folderEvaluation + "model_complete/", profiles=self.profiles[i]
-                    )
-                )
-
-        if len(self.profiles) <= self.numBest:
-            print(
-                "\t- PORTALS was read after new residual was computed but before pickle was written!",
-                typeMsg="w",
-            )
-            self.numBest -= 1
-            self.numExtra = None
-
-        # Create some metrics
-
-        print("\t- Process results")
-
-        self.evaluations, self.resM = [], []
-        self.FusionGain, self.tauE, self.FusionPower = [], [], []
-        self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = [], [], [], [], []
-        if calculateRicci is not None:
-            self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = [], [], []
-        else:
-            self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
-        for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
-            self.evaluations.append(i)
-            self.FusionGain.append(p.derived["Q"])
-            self.FusionPower.append(p.derived["Pfus"])
-            self.tauE.append(p.derived["tauE"])
-
-            # ------------------------------------------------
-            # Residual definitions
-            # ------------------------------------------------
-
-            powerstate = self.prfs_model.mainFunction.powerstate
-
-            try:
-                OriginalFimp = powerstate.TransportOptions["ModelOptions"][
-                    "OriginalFimp"
-                ]
-            except:
-                OriginalFimp = 1.0
-
-            portals_variables = t.TGYROmodeledVariables(
-                useConvectiveFluxes=self.useConvectiveFluxes,
-                includeFast=includeFast,
-                impurityPosition=impurityPosition,
-                ProfilesPredicted=self.prfs_model.mainFunction.TGYROparameters[
-                    "ProfilesPredicted"
-                ],
-                UseFineGridTargets=self.prfs_model.mainFunction.PORTALSparameters[
-                    "fineTargetsResolution"
-                ],
-                OriginalFimp=OriginalFimp,
-                forceZeroParticleFlux=self.prfs_model.mainFunction.PORTALSparameters[
-                    "forceZeroParticleFlux"
-                ],
-            )
-
-            if (
-                len(powerstate.plasma["volp"].shape) > 1
-                and powerstate.plasma["volp"].shape[1] > 1
-            ):
-                powerstate.unrepeat(do_fine=False)
-                powerstate.repeat(do_fine=False)
-
-            _, _, source, res = PORTALSinteraction.calculatePseudos(
-                portals_variables["var_dict"],
-                self.prfs_model.mainFunction.PORTALSparameters,
-                self.prfs_model.mainFunction.TGYROparameters,
-                powerstate,
-            )
-
-            # Make sense of tensor "source" which are defining the entire predictive set in
-            Qe_resR = np.zeros(
-                len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-            )
-            Qi_resR = np.zeros(
-                len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-            )
-            Ge_resR = np.zeros(
-                len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-            )
-            GZ_resR = np.zeros(
-                len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-            )
-            Mt_resR = np.zeros(
-                len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-            )
-            cont = 0
-            for prof in self.prfs_model.mainFunction.TGYROparameters[
-                "ProfilesPredicted"
-            ]:
-                for ix in range(
-                    len(self.prfs_model.mainFunction.TGYROparameters["RhoLocations"])
-                ):
-                    if prof == "te":
-                        Qe_resR[ix] = source[0, cont].abs()
-                    if prof == "ti":
-                        Qi_resR[ix] = source[0, cont].abs()
-                    if prof == "ne":
-                        Ge_resR[ix] = source[0, cont].abs()
-                    if prof == "nZ":
-                        GZ_resR[ix] = source[0, cont].abs()
-                    if prof == "w0":
-                        Mt_resR[ix] = source[0, cont].abs()
-
-                    cont += 1
-
-            res = -res.item()
-
-            self.resTe.append(Qe_resR)
-            self.resTi.append(Qi_resR)
-            self.resne.append(Ge_resR)
-            self.resnZ.append(GZ_resR)
-            self.resw0.append(Mt_resR)
-            self.resM.append(res)
-
-            # Ricci Metrics
-            if calculateRicci is not None:
-                try:
-                    (
-                        y1,
-                        y2,
-                        y1_std,
-                        y2_std,
-                    ) = PORTALSinteraction.calculatePseudos_distributions(
-                        portals_variables["var_dict"],
-                        self.prfs_model.mainFunction.PORTALSparameters,
-                        self.prfs_model.mainFunction.TGYROparameters,
-                        powerstate,
-                    )
-
-                    QR, chiR = PLASMAtools.RicciMetric(
-                        y1,
-                        y2,
-                        y1_std,
-                        y2_std,
-                        d0=calculateRicci["d0"],
-                        l=calculateRicci["l"],
-                    )
-                    self.QR_Ricci.append(QR[0])
-                    self.chiR_Ricci.append(chiR[0])
-                    self.points_Ricci.append(
-                        [
-                            y1.cpu().numpy()[0, :],
-                            y2.cpu().numpy()[0, :],
-                            y1_std.cpu().numpy()[0, :],
-                            y2_std.cpu().numpy()[0, :],
-                        ]
-                    )
-                except:
-                    print("\t- Could not calculate Ricci metric", typeMsg="w")
-                    calculateRicci = None
-                    self.QR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
-
-        self.labelsFluxes = portals_variables["labels"]
-
-        self.FusionGain = np.array(self.FusionGain)
-        self.FusionPower = np.array(self.FusionPower)
-        self.tauE = np.array(self.tauE)
-        self.resM = np.array(self.resM)
-        self.evaluations = np.array(self.evaluations)
-        self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = (
-            np.array(self.resTe),
-            np.array(self.resTi),
-            np.array(self.resne),
-            np.array(self.resnZ),
-            np.array(self.resw0),
-        )
-
-        if calculateRicci is not None:
-            self.chiR_Ricci = np.array(self.chiR_Ricci)
-            self.QR_Ricci = np.array(self.QR_Ricci)
-            self.points_Ricci = np.array(self.points_Ricci)
-
-        # Normalized L1 norms
-        self.resTeM = np.abs(self.resTe).mean(axis=1)
-        self.resTiM = np.abs(self.resTi).mean(axis=1)
-        self.resneM = np.abs(self.resne).mean(axis=1)
-        self.resnZM = np.abs(self.resnZ).mean(axis=1)
-        self.resw0M = np.abs(self.resw0).mean(axis=1)
-
-        self.resCheck = (
-            self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
-
-        # ---------------------------------------------------------------------------------------------------------------------
-        # Jacobian
-        # ---------------------------------------------------------------------------------------------------------------------
-
-        DeltaQ1 = []
-        for i in self.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            if i == "te":
-                DeltaQ1.append(-self.resTe)
-            if i == "ti":
-                DeltaQ1.append(-self.resTi)
-            if i == "ne":
-                DeltaQ1.append(-self.resne)
-        DeltaQ1 = np.array(DeltaQ1)
-        self.DeltaQ = DeltaQ1[0, :, :]
-        for i in range(DeltaQ1.shape[0] - 1):
-            self.DeltaQ = np.append(self.DeltaQ, DeltaQ1[i + 1, :, :], axis=1)
-
-        self.aLTn_perc = aLTi_perc = None
-        # try:	self.aLTn_perc  = aLTi_perc  = calcLinearizedModel(self.prfs_model,self.DeltaQ,numChannels=self.numChannels,numRadius=self.numRadius,sepers=self.sepers)
-        # except:	print('\t- Jacobian calculation failed',typeMsg='w')
-
-        self.DVdistMetric_x = ResultsOptimization.DVdistMetric_x
-        self.DVdistMetric_y = ResultsOptimization.DVdistMetric_y
+# ---------------------------------------------------------------------------------------------------------------------
+# Plotting methods for PORTALS class
+# ---------------------------------------------------------------------------------------------------------------------
 
 
-def calcLinearizedModel(
-    prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
-):
-    """
-    posBase = 1 is aLTi, 0 is aLTe, if the order is [a/LTe,aLTi]
-    -1 is diagonal
-    -2 is
-
-    NOTE for PRF: THIS ONLY WORKS FOR TURBULENCE, nOT NEO!
-    """
-
-    trainx = prfs_model.steps[-1].GP["combined_model"].train_X.cpu().numpy()
-
-    istep, aLTn_est, aLTn_base = 0, [], []
-    for i in range(trainx.shape[0]):
-        if i >= prfs_model.Optim["initialPoints"]:
-            istep += 1
-
-        # Jacobian
-        J = (
-            prfs_model.steps[istep]
-            .GP["combined_model"]
-            .localBehavior(trainx[i, :], plotYN=False)
-        )
-
-        J = 1e-3 * J[: trainx.shape[1], : trainx.shape[1]]  # Only turbulence
-
-        print(f"\t- Reading Jacobian for step {istep}")
-
-        Q = DeltaQ[i, :]
-
-        if posBase < 0:
-            # All channels together ------------------------------------------------
-            mult = torch.Tensor()
-            for i in range(12):
-                if posBase == -1:
-                    a = torch.Tensor([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Diagonal
-                elif posBase == -2:
-                    a = torch.Tensor(
-                        [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
-                    )  # Block diagonal
-                a = torch.roll(a, i)
-                mult = torch.cat((mult, a.unsqueeze(0)), dim=0)
-
-            J_reduced = J * mult
-            aLTn = (J_reduced.inverse().cpu().numpy()).dot(Q)
-            aLTn_base0 = trainx[i, :]
-            # ------------------------------------------------------------------------
-
-        else:
-            # Channel per channel, only ion temperature gradient ------------------------
-            J_mod = []
-            aLTn_base0 = []
-            cont = 0
-            for c in range(numChannels):
-                for r in range(numRadius):
-                    J_mod.append(J[cont, posBase * numRadius + r].cpu().numpy())
-                    aLTn_base0.append(trainx[i, posBase * numRadius + r])
-                    cont += 1
-            J_mod = np.array(J_mod)
-            aLTn_base0 = np.array(aLTn_base0)
-            aLTn = Q / J_mod
-            # ------------------------------------------------------------------------
-
-        aLTn_base.append(aLTn_base0)
-        aLTn_est.append(aLTn)
-
-    aLTn_est = np.array(aLTn_est)
-    aLTn_base = np.array(aLTn_base)
-
-    aLTn_perc = [
-        np.abs(i / j) * 100.0 if i is not None else None
-        for i, j in zip(aLTn_est, aLTn_base)
-    ]
-
-    return aLTn_perc
-
-
-def plotConvergencePORTALS(
-    portals,
-    folderWork=None,
+def PORTALSanalyzer_plotMetrics(
+    self,
     fig=None,
-    stds=2,
-    plotAllFluxes=False,
     indexToMaximize=None,
+    plotAllFluxes=False,
+    index_extra=None,
+    stds=2,
     plotFlows=True,
     fontsize_leg=5,
     includeRicci=True,
+    useConvectiveFluxes=False,  # By default, plot in real particle units
+    file_save=None,
+    **kwargs,  # To allow pass fn that may be used in another plotMetrics method
 ):
-    """
-    Either folderwork or portals need to be provided
-    """
+    print("- Plotting PORTALS Metrics")
 
-    labelsFluxes = portals.labelsFluxes  # For channel residuals
-
-    useConvectiveFluxes = False  # portals.useConvectiveFluxes
-    labelsFluxesF = {
-        "te": "$Q_e$ ($MW/m^2$)",
-        "ti": "$Q_i$ ($MW/m^2$)",
-        "ne": "$\\Gamma_e$ ($10^{20}/s/m^2$)",
-        "nZ": "$\\Gamma_Z$ ($10^{20}/s/m^2$)",
-        "w0": "$M_T$ ($J/m^2$)",
-    }
+    if index_extra is not None:
+        self.iextra = index_extra
 
     if fig is None:
         plt.ion()
         fig = plt.figure(figsize=(15, 8))
 
-    numprofs = len(portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
-
-    wspace = 0.3 if numprofs <= 4 else 0.5
+    numprofs = len(self.ProfilesPredicted)
 
     grid = plt.GridSpec(nrows=8, ncols=numprofs + 1, hspace=0.3, wspace=0.35)
 
@@ -414,7 +55,7 @@ def plotConvergencePORTALS(
     axTi_f = fig.add_subplot(grid[6:, 1])
 
     cont = 0
-    if "ne" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self.ProfilesPredicted:
         axne = fig.add_subplot(grid[:4, 2 + cont])
         axne.set_title("Electron Density")
         axne_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -423,9 +64,8 @@ def plotConvergencePORTALS(
     else:
         axne = axne_g = axne_f = None
 
-    if "nZ" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        impos = portals.prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"]
-        labIon = f"Ion {impos} ({portals.profiles[0].Species[impos-1]['N']}{int(portals.profiles[0].Species[impos-1]['Z'])},{int(portals.profiles[0].Species[impos-1]['A'])})"
+    if self.runWithImpurity:
+        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -434,7 +74,7 @@ def plotConvergencePORTALS(
     else:
         axnZ = axnZ_g = axnZ_f = None
 
-    if "w0" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
+    if self.runWithRotation:
         axw0 = fig.add_subplot(grid[:4, 2 + cont])
         axw0.set_title("Rotation")
         axw0_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -448,9 +88,9 @@ def plotConvergencePORTALS(
     axR = fig.add_subplot(grid[6:8, numprofs])
 
     if indexToMaximize is None:
-        indexToMaximize = portals.numBest
+        indexToMaximize = self.ibest
     if indexToMaximize < 0:
-        indexToMaximize = portals.prfs_model.train_Y.shape[0] + indexToMaximize
+        indexToMaximize = self.ilast + 1 + indexToMaximize
 
     # ---------------------------------------------------------------------------------------------------------
     # Plot all profiles
@@ -459,7 +99,7 @@ def plotConvergencePORTALS(
     lwt = 0.1
     lw = 0.2
     alph = 0.6
-    for i, p in enumerate(portals.profiles):
+    for i, p in enumerate(self.profiles):
         if p is not None:
             if i < 5:
                 col = "k"
@@ -474,9 +114,7 @@ def plotConvergencePORTALS(
                 lab = ""
 
             ix = np.argmin(
-                np.abs(
-                    p.profiles["rho(-)"] - portals.tgyros[portals.numOrig].rho[0][-1]
-                )
+                np.abs(p.profiles["rho(-)"] - self.tgyros[self.i0].rho[0][-1])
             )
             axTe.plot(
                 p.profiles["rho(-)"],
@@ -528,7 +166,7 @@ def plotConvergencePORTALS(
             if axnZ is not None:
                 axnZ.plot(
                     p.profiles["rho(-)"],
-                    p.profiles["ni(10^19/m^3)"][:, portals.posZ] * 1e-1,
+                    p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                     lw=lw,
                     color=col,
                     label=lab,
@@ -536,7 +174,7 @@ def plotConvergencePORTALS(
                 )
                 axnZ_g.plot(
                     p.profiles["rho(-)"][:ix],
-                    p.derived["aLni"][:ix, portals.posZ],
+                    p.derived["aLni"][:ix, self.runWithImpurity],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -559,7 +197,7 @@ def plotConvergencePORTALS(
                     alpha=alph,
                 )
 
-        t = portals.tgyros[i]
+        t = self.tgyros[i]
         if (t is not None) and plotAllFluxes:
             axTe_f.plot(
                 t.rho[0],
@@ -587,20 +225,27 @@ def plotConvergencePORTALS(
 
             if axne_f is not None:
                 axne_f.plot(t.rho[0], Ge[0], "-", c=col, lw=lwt, alpha=alph)
-                axne_f.plot(t.rho[0], Ge_tar[0], "--", c=col, lw=lwt, alpha=alph)
+                axne_f.plot(
+                    t.rho[0],
+                    Ge_tar[0] * (1 - int(self.forceZeroParticleFlux)),
+                    "--",
+                    c=col,
+                    lw=lwt,
+                    alpha=alph,
+                )
 
             if axnZ_f is not None:
                 if useConvectiveFluxes:
                     GZ, GZ_tar = (
-                        t.Ci_sim_turb[portals.posZ, :, :]
-                        + t.Ci_sim_turb[portals.posZ, :, :],
-                        t.Ci_tar[portals.posZ, :, :],
+                        t.Ci_sim_turb[self.runWithImpurity, :, :]
+                        + t.Ci_sim_turb[self.runWithImpurity, :, :],
+                        t.Ci_tar[self.runWithImpurity, :, :],
                     )
                 else:
                     GZ, GZ_tar = (
-                        t.Gi_sim_turb[portals.posZ, :, :]
-                        + t.Gi_sim_neo[portals.posZ, :, :]
-                    ), t.Gi_tar[portals.posZ, :, :]
+                        t.Gi_sim_turb[self.runWithImpurity, :, :]
+                        + t.Gi_sim_neo[self.runWithImpurity, :, :]
+                    ), t.Gi_tar[self.runWithImpurity, :, :]
 
                 axnZ_f.plot(t.rho[0], GZ[0], "-", c=col, lw=lwt, alpha=alph)
                 axnZ_f.plot(t.rho[0], GZ_tar[0], "--", c=col, lw=lwt, alpha=alph)
@@ -622,20 +267,20 @@ def plotConvergencePORTALS(
 
     for cont, (indexUse, col, lab) in enumerate(
         zip(
-            [portals.numOrig, portals.numBest, portals.numExtra],
+            [self.i0, self.ibest, self.iextra],
             ["r", "g", "m"],
             [
-                f"Initial (#{portals.numOrig})",
-                f"Best (#{portals.numBest})",
-                f"Last (#{portals.numExtra})",
+                f"Initial (#{self.i0})",
+                f"Best (#{self.ibest})",
+                f"Last (#{self.iextra})",
             ],
         )
     ):
-        if (indexUse is None) or (indexUse >= len(portals.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.profiles)):
             continue
 
-        p = portals.profiles[indexUse]
-        t = portals.tgyros[indexUse]
+        p = self.profiles[indexUse]
+        t = self.tgyros[indexUse]
 
         ix = np.argmin(np.abs(p.profiles["rho(-)"] - t.rho[0][-1]))
         axTe.plot(
@@ -684,14 +329,14 @@ def plotConvergencePORTALS(
         if axnZ is not None:
             axnZ.plot(
                 p.profiles["rho(-)"],
-                p.profiles["ni(10^19/m^3)"][:, portals.posZ] * 1e-1,
+                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                 lw=2,
                 color=col,
                 label=lab,
             )
             axnZ_g.plot(
                 p.profiles["rho(-)"][:ix],
-                p.derived["aLni"][:ix, portals.posZ],
+                p.derived["aLni"][:ix, self.runWithImpurity],
                 markersize=msFlux,
                 lw=2,
                 color=col,
@@ -714,18 +359,7 @@ def plotConvergencePORTALS(
                 color=col,
             )
 
-        (
-            QeBest_min,
-            QeBest_max,
-            QiBest_min,
-            QiBest_max,
-            GeBest_min,
-            GeBest_max,
-            GZBest_min,
-            GZBest_max,
-            MtBest_min,
-            MtBest_max,
-        ) = plotFluxComparison(
+        plotFluxComparison(
             p,
             t,
             axTe_f,
@@ -733,16 +367,17 @@ def plotConvergencePORTALS(
             axne_f,
             axnZ_f,
             axw0_f,
-            posZ=portals.posZ,
+            runWithImpurity=self.runWithImpurity,
             fontsize_leg=fontsize_leg,
             stds=stds,
             col=col,
             lab=lab,
             msFlux=msFlux,
+            forceZeroParticleFlux=self.forceZeroParticleFlux,
             useConvectiveFluxes=useConvectiveFluxes,
             maxStore=indexToMaximize == indexUse,
-            decor=portals.numBest == indexUse,
-            plotFlows=plotFlows and (portals.numBest == indexUse),
+            decor=self.ibest == indexUse,
+            plotFlows=plotFlows and (self.ibest == indexUse),
         )
 
     ax = axTe
@@ -832,112 +467,112 @@ def plotConvergencePORTALS(
         ax.set_xticklabels([])
 
     ax = axC
-    if "te" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        v = portals.resTeM
+    if "te" in self.ProfilesPredicted:
+        v = self.resTeM
         ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-o",
             lw=0.5,
             c="b",
             markersize=2,
-            label=labelsFluxes["te"],
+            label=self.labelsFluxes["te"],
         )
-    if "ti" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        v = portals.resTiM
+    if "ti" in self.ProfilesPredicted:
+        v = self.resTiM
         ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-s",
             lw=0.5,
             c="m",
             markersize=2,
-            label=labelsFluxes["ti"],
+            label=self.labelsFluxes["ti"],
         )
-    if "ne" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        v = portals.resneM
+    if "ne" in self.ProfilesPredicted:
+        v = self.resneM
         ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-*",
             lw=0.5,
             c="k",
             markersize=2,
-            label=labelsFluxes["ne"],
+            label=self.labelsFluxes["ne"],
         )
-    if "nZ" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        v = portals.resnZM
+    if "nZ" in self.ProfilesPredicted:
+        v = self.resnZM
         ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-v",
             lw=0.5,
             c="c",
             markersize=2,
-            label=labelsFluxes["nZ"],
+            label=self.labelsFluxes["nZ"],
         )
-    if "w0" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        v = portals.resw0M
+    if "w0" in self.ProfilesPredicted:
+        v = self.resw0M
         ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-v",
             lw=0.5,
             c="darkred",
             markersize=2,
-            label=labelsFluxes["w0"],
+            label=self.labelsFluxes["w0"],
         )
 
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [portals.numOrig, portals.numBest, portals.numExtra],
+            [self.i0, self.ibest, self.iextra],
             ["r", "g", "m"],
             ["Initial", "Best", "Last"],
             ["o", "s", "*"],
         )
     ):
-        if (indexUse is None) or (indexUse >= len(portals.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.profiles)):
             continue
-        if "te" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            v = portals.resTeM
+        if "te" in self.ProfilesPredicted:
+            v = self.resTeM
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 mars,
                 color=col,
                 markersize=4,
             )
-        if "ti" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            v = portals.resTiM
+        if "ti" in self.ProfilesPredicted:
+            v = self.resTiM
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 mars,
                 color=col,
                 markersize=4,
             )
-        if "ne" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            v = portals.resneM
+        if "ne" in self.ProfilesPredicted:
+            v = self.resneM
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 mars,
                 color=col,
                 markersize=4,
             )
-        if "nZ" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            v = portals.resnZM
+        if "nZ" in self.ProfilesPredicted:
+            v = self.resnZM
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 mars,
                 color=col,
                 markersize=4,
             )
-        if "w0" in portals.prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-            v = portals.resw0M
+        if "w0" in self.ProfilesPredicted:
+            v = self.resw0M
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 mars,
                 color=col,
@@ -945,13 +580,11 @@ def plotConvergencePORTALS(
             )
 
     # Plot las point as check
-    ax.plot(
-        [portals.evaluations[-1]], [portals.resCheck[-1]], "-o", markersize=2, color="k"
-    )
+    ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
-    separator = portals.prfs_model.Optim["initialPoints"] + 0.5 - 1
+    separator = self.opt_fun.prfs_model.Optim["initialPoints"] + 0.5 - 1
 
-    if portals.evaluations[-1] < separator:
+    if self.evaluations[-1] < separator:
         separator = None
 
     GRAPHICStools.addDenseAxis(ax, n=5)
@@ -968,8 +601,8 @@ def plotConvergencePORTALS(
         ratio=0.9,
         withleg=True,
         size=fontsize_leg * 1.5,
-        title="Channels $\\widehat{L_1}$",
-    )  # ax.legend(prop={'size':fontsize_leg},loc='lower left')
+        title="Channels $\\frac{1}{N_c}L_1$",
+    )
     ax.set_xticklabels([])
 
     if separator is not None:
@@ -993,25 +626,25 @@ def plotConvergencePORTALS(
     ax = axR
 
     for resChosen, label, c in zip(
-        [portals.resM, portals.resCheck],
-        ["$\\widehat{L_2}$", "$\\widehat{L_1}$"],
+        [self.resM, self.resCheck],
+        ["OF: $\\frac{1}{N}L_2$", "$\\frac{1}{N}L_1$"],
         ["olive", "rebeccapurple"],
     ):
         ax.plot(
-            portals.evaluations, resChosen, "-o", lw=1.0, c=c, markersize=2, label=label
+            self.evaluations, resChosen, "-o", lw=1.0, c=c, markersize=2, label=label
         )
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [portals.numOrig, portals.numBest, portals.numExtra],
+                [self.i0, self.ibest, self.iextra],
                 ["r", "g", "m"],
                 ["Initial", "Best", "Last"],
                 ["o", "s", "*"],
             )
         ):
-            if (indexUse is None) or (indexUse >= len(portals.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.profiles)):
                 continue
             ax.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [resChosen[indexUse]],
                 "o",
                 color=col,
@@ -1038,21 +671,25 @@ def plotConvergencePORTALS(
 
     GRAPHICStools.addDenseAxis(ax, n=5)
     ax.set_xlabel("Iterations (calls/radius)")
-    ax.set_ylabel("Residual Definitions")
+    ax.set_ylabel("Residual")
     ax.set_xlim(left=0)
     try:
         ax.set_yscale("log")
     except:
         pass
     GRAPHICStools.addLegendApart(
-        ax, ratio=0.9, withleg=True, size=fontsize_leg * 2.0
-    )  # ax.legend(prop={'size':fontsize_leg},loc='lower left')
+        ax,
+        ratio=0.9,
+        withleg=True,
+        size=fontsize_leg * 2.0,
+        title="Residuals",
+    )
 
     ax = axA
 
     ax.plot(
-        portals.DVdistMetric_x,
-        portals.DVdistMetric_y,
+        self.DVdistMetric_x,
+        self.DVdistMetric_y,
         "-o",
         c="olive",
         lw=1.0,
@@ -1062,25 +699,25 @@ def plotConvergencePORTALS(
 
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [portals.numOrig, portals.numBest, portals.numExtra],
+            [self.i0, self.ibest, self.iextra],
             ["r", "g", "m"],
             ["Initial", "Best", "Last"],
             ["o", "s", "*"],
         )
     ):
-        if (indexUse is None) or (indexUse >= len(portals.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.profiles)):
             continue
-        v = portals.chiR_Ricci
-        try:
-            axt.plot(
-                [portals.evaluations[indexUse]],
-                [portals.DVdistMetric_y[indexUse]],
-                "o",
-                color=col,
-                markersize=4,
-            )
-        except:
-            pass
+        v = self.chiR_Ricci
+        # try:
+        #     axt.plot(
+        #         [self.evaluations[indexUse]],
+        #         [self.DVdistMetric_y[indexUse]],
+        #         "o",
+        #         color=col,
+        #         markersize=4,
+        #     )
+        # except:
+        #     pass
 
     if separator is not None:
         GRAPHICStools.drawLineWithTxt(
@@ -1108,11 +745,11 @@ def plotConvergencePORTALS(
         pass
     ax.set_xticklabels([])
 
-    if includeRicci and portals.chiR_Ricci is not None:
+    if includeRicci and self.chiR_Ricci is not None:
         axt = axA.twinx()
         (l2,) = axt.plot(
-            portals.DVdistMetric_x,
-            portals.DVdistMetric_y,
+            self.DVdistMetric_x,
+            self.DVdistMetric_y,
             "-o",
             c="olive",
             lw=1.0,
@@ -1120,8 +757,8 @@ def plotConvergencePORTALS(
             label="$\\Delta$ $a/L_{X}$",
         )
         axt.plot(
-            portals.evaluations,
-            portals.chiR_Ricci,
+            self.evaluations,
+            self.chiR_Ricci,
             "-o",
             lw=1.0,
             c="rebeccapurple",
@@ -1130,17 +767,17 @@ def plotConvergencePORTALS(
         )
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [portals.numOrig, portals.numBest, portals.numExtra],
+                [self.i0, self.ibest, self.iextra],
                 ["r", "g", "m"],
                 ["Initial", "Best", "Last"],
                 ["o", "s", "*"],
             )
         ):
-            if (indexUse is None) or (indexUse >= len(portals.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.profiles)):
                 continue
-            v = portals.chiR_Ricci
+            v = self.chiR_Ricci
             axt.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 "o",
                 color=col,
@@ -1150,19 +787,19 @@ def plotConvergencePORTALS(
         axt.set_ylim([0, 1])
         axt.legend(loc="best", prop={"size": fontsize_leg * 1.5})
         l2.set_visible(False)
-    elif portals.aLTn_perc is not None:
+    elif self.aLTn_perc is not None:
         ax = axA  # .twinx()
 
-        x = portals.evaluations
+        x = self.evaluations
 
-        if len(x) > len(portals.aLTn_perc):
+        if len(x) > len(self.aLTn_perc):
             x = x[:-1]
 
         x0, aLTn_perc0 = [], []
-        for i in range(len(portals.aLTn_perc)):
-            if portals.aLTn_perc[i] is not None:
+        for i in range(len(self.aLTn_perc)):
+            if self.aLTn_perc[i] is not None:
                 x0.append(x[i])
-                aLTn_perc0.append(portals.aLTn_perc[i].mean())
+                aLTn_perc0.append(self.aLTn_perc[i].mean())
         ax.plot(
             x0,
             aLTn_perc0,
@@ -1173,12 +810,12 @@ def plotConvergencePORTALS(
             label="$\\Delta$ $a/L_{X}^*$ (%)",
         )
 
-        v = portals.aLTn_perc[portals.numOrig].mean()
-        ax.plot([portals.evaluations[portals.numOrig]], v, "o", color="r", markersize=4)
+        v = self.aLTn_perc[self.i0].mean()
+        ax.plot([self.evaluations[self.i0]], v, "o", color="r", markersize=4)
         try:
-            v = portals.aLTn_perc[portals.numBest].mean()
+            v = self.aLTn_perc[self.ibest].mean()
             ax.plot(
-                [portals.evaluations[portals.numBest]],
+                [self.evaluations[self.ibest]],
                 [v],
                 "o",
                 color="g",
@@ -1214,30 +851,30 @@ def plotConvergencePORTALS(
 
     ax = axQ
 
-    isThereFusion = np.nanmax(portals.FusionGain) > 0
+    isThereFusion = np.nanmax(self.FusionGain) > 0
 
     if isThereFusion:
-        v = portals.FusionGain
+        v = self.FusionGain
         axt6 = ax.twinx()  # None
     else:
-        v = portals.tauE
+        v = self.tauE
         axt6 = None
         # ax.yaxis.tick_right()
         # ax.yaxis.set_label_position("right")
 
-    ax.plot(portals.evaluations, v, "-o", lw=1.0, c="olive", markersize=2, label="$Q$")
+    ax.plot(self.evaluations, v, "-o", lw=1.0, c="olive", markersize=2, label="$Q$")
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [portals.numOrig, portals.numBest, portals.numExtra],
+            [self.i0, self.ibest, self.iextra],
             ["r", "g", "m"],
             ["Initial", "Best", "Last"],
             ["o", "s", "*"],
         )
     ):
-        if (indexUse is None) or (indexUse >= len(portals.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.profiles)):
             continue
         ax.plot(
-            [portals.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4
+            [self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4
         )
 
     vmin, vmax = np.max([0, np.nanmin(v)]), np.nanmax(v)
@@ -1314,9 +951,9 @@ def plotConvergencePORTALS(
         )
 
     if (axt6 is not None) and (isThereFusion):
-        v = portals.FusionPower
+        v = self.FusionPower
         axt6.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-o",
             lw=1.0,
@@ -1326,16 +963,16 @@ def plotConvergencePORTALS(
         )
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [portals.numOrig, portals.numBest, portals.numExtra],
+                [self.i0, self.ibest, self.iextra],
                 ["r", "g", "m"],
                 ["Initial", "Best", "Last"],
                 ["o", "s", "*"],
             )
         ):
-            if (indexUse is None) or (indexUse >= len(portals.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.profiles)):
                 continue
             axt6.plot(
-                [portals.evaluations[indexUse]],
+                [self.evaluations[indexUse]],
                 [v[indexUse]],
                 "s",
                 color=col,
@@ -1346,7 +983,7 @@ def plotConvergencePORTALS(
         axt6.set_ylim(bottom=0)
 
         (l2,) = ax.plot(
-            portals.evaluations,
+            self.evaluations,
             v,
             "-o",
             lw=1.0,
@@ -1358,7 +995,7 @@ def plotConvergencePORTALS(
         l2.set_visible(False)
 
     for ax in [axQ, axA, axR, axC]:
-        ax.set_xlim([0, len(portals.FusionGain) + 2])
+        ax.set_xlim([0, len(self.FusionGain) + 2])
 
     # for ax in [axA,axR,axC]:
     # 	ax.yaxis.tick_right()
@@ -1369,12 +1006,1295 @@ def plotConvergencePORTALS(
     #     typeMsg="i",
     # )
 
+    # Save plot
+    if file_save is not None:
+        plt.savefig(file_save, transparent=True, dpi=300)
+
+
+def PORTALSanalyzer_plotExpected(
+    self, fig=None, stds=2, max_plot_points=4, plotNext=True
+):
+    print("- Plotting PORTALS Expected")
+
+    if fig is None:
+        plt.ion()
+        fig = plt.figure(figsize=(18, 9))
+
+    # ----------------------------------------------------------------------
+    # Plot
+    # ----------------------------------------------------------------------
+
+    trained_points = self.ilast + 1
+    self.ibest = self.opt_fun.res.best_absolute_index
+
+    # Best point
+    plotPoints = [self.ibest]
+    labelAssigned = [f"#{self.ibest} (best)"]
+
+    # Last point
+    if (trained_points - 1) != self.ibest:
+        plotPoints.append(trained_points - 1)
+        labelAssigned.append(f"#{trained_points-1} (last)")
+
+    # Last ones
+    i = 0
+    while len(plotPoints) < max_plot_points:
+        if (trained_points - 2 - i) < 1:
+            break
+        if (trained_points - 2 - i) != self.ibest:
+            plotPoints.append(trained_points - 2 - i)
+            labelAssigned.append(f"#{trained_points-2-i}")
+        i += 1
+
+    # First point
+    if 0 not in plotPoints:
+        if len(plotPoints) == max_plot_points:
+            plotPoints[-1] = 0
+            labelAssigned[-1] = "#0 (base)"
+        else:
+            plotPoints.append(0)
+            labelAssigned.append("#0 (base)")
+
+    if fig is None:
+        fig = plt.figure(figsize=(12, 8))
+
+    model = self.step.GP["combined_model"]
+
+    x_train_num = self.step.train_X.shape[0]
+
+    # ---- Training
+    x_train = torch.from_numpy(self.step.train_X).to(model.train_X)
+    y_trainreal = torch.from_numpy(self.step.train_Y).to(model.train_X)
+    yL_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
+    yU_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
+
+    y_train = model.predict(x_train)[0]
+
+    # ---- Next
+    y_next = yU_next = yL_next = None
+    if plotNext:
+        try:
+            y_next, yU_next, yL_next, _ = model.predict(self.step.x_next)
+        except:
+            pass
+
+    # ---- Plot
+
+    numprofs = len(self.ProfilesPredicted)
+
+    if numprofs <= 4:
+        wspace = 0.3
+    else:
+        wspace = 0.5
+
+    grid = plt.GridSpec(nrows=4, ncols=numprofs, hspace=0.2, wspace=wspace)
+
+    axTe = fig.add_subplot(grid[0, 0])
+    axTe.set_title("Electron Temperature")
+    axTe_g = fig.add_subplot(grid[1, 0], sharex=axTe)
+    axTe_f = fig.add_subplot(grid[2, 0], sharex=axTe)
+    axTe_r = fig.add_subplot(grid[3, 0], sharex=axTe)
+
+    axTi = fig.add_subplot(grid[0, 1], sharex=axTe)
+    axTi.set_title("Ion Temperature")
+    axTi_g = fig.add_subplot(grid[1, 1], sharex=axTe)
+    axTi_f = fig.add_subplot(grid[2, 1], sharex=axTe)
+    axTi_r = fig.add_subplot(grid[3, 1], sharex=axTe)
+
+    cont = 0
+    if "ne" in self.ProfilesPredicted:
+        axne = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        axne.set_title("Electron Density")
+        axne_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
+        axne_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
+        axne_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        cont += 1
+    else:
+        axne = axne_g = axne_f = axne_r = None
+    if self.runWithImpurity:
+        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
+        axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        axnZ.set_title(f"{labIon} Density")
+        axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
+        axnZ_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
+        axnZ_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        cont += 1
+    else:
+        axnZ = axnZ_g = axnZ_f = axnZ_r = None
+
+    if self.runWithRotation:
+        axw0 = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        axw0.set_title("Rotation")
+        axw0_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
+        axw0_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
+        axw0_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        cont += 1
+    else:
+        axw0 = axw0_g = axw0_f = axw0_r = None
+
+    colorsA = GRAPHICStools.listColors()
+    colors = []
+    coli = -1
+    for label in labelAssigned:
+        if "best" in label:
+            colors.append("g")
+        elif "last" in label:
+            colors.append("m")
+        elif "base" in label:
+            colors.append("r")
+        else:
+            coli += 1
+            while colorsA[coli] in ["g", "m", "r"]:
+                coli += 1
+            colors.append(colorsA[coli])
+
+    rho = self.profiles[0].profiles["rho(-)"]
+    roa = self.profiles[0].derived["roa"]
+    rhoVals = self.TGYROparameters["RhoLocations"]
+    roaVals = np.interp(rhoVals, rho, roa)
+    lastX = roaVals[-1]
+
+    # ---- Plot profiles
+    cont = -1
+    for i in plotPoints:
+        cont += 1
+
+        p = self.profiles[i]
+
+        ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
+
+        lw = 1.0 if cont > 0 else 1.5
+
+        ax = axTe
+        ax.plot(
+            p.derived["roa"],
+            p.profiles["te(keV)"],
+            "-",
+            c=colors[cont],
+            label=labelAssigned[cont],
+            lw=lw,
+        )
+        ax = axTi
+        ax.plot(
+            p.derived["roa"], p.profiles["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
+        )
+        if axne is not None:
+            ax = axne
+            ax.plot(
+                p.derived["roa"],
+                p.profiles["ne(10^19/m^3)"] * 1e-1,
+                "-",
+                c=colors[cont],
+                lw=lw,
+            )
+        if axnZ is not None:
+            ax = axnZ
+            ax.plot(
+                p.derived["roa"],
+                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                "-",
+                c=colors[cont],
+                lw=lw,
+            )
+        if axw0 is not None:
+            ax = axw0
+            ax.plot(
+                p.derived["roa"],
+                p.profiles["w0(rad/s)"] * 1e-3,
+                "-",
+                c=colors[cont],
+                lw=lw,
+            )
+
+        ax = axTe_g
+        ax.plot(
+            p.derived["roa"][:ix],
+            p.derived["aLTe"][:ix],
+            "-o",
+            c=colors[cont],
+            markersize=0,
+            lw=lw,
+        )
+        ax = axTi_g
+        ax.plot(
+            p.derived["roa"][:ix],
+            p.derived["aLTi"][:ix, 0],
+            "-o",
+            c=colors[cont],
+            markersize=0,
+            lw=lw,
+        )
+        if axne_g is not None:
+            ax = axne_g
+            ax.plot(
+                p.derived["roa"][:ix],
+                p.derived["aLne"][:ix],
+                "-o",
+                c=colors[cont],
+                markersize=0,
+                lw=lw,
+            )
+
+        if axnZ_g is not None:
+            ax = axnZ_g
+            ax.plot(
+                p.derived["roa"][:ix],
+                p.derived["aLni"][:ix, self.runWithImpurity],
+                "-o",
+                c=colors[cont],
+                markersize=0,
+                lw=lw,
+            )
+        if axw0_g is not None:
+            ax = axw0_g
+            ax.plot(
+                p.derived["roa"][:ix],
+                p.derived["dw0dr"][:ix] * factor_dw0dr,
+                "-o",
+                c=colors[cont],
+                markersize=0,
+                lw=lw,
+            )
+
+    cont += 1
+
+    # ---- Plot profiles next
+
+    if self.profiles_next is not None:
+        p = self.profiles_next
+        roa = self.profiles_next_new.derived["roa"]
+        dw0dr = self.profiles_next_new.derived["dw0dr"]
+
+        ix = np.argmin(np.abs(roa - lastX)) + 1
+
+        lw = 1.5
+
+        ax = axTe
+        ax.plot(
+            roa,
+            p.profiles["te(keV)"],
+            "-",
+            c="k",
+            label=f"#{x_train_num} (next)",
+            lw=lw,
+        )
+        ax = axTi
+        ax.plot(roa, p.profiles["ti(keV)"][:, 0], "-", c="k", lw=lw)
+        if axne is not None:
+            ax = axne
+            ax.plot(roa, p.profiles["ne(10^19/m^3)"] * 1e-1, "-", c="k", lw=lw)
+
+        if axnZ is not None:
+            ax = axnZ
+            ax.plot(
+                roa,
+                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                "-",
+                c="k",
+                lw=lw,
+            )
+        if axw0 is not None:
+            ax = axw0
+            ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
+
+        ax = axTe_g
+        ax.plot(roa[:ix], p.derived["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
+        ax = axTi_g
+        ax.plot(roa[:ix], p.derived["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
+
+        if axne_g is not None:
+            ax = axne_g
+            ax.plot(roa[:ix], p.derived["aLne"][:ix], "o-", c="k", markersize=0, lw=lw)
+
+        if axnZ_g is not None:
+            ax = axnZ_g
+            ax.plot(
+                roa[:ix],
+                p.derived["aLni"][:ix, self.runWithImpurity],
+                "-o",
+                c="k",
+                markersize=0,
+                lw=lw,
+            )
+        if axw0_g is not None:
+            ax = axw0_g
+            ax.plot(
+                roa[:ix], dw0dr[:ix] * factor_dw0dr, "-o", c="k", markersize=0, lw=lw
+            )
+
+        axTe_g_twin = axTe_g.twinx()
+        axTi_g_twin = axTi_g.twinx()
+
+        ranges = [-30, 30]
+
+        rho = self.profiles_next_new.profiles["rho(-)"]
+        rhoVals = self.TGYROparameters["RhoLocations"]
+        roaVals = np.interp(rhoVals, rho, roa)
+
+        p0 = self.profiles[plotPoints[0]]
+        zVals = []
+        z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
+        for roai in roaVals:
+            zVals.append(np.interp(roai, roa, z))
+        axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+
+        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+            p0 = self.profiles[plotPoints[1]]
+            zVals = []
+            z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
+            for roai in roaVals:
+                zVals.append(np.interp(roai, roa, z))
+            axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
+
+        axTe_g_twin.set_ylim(ranges)
+        axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+
+        p0 = self.profiles[plotPoints[0]]
+        zVals = []
+        z = (
+            (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
+            / p0.derived["aLTi"][:, 0]
+        ) * 100.0
+        for roai in roaVals:
+            zVals.append(np.interp(roai, roa, z))
+        axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+
+        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+            p0 = self.profiles[plotPoints[1]]
+            zVals = []
+            z = (
+                (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
+                / p0.derived["aLTi"][:, 0]
+            ) * 100.0
+            for roai in roaVals:
+                zVals.append(np.interp(roai, roa, z))
+            axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
+
+        axTi_g_twin.set_ylim(ranges)
+        axTi_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+
+        for ax in [axTe_g_twin, axTi_g_twin]:
+            ax.axhline(y=0, ls="-.", lw=0.2, c="k")
+
+        if axne_g is not None:
+            axne_g_twin = axne_g.twinx()
+
+            p0 = self.profiles[plotPoints[0]]
+            zVals = []
+            z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
+            for roai in roaVals:
+                zVals.append(np.interp(roai, roa, z))
+            axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+
+            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+                p0 = self.profiles[plotPoints[1]]
+                zVals = []
+                z = (
+                    (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
+                ) * 100.0
+                for roai in roaVals:
+                    zVals.append(np.interp(roai, roa, z))
+                axne_g_twin.plot(
+                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
+                )
+
+            axne_g_twin.set_ylim(ranges)
+            axne_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+
+            axne_g_twin.axhline(y=0, ls="-.", lw=0.2, c="k")
+
+        if axnZ_g is not None:
+            axnZ_g_twin = axnZ_g.twinx()
+
+            p0 = self.profiles[plotPoints[0]]
+            zVals = []
+            z = (
+                (
+                    p.derived["aLni"][:, self.runWithImpurity]
+                    - p0.derived["aLni"][:, self.runWithImpurity]
+                )
+                / p0.derived["aLni"][:, self.runWithImpurity]
+            ) * 100.0
+            for roai in roaVals:
+                zVals.append(np.interp(roai, roa, z))
+            axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+
+            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+                p0 = self.profiles[plotPoints[1]]
+                zVals = []
+                z = (
+                    (
+                        p.derived["aLni"][:, self.runWithImpurity]
+                        - p0.derived["aLni"][:, self.runWithImpurity]
+                    )
+                    / p0.derived["aLni"][:, self.runWithImpurity]
+                ) * 100.0
+                for roai in roaVals:
+                    zVals.append(np.interp(roai, roa, z))
+                axnZ_g_twin.plot(
+                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
+                )
+
+            axnZ_g_twin.set_ylim(ranges)
+            axnZ_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+        else:
+            axnZ_g_twin = None
+
+        if axw0_g is not None:
+            axw0_g_twin = axw0_g.twinx()
+
+            p0 = self.profiles[plotPoints[0]]
+            zVals = []
+            z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
+            for roai in roaVals:
+                zVals.append(np.interp(roai, roa, z))
+            axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+
+            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+                p0 = self.profiles[plotPoints[1]]
+                zVals = []
+                z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
+                for roai in roaVals:
+                    zVals.append(np.interp(roai, roa, z))
+                axw0_g_twin.plot(
+                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
+                )
+
+            axw0_g_twin.set_ylim(ranges)
+            axw0_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+
+        else:
+            axw0_g_twin = None
+
+        for ax in [axnZ_g_twin, axw0_g_twin]:
+            if ax is not None:
+                ax.axhline(y=0, ls="-.", lw=0.2, c="k")
+
+    else:
+        axTe_g_twin = axTi_g_twin = axne_g_twin = axnZ_g_twin = axw0_g_twin = None
+
+    # ---- Plot fluxes
+    cont = plotVars(
+        self.opt_fun.prfs_model,
+        y_trainreal,
+        [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
+        [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
+        contP=-1,
+        lines=["-s", "--o"],
+        plotPoints=plotPoints,
+        yerr=[yL_trainreal * stds, yU_trainreal * stds],
+        lab="",
+        plotErr=np.append([True], [False] * len(y_trainreal)),
+        colors=colors,
+    )
+    _ = plotVars(
+        self.opt_fun.prfs_model,
+        y_train,
+        [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
+        [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
+        contP=-1,
+        lines=["-.*", None],
+        plotPoints=plotPoints,
+        plotResidual=False,
+        lab=" (surr)",
+        colors=colors,
+    )  # ,yerr=[yL_train,yU_train])
+
+    if y_next is not None:
+        cont = plotVars(
+            self.opt_fun.prfs_model,
+            y_next,
+            [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
+            [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
+            contP=cont,
+            lines=["-s", "--o"],
+            yerr=[y_next - yL_next * stds / 2.0, yU_next - y_next * stds / 2.0],
+            plotPoints=None,
+            color="k",
+            plotErr=[True],
+            colors=colors,
+        )
+
+    # ---------------
+    n = 10  # 5
+    ax = axTe
+    ax.legend()
+    ax.set_xlim([0, 1])
+    ax.set_ylabel("Te (keV)")
+    ax.set_ylim(bottom=0)
+    GRAPHICStools.addDenseAxis(ax, n=n)
+    # ax.	set_xticklabels([])
+    ax = axTi
+    ax.set_xlim([0, 1])
+    ax.set_ylabel("Ti (keV)")
+    ax.set_ylim(bottom=0)
+    GRAPHICStools.addDenseAxis(ax, n=n)
+    # ax.set_xticklabels([])
+    if axne is not None:
+        ax = axne
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("ne ($10^{20}m^{-3}$)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax, n=n)
+    # ax.set_xticklabels([])
+
+    if axnZ is not None:
+        ax = axnZ
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("nZ ($10^{20}m^{-3}$)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axw0 is not None:
+        ax = axw0
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("$w_0$ (krad/s)")
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    roacoarse = self.powerstate.plasma["roa"][0, 1:].cpu().numpy()
+
+    ax = axTe_g
+    ax.set_xlim([0, 1])
+    ax.set_ylabel("$a/L_{Te}$")
+    ax.set_ylim(bottom=0)
+    # ax.set_ylim([0,5]);
+    # ax.set_xticklabels([])
+    if axTe_g_twin is not None:
+        axTe_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+        if len(roacoarse) < 6:
+            axTe_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+        GRAPHICStools.addDenseAxis(axTe_g_twin, n=n)
+    else:
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    ax = axTi_g
+    ax.set_xlim([0, 1])
+    ax.set_ylabel("$a/L_{Ti}$")
+    ax.set_ylim(bottom=0)
+    # ax.set_ylim([0,5]);
+    # ax.set_xticklabels([])
+    if axTi_g_twin is not None:
+        axTi_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+        if len(roacoarse) < 6:
+            axTi_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+        GRAPHICStools.addDenseAxis(axTi_g_twin, n=n)
+    else:
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axne_g is not None:
+        ax = axne_g
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("$a/L_{ne}$")
+        ax.set_ylim(bottom=0)
+        # ax.set_ylim([0,5]);
+        # ax.set_xticklabels([])
+        if axne_g_twin is not None:
+            axne_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+            if len(roacoarse) < 6:
+                axne_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+            GRAPHICStools.addDenseAxis(axne_g_twin, n=n)
+        else:
+            GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axnZ_g is not None:
+        ax = axnZ_g
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("$a/L_{nZ}$")
+        ax.set_ylim(bottom=0)
+        # ax.set_ylim([0,5]);
+        if axnZ_g_twin is not None:
+            axnZ_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+            if len(roacoarse) < 6:
+                axnZ_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+            GRAPHICStools.addDenseAxis(axnZ_g_twin, n=n)
+        else:
+            GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axw0_g is not None:
+        ax = axw0_g
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(label_dw0dr)
+        # ax.set_ylim(bottom=0); #ax.set_ylim([0,5]);
+        if axw0_g_twin is not None:
+            axw0_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+            if len(roacoarse) < 6:
+                axw0_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+            GRAPHICStools.addDenseAxis(axw0_g_twin, n=n)
+        else:
+            GRAPHICStools.addDenseAxis(ax, n=n)
+
+    ax = axTe_f
+    ax.set_xlim([0, 1])
+    ax.set_ylabel(self.labelsFluxes["te"])
+    ax.set_ylim(bottom=0)
+    # ax.legend(loc='best',prop={'size':6})
+    # ax.set_xticklabels([])
+    GRAPHICStools.addDenseAxis(ax, n=n)
+
+    ax = axTi_f
+    ax.set_xlim([0, 1])
+    ax.set_ylabel(self.labelsFluxes["ti"])
+    ax.set_ylim(bottom=0)
+    # ax.set_xticklabels([])
+    GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axne_f is not None:
+        ax = axne_f
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(self.labelsFluxes["ne"])
+        # GRAPHICStools.addDenseAxis(ax,n=n)
+        # ax.set_xticklabels([])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axnZ_f is not None:
+        ax = axnZ_f
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(self.labelsFluxes["nZ"])
+        # GRAPHICStools.addDenseAxis(ax,n=n)
+        # ax.set_xticklabels([])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    if axw0_f is not None:
+        ax = axw0_f
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(self.labelsFluxes["w0"])
+        # GRAPHICStools.addDenseAxis(ax,n=n)
+        # ax.set_xticklabels([])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+
+    ax = axTe_r
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$r/a$")
+    ax.set_ylabel("Residual " + self.labelsFluxes["te"])
+    GRAPHICStools.addDenseAxis(ax, n=n)
+    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+    ax = axTi_r
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$r/a$")
+    ax.set_ylabel("Residual " + self.labelsFluxes["ti"])
+    GRAPHICStools.addDenseAxis(ax, n=n)
+    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+    if axne_r is not None:
+        ax = axne_r
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("Residual " + self.labelsFluxes["ne"])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")  #
+
+    if axnZ_r is not None:
+        ax = axnZ_r
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("Residual " + self.labelsFluxes["nZ"])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+    if axw0_r is not None:
+        ax = axw0_r
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("Residual " + self.labelsFluxes["w0"])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+    try:
+        Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
+            y_trainreal[self.opt_fun.prfs_model.BOmetrics["overall"]["indBest"], :]
+            .detach()
+            .cpu()
+            .numpy(),
+            self.opt_fun.prfs_model,
+        )
+        rangePlotResidual = np.max([np.max(Qe_tar), np.max(Qi_tar), np.max(Ge_tar)])
+        for ax in [axTe_r, axTi_r, axne_r]:
+            ax.set_ylim(
+                [-rangePlotResidual * 0.5, rangePlotResidual * 0.5]
+            )  # 50% of max targets
+    except:
+        pass
+
+
+def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
+    print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
+
+    indecesPlot = [
+        self.ibest,
+        self.i0,
+        self.iextra,
+    ]
+
+    # -------------------------------------------------------
+    # Plot TGYROs
+    # -------------------------------------------------------
+
+    self.tgyros[indecesPlot[1]].plot(
+        fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ", fn_color=fn_color
+    )
+    if indecesPlot[0] < len(self.tgyros):
+        self.tgyros[indecesPlot[0]].plot(
+            fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ", fn_color=fn_color
+        )
+
+    # -------------------------------------------------------
+    # Plot PROFILES
+    # -------------------------------------------------------
+
+    figs = [
+        fn.add_figure(label="PROFILES - Profiles", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Powers", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Geometry", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Gradients", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Flows", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Other", tab_color=fn_color),
+        fn.add_figure(label="PROFILES - Impurities", tab_color=fn_color),
+    ]
+
+    if indecesPlot[0] < len(self.profiles):
+        _ = PROFILEStools.plotAll(
+            [
+                self.profiles[indecesPlot[1]],
+                self.profiles[indecesPlot[0]],
+            ],
+            figs=figs,
+            extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
+        )
+
+    # -------------------------------------------------------
+    # Plot Comparison
+    # -------------------------------------------------------
+
+    profile_original = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
+    profile_best = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
+
+    profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
+    profile_original_0 = self.mitim_runs["profiles_original"]
+
+    fig4 = fn.add_figure(label="PROFILES Comparison", tab_color=fn_color)
+    grid = plt.GridSpec(
+        2,
+        np.max([3, len(self.ProfilesPredicted)]),
+        hspace=0.3,
+        wspace=0.3,
+    )
+    axs4 = [
+        fig4.add_subplot(grid[0, 0]),
+        fig4.add_subplot(grid[1, 0]),
+        fig4.add_subplot(grid[0, 1]),
+        fig4.add_subplot(grid[1, 1]),
+        fig4.add_subplot(grid[0, 2]),
+        fig4.add_subplot(grid[1, 2]),
+    ]
+
+    cont = 1
+    if self.runWithImpurity:
+        axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
+        axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
+        cont += 1
+    if self.runWithRotation:
+        axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
+        axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
+
+    colors = GRAPHICStools.listColors()
+
+    for i, (profiles, label, alpha) in enumerate(
+        zip(
+            [
+                profile_original_unCorrected,
+                profile_original_0,
+                profile_original,
+                profile_best,
+            ],
+            ["Original", "Corrected", "Initial", "Final"],
+            [0.2, 1.0, 1.0, 1.0],
+        )
+    ):
+        profiles.plotGradients(
+            axs4,
+            color=colors[i],
+            label=label,
+            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            alpha=alpha,
+            useRoa=True,
+            RhoLocationsPlot=self.TGYROparameters["RhoLocations"],
+            plotImpurity=self.runWithImpurity,
+            plotRotation=self.runWithRotation,
+        )
+
+    axs4[0].legend(loc="best")
+
+
+def PORTALSanalyzer_plotRanges(self, fig=None):
+    if fig is None:
+        plt.ion()
+        fig = plt.figure()
+
+    pps = np.max(
+        [3, len(self.ProfilesPredicted)]
+    )  # Because plotGradients require at least Te, Ti, ne
+    grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
+    axsR = []
+    for i in range(pps):
+        axsR.append(fig.add_subplot(grid[0, i]))
+        axsR.append(fig.add_subplot(grid[1, i]))
+
+    produceInfoRanges(
+        self.opt_fun.prfs_model.mainFunction,
+        self.opt_fun.prfs_model.bounds_orig,
+        axsR=axsR,
+        color="k",
+        lw=0.2,
+        alpha=0.05,
+        label="original",
+    )
+    produceInfoRanges(
+        self.opt_fun.prfs_model.mainFunction,
+        self.opt_fun.prfs_model.bounds,
+        axsR=axsR,
+        color="c",
+        lw=0.2,
+        alpha=0.05,
+        label="final",
+    )
+
+    p = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
+    p.plotGradients(
+        axsR,
+        color="b",
+        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        ms=0,
+        lw=1.0,
+        label="#0",
+        ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
+        plotImpurity=self.runWithImpurity,
+        plotRotation=self.runWithRotation,
+    )
+
+    for ikey in self.mitim_runs:
+        if not isinstance(self.mitim_runs[ikey], dict):
+            break
+
+        p = self.mitim_runs[ikey]["tgyro"].results["tglf_neo"].profiles
+        p.plotGradients(
+            axsR,
+            color="r",
+            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            ms=0,
+            lw=0.3,
+            ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
+            plotImpurity=self.runWithImpurity,
+            plotRotation=self.runWithRotation,
+        )
+
+    p.plotGradients(
+        axsR,
+        color="g",
+        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        ms=0,
+        lw=1.0,
+        label=f"#{self.opt_fun.res.best_absolute_index} (best)",
+        plotImpurity=self.runWithImpurity,
+        plotRotation=self.runWithRotation,
+    )
+
+    axsR[0].legend(loc="best")
+
+
+def PORTALSanalyzer_plotModelComparison(
+    self,
+    fig=None,
+    axs=None,
+    UseTGLFfull_x=None,
+    includeErrors=True,
+    includeMetric=True,
+    includeLegAll=True,
+):
+    print("- Plotting PORTALS Simulations - Model comparison")
+
+    if (fig is None) and (axs is None):
+        plt.ion()
+        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted) < 4 else 10))
+
+    if axs is None:
+        if len(self.ProfilesPredicted) < 4:
+            axs = fig.subplots(ncols=3)
+        else:
+            axs = fig.subplots(ncols=3, nrows=2)
+
+        plt.subplots_adjust(wspace=0.25, hspace=0.25)
+
+    axs = axs.flatten()
+
+    # te
+    quantityX = "QeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Qe"
+    quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
+    quantityY = "QeGB_sim_turb"
+    quantityY_stds = "QeGB_sim_turb_stds"
+    plotModelComparison_quantity(
+        self,
+        axs[0],
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$Q_e^{GB}$",
+        title="Electron energy flux (GB)",
+        includeErrors=includeErrors,
+        includeMetric=includeMetric,
+        includeLeg=True,
+    )
+
+    axs[0].set_xscale("log")
+    axs[0].set_yscale("log")
+
+    # ti
+    quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
+    quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
+    quantityY = "QiGBIons_sim_turb_thr"
+    quantityY_stds = "QiGBIons_sim_turb_thr_stds"
+    plotModelComparison_quantity(
+        self,
+        axs[1],
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$Q_i^{GB}$",
+        title="Ion energy flux (GB)",
+        includeErrors=includeErrors,
+        includeMetric=includeMetric,
+        includeLeg=includeLegAll,
+    )
+
+    axs[1].set_xscale("log")
+    axs[1].set_yscale("log")
+
+    # ne
+    quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
+    quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
+    quantityY = "GeGB_sim_turb"
+    quantityY_stds = "GeGB_sim_turb_stds"
+    plotModelComparison_quantity(
+        self,
+        axs[2],
+        quantityX=quantityX,
+        quantityX_stds=quantityX_stds,
+        quantityY=quantityY,
+        quantityY_stds=quantityY_stds,
+        quantity_label="$\\Gamma_e^{GB}$",
+        title="Electron particle flux (GB)",
+        includeErrors=includeErrors,
+        includeMetric=includeMetric,
+        includeLeg=includeLegAll,
+    )
+
+    if UseTGLFfull_x is None:
+        val_calc = self.mitim_runs[0]["tgyro"].results["use"].__dict__[quantityX][0, 1:]
+    else:
+        val_calc = np.array(
+            [
+                self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
+                    quantityX.replace("[TGLF]", "")
+                ]
+                for j in range(len(self.rhos))
+            ]
+        )
+
+    thre = 10 ** round(np.log10(np.abs(val_calc).min()))
+    axs[2].set_xscale("symlog", linthresh=thre)
+    axs[2].set_yscale("symlog", linthresh=thre)
+    axs[2].tick_params(axis="both", which="major", labelsize=8)
+
+    cont = 1
+    if "nZ" in self.ProfilesPredicted:
+        # nZ
+        quantityX = "GiGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]GiAll"
+        quantityX_stds = "GiGB_sim_turb_stds" if UseTGLFfull_x is None else None
+        quantityY = "GiGB_sim_turb"
+        quantityY_stds = "GiGB_sim_turb_stds"
+        plotModelComparison_quantity(
+            self,
+            axs[2 + cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$\\Gamma_Z^{GB}$",
+            title="Impurity particle flux (GB)",
+            runWithImpurity=self.runWithImpurity,
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=includeLegAll,
+        )
+
+        if UseTGLFfull_x is None:
+            val_calc = (
+                self.mitim_runs[0]["tgyro"]
+                .results["use"]
+                .__dict__[quantityX][self.runWithImpurity, 0, 1:]
+            )
+        else:
+            val_calc = np.array(
+                [
+                    self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
+                        quantityX.replace("[TGLF]", "")
+                    ]
+                    for j in range(len(self.rhos))
+                ]
+            )[self.runWithImpurity]
+
+        thre = 10 ** round(np.log10(np.abs(val_calc).min()))
+        axs[2 + cont].set_xscale("symlog", linthresh=thre)
+        axs[2 + cont].set_yscale("symlog", linthresh=thre)
+        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+
+        cont += 1
+
+    if "w0" in self.ProfilesPredicted:
+        if UseTGLFfull_x is not None:
+            raise Exception("Momentum plot not implemented yet")
+        # w0
+        quantityX = "MtGB_sim_turb"
+        quantityX_stds = "MtGB_sim_turb_stds"
+        quantityY = "MtGB_sim_turb"
+        quantityY_stds = "MtGB_sim_turb_stds"
+        plotModelComparison_quantity(
+            self,
+            axs[2 + cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$M_T^{GB}$",
+            title="Momentum Flux (GB)",
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=includeLegAll,
+        )
+
+        thre = 10 ** round(
+            np.log10(
+                np.abs(
+                    self.mitim_runs[0]["tgyro"]
+                    .results["use"]
+                    .__dict__[quantityX][0, 1:]
+                ).min()
+            )
+        )
+        axs[2 + cont].set_xscale("symlog", linthresh=thre)
+        axs[2 + cont].set_yscale("symlog", linthresh=thre)
+        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+
+        cont += 1
+
+    if self.PORTALSparameters["surrogateForTurbExch"]:
+        if UseTGLFfull_x is not None:
+            raise Exception("Turbulent exchange plot not implemented yet")
+        # Sexch
+        quantityX = "EXeGB_sim_turb"
+        quantityX_stds = "EXeGB_sim_turb_stds"
+        quantityY = "EXeGB_sim_turb"
+        quantityY_stds = "EXeGB_sim_turb_stds"
+        plotModelComparison_quantity(
+            self,
+            axs[2 + cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$S_{exch}^{GB}$",
+            title="Turbulent Exchange (GB)",
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=includeLegAll,
+        )
+
+        thre = 10 ** round(
+            np.log10(
+                np.abs(
+                    self.mitim_runs[0]["tgyro"]
+                    .results["use"]
+                    .__dict__[quantityX][0, 1:]
+                ).min()
+            )
+        )
+        axs[2 + cont].set_xscale("symlog", linthresh=thre)
+        axs[2 + cont].set_yscale("symlog", linthresh=thre)
+        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+
+        cont += 1
+
+    return axs
+
+
+def plotModelComparison_quantity(
+    self,
+    ax,
+    quantityX="QeGB_sim_turb",
+    quantityX_stds="QeGB_sim_turb_stds",
+    quantityY="QeGB_sim_turb",
+    quantityY_stds="QeGB_sim_turb_stds",
+    quantity_label="",
+    title="",
+    runWithImpurity=None,
+    includeErrors=True,
+    includeMetric=True,
+    includeLeg=True,
+):
+    resultsX = "tglf_neo"
+    quantity_label_resultsX = "(TGLF)"
+
+    if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
+        resultsY = "cgyro_neo"
+        quantity_label_resultsY = "(CGYRO)"
+    else:
+        resultsY = resultsX
+        quantity_label_resultsY = quantity_label_resultsX
+
+    X, X_stds = [], []
+    Y, Y_stds = [], []
+    for i in range(self.ilast + 1):
+        """
+        Read the fluxes to be plotted in Y from the TGYRO results
+        """
+        t = self.mitim_runs[i]["tgyro"].results
+        Y.append(
+            t[resultsY].__dict__[quantityY][
+                ... if runWithImpurity is None else runWithImpurity, 0, 1:
+            ]
+        )
+        Y_stds.append(
+            t[resultsY].__dict__[quantityY_stds][
+                ... if runWithImpurity is None else runWithImpurity, 0, 1:
+            ]
+        )
+
+        """
+        Read the fluxes to be plotted in X from...
+        """
+
+        # ...from the TGLF full results
+        if "[TGLF]" in quantityX:
+            X.append(
+                [
+                    self.tglf_full.results[f"ev{i}"]["TGLFout"][j].__dict__[
+                        quantityX.replace("[TGLF]", "")
+                    ]
+                    for j in range(len(self.rhos))
+                ]
+            )
+            X_stds.append([np.nan for j in range(len(self.rhos))])
+
+        # ...from the TGLF results
+        else:
+            X.append(
+                t[resultsX].__dict__[quantityX][
+                    (... if runWithImpurity is None else runWithImpurity), 0, 1:
+                ]
+            )
+            X_stds.append(
+                t[resultsX].__dict__[quantityX_stds][
+                    ... if runWithImpurity is None else runWithImpurity, 0, 1:
+                ]
+            )
+
+    X = np.array(X)
+    Y = np.array(Y)
+    X_stds = np.array(X_stds)
+    Y_stds = np.array(Y_stds)
+
+    colors = GRAPHICStools.listColors()
+
+    for ir in range(X.shape[1]):
+        label = f"$r/a={self.roa[ir]:.2f}$"
+        if includeMetric:
+            metric, lab_metric = add_metric(None, X[:, ir], Y[:, ir])
+            label += f", {lab_metric}: {metric:.2f}"
+
+        ax.errorbar(
+            X[:, ir],
+            Y[:, ir],
+            xerr=X_stds[:, ir] if includeErrors else None,
+            yerr=Y_stds[:, ir] if includeErrors else None,
+            c=colors[ir],
+            markersize=2,
+            capsize=2,
+            fmt="s",
+            elinewidth=1.0,
+            capthick=1.0,
+            label=label,
+        )
+
+    # -------------------------------------------------------
+    # Decorations
+    # -------------------------------------------------------
+
+    minFlux = np.min([X.min(), Y.min()])
+    maxFlux = np.max([X.max(), Y.max()])
+
+    minFlux = minFlux - 0.25 * (maxFlux - minFlux)
+    maxFlux = maxFlux + 0.25 * (maxFlux - minFlux)
+
+    ax.plot([minFlux, maxFlux], [minFlux, maxFlux], "-", color="k", lw=0.5)
+
+    ax.set_xlabel(f"{quantity_label} {quantity_label_resultsX}")
+    ax.set_ylabel(f"{quantity_label} {quantity_label_resultsY}")
+    ax.set_title(title)
+    GRAPHICStools.addDenseAxis(ax)
+
+    sizeLeg = 7
+
+    if includeLeg:
+        legend = ax.legend(loc="best", prop={"size": sizeLeg})
+
+    if includeMetric:
+        metric, lab_metric = add_metric(
+            ax if not includeLeg else None, X, Y, fontsize=sizeLeg
+        )
+        if includeLeg:
+            legend.set_title(f"{lab_metric}: {metric:.2f}")
+            plt.setp(
+                legend.get_title(),
+                bbox=dict(
+                    facecolor="lightgreen",
+                    alpha=0.3,
+                    edgecolor="black",
+                    boxstyle="round,pad=0.2",
+                ),
+            )
+            legend.get_title().set_fontsize(sizeLeg)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
+    if typeM == "RMSE":
+        metric = np.sqrt(np.mean((X - Y) ** 2))
+        metric_lab = "RMSE"
+        if ax is not None:
+            ax.text(
+                0.05,
+                0.95,
+                f"{metric_lab}: {metric:.2f}",
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                bbox=dict(
+                    facecolor="lightgreen",
+                    alpha=0.3,
+                    edgecolor="black",
+                    boxstyle="round,pad=0.2",
+                ),
+                fontsize=fontsize,
+            )
+
+    return metric, metric_lab
+
 
 def varToReal(y, prfs_model):
-    """
-    NEO
-    """
-
     of, cal, res = prfs_model.mainFunction.scalarized_objective(
         torch.Tensor(y).to(prfs_model.mainFunction.dfT).unsqueeze(0)
     )
@@ -1788,700 +2708,6 @@ def plotVars(
     return contP
 
 
-def plotExpected(
-    prfs_model,
-    folder,
-    fn,
-    labelsFluxes={},
-    step=-1,
-    plotPoints=[0],
-    labelAssigned=["0"],
-    plotNext=True,
-    MITIMextra_dict=None,
-    stds=2,
-):
-    model = prfs_model.steps[step].GP["combined_model"]
-
-    x_train_num = prfs_model.steps[step].train_X.shape[0]
-
-    posZ = prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"] - 1
-
-    # ---- Training
-    x_train = torch.from_numpy(prfs_model.steps[step].train_X).to(model.train_X)
-    y_trainreal = torch.from_numpy(prfs_model.steps[step].train_Y).to(model.train_X)
-    yL_trainreal = torch.from_numpy(prfs_model.steps[step].train_Ystd).to(model.train_X)
-    yU_trainreal = torch.from_numpy(prfs_model.steps[step].train_Ystd).to(model.train_X)
-
-    y_train, yU_train, yL_train, _ = model.predict(x_train)
-
-    # ---- Next
-    x_next = y_next = yU_next = yL_next = None
-    if plotNext:
-        try:
-            x_next = prfs_model.steps[step].x_next
-            y_next, yU_next, yL_next, _ = model.predict(x_next)
-        except:
-            pass
-
-    # ---- Get profiles
-    profiles = []
-    if MITIMextra_dict is not None:
-        print(f"\t- Reading TGYRO and PROFILES from MITIMextra_dict")
-        for i in plotPoints:
-            profiles.append(MITIMextra_dict[i]["tgyro"].results["use"].profiles)
-    else:
-        for i in plotPoints:
-            file = f"{folder}/Execution/Evaluation.{i}/model_complete/input.gacode"
-            p = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-            profiles.append(p)
-
-    profiles_next = None
-    if x_next is not None:
-        try:
-            file = f"{folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
-            profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
-
-            try:
-                file = f"{folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
-                profiles_next_new = PROFILEStools.PROFILES_GACODE(
-                    file, calculateDerived=True
-                )
-                profiles_next_new.printInfo(label="NEXT")
-            except:
-                profiles_next_new = profiles_next
-                profiles_next_new.deriveQuantities()
-        except:
-            pass
-
-    # ---- Plot
-    fig = fn.add_figure(label="PORTALS Expected")
-
-    numprofs = len(prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"])
-
-    if numprofs <= 4:
-        wspace = 0.3
-    else:
-        wspace = 0.5
-
-    grid = plt.GridSpec(nrows=4, ncols=numprofs, hspace=0.2, wspace=wspace)
-
-    axTe = fig.add_subplot(grid[0, 0])
-    axTe.set_title("Electron Temperature")
-    axTe_g = fig.add_subplot(grid[1, 0], sharex=axTe)
-    axTe_f = fig.add_subplot(grid[2, 0], sharex=axTe)
-    axTe_r = fig.add_subplot(grid[3, 0], sharex=axTe)
-
-    axTi = fig.add_subplot(grid[0, 1], sharex=axTe)
-    axTi.set_title("Ion Temperature")
-    axTi_g = fig.add_subplot(grid[1, 1], sharex=axTe)
-    axTi_f = fig.add_subplot(grid[2, 1], sharex=axTe)
-    axTi_r = fig.add_subplot(grid[3, 1], sharex=axTe)
-
-    cont = 0
-    if "ne" in prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        axne = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
-        axne.set_title("Electron Density")
-        axne_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axne_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axne_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
-        cont += 1
-    else:
-        axne = axne_g = axne_f = axne_r = None
-    if "nZ" in prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        impos = prfs_model.mainFunction.PORTALSparameters["ImpurityOfInterest"]
-        labIon = f"Ion {impos} ({profiles[0].Species[impos-1]['N']}{int(profiles[0].Species[impos-1]['Z'])},{int(profiles[0].Species[impos-1]['A'])})"
-        axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
-        axnZ.set_title(f"{labIon} Density")
-        axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axnZ_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axnZ_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
-        cont += 1
-    else:
-        axnZ = axnZ_g = axnZ_f = axnZ_r = None
-
-    if "w0" in prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        axw0 = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
-        axw0.set_title("Rotation")
-        axw0_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axw0_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axw0_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
-        cont += 1
-    else:
-        axw0 = axw0_g = axw0_f = axw0_r = None
-
-    colorsA = GRAPHICStools.listColors()
-    colors = []
-    coli = -1
-    for label in labelAssigned:
-        if "best" in label:
-            colors.append("g")
-        elif "last" in label:
-            colors.append("m")
-        elif "base" in label:
-            colors.append("r")
-        else:
-            coli += 1
-            while colorsA[coli] in ["g", "m", "r"]:
-                coli += 1
-            colors.append(colorsA[coli])
-
-    rho = profiles[0].profiles["rho(-)"]
-    roa = profiles[0].derived["roa"]
-    rhoVals = prfs_model.mainFunction.TGYROparameters["RhoLocations"]
-    roaVals = np.interp(rhoVals, rho, roa)
-    lastX = roaVals[-1]
-
-    # ---- Plot profiles
-    cont = -1
-    for i in range(len(profiles)):
-        cont += 1
-
-        p = profiles[i]
-
-        ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
-
-        lw = 1.0 if cont > 0 else 1.5
-
-        ax = axTe
-        ax.plot(
-            p.derived["roa"],
-            p.profiles["te(keV)"],
-            "-",
-            c=colors[cont],
-            label=labelAssigned[cont],
-            lw=lw,
-        )
-        ax = axTi
-        ax.plot(
-            p.derived["roa"], p.profiles["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
-        )
-        if axne is not None:
-            ax = axne
-            ax.plot(
-                p.derived["roa"],
-                p.profiles["ne(10^19/m^3)"] * 1e-1,
-                "-",
-                c=colors[cont],
-                lw=lw,
-            )
-        if axnZ is not None:
-            ax = axnZ
-            ax.plot(
-                p.derived["roa"],
-                p.profiles["ni(10^19/m^3)"][:, posZ] * 1e-1,
-                "-",
-                c=colors[cont],
-                lw=lw,
-            )
-        if axw0 is not None:
-            ax = axw0
-            ax.plot(
-                p.derived["roa"],
-                p.profiles["w0(rad/s)"] * 1e-3,
-                "-",
-                c=colors[cont],
-                lw=lw,
-            )
-
-        ax = axTe_g
-        ax.plot(
-            p.derived["roa"][:ix],
-            p.derived["aLTe"][:ix],
-            "-o",
-            c=colors[cont],
-            markersize=0,
-            lw=lw,
-        )
-        ax = axTi_g
-        ax.plot(
-            p.derived["roa"][:ix],
-            p.derived["aLTi"][:ix, 0],
-            "-o",
-            c=colors[cont],
-            markersize=0,
-            lw=lw,
-        )
-        if axne_g is not None:
-            ax = axne_g
-            ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLne"][:ix],
-                "-o",
-                c=colors[cont],
-                markersize=0,
-                lw=lw,
-            )
-
-        if axnZ_g is not None:
-            ax = axnZ_g
-            ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLni"][:ix, posZ],
-                "-o",
-                c=colors[cont],
-                markersize=0,
-                lw=lw,
-            )
-        if axw0_g is not None:
-            ax = axw0_g
-            ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["dw0dr"][:ix] * factor_dw0dr,
-                "-o",
-                c=colors[cont],
-                markersize=0,
-                lw=lw,
-            )
-
-    cont += 1
-
-    # ---- Plot profiles next
-
-    if profiles_next is not None:
-        p = profiles_next
-        roa = profiles_next_new.derived["roa"]
-        dw0dr = profiles_next_new.derived["dw0dr"]
-
-        ix = np.argmin(np.abs(roa - lastX)) + 1
-
-        lw = 1.5
-
-        ax = axTe
-        ax.plot(
-            roa,
-            p.profiles["te(keV)"],
-            "-",
-            c="k",
-            label=f"#{x_train_num} (next)",
-            lw=lw,
-        )
-        ax = axTi
-        ax.plot(roa, p.profiles["ti(keV)"][:, 0], "-", c="k", lw=lw)
-        if axne is not None:
-            ax = axne
-            ax.plot(roa, p.profiles["ne(10^19/m^3)"] * 1e-1, "-", c="k", lw=lw)
-
-        if axnZ is not None:
-            ax = axnZ
-            ax.plot(roa, p.profiles["ni(10^19/m^3)"][:, posZ] * 1e-1, "-", c="k", lw=lw)
-        if axw0 is not None:
-            ax = axw0
-            ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
-
-        ax = axTe_g
-        ax.plot(roa[:ix], p.derived["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
-        ax = axTi_g
-        ax.plot(roa[:ix], p.derived["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
-
-        if axne_g is not None:
-            ax = axne_g
-            ax.plot(roa[:ix], p.derived["aLne"][:ix], "o-", c="k", markersize=0, lw=lw)
-
-        if axnZ_g is not None:
-            ax = axnZ_g
-            ax.plot(
-                roa[:ix], p.derived["aLni"][:ix, posZ], "-o", c="k", markersize=0, lw=lw
-            )
-        if axw0_g is not None:
-            ax = axw0_g
-            ax.plot(
-                roa[:ix], dw0dr[:ix] * factor_dw0dr, "-o", c="k", markersize=0, lw=lw
-            )
-
-        axTe_g_twin = axTe_g.twinx()
-        axTi_g_twin = axTi_g.twinx()
-
-        ranges = [-30, 30]
-
-        rho = profiles_next_new.profiles["rho(-)"]
-        rhoVals = prfs_model.mainFunction.TGYROparameters["RhoLocations"]
-        roaVals = np.interp(rhoVals, rho, roa)
-
-        p0 = profiles[0]
-        zVals = []
-        z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
-        for roai in roaVals:
-            zVals.append(np.interp(roai, roa, z))
-        axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
-
-        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = profiles[1]
-            zVals = []
-            z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
-            for roai in roaVals:
-                zVals.append(np.interp(roai, roa, z))
-            axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
-
-        axTe_g_twin.set_ylim(ranges)
-        axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
-
-        p0 = profiles[0]
-        zVals = []
-        z = (
-            (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
-            / p0.derived["aLTi"][:, 0]
-        ) * 100.0
-        for roai in roaVals:
-            zVals.append(np.interp(roai, roa, z))
-        axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
-
-        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = profiles[1]
-            zVals = []
-            z = (
-                (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
-                / p0.derived["aLTi"][:, 0]
-            ) * 100.0
-            for roai in roaVals:
-                zVals.append(np.interp(roai, roa, z))
-            axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
-
-        axTi_g_twin.set_ylim(ranges)
-        axTi_g_twin.set_ylabel("(%) from last or best", fontsize=8)
-
-        for ax in [axTe_g_twin, axTi_g_twin]:
-            ax.axhline(y=0, ls="-.", lw=0.2, c="k")
-
-        if axne_g is not None:
-            axne_g_twin = axne_g.twinx()
-
-            p0 = profiles[0]
-            zVals = []
-            z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
-            for roai in roaVals:
-                zVals.append(np.interp(roai, roa, z))
-            axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
-
-            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
-                zVals = []
-                z = (
-                    (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
-                ) * 100.0
-                for roai in roaVals:
-                    zVals.append(np.interp(roai, roa, z))
-                axne_g_twin.plot(
-                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
-                )
-
-            axne_g_twin.set_ylim(ranges)
-            axne_g_twin.set_ylabel("(%) from last or best", fontsize=8)
-
-            axne_g_twin.axhline(y=0, ls="-.", lw=0.2, c="k")
-
-        if axnZ_g is not None:
-            axnZ_g_twin = axnZ_g.twinx()
-
-            p0 = profiles[0]
-            zVals = []
-            z = (
-                (p.derived["aLni"][:, posZ] - p0.derived["aLni"][:, posZ])
-                / p0.derived["aLni"][:, posZ]
-            ) * 100.0
-            for roai in roaVals:
-                zVals.append(np.interp(roai, roa, z))
-            axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
-
-            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
-                zVals = []
-                z = (
-                    (p.derived["aLni"][:, posZ] - p0.derived["aLni"][:, posZ])
-                    / p0.derived["aLni"][:, posZ]
-                ) * 100.0
-                for roai in roaVals:
-                    zVals.append(np.interp(roai, roa, z))
-                axnZ_g_twin.plot(
-                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
-                )
-
-            axnZ_g_twin.set_ylim(ranges)
-            axnZ_g_twin.set_ylabel("(%) from last or best", fontsize=8)
-        else:
-            axnZ_g_twin = None
-
-        if axw0_g is not None:
-            axw0_g_twin = axw0_g.twinx()
-
-            p0 = profiles[0]
-            zVals = []
-            z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
-            for roai in roaVals:
-                zVals.append(np.interp(roai, roa, z))
-            axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
-
-            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = profiles[1]
-                zVals = []
-                z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
-                for roai in roaVals:
-                    zVals.append(np.interp(roai, roa, z))
-                axw0_g_twin.plot(
-                    roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4
-                )
-
-            axw0_g_twin.set_ylim(ranges)
-            axw0_g_twin.set_ylabel("(%) from last or best", fontsize=8)
-
-        else:
-            axw0_g_twin = None
-
-        for ax in [axnZ_g_twin, axw0_g_twin]:
-            if ax is not None:
-                ax.axhline(y=0, ls="-.", lw=0.2, c="k")
-
-    else:
-        axTe_g_twin = axTi_g_twin = axne_g_twin = axnZ_g_twin = axw0_g_twin = None
-
-    # ---- Plot fluxes
-    cont = plotVars(
-        prfs_model,
-        y_trainreal,
-        [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
-        [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
-        contP=-1,
-        lines=["-s", "--o"],
-        plotPoints=plotPoints,
-        yerr=[yL_trainreal * stds, yU_trainreal * stds],
-        lab="",
-        plotErr=np.append([True], [False] * len(y_trainreal)),
-        colors=colors,
-    )
-    _ = plotVars(
-        prfs_model,
-        y_train,
-        [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
-        [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
-        contP=-1,
-        lines=["-.*", None],
-        plotPoints=plotPoints,
-        plotResidual=False,
-        lab=" (surr)",
-        colors=colors,
-    )  # ,yerr=[yL_train,yU_train])
-
-    if y_next is not None:
-        cont = plotVars(
-            prfs_model,
-            y_next,
-            [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
-            [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
-            contP=cont,
-            lines=["-s", "--o"],
-            yerr=[y_next - yL_next * stds / 2.0, yU_next - y_next * stds / 2.0],
-            plotPoints=None,
-            color="k",
-            plotErr=[True],
-            colors=colors,
-        )
-
-    # ---------------
-    n = 10  # 5
-    ax = axTe
-    ax.legend()
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("Te (keV)")
-    ax.set_ylim(bottom=0)
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    # ax.	set_xticklabels([])
-    ax = axTi
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("Ti (keV)")
-    ax.set_ylim(bottom=0)
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    # ax.set_xticklabels([])
-    if axne is not None:
-        ax = axne
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("ne ($10^{20}m^{-3}$)")
-        ax.set_ylim(bottom=0)
-        GRAPHICStools.addDenseAxis(ax, n=n)
-    # ax.set_xticklabels([])
-
-    if axnZ is not None:
-        ax = axnZ
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("nZ ($10^{20}m^{-3}$)")
-        ax.set_ylim(bottom=0)
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axw0 is not None:
-        ax = axw0
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$w_0$ (krad/s)")
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    roacoarse = (
-        prfs_model.mainFunction.surrogate_parameters["powerstate"]
-        .plasma["roa"][0, 1:]
-        .cpu()
-        .numpy()
-    )
-
-    ax = axTe_g
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("$a/L_{Te}$")
-    ax.set_ylim(bottom=0)
-    # ax.set_ylim([0,5]);
-    # ax.set_xticklabels([])
-    if axTe_g_twin is not None:
-        axTe_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-        if len(roacoarse) < 6:
-            axTe_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-        GRAPHICStools.addDenseAxis(axTe_g_twin, n=n)
-    else:
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    ax = axTi_g
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("$a/L_{Ti}$")
-    ax.set_ylim(bottom=0)
-    # ax.set_ylim([0,5]);
-    # ax.set_xticklabels([])
-    if axTi_g_twin is not None:
-        axTi_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-        if len(roacoarse) < 6:
-            axTi_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-        GRAPHICStools.addDenseAxis(axTi_g_twin, n=n)
-    else:
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axne_g is not None:
-        ax = axne_g
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$a/L_{ne}$")
-        ax.set_ylim(bottom=0)
-        # ax.set_ylim([0,5]);
-        # ax.set_xticklabels([])
-        if axne_g_twin is not None:
-            axne_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-            if len(roacoarse) < 6:
-                axne_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-            GRAPHICStools.addDenseAxis(axne_g_twin, n=n)
-        else:
-            GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axnZ_g is not None:
-        ax = axnZ_g
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$a/L_{nZ}$")
-        ax.set_ylim(bottom=0)
-        # ax.set_ylim([0,5]);
-        if axnZ_g_twin is not None:
-            axnZ_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-            if len(roacoarse) < 6:
-                axnZ_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-            GRAPHICStools.addDenseAxis(axnZ_g_twin, n=n)
-        else:
-            GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axw0_g is not None:
-        ax = axw0_g
-        ax.set_xlim([0, 1])
-        ax.set_ylabel(label_dw0dr)
-        # ax.set_ylim(bottom=0); #ax.set_ylim([0,5]);
-        if axw0_g_twin is not None:
-            axw0_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-            if len(roacoarse) < 6:
-                axw0_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-            GRAPHICStools.addDenseAxis(axw0_g_twin, n=n)
-        else:
-            GRAPHICStools.addDenseAxis(ax, n=n)
-
-    ax = axTe_f
-    ax.set_xlim([0, 1])
-    ax.set_ylabel(labelsFluxes["te"])
-    ax.set_ylim(bottom=0)
-    # ax.legend(loc='best',prop={'size':6})
-    # ax.set_xticklabels([])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-
-    ax = axTi_f
-    ax.set_xlim([0, 1])
-    ax.set_ylabel(labelsFluxes["ti"])
-    ax.set_ylim(bottom=0)
-    # ax.set_xticklabels([])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axne_f is not None:
-        ax = axne_f
-        ax.set_xlim([0, 1])
-        ax.set_ylabel(labelsFluxes["ne"])
-        # GRAPHICStools.addDenseAxis(ax,n=n)
-        # ax.set_xticklabels([])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axnZ_f is not None:
-        ax = axnZ_f
-        ax.set_xlim([0, 1])
-        ax.set_ylabel(labelsFluxes["nZ"])
-        # GRAPHICStools.addDenseAxis(ax,n=n)
-        # ax.set_xticklabels([])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    if axw0_f is not None:
-        ax = axw0_f
-        ax.set_xlim([0, 1])
-        ax.set_ylabel(labelsFluxes["w0"])
-        # GRAPHICStools.addDenseAxis(ax,n=n)
-        # ax.set_xticklabels([])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-
-    ax = axTe_r
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$r/a$")
-    ax.set_ylabel("Residual " + labelsFluxes["te"])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    ax = axTi_r
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$r/a$")
-    ax.set_ylabel("Residual " + labelsFluxes["ti"])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    if axne_r is not None:
-        ax = axne_r
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$r/a$")
-        ax.set_ylabel("Residual " + labelsFluxes["ne"])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")  #
-
-    if axnZ_r is not None:
-        ax = axnZ_r
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$r/a$")
-        ax.set_ylabel("Residual " + labelsFluxes["nZ"])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    if axw0_r is not None:
-        ax = axw0_r
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$r/a$")
-        ax.set_ylabel("Residual " + labelsFluxes["w0"])
-        GRAPHICStools.addDenseAxis(ax, n=n)
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    try:
-        Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
-            y_trainreal[prfs_model.BOmetrics["overall"]["indBest"], :]
-            .detach()
-            .cpu()
-            .numpy(),
-            prfs_model,
-        )
-        rangePlotResidual = np.max([np.max(Qe_tar), np.max(Qi_tar), np.max(Ge_tar)])
-        for ax in [axTe_r, axTi_r, axne_r]:
-            ax.set_ylim(
-                [-rangePlotResidual * 0.5, rangePlotResidual * 0.5]
-            )  # 50% of max targets
-    except:
-        pass
-
-
 def plotFluxComparison(
     p,
     t,
@@ -2490,7 +2716,8 @@ def plotFluxComparison(
     axne_f,
     axnZ_f,
     axw0_f,
-    posZ=3,
+    forceZeroParticleFlux=False,
+    runWithImpurity=3,
     labZ="Z",
     includeFirst=True,
     alpha=1.0,
@@ -2618,6 +2845,9 @@ def plotFluxComparison(
         except:
             sigma = t.Qe_sim_turb[0][ixF:] * 0.0
 
+    if forceZeroParticleFlux:
+        Ge_tar = Ge_tar * 0.0
+
     if axne_f is not None:
         axne_f.plot(
             r[0][ixF:],
@@ -2650,22 +2880,26 @@ def plotFluxComparison(
     if axnZ_f is not None:
         if useConvectiveFluxes:
             GZ, GZ_tar = (
-                t.Ci_sim_turb[posZ, :, :] + t.Ci_sim_neo[posZ, :, :],
+                t.Ci_sim_turb[runWithImpurity, :, :]
+                + t.Ci_sim_neo[runWithImpurity, :, :],
                 t.Ge_tar * 0.0,
             )
             try:
                 sigma = (
-                    t.Ci_sim_turb_stds[posZ, 0][ixF:] + t.Ci_sim_neo_stds[posZ, 0][ixF:]
+                    t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:]
+                    + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
             GZ, GZ_tar = (
-                t.Gi_sim_turb[posZ, :, :] + t.Gi_sim_neo[posZ, :, :]
+                t.Gi_sim_turb[runWithImpurity, :, :]
+                + t.Gi_sim_neo[runWithImpurity, :, :]
             ), t.Ge_tar * 0.0
             try:
                 sigma = (
-                    t.Gi_sim_turb_stds[posZ, 0][ixF:] + t.Gi_sim_neo_stds[posZ, 0][ixF:]
+                    t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:]
+                    + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
             except:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
@@ -2891,15 +3125,162 @@ def plotFluxComparison(
                 Q = np.max([np.abs(Qmin), np.abs(Qmax)])
                 axw0_f.set_ylim([-Q, Q])
 
-    return (
-        QeBest_min,
-        QeBest_max,
-        QiBest_min,
-        QiBest_max,
-        GeBest_min,
-        GeBest_max,
-        GZBest_min,
-        GZBest_max,
-        MtBest_min,
-        MtBest_max,
+
+def produceInfoRanges(
+    self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
+):
+    rhos = np.append([0], self_complete.TGYROparameters["RhoLocations"])
+    aLTe, aLTi, aLne, aLnZ, aLw0 = (
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
+        np.zeros((len(rhos), 2)),
     )
+    for i in range(len(rhos) - 1):
+        if f"aLte_{i+1}" in bounds:
+            aLTe[i + 1, :] = bounds[f"aLte_{i+1}"]
+        if f"aLti_{i+1}" in bounds:
+            aLTi[i + 1, :] = bounds[f"aLti_{i+1}"]
+        if f"aLne_{i+1}" in bounds:
+            aLne[i + 1, :] = bounds[f"aLne_{i+1}"]
+        if f"aLnZ_{i+1}" in bounds:
+            aLnZ[i + 1, :] = bounds[f"aLnZ_{i+1}"]
+        if f"aLw0_{i+1}" in bounds:
+            aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
+
+    X = torch.zeros(
+        ((len(rhos) - 1) * len(self_complete.TGYROparameters["ProfilesPredicted"]), 2)
+    )
+    l = len(rhos) - 1
+    X[0:l, :] = torch.from_numpy(aLTe[1:, :])
+    X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
+
+    cont = 0
+    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
+        cont += 1
+    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
+        cont += 1
+    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
+        cont += 1
+
+    X = X.transpose(0, 1)
+
+    powerstate = PORTALStools.constructEvaluationProfiles(
+        X, self_complete.surrogate_parameters, recalculateTargets=False
+    )
+
+    GRAPHICStools.fillGraph(
+        axsR[0],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["te"][0],
+        y_up=powerstate.plasma["te"][1],
+        alpha=alpha,
+        color=color,
+        lw=lw,
+        label=label,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[1],
+        rhos,
+        aLTe[:, 0],
+        y_up=aLTe[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+
+    GRAPHICStools.fillGraph(
+        axsR[2],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["ti"][0],
+        y_up=powerstate.plasma["ti"][1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[3],
+        rhos,
+        aLTi[:, 0],
+        y_up=aLTi[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+
+    cont = 0
+    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["ne"][0] * 0.1,
+            y_up=powerstate.plasma["ne"][1] * 0.1,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLne[:, 0],
+            y_up=aLne[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2
+
+    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["nZ"][0] * 0.1,
+            y_up=powerstate.plasma["nZ"][1] * 0.1,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLnZ[:, 0],
+            y_up=aLnZ[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2
+
+    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 1],
+            powerstate.plasma["rho"][0],
+            powerstate.plasma["w0"][0] * 1e-3,
+            y_up=powerstate.plasma["w0"][1] * 1e-3,
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        GRAPHICStools.fillGraph(
+            axsR[3 + cont + 2],
+            rhos,
+            aLw0[:, 0],
+            y_up=aLw0[:, 1],
+            alpha=alpha,
+            color=color,
+            label=label,
+            lw=lw,
+        )
+        cont += 2

@@ -1,4 +1,5 @@
-import copy, torch
+import copy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -7,7 +8,8 @@ from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.gacode_tools.aux import TRANSPinteraction, PROFILEStoMODELS, GACODErun
+from mitim_tools.gacode_tools import NEOtools
+from mitim_tools.gacode_tools.aux import TRANSPinteraction, PROFILEStoMODELS
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.im_tools.modules import PEDmodule
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -18,7 +20,7 @@ verbose_level = read_verbose_level()
 
 try:
     from mitim_tools.gacode_tools.aux import PORTALSinteraction
-except:
+except ImportError:
     print(
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
@@ -107,31 +109,55 @@ class PROFILES_GACODE:
             folderTRANSP, machine=machine
         )
 
-    def runNEOforEr(
+    def calculate_Er(
         self,
         folder,
-        vgenOptions={
-            "er": 2,
-            "vel": 1,
-            "numspecies": None,
-            "matched_ion": 1,
-            "nth": "17,39",
-        },
-        name="",
+        rhos=None,
+        vgenOptions={},
+        name="vgen1",
+        includeAll=False,
+        write_new_file=None,
+        restart=False,
     ):
-        if vgenOptions["numspecies"] is None:
-            vgenOptions["numspecies"] = len(self.Species)
+        profiles = copy.deepcopy(self)
 
-        print(
-            f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
-        )
-        print(f"\t\t> Matching ion {vgenOptions['matched_ion']} Vtor")
+        # Resolution?
+        resol_changed = False
+        if rhos is not None:
+            profiles.changeResolution(rho_new=rhos)
+            resol_changed = True
 
-        file_new = GACODErun.runVGEN(
-            self.file, folder, vgenOptions=vgenOptions, nameChange=name
-        )
+        self.neo = NEOtools.NEO()
+        self.neo.prep(profiles, folder)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, restart=restart)
 
-        self.__init__(file_new, calculateDerived=True, mi_ref=self.mi_ref)
+        profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
+        if resol_changed:
+            profiles_new.changeResolution(rho_new=self.profiles["rho(-)"])
+
+        # Get the information from the NEO run
+
+        variables = ["w0(rad/s)"]
+        if includeAll:
+            variables += [
+                "vpol(m/s)",
+                "vtor(m/s)",
+                "jbs(MA/m^2)",
+                "jbstor(MA/m^2)",
+                "johm(MA/m^2)",
+            ]
+
+        for ikey in variables:
+            if ikey in profiles_new.profiles:
+                print(
+                    f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}'
+                )
+                self.profiles[ikey] = profiles_new.profiles[ikey]
+
+        self.deriveQuantities()
+
+        if write_new_file is not None:
+            self.writeCurrentStatus(file=write_new_file)
 
     # *****************
 
@@ -142,6 +168,8 @@ class PROFILES_GACODE:
         self.header = self.lines[:istartProfs]
 
     def readProfiles(self):
+        singleLine, title, var = None, None, None  # for ruff complaints
+
         # ---
         found = False
         self.profiles = OrderedDict()
@@ -428,7 +456,7 @@ class PROFILES_GACODE:
             self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"]
         )
 
-        self.derived["q_gb"], self.derived["g_gb"], _, _ = PLASMAtools.gyrobohmUnits(
+        self.derived["q_gb"], self.derived["g_gb"], _, _, _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
             self.profiles["ne(10^19/m^3)"] * 1e-1,
             self.derived["mi_ref"],
@@ -507,6 +535,8 @@ class PROFILES_GACODE:
         self.derived["ge_10E20miller"] = CALCtools.integrateFS(
             self.derived["ge"] * 1e-20, r, volp
         )  # Because the units were #/sec/m^3
+
+        self.derived["geIn"] = self.derived["ge_10E20miller"][-1]  # 1E20 particles/sec
 
         self.derived["qe_MWm2"] = self.derived["qe_MWmiller"] / (volp)
         self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
@@ -762,6 +792,10 @@ class PROFILES_GACODE:
 
         self.derived["tauE"] = self.derived["Wthr"] / self.derived["qHeat"]  # Seconds
 
+        self.derived["tauP"] = self.derived["Ne"] / self.derived["geIn"]  # Seconds
+
+        self.derived["tauPotauE"] = self.derived["tauP"] / self.derived["tauE"]
+
         # Dilutions
         self.derived["fi"] = self.profiles["ni(10^19/m^3)"] / np.atleast_2d(
             self.profiles["ne(10^19/m^3)"]
@@ -910,7 +944,7 @@ class PROFILES_GACODE:
         self.derived["BetaN"] = (
             Beta
             / (
-                float(self.profiles["current(MA)"][-1])
+                np.abs(float(self.profiles["current(MA)"][-1]))
                 / (self.derived["a"] * self.derived["B0"])
             )
             * 100.0
@@ -1025,68 +1059,62 @@ class PROFILES_GACODE:
 
         return We, Wi, Ne, Ni
 
-    def printInfo(self, label=""):
-        ImpurityText = ""
-        for i in range(len(self.Species)):
-            ImpurityText += f"{self.Species[i]['N']}({self.Species[i]['Z']:.0f},{self.Species[i]['A']:.0f}) = {self.derived['fi_vol'][i]:.1e}, "
-        ImpurityText = ImpurityText[:-2]
-
-        print(f"\n***********************{label}****************")
-        print("Performance:")
-        print(
-            "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
-                self.derived["Q"], self.derived["Pfus"], self.derived["qIn"]
-            )
-        )
-        print(
-            "\tH98y2 =  {0:.2f}   (tauE  = {1:.3f} s)".format(
-                self.derived["H98"], self.derived["tauE"]
-            )
-        )
-        print(
-            "\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(
-                self.derived["H89"], self.derived["H97L"]
-            )
-        )
-        print(
-            "\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(
-                self.derived["ne_peaking"], self.derived["nu_eff"]
-            )
-        )
-        print(
-            "\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(
-                self.derived["ne_peaking0.2"], self.derived["nu_eff2"]
-            )
-        )
-        print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
+    def printInfo(self, label="", reDeriveIfNotFound=True):
         try:
+            ImpurityText = ""
+            for i in range(len(self.Species)):
+                ImpurityText += f"{self.Species[i]['N']}({self.Species[i]['Z']:.0f},{self.Species[i]['A']:.0f}) = {self.derived['fi_vol'][i]:.1e}, "
+            ImpurityText = ImpurityText[:-2]
+
+            print(f"\n***********************{label}****************")
+            print("Performance:")
+            print(
+                "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
+                    self.derived["Q"], self.derived["Pfus"], self.derived["qIn"]
+                )
+            )
+            print(
+                "\tH98y2 =  {0:.2f}   (tauE  = {1:.3f} s)".format(
+                    self.derived["H98"], self.derived["tauE"]
+                )
+            )
+            print(
+                "\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(
+                    self.derived["H89"], self.derived["H97L"]
+                )
+            )
+            print(
+                "\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(
+                    self.derived["ne_peaking"], self.derived["nu_eff"]
+                )
+            )
+            print(
+                "\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(
+                    self.derived["ne_peaking0.2"], self.derived["nu_eff2"]
+                )
+            )
+            print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(
                 "\tBetaN =  {0:.3f} (approx, based on B0 and p_thr)".format(
                     self.derived["BetaN"]
                 )
             )
-        except:
-            pass
-        print(
-            "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
-                self.derived["Prad"],
-                self.derived["Prad"] / self.derived["qHeat"] * 100.0,
+            print(
+                "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
+                    self.derived["Prad"],
+                    self.derived["Prad"] / self.derived["qHeat"] * 100.0,
+                )
             )
-        )
-        try:
             print(
                 "\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(
                     self.derived["Psol"], self.derived["LHratio"]
                 )
             )
-        except:
-            pass
-        print(
-            "Operational point (<ne>,<Te> = [{0:.2f},{1:.2f}) and species:".format(
-                self.derived["ne_vol20"], self.derived["Te_vol"]
+            print(
+                "Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(
+                    self.derived["ne_vol20"], self.derived["Te_vol"]
+                )
             )
-        )
-        try:
             print(
                 "\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(
                     self.derived["Ti_vol"],
@@ -1094,37 +1122,41 @@ class PROFILES_GACODE:
                     self.derived["tite"][0],
                 )
             )
-        except:
             print(f"\t<Ti>  = {self.derived['Ti_vol']:.2f} keV")
-        print(
-            "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
-                self.derived["fG"], self.derived["ne_vol20"]
-            )
-        )
-        try:
             print(
-                f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.4f}]"
+                "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
+                    self.derived["fG"], self.derived["ne_vol20"]
+                )
             )
-        except:
-            pass
-        try:
+            print(
+                f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]"
+            )
             print(f"\tMach  = {self.derived['MachNum_vol']:.2f} (vol avg)")
-        except:
-            pass
-        print("Content:")
-        print(
-            "\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(
-                self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]
+            print("Content:")
+            print(
+                "\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(
+                    self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]
+                )
             )
-        )
-        print(
-            "\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20 (N_thr = {2:.1f}*10^20)".format(
-                self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]
+            print(
+                "\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20 (N_thr = {2:.1f}*10^20)".format(
+                    self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]
+                )
             )
-        )
-        print("Species concentration:")
-        print(f"\t{ImpurityText}")
-        print("******************************************************")
+            print(
+                f"\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})"
+            )
+            print("Species concentration:")
+            print(f"\t{ImpurityText}")
+            print("******************************************************")
+        except KeyError:
+            print(
+                "\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",
+                typeMsg="w",
+            )
+            if reDeriveIfNotFound:
+                self.deriveQuantities()
+                self.printInfo(label=label, reDeriveIfNotFound=False)
 
     def makeAllThermalIonsHaveSameTemp(self, refIon=0):
         SpecRef = self.Species[refIon]["N"]
@@ -1143,10 +1175,10 @@ class PROFILES_GACODE:
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 print(
-                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor):.3f}"
+                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor_ions):.3f}"
                 )
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
-                self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor * ni_orig
+                self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
     def writeCurrentStatus(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
@@ -1276,7 +1308,7 @@ class PROFILES_GACODE:
         self.deriveQuantities(mi_ref=self.derived["mi_ref"])
 
         print(
-            f"\t- Resolution of profiles changed to {n} points with function {interpFunction}"
+            f"\t\t- Resolution of profiles changed to {n} points with function {interpFunction}"
         )
 
     def DTplasma(self):
@@ -1791,19 +1823,15 @@ class PROFILES_GACODE:
         lsFlows="-",
         legFlows=True,
         showtexts=True,
+        lastRhoGradients=0.89,
     ):
         if axs1 is None:
             if fn is None:
-                plt.rcParams["figure.max_open_warning"] = False
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-                plt.ioff()
-                fn = FigureNotebook(0, "PROFILES Notebook", geometry="1600x1000")
-                wasProvided = False
-            else:
-                wasProvided = True
+                self.fn = FigureNotebook("PROFILES Notebook", geometry="1600x1000")
 
-            fig = fn.add_figure(label="Profiles" + fnlab)
+            fig = self.fn.add_figure(label="Profiles" + fnlab)
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
             axs1 = [
                 fig.add_subplot(grid[0, 0]),
@@ -1817,7 +1845,7 @@ class PROFILES_GACODE:
                 fig.add_subplot(grid[2, 2]),
             ]
 
-            fig2 = fn.add_figure(label="Powers" + fnlab)
+            fig2 = self.fn.add_figure(label="Powers" + fnlab)
             grid = plt.GridSpec(3, 2, hspace=0.3, wspace=0.3)
             axs2 = [
                 fig2.add_subplot(grid[0, 0]),
@@ -1828,7 +1856,7 @@ class PROFILES_GACODE:
                 fig2.add_subplot(grid[2, 1]),
             ]
 
-            fig3 = fn.add_figure(label="Geometry" + fnlab)
+            fig3 = self.fn.add_figure(label="Geometry" + fnlab)
             grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.5)
             ax00c = fig3.add_subplot(grid[0, 0])
             axs3 = [
@@ -1846,7 +1874,7 @@ class PROFILES_GACODE:
                 fig3.add_subplot(grid[2, 3], sharex=ax00c),
             ]
 
-            fig4 = fn.add_figure(label="Gradients" + fnlab)
+            fig4 = self.fn.add_figure(label="Gradients" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axs4 = [
                 fig4.add_subplot(grid[0, 0]),
@@ -1857,7 +1885,7 @@ class PROFILES_GACODE:
                 fig4.add_subplot(grid[1, 2]),
             ]
 
-            fig5 = fn.add_figure(label="Flows" + fnlab)
+            fig5 = self.fn.add_figure(label="Flows" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
 
             axsFlows = [
@@ -1869,7 +1897,7 @@ class PROFILES_GACODE:
                 fig5.add_subplot(grid[1, 2]),
             ]
 
-            fig6 = fn.add_figure(label="Other" + fnlab)
+            fig6 = self.fn.add_figure(label="Other" + fnlab)
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axs6 = [
                 fig6.add_subplot(grid[0, 0]),
@@ -1881,7 +1909,7 @@ class PROFILES_GACODE:
                 fig6.add_subplot(grid[1, 3]),
             ]
 
-            fig7 = fn.add_figure(label="Impurities" + fnlab)
+            fig7 = self.fn.add_figure(label="Impurities" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axsImps = [
                 fig7.add_subplot(grid[0, 0]),
@@ -1891,9 +1919,6 @@ class PROFILES_GACODE:
                 fig7.add_subplot(grid[1, 1]),
                 fig7.add_subplot(grid[1, 2]),
             ]
-
-        else:
-            wasProvided = True
 
         [ax00, ax10, ax20, ax01, ax11, ax21, ax02, ax12, ax22] = axs1
         [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b] = axs2
@@ -2440,7 +2465,9 @@ class PROFILES_GACODE:
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         # Derived
-        self.plotGradients(axs4, color=color, lw=lw)
+        self.plotGradients(
+            axs4, color=color, lw=lw, lastRho=lastRhoGradients, label=extralab
+        )
 
         # Others
         ax = axs6[0]
@@ -2658,9 +2685,6 @@ class PROFILES_GACODE:
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
-        if not wasProvided:
-            fn.show()
-
     def plotGradients(
         self,
         axs4,
@@ -2765,6 +2789,7 @@ class PROFILES_GACODE:
         ax.set_ylabel("$T_e$ (keV)")
         ax.set_xlabel(labelx)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
+        ax.legend(loc="best", fontsize=7)
         ax = axs4[2]
         ax.set_ylabel("$T_i$ (keV)")
         ax.set_xlabel(labelx)
@@ -3463,7 +3488,6 @@ class PROFILES_GACODE:
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
 
         if debugPlot:
-            plt.ioff()
             fig, axq = plt.subplots()
 
             ne = self.profiles["ne(10^19/m^3)"]
@@ -3526,7 +3550,7 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
     ax01 = fig.add_subplot(grid[0, 1])
     ax11 = fig.add_subplot(grid[1, 1])
     ax02 = fig.add_subplot(grid[0, 2])
-    ax12 = fig.add_subplot(grid[1, 2])
+    # ax12 = fig.add_subplot(grid[1, 2])
 
     cols = GRAPHICStools.listColors()
 
@@ -3549,15 +3573,14 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
         )
 
 
-def plotAll(profiles_list, figs=None, extralabs=None):
+def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
     if figs is not None:
         figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = figs
+        fn = None
     else:
-        plt.rcParams["figure.max_open_warning"] = False
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        plt.ioff()
-        fn = FigureNotebook(0, "Profiles", geometry="1800x900")
+        fn = FigureNotebook("Profiles", geometry="1800x900")
         figProf_1 = fn.add_figure(label="Profiles")
         figProf_2 = fn.add_figure(label="Powers")
         figProf_3 = fn.add_figure(label="Geometry")
@@ -3668,10 +3691,10 @@ def plotAll(profiles_list, figs=None, extralabs=None):
             lsFlows=ls[i],
             legFlows=i == 0,
             showtexts=False,
+            lastRhoGradients=lastRhoGradients,
         )
 
-    if figs is None:
-        fn.show()
+    return fn
 
 
 def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
@@ -3743,7 +3766,7 @@ def ionName(Z, A):
     # elif A == 69: 	return 'Ga'
 
 
-def gradientsMerger(p0, p_true, roa=0.46, blending=0.1, debug=False):
+def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p = copy.deepcopy(p0)
 
     aLTe_true = np.interp(
@@ -3815,28 +3838,6 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1, debug=False):
         .cpu()
         .numpy()[0]
     )
-
-    if debug:
-        fig, axs = plt.subplots(nrows=2)
-        ax = axs[0]
-        ax.plot(p.derived["roa"], p.profiles["te(keV)"], c="b")
-        ax.plot(roa_true, p_true.profiles["te(keV)"], c="r")
-        ax.plot(p.derived["roa"], Te, c="g")
-
-        ax.axvline(x=roa, c="k", ls="--")
-        ax.axvline(x=roa - blending, c="k", ls="--")
-
-        ax = axs[1]
-        ax.plot(p.derived["roa"], p.derived["aLTe"], c="b")
-        ax.plot(p_true.derived["roa"], p_true.derived["aLTe"], c="r")
-        ax.plot(p.derived["roa"], aLTe, c="g")
-
-        ax.axvline(x=roa, c="k", ls="--")
-        ax.axvline(x=roa - blending, c="k", ls="--")
-
-        plt.show()
-
-        embed()
 
     p.profiles["te(keV)"] = Te
     p.profiles["ti(keV)"][:, 0] = Ti

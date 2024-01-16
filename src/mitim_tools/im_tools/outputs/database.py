@@ -13,7 +13,6 @@ def plotDB(cdfs, runIDs=None, fn=None, extralab="", timePlot=None, avTime=0.0):
         runIDs = np.arange(0, len(cdfs))
 
     if fn is None:
-        plt.ioff()
         figsize = (20, 10)
         fig1 = plt.figure(figsize=figsize)
         fig4 = plt.figure(figsize=figsize)
@@ -810,6 +809,5 @@ if __name__ == "__main__":
         except:
             print("problem " + str(i))
 
-    plt.ioff()
-    fn = GUItools.FigureNotebook(0, "SPARC scenarios", geometry="1700x900")
+    fn = GUItools.FigureNotebook("SPARC scenarios", geometry="1700x900")
     figs = plotDB(cdfs, runIDs=runIDs, fn=fn)

@@ -1,13 +1,17 @@
-import torch, gpytorch, botorch, copy, datetime, contextlib
+import torch
+import gpytorch
+import botorch
+import copy
+import contextlib
 import numpy as np
 import matplotlib.pyplot as plt
 import dill as pickle_dill
-from IPython import embed
-from mitim_tools.misc_tools import MATHtools, GRAPHICStools, IOtools
-from mitim_tools.opt_tools import BOTORCHtools, OPTtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools
+from mitim_tools.opt_tools import BOTORCHtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -170,6 +174,13 @@ class surrogate_model:
             self.train_X_added = torch.empty((0, dimTransformedDV_x))
             self.train_Y_added = torch.empty((0, dimTransformedDV_y))
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
+
+        # --------------------------------------------------------------------------------------
+        # Make sure that very small variations are not captured
+        # --------------------------------------------------------------------------------------
+
+        if self.train_X_added.shape[0] > 0:
+            self.ensureMinimalVariationSuppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
         # Make sure at least 2 points
@@ -474,6 +485,34 @@ class surrogate_model:
             with open(self.fileTraining, "rb") as f:
                 data_dict = pickle_dill.load(f)
 
+            if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
+                print(
+                    "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
+                    typeMsg="w",
+                )
+                self.train_X_added_full = torch.cat(
+                    (
+                        self.train_X_added_full,
+                        torch.full(
+                            (
+                                self.train_X_added_full.shape[0],
+                                train_X_Complete.shape[-1]
+                                - self.train_X_added_full.shape[-1],
+                            ),
+                            torch.nan,
+                        ),
+                    ),
+                    axis=-1,
+                )
+            elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
+                print(
+                    "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
+                    typeMsg="w",
+                )
+                self.train_X_added_full = self.train_X_added_full[
+                    :, : train_X_Complete.shape[-1]
+                ]
+
             x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
             y = torch.cat((self.train_Y_added, train_Y), axis=0)
             yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
@@ -515,7 +554,6 @@ class surrogate_model:
         x_next=None,
         y_next=None,
         ystd_next=None,
-        printYN=False,
         axs=None,
         plotsPerFigure=20,
         ylabels=None,
@@ -532,7 +570,6 @@ class surrogate_model:
 
         yPredicted, yU, yL, _ = self.predict(xT)
 
-        x = xT.cpu().numpy()
         y = y.cpu().numpy()
         yPredicted = yPredicted.detach().cpu().numpy()
         yL = yL.detach().cpu().numpy()
@@ -667,6 +704,36 @@ class surrogate_model:
 
             return axs
 
+    def ensureMinimalVariationSuppressed(self, input_transform_physics, thr=1e-6):
+        """
+        In some cases, the added data from file might have extremely small variations in some of the fixed
+        inputs, as compared to the trained data of this run. In such a case, modify this variation
+        """
+
+        # Do dimensions of the non-added points change?
+        x_transform = input_transform_physics(self.train_X)
+        indecesUnchanged = torch.where(
+            (x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])
+            / x_transform.mean(axis=0)[0]
+            < thr
+        )[0]
+
+        HasThisBeenApplied = 0
+
+        for i in indecesUnchanged:
+            if (
+                (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
+            ).max() < thr:
+                HasThisBeenApplied += 1
+                for j in range(self.train_X_added.shape[0]):
+                    self.train_X_added[j, i] = x_transform[0, i]
+
+        if HasThisBeenApplied > 0:
+            print(
+                f"\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims",
+                typeMsg="w",
+            )
+
     def ensureMinimumNoise(self):
         if ("MinimumRelativeNoise" in self.surrogateOptions) and (
             self.surrogateOptions["MinimumRelativeNoise"] is not None
@@ -720,11 +787,11 @@ class surrogate_model:
 
         print("\t- Fitting summary:", verbose=verbose_level)
         if verbose_level in [4, 5]:
-            print(f"\t\t* Model raw parameters:")
+            print("\t\t* Model raw parameters:")
             for param_name, param in self.gpmodel.named_parameters():
                 BOgraphics.printParam(param_name, param, extralab="\t\t\t")
 
-            print(f"\t\t* Model constraints:")
+            print("\t\t* Model constraints:")
             dictParam = {}
             for constraint_name, constraint in self.gpmodel.named_constraints():
                 BOgraphics.printConstraint(constraint_name, constraint, extralab="\t\t")
@@ -734,7 +801,7 @@ class surrogate_model:
 			This is an "inconvenient" way to calculate the actual parameters https://docs.gpytorch.ai/en/stable/examples/00_Basic_Usage/Hyperparameters.html?highlight=constraints#How-do-constraints-work?
 			but I like it.
 			"""
-            print(f"\t\t* Model actual parameters:")
+            print("\t\t* Model actual parameters:")
             for param_name, param in self.gpmodel.named_parameters():
                 if param_name in dictParam:
                     param = dictParam[param_name].transform(param)
@@ -803,7 +870,7 @@ def extendPoints(file, output):
     y = torch.Tensor()
     yvar = torch.Tensor()
     for i in data:
-        list_values, list_valuesE = list(data[i].items()), list(dataE[i].items())
+        list_values = list(data[i].items())
 
         x_new = torch.Tensor()
         for j in range(len(list_values)):
@@ -863,8 +930,8 @@ def writeTabulars(
                         TabularData.data[iC][f"x_{j}"] = TabularDataStds.data[iC][
                             f"x_{j}"
                         ] = round(X[i, j], 16)
-                    TabularData.data[iC][f"y"] = round(Y[i, 0], 16)
-                    TabularDataStds.data[iC][f"y"] = round(Yvar[i, 0] ** 0.5, 16)
+                    TabularData.data[iC]["y"] = round(Y[i, 0], 16)
+                    TabularDataStds.data[iC]["y"] = round(Yvar[i, 0] ** 0.5, 16)
 
                     iC += 1
                     outputs.append(output)
@@ -899,7 +966,7 @@ def simpleModel(
         dtype=torch.float64
     )
     if yvar is not None:
-        if type(yvar) is float:
+        if isinstance(yvar, float):
             yvar = [yvar]
         yvar = torch.from_numpy(yvar).to(x)
 

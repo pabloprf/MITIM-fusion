@@ -68,7 +68,7 @@ def normalizations(
             "exp_Ge_gb": Norms[norm_select]["exp_Ge"] / Norms[norm_select]["g_gb"],
         }
     else:
-        print("\t\t\t- Normalization set is empty", typeMsg="w")
+        print(f"\t\t- Normalization set ({norm_select}) is empty", typeMsg="w")
 
     return Norms, cdf
 
@@ -127,7 +127,7 @@ def normalizations_profiles(profiles):
         return Set_norm, Set_norm["rho"], Set_norm["roa"], Set_norm["mi_ref"]
 
     else:
-        print("\t\t\t- Cannot read normalization", typeMsg="w")
+        print("\t\t- Cannot read normalization", typeMsg="w")
 
         return None, None, None, None
 

@@ -35,8 +35,8 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
 
-    def defineRunParameters(self, *args, **kargs):
-        super().defineRunParameters(*args, **kargs)
+    def defineRunParameters(self, *args, **kwargs):
+        super().defineRunParameters(*args, **kwargs)
 
         s = CONFIGread.load_settings()
         self.pppluser = s["globus"]["username"]
@@ -52,7 +52,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
 	------------------------------------------------------------------------------------------------------
 	"""
 
-    def run(self, version="pshare", **kargs):
+    def run(self, version="pshare", **kwargs):
         # Make sure that the MPIs are set up properly
         self.mpisettings = TRANSPmain.ensureMPIcompatibility(
             self.nml_file, self.nml_file_ptsolver, self.mpisettings
@@ -64,7 +64,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
         # tr_send
         self.send()
 
-    def check(self, permitSomeTime=False, NBImissing_isStopped=True, **kargs):
+    def check(self, permitSomeTime=False, NBImissing_isStopped=True, **kwargs):
         permitSomeTime = False  # False has been HARD CODED for tests
 
         # ------------------------------------------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
         retrieveAC=False,
         fullRequest=True,
         checkForActive=True,
-        **kargs,
+        **kwargs,
     ):
         """
         This is for unfinished runs (tr_look), grab only the CDF for checks
@@ -380,7 +380,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
 
         self.cdfs[label] = Reactor
 
-    def fetch(self, label="run1", retrieveAC=False, **kargs):
+    def fetch(self, label="run1", retrieveAC=False, **kwargs):
         """
         This is for finished runs (tr_fetch)
         """
@@ -398,7 +398,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
 
         return self.cdfs[label]
 
-    def delete(self, howManyCancel=1, MinWaitDeletion=0, **kargs):
+    def delete(self, howManyCancel=1, MinWaitDeletion=0, **kwargs):
         TRANSPglobus_ntcc.tr_cancel(
             self.runid,
             self.FolderTRANSP,

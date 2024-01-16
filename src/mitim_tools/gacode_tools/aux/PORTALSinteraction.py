@@ -135,12 +135,13 @@ def TGYROmodeledVariables(
     forceZeroParticleFlux=False,
     includeFast=False,
     impurityPosition=1,
-    ProfilesPredicted=["te", "ti" "ne"],
-    provideTurbulentExchange=True,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
     dfT=torch.Tensor(),
 ):
+    """
+    impurityPosition will be substracted one
+    """
     if "tgyro_stds" not in self.__dict__:
         self.tgyro_stds = False
 
@@ -305,8 +306,6 @@ def TGYROmodeledVariables(
         self.EXe_sim_turb_stds[:, :] if self.tgyro_stds else None
     )
 
-    # portals_variables['PexchTurbFlux'] 	= self.Qe_tarMW_expwd/self.dvoldr 		# MW/m^2
-
     if forceZeroParticleFlux:
         portals_variables["Ge"] = self.Ge_tar[:, :] * 0.0
 
@@ -467,7 +466,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
     # Source term is (TARGET - TRANSPORT)
     source = cal - of
 
-    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2 or L1
+    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2
     res = -1 / source.shape[-1] * torch.norm(source, p=2, dim=-1)
 
     return of, cal, source, res

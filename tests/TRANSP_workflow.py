@@ -12,7 +12,7 @@ Notes:
 In engaging, with 32 cores, should take ~1h20min
 """
 
-import os, sys, random
+import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools.misc_tools import CONFIGread
@@ -39,17 +39,7 @@ if restart and os.path.exists(folder):
 
 # Randomize number of regression, not to collide with other people launching the same run, but there's a chance anyway...
 s = CONFIGread.load_settings()
-runid = s["globus"]["username"][0].upper() + str(random.randint(1, 99)).zfill(
-    2
-)  # e.g. 'S01'
-
-# Define TRANSP class and where it is run
-t = TRANSPtools.TRANSP(folder, "CMOD")
-
-# Define user and run parameters
-t.defineRunParameters(
-    "12345" + runid, "12345", mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 32}
-)
+runid = 'P24'
 
 # ---- Prepare NML and UFILES
 if os.path.exists(folder):
@@ -58,16 +48,24 @@ os.system(f"cp -r {folderInput} {folder}")
 os.system(f"mv {folder}/12345X01TR.DAT {folder}/12345{runid}TR.DAT")
 # ---------------------------
 
+
+# Define TRANSP class and where it is run
+t = TRANSPtools.TRANSP(folder, "CMOD")
+
+# Define user and run parameters
+t.defineRunParameters(
+    "12345" + runid, "12345",
+    mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 32},
+    minutesAllocation = 10
+)
+
 # Submit run
 t.run()
 
 # Check
 c = t.checkUntilFinished(
-    label="run1", checkMin=5, grabIntermediateEachMin=20, retrieveAC=True
+    label="run1", checkMin=2, grabIntermediateEachMin=20, retrieveAC=True
 )
-
-# Write outputs of TRANSP (optional)
-c.writeOutput(time=1e4, avTime=0.001)
 
 # Plot
 t.plot(label="run1")

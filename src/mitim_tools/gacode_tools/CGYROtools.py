@@ -1,20 +1,14 @@
-import os, time, copy
+import os
 import numpy as np
 from IPython import embed
 import matplotlib.pyplot as plt
-
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.gacode_tools.aux import GACODEplotting
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from pygacode.cgyro.data import cgyrodata
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
-
-"""
- 
-"""
 
 
 class CGYRO:
@@ -107,7 +101,6 @@ class CGYRO:
         kys=[0.3],
         cores_per_ky=32,
         restart=False,
-        gacodeCGYRO="gacode",
         forceIfRestart=False,
         extra_name="",
     ):
@@ -118,7 +111,6 @@ class CGYRO:
         self.kys = kys
         numcores = int(len(self.kys) * cores_per_ky)
 
-        self.gacodeCGYRO = gacodeCGYRO
         self.FolderCGYRO = IOtools.expandPath(self.FolderGACODE + subFolderCGYRO + "/")
         self.FolderCGYRO_tmp = self.FolderCGYRO + "/tmp_standard/"
 
@@ -165,7 +157,6 @@ class CGYRO:
                 numcores=numcores,
                 filesToRetrieve=self.ResultsFiles,
                 name=f'cgyro_{self.nameRunid}_{subFolderCGYRO.strip("/")}{extra_name}',
-                gacode_compilation=self.gacodeCGYRO,
             )
 
     def read(self, label="cgyro1", folder=None):
@@ -208,11 +199,11 @@ class CGYRO:
         cgyro = self.results[label]
 
         # Time
+        usec = cgyro.getflux()
         cgyro.getnorm("elec")
         t = cgyro.tnorm
 
         # Flux
-        usec = cgyro.getflux("auto")
         ys = np.sum(cgyro.ky_flux, axis=(2, 3))
         if moment == "n":
             y = ys[ispec, 0, :]
@@ -366,7 +357,7 @@ class CGYRO:
             lw=lw,
             ls=ls[0],
         )
-        ax.set_title(f"Ion particle fluxes")
+        ax.set_title("Ion particle fluxes")
 
         # Extra
         ax = axs["C"]
@@ -442,15 +433,13 @@ class CGYRO:
                 )
 
     def plot(self, labels=[""]):
-        plt.rcParams["figure.max_open_warning"] = False
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        plt.ioff()
-        fn = FigureNotebook(0, "CGYRO Notebook", geometry="1600x1000")
+        self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
 
         colors = GRAPHICStools.listColors()
 
-        fig = fn.add_figure(label="Fluxes Time Traces")
+        fig = self.fn.add_figure(label="Fluxes Time Traces")
         axsFluxes_t = fig.subplot_mosaic(
             """
 									 ABC
@@ -466,24 +455,20 @@ class CGYRO:
                 plotLegend=j == len(labels) - 1,
             )
 
-        fn.show()
-
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
 
         if fig is None:
             # fig = plt.figure(figsize=(15,9))
-            plt.rcParams["figure.max_open_warning"] = False
+
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
-            fn = FigureNotebook(
-                0,
+            self.fnLS = FigureNotebook(
                 f"CGYRO Notebook, run #{self.nameRunid}, time {self.time:3f}s",
                 geometry="1600x1000",
             )
-            fig1 = fn.add_figure(label="Linear Stability")
-            fig2 = fn.add_figure(label="Ballooning")
+            fig1 = self.fnLS.add_figure(label="Linear Stability")
+            fig2 = self.fnLS.add_figure(label="Ballooning")
 
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -635,8 +620,6 @@ class CGYRO:
         for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-        fn.show()
 
 
 def changeANDwrite_CGYRO(rhos, ky, FolderCGYRO, CGYROsettings=1):

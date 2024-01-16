@@ -8,7 +8,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 def plot(self, axs, axsRes, figs=None, c="r", label=""):
     profiles_new = self.insertProfiles(self.profiles, insertPowers=True)
     if figs is not None:
-        PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
+        fn = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
 
     # plotPlasma(self,self.FluxMatch_plasma_orig,axs,color='b')
     plotPlasma(self, self.plasma, axs, color=c, label=label)

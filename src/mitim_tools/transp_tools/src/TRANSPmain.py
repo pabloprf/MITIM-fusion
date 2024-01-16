@@ -61,19 +61,19 @@ class TRANSPgeneric:
 	------------------------------------------------------------------------------------------------------
 	"""
 
-    def run(self, *args, **kargs):
+    def run(self, *args, **kwargs):
         pass
 
-    def check(self, *args, **kargs):
+    def check(self, *args, **kwargs):
         pass
 
-    def get(self, *args, **kargs):
+    def get(self, *args, **kwargs):
         pass
 
-    def fetch(self, *args, **kargs):
+    def fetch(self, *args, **kwargs):
         pass
 
-    def delete(self, *args, **kargs):
+    def delete(self, *args, **kwargs):
         pass
 
     def automatic(*args, **kwargs):
@@ -138,9 +138,7 @@ class TRANSPgeneric:
                 datetime.datetime.now() + datetime.timedelta(minutes=minWait)
             ).strftime("%H:%M")
             print(
-                ">> Waiting for run {0} to converge... (check every {1}min, at {2})".format(
-                    self.runid, minWait, tt
-                )
+                f">> Waiting for run {self.runid} to converge... (check every {minWait}min, at {tt})"
             )
 
             try:
@@ -151,7 +149,6 @@ class TRANSPgeneric:
             time.sleep(60 * minWait)
 
             self.get(label="r1", retrieveAC=retrieveAC, checkForActive=checkForActive)
-            statusStop = self.statusStop
 
             # Try to read the hours it has been static (not progressed a single ms)
             try:
@@ -163,11 +160,9 @@ class TRANSPgeneric:
 
                 if hoursStatic > maxhoursStatic:
                     print(
-                        " >> {0} run has not progressed in {1:.1f}h (> {2:.1f}h), assume there is a problem with it".format(
-                            self.runid, hoursStatic, maxhoursStatic
-                        )
+                        f" >> {self.runid} run has not progressed in {hoursStatic:.1f}h (> {maxhoursStatic:.1f}h), assume there is a problem with it"
                     )
-                    statusStop = 1  # 0
+                    self.statusStop = 1  # 0
 
             except:
                 pass
@@ -176,9 +171,7 @@ class TRANSPgeneric:
             try:
                 if lastTime > self.cdfs["r1"].t[-1]:
                     print(
-                        " >> {0} run has come back in time! Please check what happened by comparing CDF and CDF_prev".format(
-                            self.runid
-                        ),
+                        f" >> {self.runid} run has come back in time! Please check what happened by comparing CDF and CDF_prev",
                         typeMsg="q" if not automaticProcess else "qa",
                     )
                 else:
@@ -194,7 +187,7 @@ class TRANSPgeneric:
             # ~~~~~~~~~~~~~~ If the run is correct, evaluate if it has converged
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-            if statusStop == 0:
+            if self.statusStop == 0:
                 ConvergedRun = self.cdfs["r1"].fullMITIMconvergence(
                     minWait,
                     timeDifference,
@@ -205,11 +198,11 @@ class TRANSPgeneric:
             else:
                 break
 
-        return ConvergedRun, statusStop
+        return ConvergedRun, self.statusStop
 
     def plot(self, label="run1", time=None):
         if self.cdfs[label] is not None:
-            self.cdfs[label].plotRun(time=time)
+            self.cdfs[label].plot(time=time)
 
     def checkUntilFinished(
         self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False
@@ -230,9 +223,7 @@ class TRANSPgeneric:
 
             if first:
                 print(
-                    ">> Simulation just submitted, will check status in {0}min (at {1})".format(
-                        checkMin, tt
-                    )
+                    f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
                 )
             else:
                 print(

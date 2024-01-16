@@ -78,8 +78,8 @@ mainFred = mainF.split("/")[-1]
 
 # ------ Plot Summary of all runs, and convergence summary
 
-plt.ioff()
-fn = GUItools.FigureNotebook(0, "ALL", geometry="1700x900")
+
+fn = GUItools.FigureNotebook("ALL", geometry="1700x900")
 fig1 = fn.add_figure(label="Data")
 
 axSummary = []
@@ -116,7 +116,7 @@ for c in cdfs_p:
         cdfs_p_clean.append(c)
 
 
-# fn = GUItools.FigureNotebook(0,'SPARC scenarios',geometry='1700x900')
+# fn = GUItools.FigureNotebook('SPARC scenarios',geometry='1700x900')
 
 figs = plotDB(
     cdfs_clean,
@@ -134,5 +134,3 @@ figs = plotDB(
     timePlot=timePlot,
     avTime=avTime,
 )
-
-fn.show()

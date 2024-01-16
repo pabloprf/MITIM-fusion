@@ -373,7 +373,7 @@ def analyze_results(
 
         # Plot
         if plotYN:
-            self.tglf_final.plotRun(
+            self.tglf_final.plot(
                 labels=["Original", "VITALS"], fn=fn, extratitle="TGLF- "
             )
 

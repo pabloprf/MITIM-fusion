@@ -1,12 +1,13 @@
-import copy, os, torch
+import copy
+import os
+import torch
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.aux import PORTALScgyro
 from mitim_modules.powertorch.aux import TRANSFORMtools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 # ------------------------------------------------------------------
 # SIMPLE
@@ -103,7 +104,6 @@ def tgyro_model(
     includeFast = ModelOptions["includeFastInQi"]
     impurityPosition = ModelOptions["impurityPosition"]
     useConvectiveFluxes = ModelOptions["useConvectiveFluxes"]
-    ProfilesPredicted = TGYROparameters["ProfilesPredicted"]
     UseFineGridTargets = ModelOptions["UseFineGridTargets"]
 
     launchTGYROviaSlurm = ModelOptions.get("launchTGYROviaSlurm", False)
@@ -135,6 +135,8 @@ def tgyro_model(
         applyCorrections=TGYROparameters["applyCorrections"],
     )
 
+    # VGEN?
+
     # copy for future modifications
     self.file_profs_mod = f"{self.file_profs}_modified"
     os.system(f"cp {self.file_profs} {self.file_profs_mod}")
@@ -157,7 +159,7 @@ def tgyro_model(
         print("\t- Launching TGYRO evaluation as a terminal job")
 
     self.tgyro_current.run(
-        subFolderTGYRO=f"tglf_neo_original/",
+        subFolderTGYRO="tglf_neo_original/",
         restart=restart,
         forceIfRestart=True,
         special_radii=RadiisToRun,
@@ -171,7 +173,7 @@ def tgyro_model(
         forcedName=name,
     )
 
-    self.tgyro_current.read(label=f"tglf_neo_original")
+    self.tgyro_current.read(label="tglf_neo_original")
 
     # Copy one with evaluated targets
     self.file_profs_targets = f"{self.tgyro_current.FolderTGYRO}/input.gacode.new"
@@ -189,7 +191,7 @@ def tgyro_model(
 
     # Add errors and merge fluxes as we would do if this was a CGYRO run
     curateTGYROfiles(
-        self.tgyro_current.results[f"tglf_neo_original"],
+        self.tgyro_current.results["tglf_neo_original"],
         f"{FolderEvaluation_TGYRO}/tglf_neo/",
         percentError,
         impurityPosition=impurityPosition,
@@ -198,7 +200,7 @@ def tgyro_model(
 
     # Read again to capture errors
     self.tgyro_current.read(
-        label=f"tglf_neo", folder=f"{FolderEvaluation_TGYRO}/tglf_neo/"
+        label="tglf_neo", folder=f"{FolderEvaluation_TGYRO}/tglf_neo/"
     )
     labels_results.append("tglf_neo")
 
@@ -210,8 +212,6 @@ def tgyro_model(
         useConvectiveFluxes=useConvectiveFluxes,
         includeFast=includeFast,
         impurityPosition=impurityPosition,
-        ProfilesPredicted=ProfilesPredicted,
-        provideTurbulentExchange=provideTurbulentExchange,
         UseFineGridTargets=UseFineGridTargets,
         OriginalFimp=OriginalFimp,
         forceZeroParticleFlux=forceZeroParticleFlux,
@@ -267,15 +267,13 @@ def tgyro_model(
             useConvectiveFluxes=useConvectiveFluxes,
             includeFast=includeFast,
             impurityPosition=impurityPosition,
-            ProfilesPredicted=ProfilesPredicted,
-            provideTurbulentExchange=provideTurbulentExchange,
             UseFineGridTargets=UseFineGridTargets,
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             dfT=self.dfT,
         )
 
-        print(f"\t- Checking model modifications:")
+        print("\t- Checking model modifications:")
         for r in ["Qe_turb", "Qi_turb", "Ge_turb", "GZ_turb", "Mt_turb", "PexchTurb"]:
             print(
                 f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(portals_variables_orig[r][0][1:],portals_variables_orig[r+'_stds'][0][1:]) ])}"

@@ -314,7 +314,7 @@ c_sawtooth(29)   = 0.4    ! chfast in Eq 13             (default porcelli = 0.4)
 
 !----- General Model
 
-nalpha  					= 1     ! Fusion products model (0=MC for alphas, 1= fast model)
+nalpha  					= 0     ! Fusion products model (0=MC for alphas, 1= fast model)
 nptclf  					= 10000 ! Number of monte carlo particles for fusion product calcs
 nlfatom 					= T     ! Include atomic physics effects on products (e.g. CX)
 nl_ignore_mini_conflicts 	= T		! Ignore issue with He3 product coinciden with ICRF minority
@@ -324,7 +324,7 @@ nl_ignore_mini_conflicts 	= T		! Ignore issue with He3 product coinciden with IC
 nlfhe4  = False       ! Turn on MC slowing-down of He4 from D+T reactions
 plfhe4  = 1e2     ! Source power threshold to run MC (in W)
 
-nlfst   = F       ! Turn on MC slowing-down of T from D+D reactions (D+D=T+p)
+nlfst   = True       ! Turn on MC slowing-down of T from D+D reactions (D+D=T+p)
 plfst	= 1e0	  ! Source power threshold to run MC NLFST
 
 nlfsp   = F       ! Turn on MC slowing-down of protons from D+D reactions (D+D=T+p)
@@ -532,7 +532,7 @@ nribol  =  -4  ! Added by PORTALS
 nrivp2  =  -4  ! Added by PORTALS
 extsaw  =  'SAW'  ! Added by PORTALS
 presaw  =  'PRF'  ! Added by PORTALS
-inputdir='/home/pablorf/scratch//mitim_tmp_12345X01//FolderTRANSP/'
+inputdir='/home/pablorf/scratch//mitim_12345X01//FolderTRANSP/'
 MTHDAVG  =  2  ! Added by MITIM
 AVGTIM  =  0.001  ! Added by MITIM
 OUTTIM  =  0.802  ! Added by MITIM

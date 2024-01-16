@@ -1,22 +1,29 @@
-import re, os, shutil, sys, time, datetime, socket, random, zipfile, cProfile, termios, tty, h5py
+import re
+import os
+import shutil
+import sys
+import time
+import datetime
+import socket
+import random
+import zipfile
+import cProfile
+import termios
+import tty
+import h5py
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
 
 try:
     import pandas
-except:
+except ImportError:
     pass
 
 try:
     from IPython import embed
-except:
+except ImportError:
     pass
-
-# Running here globally because most mitim use at some point IOtools
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-verbose_level = read_verbose_level()
 
 import urllib.request as urlREQ  # urllibR
 import urllib.error as urlERR  # urllibE
@@ -42,7 +49,7 @@ class speeder(object):
         )
 
 
-def clipstr(txt, chars=30):
+def clipstr(txt, chars=40):
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
 
 
@@ -643,6 +650,9 @@ def findFileByExtension(
             )
             fileReturn = None
     else:
+        from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+        verbose_level = read_verbose_level()
         printMsg(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
             verbose=verbose_level,
@@ -1286,11 +1296,14 @@ def ArrayToString(ll):
 
 
 def expandPath(txt, fixSpaces=False, ensurePathValid=False):
+    while txt[-2:] == "//":
+        txt = txt[:-1]
+
     if txt[0] == ".":
-        if len(txt) > 1:
-            txt = os.path.realpath(txt)
-        else:
+        if (len(txt) == 1) or (len(txt) == 2 and txt[-1] == "/"):
             txt = os.path.realpath(txt) + "/"
+        else:
+            txt = os.path.realpath(txt)
 
     if ensurePathValid and (txt[0] not in ["~", "/"]):
         txt = os.path.realpath("./" + txt + "/")

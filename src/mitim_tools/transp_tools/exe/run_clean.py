@@ -5,10 +5,9 @@ To call:
  			run_clean.py 88664P CMOD --numbers 1 --to 5
 """
 
-import sys, os, argparse
+import argparse
 import numpy as np
-from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import CONFIGread, IOtools
 from mitim_tools.transp_tools import TRANSPtools
 
 # User inputs

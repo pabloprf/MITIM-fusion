@@ -95,7 +95,7 @@ And plot:
 
 .. code-block:: python
 
-	tgyro.plotRun(labels=['run1'])
+	tgyro.plot(labels=['run1'])
 
 As a result, a TGYRO notebook with different tabs will be opened with all relevant output quantities:
 

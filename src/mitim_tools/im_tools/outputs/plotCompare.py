@@ -29,8 +29,8 @@ colorsC = GRAPHICStools.listColors()  # cm.rainbow(np.linspace(0,1,len(whichOnes
 
 # ------ Plot Summary of all runs, and convergence summary
 
-plt.ioff()
-fn = GUItools.FigureNotebook(0, "ALL", geometry="1700x900")
+
+fn = GUItools.FigureNotebook("ALL", geometry="1700x900")
 fig1 = fn.add_figure(label="Data")
 
 axSummary = []
@@ -70,7 +70,7 @@ from analysis._2020_SPARCscenariosDIV.dataPlot import plotDB
 
 # from analysis_tools.SPARCdivertor.dataPlot import plotDB
 
-# fn = GUItools.FigureNotebook(0,'SPARC scenarios',geometry='1700x900')
+# fn = GUItools.FigureNotebook('SPARC scenarios',geometry='1700x900')
 
 figs = plotDB(
     cdfs_clean,

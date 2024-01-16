@@ -1,7 +1,7 @@
 import os
-from mitim_tools.misc_tools import IOtools, FARMINGtools
+import numpy as np
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -76,8 +76,6 @@ def interpret_trdat(file):
 
         errors = [pos for pos, char in enumerate(file_plain) if char == "?"]
 
-        errors_clean = []
-
         truly_error = False
         for cont, i in enumerate(errors):
             if (i == 0 or errors[cont - 1] < i - 1) and file_plain[
@@ -86,9 +84,19 @@ def interpret_trdat(file):
                 truly_error = True
 
         if truly_error:
-            print('\t- Detected "?" in TRDAT output, printing tr_dat:', typeMsg="w")
-            print("".join(aux), typeMsg="w")
-            print("Do you wish to continue? It will likely fail! (c)", typeMsg="q")
+            print(
+                '\t- Detected "?" in TRDAT output, printing tr_dat around errors:',
+                typeMsg="w",
+            )
+            print("-------------------------------", typeMsg="w")
+            for i in range(len(aux)):
+                if ("?" in aux[i]) and ("????" not in aux[i]):
+                    print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
+                    print("-------------------------------", typeMsg="w")
+            if not print(
+                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
+            ):
+                embed()
         else:
             print("\t- TRDAT output did not show any error", typeMsg="i")
 

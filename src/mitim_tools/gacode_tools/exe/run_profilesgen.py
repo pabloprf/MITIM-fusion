@@ -1,6 +1,6 @@
-import sys, os
+import sys
+import os
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.gacode_tools.aux import GACODErun
 
 """
@@ -13,13 +13,8 @@ folderWork, s2 = IOtools.reducePathLevel(file_cdf, level=1, isItFile=True)
 nameWork = s2.split(".cdf")[0]
 
 
-machineSettings = CONFIGread.machineSettings(
-    code="profiles_gen", nameScratch=f"mitim_tmp_profiles_gen_{nameWork}/"
-)
-
 GACODErun.runPROFILES_GEN(
     folderWork,
-    machineSettings=machineSettings,
     nameFiles=nameWork,
     UsePRFmodification=True,
     includeGEQ=True,

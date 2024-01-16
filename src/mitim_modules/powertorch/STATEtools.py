@@ -1,19 +1,21 @@
-import copy, torch, datetime
+import copy
+import torch
+import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython import embed
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
 from mitim_modules.powertorch.physics import TARGETStools, TRANSPORTtools, CALCtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 UseCUDAifAvailable = True
 
 
 def read_saved_state(file):
-    print(f" - Reading state file {file}")
+    print(f"\t- Reading state file {IOtools.clipstr(file)}")
     with open(file, "rb") as handle:
         state = pickle.load(handle)
     return state
@@ -192,7 +194,6 @@ class powerstate:
             insertPowers=insertPowers,
             rederive=rederive_profiles,
             ProfilesPredicted=self.ProfilesPredicted,
-            impurityPosition=self.impurityPosition,
         )
 
         if writeFile is not None:
@@ -354,17 +355,16 @@ class powerstate:
         if axs is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            plt.ioff()
-            fn = FigureNotebook(0, "PowerState", geometry="1800x900")
-            figMain = fn.add_figure(label="PowerState")
+            self.fn = FigureNotebook("PowerState", geometry="1800x900")
+            figMain = self.fn.add_figure(label="PowerState")
 
-            figProf_1 = fn.add_figure(label="Profiles")
-            figProf_2 = fn.add_figure(label="Powers")
-            figProf_3 = fn.add_figure(label="Geometry")
-            figProf_4 = fn.add_figure(label="Gradients")
-            figFlows = fn.add_figure(label="Flows")
-            figProf_6 = fn.add_figure(label="Other")
-            fig7 = fn.add_figure(label="Impurities")
+            figProf_1 = self.fn.add_figure(label="Profiles")
+            figProf_2 = self.fn.add_figure(label="Powers")
+            figProf_3 = self.fn.add_figure(label="Geometry")
+            figProf_4 = self.fn.add_figure(label="Gradients")
+            figFlows = self.fn.add_figure(label="Flows")
+            figProf_6 = self.fn.add_figure(label="Other")
+            fig7 = self.fn.add_figure(label="Impurities")
             figs = figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7
 
             grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.3)
@@ -394,14 +394,7 @@ class powerstate:
 
             axsRes = figMain.add_subplot(grid[:, 0])
 
-            provided = False
-        else:
-            provided = True
-
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
-
-        if not provided:
-            fn.show()
 
     # ------------------------------------------------------------------
     # Main tools
@@ -648,6 +641,7 @@ class powerstate:
             self.plasma["Ggb"],
             self.plasma["Pgb"],
             self.plasma["Sgb"],
+            self.plasma["Qgb_convection"],
         ) = PLASMAtools.gyrobohmUnits(
             self.plasma["te"],
             self.plasma["ne"] * 1e-1,
@@ -855,6 +849,11 @@ class powerstate:
             self.plasma["CZ"] = PLASMAtools.convective_flux(
                 self.plasma["te"], self.plasma["CZ"]
             )  # MW/m^2
+
+        if (
+            "forceZeroParticleFlux" in self.TransportOptions["ModelOptions"]
+        ) and self.TransportOptions["ModelOptions"]["forceZeroParticleFlux"]:
+            self.plasma["Ce"] = self.plasma["Ce"] * 0
 
         """
 		**************************************************************************************************

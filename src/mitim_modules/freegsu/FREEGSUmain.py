@@ -389,8 +389,7 @@ def combined_analysis(
     # Plot
 
     if fn is None:
-        plt.ioff()
-        fn = GUItools.FigureNotebook(0, "Combined analysis")
+        fn = GUItools.FigureNotebook("Combined analysis")
 
     fig1 = fn.add_figure(label="FreeGSU - Eq. & Coils")
     fig2 = fn.add_figure(label="FreeGSU - Metrics")
@@ -421,6 +420,8 @@ def combined_analysis(
             params=p.function_parameters["params"],
             fn=fn,
         )
+
+    return fn
 
 
 def apply_rangeVar(

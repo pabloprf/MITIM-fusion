@@ -35,7 +35,7 @@ physics_options = {"TargetType": 2}
 
 tgyro.run(
     subFolderTGYRO="run1/",
-    iterations=5,
+    iterations=3,
     restart=True,
     forceIfRestart=True,
     special_radii=rhos,
@@ -45,4 +45,4 @@ tgyro.run(
     TGYRO_physics_options=physics_options,
 )
 tgyro.read(label="run1")
-tgyro.plotRun(labels=["run1"])
+tgyro.plot(labels=["run1"])

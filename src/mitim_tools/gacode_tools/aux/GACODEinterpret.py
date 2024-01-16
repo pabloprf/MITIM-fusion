@@ -68,12 +68,12 @@ def Waveform_read(file, fileOut):
         aux = f.readlines()
 
     for ir in range(len(aux)):
-        if "ky:" in aux[ir]: break
-
+        if "ky:" in aux[ir]:
+            break
 
     ky = float(aux[ir].split()[-1])
     g, f = [], []
-    for i in range(len(aux[ir+2:])):
+    for i in range(len(aux[ir + 2 :])):
         a = aux[ir + 2 + i].split()
         f.append(float(a[1]))
         g.append(float(a[2]))

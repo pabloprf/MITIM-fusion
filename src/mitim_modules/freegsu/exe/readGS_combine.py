@@ -64,7 +64,7 @@ for folderWork in foldersWork:
 # Combine
 # -------------------------------------------------------------------------------------------------------------------------------------
 
-FREEGSUmain.combined_analysis(
+fn = FREEGSUmain.combined_analysis(
     opt_funs,
     n=n,
     times=times,

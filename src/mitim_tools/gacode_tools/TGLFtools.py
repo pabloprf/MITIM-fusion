@@ -1,7 +1,8 @@
-import os, copy, pickle
+import os
+import copy
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools.misc_tools import (
     IOtools,
@@ -19,6 +20,8 @@ from mitim_tools.gacode_tools.aux import (
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -78,7 +81,7 @@ class TGLF:
             tglf.read(label='run1',folder='~/testTGLF/tglf1/')
 
             # Plot
-            plt.ion();	tglf.plotRun(labels=['run1'])
+            plt.ion();	tglf.plot(labels=['run1'])
 
         *********************************
         ***** Example use for scans *****
@@ -162,7 +165,7 @@ class TGLF:
             if self.LocationCDF is not None:
                 _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
             else:
-                self.nameRunid = "mitim"
+                self.nameRunid = "0"
             self.time, self.avTime = time, avTime
             self.rhos = np.array(rhos)
 
@@ -171,22 +174,40 @@ class TGLF:
                 self.scans,
                 self.tgyro,
                 self.ky_single,
-                self.NormalizationSets,
-            ) = ({}, {}, None, None, None)
+            ) = ({}, {}, None, None)
 
-    def save_pkl(self, file):
-        print(f"> Saving tglf class as pickle file: {IOtools.clipstr(file)}")
-        try:
+            self.NormalizationSets = {
+                "TRANSP": None,
+                "PROFILES": None,
+                "TGYRO": None,
+                "EXP": None,
+                "input_gacode": None,
+                "SELECTED": None,
+            }
+
+    def prepare_for_save_TGLF(self):
+        """
+        This is a function that will be called when saving the class as pickle.
+        It will delete things that are not easily pickled.
+        """
+
+        if "fn" in self.__dict__:
             del self.fn  # otherwise it cannot deepcopy
-        except:
-            pass
+
         tglf_copy = copy.deepcopy(self)
 
-        # Delete things that are not easily pickled
         del tglf_copy.convolution_fun_fluct
         for label in tglf_copy.results:
             if "convolution_fun_fluct" in tglf_copy.results[label]:
                 tglf_copy.results[label]["convolution_fun_fluct"] = None
+
+        return tglf_copy
+
+    def save_pkl(self, file):
+        print(f"> Saving tglf class as pickle file: {IOtools.clipstr(file)}")
+
+        # Prepare
+        tglf_copy = self.prepare_for_save_TGLF()
 
         # Write
         with open(file, "wb") as handle:
@@ -254,7 +275,9 @@ class TGLF:
                     inp = TGLFinput(fii)
                     exists = exists and not inp.onlyControl
                 else:
-                    print(f"\t\t- Running scans because it does not exist file {fii}")
+                    print(
+                        f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}"
+                    )
                     exists = False
             if exists:
                 print(
@@ -343,18 +366,36 @@ class TGLF:
         # Main folder where things are
         self.FolderGACODE = IOtools.expandPath(FolderGACODE)
 
-        # input_tglf_file
-        inputclass = TGLFinput(file=input_tglf_file)
-
-        self.rhos = [inputclass.geom["RMIN_LOC"]]
-        self.inputsTGLF = {self.rhos[0]: inputclass}
-        print(f"\t- This file correspond to {self.rhos[0]} according to RMIN_LOC")
-
+        # Main folder where things are
         self.NormalizationSets, _ = NORMtools.normalizations(
             PROFILEStools.PROFILES_GACODE(input_gacode)
             if input_gacode is not None
             else None
         )
+
+        # input_tglf_file
+        inputclass = TGLFinput(file=input_tglf_file)
+
+        roa = inputclass.geom["RMIN_LOC"]
+        print(f"\t- This file correspond to r/a={roa} according to RMIN_LOC")
+
+        if self.NormalizationSets["input_gacode"] is not None:
+            rho = np.interp(
+                roa,
+                self.NormalizationSets["input_gacode"].derived["roa"],
+                self.NormalizationSets["input_gacode"].profiles["rho(-)"],
+            )
+            print(f"\t\t- rho={rho:.4f}, using input.gacode for conversion")
+        else:
+            print(
+                "\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",
+                typeMsg="w",
+            )
+            rho = roa
+
+        self.rhos = [rho]
+
+        self.inputsTGLF = {self.rhos[0]: inputclass}
 
     def run(
         self,
@@ -369,7 +410,7 @@ class TGLF:
         launchSlurm=True,
         restart=False,
         forceIfRestart=False,
-        extra_name="",
+        extra_name="exe",
         slurm_setup={
             "cores": 4,
             "minutes": 5,
@@ -378,11 +419,10 @@ class TGLF:
         inputs = copy.deepcopy(self.inputsTGLF)
 
         self.FolderTGLF = IOtools.expandPath(self.FolderGACODE + subFolderTGLF + "/")
-        self.FolderTGLF_tmp = self.FolderTGLF + "/tmp_tglf/"
 
         ResultsFiles_new = []
         for i in self.ResultsFiles:
-            if "sbatch.out" not in i:
+            if "mitim.out" not in i:
                 ResultsFiles_new.append(i)
         self.ResultsFiles = ResultsFiles_new
 
@@ -405,7 +445,6 @@ class TGLF:
 
         if len(rhosEvaluate) == len(self.rhos):
             IOtools.askNewFolder(self.FolderTGLF, force=forceIfRestart)
-            IOtools.askNewFolder(self.FolderTGLF_tmp)
         else:
             if not exists:
                 print(
@@ -474,12 +513,11 @@ class TGLF:
             GACODErun.runTGLF(
                 rhosEvaluate,
                 self.FolderTGLF,
-                self.FolderTGLF_tmp,
                 self.latest_inputsFileTGLF,
                 filesToRetrieve=self.ResultsFiles,
                 minutes=slurm_setup["minutes"],
                 cores_tglf=slurm_setup["cores"],
-                name=f"tglf_{self.nameRunid}_{subFolderTGLF.strip('/')}{extra_name}",
+                name=f"tglf_{self.nameRunid}{subFolderTGLF.replace('/','_')}{extra_name}",
                 launchSlurm=launchSlurm,
             )
         else:
@@ -510,11 +548,11 @@ class TGLF:
 
                     self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old)
 
-                    self.FoldersTGLF_WF[f"ky{ky_single0}"] = {}
-                    for i, ir in enumerate(self.rhos):
-                        self.FolderTGLF = f"{FolderTGLF_old}/wf_{ir}_{ky_single0}/"
-                        self.FoldersTGLF_WF[f"ky{ky_single0}"][ir] = self.FolderTGLF
+                    self.FolderTGLF = f"{FolderTGLF_old}/ky{ky_single0}/"
+                    self.FoldersTGLF_WF[f"ky{ky_single0}"] = self.FolderTGLF
 
+                    ky_singles = []
+                    for i, ir in enumerate(self.rhos):
                         # -------- Get the closest unstable mode to the one requested
                         if forceClosestUnstableWF:
                             # Only unstable ones
@@ -546,52 +584,39 @@ class TGLF:
                             ky_single = closest_ky
                         else:
                             ky_single = ky_single0
+
+                        ky_singles.append(ky_single)
                         # ------------------------------------------------------------
 
-                        existsWF = not restart
-                        for j in self.ResultsFiles:
-                            existsWF = existsWF and os.path.exists(
-                                f"{self.FolderTGLF}{j}_{ir:.4f}"
-                            )
+                    extraOptions_WF = copy.deepcopy(extraOptions)
 
-                        if not existsWF:
-                            IOtools.askNewFolder(self.FolderTGLF, force=forceIfRestart)
-                            os.system(
-                                f"cp {FolderTGLF_old}/input.tglf* {self.FolderTGLF}/"
-                            )
+                    extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
+                    extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
+                    extraOptions_WF["KY"] = ky_singles
+                    extraOptions_WF[
+                        "VEXB_SHEAR"
+                    ] = 0.0  # See email from G. Staebler on 05/16/2021
 
-                            extraOptions_WF = copy.deepcopy(extraOptions)
+                    tglf_wf = copy.deepcopy(self)
 
-                            extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
-                            extraOptions_WF["KY"] = ky_single
-                            extraOptions_WF[
-                                "VEXB_SHEAR"
-                            ] = 0.0  # See email from G. Staebler on 05/16/2021
-                            inputFileTGLF, _ = changeANDwrite_TGLF(
-                                [ir],
-                                {ir: inputs[ir]},
-                                self.FolderTGLF,
-                                TGLFsettings=TGLFsettings,
-                                extraOptions=extraOptions_WF,
-                                multipliers=multipliers,
-                                ApplyCorrections=ApplyCorrections,
-                                Quasineutral=Quasineutral,
-                            )
-
-                            GACODErun.runTGLF(
-                                [ir],
-                                self.FolderTGLF,
-                                self.FolderTGLF_tmp,
-                                inputFileTGLF,
-                                filesToRetrieve=self.ResultsFiles,
-                                minutes=slurm_setup["minutes"],
-                                cores_tglf=slurm_setup["cores"],
-                                name=f"{self.nameRunid}_{subFolderTGLF.strip('/')}",
-                                launchSlurm=launchSlurm,
-                            )
+                    tglf_wf.run(
+                        f"{subFolderTGLF}/ky{ky_single0}",
+                        TGLFsettings=TGLFsettings,
+                        extraOptions=extraOptions_WF,
+                        multipliers=multipliers,
+                        runWaveForms=[],
+                        ApplyCorrections=ApplyCorrections,
+                        Quasineutral=Quasineutral,
+                        launchSlurm=launchSlurm,
+                        restart=restart,
+                        forceIfRestart=forceIfRestart,
+                        extra_name=extra_name,
+                        slurm_setup=slurm_setup,
+                    )
 
                     del self.results[f"ky{ky_single0}"]
         except FileNotFoundError:
+            embed()
             self.ky_single = None
             print(
                 "> Waveform analysis FAILED (maybe due to TGLF version?)", typeMsg="w"
@@ -607,13 +632,13 @@ class TGLF:
         self,
         label="tglf1",
         folder=None,  # If None, search in the previously run folder
-        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho
+        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
     ):
         print("> Reading TGLF results")
 
         if d_perp_cm is not None:
-            if type(d_perp_cm) is float:
+            if isinstance(d_perp_cm, float):
                 self.d_perp_dict = {}
                 for rho in self.rhos:
                     self.d_perp_dict[rho] = d_perp_cm
@@ -680,23 +705,21 @@ class TGLF:
         self.results[label]["wavefunction"] = {}
         if self.ky_single is not None:
             for ky_single0 in self.ky_single:
-                self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 if f"ky{ky_single0}" not in self.FoldersTGLF_WF:
                     continue
-                for ir in self.rhos:
-                    if ir not in self.FoldersTGLF_WF[f"ky{ky_single0}"]:
-                        continue
 
+                self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
+                for ir in self.rhos:
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
 
                     self.results[label]["wavefunction"][f"ky{ky_single0}"][
                         ir
                     ] = GACODEinterpret.Waveform_read(
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][ir]}/out.tglf.wavefunction{suffix0}",
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][ir]}/out.tglf.run{suffix0}",
+                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}']}/out.tglf.wavefunction{suffix0}",
+                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}']}/out.tglf.run{suffix0}",
                     )
 
-    def plotRun(
+    def plot(
         self,
         fn=None,
         labels=["tglf1"],
@@ -759,17 +782,15 @@ class TGLF:
                 )
 
                 for il in self.results[label]["TGLFout"][irho].fields:
-                    if not (il in max_fields):
+                    if il not in max_fields:
                         max_fields.append(il)
 
-        plt.rcParams["figure.max_open_warning"] = False
-        plt.ioff()
         if fn is None:
-            fnsh, self.fn = True, GUItools.FigureNotebook(
-                0, "TGLF MITIM Notebook", geometry="1700x900", vertical=True
+            self.fn = GUItools.FigureNotebook(
+                "TGLF MITIM Notebook", geometry="1700x900", vertical=True
             )
         else:
-            fnsh, self.fn = False, fn
+            self.fn = fn
 
         # *** TGLF Figures
         fig1 = self.fn.add_figure(label=f"{extratitle}Summary")
@@ -1818,7 +1839,6 @@ class TGLF:
                         theta = wf["theta"] / np.pi
 
                         markers = GRAPHICStools.listmarkers()
-                        typeline = GRAPHICStools.listmarkersLS()
 
                         # ES
                         max0, min0 = GACODEplotting.plotWaveform(
@@ -1954,9 +1974,7 @@ class TGLF:
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim(
-                    [self.ky_single[kycont] * 0.8, self.ky_single[kycont] * 1.2]
-                )
+                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -1966,9 +1984,7 @@ class TGLF:
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim(
-                    [self.ky_single[kycont] * 0.8, self.ky_single[kycont] * 1.2]
-                )
+                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2029,9 +2045,6 @@ class TGLF:
                     legYN=contLab == 0,
                 )
 
-        if fnsh:
-            self.fn.show()
-
     # ~~~~~~~~~~~~~~ Scan options
 
     def runScan(
@@ -2061,7 +2074,7 @@ class TGLF:
         # -------------------------------------
         if (1.0 not in varUpDown) and relativeChanges:
             print(
-                f"\n* Since variations vector did not include base case, I am adding it",
+                "\n* Since variations vector did not include base case, I am adding it",
                 typeMsg="i",
             )
             varUpDown_new = []
@@ -2079,7 +2092,7 @@ class TGLF:
                 varUpDown_new[i] = round(varUpDown_new[i], 3)
 
         print(f"\n- Proceeding to scan {variable}:")
-        for mult in varUpDown_new:
+        for cont_mult, mult in enumerate(varUpDown_new):
             mult = round(mult, 6)
 
             if relativeChanges:
@@ -2100,20 +2113,25 @@ class TGLF:
 
             if not relativeChanges:
                 for ikey in multipliers_mod:
-                    extraOptions[ikey] = multipliers_mod[ikey]
+                    kwargs_TGLFrun["extraOptions"][ikey] = multipliers_mod[ikey]
                 multipliers_mod = {}
 
             # Force ensure quasineutrality if the
             if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
-                Quasineutral = True
+                kwargs_TGLFrun["Quasineutral"] = True
+
+            # Only ask the restart in the first round
+            kwargs_TGLFrun["forceIfRestart"] = cont_mult > 0 or (
+                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            )
 
             self.run(
                 subFolderTGLF=f"{self.subFolderTGLF_scan}_{name}",
-                multipliers=multipliers_mod,  # forceIfRestart=True,
+                multipliers=multipliers_mod,
                 **kwargs_TGLFrun,
             )
 
-            self.read(label=f"{subFolderTGLF}{name}")
+            self.read(label=f"{self.subFolderTGLF_scan}_{name}")
 
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
@@ -2121,8 +2139,8 @@ class TGLF:
         if subFolderTGLF is None:
             subFolderTGLF = self.subFolderTGLF_scan
 
-        if subFolderTGLF[-1] != "/":
-            subFolderTGLF += "/"
+        while self.subFolderTGLF_scan[-1] == "/":
+            self.subFolderTGLF_scan = self.subFolderTGLF_scan[:-1]
 
         self.scans[label] = {}
         self.scans[label]["variable"] = variable
@@ -2149,7 +2167,12 @@ class TGLF:
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-            if ikey.rpartition(variable)[0] == subFolderTGLF:
+            isThisTheRightReadResults = (subFolderTGLF in ikey) and (
+                variable
+                == "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1]
+            )
+
+            if isThisTheRightReadResults:
                 x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
                     [],
                     [],
@@ -2311,10 +2334,8 @@ class TGLF:
             )
 
         if figs is None:
-            plt.rcParams["figure.max_open_warning"] = False
-            plt.ioff()
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
+                "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
             )
             if unnormalization_successful:
                 fig1 = self.fn.add_figure(label="Fluxes")
@@ -2753,41 +2774,38 @@ class TGLF:
         # --------------------------------------------------------
 
         total_plots = 0
-        for ikey in self.scans:
+        for ikey in labels:
             total_plots += self.scans[ikey]["Qe_gb"].size
 
         if plotTGLFs and (
             total_plots < 10
             or (
                 print(
-                    f">> TGLFscan module will plot {total_plots} individual TGLF, you can choose not to plot them invidually",
+                    f">> TGLFscan module wants to *also* plot {total_plots} individual TGLF, are you sure you want to do this?",
                     typeMsg="q",
                 )
             )
         ):
-            for contLabel, ikey in enumerate(self.scans):
-                for contrho, rho in enumerate(self.rhos):
-                    labelsExtraPlot, labels_legend = [], []
-                    values_tot = (
-                        self.scans[ikey]["xV"][0]
-                        / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
-                    )
-                    for contVal, val in enumerate(values_tot):
-                        fullres = (
-                            f"{ikey}/{self.scans[ikey]['variable']}_{round(val,7)}"
-                        )
-                        labelsExtraPlot.append(fullres)
-                        labels_legend.append(f"{round(val,7)}")
+            for contLabel, ikey in enumerate(labels):
+                labelsExtraPlot, labels_legend = [], []
+                values_tot = (
+                    self.scans[ikey]["xV"][0]
+                    / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
+                )
+                for val in values_tot:
+                    fullres = f"{ikey}_{round(val,7)}"
+                    labelsExtraPlot.append(fullres)
+                    labels_legend.append(f"{round(val,7)}")
 
-                    colorsC = np.transpose(
-                        np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
-                    )
-                    colorsC_tuple = []
-                    for i in range(colorsC.shape[0]):
-                        for j in range(colorsC.shape[1]):
-                            colorsC_tuple.append(tuple(colorsC[i, j, :]))
+                colorsC = np.transpose(
+                    np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
+                )
+                colorsC_tuple = []
+                for i in range(colorsC.shape[0]):
+                    for j in range(colorsC.shape[1]):
+                        colorsC_tuple.append(tuple(colorsC[i, j, :]))
 
-                self.plotRun(
+                self.plot(
                     extratitle=f"{ikey} - ",
                     labels=labelsExtraPlot,
                     labels_legend=labels_legend,
@@ -2797,9 +2815,6 @@ class TGLF:
                     plotNormalizations=False,
                     plotGACODE=False,
                 )
-
-        if figs is None:
-            self.fn.show()
 
     # ~~~~~~~~~~~~~~ Extra complete analysis options
 
@@ -2818,23 +2833,55 @@ class TGLF:
 
         varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
-        for variable in self.variablesDrives:
-            name = subFolderTGLF + "_" + variable
+        for cont, variable in enumerate(self.variablesDrives):
+            # Only ask the restart in the first round
+            kwargs_TGLFrun["forceIfRestart"] = cont > 0 or (
+                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            )
+
             self.runScan(
-                subFolderTGLF=name + "/",
+                subFolderTGLF=subFolderTGLF,
                 variable=variable,
                 varUpDown=varUpDown,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=name, variable=variable)
+            self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
-    def plotScanTurbulenceDrives(self, label="scan1", figs=None):
+    def plotScanTurbulenceDrives(self, label="scan1", figs=None, **kwargs_TGLFscanPlot):
         labels = []
         for variable in self.variablesDrives:
             labels.append(f"{label}_{variable}")
 
-        self.plotScan(labels=labels, figs=figs, variableLabel="X", relativeX=True)
+        if figs is None:
+            self.fn = GUItools.FigureNotebook(
+                "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
+            )
+            fig1 = self.fn.add_figure(label="Fluxes - Relative")
+            fig2 = self.fn.add_figure(label="Fluxes (GB) - Relative")
+            fig3 = self.fn.add_figure(label="Linear Stability - Relative")
+            figs1 = [fig1, fig2, fig3]
+            fig1 = self.fn.add_figure(label="Fluxes")
+            fig2 = self.fn.add_figure(label="Fluxes (GB)")
+            fig3 = self.fn.add_figure(label="Linear Stability")
+            figs2 = [fig1, fig2, fig3]
+        else:
+            figs1, figs2 = None, None
+
+        kwargs_TGLFscanPlot.pop("figs", None)
+
+        self.plotScan(
+            labels=labels,
+            figs=figs1,
+            variableLabel="X",
+            relativeX=True,
+            **kwargs_TGLFscanPlot,
+        )
+
+        kwargs_TGLFscanPlot["plotTGLFs"] = False
+        self.plotScan(
+            labels=labels, figs=figs2, variableLabel="X", **kwargs_TGLFscanPlot
+        )
 
     def runAnalysis(
         self,
@@ -3015,10 +3062,8 @@ class TGLF:
 
     def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
         if figs is None:
-            plt.rcParams["figure.max_open_warning"] = False
-            plt.ioff()
             self.fn = GUItools.FigureNotebook(
-                0, "TGLF Analysis MITIM Notebook", geometry="1500x900"
+                "TGLF Analysis MITIM Notebook", geometry="1500x900"
             )
             fig1 = self.fn.add_figure(label="Analysis")
             fig2 = self.fn.add_figure(label="Fluxes")
@@ -3319,16 +3364,14 @@ class TGLF:
             ax.set_title(f"Integrated profile using BC={BC}")
             GRAPHICStools.addDenseAxis(ax)
 
-        if figs is None:
-            self.fn.show()
-
     def updateConvolution(self):
         self.DRMAJDX_LOC = {}
         if "latest_inputsFileTGLFDict" not in self.__dict__:
             for i in self.rhos:
                 self.DRMAJDX_LOC[i] = 0.0
             print(
-                " ~~ Using DRMAJDX_LOC=0 because no input file was stored", typeMsg="w"
+                "\t- [convolution] Using DRMAJDX_LOC =0 because no input file was stored",
+                typeMsg="i",
             )
         else:
             for i in self.latest_inputsFileTGLFDict:
@@ -3413,7 +3456,7 @@ def changeANDwrite_TGLF(
 
     modInputTGLF = {}
     ns_max = []
-    for rho in rhos:
+    for i, rho in enumerate(rhos):
         print(f"\t- Changing input file for rho={rho:.4f}")
         NS = inputs[rho].plasma["NS"]
         inputTGLF_rho = modifyInputToTGLF(
@@ -3422,6 +3465,7 @@ def changeANDwrite_TGLF(
             extraOptions=extraOptions,
             multipliers=multipliers,
             NS=NS,
+            position_change=i,
         )
 
         newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
@@ -4032,7 +4076,12 @@ def identifySpecie(dict_species, dict_find):
 
 
 def modifyInputToTGLF(
-    inputTGLF, TGLFsettings=None, extraOptions={}, multipliers={}, NS=2
+    inputTGLF,
+    TGLFsettings=None,
+    extraOptions={},
+    multipliers={},
+    NS=2,
+    position_change=0,
 ):
     if TGLFsettings is not None:
         _, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(
@@ -4043,7 +4092,6 @@ def modifyInputToTGLF(
         print(
             f" \t- Using presets TGLFsettings = {TGLFsettings} ({label})", typeMsg="i"
         )
-        TGLFoptions_orig = copy.deepcopy(inputTGLF.controls)
         inputTGLF.controls = TGLFoptions
 
     else:
@@ -4058,6 +4106,11 @@ def modifyInputToTGLF(
     if len(extraOptions) > 0:
         print("\t- External options:")
     for ikey in extraOptions:
+        if isinstance(extraOptions[ikey], (list, np.ndarray)):
+            value_to_change_to = extraOptions[ikey][position_change]
+        else:
+            value_to_change_to = extraOptions[ikey]
+
         # is a specie one?
         try:
             isspecie = ikey.split("_")[0] in inputTGLF.species[1]
@@ -4068,20 +4121,20 @@ def modifyInputToTGLF(
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = inputTGLF.species[specie][varK]
-            var_new = extraOptions[ikey]
+            var_new = value_to_change_to
             inputTGLF.species[specie][varK] = var_new
         else:
             if ikey in inputTGLF.controls:
                 var_orig = inputTGLF.controls[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.controls[ikey] = var_new
             elif ikey in inputTGLF.geom:
                 var_orig = inputTGLF.geom[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.geom[ikey] = var_new
             elif ikey in inputTGLF.plasma:
                 var_orig = inputTGLF.plasma[ikey]
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.plasma[ikey] = var_new
             else:
                 # If the variable in extraOptions wasn't in there, consider it a control param
@@ -4090,7 +4143,7 @@ def modifyInputToTGLF(
                     typeMsg="i",
                 )
                 var_orig = None
-                var_new = extraOptions[ikey]
+                var_new = value_to_change_to
                 inputTGLF.controls[ikey] = var_new
 
         print(
@@ -4215,7 +4268,7 @@ class TGLFoutput:
                 f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
             )
 
-        self.inputclass = TGLFinput(file=self.FolderGACODE + "input.tglf" + self.suffix)
+        self.inputclass = TGLFinput(file=f"{self.FolderGACODE}/input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
 
         self.read()

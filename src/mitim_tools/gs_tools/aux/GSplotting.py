@@ -52,7 +52,7 @@ def writeResults(
     gs = write_gfiles(prfs, whereOutput)
 
     if plotGs:
-        GEQtools.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
+        axs, fn = GEQtools.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
 
     # ------------- Pickles
     file = f"{whereOutput}/{namePkl}.pkl"
@@ -168,12 +168,10 @@ def plotResult(
 
     cols = cols[colorOffset:]
 
-    plt.ioff()
     if figs is None:
-        fnProvided = False
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        fn = FigureNotebook(0, "FreeGS Notebook", geometry="1600x1000")
+        fn = FigureNotebook("FreeGS Notebook", geometry="1600x1000")
 
         fig1 = fn.add_figure(label="Eq. & Coils")
         fig2 = fn.add_figure(label="Metrics")
@@ -185,7 +183,6 @@ def plotResult(
         figRes = fn.add_figure(label="Summary")
 
     else:
-        fnProvided = True
         fig1 = figs[0]
         fig2 = figs[1]
         fig3 = figs[2]
@@ -514,8 +511,7 @@ def plotResult(
     except:
         pass
 
-    if not fnProvided:
-        fn.show()
+    return fn
 
 
 def plotMetricsPRFS(

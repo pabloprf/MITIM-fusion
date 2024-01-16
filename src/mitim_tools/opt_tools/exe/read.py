@@ -1,13 +1,14 @@
-import sys, argparse, copy, torch
+import argparse
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
-from IPython import embed
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -43,8 +44,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--type", type=int, required=False, default=-1
 )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
-parser.add_argument("--folders", required=True, type=str, nargs="*")
-parser.add_argument("--remote", type=str, required=False, default=None)
+parser.add_argument("folders", type=str, nargs="*")
+parser.add_argument("--remote", "-r", type=str, required=False, default=None)
 parser.add_argument("--seeds", type=int, required=False, default=None)
 parser.add_argument("--resolution", type=int, required=False, default=50)
 parser.add_argument("--save", type=str, required=False, default=None)
@@ -251,7 +252,7 @@ if len(foldersWork) > 1:
 else:
     retrieval_level = analysis_level
 
-txt = f"***************************************************************************\n"
+txt = "***************************************************************************\n"
 for folderWork in foldersWork:
     txt += f"* Reading results in {folderWork}\n"
 
@@ -319,7 +320,7 @@ if seeds is not None:
         print(f"Plotting Violin with {xf.shape[0]} points")
         GRAPHICStools.plotViolin([xf], labels=["run"], ax=ax, colors=["b"])
 
-        ax.set_xlabel(f"Number of evaluations to converge")
+        ax.set_xlabel("Number of evaluations to converge")
         # ax.set_title(f'Residual reduced by x{1/percent:.0f}')
         ax.set_xlim([0, 50])
 

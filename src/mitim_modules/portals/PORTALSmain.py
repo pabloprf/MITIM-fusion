@@ -1,17 +1,18 @@
-import os, torch, copy
+import os
+import torch
+import copy
 import numpy as np
 import dill as pickle_dill
-import matplotlib.pyplot as plt
 from IPython import embed
 from collections import OrderedDict
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.aux import (
     PORTALSinit,
-    PORTALSplot,
     PORTALSoptimization,
+    PORTALSanalysis,
 )
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import BOgraphics
@@ -158,60 +159,12 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         """
 		Physics-informed parameters to fit surrogates
 		---------------------------------------------
-			Note: Dict value indicates what variables need to change at this location to add this one (only one of them is needed)
-			Note 2: index key indicates when to transition to next (in terms of number of individuals available for fitting)
-			Things to add:
-					'aLte': ['aLte'],   'aLti': ['aLti'],      'aLne': ['aLne'],
-					'nuei': ['te','ne'],'tite': ['te','ti'],   'c_s': ['te'],      'w0_n': ['w0'],
-					'beta_e':  ['te','ne']
-
-			transition_evaluations is the number of points to be fitted that require a parameter transition.
-				Note that this ignores ExtraData or ExtraPoints.
-					- transition_evaluations[0]: max to only consider gradients
-					- transition_evaluations[1]: no beta_e
-					- transition_evaluations[2]: full
 		"""
 
-        transition_evaluations = [10, 30, 100]
-        physicsBasedParams = {
-            transition_evaluations[0]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                }
-            ),
-            transition_evaluations[1]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                    "nuei": ["te", "ne"],
-                    "tite": ["te", "ti"],
-                    "w0_n": ["w0"],
-                }
-            ),
-            transition_evaluations[2]: OrderedDict(
-                {
-                    "aLte": ["aLte"],
-                    "aLti": ["aLti"],
-                    "aLne": ["aLne"],
-                    "aLw0_n": ["aLw0"],
-                    "nuei": ["te", "ne"],
-                    "tite": ["te", "ti"],
-                    "w0_n": ["w0"],
-                    "beta_e": ["te", "ne"],
-                }
-            ),
-        }
-
-        # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
-        physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
-        physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
-        physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
-        physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+        (
+            physicsBasedParams,
+            physicsBasedParams_trace,
+        ) = PORTALStools.default_physicsBasedParams()
 
         """
 		Parameters to run PORTALS
@@ -370,16 +323,14 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         )
 
         a, b = IOtools.reducePathLevel(self.folder, level=1)
-        name = f"portals_{b}_ev{numPORTALS}".format(
-            b, numPORTALS
-        )  # e.g. portals_jet37_ev0
+        name = f"portals_{b}_ev{numPORTALS}"  # e.g. portals_jet37_ev0
 
         # Specify the number of PORTALS evaluation. Copy in case of parallel run
         extra_params_model = copy.deepcopy(self.extra_params)
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, tgyro, powerstate, dictOFs = runModelEvaluator(
+        _, tgyro, _, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             numPORTALS,
@@ -432,7 +383,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
         var_dict = {}
         for of in ofs_ordered_names:
-            var, pos = of.split("_")
+            var, _ = of.split("_")
             if var not in var_dict:
                 var_dict[var] = torch.Tensor().to(Y)
             var_dict[var] = torch.cat(
@@ -454,150 +405,12 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         return of, cal, res
 
     def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2):
-        self_complete = analyze_results(
+        """
+        analysis_level = 2: Standard as other classes. Run best case, plot TGYRO
+        analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
+        """
+        return analyze_results(
             self, plotYN=plotYN, fn=fn, restart=restart, analysis_level=analysis_level
-        )
-
-        return self_complete
-
-    def plotPORTALS_metrics(
-        self,
-        self_parent,
-        MITIMextra_dict=None,
-        plotAllFluxes=False,
-        stds=2,
-        plotExpected=True,
-    ):
-        indecesPlot = [
-            self_parent.res.best_absolute_index,
-            0,
-            -1,
-        ]  # [self_parent.res.best_absolute_index,0,None]
-
-        print("- Proceeding to read PORTALS results")
-        self.portals_plot = PORTALSplot.PORTALSresults(
-            self.folder,
-            self_parent.prfs_model,
-            self_parent.res,
-            MITIMextra_dict=MITIMextra_dict,
-            indecesPlot=indecesPlot,
-        )
-
-        # It may have changed
-        indecesPlot = [
-            self.portals_plot.numBest,
-            self.portals_plot.numOrig,
-            self.portals_plot.numExtra,
-        ]
-
-        indexToReferMaxValues = (
-            self.portals_plot.numBest
-        )  # self.portals_plot.numOrig #self.portals_plot.numBest
-
-        print(f"- Proceeding to plot PORTALS results ({stds}sigma models)")
-        self.portals_plot.tgyros[indecesPlot[1]].plot(
-            fn=self_parent.fn, prelabel=f"({indecesPlot[1]}) TGYRO - "
-        )
-        if indecesPlot[0] < len(self.portals_plot.tgyros):
-            self.portals_plot.tgyros[indecesPlot[0]].plot(
-                fn=self_parent.fn, prelabel=f"({indecesPlot[0]}) TGYRO - "
-            )
-
-        figs = [
-            self_parent.fn.add_figure(label="PROFILES - Profiles"),
-            self_parent.fn.add_figure(label="PROFILES - Powers"),
-            self_parent.fn.add_figure(label="PROFILES - Geometry"),
-            self_parent.fn.add_figure(label="PROFILES - Gradients"),
-            self_parent.fn.add_figure(label="PROFILES - Flows"),
-            self_parent.fn.add_figure(label="PROFILES - Other"),
-            self_parent.fn.add_figure(label="PROFILES - Impurities"),
-        ]
-
-        if indecesPlot[0] < len(self.portals_plot.profiles):
-            PROFILEStools.plotAll(
-                [
-                    self.portals_plot.profiles[indecesPlot[1]],
-                    self.portals_plot.profiles[indecesPlot[0]],
-                ],
-                figs=figs,
-                extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
-            )
-
-        fig = self_parent.fn.add_figure(label="PORTALS Metrics")
-        PORTALSplot.plotConvergencePORTALS(
-            self.portals_plot,
-            fig=fig,
-            plotAllFluxes=plotAllFluxes,
-            indexToMaximize=indexToReferMaxValues,
-            stds=stds,
-        )
-
-        # ----------------------------------------------------------------------------------------------------------------
-        # Next analysis
-        # ----------------------------------------------------------------------------------------------------------------
-
-        if plotExpected:
-            self.plotPORTALS_expected(
-                self_parent,
-                labelsFluxes=self.portals_plot.labelsFluxes,
-                MITIMextra_dict=MITIMextra_dict,
-                stds=stds,
-            )
-
-    def plotPORTALS_expected(
-        self,
-        self_parent,
-        labelsFluxes={},
-        max_plot_points=4,
-        plotNext=True,
-        MITIMextra_dict=None,
-        stds=2,
-    ):
-        print(
-            f"- Proceeding to plot PORTALS expected next variations ({stds}sigma models)"
-        )
-
-        trained_points = self_parent.prfs_model.steps[-1].train_X.shape[0]
-        indexBest = self_parent.res.best_absolute_index
-
-        # Best point
-        plotPoints = [indexBest]
-        labelAssigned = [f"#{indexBest} (best)"]
-
-        # Last point
-        if (trained_points - 1) != indexBest:
-            plotPoints.append(trained_points - 1)
-            labelAssigned.append(f"#{trained_points-1} (last)")
-
-        # Last ones
-        i = 0
-        while len(plotPoints) < max_plot_points:
-            if (trained_points - 2 - i) < 1:
-                break
-            if (trained_points - 2 - i) != indexBest:
-                plotPoints.append(trained_points - 2 - i)
-                labelAssigned.append(f"#{trained_points-2-i}")
-            i += 1
-
-        # First point
-        if 0 not in plotPoints:
-            if len(plotPoints) == max_plot_points:
-                plotPoints[-1] = 0
-                labelAssigned[-1] = "#0 (base)"
-            else:
-                plotPoints.append(0)
-                labelAssigned.append("#0 (base)")
-
-        PORTALSplot.plotExpected(
-            self_parent.prfs_model,
-            self.folder,
-            self_parent.fn,
-            plotPoints=plotPoints,
-            plotNext=plotNext,
-            labelAssigned=labelAssigned,
-            labelsFluxes=labelsFluxes,
-            MITIMextra_dict=MITIMextra_dict,
-            stds=stds,
         )
 
     def reuseTrainingTabular(
@@ -714,332 +527,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
             Tabular_Read.updateFile()
             TabularErrors_Read.updateFile()
-
-
-def analyze_results(
-    self,
-    plotYN=True,
-    fn=None,
-    restart=False,
-    onlyBest=False,
-    analysis_level=2,
-    useMITIMextra=True,
-):
-    """
-    analysis_level = 2: Standard as other classes. Run best case, plot TGYRO
-    analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
-    """
-
-    if plotYN:
-        print(
-            "\n ***************************************************************************"
-        )
-        print("* PORTALS plotting module - PORTALS")
-        print(
-            "***************************************************************************\n"
-        )
-
-    # ----------------------------------------------------------------------------------------------------------------
-    # Interpret stuff
-    # ----------------------------------------------------------------------------------------------------------------
-
-    (
-        variations_original,
-        variations_best,
-        self_complete,
-    ) = self.analyze_optimization_results()
-
-    # ----------------------------------------------------------------------------------------------------------------
-    # Running cases: Original and Best
-    # ----------------------------------------------------------------------------------------------------------------
-
-    if analysis_level in [2, 5]:
-        if not onlyBest:
-            print("\t- Running original case")
-            FolderEvaluation = f"{self.folder}/Outputs/final_analysis_original/"
-            if not os.path.exists(FolderEvaluation):
-                IOtools.askNewFolder(FolderEvaluation, force=True)
-
-            dictDVs = {}
-            for i in variations_best:
-                dictDVs[i] = {"value": variations_original[i]}
-
-            # Run
-            a, b = IOtools.reducePathLevel(self.folder, level=1)
-            name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
-
-            resultsO, tgyroO, powerstateO, _ = runModelEvaluator(
-                self_complete, FolderEvaluation, 0, dictDVs, name0, restart=restart
-            )
-
-            # Run TGLF
-            powerstateO.tgyro_current.nameRuns_default = name0
-            powerstateO.tgyro_current.runTGLF(
-                fromlabel=name0,
-                rhos=self_complete.TGYROparameters["RhoLocations"],
-                restart=restart,
-            )
-
-        print(f"\t- Running best case #{self.res.best_absolute_index}")
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis_best/"
-        if not os.path.exists(FolderEvaluation):
-            IOtools.askNewFolder(FolderEvaluation, force=True)
-
-        dictDVs = {}
-        for i in variations_best:
-            dictDVs[i] = {"value": variations_best[i]}
-
-        # Run
-        a, b = IOtools.reducePathLevel(self.folder, level=1)
-        name = f"portals_{b}_ev{self.res.best_absolute_index}"  # e.g. portals_jet37_ev0
-        resultsB, tgyroB, powerstateB, _ = runModelEvaluator(
-            self_complete,
-            FolderEvaluation,
-            self.res.best_absolute_index,
-            dictDVs,
-            name,
-            restart=restart,
-        )
-
-        # Run TGLF
-        powerstateB.tgyro_current.nameRuns_default = name
-        powerstateB.tgyro_current.runTGLF(
-            fromlabel=name,
-            rhos=self_complete.TGYROparameters["RhoLocations"],
-            restart=restart,
-        )
-
-        # ----------------------------------------------------------------------------------------------------------------
-        # Plotting
-        # ----------------------------------------------------------------------------------------------------------------
-
-        # Plot
-        if plotYN:
-            if not onlyBest:
-                tgyroO.plotRun(fn=fn, labels=[name0])
-            tgyroB.plotRun(fn=fn, labels=[name])
-
-    # ----------------------------------------------------------------------------------------------------------------
-    # Ranges of variation
-    # ----------------------------------------------------------------------------------------------------------------
-
-    if plotYN:
-        figR = fn.add_figure(label="PROFILES Ranges")
-        pps = np.max(
-            [3, len(self_complete.TGYROparameters["ProfilesPredicted"])]
-        )  # Because plotGradients require at least Te, Ti, ne
-        grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
-        axsR = []
-        for i in range(pps):
-            axsR.append(figR.add_subplot(grid[0, i]))
-            axsR.append(figR.add_subplot(grid[1, i]))
-
-        # Ranges ---------------------------------------------------------------------------------------------------------
-        produceInfoRanges(
-            self_complete,
-            self.prfs_model.bounds_orig,
-            axsR=axsR,
-            color="k",
-            lw=0.2,
-            alpha=0.05,
-            label="original",
-        )
-        produceInfoRanges(
-            self_complete,
-            self.prfs_model.bounds,
-            axsR=axsR,
-            color="c",
-            lw=0.2,
-            alpha=0.05,
-            label="final",
-        )
-        # ----------------------------------------------------------------------------------------------------------------
-
-        if analysis_level > 2:
-            if useMITIMextra:
-                with open(self_complete.MITIMextra, "rb") as handle:
-                    MITIMextra_dict = pickle_dill.load(handle)
-            else:
-                MITIMextra_dict = None
-
-            # ----------------------------------------------------------------------------------------------------------------
-            # Metrics analysis
-            # ----------------------------------------------------------------------------------------------------------------
-            self_complete.plotPORTALS_metrics(
-                self,
-                MITIMextra_dict=MITIMextra_dict,
-                plotAllFluxes=True,
-                plotExpected=analysis_level > 3,
-            )
-
-            # ----------------------------------------------------------------------------------------------------------------
-            # Ranges of variation
-            # ----------------------------------------------------------------------------------------------------------------
-            if useMITIMextra:
-                plotImpurity = (
-                    self_complete.PORTALSparameters["ImpurityOfInterest"]
-                    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]
-                    else None
-                )
-                plotRotation = (
-                    "w0" in self_complete.TGYROparameters["ProfilesPredicted"]
-                )
-
-                try:
-                    avoidPoints = self.prfs_model.avoidPoints
-                except:
-                    avoidPoints = []
-
-                profiles = (
-                    MITIMextra_dict[0]["tgyro"]
-                    .results[
-                        [ik for ik in MITIMextra_dict[0]["tgyro"].results.keys()][0]
-                    ]
-                    .profiles
-                )
-                profiles.plotGradients(
-                    axsR,
-                    color="b",
-                    lastRho=self_complete.TGYROparameters["RhoLocations"][-1],
-                    ms=0,
-                    lw=1.0,
-                    label="#0",
-                    ls="-o" if avoidPoints else "--o",
-                    plotImpurity=plotImpurity,
-                    plotRotation=plotRotation,
-                )
-
-                for i in range(100):
-                    try:
-                        profiles = (
-                            MITIMextra_dict[i]["tgyro"]
-                            .results[
-                                [
-                                    ik
-                                    for ik in MITIMextra_dict[i]["tgyro"].results.keys()
-                                ][0]
-                            ]
-                            .profiles
-                        )
-                    except:
-                        break
-                    profiles.plotGradients(
-                        axsR,
-                        color="r",
-                        lastRho=self_complete.TGYROparameters["RhoLocations"][-1],
-                        ms=0,
-                        lw=0.3,
-                        ls="-o" if avoidPoints else "-.o",
-                        plotImpurity=plotImpurity,
-                        plotRotation=plotRotation,
-                    )
-
-                profiles.plotGradients(
-                    axsR,
-                    color="g",
-                    lastRho=self_complete.TGYROparameters["RhoLocations"][-1],
-                    ms=0,
-                    lw=1.0,
-                    label=f"#{self.res.best_absolute_index} (best)",
-                    plotImpurity=plotImpurity,
-                    plotRotation=plotRotation,
-                )
-
-                axsR[0].legend(loc="best")
-
-            # ----------------------------------------------------------------------------------------------------------------
-            # Compare profiles
-            # ----------------------------------------------------------------------------------------------------------------
-            if useMITIMextra:
-                profile_original = (
-                    MITIMextra_dict[0]["tgyro"]
-                    .results[
-                        [ik for ik in MITIMextra_dict[0]["tgyro"].results.keys()][0]
-                    ]
-                    .profiles
-                )
-                profile_best = (
-                    MITIMextra_dict[self.res.best_absolute_index]["tgyro"]
-                    .results[
-                        [
-                            ik
-                            for ik in MITIMextra_dict[self.res.best_absolute_index][
-                                "tgyro"
-                            ].results.keys()
-                        ][0]
-                    ]
-                    .profiles
-                )
-                profile_original_unCorrected = MITIMextra_dict["profiles_original_un"]
-                profile_original_0 = MITIMextra_dict["profiles_original"]
-
-                fig4 = fn.add_figure(label="PROFILES Comparison")
-                grid = plt.GridSpec(
-                    2,
-                    np.max(
-                        [3, len(self_complete.TGYROparameters["ProfilesPredicted"])]
-                    ),
-                    hspace=0.3,
-                    wspace=0.3,
-                )
-                axs4 = [
-                    fig4.add_subplot(grid[0, 0]),
-                    fig4.add_subplot(grid[1, 0]),
-                    fig4.add_subplot(grid[0, 1]),
-                    fig4.add_subplot(grid[1, 1]),
-                    fig4.add_subplot(grid[0, 2]),
-                    fig4.add_subplot(grid[1, 2]),
-                ]
-
-                cont = 1
-                if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
-                    axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-                    axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
-                    cont += 1
-                if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
-                    axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-                    axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
-
-                colors = GRAPHICStools.listColors()
-
-                plotImpurity = (
-                    self_complete.PORTALSparameters["ImpurityOfInterest"]
-                    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]
-                    else None
-                )
-                plotRotation = (
-                    "w0" in self_complete.TGYROparameters["ProfilesPredicted"]
-                )
-
-                for i, (profiles, label, alpha) in enumerate(
-                    zip(
-                        [
-                            profile_original_unCorrected,
-                            profile_original_0,
-                            profile_original,
-                            profile_best,
-                        ],
-                        ["Original", "Corrected", "Initial", "Final"],
-                        [0.2, 1.0, 1.0, 1.0],
-                    )
-                ):
-                    profiles.plotGradients(
-                        axs4,
-                        color=colors[i],
-                        label=label,
-                        lastRho=self_complete.TGYROparameters["RhoLocations"][-1],
-                        alpha=alpha,
-                        useRoa=True,
-                        RhoLocationsPlot=self_complete.TGYROparameters["RhoLocations"],
-                        plotImpurity=plotImpurity,
-                        plotRotation=plotRotation,
-                    )
-
-                axs4[0].legend(loc="best")
-
-        # self.fn.show()
-
-    return self_complete
 
 
 def runModelEvaluator(
@@ -1171,245 +658,33 @@ def runModelEvaluator(
     return tgyro_current_results, tgyro_current, powerstate, dictOFs
 
 
-def produceInfoRanges(
-    self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
+def analyze_results(
+    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False
 ):
-    rhos = np.append([0], self_complete.TGYROparameters["RhoLocations"])
-    aLTe, aLTi, aLne, aLnZ, aLw0 = (
-        np.zeros((len(rhos), 2)),
-        np.zeros((len(rhos), 2)),
-        np.zeros((len(rhos), 2)),
-        np.zeros((len(rhos), 2)),
-        np.zeros((len(rhos), 2)),
-    )
-    for i in range(len(rhos) - 1):
-        if f"aLte_{i+1}" in bounds:
-            aLTe[i + 1, :] = bounds[f"aLte_{i+1}"]
-        if f"aLti_{i+1}" in bounds:
-            aLTi[i + 1, :] = bounds[f"aLti_{i+1}"]
-        if f"aLne_{i+1}" in bounds:
-            aLne[i + 1, :] = bounds[f"aLne_{i+1}"]
-        if f"aLnZ_{i+1}" in bounds:
-            aLnZ[i + 1, :] = bounds[f"aLnZ_{i+1}"]
-        if f"aLw0_{i+1}" in bounds:
-            aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
+    if plotYN:
+        print("\n *****************************************************")
+        print("* MITIM plotting module - PORTALS")
+        print("*****************************************************\n")
 
-    X = torch.zeros(
-        ((len(rhos) - 1) * len(self_complete.TGYROparameters["ProfilesPredicted"]), 2)
-    )
-    l = len(rhos) - 1
-    X[0:l, :] = torch.from_numpy(aLTe[1:, :])
-    X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
+    # ----------------------------------------------------------------------------------------------------------------
+    # Interpret stuff
+    # ----------------------------------------------------------------------------------------------------------------
 
-    cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
-        cont += 1
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
-        cont += 1
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
-        cont += 1
+    portals_full = PORTALSanalysis.PORTALSanalyzer(self)
 
-    X = X.transpose(0, 1)
+    # ----------------------------------------------------------------------------------------------------------------
+    # Plot full information from analysis class
+    # ----------------------------------------------------------------------------------------------------------------
 
-    powerstate = PORTALStools.constructEvaluationProfiles(
-        X, self_complete.surrogate_parameters, recalculateTargets=False
-    )
+    if plotYN:
+        portals_full.fn = fn
+        portals_full.plotPORTALS()
 
-    GRAPHICStools.fillGraph(
-        axsR[0],
-        powerstate.plasma["rho"][0],
-        powerstate.plasma["te"][0],
-        y_up=powerstate.plasma["te"][1],
-        alpha=alpha,
-        color=color,
-        lw=lw,
-        label=label,
-    )
-    GRAPHICStools.fillGraph(
-        axsR[1],
-        rhos,
-        aLTe[:, 0],
-        y_up=aLTe[:, 1],
-        alpha=alpha,
-        color=color,
-        label=label,
-        lw=lw,
-    )
+    # ----------------------------------------------------------------------------------------------------------------
+    # Running cases: Original and Best
+    # ----------------------------------------------------------------------------------------------------------------
 
-    GRAPHICStools.fillGraph(
-        axsR[2],
-        powerstate.plasma["rho"][0],
-        powerstate.plasma["ti"][0],
-        y_up=powerstate.plasma["ti"][1],
-        alpha=alpha,
-        color=color,
-        label=label,
-        lw=lw,
-    )
-    GRAPHICStools.fillGraph(
-        axsR[3],
-        rhos,
-        aLTi[:, 0],
-        y_up=aLTi[:, 1],
-        alpha=alpha,
-        color=color,
-        label=label,
-        lw=lw,
-    )
+    if analysis_level in [2, 5]:
+        portals_full.runCases(onlyBest=onlyBest, restart=restart, fn=fn)
 
-    cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 1],
-            powerstate.plasma["rho"][0],
-            powerstate.plasma["ne"][0] * 0.1,
-            y_up=powerstate.plasma["ne"][1] * 0.1,
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 2],
-            rhos,
-            aLne[:, 0],
-            y_up=aLne[:, 1],
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        cont += 2
-
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 1],
-            powerstate.plasma["rho"][0],
-            powerstate.plasma["nZ"][0] * 0.1,
-            y_up=powerstate.plasma["nZ"][1] * 0.1,
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 2],
-            rhos,
-            aLnZ[:, 0],
-            y_up=aLnZ[:, 1],
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        cont += 2
-
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 1],
-            powerstate.plasma["rho"][0],
-            powerstate.plasma["w0"][0] * 1e-3,
-            y_up=powerstate.plasma["w0"][1] * 1e-3,
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 2],
-            rhos,
-            aLw0[:, 0],
-            y_up=aLw0[:, 1],
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        cont += 2
-
-
-def grabProfilesFromObjects(folder, based_on_last=False, true_original=True):
-    with open(f"{folder}/Outputs/MITIMextra.pkl", "rb") as f:
-        auxE = pickle_dill.load(f)
-
-    if not based_on_last:
-        with open(f"{folder}/Outputs/MITIMstate.pkl", "rb") as f:
-            aux = pickle_dill.load(f)
-        i = aux.BOmetrics["overall"]["indBest"]
-
-    else:
-        for ikey in auxE:
-            if type(auxE[ikey]) != dict:
-                break
-        i = ikey - 1
-
-    p_new = (
-        auxE[i]["tgyro"]
-        .results[[j for j in auxE[i]["tgyro"].results.keys()][0]]
-        .profiles_final
-    )
-
-    if true_original:
-        p_orig = auxE["profiles_original"]
-    else:
-        p_orig = (
-            auxE[0]["tgyro"]
-            .results[[j for j in auxE[0]["tgyro"].results.keys()][0]]
-            .profiles_final
-        )
-
-    rhos_simulated = auxE[i]["tgyro"].rhosToSimulate
-
-    return p_orig, p_new, rhos_simulated
-
-
-def fix_pickledstate(state_to_mod, powerstate_to_add):
-    """
-    If I have modified the source code of powerstate, it won't be able to load an old PORTALS
-    What you can do here is to insert an updated class. You can do this by running a bit the code restarting, to get portals_fun
-    and then apply this:
-
-    E.g.:
-            fix_pickledstate('sparc_cgyro1/Outputs/MITIMstate.pkl',portals_fun.surrogate_parameters['powerstate'])
-    """
-
-    with open(state_to_mod, "rb") as f:
-        aux = pickle_dill.load(f)
-
-    # Powerstate is stored at the highest level
-    aux.surrogate_parameters["powerstate"] = powerstate_to_add
-    aux.mainFunction.powerstate = powerstate_to_add
-
-    for i in range(len(aux.steps)):
-        # Surrogate parameters are used in stepSettings at each step
-        aux.steps[i].stepSettings["surrogate_parameters"][
-            "powerstate"
-        ] = powerstate_to_add
-
-        # Surrogate parameters are passed to each individual surrogate model, at each step, in surrogate_parameters_extended
-        for j in range(len(aux.steps[i].GP["individual_models"])):
-            aux.steps[i].GP["individual_models"][j].surrogate_parameters_step[
-                "powerstate"
-            ] = powerstate_to_add
-
-    with open(state_to_mod, "wb") as f:
-        pickle_dill.dump(aux, f)
-
-
-def readFullPORTALS(folder):
-    print(
-        f">> Proceeding to read as much information from PORTALS run as possible from {folder}"
-    )
-
-    opt_fun = STRATEGYtools.FUNmain(folder)
-    # opt_fun.read_optimization_results(plotYN=False,analysis_level=4)
-    self_complete = opt_fun.plot_optimization_results(analysis_level=4, plotYN=False)
-    portals = opt_fun.prfs_model.mainFunction
-
-    with open(self_complete.MITIMextra, "rb") as handle:
-        MITIMextra_dict = pickle_dill.load(handle)
-
-    return opt_fun, portals, self_complete, MITIMextra_dict
+    return portals_full.opt_fun.prfs_model.mainFunction

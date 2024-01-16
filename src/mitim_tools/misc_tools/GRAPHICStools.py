@@ -1,6 +1,7 @@
-import pdb, sys, socket
+import socket
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import OrderedDict
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as mcol
 import matplotlib.cm as cm
@@ -15,6 +16,52 @@ def aroundZeroLims(zlims):
     zlims = [-z, z]
 
     return zlims
+
+
+def convert_to_hex_soft(color):
+    """
+    Color can be an integer, in that case it'll grab that position in the color_hex dictionary
+    """
+
+    # chatGPT created this dictionary to convert to hex colors
+    color_hex = OrderedDict(
+        {
+            "b": "#CCCCFF",  # very light blue
+            "m": "#FFCCFF",  # very light magenta
+            "r": "#FFCCCC",  # very light red
+            "t": "#99CCCC",  # very light teal
+            "y": "#FFFFCC",  # very light yellow
+            "g": "#CCFFCC",  # very light green instead of green
+            "c": "#CCFFFF",  # very light cyan instead of cyan
+            "n": "#666699",  # lighter navy
+            "o": "#CCCC99",  # very light olive instead of olive
+            "p": "#FFCCFF",  # very light purple instead of purple
+            "s": "#E0E0E0",  # lighter silver
+            "a": "#FFA07A",  # light salmon
+            "h": "#ADFF2F",  # green yellow
+            "i": "#FFB6C1",  # light pink
+            "j": "#FFD700",  # gold
+            "q": "#20B2AA",  # light sea green
+            "u": "#87CEFA",  # light sky blue
+            "v": "#778899",  # light slate gray
+            "x": "#B0C4DE",  # light steel blue
+            "z": "#F08080",  # light coral
+            "k": "#666666",  # medium gray instead of black
+            "w": "#FAFAFA",  # very light gray instead of white
+        }
+    )
+
+    if isinstance(color, int):
+        # If color is an integer, get the color at that index
+        color_keys = list(color_hex.keys())
+        if color < len(color_keys):
+            return color_hex[color_keys[color]]
+        else:
+            return None
+    elif (color is not None) and (color in color_hex):
+        return color_hex[color]
+    else:
+        return None
 
 
 def plotRange(

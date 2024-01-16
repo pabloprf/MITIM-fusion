@@ -91,7 +91,7 @@ If TRANSP has already been run and the .CDF results file already exists (``cdf_f
 
 	transp_results = CDFtools.CDFreactor( cdf_file )
 
-	transp_results.plotRun()
+	transp_results.plot()
 
 .. tip::
 
@@ -114,7 +114,7 @@ If TRANSP has already been run and the .CDF results file already exists (``cdf_f
 
 	.. code-block:: python
 
-		transp_results.plotRun( time = t1 )
+		transp_results.plot( time = t1 )
 
 .. note::
 

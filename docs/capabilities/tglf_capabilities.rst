@@ -76,7 +76,8 @@ To generate the input files (input.tglf) to TGLF at each radial location, MITIM 
 
 Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``restart`` flag can be provided.
 The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
-First, the argument ``TGLFsettings`` (which goes from 1 to 5 as of now) indicates the base case to start with. The user is referred to ``GACODEdefaults.py`` to understand the meaning of each setting.
+First, the argument ``TGLFsettings`` indicates the base case to start with.
+The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
 Second, the argument ``extraOptions`` can be passed as a dictionary of variables to change.
 For example, the following two commands will run TGLF with saturation rule number 2 with and without electromagnetic effets. After each ``run()`` command, a ``read()`` is needed, to populate the *tglf.results* dictionary with the TGLF outputs (``label`` refers to the dictionary key for each run):
 
@@ -96,19 +97,6 @@ For example, the following two commands will run TGLF with saturation rule numbe
 
     tglf.read( label = 'no_em' )
 
-.. note::
-
-    One can change every TGLF input with the ``extraOptions = {}`` dictionary, as shown earlier. However, ``GACODEdefaults.py`` contains a list of presets for TGLF that can be selected by simply passing the argument ``TGLFsettings`` to the ``.run()`` method. Available preset are:
-
-    - TGLFsettings = 0: Minimal working example
-    - TGLFsettings = 1: "Old" ES SAT1
-    - TGLFsettings = 2: ES SAT0
-    - TGLFsettings = 3: ES SAT1 (a.k.a. SAT1geo)
-    - TGLFsettings = 4: ES SAT2
-    - TGLFsettings = 5: EM SAT2
-
-    The user is not limited to use those combinations. One can start with a given ``TGLFsettings`` option, and then modify as many parameters as needed with the ``extraOptions`` dictionary.
-
 .. tip::
 
     In this example, ``tglf.results['yes_em']`` and ``tglf.results['no_em']`` are themselves dictionaries, so please do ``.keys()`` to get all the possible results that have been obtained.
@@ -117,7 +105,7 @@ TGLF results can be plotted together by indicating what labels to plot:
     
 .. code-block:: python
 
-    tglf.plotRun( labels = ['yes_em', 'no_em'] )
+    tglf.plot( labels = ['yes_em', 'no_em'] )
 
 As a result, a TGLF notebook with different tabs will be opened with all relevant output quantities:
 
@@ -162,7 +150,7 @@ Similarly as in the previous section, you need to run the ``prep()`` command, bu
     - **PROFILES_GEN** to generate an *input.gacode* file from the *plasmastate.cdf* and *.geq* files. This file is standard within the GACODE suite and contains all plasma information that is required to run core transport codes.
 
 
-The rest of the workflow is identical to the previous section, including ``.run()``, ``.read()`` and ``.plotRun()``.
+The rest of the workflow is identical to the previous section, including ``.run()``, ``.read()`` and ``.plot()``.
 
 
 Run TGLF from input.tglf file
@@ -182,7 +170,7 @@ If you have a input.tglf file already, you can still use this script to run it.
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
 
-The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plotRun()``.
+The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plot()``.
 
 .. tip::
 
@@ -204,7 +192,7 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         tglf = TGLFtools.TGLF()
         tglf.prep_from_tglf( folder, inputtglf_file )
         tglf.read (folder = f'{folder}/', label = 'yes_em' )
-        tglf.plotRun( labels = ['yes_em'] )
+        tglf.plot( labels = ['yes_em'] )
 
     Please note that the previous code will only work is TGLF was run using MITIM. This is because MITIM stores the results
     with a suffix that indicates the radial location (``rho``) where the run was performed.
@@ -219,7 +207,10 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
 Run 1D scans of TGLF input parameter
 ------------------------------------
 
-*Nothing here yet*
+*Under Development*
+
+*(In the meantime, please checkout* `tutorials/TGLF_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/PORTALS_tutorial.py>`_ *)*
+
 
 TGLF aliases
 ------------

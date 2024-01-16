@@ -44,6 +44,6 @@ print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMs
 # Plot
 # ---------------------------------------------------
 
-GSplotting.plotResult(
+fn = GSplotting.plotResult(
     prfs, metrics, m["function_parameters"]["Constraints"], ProblemExtras=params
 )

@@ -4,7 +4,6 @@ extensively by PRF.
 """
 
 import sys
-from IPython import embed
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
@@ -14,11 +13,11 @@ try:
     from matplotlib.backends.backend_qtagg import (
         NavigationToolbar2QT as NavigationToolbar,
     )
-    from PyQt6 import QtWidgets, QtCore
+    from PyQt6 import QtWidgets, QtCore, QtGui
     from PyQt6.QtWidgets import QTabWidget, QTabBar
 
     # -----------------------------
-except:
+except ImportError:
     print(
         " > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",
         typeMsg="w",
@@ -33,6 +32,7 @@ except:
 
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.CONFIGread import read_dpi
+from IPython import embed
 
 plt.rcParams["figure.max_open_warning"] = False
 
@@ -40,9 +40,9 @@ dpi_notebook = read_dpi()
 
 
 class FigureNotebook:
-    def __init__(
-        self, dummy, windowtitle, parent=None, geometry="1800x900", vertical=True
-    ):
+    def __init__(self, windowtitle, parent=None, geometry="1800x900", vertical=True):
+        plt.ioff()
+
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
             self.app = QtWidgets.QApplication(sys.argv)
@@ -64,9 +64,9 @@ class FigureNotebook:
         self.MainWindow.resize(int(geometry.split("x")[0]), int(geometry.split("x")[1]))
         self.MainWindow.show()
 
-    def add_figure(self, label=""):
+    def add_figure(self, label="", tab_color=None):
         figure = plt.figure(dpi=dpi_notebook)
-        self.addPlot(label, figure)
+        self.addPlot(label, figure, tab_color=tab_color)
 
         return figure
 
@@ -77,7 +77,11 @@ class FigureNotebook:
 
         return fig, ax
 
-    def addPlot(self, title, figure):
+    def addPlot(self, title, figure, tab_color=None, tab_alpha=0.2):
+        """
+        tab_color can be a color name or an integer to grab colors in order
+        """
+
         new_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         new_tab.setLayout(layout)
@@ -97,6 +101,13 @@ class FigureNotebook:
         self.canvases.append(new_canvas)
         self.figure_handles.append(figure)
         self.tab_handles.append(new_tab)
+
+        # Set the color for the tab if specified
+        tab_color_hex = GRAPHICStools.convert_to_hex_soft(tab_color)
+        if tab_color_hex:
+            tab_color_hex = QtGui.QColor(tab_color_hex)
+            tab_color_hex.setAlphaF(tab_alpha)
+            self.tabs.tabBar().setTabColor(self.tabs.count() - 1, tab_color_hex)
 
     def show(self):
         print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")
@@ -123,9 +134,10 @@ class TabBar(QTabBar):
         super().__init__(parent)
 
         self.vertical = vertical
+        self.tab_colors = {}
 
         if self.vertical:
-            self.setFixedSize(xextend, 150)
+            self.setFixedSize(xextend, 170)
         else:
             self.setFixedSize(xextend, 30)
 
@@ -135,16 +147,20 @@ class TabBar(QTabBar):
                         font-size:           9pt;
                         }
                     QTabBar::tab:selected {
-                        background:          #90EE90;
+                        background:          #00FF00;
                         color:               #191970;
                         font:                bold;
                         }
                     QTabBar::tab:hover {
-                        background: #ADD8E6;
-                        color: #000000;
+                        background:          #90EE90;
+                        color:               #191970;
                         }
                             """
         )
+
+    def setTabColor(self, index, color):
+        self.tab_colors[index] = color
+        self.update()
 
     def tabSizeHint(self, i):
         if self.vertical:
@@ -161,6 +177,11 @@ class TabBar(QTabBar):
 
             for i in range(self.count()):
                 self.initStyleOption(opt, i)
+                if i in self.tab_colors:
+                    opt.palette.setColor(
+                        QtGui.QPalette.ColorRole.Button,
+                        QtGui.QColor(self.tab_colors[i]),
+                    )
                 painter.drawControl(
                     QtWidgets.QStyle.ControlElement.CE_TabBarTabShape, opt
                 )

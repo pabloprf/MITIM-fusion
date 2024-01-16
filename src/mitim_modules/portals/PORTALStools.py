@@ -1,11 +1,9 @@
-import torch, pickle, copy
-from collections import OrderedDict
+import torch
+import copy
 import numpy as np
-from IPython import embed
-from mitim_tools.opt_tools import SURROGATEtools
-from mitim_tools.opt_tools.aux import BOgraphics, SAMPLINGtools
-from mitim_tools.misc_tools import IOtools, PLASMAtools
+from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 
 def selectSurrogate(output, surrogateOptions):
@@ -103,7 +101,7 @@ def transformmitim(X, surrogate_parameters, output):
     )
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
-    factorGB = GBfromXnorm(X, surrogate_parameters, output, powerstate)
+    factorGB = GBfromXnorm(X, output, powerstate)
     # --- Ratio of fluxes (quasilinear)
     factorRat = ratioFactor(X, surrogate_parameters, output, powerstate)
     # --- Specific to output
@@ -197,7 +195,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return mean, upper, lower
 
 
-def GBfromXnorm(x, surrogate_parameters, output, powerstate):
+def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
     varFull = output.split("_")[0]
     pos = int(output.split("_")[1])
@@ -210,9 +208,9 @@ def GBfromXnorm(x, surrogate_parameters, output, powerstate):
     elif varFull[:2] == "Mt":
         quantity = "Pgb"
     elif varFull[:2] == "Ge":
-        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb"
+        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb_convection"
     elif varFull[:2] == "GZ":
-        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb"
+        quantity = "Ggb" if (not powerstate.useConvectiveFluxes) else "Qgb_convection"
     elif varFull[:5] == "Pexch":
         quantity = "Sgb"
 
@@ -231,7 +229,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
     pos = int(output.split("_")[1])
 
     if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
-        factor = nZ = powerstate.plasma["ni"][
+        factor = powerstate.plasma["ni"][
             : x.shape[0],
             powerstate.indexes_simulation[pos],
             powerstate.impurityPosition - 1,
@@ -252,44 +250,44 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
 
     v = torch.ones(tuple(X.shape[:-1]) + (1,)).to(X)
 
-    """
-	Apply diffusivities (not real value, just capturing dependencies,
-	work on normalization, like e_J). Or maybe calculate gradients within powerstate
-	Remember that for Ti I'm using ne...
-	"""
-    if surrogate_parameters["useDiffusivities"]:
-        pos = int(output.split("_")[-1])
-        var = output.split("_")[0]
+    # """
+    # Apply diffusivities (not real value, just capturing dependencies,
+    # work on normalization, like e_J). Or maybe calculate gradients within powerstate
+    # Remember that for Ti I'm using ne...
+    # """
+    # if surrogate_parameters["useDiffusivities"]:
+    #     pos = int(output.split("_")[-1])
+    #     var = output.split("_")[0]
 
-        if var == "te":
-            grad = x[:, i] * (
-                powerstate.plasma["te"][:, powerstate.indexes_simulation[pos]]
-                / powerstate.plasma["a"]
-            )  # keV/m
-            v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
+    #     if var == "te":
+    #         grad = x[:, i] * (
+    #             powerstate.plasma["te"][:, powerstate.indexes_simulation[pos]]
+    #             / powerstate.plasma["a"]
+    #         )  # keV/m
+    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
 
-        if var == "ti":
-            grad = x[:, i] * (
-                powerstate.plasma["ti"][:, powerstate.indexes_simulation[pos]]
-                / powerstate.plasma["a"]
-            )  # keV/m
-            v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
+    #     if var == "ti":
+    #         grad = x[:, i] * (
+    #             powerstate.plasma["ti"][:, powerstate.indexes_simulation[pos]]
+    #             / powerstate.plasma["a"]
+    #         )  # keV/m
+    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
 
-        # if var == 'ne':
-        #     grad = x[:,i] * ( powerstate.plasma['ne'][:,pos]/powerstate.plasma['a']) # keV/m
-        #     v[:] = grad
+    #     # if var == 'ne':
+    #     #     grad = x[:,i] * ( powerstate.plasma['ne'][:,pos]/powerstate.plasma['a']) # keV/m
+    #     #     v[:] = grad
 
-    """
-	Apply flux ratios
-	For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
-	"""
+    # """
+    # Apply flux ratios
+    # For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
+    # """
 
-    if surrogate_parameters["useFluxRatios"]:
-        """
-        Not ready yet... since my code is not dealing with other outputs at a time so
-        I don't know Qi if I'm evaluating other fluxes...
-        """
-        pass
+    # if surrogate_parameters["useFluxRatios"]:
+    #     """
+    #     Not ready yet... since my code is not dealing with other outputs at a time so
+    #     I don't know Qi if I'm evaluating other fluxes...
+    #     """
+    #     pass
 
     return v
 
@@ -342,3 +340,65 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
                 powerstate.calculateTargets()
 
     return powerstate
+
+
+def default_physicsBasedParams():
+    """
+    Physics-informed parameters to fit surrogates
+    ---------------------------------------------
+        Note: Dict value indicates what variables need to change at this location to add this one (only one of them is needed)
+        Note 2: index key indicates when to transition to next (in terms of number of individuals available for fitting)
+        Things to add:
+                'aLte': ['aLte'],   'aLti': ['aLti'],      'aLne': ['aLne'],
+                'nuei': ['te','ne'],'tite': ['te','ti'],   'c_s': ['te'],      'w0_n': ['w0'],
+                'beta_e':  ['te','ne']
+
+        transition_evaluations is the number of points to be fitted that require a parameter transition.
+            Note that this ignores ExtraData or ExtraPoints.
+                - transition_evaluations[0]: max to only consider gradients
+                - transition_evaluations[1]: no beta_e
+                - transition_evaluations[2]: full
+    """
+
+    transition_evaluations = [10, 30, 100]
+    physicsBasedParams = {
+        transition_evaluations[0]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+            }
+        ),
+        transition_evaluations[1]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+                "nuei": ["te", "ne"],
+                "tite": ["te", "ti"],
+                "w0_n": ["w0"],
+            }
+        ),
+        transition_evaluations[2]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+                "nuei": ["te", "ne"],
+                "tite": ["te", "ti"],
+                "w0_n": ["w0"],
+                "beta_e": ["te", "ne"],
+            }
+        ),
+    }
+
+    # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
+    physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
+    physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
+    physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
+    physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+
+    return physicsBasedParams, physicsBasedParams_trace

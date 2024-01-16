@@ -1,15 +1,18 @@
-import torch, datetime, argparse, botorch, copy
+import datetime
+import argparse
+import botorch
 import dill as pickle_dill
 import numpy as np
-from IPython import embed
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools, BOTORCHtools, OPTtools
 
+from IPython import embed
+
 """
 This script performs a series of tests using BOTORCH optimizer for the last step of the MITIM folder.
 e.g.
-	optimizer_tester.py --folder run1/ --test 1 --save True --seeds 10 --var 9
+    optimizer_tester.py --folder run1/ --test 1 --save True --seeds 10 --var 9
 """
 
 # ***************************************************************************************************
@@ -19,7 +22,7 @@ e.g.
 parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--test", required=False, type=int, default=1)
-parser.add_argument("--save", required=False, type=bool, default=False)
+parser.add_argument("--save", required=False, default=False, action="store_true")
 parser.add_argument("--seeds", required=False, type=int, default=1)
 parser.add_argument("--var", required=False, type=int, default=9)
 args = parser.parse_args()

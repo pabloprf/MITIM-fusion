@@ -1,15 +1,16 @@
-import sys, os, argparse, copy, time
+import argparse
+import copy
+import time
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import IOtools, FARMINGtools
-from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
-from mitim_modules.portals import PORTALSmain
+from mitim_modules.portals.aux import PORTALSanalysis
+from mitim_modules.portals.exe.comparePORTALS import compareSolvers
+from IPython import embed
 
 """
 This script will run TGYRO using the settings used for mitim. It will do it in a subfolder of the
 mitim run.
-e.g.:           runTGYROfrommitim.py --folder run1/ --seeds 5 --methods 1 6
+e.g.:           runTGYRO.py --folder run1/ --seeds 5 --methods 1 6
 
 It will run 16 in parallel
 
@@ -41,27 +42,12 @@ restart = False
 # Preparation
 # ------------------------------------------------------------------------------------------
 
-# Folder to work on
+portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderO)
+
 folder = IOtools.expandPath(folderO + "/tgyro_std_analysis/")
-if not os.path.exists(folder):
-    IOtools.askNewFolder(folder)
-
-
-# # Read mitim results
-# opt_fun = STRATEGYtools.FUNmain(folderO)
-# opt_fun.read_optimization_results(plotYN=False,analysis_level=1)
-# portals = opt_fun.prfs_model.mainFunction
-
-# # Prepare TGYRO
-# readFile = f'{folder}/input.gacode_copy_initialization'
-# with open(readFile,'w') as f:  f.writelines(portals.file_in_lines_initial_input_gacode)
-# profiles = PROFILEStools.PROFILES_GACODE(readFile,calculateDerived=True)
-
-opt_fun, portals, self_complete, MITIMextra_dict = PORTALSmain.readFullmitim(folderO)
-profiles = MITIMextra_dict[0]["tgyro"].profiles
-
-tgyro = TGYROtools.TGYRO()
-tgyro.prep(folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True)
+tgyro, rhos, PredictionSet, TGLFsettings, extraOptionsTGLF = portals.extractTGYRO(
+    folder=folder, restart=restart, evaluation=0
+)
 
 # ------------------------------------------------------------------------------------------
 # Run TGYRO (function prep)
@@ -70,7 +56,7 @@ tgyro.prep(folder, profilesclass_custom=profiles, restart=restart, forceIfRestar
 
 def run_tgyro_parallel(Params, cont):
     time.sleep(
-        cont * 5
+        cont * Params["seconds_sleep"]
     )  # Wait a bit to avoid bandwidth problems of ssh or scp connections
 
     # Grab data
@@ -79,7 +65,6 @@ def run_tgyro_parallel(Params, cont):
     method = Params["method"]
     iterations = Params["iterations"]
     i = Params["scan"][cont]
-    seconds_sleep = Params["seconds_sleep"]
 
     if param == 1:
         name = f"m{method}_r{i:.3f}"
@@ -97,19 +82,15 @@ def run_tgyro_parallel(Params, cont):
         iterations=iterations,
         restart=restartTGYRO,
         forceIfRestart=True,
-        special_radii=portals.TGYROparameters["RhoLocations"],
-        PredictionSet=[
-            int("te" in portals.TGYROparameters["ProfilesPredicted"]),
-            int("ti" in portals.TGYROparameters["ProfilesPredicted"]),
-            int("ne" in portals.TGYROparameters["ProfilesPredicted"]),
-        ],
+        special_radii=rhos,
+        PredictionSet=PredictionSet,
         minutesJob=120,
         launchSlurm=True,
-        TGLFsettings=portals.TGLFparameters["TGLFsettings"],
-        extraOptionsTGLF=portals.TGLFparameters["extraOptionsTGLF"],
+        TGLFsettings=TGLFsettings,
+        extraOptionsTGLF=extraOptionsTGLF,
         TGYRO_physics_options={
             "TargetType": 3,
-            "quasineutrality": [1, 2] if profiles.DTplasmaBool else [1],
+            "quasineutrality": [1, 2] if tgyro_here.profiles.DTplasmaBool else [1],
         },
     )
 
@@ -122,7 +103,7 @@ for method in methods:
     for param in params:
         if method == 6:
             scan = np.linspace(0.01, 0.2, seeds)
-            iterations = 100
+            iterations = 2
         elif method == 1:
             if param == 1:
                 scan = np.linspace(1, 3, seeds)
@@ -200,12 +181,8 @@ for method in methods:
 # Plot
 # ------------------------------------------------------------------------------------------
 
-tgyro.plotRun(labels=names, doNotShow=True)
-
-from mitim_modules.portals.exe.comparemitim import compareSolvers
+tgyro.plot(labels=names, doNotShow=True)
 
 compareSolvers(
     folderO, folders, nice_names, fig=tgyro.fn.add_figure(label="mitim COMPARISON")
 )
-
-tgyro.fn.show()

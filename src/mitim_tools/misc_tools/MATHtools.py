@@ -625,10 +625,6 @@ def drawContours(Rold, Yold, Zold, resol=5e3, psiN_boundary=0.99999):
 
     [Rg, Yg] = np.meshgrid(R, Y)
 
-    try:
-        plt.ioff()
-    except:
-        pass
     cs = plt.contour(Rg, Yg, Z, resol, levels=[psiN_boundary])
 
     Rpsi, Ypsi = [], []

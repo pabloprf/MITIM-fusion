@@ -1,4 +1,10 @@
-import os, json, socket, warnings, logging, getpass, numpy
+import os
+import json
+import socket
+import warnings
+import logging
+import getpass
+from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
 # PRF Note: Do not load IOtools, otherwise circularity problem
@@ -67,7 +73,6 @@ def isThisEngaging():
 
 def machineSettings(
     code="tgyro",
-    gacode_compilation="gacode",
     nameScratch="mitim_tmp/",
     forceUsername=None,
 ):
@@ -82,9 +87,9 @@ def machineSettings(
     machine = s["preferences"][code]
 
     """
-	Set-up per code and machine
-	-------------------------------------------------
-	"""
+    Set-up per code and machine
+    -------------------------------------------------
+    """
 
     if forceUsername is not None:
         username = forceUsername
@@ -96,24 +101,28 @@ def machineSettings(
     machineSettings = {
         "machine": s[machine]["machine"],
         "user": username,
-        "clear": True,
         "tunnel": None,
         "port": None,
         "identity": None,
-        "partition": None,
-        "modules": "source $MITIM_PATH/config/mitim.bashrc", 
+        "modules": "source $MITIM_PATH/config/mitim.bashrc",
         "folderWork": scratch,
-        "exclude": s[machine]["exclude"] if "exclude" in s[machine] else None,
+        "slurm": {},
         "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
         if "isTunnelSameMachine" in s[machine]
         else False,
     }
 
     # I can give extra things to load in the config file
-    if "modules" in s[machine] and s[machine]["modules"] is not None and s[machine]["modules"] != "":
-        machineSettings["modules"] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
+    if (
+        "modules" in s[machine]
+        and s[machine]["modules"] is not None
+        and s[machine]["modules"] != ""
+    ):
+        machineSettings[
+            "modules"
+        ] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
-    checkers = ["identity", "partition", "tunnel", "port"]
+    checkers = ["slurm", "identity", "tunnel", "port"]
     for i in checkers:
         if i in s[machine]:
             machineSettings[i] = s[machine][i]
@@ -137,6 +146,11 @@ def machineSettings(
             machineSettings["machine"] = "local"
 
     # ************************************************************************************************************************
+
+    if machineSettings["machine"] == "local":
+        machineSettings["folderWork"] = IOtools.expandPath(
+            machineSettings["folderWork"]
+        )
 
     if forceUsername is not None:
         machineSettings["identity"] = f"~/.ssh/id_rsa_{forceUsername}"

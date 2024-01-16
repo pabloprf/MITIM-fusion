@@ -1,16 +1,17 @@
-import os, pyDOE, copy, collections, pdb, multiprocessing, datetime, torch, sys
+import os
+import copy
+import torch
+import sys
 import dill as pickle_dill
 import numpy as np
 import matplotlib as mpl
-import pandas as pd
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata
 from collections import OrderedDict
 from IPython import embed
 
-from mitim_tools.misc_tools import IOtools, FARMINGtools, GRAPHICStools, GUItools
-from mitim_tools.opt_tools import SURROGATEtools, STRATEGYtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, MATHtools
+from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import TESTtools
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -583,7 +584,7 @@ def plotSensitivities_surrogate_model(
 
 
 def plotTraining_surrogate_model(
-    self, axs=None, relative_to=-1, figIndex_inner=0, stds=2.0
+    self, axs=None, relative_to=-1, figIndex_inner=0, stds=2.0, legYN=True
 ):
     colors = GRAPHICStools.listColors()
 
@@ -636,7 +637,7 @@ def plotTraining_surrogate_model(
             label=newLabels[j],
         )
 
-    ax2.plot(x, trainYtr[:, 0], "-s", markersize=3, color="b")
+    ax2.plot(x, trainYtr[:, 0], "-s", markersize=3, color="b", label="train")
     ax2.errorbar(
         x,
         trainYtr[:, 0],
@@ -648,7 +649,7 @@ def plotTraining_surrogate_model(
 
     mean, upper, lower, _ = self.predict(train_X, produceFundamental=True)
     mean = mean[:, 0].detach().cpu().numpy()
-    ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3)
+    ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3, label="model")
     ax2.errorbar(
         x,
         mean,
@@ -681,6 +682,9 @@ def plotTraining_surrogate_model(
     ax2.set_xlabel("Evaluation")
     GRAPHICStools.addDenseAxis(ax2)
     ax2.set_xlim(left=0)
+
+    if legYN:
+        ax2.legend(loc="best", prop={"size": 4})
 
 
 def localBehavior_surrogate_model(
@@ -825,30 +829,10 @@ def retrieveResults(
         print(" - Grabbing remote")
         if not os.path.exists(folderWork):
             os.system(f"mkdir {folderWork}")
-        if not os.path.exists(folderWork + "/Outputs/"):
-            os.system(f"mkdir {folderWork}/Outputs/")
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/ResultsOptimization.out {folderWork}/Outputs/."
-        )
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIM.log {folderWork}/Outputs/."
-        )
-        os.system(
-            f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIMstate* {folderWork}/Outputs/."
-        )
-        if analysis_level >= 0:
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/TabularData.dat {folderWork}/Outputs/."
-            )
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/TabularDataStds.dat {folderWork}/Outputs/."
-            )
-        if analysis_level > 0:
-            os.system(
-                f"scp {port} {username}@{machine}:{folderRemote0}/Outputs/MITIMextra* {folderWork}/Outputs/."
-            )
 
-        resFile = f"{folderWork}/ResultsOptimization.out"
+        os.system(
+            f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}"
+        )
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow
@@ -856,6 +840,11 @@ def retrieveResults(
 
     print("\t\t--> Opening MITIMstate.pkl")
     prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/MITIMstate.pkl")
+
+    if "timeStamp" in prfs_model.__dict__:
+        print(f"\t\t\t- Time stamp of MITIMstate.pkl: {prfs_model.timeStamp}")
+    else:
+        print("\t\t\t- Time stamp of MITIMstate.pkl not found")
 
     # ---------------- Read ResultsOptimization
     fileOutputs = folderWork + "/Outputs/ResultsOptimization.out"
@@ -1339,9 +1328,7 @@ class ResultsOptimization:
         print("\t* ResultsOptimization updated", verbose=verbose_level)
 
     def read(self):
-        print(
-            f"\t\t--> Opening {self.file[-30:]}{'...' if len(self.file) > 30 else ''}"
-        )
+        print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")
 
         with open(self.file, "r") as f:
             lines = f.readlines()
@@ -1702,26 +1689,26 @@ Workflow start time: {IOtools.getStringFromTime()}
                 except:
                     break
 
-    def plot(self, fn=None, doNotShow=True, separateOFs=False, log=None):
+    def plot(
+        self, fn=None, doNotShow=True, separateOFs=False, log=None, tab_color=None
+    ):
         if fn is None:
-            plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
-            fnprov = False
+            self.fn = FigureNotebook("Calibration", geometry="1600x1000")
         else:
-            fnprov = True
+            self.fn = fn
 
-        fig1 = fn.add_figure(label="Complete")
-        fig1e = fn.add_figure(label="Complete (rel.)")
-        fig2 = fn.add_figure(label="Metrics")
-        fig3 = fn.add_figure(label="Deviations")
-        fig3b = fn.add_figure(label="Separate")
-        fig3c = fn.add_figure(label="Together")
-        fig3cE = fn.add_figure(label="Together All")
-        fig4 = fn.add_figure(label="Improvement")
+        fig1 = self.fn.add_figure(label="Complete", tab_color=tab_color)
+        fig1e = self.fn.add_figure(label="Complete (rel.)", tab_color=tab_color)
+        fig2 = self.fn.add_figure(label="Metrics", tab_color=tab_color)
+        fig3 = self.fn.add_figure(label="Deviations", tab_color=tab_color)
+        fig3b = self.fn.add_figure(label="Separate", tab_color=tab_color)
+        fig3c = self.fn.add_figure(label="Together", tab_color=tab_color)
+        fig3cE = self.fn.add_figure(label="Together All", tab_color=tab_color)
+        fig4 = self.fn.add_figure(label="Improvement", tab_color=tab_color)
         if log is not None:
-            figTimes = fn.add_figure(label="Times")
+            figTimes = self.fn.add_figure(label="Times", tab_color=tab_color)
             grid = plt.GridSpec(1, 2, hspace=0.3, wspace=0.3)
             axsTimes = [figTimes.add_subplot(grid[0]), figTimes.add_subplot(grid[1])]
 
@@ -1742,7 +1729,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             onlyFinals=False,
         )
         self.plotMetrics(fig2)
-        self.plotCalibrations(figs=[fig3, fig3b, fig3c, fig3cE])
+        self.plotCalibrations(figs=[fig3, fig3b, fig3c, fig3cE], tab_color=tab_color)
 
         grid = plt.GridSpec(1, 3, hspace=0.3, wspace=0.3)
         ax0 = fig4.add_subplot(grid[0, 0])
@@ -1756,10 +1743,7 @@ Workflow start time: {IOtools.getStringFromTime()}
         if log is not None:
             log.plot(axs=[axsTimes[0], axsTimes[1]])
 
-        if (not fnprov) and (not doNotShow):
-            fn.show()
-
-        return fn
+        return self.fn
 
     def plotDVs(
         self,
@@ -2219,8 +2203,6 @@ Workflow start time: {IOtools.getStringFromTime()}
         axDiff.axhline(y=1, ls="--", c="k", lw=1)
 
     def plotMetrics(self, fig):
-        plt.ion()
-
         grid = plt.GridSpec(nrows=2, ncols=1, hspace=0.4, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0])
@@ -2230,20 +2212,17 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         return ax1
 
-    def plotCalibrations(self, figs=None):
+    def plotCalibrations(self, figs=None, tab_color=None):
         if figs is None:
-            plt.ioff()
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook(0, "Calibration", geometry="1600x1000")
-            fnprov = False
-            fig3 = fn.add_figure(label="Deviations")
-            fig3b = fn.add_figure(label="Separate")
-            fig3c = fn.add_figure(label="Together")
-            fig3c = fn.add_figure(label="Together All")
+            self.fnCals = FigureNotebook("Calibration", geometry="1600x1000")
+            fig3 = self.fnCals.add_figure(label="Deviations", tab_color=tab_color)
+            fig3b = self.fnCals.add_figure(label="Separate", tab_color=tab_color)
+            fig3c = self.fnCals.add_figure(label="Together", tab_color=tab_color)
+            fig3c = self.fnCals.add_figure(label="Together All", tab_color=tab_color)
         else:
             [fig3, fig3b, fig3c, fig3cE] = figs
-            fnprov = True
 
         # ---------------- Plot stuff
 
@@ -3286,7 +3265,7 @@ def plotGA_results(
     plot_colors = GRAPHICStools.listColors()
 
     if fn is None:
-        fn = GUItools.FigureNotebook(0, "MITIM GA Notebook", geometry="1500x1000")
+        fn = GUItools.FigureNotebook("MITIM GA Notebook", geometry="1500x1000")
 
     fig = fn.add_figure(label="Pareto Front" + subname)
 
@@ -3354,17 +3333,18 @@ def plotGA_results(
     ax = figAnalysis.add_subplot(grid[1, 0])
     plotGA_fitness(info, ax=ax)
 
+    return fn
+
 
 def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subname=""):
-    plt.ioff()
     if fn is None:
-        fn = GUItools.FigureNotebook(0, "MITIM GA Notebook", geometry="1500x1000")
+        fn = GUItools.FigureNotebook("MITIM GA Notebook", geometry="1500x1000")
 
     if plotAllmembers:
         members = GAOF["All_x"]
     else:
         members = None
-    plotGA_results(
+    fn = plotGA_results(
         GAOF["Paretos_x"],
         GAOF["fitness"],
         GAOF["toolbox"],
@@ -3375,6 +3355,8 @@ def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subn
         selected=GAOF["selected"],
         trained=GAOF["trained"],
     )
+
+    return fn
 
 
 def printConstraint(constraint_name, constraint, extralab=""):

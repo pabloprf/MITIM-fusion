@@ -25,4 +25,4 @@ tglf.run(
 )
 
 tglf.read(label="run1")
-tglf.plotRun(labels=["run1"])
+tglf.plot(labels=["run1"])

@@ -2,7 +2,8 @@
 Plasma physics models/info/approximations
 """
 
-import scipy, torch
+import scipy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
@@ -39,6 +40,9 @@ e = 4.8032e-10  # statcoul
 c_light = 2.9979e10  # cm/s
 md = 3.34358e-24
 me_u = 5.4488741e-04  # as in input.gacode
+
+
+factor_convection = 3 / 2  # IMPORTANT
 
 
 def magneticshear(q, rmin, R0):
@@ -189,13 +193,13 @@ def nminfactor(nmin, n):
         return np.array(nminfact)
 
 
-def convective_flux(Te, Gamma_e, factor=3 / 2):
+def convective_flux(Te, Gamma_e):
     # keV and 1E20 m^-3/s (or /m^2)
 
     Te_J = Te * 1e3 * e_J
     Gamma = Gamma_e * 1e20
 
-    Qe_conv = factor * Te_J * Gamma * 1e-6  # MW (or /m^2)
+    Qe_conv = factor_convection * Te_J * Gamma * 1e-6  # MW (or /m^2)
 
     return Qe_conv
 
@@ -379,7 +383,10 @@ def gyrobohmUnits(Te_keV, ne_20, mref_u, Bunit, a):
     # Exchange source
     Sgb = Qgb / a
 
-    return Qgb, Ggb, Pgb, Sgb
+    # Particle flux when using convective flux
+    Qgb_convection = Qgb * factor_convection
+
+    return Qgb, Ggb, Pgb, Sgb, Qgb_convection
 
 
 def conduction(n19, TkeV, chi, aLT, a):
@@ -544,8 +551,8 @@ def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  # TO FIX
     """
 
     # Freidberg p. 194
-    L = 4.9e7 * Te**1.5 / (ne * 1e-20) ** 0.5
-    logL = np.log(L)
+    # L = 4.9e7 * Te**1.5 / (ne * 1e-20) ** 0.5
+    # logL = np.log(L)
 
     # Lee = 30.0 - np.log( ne**0.5 * (Te*1E-3)**-1.5 )
     # Lc = 24.0 - np.log( np.sqrt( ne/Te ) )

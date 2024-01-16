@@ -315,34 +315,36 @@ def runGetFBM(
     MaxSeconds=60 * 1,
     commandOrder=None,
 ):
-    machineSettings = CONFIGread.machineSettings(
-        code="get_fbm", nameScratch=f"tmp_fbm_{name}/"
-    )
-
     folder, fileonly = IOtools.reducePathLevel(file, level=1)
 
-    print(f"\t\t\t- Running get_fbm command")
+    fbm_job = FARMINGtools.mitim_job(folder)
+
+    fbm_job.define_machine(
+        "get_fbm",
+        f"tmp_fbm_{name}/",
+        launchSlurm=False,
+    )
+
+    print("\t\t\t- Running get_fbm command")
     if commandOrder is not None:
-        print(f"\t\t\t- [First running AC corrector]")
-        FARMINGtools.runCommand(
-            f"cd {machineSettings['folderWork']} && {commandOrder} && mv {fileonly} {fileonly}_converted",
-            [file],
-            outputFiles=[f"{fileonly}_converted"],
-            whereOutput=folder,
-            machineSettings=machineSettings,
-            timeoutSecs=MaxSeconds,
+        print("\t\t\t- [First running AC corrector]")
+
+        fbm_job.prep(
+            f"{commandOrder} && mv {fileonly} {fileonly}_converted",
+            output_files=[f"{fileonly}_converted"],
+            input_files=[file],
         )
+        fbm_job.run(timeoutSecs=MaxSeconds)
+
         os.system(f"mv {file} {file}_original")
         os.system(f"mv {file}_converted {file}")
 
-    FARMINGtools.runCommand(
-        f"cd {machineSettings['folderWork']} && {commandMain}",
-        [file],
-        outputFiles=[finFile2],
-        whereOutput=folder,
-        machineSettings=machineSettings,
-        timeoutSecs=MaxSeconds,
+    fbm_job.prep(
+        commandMain,
+        output_files=[finFile2],
+        input_files=[file],
     )
+    fbm_job.run(timeoutSecs=MaxSeconds)
 
 
 class birthCDF:

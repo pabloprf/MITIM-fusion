@@ -20,10 +20,26 @@
         "scratch":    "/Users/exampleusername/scratch/",
         "modules":    ""
     },
+    "perlmutter": {
+        "machine":          "perlmutter.nersc.gov", 
+        "username":         "exampleusername",
+        "scratch":          "/pscratch/sd/p/exampleusername/",
+        "identity":         "$HOME/.ssh/nersc",
+        "slurm": {
+            "account":      "m3195_g",
+            "partition":    "debug",
+            "constraint":   "gpu",
+            "mem":          "4GB",
+            "email":      "optional@email"
+        }
+    },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
         "username":         "exampleusername",
-        "partition":        "sched_mit_psfc",
+        "slurm": {
+            "partition":    "sched_mit_psfc",
+            "exclude":      "node584"
+        },
         "identity":         "~/.ssh/id_rsa",
         "scratch":          "/nobackup1/exampleusername/",
         "modules":    ""
@@ -39,7 +55,6 @@
         "machine":          "mfews02.psfc.mit.edu", 
         "username":         "exampleusername",
         "tunnel":           "mferws01.psfc.mit.edu",
-        "scratch_tunnel":   "/home/exampleusername/scratch/",
         "port":             9224,
         "scratch":          "/home/exampleusername/scratch/",
         "modules":    ""
@@ -48,7 +63,6 @@
         "machine":    "irisa.gat.com", 
         "username":   "exampleusername",
         "tunnel":     "cybele.gat.com",
-        "scratch_tunnel": "/home/exampleusername/scratch/",
         "port":            2039,
         "scratch":    "/cluster-scratch/exampleusername/",
         "modules":    ""
