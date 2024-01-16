@@ -1,5 +1,6 @@
 import os
-from mitim_tools.misc_tools import IOtools,CONFIGread,FARMINGtools
+import tarfile
+from mitim_tools.misc_tools import IOtools,FARMINGtools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from IPython import embed
 
@@ -9,21 +10,27 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,folder_repo = '$MITIM_PATH/templates/ASTRA8_REPO/'): 
+    def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'): 
+
+        # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
         self.folder = IOtools.expandPath(folder)
-        self.folder_repo = IOtools.expandPath(folder_repo)
-
-        self.folder_astra_reduced = 'execution/'
-
-        self.folder_astra = f'{self.folder}/{self.folder_astra_reduced}/'
+        self.file_repo = file_repo
 
         # Create folder
         IOtools.askNewFolder(self.folder)
-        IOtools.askNewFolder(self.folder_astra)
 
         # Move files
-        os.system(f'cp -r {self.folder_repo}/* {self.folder_astra}/')
+        os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO.tar.gz')
+
+        # untar
+        with tarfile.open(
+            os.path.join(self.folder, "ASTRA8_REPO.tar.gz"), "r"
+        ) as tar:
+            tar.extractall(path=self.folder)
+
+        #os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_as}/')
+        os.remove(os.path.join(self.folder, "ASTRA8_REPO.tar.gz"))
 
         # Define basic controls
         self.equfile = 'fluxes'
@@ -31,7 +38,8 @@ class ASTRA():
 
     def run(self,
             t_ini,
-            t_end,name='run1',
+            t_end,
+            name='run1',
             slurm_options = {
                 'time': 10,
                 'cpus': 16}):
@@ -39,42 +47,49 @@ class ASTRA():
         self.t_ini = t_ini
         self.t_end = t_end
 
-        # Where to run 
-        machineSettings = CONFIGread.machineSettings(
-                code="astra",
-                nameScratch=f"astra_tmp_{name}/",
-            )
-        
-        self.folderExecution = machineSettings["folderWork"]
+        self.folder_astra = f'{self.folder}/{name}/'
+        IOtools.askNewFolder(self.folder_astra)
+        os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_astra}/')
+
+        astra_name = f'mitim_astra_{name}'
+
+        self.astra_job = FARMINGtools.mitim_job(self.folder)
+
+        self.astra_job.define_machine(
+            "astra",
+            f"{astra_name}/",
+            launchSlurm=True,
+            slurm_settings={
+                "minutes": slurm_options['time'],
+                "ntasks": 1,
+                "name": astra_name,
+                "cpuspertask": slurm_options['cpus'],
+            },
+        )
 
         # What to run 
-
         self.command_to_run_astra = f'''
-cd {self.folderExecution}
-./install.sh
+cd {self.astra_job.folderExecution}/{name} 
 exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug
 '''
+
+        self.shellPreCommand = f'cd {self.astra_job.folderExecution}/{name} &&  ./install.sh'
 
         # ---------------------------------------------
         # Execute
         # ---------------------------------------------
 
-        self.output_folder_reduced = f'{self.folder_astra_reduced}/.res/ncdf/'
-        self.output_folder = f'{self.folder_astra}/{self.output_folder_reduced}/'
+        self.output_folder = f'{name}/.res/ncdf/'
 
-        FARMINGtools.SLURMcomplete(
+        self.astra_job.prep(
             self.command_to_run_astra,
-            self.folder_astra,
-            [],
-            [],
-            slurm_options['time'],
-            1,
-            name,
-            machineSettings,
-            cpuspertask=slurm_options['cpus'],
-            inputFolders=[self.folder_astra],
-            outputFolders=[self.output_folder_reduced],
+            shellPreCommands=[self.shellPreCommand],
+            input_folders=[self.folder_astra],
+            output_folders=[self.output_folder],
         )
+
+        self.astra_job.run(waitYN=False)
+
 
     def read(self):
 
