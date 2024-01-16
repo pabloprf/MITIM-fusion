@@ -2,6 +2,7 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
+from math import inf
 from tqdm import tqdm
 import os
 import time
@@ -214,27 +215,27 @@ class mitim_job:
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
-        want to execute that.
+        want to finish the sbatch launch process.
         """
         wait_for_all_commands = True
 
-        if timeoutSecs < 1e6:
-            timeOut_txt = f", will timeout execution in {timeoutSecs}s"
-        else:
-            timeOut_txt = ""
-
         time_init = datetime.datetime.now()
-
         print(
-            f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) --------------"
+            f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------"
         )
 
+        # ~~~~~~ Connect
         self.connect(log_file=f"{self.folder_local}/paramiko.log")
+        
+        # ~~~~~~ Prepare scratch folder
         if removeScratchFolders:
             self.remove_scratch_folder()
         self.create_scratch_folder()
+
+        # ~~~~~~ Send
         self.send()
 
+        # ~~~~~~ Execute
         output, error = self.execute(
             comm,
             wait_for_all_commands=wait_for_all_commands,
@@ -242,8 +243,10 @@ class mitim_job:
             timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
         )
 
+        # ~~~~~~ Retrieve
         received = self.retrieve(check_if_files_received=check_if_files_received)
 
+        # ~~~~~~ Remove scratch folder
         if received:
             if wait_for_all_commands and removeScratchFolders:
                 self.remove_scratch_folder()
@@ -259,6 +262,7 @@ class mitim_job:
                 )
                 embed()
 
+        # ~~~~~~ Close
         self.close()
 
         print(
@@ -280,7 +284,7 @@ class mitim_job:
 
         print("\t* Connecting to remote server:")
         print(
-            f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}'
+            f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with key " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}'
         )
 
         if log_file is not None:
@@ -567,7 +571,8 @@ class mitim_job:
             else:
                 print("\t\t- Not all received, trying once again", typeMsg="w")
                 time.sleep(10)
-                received = self.retrieve(check_if_files_received=False)
+                _ = self.retrieve(check_if_files_received=False)
+            received = self.check_all_received()
         else:
             received = True
 
@@ -631,6 +636,12 @@ class mitim_job:
         self.output_files = output_files_backup
 
     def interpret_status(self):
+        '''
+        Status of job:
+            0: Submitted/pending
+            1: Running
+            2: Not found / finished
+        '''
 
         # -----------------------------------------------
         # Read output of squeue command -> self.infoSLURM
@@ -650,6 +661,20 @@ class mitim_job:
 
             self.jobid_found = self.infoSLURM["JOBID"]
 
+        # -----------------------------------------------
+        # Interpret status
+        # -----------------------------------------------
+
+        if self.infoSLURM["STATE"] == "PENDING":
+            self.status = 0
+        elif (self.infoSLURM["STATE"] == "RUNNING") or (self.infoSLURM["STATE"] == "COMPLETING"):
+            self.status = 1
+        elif self.infoSLURM["STATE"] == "NOT FOUND":
+            self.status = 2
+        else:
+            print('Unknown SLURM status, please check')
+            embed()
+
         # ------------------------------------------------------------
         # If it was available, read the status of the ACTUAL slurm job
         # ------------------------------------------------------------
@@ -664,7 +689,7 @@ class mitim_job:
         # Print info to screen
         # ------------------------------------------------------------
 
-        txt = "\t- Job was checked"
+        txt = "\t* Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
             txt += f' (jobid {self.jobid_found}, found from name "{self.slurm_settings["name"]}")'
         elif self.jobid is not None:
