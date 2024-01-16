@@ -242,19 +242,7 @@ class mitim_job:
             timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
         )
 
-        self.retrieve()
-
-        if check_if_files_received:
-            for _ in range(2):
-                received = self.check_all_received()
-                if received:
-                    print("\t\t- All correct")
-                    break
-                print("\t\t- Not all received, trying again", typeMsg="w")
-                time.sleep(10)
-                self.retrieve()
-        else:
-            received = True
+        received = self.retrieve(check_if_files_received=check_if_files_received)
 
         if received:
             if wait_for_all_commands and removeScratchFolders:
@@ -503,7 +491,7 @@ class mitim_job:
 
         return output, error
 
-    def retrieve(self):
+    def retrieve(self, check_if_files_received=True):
         print(
             f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
         )
@@ -570,6 +558,20 @@ class mitim_job:
             "rm "
             + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
         )
+
+        # Check if all files were received
+        if check_if_files_received:
+            received = self.check_all_received()
+            if received:
+                print("\t\t- All correct")
+            else:
+                print("\t\t- Not all received, trying once again", typeMsg="w")
+                time.sleep(10)
+                received = self.retrieve(check_if_files_received=False)
+        else:
+            received = True
+
+        return received
 
     def remove_scratch_folder(self):
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
