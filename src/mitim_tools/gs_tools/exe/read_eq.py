@@ -14,4 +14,4 @@ for file in files:
 if len(gs) == 1:
     gs[0].plot()
 else:
-    axs,fn = GEQtools.compareGeqdsk(gs)
+    axs, fn = GEQtools.compareGeqdsk(gs)

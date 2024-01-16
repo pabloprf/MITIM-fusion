@@ -21,7 +21,7 @@ parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
     "--var", type=float, required=False, default=0.01
 )  # Variation in inputs (1% default)
-parser.add_argument("-r", required=False, default=False, action='store_true')
+parser.add_argument("-r", required=False, default=False, action="store_true")
 
 args = parser.parse_args()
 folder = args.folder

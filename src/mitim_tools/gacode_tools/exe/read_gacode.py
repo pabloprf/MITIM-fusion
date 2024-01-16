@@ -9,7 +9,9 @@ e.g.
 
 parser = argparse.ArgumentParser()
 parser.add_argument("files", type=str, nargs="*")
-parser.add_argument("--rho", type=float, required= False, default=0.89) # Last rho for gradients plot
+parser.add_argument(
+    "--rho", type=float, required=False, default=0.89
+)  # Last rho for gradients plot
 args = parser.parse_args()
 
 files = args.files
@@ -25,4 +27,4 @@ for file in files:
 
 # Plot
 
-fn = PROFILEStools.plotAll(profs,lastRhoGradients=rho)
+fn = PROFILEStools.plotAll(profs, lastRhoGradients=rho)

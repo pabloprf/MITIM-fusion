@@ -5,6 +5,7 @@ from mitim_tools.gacode_tools.aux import GACODEdefaults
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+
 def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
     nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
 
@@ -83,16 +84,22 @@ def interpret_trdat(file):
                 truly_error = True
 
         if truly_error:
-            print('\t- Detected "?" in TRDAT output, printing tr_dat around errors:', typeMsg="w")
+            print(
+                '\t- Detected "?" in TRDAT output, printing tr_dat around errors:',
+                typeMsg="w",
+            )
             print("-------------------------------", typeMsg="w")
             for i in range(len(aux)):
-                if ('?' in aux[i]) and ('????' not in aux[i]):
-                    print("".join(aux[np.max(i-5,0):i+2]), typeMsg="w")
+                if ("?" in aux[i]) and ("????" not in aux[i]):
+                    print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
                     print("-------------------------------", typeMsg="w")
-            if not print("Do you wish to continue? It will likely fail! (c)", typeMsg="q"):
+            if not print(
+                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
+            ):
                 embed()
         else:
             print("\t- TRDAT output did not show any error", typeMsg="i")
+
 
 """
 TRANSP nml constructor

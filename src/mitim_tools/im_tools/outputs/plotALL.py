@@ -78,8 +78,8 @@ mainFred = mainF.split("/")[-1]
 
 # ------ Plot Summary of all runs, and convergence summary
 
- 
-fn = GUItools.FigureNotebook( "ALL", geometry="1700x900")
+
+fn = GUItools.FigureNotebook("ALL", geometry="1700x900")
 fig1 = fn.add_figure(label="Data")
 
 axSummary = []

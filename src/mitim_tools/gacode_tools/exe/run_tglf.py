@@ -24,8 +24,10 @@ parser.add_argument("folder", type=str)
 parser.add_argument("tglf", type=str)
 parser.add_argument("--gacode", required=False, type=str, default=None)
 parser.add_argument("--scan", required=False, type=str, default=None)
-parser.add_argument("--drives", required=False, default=False, action='store_true')
-parser.add_argument("--restart","-r", required=False, default=False, action='store_true')
+parser.add_argument("--drives", required=False, default=False, action="store_true")
+parser.add_argument(
+    "--restart", "-r", required=False, default=False, action="store_true"
+)
 
 
 args = parser.parse_args()
@@ -58,7 +60,7 @@ elif scan is not None:
         variable=scan,
         varUpDown=np.linspace(0.2, 2.0, 5),
         TGLFsettings=None,
-        restart=restart
+        restart=restart,
     )
     tglf.readScan(label="scan1", variable=scan)
     tglf.plotScan(labels=["scan1"], variableLabel=scan)

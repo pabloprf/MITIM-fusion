@@ -136,8 +136,6 @@ def tgyro_model(
     )
 
     # VGEN?
-    
-
 
     # copy for future modifications
     self.file_profs_mod = f"{self.file_profs}_modified"

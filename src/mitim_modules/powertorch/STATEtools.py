@@ -355,8 +355,7 @@ class powerstate:
         if axs is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-             
-            self.fn = FigureNotebook( "PowerState", geometry="1800x900")
+            self.fn = FigureNotebook("PowerState", geometry="1800x900")
             figMain = self.fn.add_figure(label="PowerState")
 
             figProf_1 = self.fn.add_figure(label="Profiles")
@@ -851,8 +850,9 @@ class powerstate:
                 self.plasma["te"], self.plasma["CZ"]
             )  # MW/m^2
 
-        if ('forceZeroParticleFlux' in self.TransportOptions['ModelOptions']) and \
-        self.TransportOptions['ModelOptions']['forceZeroParticleFlux']:
+        if (
+            "forceZeroParticleFlux" in self.TransportOptions["ModelOptions"]
+        ) and self.TransportOptions["ModelOptions"]["forceZeroParticleFlux"]:
             self.plasma["Ce"] = self.plasma["Ce"] * 0
 
         """

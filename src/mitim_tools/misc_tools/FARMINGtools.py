@@ -16,7 +16,7 @@ import paramiko
 import tarfile
 import numpy as np
 from contextlib import contextmanager
-from mitim_tools.misc_tools import IOtools,CONFIGread
+from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
@@ -30,7 +30,7 @@ else:
 
 UseCUDAifAvailable = True
 
-'''
+"""
 New handling of jobs in remote or local clusters. Example use:
 
     folderWork = path_to_local_folder
@@ -61,29 +61,27 @@ New handling of jobs in remote or local clusters. Example use:
     # Run job
     job.run()
 
-'''
+"""
 
 
 class mitim_job:
-    def __init__(self,folder_local):
-
+    def __init__(self, folder_local):
         self.folder_local = folder_local
         self.jobid = None
 
     def define_machine(
-            self,
-            code,
-            nameScratch,
-            launchSlurm=True,
-            slurm_settings={},
-            ):
-        
+        self,
+        code,
+        nameScratch,
+        launchSlurm=True,
+        slurm_settings={},
+    ):
         # Separated in case I need to quickly grab the machine settings
-        self.define_machine_quick(code,nameScratch,slurm_settings=slurm_settings)
+        self.define_machine_quick(code, nameScratch, slurm_settings=slurm_settings)
 
         self.launchSlurm = launchSlurm
 
-        if self.launchSlurm and (len(self.machineSettings['slurm']) == 0):
+        if self.launchSlurm and (len(self.machineSettings["slurm"]) == 0):
             self.launchSlurm = False
             print(
                 "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
@@ -92,53 +90,52 @@ class mitim_job:
 
         # Print Slurm info
         if self.launchSlurm:
-            print('\t- Slurm Settings:')
-            print('\t\t- Job settings:')
+            print("\t- Slurm Settings:")
+            print("\t\t- Job settings:")
             for key in self.slurm_settings:
                 if self.slurm_settings[key] is not None:
-                    print(f'\t\t\t- {key}: {self.slurm_settings[key]}')
-            print('\t\t- Partition settings:')
+                    print(f"\t\t\t- {key}: {self.slurm_settings[key]}")
+            print("\t\t- Partition settings:")
             print(f'\t\t\t- machine: {self.machineSettings["machine"]}')
             print(f'\t\t\t- username: {self.machineSettings["user"]}')
-            for key in self.machineSettings['slurm']:
+            for key in self.machineSettings["slurm"]:
                 print(f'\t\t\t- {key}: {self.machineSettings["slurm"][key]}')
 
-    def define_machine_quick(self,code,nameScratch,slurm_settings={}):
-        
+    def define_machine_quick(self, code, nameScratch, slurm_settings={}):
         self.slurm_settings = slurm_settings
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Defaults for slurm
-        self.slurm_settings.setdefault('name','mitim_job')
-        self.slurm_settings.setdefault('minutes',10)
-        self.slurm_settings.setdefault('cpuspertask',1)
-        self.slurm_settings.setdefault('ntasks',1)
-        self.slurm_settings.setdefault('nodes',None)
-        self.slurm_settings.setdefault('job_array',None)
+        self.slurm_settings.setdefault("name", "mitim_job")
+        self.slurm_settings.setdefault("minutes", 10)
+        self.slurm_settings.setdefault("cpuspertask", 1)
+        self.slurm_settings.setdefault("ntasks", 1)
+        self.slurm_settings.setdefault("nodes", None)
+        self.slurm_settings.setdefault("job_array", None)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
-            )
+        )
         self.folderExecution = self.machineSettings["folderWork"]
 
     def prep(
-            self,
-            command,
-            input_files=[],
-            input_folders=[],
-            output_files=[],
-            output_folders=[],
-            shellPreCommands=[],
-            shellPostCommands=[],
-            label_log_files="",
-            ):
-        '''
+        self,
+        command,
+        input_files=[],
+        input_folders=[],
+        output_files=[],
+        output_folders=[],
+        shellPreCommands=[],
+        shellPostCommands=[],
+        label_log_files="",
+    ):
+        """
         command:
             Option 1: string with commands to execute separated by &&
             Option 2: list of strings with commands to execute
-        '''
+        """
 
         # Pass to class
         self.command = command
@@ -146,13 +143,12 @@ class mitim_job:
         self.input_folders = input_folders
         self.output_files = output_files
         self.output_folders = output_folders
-        
+
         self.shellPreCommands = shellPreCommands
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self,waitYN=True,timeoutSecs=1e6,removeScratchFolders=True):
-
+    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True):
         if not waitYN:
             removeScratchFolders = False
 
@@ -160,16 +156,16 @@ class mitim_job:
         comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
             self.command,
             self.machineSettings["folderWork"],
-            self.machineSettings['modules'],
-            job_array=self.slurm_settings['job_array'],
+            self.machineSettings["modules"],
+            job_array=self.slurm_settings["job_array"],
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            nameJob=self.slurm_settings['name'],
-            minutes=self.slurm_settings['minutes'],
-            nodes=self.slurm_settings['nodes'],
-            ntasks=self.slurm_settings['ntasks'],
-            cpuspertask=self.slurm_settings['cpuspertask'],
+            nameJob=self.slurm_settings["name"],
+            minutes=self.slurm_settings["minutes"],
+            nodes=self.slurm_settings["nodes"],
+            ntasks=self.slurm_settings["ntasks"],
+            cpuspertask=self.slurm_settings["cpuspertask"],
             slurm=self.machineSettings["slurm"],
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
@@ -185,12 +181,18 @@ class mitim_job:
         self.output_files = curateOutFiles(self.output_files)
 
         # Relative paths TO FIX
-        self.input_files = [os.path.relpath(path, self.folder_local) for path in self.input_files]
-        self.input_folders = [os.path.relpath(path, self.folder_local) for path in self.input_folders]
+        self.input_files = [
+            os.path.relpath(path, self.folder_local) for path in self.input_files
+        ]
+        self.input_folders = [
+            os.path.relpath(path, self.folder_local) for path in self.input_folders
+        ]
 
         # Process
-        self.full_process(comm,removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs)
-        
+        self.full_process(
+            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs
+        )
+
         # Get jobid
         if self.launchSlurm:
             with open(self.folder_local + "/mitim.out", "r") as f:
@@ -204,12 +206,11 @@ class mitim_job:
     # --------------------------------------------------------------------
 
     def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True):
-
-        '''
+        """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
         want to execute that.
-        '''
+        """
         wait_for_all_commands = True
 
         if timeoutSecs < 1e6:
@@ -220,32 +221,45 @@ class mitim_job:
         time_init = datetime.datetime.now()
 
         print(
-        f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) --------------")
+            f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{timeOut_txt}) --------------"
+        )
 
-        self.connect(log_file=f'{self.folder_local}/paramiko.log')
+        self.connect(log_file=f"{self.folder_local}/paramiko.log")
         if removeScratchFolders:
             self.remove_scratch_folder()
         self.create_scratch_folder()
         self.send()
 
-        output, error = self.execute(comm, make_relative=True,wait_for_all_commands=wait_for_all_commands, printYN=True, timeoutSecs = timeoutSecs if timeoutSecs < 1e6 else None)
-        
+        output, error = self.execute(
+            comm,
+            make_relative=True,
+            wait_for_all_commands=wait_for_all_commands,
+            printYN=True,
+            timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+        )
+
         for _ in range(2):
             self.retrieve()
             received = self.check_all_received()
-            if received: 
-                print('\t\t- All correct')
+            if received:
+                print("\t\t- All correct")
                 break
-            print('\t\t- Not all received, trying again',typeMsg='w')
+            print("\t\t- Not all received, trying again", typeMsg="w")
             time.sleep(10)
 
         if received:
             if wait_for_all_commands and removeScratchFolders:
                 self.remove_scratch_folder()
         else:
-            cont = print("\t* Not all expected files received, not removing scratch folder",typeMsg='q')
+            cont = print(
+                "\t* Not all expected files received, not removing scratch folder",
+                typeMsg="q",
+            )
             if not cont:
-                print('[mitim] Stopped with embed(), you can look at output and error',typeMsg='w')
+                print(
+                    "[mitim] Stopped with embed(), you can look at output and error",
+                    typeMsg="w",
+                )
                 embed()
 
         self.close()
@@ -255,22 +269,22 @@ class mitim_job:
         )
 
     def connect(self, *args, **kwargs):
-
-        if self.machineSettings["machine"] != 'local':
+        if self.machineSettings["machine"] != "local":
             return self.connect_ssh(*args, **kwargs)
         else:
             self.jump_client, self.ssh, self.sftp = None, None, None
 
-    def connect_ssh(self, log_file = None):
-
+    def connect_ssh(self, log_file=None):
         self.jump_host = self.machineSettings["tunnel"]
-        self.jump_user = self.machineSettings['user']
+        self.jump_user = self.machineSettings["user"]
 
         self.target_host = self.machineSettings["machine"]
-        self.target_user = self.machineSettings['user']
+        self.target_user = self.machineSettings["user"]
 
-        print('\t* Connecting to remote server:')
-        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}')
+        print("\t* Connecting to remote server:")
+        print(
+            f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with identity: " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}'
+        )
 
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
@@ -278,13 +292,14 @@ class mitim_job:
         try:
             self.define_jump()
             self.define_server()
-        except (paramiko.ssh_exception.AuthenticationException):
+        except paramiko.ssh_exception.AuthenticationException:
             # If it fails, try to disable rsa-sha2-512 and rsa-sha2-256 (e.g. for iris.gat.com)
             self.define_jump()
-            self.define_server(disabled_algorithms={'pubkeys': ['rsa-sha2-512', 'rsa-sha2-256']})
+            self.define_server(
+                disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]}
+            )
 
     def define_server(self, disabled_algorithms=None):
-
         # Create a new SSH client for the target machine
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -298,115 +313,155 @@ class mitim_job:
             port=self.port,
             sock=self.sock,
             allow_agent=True,
-            )
+        )
 
         try:
             self.sftp = self.ssh.open_sftp()
-        except (paramiko.sftp.SFTPError):
-            raise Exception("[mitim] SFTPError: Your bashrc on the server likely contains print statements")
-
+        except paramiko.sftp.SFTPError:
+            raise Exception(
+                "[mitim] SFTPError: Your bashrc on the server likely contains print statements"
+            )
 
     def define_jump(self):
-
         if self.jump_host is not None:
-
             # Create an SSH client instance for the jump host
             self.jump_client = paramiko.SSHClient()
             self.jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             # Connect to the jump host
             self.jump_client.connect(
-                self.jump_host, 
-                username=self.jump_user, 
-                port=self.machineSettings['port'] if self.machineSettings['port'] is not None else 22,
-                key_filename=self.machineSettings['identity'], 
-                allow_agent=True
-                )
+                self.jump_host,
+                username=self.jump_user,
+                port=self.machineSettings["port"]
+                if self.machineSettings["port"] is not None
+                else 22,
+                key_filename=self.machineSettings["identity"],
+                allow_agent=True,
+            )
 
             # Use the existing transport of self.jump_client for tunneling
             transport = self.jump_client.get_transport()
 
             # Create a channel to the target through the tunnel
             create_port_in_tunnel = 22
-            channel = transport.open_channel("direct-tcpip", (self.target_host, create_port_in_tunnel), (self.target_host, 0))
+            channel = transport.open_channel(
+                "direct-tcpip",
+                (self.target_host, create_port_in_tunnel),
+                (self.target_host, 0),
+            )
 
             # to pass to self.ssh
             self.port = create_port_in_tunnel
             self.sock = channel
             self.key_filename = None
- 
+
         else:
-            self.jump_client    = None
-            self.port           = self.machineSettings['port'] if self.machineSettings['port'] is not None else 22
-            self.sock           = None
-            self.key_filename   = self.machineSettings['identity']
+            self.jump_client = None
+            self.port = (
+                self.machineSettings["port"]
+                if self.machineSettings["port"] is not None
+                else 22
+            )
+            self.sock = None
+            self.key_filename = self.machineSettings["identity"]
 
     def create_scratch_folder(self):
-        
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f'\t\t{self.machineSettings["folderWork"]}')
 
-        command = 'mkdir -p ' + self.machineSettings['folderWork']
+        command = "mkdir -p " + self.machineSettings["folderWork"]
 
-        output, error =  self.execute(command)
+        output, error = self.execute(command)
 
         return output, error
 
     def send(self):
-
-        print(f'\t* Sending files{" to remove server" if self.ssh is not None else ""}:')
+        print(
+            f'\t* Sending files{" to remove server" if self.ssh is not None else ""}:'
+        )
 
         # Create a tarball of the local directory
-        print('\t\t- Tarballing')
-        with tarfile.open(os.path.join(self.folder_local, 'mitim_send.tar.gz'), 'w:gz') as tar:
+        print("\t\t- Tarballing")
+        with tarfile.open(
+            os.path.join(self.folder_local, "mitim_send.tar.gz"), "w:gz"
+        ) as tar:
             for file in self.input_files + self.input_folders:
                 tar.add(os.path.join(self.folder_local, file), arcname=file)
 
         # Send it
-        print('\t\t- Sending')
+        print("\t\t- Sending")
         if self.ssh is not None:
-            with TqdmUpTo(unit='B', unit_scale=True, miniters=1,
-                        desc='mitim_send.tar.gz',bar_format=' '*20+'{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]') as t:
+            with TqdmUpTo(
+                unit="B",
+                unit_scale=True,
+                miniters=1,
+                desc="mitim_send.tar.gz",
+                bar_format=" " * 20
+                + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+            ) as t:
                 self.sftp.put(
-                    os.path.join(self.folder_local, 'mitim_send.tar.gz'),
-                    os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'),
-                    callback=lambda sent, total_size: t.update_to(sent, total_size))
+                    os.path.join(self.folder_local, "mitim_send.tar.gz"),
+                    os.path.join(
+                        self.machineSettings["folderWork"], "mitim_send.tar.gz"
+                    ),
+                    callback=lambda sent, total_size: t.update_to(sent, total_size),
+                )
         else:
-            os.system('cp ' + os.path.join(self.folder_local, 'mitim_send.tar.gz') + ' ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+            os.system(
+                "cp "
+                + os.path.join(self.folder_local, "mitim_send.tar.gz")
+                + " "
+                + os.path.join(self.machineSettings["folderWork"], "mitim_send.tar.gz")
+            )
 
         # Extract it
-        print('\t\t- Extracting tarball')
-        self.execute('tar -xzf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz') + ' -C ' + self.machineSettings['folderWork'])
+        print("\t\t- Extracting tarball")
+        self.execute(
+            "tar -xzf "
+            + os.path.join(self.machineSettings["folderWork"], "mitim_send.tar.gz")
+            + " -C "
+            + self.machineSettings["folderWork"]
+        )
 
         # Remove tarballs
-        print('\t\t- Removing tarballs')
-        os.remove(os.path.join(self.folder_local, 'mitim_send.tar.gz'))
-        self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_send.tar.gz'))
+        print("\t\t- Removing tarballs")
+        os.remove(os.path.join(self.folder_local, "mitim_send.tar.gz"))
+        self.execute(
+            "rm "
+            + os.path.join(self.machineSettings["folderWork"], "mitim_send.tar.gz")
+        )
 
-    def execute(self,command_str,make_relative=False,**kwargs):
-
+    def execute(self, command_str, make_relative=False, **kwargs):
         # Always start by going to the folder
         if make_relative:
-            command_str_mod = f'cd {self.folderExecution} && {command_str}'
+            command_str_mod = f"cd {self.folderExecution} && {command_str}"
         else:
             command_str_mod = command_str
 
         if self.ssh is not None:
-            return self.execute_remote(command_str_mod,**kwargs)
+            return self.execute_remote(command_str_mod, **kwargs)
         else:
-            return self.execute_local(command_str_mod,**kwargs)
+            return self.execute_local(command_str_mod, **kwargs)
 
-    def execute_remote(self, command_str, printYN=False, timeoutSecs=None, wait_for_all_commands=True,**kwargs):
-
+    def execute_remote(
+        self,
+        command_str,
+        printYN=False,
+        timeoutSecs=None,
+        wait_for_all_commands=True,
+        **kwargs,
+    ):
         if printYN:
-            print('\t* Executing (remote):',typeMsg="i")
-            print(f'\t\t{command_str}')
+            print("\t* Executing (remote):", typeMsg="i")
+            print(f"\t\t{command_str}")
 
         output = None
         error = None
 
         try:
-            stdin, stdout, stderr = self.ssh.exec_command(command_str,timeout=timeoutSecs)
+            stdin, stdout, stderr = self.ssh.exec_command(
+                command_str, timeout=timeoutSecs
+            )
             # Wait for the command to complete and read the output
             if wait_for_all_commands:
                 stdin.close()
@@ -417,62 +472,89 @@ class mitim_job:
 
         return output, error
 
-    def execute_local(self, command_str, printYN=False, timeoutSecs=None,**kwargs):
-
+    def execute_local(self, command_str, printYN=False, timeoutSecs=None, **kwargs):
         if printYN:
-            print('\t* Executing (local):')
-            print(f'\t\t{command_str}')
+            print("\t* Executing (local):")
+            print(f"\t\t{command_str}")
 
-        output, error = run_subprocess([command_str], timeoutSecs=timeoutSecs, localRun=True)
+        output, error = run_subprocess(
+            [command_str], timeoutSecs=timeoutSecs, localRun=True
+        )
 
         return output, error
 
     def retrieve(self):
+        print(
+            f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
+        )
 
-        print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
-        
         # Create a tarball of the output files and folders on the remote machine
-        print('\t\t- Tarballing')
-        self.execute('tar -czf ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' -C ' + self.machineSettings['folderWork'] + ' ' + ' '.join(self.output_files + self.output_folders))
+        print("\t\t- Tarballing")
+        self.execute(
+            "tar -czf "
+            + os.path.join(self.machineSettings["folderWork"], "mitim_receive.tar.gz")
+            + " -C "
+            + self.machineSettings["folderWork"]
+            + " "
+            + " ".join(self.output_files + self.output_folders)
+        )
 
         # Download the tarball
-        print('\t\t- Downloading')
+        print("\t\t- Downloading")
         if self.ssh is not None:
-            with TqdmUpTo(unit='B', unit_scale=True, miniters=1,
-                        desc='mitim_receive.tar.gz',bar_format=' '*20+'{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]') as t:
+            with TqdmUpTo(
+                unit="B",
+                unit_scale=True,
+                miniters=1,
+                desc="mitim_receive.tar.gz",
+                bar_format=" " * 20
+                + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+            ) as t:
                 self.sftp.get(
-                    os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'),
-                    os.path.join(self.folder_local, 'mitim_receive.tar.gz'),
-                    callback=lambda sent, total_size: t.update_to(sent, total_size))
+                    os.path.join(
+                        self.machineSettings["folderWork"], "mitim_receive.tar.gz"
+                    ),
+                    os.path.join(self.folder_local, "mitim_receive.tar.gz"),
+                    callback=lambda sent, total_size: t.update_to(sent, total_size),
+                )
         else:
-            os.system('cp ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz') + ' ' + os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
+            os.system(
+                "cp "
+                + os.path.join(
+                    self.machineSettings["folderWork"], "mitim_receive.tar.gz"
+                )
+                + " "
+                + os.path.join(self.folder_local, "mitim_receive.tar.gz")
+            )
 
         # Extract the tarball locally
-        print('\t\t- Extracting tarball')
-        with tarfile.open(os.path.join(self.folder_local, 'mitim_receive.tar.gz'), 'r:gz') as tar:
+        print("\t\t- Extracting tarball")
+        with tarfile.open(
+            os.path.join(self.folder_local, "mitim_receive.tar.gz"), "r:gz"
+        ) as tar:
             tar.extractall(path=self.folder_local)
 
         # Remove tarballs
-        print('\t\t- Removing tarballs')
-        os.remove(os.path.join(self.folder_local, 'mitim_receive.tar.gz'))
-        self.execute('rm ' + os.path.join(self.machineSettings['folderWork'], 'mitim_receive.tar.gz'))
+        print("\t\t- Removing tarballs")
+        os.remove(os.path.join(self.folder_local, "mitim_receive.tar.gz"))
+        self.execute(
+            "rm "
+            + os.path.join(self.machineSettings["folderWork"], "mitim_receive.tar.gz")
+        )
 
     def remove_scratch_folder(self):
-
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
-        output, error = self.execute('rm -rf ' + self.machineSettings['folderWork'])
+        output, error = self.execute("rm -rf " + self.machineSettings["folderWork"])
 
         return output, error
 
     def close(self, *args, **kwargs):
-
-        if self.machineSettings["machine"] != 'local':
+        if self.machineSettings["machine"] != "local":
             return self.close_ssh(*args, **kwargs)
-        
-    def close_ssh(self):
 
-        print('\t* Closing connection')
+    def close_ssh(self):
+        print("\t* Closing connection")
 
         self.sftp.close()
         self.ssh.close()
@@ -483,7 +565,7 @@ class mitim_job:
     # --------------------------------------------------------------------
 
     def check(self):
-        '''
+        """
         Check job status slurm
 
             - If the job was launched with run(waitYN=False), then the script will not
@@ -491,23 +573,25 @@ class mitim_job:
                 which the check command uses to check the status of the job.
             - If the class was initiated but not run, it will not have the jobid, so it will
                 try to find it from the job_name, which must match the submitted one.
-        '''
+        """
 
         if self.jobid is not None:
             txt_look = f"-j {self.jobid}"
         else:
             txt_look = f"-n {self.slurm_settings['name']}"
 
-        command = f'squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" '
+        command = (
+            f'squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" '
+        )
 
         self.connect()
-        self.output_files.append('slurm_output.dat')
-        output, error = self.execute(command,printYN=True)
-        self.retrieve() # Retrieve self.output_files too
+        self.output_files.append("slurm_output.dat")
+        output, error = self.execute(command, printYN=True)
+        self.retrieve()  # Retrieve self.output_files too
         self.close()
 
-        output = str(output)[3:].split('\\n')
-        if len(output[1].split()) ==1:
+        output = str(output)[3:].split("\\n")
+        if len(output[1].split()) == 1:
             self.infoSLURM = None
         else:
             self.infoSLURM = {}
@@ -524,44 +608,45 @@ class mitim_job:
             self.jobid_found = None
 
         # Print info
-        txt = '\t- Job was checked'
+        txt = "\t- Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
             txt += f' (jobid {self.jobid_found}, found from name "{self.slurm_settings["name"]}")'
         elif self.jobid is not None:
-            txt += f' (jobid {self.jobid})'
+            txt += f" (jobid {self.jobid})"
         if self.infoSLURM is not None:
             txt += f', is {self.infoSLURM["STATE"]} (job.infoSLURM)'
         else:
-            txt += ', is not on the grid (job.infoSLURM is None)'
+            txt += ", is not on the grid (job.infoSLURM is None)"
         if self.log_file is not None:
-            txt += f'. Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines'
+            txt += f". Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines"
         print(txt)
 
     def check_all_received(self):
-
-        print('\t* Checking if all expected files and folders were received')
+        print("\t* Checking if all expected files and folders were received")
         received = True
         for file in self.output_files:
             if not os.path.exists(os.path.join(self.folder_local, file)):
-                print(f"\t\t- File {file} not received",typeMsg='w')
+                print(f"\t\t- File {file} not received", typeMsg="w")
                 received = False
         for folder in self.output_folders:
             if not os.path.exists(os.path.join(self.folder_local, folder)):
-                print(f"\t\t- Folder {folder} not received",typeMsg='w')
+                print(f"\t\t- Folder {folder} not received", typeMsg="w")
                 received = False
 
         return received
+
 
 class TqdmUpTo(tqdm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.initialized = False
-        
+
     def update_to(self, sent, total_size):
         if not self.initialized:
             self.total = total_size
             self.initialized = True
         self.update(sent - self.n)  # will also set self.n = sent
+
 
 """ 
 	Timeout function
@@ -571,8 +656,10 @@ class TqdmUpTo(tqdm):
 	- I don't recommend that "do things" includes a context manager like with Popen or it won't work... not sure why
 """
 
+
 def raise_timeout(signum, frame):
     raise TimeoutError
+
 
 @contextmanager
 def timeout(time, proc=None):
@@ -601,6 +688,7 @@ def timeout(time, proc=None):
     finally:
         # Unregister the signal so it won't be triggered if the timeout is not reached.
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
+
 
 def run_subprocess(commandExecute, timeoutSecs=None, localRun=False):
     """
@@ -641,6 +729,7 @@ def run_subprocess(commandExecute, timeoutSecs=None, localRun=False):
         p.stderr.close()
 
     return result, error
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
@@ -757,13 +846,12 @@ def create_slurm_execution_files(
 
     minutes = int(minutes)
 
-    partition = slurm.setdefault("partition",None)
-    email = slurm.setdefault("email",None)
-    exclude = slurm.setdefault("exclude",None)
-    account = slurm.setdefault("account",None)
-    constraint = slurm.setdefault("constraint",None)
-    memory_req = slurm.setdefault("mem",None)
-
+    partition = slurm.setdefault("partition", None)
+    email = slurm.setdefault("email", None)
+    exclude = slurm.setdefault("exclude", None)
+    account = slurm.setdefault("account", None)
+    constraint = slurm.setdefault("constraint", None)
+    memory_req = slurm.setdefault("mem", None)
 
     """
 	********************************************************************************************
@@ -887,6 +975,7 @@ def create_slurm_execution_files(
     comm = "bash mitim_shell_executor.sh > mitim.out"
 
     return comm, fileSBTACH, fileSHELL
+
 
 def curateOutFiles(outputFiles):
     # Avoid repetitions, otherwise, e.g., they will fail to rename

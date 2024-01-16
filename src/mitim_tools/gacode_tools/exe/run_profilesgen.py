@@ -13,7 +13,6 @@ folderWork, s2 = IOtools.reducePathLevel(file_cdf, level=1, isItFile=True)
 nameWork = s2.split(".cdf")[0]
 
 
-
 GACODErun.runPROFILES_GEN(
     folderWork,
     nameFiles=nameWork,

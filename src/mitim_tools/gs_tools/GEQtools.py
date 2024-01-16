@@ -245,11 +245,10 @@ class MITIMgeqdsk:
     def plot(self, fn=None, extraLabel=""):
         if fn is None:
             wasProvided = False
-             
+
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-             
-            self.fn = FigureNotebook( "GEQDSK Notebook", geometry="1600x1000")
+            self.fn = FigureNotebook("GEQDSK Notebook", geometry="1600x1000")
         else:
             wasProvided = True
             self.fn = fn
@@ -1133,11 +1132,10 @@ def plotSurfaces(
 def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     if fn is None:
         wasProvided = False
-         
+
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-         
-        fn = FigureNotebook( "GEQDSK Notebook", geometry="1600x1000")
+        fn = FigureNotebook("GEQDSK Notebook", geometry="1600x1000")
     else:
         wasProvided = True
 
@@ -1200,7 +1198,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
             label=f"{labelsGs[i]} ",
         )
 
-    return ax_plasma,fn
+    return ax_plasma, fn
 
 
 def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="k"):

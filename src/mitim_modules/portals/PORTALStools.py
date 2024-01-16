@@ -5,6 +5,7 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+
 def selectSurrogate(output, surrogateOptions):
     if output is not None:
         # If it's a target, just linear
@@ -250,10 +251,10 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
     v = torch.ones(tuple(X.shape[:-1]) + (1,)).to(X)
 
     # """
-	# Apply diffusivities (not real value, just capturing dependencies,
-	# work on normalization, like e_J). Or maybe calculate gradients within powerstate
-	# Remember that for Ti I'm using ne...
-	# """
+    # Apply diffusivities (not real value, just capturing dependencies,
+    # work on normalization, like e_J). Or maybe calculate gradients within powerstate
+    # Remember that for Ti I'm using ne...
+    # """
     # if surrogate_parameters["useDiffusivities"]:
     #     pos = int(output.split("_")[-1])
     #     var = output.split("_")[0]
@@ -277,9 +278,9 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
     #     #     v[:] = grad
 
     # """
-	# Apply flux ratios
-	# For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
-	# """
+    # Apply flux ratios
+    # For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
+    # """
 
     # if surrogate_parameters["useFluxRatios"]:
     #     """
@@ -339,6 +340,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
                 powerstate.calculateTargets()
 
     return powerstate
+
 
 def default_physicsBasedParams():
     """

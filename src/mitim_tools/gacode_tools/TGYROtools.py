@@ -210,9 +210,16 @@ class TGYRO:
         )  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
         quasineutrality = TGYRO_physics_options.get("quasineutrality", [])
 
-        if (iterations == 0) and ('tgyro_method' in TGYRO_solver_options) and (TGYRO_solver_options['tgyro_method'] != 1):
-            print(f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",typeMsg='w')
-            TGYRO_solver_options['tgyro_method'] = 1
+        if (
+            (iterations == 0)
+            and ("tgyro_method" in TGYRO_solver_options)
+            and (TGYRO_solver_options["tgyro_method"] != 1)
+        ):
+            print(
+                f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",
+                typeMsg="w",
+            )
+            TGYRO_solver_options["tgyro_method"] = 1
 
         # ------------------------------------------------------------------------
 
@@ -231,8 +238,11 @@ class TGYRO:
             ]
 
         if vectorRange[2] == 1:
-            extra_add = vectorRange[0]+1E-3
-            print(f" -> TGYRO cannot run with only one point ({vectorRange[0]}), adding {extra_add}", typeMsg="w")
+            extra_add = vectorRange[0] + 1e-3
+            print(
+                f" -> TGYRO cannot run with only one point ({vectorRange[0]}), adding {extra_add}",
+                typeMsg="w",
+            )
             vectorRange[2], vectorRange[1] = 2, extra_add
             if special_radii_mod is not None:
                 special_radii_mod = np.append(special_radii_mod, [extra_add])
@@ -503,9 +513,9 @@ class TGYRO:
 
                 inputgacode_new.writeCurrentStatus()
             # ------------------------------------------------------------------------------------------------------------------------
-                
+
             # Copy those files that I'm interested in, plus the extra file, into the main folder
-            for file in self.outputFiles + ['input.tgyro']:
+            for file in self.outputFiles + ["input.tgyro"]:
                 os.system(f"cp {self.FolderTGYRO_tmp}/{file} {self.FolderTGYRO}/{file}")
 
             # Rename the input.tglf.news to the actual rho they where at
@@ -760,13 +770,11 @@ class TGYRO:
 
         return res
 
-    def plot(self, fn=None, labels=["tgyro1"], doNotShow=False,fn_color=None):
+    def plot(self, fn=None, labels=["tgyro1"], doNotShow=False, fn_color=None):
         if fn is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-             
-            self.fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
+            self.fn = FigureNotebook("TGYRO Output Notebook", geometry="1800x900")
         else:
             self.fn = fn
 
@@ -782,7 +790,7 @@ class TGYRO:
 
         # **** Final real
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label="Final Comp.")
+        fig1 = self.fn.add_figure(tab_color=fn_color, label="Final Comp.")
         grid = plt.GridSpec(3, 4, hspace=0.4, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
         ax01 = fig1.add_subplot(grid[0, 1])
@@ -1057,12 +1065,12 @@ class TGYRO:
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0.0)
 
-        figProf_1 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Prof.")
-        figProf_2 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Power")
-        figProf_3 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Geom.")
-        figProf_4 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Grad.")
-        figProf_6 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Other")
-        figProf_7 = self.fn.add_figure(tab_color=fn_color,label="GACODE-Impurities")
+        figProf_1 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Prof.")
+        figProf_2 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Power")
+        figProf_3 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Geom.")
+        figProf_4 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Grad.")
+        figProf_6 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Other")
+        figProf_7 = self.fn.add_figure(tab_color=fn_color, label="GACODE-Impurities")
 
         grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
         axsProf_1 = [
@@ -1169,7 +1177,9 @@ class TGYRO:
                 print("Could not plot profiles_final", typeMsg="w")
 
             try:
-                figFlows = self.fn.add_figure(tab_color=fn_color,label="GACODE-FlowsFin")
+                figFlows = self.fn.add_figure(
+                    tab_color=fn_color, label="GACODE-FlowsFin"
+                )
                 self.results[label].plotBalance(fig=figFlows)
             except:
                 print("Could not plot final flows", typeMsg="w")
@@ -1184,6 +1194,7 @@ class TGYRO:
                     extratitle="TGLF_" + label,
                     plotGACODE=False,
                 )
+
 
 class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
@@ -2164,13 +2175,11 @@ class TGYROoutput:
     def TGYROmodeledVariables(self, **kwargs):
         return PORTALSinteraction.TGYROmodeledVariables(self, **kwargs)
 
-    def plot(self, fn=None, label="", prelabel="",fn_color=None):
+    def plot(self, fn=None, label="", prelabel="", fn_color=None):
         if fn is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-             
-            self.fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
+            self.fn = FigureNotebook("TGYRO Output Notebook", geometry="1800x900")
 
         else:
             self.fn = fn
@@ -2179,7 +2188,9 @@ class TGYROoutput:
         # Summary 1
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Overview" + label)
+        fig1 = self.fn.add_figure(
+            tab_color=fn_color, label=prelabel + "Overview" + label
+        )
 
         grid = plt.GridSpec(3, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[:, 0])
@@ -2587,7 +2598,7 @@ class TGYROoutput:
         # Summary 2
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Match" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color, label=prelabel + "Match" + label)
 
         grid = plt.GridSpec(4, 4, hspace=0.45, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -3178,7 +3189,9 @@ class TGYROoutput:
         # Convergence
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Convergence" + label)
+        fig1 = self.fn.add_figure(
+            tab_color=fn_color, label=prelabel + "Convergence" + label
+        )
 
         try:
             self.plotConvergence(fig1=fig1)
@@ -3192,7 +3205,7 @@ class TGYROoutput:
         # Fluxes
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Fluxes" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color, label=prelabel + "Fluxes" + label)
 
         grid = plt.GridSpec(4, self.Qi_sim_turb.shape[0] + 3, hspace=0.3, wspace=0.3)
 
@@ -3595,7 +3608,7 @@ class TGYROoutput:
         # Powers
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Powers" + label)
+        fig1 = self.fn.add_figure(tab_color=fn_color, label=prelabel + "Powers" + label)
 
         grid = plt.GridSpec(2, 5, hspace=0.2, wspace=0.4)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -3788,7 +3801,11 @@ class TGYROoutput:
             markersize=3,
         )
         ax.plot(
-            self.roa[-1], self.Qe_tarMW_exch[-1], "--o", c="red", markersize=3,
+            self.roa[-1],
+            self.Qe_tarMW_exch[-1],
+            "--o",
+            c="red",
+            markersize=3,
         )
         ax.plot(
             self.roa[0],
@@ -3799,7 +3816,11 @@ class TGYROoutput:
             markersize=3,
         )
         ax.plot(
-            self.roa[-1], self.Qe_tarMW_expwd[-1], "-.o", c="red", markersize=3,
+            self.roa[-1],
+            self.Qe_tarMW_expwd[-1],
+            "-.o",
+            c="red",
+            markersize=3,
         )
 
         ax.plot(
@@ -4103,7 +4124,9 @@ class TGYROoutput:
         # Metrics
         # ------------------------------------------------------------------------------
 
-        fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Perform." + label)
+        fig1 = self.fn.add_figure(
+            tab_color=fn_color, label=prelabel + "Perform." + label
+        )
         grid = plt.GridSpec(2, 2, hspace=0.45, wspace=0.3)
 
         # Fusion Gain
@@ -4304,7 +4327,9 @@ class TGYROoutput:
             # Final
             # ------------------------------------------------------------------------------
 
-            fig1 = self.fn.add_figure(tab_color=fn_color,label=prelabel + "Flows" + label)
+            fig1 = self.fn.add_figure(
+                tab_color=fn_color, label=prelabel + "Flows" + label
+            )
             self.plotBalance(fig=fig1)
 
     """
@@ -4534,15 +4559,16 @@ class TGYROoutput:
 
 def plotAll(TGYROoutputs, labels=None, fn=None):
     if fn is None:
-         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-        fn = FigureNotebook( "TGYRO Output Notebook", geometry="1800x900")
+
+        fn = FigureNotebook("TGYRO Output Notebook", geometry="1800x900")
 
     if labels is None:
         labels = [f" {i}" for i in np.arange(1, len(TGYROoutputs) + 1, 1)]
 
     for i, TGYROoutput in enumerate(TGYROoutputs):
         TGYROoutput.plot(fn=fn, label=labels[i])
+
 
 class TGYROinput:
     def __init__(self, input_profiles, file=None, onlyThermal=False, limitSpecies=100):
@@ -4686,7 +4712,9 @@ def produceInputs_TGYROworkflow(
         ProfilesGenerated, StateGenerated = True, True
         print(f"\t\t+++++++ {IOtools.clipstr(file_to_look)} already generated")
     else:
-        print(f"\t\t+++++++ {IOtools.clipstr(f'{finalFolder}/{file_to_look}')} file not found")
+        print(
+            f"\t\t+++++++ {IOtools.clipstr(f'{finalFolder}/{file_to_look}')} file not found"
+        )
         ProfilesGenerated = False
         if os.path.exists(finalFolder + "/10001.cdf"):
             StateGenerated = True

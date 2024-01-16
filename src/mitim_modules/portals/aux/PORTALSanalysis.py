@@ -64,43 +64,52 @@ class PORTALSanalyzer:
             )
 
             return cls(opt_fun, folderAnalysis=folderAnalysis)
-        
+
         except (FileNotFoundError, AttributeError) as e:
-            print("- Could not read optimization results due to error:", typeMsg='w')
+            print("- Could not read optimization results due to error:", typeMsg="w")
             print(e)
-            print("- Trying to read PORTALS initialization...", typeMsg='w')
+            print("- Trying to read PORTALS initialization...", typeMsg="w")
             return PORTALSinitializer(folder)
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):
-        print("\t- Merging PORTALSanalyzer instances by tricking evaluations counter",typeMsg='w')
+        print(
+            "\t- Merging PORTALSanalyzer instances by tricking evaluations counter",
+            typeMsg="w",
+        )
 
         merged_mitim_runs = {}
         merged_profiles = []
         merged_tgyros = []
         cont = 0
         for instance in instances:
-            for key in range(0,instance.ilast+1):
-                merged_mitim_runs[cont+key] = instance.mitim_runs[key]
+            for key in range(0, instance.ilast + 1):
+                merged_mitim_runs[cont + key] = instance.mitim_runs[key]
                 merged_profiles.append(instance.profiles[key])
                 merged_tgyros.append(instance.tgyros[key])
-            cont += instance.ilast+1
+            cont += instance.ilast + 1
 
         base_instance = instances[base_index]
 
-        merged_instance = cls(base_instance.opt_fun,folderAnalysis)
+        merged_instance = cls(base_instance.opt_fun, folderAnalysis)
         merged_instance.mitim_runs = merged_mitim_runs
-        merged_instance.mitim_runs['profiles_original'] = base_instance.mitim_runs['profiles_original']
-        merged_instance.mitim_runs['profiles_original_un'] = base_instance.mitim_runs['profiles_original_un']
+        merged_instance.mitim_runs["profiles_original"] = base_instance.mitim_runs[
+            "profiles_original"
+        ]
+        merged_instance.mitim_runs["profiles_original_un"] = base_instance.mitim_runs[
+            "profiles_original_un"
+        ]
 
-        merged_instance.prep_metrics(ilast=cont-1)
+        merged_instance.prep_metrics(ilast=cont - 1)
 
         return merged_instance
-    
+
     @classmethod
     def merge_from_folders(cls, folders, folderAnalysis=None, base_index=0):
         instances = [cls.from_folder(folder) for folder in folders]
-        return cls.merge_instances(instances, folderAnalysis=folderAnalysis, base_index=base_index)
+        return cls.merge_instances(
+            instances, folderAnalysis=folderAnalysis, base_index=base_index
+        )
 
     # ****************************************************************************
     # PREPARATION
@@ -174,7 +183,9 @@ class PORTALSanalyzer:
         file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
         if os.path.exists(file):
             print("\t\t- Reading next profile to evaluate (from folder)")
-            self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+            self.profiles_next = PROFILEStools.PROFILES_GACODE(
+                file, calculateDerived=False
+            )
 
             file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
             if os.path.exists(file):
@@ -213,7 +224,9 @@ class PORTALSanalyzer:
             powerstate = self.opt_fun.prfs_model.mainFunction.powerstate
 
             try:
-                OriginalFimp = powerstate.TransportOptions["ModelOptions"]["OriginalFimp"]
+                OriginalFimp = powerstate.TransportOptions["ModelOptions"][
+                    "OriginalFimp"
+                ]
             except:
                 OriginalFimp = 1.0
 
@@ -374,24 +387,23 @@ class PORTALSanalyzer:
     # ****************************************************************************
 
     def plotPORTALS(self):
-
         if self.fn is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            self.fn = FigureNotebook( "PORTALS Summary", geometry="1700x1000")
 
-        fig = self.fn.add_figure(label="PROFILES Ranges",tab_color=0)
+            self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000")
+
+        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=0)
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=self.fn,fn_color=1)
+        self.plotSummary(fn=self.fn, fn_color=1)
 
-        fig = self.fn.add_figure(label="PORTALS Metrics",tab_color=2)
+        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=2)
         self.plotMetrics(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Expected",tab_color=3)
+        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=3)
         self.plotExpected(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Simulation",tab_color=4)
+        fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4)
         self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
@@ -406,28 +418,28 @@ class PORTALSanalyzer:
     def plotRanges(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotRanges(self, **kwargs)
 
-    def plotModelComparison(self, UseThisTGLFfull = None, **kwargs):
-
+    def plotModelComparison(self, UseThisTGLFfull=None, **kwargs):
         UseTGLFfull_x = None
 
         if UseThisTGLFfull is not None:
-            '''
+            """
             UseThisTGLFfull should be a tuple (folder,label) where to read the
             results of running the method runTGLFfull() below.
             Note that it could be [None, label]
-            '''
+            """
             folder, label = UseThisTGLFfull
             if folder is None:
                 folder = f"{self.folder}/tglf_full/"
             self.tglf_full = TGLFtools.TGLF(rhos=self.rhos)
             for ev in range(self.ilast + 1):
-                self.tglf_full.read(folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"ev{ev}")
+                self.tglf_full.read(
+                    folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"ev{ev}"
+                )
             UseTGLFfull_x = label
 
         return PORTALSplot.PORTALSanalyzer_plotModelComparison(
-            self,
-            UseTGLFfull_x=UseTGLFfull_x,
-            **kwargs)
+            self, UseTGLFfull_x=UseTGLFfull_x, **kwargs
+        )
 
     # ****************************************************************************
     # UTILITIES to extract aspects of PORTALS
@@ -439,35 +451,35 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 = self.mitim_runs[evaluation]["tgyro"].results['use'].profiles
-    
+        p0 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles
+
         p = copy.deepcopy(p0)
 
         if correct_targets:
             print(
-                "\t- Replacing powers from input.gacode to have the same as input.gacode.new",typeMsg='i'
+                "\t- Replacing powers from input.gacode to have the same as input.gacode.new",
+                typeMsg="i",
             )
-            
-            p1 = self.mitim_runs[evaluation]["tgyro"].results['use'].profiles_final
+
+            p1 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles_final
 
             for ikey in [
-                    "qei(MW/m^3)",
-                    "qbrem(MW/m^3)",
-                    "qsync(MW/m^3)",
-                    "qline(MW/m^3)",
-                    "qfuse(MW/m^3)",
-                    "qfusi(MW/m^3)",
-                ]:
-
+                "qei(MW/m^3)",
+                "qbrem(MW/m^3)",
+                "qsync(MW/m^3)",
+                "qline(MW/m^3)",
+                "qfuse(MW/m^3)",
+                "qfusi(MW/m^3)",
+            ]:
                 p.profiles[ikey] = p1.profiles[ikey]
 
         return p
 
     def extractModels(self, step=-1):
         if step < 0:
-            step = len(self.opt_fun.prfs_model.steps)-1
+            step = len(self.opt_fun.prfs_model.steps) - 1
 
-        gps =  self.opt_fun.prfs_model.steps[step].GP["individual_models"]
+        gps = self.opt_fun.prfs_model.steps[step].GP["individual_models"]
 
         # Make dictionary
         models = {}
@@ -476,7 +488,7 @@ class PORTALSanalyzer:
 
         # PRINTING
         print(
-f'''
+            f"""
 ****************************************************************************************************
 > MITIM has extracted {len(models)} GP models as a dictionary (only returned variable), to proceed:
     1. Look at the dictionary keys to see which models are available:
@@ -491,7 +503,9 @@ f'''
                 x_test = m.x
                 samples = m(x_test,samples=100)
 ****************************************************************************************************
-''',typeMsg='i')
+""",
+            typeMsg="i",
+        )
 
         return models
 
@@ -512,22 +526,23 @@ f'''
         portals_fun_original = self.opt_fun.prfs_model.mainFunction
 
         # Start from the profiles of that step
-        fileGACODE = f'{folder}/input.gacode_transferred'
+        fileGACODE = f"{folder}/input.gacode_transferred"
         p = self.extractProfiles(evaluation=evaluation)
         p.writeCurrentStatus(file=fileGACODE)
-       
+
         # New class
         from mitim_modules.portals.PORTALSmain import evaluatePORTALS
-        portals_fun  = evaluatePORTALS(folder)
+
+        portals_fun = evaluatePORTALS(folder)
 
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
         portals_fun.TGYROparameters = portals_fun_original.TGYROparameters
         portals_fun.TGLFparameters = portals_fun_original.TGLFparameters
-        
+
         # PRINTING
         print(
-f'''
+            f"""
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
@@ -537,9 +552,11 @@ f'''
     3. Run PORTALS with:
                 prf_bo = STRATEGYtools.PRF_BO(portals_fun);     prf_bo.run()
 ****************************************************************************************************
-''',typeMsg='i')
+""",
+            typeMsg="i",
+        )
 
-        return portals_fun,fileGACODE,folder
+        return portals_fun, fileGACODE, folder
 
     def extractTGYRO(self, folder=None, restart=False, evaluation=0):
         if evaluation is None:
@@ -574,20 +591,19 @@ f'''
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
     def extractTGLF(self, folder=None, positions=None, evaluation=None, restart=False):
-        
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
-            evaluation = self.ilast 
+            evaluation = self.ilast
 
-        '''
+        """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
             1. self.TGYROparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         However, this should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable # TO FIX
-        '''
+        """
         rhos_considered = self.TGYROparameters["RhoLocations"]
 
         if positions is None:
@@ -612,7 +628,7 @@ f'''
         inputgacode = f"{folder}/input.gacode.start"
         p = self.extractProfiles(evaluation=evaluation)
         p.writeCurrentStatus(file=inputgacode)
-        
+
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
 
@@ -625,12 +641,19 @@ f'''
     # UTILITIES for post-analysis
     # ****************************************************************************
 
-    def runTGLFfull(self, folder=None, restart=False, label = 'default',tglf_object=None, **kwargsTGLF):
-        '''
+    def runTGLFfull(
+        self,
+        folder=None,
+        restart=False,
+        label="default",
+        tglf_object=None,
+        **kwargsTGLF,
+    ):
+        """
         This runs TGLF for all evaluations, all radii.
         This is convenient if I want to re=run TGLF with different settings, e.g. different TGLFsettings,
         that you can provide as keyword arguments.
-        '''
+        """
 
         if folder is None:
             folder = f"{self.folder}/tglf_full/"
@@ -645,23 +668,22 @@ f'''
 
             kwargsTGLF_this = copy.deepcopy(kwargsTGLF)
 
-            if 'TGLFsettings' not in kwargsTGLF_this:
-                kwargsTGLF_this['TGLFsettings'] = TGLFsettings
-            if 'extraOptions' not in kwargsTGLF_this:
-                kwargsTGLF_this['extraOptions'] = extraOptions
+            if "TGLFsettings" not in kwargsTGLF_this:
+                kwargsTGLF_this["TGLFsettings"] = TGLFsettings
+            if "extraOptions" not in kwargsTGLF_this:
+                kwargsTGLF_this["extraOptions"] = extraOptions
 
-            tglf.run(
-                subFolderTGLF=f"tglf_{label}/",
-                restart=restart,
-                **kwargsTGLF_this
-            )
+            tglf.run(subFolderTGLF=f"tglf_{label}/", restart=restart, **kwargsTGLF_this)
 
         # Read all previously run cases into a single class
         if tglf_object is None:
             tglf_object = copy.deepcopy(tglf)
-        
+
         for ev in range(self.ilast + 1):
-            tglf_object.read(folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"{label}_ev{ev}")
+            tglf_object.read(
+                folder=f"{folder}/Evaluation.{ev}/tglf_{label}/",
+                label=f"{label}_ev{ev}",
+            )
 
         return tglf_object
 
@@ -721,45 +743,58 @@ f'''
                 tgyroO.plot(fn=fn, labels=[name0])
             tgyroB.plot(fn=fn, labels=[name])
 
+
 # ****************************************************************************
 # Helpers
 # ****************************************************************************
+
 
 class simple_model_portals:
     def __init__(self, gp):
         self.gp = gp
 
-        self.x =self.gp.gpmodel.train_X_usedToTrain
-        self.y =self.gp.gpmodel.train_Y_usedToTrain
-        self.yvar =self.gp.gpmodel.train_Yvar_usedToTrain
+        self.x = self.gp.gpmodel.train_X_usedToTrain
+        self.y = self.gp.gpmodel.train_Y_usedToTrain
+        self.yvar = self.gp.gpmodel.train_Yvar_usedToTrain
 
-        #self.printInfo()
+        # self.printInfo()
 
     def printInfo(self):
+        print(f"> Model for {self.gp.output} created")
+        print(
+            f"\t- Fitted to {len(self.gp.variables)} variables in this order: {self.gp.variables}"
+        )
+        print(f"\t- Trained with {self.x.shape[0]} points")
 
-        print(f'> Model for {self.gp.output} created')
-        print(f'\t- Fitted to {len(self.gp.variables)} variables in this order: {self.gp.variables}')
-        print(f'\t- Trained with {self.x.shape[0]} points')
-
-    def __call__(self,x,samples=None):
-            
-        numpy_provided =False
+    def __call__(self, x, samples=None):
+        numpy_provided = False
         if isinstance(x, np.ndarray):
             x = torch.Tensor(x)
             numpy_provided = True
 
-        mean, upper, lower, samples = self.gp.predict(x,produceFundamental=True,nSamples=samples)
+        mean, upper, lower, samples = self.gp.predict(
+            x, produceFundamental=True, nSamples=samples
+        )
 
         if samples is None:
             if numpy_provided:
-                return mean[...,0].detach().cpu().numpy(), upper[...,0].detach().cpu().numpy(), lower[...,0].detach().cpu().numpy()
+                return (
+                    mean[..., 0].detach().cpu().numpy(),
+                    upper[..., 0].detach().cpu().numpy(),
+                    lower[..., 0].detach().cpu().numpy(),
+                )
             else:
-                return mean[...,0].detach(), upper[...,0].detach(), lower[...,0].detach()
+                return (
+                    mean[..., 0].detach(),
+                    upper[..., 0].detach(),
+                    lower[..., 0].detach(),
+                )
         else:
             if numpy_provided:
-                return samples[...,0].detach().cpu().numpy()   
+                return samples[..., 0].detach().cpu().numpy()
             else:
-                return samples[...,0].detach()
+                return samples[..., 0].detach()
+
 
 def calcLinearizedModel(
     prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
@@ -838,10 +873,9 @@ def calcLinearizedModel(
 
     return aLTn_perc
 
-class PORTALSinitializer:
-    
-    def __init__(self, folder):
 
+class PORTALSinitializer:
+    def __init__(self, folder):
         self.folder = IOtools.expandPath(folder)
 
         # Read powerstates
@@ -849,7 +883,9 @@ class PORTALSinitializer:
         self.profiles = []
         for i in range(100):
             try:
-                prof = PROFILEStools.PROFILES_GACODE(f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}")
+                prof = PROFILEStools.PROFILES_GACODE(
+                    f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}"
+                )
                 p = STATEtools.read_saved_state(
                     f"{self.folder}/Initialization/initialization_simple_relax/portals_{IOtools.reducePathLevel(self.folder)[1]}_ev{i}/powerstate.pkl"
                 )
@@ -862,12 +898,11 @@ class PORTALSinitializer:
 
         self.fn = None
 
-    def plotMetrics(self, extra_lab = '', **kwargs):
-
+    def plotMetrics(self, extra_lab="", **kwargs):
         if self.fn is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
-            self.fn = FigureNotebook( "PowerState", geometry="1800x900")
+
+            self.fn = FigureNotebook("PowerState", geometry="1800x900")
 
         figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
         figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
@@ -904,7 +939,9 @@ class PORTALSinitializer:
 
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
-                self.powerstates[i].plot(axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}")
+                self.powerstates[i].plot(
+                    axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}"
+                )
 
             axs[0].legend(prop={"size": 8})
 
@@ -948,4 +985,3 @@ class PORTALSinitializer:
                     lw=0.5,
                     ms=0,
                 )
-

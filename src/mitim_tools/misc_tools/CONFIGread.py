@@ -122,7 +122,7 @@ def machineSettings(
             "modules"
         ] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
 
-    checkers = ["slurm","identity", "tunnel", "port"]
+    checkers = ["slurm", "identity", "tunnel", "port"]
     for i in checkers:
         if i in s[machine]:
             machineSettings[i] = s[machine][i]
@@ -147,8 +147,10 @@ def machineSettings(
 
     # ************************************************************************************************************************
 
-    if machineSettings['machine'] == 'local':
-        machineSettings['folderWork'] = IOtools.expandPath(machineSettings['folderWork'])
+    if machineSettings["machine"] == "local":
+        machineSettings["folderWork"] = IOtools.expandPath(
+            machineSettings["folderWork"]
+        )
 
     if forceUsername is not None:
         machineSettings["identity"] = f"~/.ssh/id_rsa_{forceUsername}"

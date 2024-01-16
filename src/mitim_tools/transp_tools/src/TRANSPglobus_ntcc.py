@@ -33,11 +33,11 @@ def tr_start(
     transp_job = FARMINGtools.mitim_job(FolderTRANSP)
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
-    
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
+
     scratchArea = f"{transp_job.folderExecution}/"
 
     # -------------------------------------
@@ -110,12 +110,12 @@ def tr_start(
     timeoutSecs = 120  # THis is needed, to avoid crazy high file sizes!!
 
     transp_job.prep(
-            Command,
-            output_files=outputFiles,
-            input_folders=inputFolders,
-        )
+        Command,
+        output_files=outputFiles,
+        input_folders=inputFolders,
+    )
 
-    transp_job.run( timeoutSecs=timeoutSecs)
+    transp_job.run(timeoutSecs=timeoutSecs)
 
     # --------------------------------
     # Checker
@@ -141,11 +141,11 @@ def tr_dat(runid, tok, FolderTRANSP):
     ]  #'/FolderTRANSP/'
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
-    
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
+
     scratchArea = f"{transp_job.folderExecution}"
 
     # --------------------------------
@@ -165,13 +165,12 @@ def tr_dat(runid, tok, FolderTRANSP):
     timeoutSecs = 120  # THis is needed, to avoid crazy high file sizes!!
 
     transp_job.prep(
-            Command,
-            output_files=outputFiles,
-            input_folders=inputFolders,
+        Command,
+        output_files=outputFiles,
+        input_folders=inputFolders,
+    )
 
-        )
-
-    transp_job.run( timeoutSecs=timeoutSecs)
+    transp_job.run(timeoutSecs=timeoutSecs)
 
     # --------------------------------
     # Interpret
@@ -192,14 +191,13 @@ def tr_send(FolderTRANSP, runid, tok):
     # Where to run
     # --------------------------------
 
-
     transp_job = FARMINGtools.mitim_job(FolderTRANSP)
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
 
     scratchArea = transp_job.folderExecution
 
@@ -226,12 +224,13 @@ def tr_send(FolderTRANSP, runid, tok):
     # --------------------------------
 
     transp_job.prep(
-            Command,
-            output_files=outputFiles,
-            input_files=inputFiles,
-        )
+        Command,
+        output_files=outputFiles,
+        input_files=inputFiles,
+    )
 
-    transp_job.run(waitYN=False) # A send command gets out as soon as it's sent
+    transp_job.run(waitYN=False)  # A send command gets out as soon as it's sent
+
 
 def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     """
@@ -248,10 +247,10 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     transp_job = FARMINGtools.mitim_job(FolderTRANSP)
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
 
     scratchArea = transp_job.folderExecution
 
@@ -274,13 +273,13 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     # Run
     # --------------------------------
 
-
     transp_job.prep(
-            Command,
-            input_files=inputFiles,
-            output_files=outputFiles,
-        )
-    transp_job.run( timeoutSecs=waitseconds)
+        Command,
+        input_files=inputFiles,
+        output_files=outputFiles,
+    )
+    transp_job.run(timeoutSecs=waitseconds)
+
 
 def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False):
     """
@@ -299,10 +298,10 @@ def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False)
     transp_job = FARMINGtools.mitim_job(FolderTRANSP)
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
 
     scratchArea = transp_job.folderExecution
 
@@ -327,10 +326,10 @@ def tr_get(file, server, runid, FolderTRANSP, tok, remove_previous_before=False)
         )
 
     transp_job.prep(
-            Command,
-            output_files=outputFiles,
-            input_files=inputFiles,
-        )
+        Command,
+        output_files=outputFiles,
+        input_files=inputFiles,
+    )
 
     transp_job.run()
 
@@ -346,10 +345,10 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
     transp_job = FARMINGtools.mitim_job(FolderTRANSP)
 
     transp_job.define_machine(
-            "ntcc",
-            f"mitim_{runid}/",
-            launchSlurm=False,
-        )
+        "ntcc",
+        f"mitim_{runid}/",
+        launchSlurm=False,
+    )
 
     scratchArea = transp_job.folderExecution
 
@@ -373,13 +372,12 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
     print(f">> Deleting {runid} from the grid")
     for k in range(howManyCancel):
         transp_job.prep(
-                Command,
-                output_files=outputFiles,
-                input_files=inputFiles,
-            )
+            Command,
+            output_files=outputFiles,
+            input_files=inputFiles,
+        )
 
         transp_job.run(waitYN=False)
-
 
     # Leave some more time for deletion
     print(

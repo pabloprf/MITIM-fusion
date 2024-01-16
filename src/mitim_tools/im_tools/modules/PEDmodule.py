@@ -758,11 +758,10 @@ def fit_pedestal_mtanh(
     pedestal_job = FARMINGtools.mitim_job(folderWork)
 
     pedestal_job.define_machine(
-            'idl',
-            f"mitim_idl_{nameRunid}/",
-            launchSlurm=False,
-        )
-
+        "idl",
+        f"mitim_idl_{nameRunid}/",
+        launchSlurm=False,
+    )
 
     path = pedestal_job.folderExecution
     plasmastate_path = path + IOtools.reducePathLevel(plasmastate, isItFile=True)[-1]
@@ -783,15 +782,13 @@ def fit_pedestal_mtanh(
 
     print(f"\t\t- Proceeding to run idl pedestal fitter (psi_pol = {width_top:.3f})")
 
-    
     pedestal_job.prep(
-            command,
-            output_files=outputFiles,
-            input_files=inputFiles,
-        )
+        command,
+        output_files=outputFiles,
+        input_files=inputFiles,
+    )
 
-    pedestal_job.run( timeoutSecs=30)
-
+    pedestal_job.run(timeoutSecs=30)
 
     x, ne, Te, Ti = read_mtanh(folderWork + "/mtanh_fits")
 

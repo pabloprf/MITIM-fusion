@@ -24,8 +24,10 @@ parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
     "--var", type=float, required=False, default=0.05
 )  # Variation in inputs (10% default)
-parser.add_argument("--restart","-r", required=False, default=False, action='store_true')
-parser.add_argument("--drives", required=False, default=False, action='store_true')
+parser.add_argument(
+    "--restart", "-r", required=False, default=False, action="store_true"
+)
+parser.add_argument("--drives", required=False, default=False, action="store_true")
 
 args = parser.parse_args()
 folder = args.folder
@@ -43,8 +45,7 @@ portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
 
 if not drives:
-
-    varUpDown = np.linspace(1.0-var, 1.0+var, 10)
+    varUpDown = np.linspace(1.0 - var, 1.0 + var, 10)
 
     labels = []
     for param in params:
@@ -66,16 +67,15 @@ if not drives:
     tglf.plotScan(labels=labels, variableLabel="X", relativeX=True)
 
 else:
-    
     tglf.runScanTurbulenceDrives(
-    subFolderTGLF="turb",
-    resolutionPoints=5,
-    variation=var,
-    variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
-    TGLFsettings=TGLFsettings,
-    extraOptions=extraOptions,
-    restart=restart,
-    runWaveForms=wf,
+        subFolderTGLF="turb",
+        resolutionPoints=5,
+        variation=var,
+        variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
+        TGLFsettings=TGLFsettings,
+        extraOptions=extraOptions,
+        restart=restart,
+        runWaveForms=wf,
     )
 
     tglf.plotScanTurbulenceDrives(label="turb")

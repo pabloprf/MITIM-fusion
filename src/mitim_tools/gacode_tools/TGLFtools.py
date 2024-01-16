@@ -177,20 +177,21 @@ class TGLF:
             ) = ({}, {}, None, None)
 
             self.NormalizationSets = {
-                'TRANSP': None,
-                'PROFILES': None,
-                'TGYRO': None,
-                'EXP': None,
-                'input_gacode': None,
-                'SELECTED': None}
+                "TRANSP": None,
+                "PROFILES": None,
+                "TGYRO": None,
+                "EXP": None,
+                "input_gacode": None,
+                "SELECTED": None,
+            }
 
     def prepare_for_save_TGLF(self):
         """
         This is a function that will be called when saving the class as pickle.
         It will delete things that are not easily pickled.
         """
-        
-        if 'fn' in self.__dict__:
+
+        if "fn" in self.__dict__:
             del self.fn  # otherwise it cannot deepcopy
 
         tglf_copy = copy.deepcopy(self)
@@ -199,7 +200,7 @@ class TGLF:
         for label in tglf_copy.results:
             if "convolution_fun_fluct" in tglf_copy.results[label]:
                 tglf_copy.results[label]["convolution_fun_fluct"] = None
-        
+
         return tglf_copy
 
     def save_pkl(self, file):
@@ -274,7 +275,9 @@ class TGLF:
                     inp = TGLFinput(fii)
                     exists = exists and not inp.onlyControl
                 else:
-                    print(f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}")
+                    print(
+                        f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}"
+                    )
                     exists = False
             if exists:
                 print(
@@ -376,11 +379,18 @@ class TGLF:
         roa = inputclass.geom["RMIN_LOC"]
         print(f"\t- This file correspond to r/a={roa} according to RMIN_LOC")
 
-        if self.NormalizationSets['input_gacode'] is not None:
-            rho = np.interp(roa, self.NormalizationSets['input_gacode'].derived['roa'], self.NormalizationSets['input_gacode'].profiles['rho(-)'])
+        if self.NormalizationSets["input_gacode"] is not None:
+            rho = np.interp(
+                roa,
+                self.NormalizationSets["input_gacode"].derived["roa"],
+                self.NormalizationSets["input_gacode"].profiles["rho(-)"],
+            )
             print(f"\t\t- rho={rho:.4f}, using input.gacode for conversion")
         else:
-            print("\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",typeMsg='w')
+            print(
+                "\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",
+                typeMsg="w",
+            )
             rho = roa
 
         self.rhos = [rho]
@@ -601,7 +611,7 @@ class TGLF:
                         restart=restart,
                         forceIfRestart=forceIfRestart,
                         extra_name=extra_name,
-                        slurm_setup=slurm_setup
+                        slurm_setup=slurm_setup,
                     )
 
                     del self.results[f"ky{ky_single0}"]
@@ -700,7 +710,6 @@ class TGLF:
 
                 self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 for ir in self.rhos:
-
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
 
                     self.results[label]["wavefunction"][f"ky{ky_single0}"][
@@ -1965,9 +1974,7 @@ class TGLF:
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim(
-                    [self.ky_single[kycont] -2.0, self.ky_single[kycont] +2]
-                )
+                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -1977,9 +1984,7 @@ class TGLF:
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim(
-                    [self.ky_single[kycont] -2.0, self.ky_single[kycont] +2]
-                )
+                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2087,7 +2092,7 @@ class TGLF:
                 varUpDown_new[i] = round(varUpDown_new[i], 3)
 
         print(f"\n- Proceeding to scan {variable}:")
-        for cont_mult,mult in enumerate(varUpDown_new):
+        for cont_mult, mult in enumerate(varUpDown_new):
             mult = round(mult, 6)
 
             if relativeChanges:
@@ -2108,15 +2113,17 @@ class TGLF:
 
             if not relativeChanges:
                 for ikey in multipliers_mod:
-                    kwargs_TGLFrun['extraOptions'][ikey] = multipliers_mod[ikey]
+                    kwargs_TGLFrun["extraOptions"][ikey] = multipliers_mod[ikey]
                 multipliers_mod = {}
 
             # Force ensure quasineutrality if the
             if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
-                kwargs_TGLFrun['Quasineutral'] = True
+                kwargs_TGLFrun["Quasineutral"] = True
 
             # Only ask the restart in the first round
-            kwargs_TGLFrun['forceIfRestart'] = cont_mult>0 or ('forceIfRestart' in kwargs_TGLFrun and kwargs_TGLFrun['forceIfRestart'])
+            kwargs_TGLFrun["forceIfRestart"] = cont_mult > 0 or (
+                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            )
 
             self.run(
                 subFolderTGLF=f"{self.subFolderTGLF_scan}_{name}",
@@ -2160,8 +2167,10 @@ class TGLF:
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-
-            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable == '_'.join(ikey.split("_")[:-1]).split(subFolderTGLF+'_')[-1])
+            isThisTheRightReadResults = (subFolderTGLF in ikey) and (
+                variable
+                == "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1]
+            )
 
             if isThisTheRightReadResults:
                 x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
@@ -2325,7 +2334,6 @@ class TGLF:
             )
 
         if figs is None:
-
             self.fn = GUItools.FigureNotebook(
                 "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
             )
@@ -2825,10 +2833,11 @@ class TGLF:
 
         varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
-        for cont,variable in enumerate(self.variablesDrives):
-
+        for cont, variable in enumerate(self.variablesDrives):
             # Only ask the restart in the first round
-            kwargs_TGLFrun['forceIfRestart'] = cont>0 or ('forceIfRestart' in kwargs_TGLFrun and kwargs_TGLFrun['forceIfRestart'])
+            kwargs_TGLFrun["forceIfRestart"] = cont > 0 or (
+                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            )
 
             self.runScan(
                 subFolderTGLF=subFolderTGLF,
@@ -2839,13 +2848,12 @@ class TGLF:
 
             self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
-    def plotScanTurbulenceDrives(self, label="scan1", figs=None,**kwargs_TGLFscanPlot):
+    def plotScanTurbulenceDrives(self, label="scan1", figs=None, **kwargs_TGLFscanPlot):
         labels = []
         for variable in self.variablesDrives:
             labels.append(f"{label}_{variable}")
 
         if figs is None:
-             
             self.fn = GUItools.FigureNotebook(
                 "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
             )
@@ -2860,12 +2868,20 @@ class TGLF:
         else:
             figs1, figs2 = None, None
 
-        kwargs_TGLFscanPlot.pop('figs', None)
+        kwargs_TGLFscanPlot.pop("figs", None)
 
-        self.plotScan(labels=labels, figs=figs1, variableLabel="X", relativeX=True, **kwargs_TGLFscanPlot)
+        self.plotScan(
+            labels=labels,
+            figs=figs1,
+            variableLabel="X",
+            relativeX=True,
+            **kwargs_TGLFscanPlot,
+        )
 
-        kwargs_TGLFscanPlot['plotTGLFs'] = False
-        self.plotScan(labels=labels, figs=figs2, variableLabel="X",**kwargs_TGLFscanPlot)
+        kwargs_TGLFscanPlot["plotTGLFs"] = False
+        self.plotScan(
+            labels=labels, figs=figs2, variableLabel="X", **kwargs_TGLFscanPlot
+        )
 
     def runAnalysis(
         self,
@@ -3046,7 +3062,6 @@ class TGLF:
 
     def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
         if figs is None:
-             
             self.fn = GUItools.FigureNotebook(
                 "TGLF Analysis MITIM Notebook", geometry="1500x900"
             )
@@ -3355,7 +3370,8 @@ class TGLF:
             for i in self.rhos:
                 self.DRMAJDX_LOC[i] = 0.0
             print(
-                "\t- [convolution] Using DRMAJDX_LOC =0 because no input file was stored", typeMsg="i"
+                "\t- [convolution] Using DRMAJDX_LOC =0 because no input file was stored",
+                typeMsg="i",
             )
         else:
             for i in self.latest_inputsFileTGLFDict:
@@ -3440,7 +3456,7 @@ def changeANDwrite_TGLF(
 
     modInputTGLF = {}
     ns_max = []
-    for i,rho in enumerate(rhos):
+    for i, rho in enumerate(rhos):
         print(f"\t- Changing input file for rho={rho:.4f}")
         NS = inputs[rho].plasma["NS"]
         inputTGLF_rho = modifyInputToTGLF(
@@ -3449,7 +3465,7 @@ def changeANDwrite_TGLF(
             extraOptions=extraOptions,
             multipliers=multipliers,
             NS=NS,
-            position_change = i,
+            position_change=i,
         )
 
         newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
@@ -4060,7 +4076,12 @@ def identifySpecie(dict_species, dict_find):
 
 
 def modifyInputToTGLF(
-    inputTGLF, TGLFsettings=None, extraOptions={}, multipliers={}, NS=2, position_change=0
+    inputTGLF,
+    TGLFsettings=None,
+    extraOptions={},
+    multipliers={},
+    NS=2,
+    position_change=0,
 ):
     if TGLFsettings is not None:
         _, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(
@@ -4085,9 +4106,8 @@ def modifyInputToTGLF(
     if len(extraOptions) > 0:
         print("\t- External options:")
     for ikey in extraOptions:
-
         if isinstance(extraOptions[ikey], (list, np.ndarray)):
-            value_to_change_to =extraOptions[ikey][position_change]
+            value_to_change_to = extraOptions[ikey][position_change]
         else:
             value_to_change_to = extraOptions[ikey]
 
@@ -4206,7 +4226,6 @@ def readTGLFresults(
     TGLFstd_TGLFout, inputclasses, parsed = [], [], []
 
     for rho in rhos:
-
         # Read full folder
         TGLFout = TGLFoutput(
             FolderGACODE_tmp, suffix=f"_{rho:.4f}" if suffix is None else suffix
@@ -4249,7 +4268,7 @@ class TGLFoutput:
                 f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
             )
 
-        self.inputclass = TGLFinput(file=f'{self.FolderGACODE}/input.tglf{self.suffix}')
+        self.inputclass = TGLFinput(file=f"{self.FolderGACODE}/input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
 
         self.read()

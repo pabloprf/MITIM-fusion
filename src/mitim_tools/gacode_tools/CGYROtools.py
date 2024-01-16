@@ -434,8 +434,8 @@ class CGYRO:
 
     def plot(self, labels=[""]):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-        
-        self.fn = FigureNotebook( "CGYRO Notebook", geometry="1600x1000")
+
+        self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
 
         colors = GRAPHICStools.listColors()
 
@@ -460,10 +460,9 @@ class CGYRO:
 
         if fig is None:
             # fig = plt.figure(figsize=(15,9))
-             
+
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-             
             self.fnLS = FigureNotebook(
                 f"CGYRO Notebook, run #{self.nameRunid}, time {self.time:3f}s",
                 geometry="1600x1000",
@@ -621,6 +620,7 @@ class CGYRO:
         for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
 
 def changeANDwrite_CGYRO(rhos, ky, FolderCGYRO, CGYROsettings=1):
     inputFilesCGYRO = {}

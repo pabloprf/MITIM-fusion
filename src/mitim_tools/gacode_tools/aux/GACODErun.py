@@ -35,16 +35,16 @@ def runTGYRO(
     tgyro_job = FARMINGtools.mitim_job(folderWork)
 
     tgyro_job.define_machine(
-            'tgyro',
-            f"mitim_{nameRunid}/",
-            launchSlurm=launchSlurm,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':1,
-                'name':nameJob,
-                'cpuspertask':nparallel,
-            },
-        )
+        "tgyro",
+        f"mitim_{nameRunid}/",
+        launchSlurm=launchSlurm,
+        slurm_settings={
+            "minutes": minutes,
+            "ntasks": 1,
+            "name": nameJob,
+            "cpuspertask": nparallel,
+        },
+    )
 
     # ------ Run TGYRO
 
@@ -82,14 +82,15 @@ def runTGYRO(
     # ---------------------------------------------
 
     tgyro_job.prep(
-            TGYROcommand,
-            input_files=inputFiles,
-            output_files=outputFiles,
-            shellPreCommands=shellPreCommands,
-            shellPostCommands=shellPostCommands,
-        )
+        TGYROcommand,
+        input_files=inputFiles,
+        output_files=outputFiles,
+        shellPreCommands=shellPreCommands,
+        shellPostCommands=shellPostCommands,
+    )
 
     tgyro_job.run()
+
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
@@ -228,21 +229,20 @@ def executeCGYRO(
     name="",
     numcores=32,
 ):
-
     if not os.path.exists(FolderCGYRO):
         os.system(f"mkdir {FolderCGYRO}")
 
     cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
 
     cgyro_job.define_machine(
-            'cgyro',
-            f"mitim_cgyro_{name}/",
-            slurm_settings={
-                'minutes':60,
-                'ntasks':numcores,
-                'name':name,
-            },
-        )
+        "cgyro",
+        f"mitim_cgyro_{name}/",
+        slurm_settings={
+            "minutes": 60,
+            "ntasks": numcores,
+            "name": name,
+        },
+    )
 
     # ---------------
     # Prepare files
@@ -266,13 +266,14 @@ def executeCGYRO(
     # ---------------
 
     cgyro_job.prep(
-            CGYROcommand,
-            input_files=[fileProfiles, fileCGYRO],
-            output_files=outputFiles,
-            shellPreCommands=shellPreCommands,
-        )
+        CGYROcommand,
+        input_files=[fileProfiles, fileCGYRO],
+        output_files=outputFiles,
+        shellPreCommands=shellPreCommands,
+    )
 
     cgyro_job.run()
+
 
 def runTRXPL(
     FolderTRXPL,
@@ -328,18 +329,19 @@ def runTRXPL(
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
-            'trxpl',
-            f"mitim_trxpl_{nameOutputs}/",
-        )
-    
+        "trxpl",
+        f"mitim_trxpl_{nameOutputs}/",
+    )
+
     command = "trxpl < trxpl.in"
 
     trxpl_job.prep(
-            command,
-            input_files=inputFiles,
-            output_files=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
-        )
+        command,
+        input_files=inputFiles,
+        output_files=[f"{nameOutputs}.cdf", f"{nameOutputs}.geq"],
+    )
     trxpl_job.run()
+
 
 def runPROFILES_GEN(
     FolderTGLF,
@@ -377,15 +379,15 @@ def runPROFILES_GEN(
 
     pgen_job = FARMINGtools.mitim_job(FolderTGLF)
     pgen_job.define_machine(
-            'profiles_gen',
-            f"mitim_profiles_gen_{nameFiles}/",
-        )
+        "profiles_gen",
+        f"mitim_profiles_gen_{nameFiles}/",
+    )
 
     pgen_job.prep(
-            "bash profiles_gen.sh",
-            input_files=inputFiles,
-            output_files=["input.gacode"],
-        )
+        "bash profiles_gen.sh",
+        input_files=inputFiles,
+        output_files=["input.gacode"],
+    )
     pgen_job.run()
 
     if (
@@ -437,14 +439,14 @@ def runVGEN(
     vgen_job = FARMINGtools.mitim_job(workingFolder)
 
     vgen_job.define_machine(
-            'profiles_gen',
-            f"mitim_vgen_{name_run}/",
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':numcores,
-                'name':f"neo_vgen_{name_run}",
-            },
-        )
+        "profiles_gen",
+        f"mitim_vgen_{name_run}/",
+        slurm_settings={
+            "minutes": minutes,
+            "ntasks": numcores,
+            "name": f"neo_vgen_{name_run}",
+        },
+    )
 
     print(
         f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
@@ -459,7 +461,7 @@ def runVGEN(
         f"\t\t- Proceeding to generate Er from NEO run using profiles_gen -vgen ({options})"
     )
 
-    inputgacode_file = f'{workingFolder}/input.gacode'
+    inputgacode_file = f"{workingFolder}/input.gacode"
 
     _, nameFile = IOtools.reducePathLevel(inputgacode_file, level=1, isItFile=True)
 
@@ -467,22 +469,22 @@ def runVGEN(
     with open(f"{workingFolder}/profiles_vgen.sh", "w") as f:
         f.write(f"profiles_gen -vgen -i {nameFile} {options} -n {numcores}")
 
-
     # ---------------
     # Execute
     # ---------------
-        
+
     vgen_job.prep(
-            command,
-            input_files=[inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
-            output_files=["slurm_output.dat", "slurm_error.dat"],
-        )
+        command,
+        input_files=[inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
+        output_files=["slurm_output.dat", "slurm_error.dat"],
+    )
 
     vgen_job.run()
 
     file_new = f"{workingFolder}/vgen/input.gacode"
 
     return file_new
+
 
 def buildDictFromInput(inputFile):
     parsed = {}
@@ -862,9 +864,9 @@ def runTGLF(
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
     tglf_job.define_machine_quick(
-            'tglf',
-            f"mitim_{name}/",
-        )
+        "tglf",
+        f"mitim_{name}/",
+    )
 
     # ---------------------------------------------
     # Prepare files and folders
@@ -899,9 +901,7 @@ def runTGLF(
     if typeRun in ["bash", "job"]:
         TGLFcommand = ""
         for i, rho in enumerate(rhos):
-            TGLFcommand += (
-                f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
-            )
+            TGLFcommand += f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
 
         TGLFcommand += (
             "\nwait"  # This is needed so that the script doesn't end before each job
@@ -928,24 +928,24 @@ def runTGLF(
     # ---------------------------------------------
 
     tglf_job.define_machine(
-            'tglf',
-            f"mitim_{name}/",
-            launchSlurm=launchSlurm,
-            slurm_settings={
-                'minutes':minutes,
-                'ntasks':ntasks,
-                'name':name,
-                'cpuspertask':cpuspertask,
-                'job_array':rho_array,
-                'nodes':1,
-            },
-        )
+        "tglf",
+        f"mitim_{name}/",
+        launchSlurm=launchSlurm,
+        slurm_settings={
+            "minutes": minutes,
+            "ntasks": ntasks,
+            "name": name,
+            "cpuspertask": cpuspertask,
+            "job_array": rho_array,
+            "nodes": 1,
+        },
+    )
 
     tglf_job.prep(
-            TGLFcommand,
-            input_folders=folders,
-            output_folders=folders_red,
-        )
+        TGLFcommand,
+        input_folders=folders,
+        output_folders=folders_red,
+    )
 
     tglf_job.run()
 

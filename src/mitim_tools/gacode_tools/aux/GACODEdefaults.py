@@ -31,9 +31,10 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 
     # Define every flag
     else:
-
-        TGLFoptions = IOtools.generateMITIMNamelist('$MITIM_PATH/templates/input.tglf.controls',caseInsensitive=False)
-        TGLFoptions["NMODES"] =  NS + 2
+        TGLFoptions = IOtools.generateMITIMNamelist(
+            "$MITIM_PATH/templates/input.tglf.controls", caseInsensitive=False
+        )
+        TGLFoptions["NMODES"] = NS + 2
 
     """
 	********************************************************************************
@@ -42,16 +43,21 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    with open(IOtools.expandPath('$MITIM_PATH/templates/input.tglf.models.json'), "r") as f:
+    with open(
+        IOtools.expandPath("$MITIM_PATH/templates/input.tglf.models.json"), "r"
+    ) as f:
         settings = json.load(f)
-    
+
     if str(TGLFsettings) in settings:
         sett = settings[str(TGLFsettings)]
-        label = sett['label']
-        for ikey in sett['controls']:
-            TGLFoptions[ikey] = sett['controls'][ikey]
+        label = sett["label"]
+        for ikey in sett["controls"]:
+            TGLFoptions[ikey] = sett["controls"][ikey]
     else:
-        print('\t- TGLFsettings not found in input.tglf.models.json, using defaults',typeMsg='w')
+        print(
+            "\t- TGLFsettings not found in input.tglf.models.json, using defaults",
+            typeMsg="w",
+        )
         label = "unspecified"
 
     # --------------------------------

@@ -16,6 +16,7 @@ To call:
 
 """
 
+
 def commander(
     script, folderWork0, num, partition, venv, n=32, hours=8, seed=0, extra_name=""
 ):
@@ -91,12 +92,17 @@ def run_slurm(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("script", type=str)
-    parser.add_argument("--folder", type=str, required=False, default='run1/')
+    parser.add_argument("--folder", type=str, required=False, default="run1/")
     parser.add_argument(
-        "--partition", type=str, required=False, default=IOtools.expandPath("$MITIM_PARTITION")
+        "--partition",
+        type=str,
+        required=False,
+        default=IOtools.expandPath("$MITIM_PARTITION"),
     )
     parser.add_argument("--seeds", type=int, required=False, default=1)
-    parser.add_argument("--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env"))
+    parser.add_argument(
+        "--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env")
+    )
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=64)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)

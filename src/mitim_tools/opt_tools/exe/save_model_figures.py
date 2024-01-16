@@ -34,7 +34,7 @@ gps = step.GP["individual_models"]
 if not os.path.exists(save):
     os.system(f"mkdir {save}")
 
- 
+
 for i in range(len(gps)):
     name_save = f"{save}/model{i+1}"
 

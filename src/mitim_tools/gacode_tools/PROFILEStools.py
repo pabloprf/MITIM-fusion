@@ -109,8 +109,16 @@ class PROFILES_GACODE:
             folderTRANSP, machine=machine
         )
 
-    def calculate_Er(self, folder, rhos = None, vgenOptions={}, name="vgen1",includeAll=False,write_new_file=None,restart=False):
-        
+    def calculate_Er(
+        self,
+        folder,
+        rhos=None,
+        vgenOptions={},
+        name="vgen1",
+        includeAll=False,
+        write_new_file=None,
+        restart=False,
+    ):
         profiles = copy.deepcopy(self)
 
         # Resolution?
@@ -121,21 +129,29 @@ class PROFILES_GACODE:
 
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
-        self.neo.run_vgen(subfolder=name,vgenOptions=vgenOptions,restart=restart)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, restart=restart)
 
         profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
         if resol_changed:
-            profiles_new.changeResolution(rho_new=self.profiles['rho(-)'])
+            profiles_new.changeResolution(rho_new=self.profiles["rho(-)"])
 
         # Get the information from the NEO run
 
-        variables = ['w0(rad/s)']
+        variables = ["w0(rad/s)"]
         if includeAll:
-            variables += ['vpol(m/s)', 'vtor(m/s)','jbs(MA/m^2)','jbstor(MA/m^2)','johm(MA/m^2)']
+            variables += [
+                "vpol(m/s)",
+                "vtor(m/s)",
+                "jbs(MA/m^2)",
+                "jbstor(MA/m^2)",
+                "johm(MA/m^2)",
+            ]
 
         for ikey in variables:
             if ikey in profiles_new.profiles:
-                print(f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}')
+                print(
+                    f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}'
+                )
                 self.profiles[ikey] = profiles_new.profiles[ikey]
 
         self.deriveQuantities()
@@ -152,8 +168,7 @@ class PROFILES_GACODE:
         self.header = self.lines[:istartProfs]
 
     def readProfiles(self):
-
-        singleLine, title, var = None, None, None # for ruff complaints
+        singleLine, title, var = None, None, None  # for ruff complaints
 
         # ---
         found = False
@@ -521,7 +536,7 @@ class PROFILES_GACODE:
             self.derived["ge"] * 1e-20, r, volp
         )  # Because the units were #/sec/m^3
 
-        self.derived["geIn"] = self.derived["ge_10E20miller"][-1]   # 1E20 particles/sec
+        self.derived["geIn"] = self.derived["ge_10E20miller"][-1]  # 1E20 particles/sec
 
         self.derived["qe_MWm2"] = self.derived["qe_MWmiller"] / (volp)
         self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
@@ -1044,8 +1059,7 @@ class PROFILES_GACODE:
 
         return We, Wi, Ne, Ni
 
-    def printInfo(self, label="",reDeriveIfNotFound=True):
-        
+    def printInfo(self, label="", reDeriveIfNotFound=True):
         try:
             ImpurityText = ""
             for i in range(len(self.Species)):
@@ -1081,10 +1095,10 @@ class PROFILES_GACODE:
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(
-                    "\tBetaN =  {0:.3f} (approx, based on B0 and p_thr)".format(
-                        self.derived["BetaN"]
-                    )
+                "\tBetaN =  {0:.3f} (approx, based on B0 and p_thr)".format(
+                    self.derived["BetaN"]
                 )
+            )
             print(
                 "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
                     self.derived["Prad"],
@@ -1092,22 +1106,22 @@ class PROFILES_GACODE:
                 )
             )
             print(
-                    "\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(
-                        self.derived["Psol"], self.derived["LHratio"]
-                    )
+                "\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(
+                    self.derived["Psol"], self.derived["LHratio"]
                 )
+            )
             print(
                 "Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(
                     self.derived["ne_vol20"], self.derived["Te_vol"]
                 )
             )
             print(
-                    "\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(
-                        self.derived["Ti_vol"],
-                        self.derived["tite_vol"],
-                        self.derived["tite"][0],
-                    )
+                "\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(
+                    self.derived["Ti_vol"],
+                    self.derived["tite_vol"],
+                    self.derived["tite"][0],
                 )
+            )
             print(f"\t<Ti>  = {self.derived['Ti_vol']:.2f} keV")
             print(
                 "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
@@ -1129,15 +1143,20 @@ class PROFILES_GACODE:
                     self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]
                 )
             )
-            print(f"\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})")
+            print(
+                f"\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})"
+            )
             print("Species concentration:")
             print(f"\t{ImpurityText}")
             print("******************************************************")
         except KeyError:
-            print('\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version',typeMsg='w')
+            print(
+                "\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",
+                typeMsg="w",
+            )
             if reDeriveIfNotFound:
                 self.deriveQuantities()
-                self.printInfo(label=label,reDeriveIfNotFound=False)
+                self.printInfo(label=label, reDeriveIfNotFound=False)
 
     def makeAllThermalIonsHaveSameTemp(self, refIon=0):
         SpecRef = self.Species[refIon]["N"]
@@ -1804,16 +1823,13 @@ class PROFILES_GACODE:
         lsFlows="-",
         legFlows=True,
         showtexts=True,
-        lastRhoGradients = 0.89,
+        lastRhoGradients=0.89,
     ):
         if axs1 is None:
             if fn is None:
-                 
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-                 
-                self.fn = FigureNotebook( "PROFILES Notebook", geometry="1600x1000")
-
+                self.fn = FigureNotebook("PROFILES Notebook", geometry="1600x1000")
 
             fig = self.fn.add_figure(label="Profiles" + fnlab)
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
@@ -1903,7 +1919,6 @@ class PROFILES_GACODE:
                 fig7.add_subplot(grid[1, 1]),
                 fig7.add_subplot(grid[1, 2]),
             ]
-
 
         [ax00, ax10, ax20, ax01, ax11, ax21, ax02, ax12, ax22] = axs1
         [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b] = axs2
@@ -2450,7 +2465,9 @@ class PROFILES_GACODE:
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         # Derived
-        self.plotGradients(axs4, color=color, lw=lw, lastRho=lastRhoGradients,label=extralab)
+        self.plotGradients(
+            axs4, color=color, lw=lw, lastRho=lastRhoGradients, label=extralab
+        )
 
         # Others
         ax = axs6[0]
@@ -3471,7 +3488,6 @@ class PROFILES_GACODE:
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
 
         if debugPlot:
-             
             fig, axq = plt.subplots()
 
             ne = self.profiles["ne(10^19/m^3)"]
@@ -3557,14 +3573,14 @@ def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
         )
 
 
-def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
+def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
     if figs is not None:
         figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = figs
         fn = None
     else:
-         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-        fn = FigureNotebook( "Profiles", geometry="1800x900")
+
+        fn = FigureNotebook("Profiles", geometry="1800x900")
         figProf_1 = fn.add_figure(label="Profiles")
         figProf_2 = fn.add_figure(label="Powers")
         figProf_3 = fn.add_figure(label="Geometry")
@@ -3679,6 +3695,7 @@ def plotAll(profiles_list, figs=None, extralabs=None,lastRhoGradients=0.89):
         )
 
     return fn
+
 
 def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
     with open(file) as f:

@@ -347,7 +347,7 @@ class CDFreactor:
         self.getProfiles()
         # time_index  = time_index(time)
         name = "ASTRA CDF Viewer"
-        self.fn = FigureNotebook( name)
+        self.fn = FigureNotebook(name)
 
         self.plot_temp(time_aims=time_aims)
         self.plot_gradients(time_aims=time_aims)

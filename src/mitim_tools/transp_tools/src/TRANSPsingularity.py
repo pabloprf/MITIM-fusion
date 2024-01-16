@@ -11,6 +11,7 @@ from mitim_tools.transp_tools.tools import NMLtools
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
+
 class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
@@ -45,17 +46,16 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self.job = FARMINGtools.mitim_job(self.FolderTRANSP)
 
         self.job.define_machine(
-                'transp',
-                f"transp_{self.tok}_{self.runid}/",
-                slurm_settings={
-                        'minutes':minutesAllocation,
-                        'ntasks':nparallel,
-                        'name':self.job_name,
-                    },
-            )
+            "transp",
+            f"transp_{self.tok}_{self.runid}/",
+            slurm_settings={
+                "minutes": minutesAllocation,
+                "ntasks": nparallel,
+                "name": self.job_name,
+            },
+        )
 
     def run(self, restartFromPrevious=False, **kwargs):
-
         runSINGULARITY(
             self.job,
             self.runid,
@@ -68,7 +68,6 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self.jobid = self.job.jobid
 
     def check(self, **kwargs):
-
         self.job.check()
 
         info, status = interpretRun(self.job.infoSLURM, self.job.log_file)
@@ -110,7 +109,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.runid,
             self.tok,
             self.job_name,
-            minutes=minutesAllocation
+            minutes=minutesAllocation,
         )
 
         # Get reactor to call for ACs as well
@@ -136,22 +135,21 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         return self.cdfs[label]
 
     def delete(self, howManyCancel=1, MinWaitDeletion=0, **kwargs):
-
         transp_job = FARMINGtools.mitim_job(self.FolderTRANSP)
 
         transp_job.define_machine(
-                'transp',
-                self.job_name,
-                launchSlurm=False,
-            )
+            "transp",
+            self.job_name,
+            launchSlurm=False,
+        )
 
         transp_job.prep(
-                f"scancel {self.job_id}",
-                label_log_files="_finish",
-            )
+            f"scancel {self.job_id}",
+            label_log_files="_finish",
+        )
 
         for i in range(howManyCancel):
-             transp_job.run()
+            transp_job.run()
 
         time.sleep(MinWaitDeletion * 60.0)
 
@@ -172,7 +170,6 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         # If run is not found on the grid (-1: not found, 0: running, 1: stopped, -2: success)
         while self.statusStop == -1:
-
             # ~~~~~ Check status of run before sending look (to avoid problem with OUTTIMES)
             if retrieveAC:
                 dictInfo, _, _ = self.check()
@@ -260,6 +257,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 ------------------------------------------------------------------------------------------------------
 """
 
+
 def runSINGULARITY(
     transp_job,
     runid,
@@ -268,7 +266,6 @@ def runSINGULARITY(
     mpis,
     restartFromPrevious=False,
 ):
-    
     folderWork = transp_job.folder_local
     nparallel = transp_job.slurm_settings["ntasks"]
 
@@ -280,15 +277,12 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
-    start_folder =transp_job.folderExecution.split('/')[1] # e.g. pool001, nobackup1
+    start_folder = transp_job.folderExecution.split("/")[1]  # e.g. pool001, nobackup1
 
-    if start_folder not in ['home','Users']:
-        txt_bind = (
-            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
-        )
+    if start_folder not in ["home", "Users"]:
+        txt_bind = f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
     else:
         txt_bind = ""
-
 
     txt = ""
     if nparallel > 1:
@@ -394,22 +388,21 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
         os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
-
         transp_job.prep(
-                TRANSPcommand_prep,
-                input_files=inputFiles,
-                input_folders=inputFolders,
-                output_files=[f"{runid}tr_dat.log"],
-                shellPreCommands=shellPreCommands,
-            )
+            TRANSPcommand_prep,
+            input_files=inputFiles,
+            input_folders=inputFolders,
+            output_files=[f"{runid}tr_dat.log"],
+            shellPreCommands=shellPreCommands,
+        )
 
-        #tr_dat doesn't need slurm
+        # tr_dat doesn't need slurm
         lS = copy.deepcopy(transp_job.launchSlurm)
         transp_job.launchSlurm = False
 
         transp_job.run()
 
-        transp_job.launchSlurm = lS # Back to original
+        transp_job.launchSlurm = lS  # Back to original
 
         # Interpret
         NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
@@ -424,15 +417,16 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ---------------
 
     transp_job.prep(
-            TRANSPcommand,
-            input_files=inputFiles,
-            input_folders=inputFolders,
-            shellPreCommands=shellPreCommands,
-        )
+        TRANSPcommand,
+        input_files=inputFiles,
+        input_folders=inputFolders,
+        shellPreCommands=shellPreCommands,
+    )
 
     transp_job.run(waitYN=False)
 
     os.system(f"rm -r {folderWork}/tmp_inputs")
+
 
 def interpretRun(infoSLURM, log_file):
     # status gives 0 for active or submitted, -1 for stopped, 1 for success
@@ -494,25 +488,24 @@ def pringLogTail(log_file, howmanylines=50):
 
 
 def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
-
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
-            'transp',
-            job_name,
-            launchSlurm=False,
-        )
+        "transp",
+        job_name,
+        launchSlurm=False,
+    )
 
     # ---------------
     # Execution command
     # ---------------
 
-    start_folder = transp_job.machineSettings["folderWork"].split('/')[1] # e.g. pool001, nobackup1
+    start_folder = transp_job.machineSettings["folderWork"].split("/")[
+        1
+    ]  # e.g. pool001, nobackup1
 
-    if start_folder not in ['home','Users']:
-        txt_bind = (
-            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
-        )
+    if start_folder not in ["home", "Users"]:
+        txt_bind = f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
     else:
         txt_bind = ""
 
@@ -528,40 +521,40 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     print('* Submitting a "finish" request to the cluster', typeMsg="i")
 
     transp_job.prep(
-            TRANSPcommand,
-            output_folders=["results/"],
-            label_log_files="_finish",
-        )
-
-    transp_job.run(removeScratchFolders=False) # Because it needs to read what it was there from run()
-
-    os.system(
-        f"cd {folderWork}&& cp -r results/{tok}.00/* ."
+        TRANSPcommand,
+        output_folders=["results/"],
+        label_log_files="_finish",
     )
 
-def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
+    transp_job.run(
+        removeScratchFolders=False
+    )  # Because it needs to read what it was there from run()
 
+    os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
+
+
+def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
-            'transp',
-            job_name,
-            launchSlurm=False,
-        )
+        "transp",
+        job_name,
+        launchSlurm=False,
+    )
 
     # ---------------
     # Execution command
     # ---------------
 
-    start_folder = transp_job.machineSettings["folderWork"].split('/')[1] # e.g. pool001, nobackup1
+    start_folder = transp_job.machineSettings["folderWork"].split("/")[
+        1
+    ]  # e.g. pool001, nobackup1
 
-    if start_folder not in ['home','Users']:
-        txt_bind = (
-            f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
-        )
+    if start_folder not in ["home", "Users"]:
+        txt_bind = f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
     else:
         txt_bind = ""
-        
+
     TRANSPcommand = f"""
 cd {transp_job.folderExecution} && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
@@ -575,11 +568,14 @@ cd {transp_job.folderExecution} && singularity run {txt_bind}--app plotcon $TRAN
     outputFiles = [f"{runid}.CDF"]
 
     transp_job.prep(
-            TRANSPcommand,
-            output_files=outputFiles,
-        )
+        TRANSPcommand,
+        output_files=outputFiles,
+    )
 
-    transp_job.run(removeScratchFolders=False) # Because it needs to read what it was there from run()
+    transp_job.run(
+        removeScratchFolders=False
+    )  # Because it needs to read what it was there from run()
+
 
 def organizeACfiles(
     runid, FolderTRANSP, nummax=1, ICRF=False, NUBEAM=False, TORBEAM=False

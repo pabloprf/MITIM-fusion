@@ -297,11 +297,10 @@ class FUNmain:
 
         self_complete = None
         if analysis_level > 1:
-
             """
-			If the analyze_results exists, I'm in a child class, so just proceed to analyze.
-			Otherwise, let's grab the method from the pickled
-			"""
+            If the analyze_results exists, I'm in a child class, so just proceed to analyze.
+            Otherwise, let's grab the method from the pickled
+            """
             if hasattr(self, "analyze_results"):
                 self_complete = self.analyze_results(
                     plotYN=plotYN, fn=self.fn, analysis_level=analysis_level
@@ -917,6 +916,7 @@ class PRF_BO:
             # If I don't create an Individual attribute I cannot unpickle GA information
             try:
                 import deap
+
                 deap.creator.create("Individual", array.array)
             except:
                 pass
@@ -1483,13 +1483,12 @@ class PRF_BO:
             plt.ioff()
 
         if fn is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             geometry = (
                 "1200x1000" if len(GPs[0].GP["individual_models"]) == 1 else "1700x1000"
             )
-            fn = FigureNotebook( "MITIM BO Strategy", geometry=geometry)
+            fn = FigureNotebook("MITIM BO Strategy", geometry=geometry)
 
         """
 		****************************************************************
@@ -1517,15 +1516,24 @@ class PRF_BO:
             figsFund, figs, figsFundTrain = [], [], []
             for i in range(Tabs_needed):
                 figsFund.append(
-                    fn.add_figure(label=f"#{k} Fundamental Surr. ({i+1}/{Tabs_needed})",tab_color=tab_color)
+                    fn.add_figure(
+                        label=f"#{k} Fundamental Surr. ({i+1}/{Tabs_needed})",
+                        tab_color=tab_color,
+                    )
                 )
             for i in range(Tabs_needed):
                 figsFundTrain.append(
-                    fn.add_figure(label=f"#{k} Fundamental Train ({i+1}/{Tabs_needed})",tab_color=tab_color)
+                    fn.add_figure(
+                        label=f"#{k} Fundamental Train ({i+1}/{Tabs_needed})",
+                        tab_color=tab_color,
+                    )
                 )
             for i in range(Tabs_needed):
                 figs.append(
-                    fn.add_figure(label=f"#{k} Surrogate ({i+1}/{Tabs_needed})",tab_color=tab_color)
+                    fn.add_figure(
+                        label=f"#{k} Surrogate ({i+1}/{Tabs_needed})",
+                        tab_color=tab_color,
+                    )
                 )
 
             grid = plt.GridSpec(
@@ -1635,7 +1643,7 @@ class PRF_BO:
                 )
 
             # Plot model specifics from last model
-            self.plotModelStatus(boStep=k, fn=fn, stds=stds,tab_color=tab_color)
+            self.plotModelStatus(boStep=k, fn=fn, stds=stds, tab_color=tab_color)
 
         print("- Finished plotting of step models")
 
@@ -1648,11 +1656,11 @@ class PRF_BO:
         tab_color = ck + 5 + 1
 
         # ---- Trust region ----------------------------------------------------------
-        figTR = fn.add_figure(label="Trust Region",tab_color=tab_color)
+        figTR = fn.add_figure(label="Trust Region", tab_color=tab_color)
         try:
             SBOcorrections.plotTrustRegionInformation(self, fig=figTR)
         except:
-            print("\t- Problem plotting trust region",typeMsg="w")
+            print("\t- Problem plotting trust region", typeMsg="w")
 
         # ---- ResultsOptimization ---------------------------------------------------
         if plotResultsOptimization:
@@ -1662,18 +1670,21 @@ class PRF_BO:
                 logFile = self.logFile
             else:
                 logFile = None
-            self.ResultsOptimization.plot(fn=fn, doNotShow=True, log=logFile,tab_color=tab_color)
-
+            self.ResultsOptimization.plot(
+                fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
+            )
 
         return fn
 
-    def plotModelStatus(self, fn=None, boStep=-1, plotsPerFigure=20, stds=2,tab_color=None):
+    def plotModelStatus(
+        self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None
+    ):
         step = self.steps[boStep]
 
         GP = step.GP["combined_model"]
 
         # ---- Jacobian -------------------------------------------------------
-        fig = fn.add_figure(label=f"#{boStep}: Jacobian",tab_color=tab_color)
+        fig = fn.add_figure(label=f"#{boStep}: Jacobian", tab_color=tab_color)
         maxPoints = 1  # 4
         xExplore = []
         if "x_next" in step.__dict__.keys():
@@ -1708,7 +1719,9 @@ class PRF_BO:
         figsQuality = []
         for i in range(numfigs):
             figsQuality.append(
-                fn.add_figure(label=f"#{boStep}: Quality {i+1}/{numfigs}",tab_color=tab_color)
+                fn.add_figure(
+                    label=f"#{boStep}: Quality {i+1}/{numfigs}", tab_color=tab_color
+                )
             )
 
         axs = GP.testTraining(
@@ -1731,8 +1744,8 @@ class PRF_BO:
         if "InfoOptimization" not in step.__dict__.keys():
             return
 
-        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.",tab_color=tab_color)
-        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim Ranges",tab_color=tab_color)
+        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.", tab_color=tab_color)
+        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim Ranges", tab_color=tab_color)
         self.plotSurrogateOptimization(fig1=figOPT1, fig2=figOPT2, boStep=boStep)
         # ---------------------------------------------------------------------
 
@@ -1756,10 +1769,9 @@ class PRF_BO:
         colors = GRAPHICStools.listColors()
 
         if fig1 is None:
-             
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook( "PRF BO Strategy", geometry="1700x1000")
+            fn = FigureNotebook("PRF BO Strategy", geometry="1700x1000")
             fig2 = fn.add_figure(label=f"#{boStep}: Optim Ranges")
             fig1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.")
 
@@ -1888,6 +1900,7 @@ class PRF_BO:
 
         for i in range(len(axs)):
             GRAPHICStools.addDenseAxis(axs[i])
+
 
 def read_from_scratch(file):
     """

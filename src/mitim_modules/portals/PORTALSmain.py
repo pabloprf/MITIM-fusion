@@ -161,7 +161,10 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 		---------------------------------------------
 		"""
 
-        physicsBasedParams, physicsBasedParams_trace = PORTALStools.default_physicsBasedParams()
+        (
+            physicsBasedParams,
+            physicsBasedParams_trace,
+        ) = PORTALStools.default_physicsBasedParams()
 
         """
 		Parameters to run PORTALS
@@ -320,7 +323,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         )
 
         a, b = IOtools.reducePathLevel(self.folder, level=1)
-        name = f"portals_{b}_ev{numPORTALS}"    # e.g. portals_jet37_ev0
+        name = f"portals_{b}_ev{numPORTALS}"  # e.g. portals_jet37_ev0
 
         # Specify the number of PORTALS evaluation. Copy in case of parallel run
         extra_params_model = copy.deepcopy(self.extra_params)

@@ -204,7 +204,6 @@ def writeBoundaryFiles(
 
     # ~~~ Plot boundary
     if saveFigure:
-         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, "-o", markersize=0.5, lw=0.5, c="m", label="LCFS")
     else:
@@ -270,20 +269,19 @@ def generateMRY(
         f">> Running scruncher with {momentsScruncher} moments to create MRY file from boundary files..."
     )
 
-
     scruncher_job = FARMINGtools.mitim_job(FolderEquilibrium)
 
     scruncher_job.define_machine(
-            'scruncher',
-            f"tmp_scruncher_{name}/",
-            launchSlurm=False,
-        )
-    
+        "scruncher",
+        f"tmp_scruncher_{name}/",
+        launchSlurm=False,
+    )
+
     scruncher_job.prep(
-            "scruncher < scrunch_in",
-            output_files=["M123456.MRY"],
-            input_files=filesInput,
-        )
+        "scruncher < scrunch_in",
+        output_files=["M123456.MRY"],
+        input_files=filesInput,
+    )
 
     scruncher_job.run()
 
@@ -1030,7 +1028,6 @@ def extractBoundaries_TSC(
 
     # ~~~ Plot boundary
     if saveFigure and not onlyExtractGfiles:
-         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, lw=4, c="m", label="LCFS")
         for ikey in rsT:
@@ -1075,7 +1072,6 @@ def extractBoundaries_Sweep(gfileNames, times, folderOutput, saveFigure=True):
 
     # ~~~ Plot boundary
     if saveFigure:
-         
         fig, ax = plt.subplots()
         ax.plot(rs, zs, lw=4, c="m", label="LCFS")
         ax.plot(rs1, zs1, lw=3, c="b", label="e1")

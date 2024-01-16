@@ -59,7 +59,7 @@ def separateArrays(d):
     return dnew
 
 
-def cleanDifferences(d, tol_rel=1E-7):
+def cleanDifferences(d, tol_rel=1e-7):
     d_new = {}
     for key in d:
         if key not in ["inputdir"]:
@@ -98,20 +98,23 @@ def compareDictionaries(d1, d2):
     return different
 
 
-def printTable(diff,warning_percent=1E-1):
+def printTable(diff, warning_percent=1e-1):
     print(f"{'':>15}{file1.split('/')[-1]:>25}{file2.split('/')[-1]:>25}")
     for key in diff:
         if diff[key][0] is not None:
             if diff[key][1] is not None:
                 if diff[key][0] != 0.0:
                     try:
-                        perc = 100 * np.abs((diff[key][0] - diff[key][1]) / diff[key][0])
+                        perc = 100 * np.abs(
+                            (diff[key][0] - diff[key][1]) / diff[key][0]
+                        )
                     except:
                         perc = np.nan
                 else:
                     perc = np.nan
                 print(
-                    f"{key:>15}{str(diff[key][0]):>25}{str(diff[key][1]):>25}  (~{perc:.0e}%)",typeMsg='w' if perc>warning_percent else ''
+                    f"{key:>15}{str(diff[key][0]):>25}{str(diff[key][1]):>25}  (~{perc:.0e}%)",
+                    typeMsg="w" if perc > warning_percent else "",
                 )
             else:
                 print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}")

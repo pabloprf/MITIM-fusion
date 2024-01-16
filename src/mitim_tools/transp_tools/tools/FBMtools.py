@@ -315,36 +315,35 @@ def runGetFBM(
     MaxSeconds=60 * 1,
     commandOrder=None,
 ):
-
     folder, fileonly = IOtools.reducePathLevel(file, level=1)
 
     fbm_job = FARMINGtools.mitim_job(folder)
 
     fbm_job.define_machine(
-            'get_fbm',
-            f"tmp_fbm_{name}/",
-            launchSlurm=False,
-        )
+        "get_fbm",
+        f"tmp_fbm_{name}/",
+        launchSlurm=False,
+    )
 
     print("\t\t\t- Running get_fbm command")
     if commandOrder is not None:
         print("\t\t\t- [First running AC corrector]")
 
         fbm_job.prep(
-                f"{commandOrder} && mv {fileonly} {fileonly}_converted",
-                output_files=[f"{fileonly}_converted"],
-                input_files=[file],
-            )
+            f"{commandOrder} && mv {fileonly} {fileonly}_converted",
+            output_files=[f"{fileonly}_converted"],
+            input_files=[file],
+        )
         fbm_job.run(timeoutSecs=MaxSeconds)
 
         os.system(f"mv {file} {file}_original")
         os.system(f"mv {file}_converted {file}")
 
     fbm_job.prep(
-            commandMain,
-            output_files=[finFile2],
-            input_files=[file],
-        )
+        commandMain,
+        output_files=[finFile2],
+        input_files=[file],
+    )
     fbm_job.run(timeoutSecs=MaxSeconds)
 
 

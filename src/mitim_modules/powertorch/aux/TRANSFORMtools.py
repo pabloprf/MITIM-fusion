@@ -496,12 +496,16 @@ def defineMovingGradients(self, profiles):
     # Check that it's not completely zero
     # ----------------------------------------------------------------------------------------------------
 
-    for key in ['aLte','aLti','aLne','aLnZ','aLw0']:
+    for key in ["aLte", "aLti", "aLne", "aLnZ", "aLw0"]:
         if key[2:] in self.ProfilesPredicted:
             if self.plasma[key].sum() == 0.0:
-                addT = 1E-15
-                print(f'\t- All values of {key} detected to be zero, to avoid NaNs, inserting {addT} at the edge',typeMsg='w')
-                self.plasma[key][...,-1] += addT
+                addT = 1e-15
+                print(
+                    f"\t- All values of {key} detected to be zero, to avoid NaNs, inserting {addT} at the edge",
+                    typeMsg="w",
+                )
+                self.plasma[key][..., -1] += addT
+
 
 def factorMult_w0(self):
     """

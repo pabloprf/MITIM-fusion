@@ -1,4 +1,3 @@
-
 import datetime
 import argparse
 import botorch
@@ -23,7 +22,7 @@ e.g.
 parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--test", required=False, type=int, default=1)
-parser.add_argument("--save", required=False, default=False, action='store_true')
+parser.add_argument("--save", required=False, default=False, action="store_true")
 parser.add_argument("--seeds", required=False, type=int, default=1)
 parser.add_argument("--var", required=False, type=int, default=9)
 args = parser.parse_args()

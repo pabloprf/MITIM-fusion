@@ -42,7 +42,7 @@ md = 3.34358e-24
 me_u = 5.4488741e-04  # as in input.gacode
 
 
-factor_convection = 3/2 # IMPORTANT
+factor_convection = 3 / 2  # IMPORTANT
 
 
 def magneticshear(q, rmin, R0):
@@ -552,7 +552,7 @@ def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  # TO FIX
 
     # Freidberg p. 194
     # L = 4.9e7 * Te**1.5 / (ne * 1e-20) ** 0.5
-    #logL = np.log(L)
+    # logL = np.log(L)
 
     # Lee = 30.0 - np.log( ne**0.5 * (Te*1E-3)**-1.5 )
     # Lc = 24.0 - np.log( np.sqrt( ne/Te ) )

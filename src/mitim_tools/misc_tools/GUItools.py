@@ -29,6 +29,7 @@ except ImportError:
     class QTabBar:
         pass
 
+
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.CONFIGread import read_dpi
 from IPython import embed
@@ -37,11 +38,9 @@ plt.rcParams["figure.max_open_warning"] = False
 
 dpi_notebook = read_dpi()
 
-class FigureNotebook:
-    def __init__(
-        self, windowtitle, parent=None, geometry="1800x900", vertical=True
-    ):
 
+class FigureNotebook:
+    def __init__(self, windowtitle, parent=None, geometry="1800x900", vertical=True):
         plt.ioff()
 
         self.app = QtWidgets.QApplication.instance()
@@ -79,10 +78,10 @@ class FigureNotebook:
         return fig, ax
 
     def addPlot(self, title, figure, tab_color=None, tab_alpha=0.2):
-        '''
+        """
         tab_color can be a color name or an integer to grab colors in order
-        '''
-        
+        """
+
         new_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         new_tab.setLayout(layout)
@@ -179,7 +178,10 @@ class TabBar(QTabBar):
             for i in range(self.count()):
                 self.initStyleOption(opt, i)
                 if i in self.tab_colors:
-                    opt.palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(self.tab_colors[i]))
+                    opt.palette.setColor(
+                        QtGui.QPalette.ColorRole.Button,
+                        QtGui.QColor(self.tab_colors[i]),
+                    )
                 painter.drawControl(
                     QtWidgets.QStyle.ControlElement.CE_TabBarTabShape, opt
                 )
