@@ -1,17 +1,116 @@
 import os
+import datetime
+import time
 import numpy as np
-from IPython import embed
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.aux import GACODEplotting
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
+from IPython import embed
 
 
 class CGYRO:
+    def __init__(self,inputgacode_file):  
+
+        self.inputgacode_file = inputgacode_file
+        self.input_cgyro_file_defaults = '$MITIM_PATH/templates/input.cgyro.controls' 
+
+        self.output_files_test = [
+            "out.cgyro.equilibrium",
+            "out.cgyro.info",
+            "out.cgyro.mpi",
+            "input.cgyro.gen",
+            "out.cgyro.egrid",
+            "out.cgyro.grids",
+            "out.cgyro.memory",
+            "out.cgyro.rotation"
+        ]
+
+    def prep(self,folder):
+
+        self.folder = IOtools.expandPath(folder)
+
+        self.input_cgyro_file = f'{self.folder}/input.cgyro'
+        os.system(f'cp {self.input_cgyro_file_defaults} {self.input_cgyro_file}')
+        os.system(f'cp {self.inputgacode_file} {self.folder}/input.gacode')
+
+        self.inputgacode_file = f'{self.folder}/input.gacode'
+
+    def run_test(self,name='run1'):
+
+        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
+
+        name = f'mitim_cgyro_{name}_test'
+
+        self.cgyro_job.define_machine(
+            'cgyro',
+            name,
+            slurm_settings = {
+                'name': name,
+                'minutes': 5,
+                'cpuspertask': 1,
+                'ntasks': 1,
+            }
+        )
+        
+        CGYROcommand = 'cgyro -t .'
+
+        self.cgyro_job.prep(
+            CGYROcommand,
+            input_files=[self.input_cgyro_file,self.inputgacode_file],
+            output_files=self.output_files_test,
+        )
+
+        self.cgyro_job.run(waitYN=False)
+
+    def run(self,name='run1'):
+
+        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
+
+        name = f'mitim_cgyro_{name}_test'
+
+        self.cgyro_job.define_machine(
+            'cgyro',
+            name,
+            launchSlurm=False,
+        )
+        
+        CGYROcommand = f'gacode_qsub -e . -n 12 -nomp 32 -repo {self.machineSettings["slurm"]["account"]} -queue {self.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
+
+        self.cgyro_job.prep(
+            CGYROcommand,
+            input_files=[self.input_cgyro_file,self.inputgacode_file],
+            output_files=self.output_files_test,
+        )
+
+        self.cgyro_job.run(waitYN=False)
+
+    def check(self,every_n_minutes=5):
+
+        print('- Checker job status')
+
+        while True:
+            self.cgyro_job.check()
+            print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.infoSLURM["STATE"]})')
+            if self.cgyro_job.status == 2:
+                break
+            else:
+                print(f'\t- Waiting {every_n_minutes} minutes')
+                time.sleep(every_n_minutes*60)
+        print('\t- Job considered finished')
+
+    def get(self):
+        '''
+        For a job that has been submitted but not waited for, once it is done, get the results
+        '''
+
+        self.cgyro_job.retrieve()
+
+class CGYRO2:
     def __init__(
         self, alreadyRun=None, cdf=None, time=100.0, rhos=[0.4, 0.6], avTime=0.0
     ):
