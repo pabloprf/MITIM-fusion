@@ -3,14 +3,12 @@ import copy
 import datetime
 import time
 import numpy as np
-from IPython import embed
 from mitim_tools.transp_tools.src import TRANSPmain
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.tools import NMLtools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
@@ -18,7 +16,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         self.job_id, self.job_name = None, None
 
-    def defineRunParameters(self, *args, minutesAllocation=60 * 10, **kwargs):
+    def defineRunParameters(self, *args, minutesAllocation=60 * 8, **kwargs):
         super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
