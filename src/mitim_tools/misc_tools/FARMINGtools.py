@@ -328,9 +328,10 @@ class mitim_job:
             self.jump_client = paramiko.SSHClient()
             self.jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-            key_jump = IOtools.expandPath(self.machineSettings["identity"])
+            key_jump = self.machineSettings["identity"]
 
             if key_jump is not None:
+                key_jump = IOtools.expandPath(key_jump)
                 if not os.path.exists(key_jump):
                     if print('Key file "' + key_jump + '" does not exist, continue without key',typeMsg='q'):
                         key_jump = None
@@ -371,9 +372,10 @@ class mitim_job:
             )
             self.sock = None
 
-            self.key_filename = IOtools.expandPath(self.machineSettings["identity"])
+            self.key_filename = self.machineSettings["identity"]
 
             if self.key_filename is not None:
+                self.key_filename = IOtools.expandPath(self.key_filename)
                 if not os.path.exists(self.key_filename):
                     if print('Key file "' + self.key_filename + '" does not exist, continue without key',typeMsg='q'):
                         self.key_filename = None
