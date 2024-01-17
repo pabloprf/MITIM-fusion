@@ -733,12 +733,13 @@ class TGLF:
         labels_legend=None,
         title_legend=None,
         fn_color=None,
+        WarnMeAboutPlots=True,
     ):
         total_plots = len(self.rhos) * len(labels)
 
-        if total_plots >= 10:
+        if WarnMeAboutPlots and (total_plots >= 10):
             surePlot = print(
-                f">> TGLF module will plot {total_plots} individual TGLF, which might be too much and lead to long plotting time or seg faults",
+                f">> TGLF module will plot {total_plots} individual TGLF per figure, which might be too much and lead to long plotting time or seg faults",
                 typeMsg="q",
             )
             if not surePlot:
@@ -808,7 +809,7 @@ class TGLF:
         if self.ky_single is not None:
             for ky_single0 in self.ky_single:
                 figsWF[ky_single0] = self.fn.add_figure(
-                    label=f"{extratitle}WF @ ky~{ky_single0}"
+                    label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
                 )
         fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
         fig7 = self.fn.add_figure(label=f"{extratitle}Input Controls", tab_color=fn_color)
@@ -2813,7 +2814,8 @@ class TGLF:
                     colors=colorsC_tuple,
                     plotNormalizations=False,
                     plotGACODE=False,
-                    fn_color=contLabel
+                    fn_color=contLabel,
+                    WarnMeAboutPlots=False, # Do not warn me because I have already accepted/declined
                 )
 
     # ~~~~~~~~~~~~~~ Extra complete analysis options
