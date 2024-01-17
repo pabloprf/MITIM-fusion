@@ -1,22 +1,22 @@
-import copy, datetime, pandas, os, pickle, freegs, torch, sys
+import copy
+import pickle
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from collections import OrderedDict
-from scipy.interpolate import interp1d
-from IPython import embed
 from mitim_tools.gs_tools import FREEGStools
 from mitim_tools.gs_tools.aux import GSplotting
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import EVplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
 # From SPARC_PATH in PYTHONPATH
 try:
-    from FREEGS_SPARC import GSsparc, GSsparc_coils
+    from FREEGS_SPARC import GSsparc_coils
 except ImportError as e:
     raise Exception(
         "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
