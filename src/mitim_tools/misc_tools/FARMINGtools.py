@@ -490,7 +490,7 @@ class mitim_job:
 
     def execute_local(self, command_str, printYN=False, timeoutSecs=None, **kwargs):
         if printYN:
-            print("\t* Executing (local):")
+            print("\t* Executing (local):", typeMsg="i")
             print(f"\t\t{command_str}")
 
         output, error = run_subprocess(
