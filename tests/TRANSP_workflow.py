@@ -69,3 +69,6 @@ c = t.checkUntilFinished(
 
 # Plot
 t.plot(label="run1")
+
+# Required if running in non-interactive mode
+t.fn.show()

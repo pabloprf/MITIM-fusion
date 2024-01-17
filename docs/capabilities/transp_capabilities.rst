@@ -125,7 +125,7 @@ TRANSP aliases
 
 MITIM provides a few useful aliases, including for the TRANSP tools:
 
-- To read TRANSP results in CDF files (which stores the results in the ``cdfs`` list. First run can be plotted with ``cdfs[0].plotRun``):
+- To read TRANSP results in CDF files (which stores the results in the ``cdfs`` list. First run can be plotted with ``cdfs[0].plot``):
     
     .. code-block:: bash
         

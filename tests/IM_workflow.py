@@ -38,4 +38,7 @@ im = IMtools.runIMworkflow(
 )
 
 # Plot final CDF
-im.Reactor.plotRun()
+im.Reactor.plot()
+
+# Required if running in non-interactive mode
+im.Reactor.fn.show()

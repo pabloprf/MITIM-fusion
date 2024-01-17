@@ -46,3 +46,6 @@ tgyro.run(
 )
 tgyro.read(label="run1")
 tgyro.plot(labels=["run1"])
+
+# Required if running in non-interactive mode
+tgyro.fn.show()

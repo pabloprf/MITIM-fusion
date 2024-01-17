@@ -69,7 +69,7 @@ file = folderWork + "tglf.pkl"
 tglf.save_pkl(file)
 
 vitals_fun = VITALSmain.evaluateVITALS(folderWork)
-vitals_fun.Optim["BOiterations"] = 5
+vitals_fun.Optim["BOiterations"] = 2
 vitals_fun.TGLFparameters["TGLFsettings"] = TGLFsettings
 
 vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
@@ -82,3 +82,6 @@ PRF_BO = STRATEGYtools.PRF_BO(vitals_fun, restartYN=False, askQuestions=False)
 PRF_BO.run()
 
 vitals_fun.plot_optimization_results(analysis_level=4)
+
+# Required if running in non-interactive mode
+vitals_fun.fn.show()

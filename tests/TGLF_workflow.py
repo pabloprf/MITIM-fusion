@@ -26,3 +26,6 @@ tglf.run(
 
 tglf.read(label="run1")
 tglf.plot(labels=["run1"])
+
+# Required if running in non-interactive mode
+tglf.fn.show()

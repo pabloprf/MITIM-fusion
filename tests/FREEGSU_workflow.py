@@ -1,6 +1,4 @@
-import sys, os, copy
-import numpy as np
-from IPython import embed
+import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.freegsu import FREEGSUmain
@@ -87,3 +85,6 @@ PRF_BO = STRATEGYtools.PRF_BO(
 PRF_BO.run()
 
 evaluateFREEGSU_opt.plot_optimization_results(analysis_level=2)
+
+# Required if running in non-interactive mode
+evaluateFREEGSU_opt.fn.show()

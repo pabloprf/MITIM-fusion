@@ -89,3 +89,6 @@ PRF_BO.run()
 # -----------------------------------------------------------------------------------------------------
 
 opt_fun1D.plot_optimization_results(analysis_level=2)
+
+# Required if running in non-interactive mode
+opt_fun1D.fn.show()

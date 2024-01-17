@@ -38,3 +38,6 @@ prf_bo.run()
 
 # Plot
 portals_fun.plot_optimization_results(analysis_level=4)
+
+# Required if running in non-interactive mode
+portals_fun.fn.show()
