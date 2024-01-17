@@ -732,6 +732,7 @@ class TGLF:
         plotNormalizations=True,
         labels_legend=None,
         title_legend=None,
+        fn_color=None,
     ):
         total_plots = len(self.rhos) * len(labels)
 
@@ -793,15 +794,15 @@ class TGLF:
             self.fn = fn
 
         # *** TGLF Figures
-        fig1 = self.fn.add_figure(label=f"{extratitle}Summary")
-        fig2 = self.fn.add_figure(label=f"{extratitle}Contributors")
-        figFluctuations = self.fn.add_figure(label=f"{extratitle}Spectra")
-        figFields1 = self.fn.add_figure(label=f"{extratitle}Fields: Phi")
+        fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
+        fig2 = self.fn.add_figure(label=f"{extratitle}Contributors", tab_color=fn_color)
+        figFluctuations = self.fn.add_figure(label=f"{extratitle}Spectra", tab_color=fn_color)
+        figFields1 = self.fn.add_figure(label=f"{extratitle}Fields: Phi", tab_color=fn_color)
         if "a_par" in max_fields:
-            figFields2 = self.fn.add_figure(label=f"{extratitle}Fields: A_par")
+            figFields2 = self.fn.add_figure(label=f"{extratitle}Fields: A_par", tab_color=fn_color)
         if "a_per" in max_fields:
-            figFields3 = self.fn.add_figure(label=f"{extratitle}Fields: A_per")
-        figO = self.fn.add_figure(label=f"{extratitle}Model Details")
+            figFields3 = self.fn.add_figure(label=f"{extratitle}Fields: A_per", tab_color=fn_color)
+        figO = self.fn.add_figure(label=f"{extratitle}Model Details", tab_color=fn_color)
 
         figsWF = {}
         if self.ky_single is not None:
@@ -809,30 +810,30 @@ class TGLF:
                 figsWF[ky_single0] = self.fn.add_figure(
                     label=f"{extratitle}WF @ ky~{ky_single0}"
                 )
-        fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma")
-        fig7 = self.fn.add_figure(label=f"{extratitle}Input Controls")
+        fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
+        fig7 = self.fn.add_figure(label=f"{extratitle}Input Controls", tab_color=fn_color)
 
         # *** Postprocess Figures
         if successful_normalization:
-            figS = self.fn.add_figure(label=f"{extratitle}Simple")
-            figF = self.fn.add_figure(label=f"{extratitle}Fluctuations")
+            figS = self.fn.add_figure(label=f"{extratitle}Simple", tab_color=fn_color)
+            figF = self.fn.add_figure(label=f"{extratitle}Fluctuations", tab_color=fn_color)
             fig4 = (
-                self.fn.add_figure(label=f"{extratitle}Normalization")
+                self.fn.add_figure(label=f"{extratitle}Normalization", tab_color=fn_color)
                 if plotNormalizations
                 else None
             )
-            fig3 = self.fn.add_figure(label=f"{extratitle}Exp. Fluxes")
+            fig3 = self.fn.add_figure(label=f"{extratitle}Exp. Fluxes", tab_color=fn_color)
 
         # *** GACODE Figures
 
         if plotGACODE:
-            figProf_1 = self.fn.add_figure(label=f"{extratitle}GACODE-Prof.")
-            figProf_2 = self.fn.add_figure(label=f"{extratitle}GACODE-Power")
-            figProf_3 = self.fn.add_figure(label=f"{extratitle}GACODE-Geom.")
-            figProf_4 = self.fn.add_figure(label=f"{extratitle}GACODE-Grad.")
-            figProf_5 = self.fn.add_figure(label=f"{extratitle}GACODE-Flows")
-            figProf_6 = self.fn.add_figure(label=f"{extratitle}GACODE-Other")
-            figProf_7 = self.fn.add_figure(label=f"{extratitle}GACODE-Imp.")
+            figProf_1 = self.fn.add_figure(label=f"{extratitle}GACODE-Prof.", tab_color=fn_color)
+            figProf_2 = self.fn.add_figure(label=f"{extratitle}GACODE-Power", tab_color=fn_color)
+            figProf_3 = self.fn.add_figure(label=f"{extratitle}GACODE-Geom.", tab_color=fn_color)
+            figProf_4 = self.fn.add_figure(label=f"{extratitle}GACODE-Grad.", tab_color=fn_color)
+            figProf_5 = self.fn.add_figure(label=f"{extratitle}GACODE-Flows", tab_color=fn_color)
+            figProf_6 = self.fn.add_figure(label=f"{extratitle}GACODE-Other", tab_color=fn_color)
+            figProf_7 = self.fn.add_figure(label=f"{extratitle}GACODE-Imp.", tab_color=fn_color)
 
         grid = plt.GridSpec(4, 3, hspace=0.7, wspace=0.2)
         axsTGLF1 = np.empty((4, 3), dtype=plt.Axes)
@@ -2146,6 +2147,7 @@ class TGLF:
         self.scans[label]["variable"] = variable
         self.scans[label]["positionBase"] = None
         self.scans[label]["unnormalization_successful"] = True
+        self.scans[label]["results_tags"] = []
 
         # ----
         x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = (
@@ -2173,6 +2175,9 @@ class TGLF:
             )
 
             if isThisTheRightReadResults:
+
+                self.scans[label]["results_tags"].append(ikey)
+
                 x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
                     [],
                     [],
@@ -2787,15 +2792,9 @@ class TGLF:
             )
         ):
             for contLabel, ikey in enumerate(labels):
-                labelsExtraPlot, labels_legend = [], []
-                values_tot = (
-                    self.scans[ikey]["xV"][0]
-                    / self.scans[ikey]["xV"][0, self.scans[ikey]["positionBase"]]
-                )
-                for val in values_tot:
-                    fullres = f"{ikey}_{round(val,7)}"
-                    labelsExtraPlot.append(fullres)
-                    labels_legend.append(f"{round(val,7)}")
+
+                labelsExtraPlot = self.scans[ikey]["results_tags"]
+                labels_legend = [lab.split('_')[-1] for lab in labelsExtraPlot]
 
                 colorsC = np.transpose(
                     np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
@@ -2814,6 +2813,7 @@ class TGLF:
                     colors=colorsC_tuple,
                     plotNormalizations=False,
                     plotGACODE=False,
+                    fn_color=contLabel
                 )
 
     # ~~~~~~~~~~~~~~ Extra complete analysis options
@@ -2839,6 +2839,8 @@ class TGLF:
                 "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
             )
 
+            scan_name = f"{subFolderTGLF}_{variable}"   # e.g. turbDrives_RLTS_1
+
             self.runScan(
                 subFolderTGLF=subFolderTGLF,
                 variable=variable,
@@ -2857,11 +2859,17 @@ class TGLF:
             self.fn = GUItools.FigureNotebook(
                 "TGLF Drives MITIM Notebook", geometry="1500x900", vertical=True
             )
-            fig1 = self.fn.add_figure(label="Fluxes - Relative")
+            if self.NormalizationSets["SELECTED"] is not None:
+                fig1 = self.fn.add_figure(label="Fluxes - Relative")
+            else:
+                fig1 = None
             fig2 = self.fn.add_figure(label="Fluxes (GB) - Relative")
             fig3 = self.fn.add_figure(label="Linear Stability - Relative")
             figs1 = [fig1, fig2, fig3]
-            fig1 = self.fn.add_figure(label="Fluxes")
+            if self.NormalizationSets["SELECTED"] is not None:
+                fig1 = self.fn.add_figure(label="Fluxes")
+            else:
+                fig1 = None
             fig2 = self.fn.add_figure(label="Fluxes (GB)")
             fig3 = self.fn.add_figure(label="Linear Stability")
             figs2 = [fig1, fig2, fig3]
