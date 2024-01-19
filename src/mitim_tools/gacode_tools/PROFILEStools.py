@@ -698,6 +698,8 @@ class PROFILES_GACODE:
             )
         self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
 
+        if "w0(rad/s)" not in self.profiles:
+            self.profiles["w0(rad/s)"] = self.profiles["rho(-)"] * 0.0
         self.derived["aLw0"] = aLT(self.profiles["rmin(m)"], self.profiles["w0(rad/s)"])
         self.derived["dw0dr"] = -grad(
             self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
