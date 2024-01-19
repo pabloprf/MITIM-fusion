@@ -1211,9 +1211,9 @@ class PRF_BO:
             try:
                 with open(f"{self.folderExecution}/Outputs/TabularData.dat", "r") as f:
                     aux = f.readlines()
-                tabExists = len(aux) > self.initialPoints
+                tabExists = (len(aux)-1) >= self.initialPoints
                 print(
-                    f"\t- TabularData file has {len(aux)} elements, and initialPoints were {self.initialPoints}"
+                    f"\t- TabularData file has {len(aux)-1} elements, and initialPoints were {self.initialPoints}"
                 )
             except:
                 tabExists = False

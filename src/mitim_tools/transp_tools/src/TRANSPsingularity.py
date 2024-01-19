@@ -431,7 +431,7 @@ def interpretRun(infoSLURM, log_file):
 
     info = {"slurm": infoSLURM, "info": {}}
 
-    if infoSLURM is not None:
+    if (infoSLURM is not None) and (infoSLURM['STATE'] != 'NOT FOUND'):
         """
         Case is running		#if infoSLURM['STATE'] in ['RUNNING']
         """

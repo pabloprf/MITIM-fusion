@@ -339,8 +339,6 @@ def runGetFBM(
         os.system(f"mv {file} {file}_original")
         os.system(f"mv {file}_converted {file}")
 
-    embed()
-
     fbm_job.prep(
         commandMain,
         output_files=[finFile2],
