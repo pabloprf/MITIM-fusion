@@ -4,7 +4,10 @@ import numpy as np
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 from IPython import embed
+from scipy.optimize import curve_fit
 
+def linear(x, c1, c2): 
+    return c1 * x + c2
 
 #Object class that holds all information about calculation
 class chiPertCalculator(object):
@@ -185,19 +188,22 @@ class chiPertCalculator(object):
 
         #arrays of the slopes of the radius against time and against amplitude
         tSlope = np.zeros([Npulse])
+        tSlope_err = np.zeros([Npulse])
         aSlope = np.zeros([Npulse])
+        aSlope_err = np.zeros([Npulse])
 
     
         for j in range(0,Npulse):
 
-            fit = np.polyfit(rPulse[j,:],tPulse[j,:],1)
-            tSlope[j] = fit[0]
+            popt, pcov = curve_fit(linear, rPulse[j,:],tPulse[j,:])
+            tSlope[j] = popt[0]
+            tSlope_err[j] = pcov[1,1]**0.5
 
             if self.plotPulse: 
                 plt.ion()
                 fig, ax = plt.subplots()
                 plt.scatter(self.rPulse[j,:], self.tPulse[j,:]) 
-                plt.plot(rPulse[j,:], fit[1] + fit[0] * rPulse[j,:])
+                plt.plot(rPulse[j,:], popt[1] + popt[0] * rPulse[j,:])
 
                 plt.xlabel('Radius')
                 plt.ylabel('Time of max Te')
@@ -219,8 +225,9 @@ class chiPertCalculator(object):
 
         #loop through pulses j (use same indexing convention as prepareData to facilitate plotting)
         for j in range(0,Npulse):
-            fit = np.polyfit(rPulse[j,:],logApulse[j,:],1)
-            aSlope[j] = fit[0]
+            popt, pcov = curve_fit(linear, rPulse[j,:],logApulse[j,:])
+            aSlope[j] = popt[0]
+            aSlope_err[j] = pcov[1,1]**0.5
 
             indexStart = (np.abs(self.pulseTimes[j]
                                       - self.eleTempTime)).argmin()
@@ -232,7 +239,7 @@ class chiPertCalculator(object):
                 plt.ion()
                 fig, ax = plt.subplots()
                 plt.scatter(self.rPulse[j,:], logApulse[j,:]) 
-                plt.plot(rPulse[j,:], fit[1] + fit[0] * rPulse[j,:])
+                plt.plot(rPulse[j,:], popt[1] + popt[0] * rPulse[j,:])
 
                 plt.xlabel('Radius')
                 plt.ylabel('logApulse')
