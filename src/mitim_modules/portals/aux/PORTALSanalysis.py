@@ -404,7 +404,7 @@ class PORTALSanalyzer:
         self.plotExpected(fig=fig)
 
         fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4)
-        self.plotModelComparison(fig=fig)
+        _,_ = self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)

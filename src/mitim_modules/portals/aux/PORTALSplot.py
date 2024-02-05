@@ -1927,12 +1927,14 @@ def PORTALSanalyzer_plotModelComparison(
 
     axs = axs.flatten()
 
+    metrics = {}
+
     # te
     quantityX = "QeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Qe"
     quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
     quantityY = "QeGB_sim_turb"
     quantityY_stds = "QeGB_sim_turb_stds"
-    plotModelComparison_quantity(
+    metrics['Qe'] = plotModelComparison_quantity(
         self,
         axs[0],
         quantityX=quantityX,
@@ -1954,7 +1956,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
     quantityY = "QiGBIons_sim_turb_thr"
     quantityY_stds = "QiGBIons_sim_turb_thr_stds"
-    plotModelComparison_quantity(
+    metrics['Qi'] = plotModelComparison_quantity(
         self,
         axs[1],
         quantityX=quantityX,
@@ -1976,7 +1978,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
     quantityY = "GeGB_sim_turb"
     quantityY_stds = "GeGB_sim_turb_stds"
-    plotModelComparison_quantity(
+    metrics['Ge'] = plotModelComparison_quantity(
         self,
         axs[2],
         quantityX=quantityX,
@@ -2014,7 +2016,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "GiGB_sim_turb_stds" if UseTGLFfull_x is None else None
         quantityY = "GiGB_sim_turb"
         quantityY_stds = "GiGB_sim_turb_stds"
-        plotModelComparison_quantity(
+        metrics['Gi'] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2060,7 +2062,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "MtGB_sim_turb_stds"
         quantityY = "MtGB_sim_turb"
         quantityY_stds = "MtGB_sim_turb_stds"
-        plotModelComparison_quantity(
+        metrics['Mt'] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2097,7 +2099,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "EXeGB_sim_turb_stds"
         quantityY = "EXeGB_sim_turb"
         quantityY_stds = "EXeGB_sim_turb_stds"
-        plotModelComparison_quantity(
+        metrics['EX'] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2126,7 +2128,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    return axs
+    return axs,metrics
 
 
 def plotModelComparison_quantity(
@@ -2207,11 +2209,13 @@ def plotModelComparison_quantity(
 
     colors = GRAPHICStools.listColors()
 
+    metrics = {}
     for ir in range(X.shape[1]):
         label = f"$r/a={self.roa[ir]:.2f}$"
         if includeMetric:
             metric, lab_metric = add_metric(None, X[:, ir], Y[:, ir])
             label += f", {lab_metric}: {metric:.2f}"
+            metrics[self.roa[ir]] = metric
 
         ax.errorbar(
             X[:, ir],
@@ -2266,6 +2270,7 @@ def plotModelComparison_quantity(
             )
             legend.get_title().set_fontsize(sizeLeg)
 
+    return metrics
 
 # ---------------------------------------------------------------------------------------------------------------------
 
