@@ -1,15 +1,15 @@
-import pdb, copy, datetime, scipy, torch, scipy.special
+import pdb
+import copy
+import scipy
+import torch
+import scipy.special
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.interpolate as interpolate
-from IPython import embed
-from scipy.optimize import curve_fit
-from scipy import arange, array, exp
-from scipy.interpolate import InterpolatedUnivariateSpline, CubicSpline, lagrange
+from scipy.interpolate import InterpolatedUnivariateSpline, CubicSpline
 from scipy.integrate import romb
-
-from mitim_tools.misc_tools import FARMINGtools, IOtools, GRAPHICStools
-
+from mitim_tools.misc_tools import IOtools
+from IPython import embed
 
 def is_inBetween(x, x1, x2):
     [d1, d2] = calculateDistance(x, [x1, x2])
@@ -105,7 +105,7 @@ def extrap1d(interpolator):
             return interpolator(x)
 
     def ufunclike(xs):
-        return array(list(map(pointwise, array(xs))))
+        return np.array(list(map(pointwise, np.array(xs))))
 
     return ufunclike
 
@@ -120,9 +120,6 @@ def orderArray(arr, base=None):
 
     sortedList = sorted(zip(base, arr))
     return np.array([a for _, a in sortedList])
-
-    return auxT
-
 
 def arePointsEqual(x1, x2):
     isEqual = True

@@ -2,7 +2,6 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
-from math import inf
 from tqdm import tqdm
 import os
 import time

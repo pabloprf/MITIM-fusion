@@ -1,13 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
+from IPython import embed
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
 Modifications are made for nice visualizations and a few extra derivations.
 """
-
 
 class MITIMgeqdsk:
     def __init__(self, filename, fullLCFS=False):
