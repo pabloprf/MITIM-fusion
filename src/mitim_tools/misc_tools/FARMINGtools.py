@@ -619,11 +619,18 @@ class mitim_job:
             f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
         )
 
-        output_files_backup = copy.deepcopy(self.output_files)
+        if 'output_files' in self.__dict__:
+            output_files_backup = copy.deepcopy(self.output_files)
+            output_folders_backup = copy.deepcopy(self.output_folders)
+            wasThere = True
+        else:
+            wasThere = False
+
         self.output_files = [
             "slurm_output.dat",    # The slurm results of the main job!
             "squeue_output.dat"    # The output of the squeue command
         ]
+        self.output_folders = []
 
         self.connect()
         output, error = self.execute(command, printYN=True)
@@ -632,7 +639,9 @@ class mitim_job:
         self.interpret_status()
 
         # Back to original
-        self.output_files = output_files_backup
+        if wasThere:
+            self.output_folders = output_folders_backup
+            self.output_files = output_files_backup
 
     def interpret_status(self):
         '''

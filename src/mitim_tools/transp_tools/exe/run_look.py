@@ -20,7 +20,7 @@ args = parser.parse_args()
 
 # Workflow
 t = TRANSPtools.TRANSP(IOtools.expandPath("./"), args.tokamak)
-t.defineRunParameters(args.runTot, args.runTot)
+t.defineRunParameters(args.runTot, args.runTot, ensureMPIcompatibility= False)
 
 # Determine state
 info, status, infoGrid = t.check()

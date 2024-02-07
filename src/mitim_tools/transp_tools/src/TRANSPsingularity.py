@@ -16,7 +16,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         self.job_id, self.job_name = None, None
 
-    def defineRunParameters(self, *args, minutesAllocation=60 * 8, **kwargs):
+    def defineRunParameters(self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, **kwargs):
         super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
@@ -28,9 +28,10 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self.folderExecution = machineSettings["folderWork"]
 
         # Make sure that the MPIs are set up properly
-        self.mpisettings = TRANSPmain.ensureMPIcompatibility(
-            self.nml_file, self.nml_file_ptsolver, self.mpisettings
-        )
+        if ensureMPIcompatibility:
+            self.mpisettings = TRANSPmain.ensureMPIcompatibility(
+                self.nml_file, self.nml_file_ptsolver, self.mpisettings
+            )
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Number of cores (must be inside 1 node)
@@ -78,15 +79,14 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self,
         label="run1",
         retrieveAC=False,
-        minutesAllocation=60,
         **kwargs,
     ):
+    
         runSINGULARITY_look(
             self.FolderTRANSP,
+            self.job.folderExecution,
             self.runid,
-            self.tok,
-            self.job_name,
-            minutes=minutesAllocation,
+            self.job_name+'_look', 
         )
 
         self.cdfs[label] = TRANSPmain.storeCDF(
@@ -531,7 +531,8 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
 
 
-def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
+def runSINGULARITY_look(folderWork,folderTRANSP, runid, job_name):
+
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
@@ -554,7 +555,7 @@ def runSINGULARITY_look(folderWork, runid, tok, job_name, minutes=60):
         txt_bind = ""
 
     TRANSPcommand = f"""
-cd {transp_job.folderExecution} && singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+cp -r {folderTRANSP}/* . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -570,9 +571,7 @@ cd {transp_job.folderExecution} && singularity run {txt_bind}--app plotcon $TRAN
         output_files=outputFiles,
     )
 
-    transp_job.run(
-        removeScratchFolders=False
-    )  # Because it needs to read what it was there from run()
+    transp_job.run()
 
 
 def organizeACfiles(
