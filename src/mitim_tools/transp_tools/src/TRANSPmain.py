@@ -1,11 +1,11 @@
-import time, datetime, os
-import numpy as np
-from IPython import embed
+import time
+import datetime
+import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools.tools import TRANSPinterpretive
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 """
 						TRANSP class to handle runs
@@ -91,6 +91,7 @@ class TRANSPgeneric:
         shotnumber,
         mpisettings={"trmpi": 1, "toricmpi": 1, "ptrmpi": 1},
         shotNumberReal=None,
+        **kwargs
     ):
         self.runid = runid  # 12345A01
         self.shotnumber = shotnumber  # 12345

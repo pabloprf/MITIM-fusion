@@ -1,9 +1,13 @@
-import sys, os, time, os.path, urllib, datetime, re
+import os
+import time
+import os.path
+import datetime
+import re
 import numpy as np
 from collections import OrderedDict
 from IPython import embed
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools import CDFtools, UFILEStools
+from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.src import TRANSPmain, TRANSPglobus_ntcc
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
