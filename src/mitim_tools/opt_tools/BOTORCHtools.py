@@ -29,9 +29,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         outcome_transform=None,
         surrogateOptions={},
         variables=None,
-        train_X_added=None,
-        train_Y_added=None,
-        train_Yvar_added=None,
+        train_X_added=torch.Tensor([]),
+        train_Y_added=torch.Tensor([]),
+        train_Yvar_added=torch.Tensor([]),
     ):
         """
         _added refers to already-transformed variables that are added from table
@@ -248,9 +248,16 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         self.to(train_X)
 
     def store_training(self, x, xa, y, ya, yv, yva, input_transform, outcome_transform):
+        
         # x, y are raw untransformed, and I want raw transformed
-        x_tr = input_transform["tf1"](x)
-        y_tr, yv_tr = outcome_transform["tf1"](x, y, yv)
+        if input_transform is not None:
+            x_tr = input_transform["tf1"](x)
+        else:
+            x_tr = x
+        if outcome_transform is not None:
+            y_tr, yv_tr = outcome_transform["tf1"](x, y, yv)
+        else:
+            y_tr, yv_tr = y, yv
 
         # xa, ya are raw transformed
         xa_tr = xa
