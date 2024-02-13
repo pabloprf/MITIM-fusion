@@ -647,6 +647,7 @@ class PORTALSanalyzer:
         restart=False,
         label="default",
         tglf_object=None,
+        onlyBest=False,
         **kwargsTGLF,
     ):
         """
@@ -661,7 +662,12 @@ class PORTALSanalyzer:
         if not os.path.exists(folder):
             os.system(f"mkdir {folder}")
 
-        for ev in range(self.ilast + 1):
+        if onlyBest: 
+            ranges = [self.ibest]
+        else: 
+            ranges = range(self.ilast + 1)
+
+        for ev in ranges:
             tglf, TGLFsettings, extraOptions = self.extractTGLF(
                 folder=f"{folder}/Evaluation.{ev}/", evaluation=ev, restart=restart
             )
@@ -679,7 +685,7 @@ class PORTALSanalyzer:
         if tglf_object is None:
             tglf_object = copy.deepcopy(tglf)
 
-        for ev in range(self.ilast + 1):
+        for ev in ranges:
             tglf_object.read(
                 folder=f"{folder}/Evaluation.{ev}/tglf_{label}/",
                 label=f"{label}_ev{ev}",
