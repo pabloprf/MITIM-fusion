@@ -3,6 +3,7 @@ import torch
 import copy
 import numpy as np
 from collections import OrderedDict
+from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
@@ -27,6 +28,7 @@ def initializeProblem(
     dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
+    checkForSpecies=True,
 ):
     """
     Specification of points occur in rho coordinate, although internally the work is r/a
@@ -102,6 +104,17 @@ def initializeProblem(
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
+    # Check if I will be able to calculate radiation
+    if checkForSpecies:
+        speciesNotFound = []
+        for i in range(len(profiles.Species)):
+            c = TARGETStools.get_chebyshev_coeffs(profiles.Species[i]['N'])
+            if c[0]<=-1E10:
+                speciesNotFound.append(profiles.Species[i]['N'])
+        if len(speciesNotFound)>0:
+            a = print(f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions", typeMsg="q")
+            if not a:
+                raise ValueError("Species not found")
     """
 	***************************************************************************************************
 											POWER STATE

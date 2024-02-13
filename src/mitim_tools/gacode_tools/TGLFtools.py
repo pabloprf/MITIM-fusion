@@ -616,11 +616,11 @@ class TGLF:
 
                     del self.results[f"ky{ky_single0}"]
         except FileNotFoundError:
-            embed()
             self.ky_single = None
             print(
                 "> Waveform analysis FAILED (maybe due to TGLF version?)", typeMsg="w"
             )
+            embed()
 
         # Recover previous stuff
         self.ResultsFiles_WF = copy.deepcopy(self.ResultsFiles)
@@ -1101,7 +1101,7 @@ class TGLF:
                 # Plot Raw TGLF (normalized)
                 # --------------------------------
                 self.results[label]["TGLFout"][irho].plotTGLF_Summary(
-                    c=colors[cont], label=full_label, axs=axsTGLF1
+                    c=colors[cont], label=full_label, axs=axsTGLF1, irho_cont=irho_cont
                 )
                 self.results[label]["TGLFout"][irho].plotTGLF_Contributors(
                     c=colors[cont],
@@ -4753,7 +4753,7 @@ class TGLFoutput:
         else:
             self.unnormalization_successful = False
 
-    def plotTGLF_Summary(self, c="b", label="", axs=None):
+    def plotTGLF_Summary(self, c="b", label="", axs=None, irho_cont=0):
         removeLow = 1e-6  # If Growth Rate below this, remove from list for better logarithmic plotting
 
         if axs is None:
