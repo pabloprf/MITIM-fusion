@@ -356,9 +356,7 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
     # Command
     # --------------------------------
 
-    Command = "cd {0} && globus-job-submit transpgrid.pppl.gov /u/pshare/globus/transp_cleanup {1} {2} >> outputtrcancel.txt".format(
-        scratchArea, runid, tok
-    )
+    Command = f"cd {scratchArea} && globus-job-submit transpgrid.pppl.gov /u/pshare/globus/transp_cleanup {runid} {tok} >> outputtrcancel.txt"
 
     inputFiles = []
     outputFiles = []
@@ -377,7 +375,7 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
             input_files=inputFiles,
         )
 
-        transp_job.run(waitYN=False)
+        transp_job.run(waitYN=False,timeoutSecs=5)
 
     # Leave some more time for deletion
     print(

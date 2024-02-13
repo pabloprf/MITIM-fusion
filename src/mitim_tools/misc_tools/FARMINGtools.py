@@ -479,7 +479,7 @@ class mitim_job:
                 output = stdout.read()
                 error = stderr.read()
         except socket.timeout:
-            print("Command timed out")
+            print("\t> Command timed out!",typeMsg='w')
 
         return output, error
 
