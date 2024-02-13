@@ -3,7 +3,6 @@ import torch
 import copy
 import numpy as np
 import dill as pickle_dill
-from IPython import embed
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
@@ -18,6 +17,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 

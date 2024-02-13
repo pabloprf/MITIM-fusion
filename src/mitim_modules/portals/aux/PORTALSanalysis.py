@@ -56,20 +56,24 @@ class PORTALSanalyzer:
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
-        opt_fun = STRATEGYtools.FUNmain(folder)
+        if os.path.exists(folder):
 
-        try:
-            opt_fun.read_optimization_results(
-                analysis_level=4, plotYN=False, folderRemote=folderRemote
-            )
+            opt_fun = STRATEGYtools.FUNmain(folder)
 
-            return cls(opt_fun, folderAnalysis=folderAnalysis)
+            try:
+                opt_fun.read_optimization_results(
+                    analysis_level=4, plotYN=False, folderRemote=folderRemote
+                )
 
-        except (FileNotFoundError, AttributeError) as e:
-            print("- Could not read optimization results due to error:", typeMsg="w")
-            print(e)
-            print("- Trying to read PORTALS initialization...", typeMsg="w")
-            return PORTALSinitializer(folder)
+                return cls(opt_fun, folderAnalysis=folderAnalysis)
+
+            except (FileNotFoundError, AttributeError) as e:
+                print("\t- Could not read optimization results due to error:", typeMsg="w")
+                print(e)
+                print("\t- Trying to read PORTALS initialization...", typeMsg="w")
+                return PORTALSinitializer(folder)
+        else:
+            print("\t- Folder does not exist, are you sure you are on the right path?", typeMsg="w")
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):
