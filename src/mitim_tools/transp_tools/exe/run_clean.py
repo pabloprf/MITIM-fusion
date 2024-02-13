@@ -28,7 +28,7 @@ user = s[s["preferences"]["ntcc"]]["username"]
 
 
 def cancelRun(namerun):
-    t = TRANSPtools.TRANSP(IOtools.expandPath("./"), args.tokamak)
+    t = TRANSPtools.TRANSP(IOtools.expandPath(s['local']['scratch']), args.tokamak)
     t.defineRunParameters(namerun, namerun, ensureMPIcompatibility= False)
 
     _, _, infoGrid = t.check()
@@ -38,9 +38,7 @@ def cancelRun(namerun):
         t.delete()
     else:
         print(
-            "\t>>>> Run {0} cannot be found on the grid, not performing any active action".format(
-                namerun
-            )
+            f"\t>>>> Run {namerun} cannot be found on the grid, not performing any active action"
         )
 
 
