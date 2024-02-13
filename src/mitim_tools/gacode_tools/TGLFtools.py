@@ -4110,6 +4110,9 @@ def modifyInputToTGLF(
             typeMsg="w",
         )
 
+    # Make all upper case
+    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
+
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Change with external options -> Input directly, not as multiplier
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
