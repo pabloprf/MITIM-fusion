@@ -56,7 +56,7 @@ class PORTALSanalyzer:
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
-        if os.path.exists(folder):
+        if os.path.exists(folder) or folderRemote is not None:
 
             opt_fun = STRATEGYtools.FUNmain(folder)
 
