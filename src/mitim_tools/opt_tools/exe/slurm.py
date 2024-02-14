@@ -38,7 +38,7 @@ def commander(
         None,
         launchSlurm=True,
         nameJob=f"mitim_opt_{num}{extra_name}",
-        partition=partition,
+        slurm={"partition": partition},
         minutes=int(60 * hours),
         ntasks=1,
         cpuspertask=n,
