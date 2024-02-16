@@ -32,6 +32,7 @@ extensions = [
     "sphinx_togglebutton",
     "sphinx_panels",
     'sphinxcontrib.images',
+    'nbsphinx'
 ]
 
 # Add mappings for intersphinx

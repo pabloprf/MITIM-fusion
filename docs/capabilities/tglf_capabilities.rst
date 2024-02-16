@@ -44,78 +44,10 @@ The results can be accessed from the ``tglf.results`` dictionary.
 Run TGLF from input.gacode
 --------------------------
 
-For this tutorial we will need the following modules:
+.. toctree::
+   :maxdepth: 2
 
-.. code-block:: python
-
-    from mitim_tools.gacode_tools import TGLFtools
-    from mitim_tools.misc_tools   import IOtools
-
-Select the location of the input.gacode file to start the simulation from. Note that you can use the ``IOtools.expandPath()`` method to work with relative paths. You should also select the folder where the simulation will be run:
-
-.. code-block:: python
-
-    inputgacode_file = IOtools.expandPath('$MITIM_PATH/tests/data/input.gacode')
-    folder           = IOtools.expandPath('$MITIM_PATH/tests/scratch/tglf_tut/')
-
-The TGLF class can be initialized by providing the radial location (in square root of normalized toroidal flux, ``rho``) to run. Note that the values are given as a list, and several radial locations can be run at once:
-
-.. code-block:: python
-
-    tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
-
-To generate the input files (input.tglf) to TGLF at each radial location, MITIM needs to run a few commands to correctly map the quantities in the input.gacode file to the ones required by TGLF. This is done automatically with the ``prep()`` command. Note that MITIM has a *only-run-if-needed* philosophy and if it finds that the input files to TGLF already exist in the working folder, the preparation method will not run any command, unless a ``restart = True`` argument is provided.
-
-.. code-block:: python
-
-    cdf = tglf.prep(folder,inputgacode=inputgacode_file,restart=False )
-
-.. tip::
-
-    The ``.prep()`` method, when applied to a case that starts with an input.gacode file, launches a `TGYRO` run for a "zero" iteration to generate *input.tglf* at specific ``rho`` locations from the *input.gacode*. This method to generate input files is inspired by how the `OMFIT framework <https://omfit.io/index.html>`_ works.
-
-Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``restart`` flag can be provided.
-The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
-First, the argument ``TGLFsettings`` indicates the base case to start with.
-The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
-Second, the argument ``extraOptions`` can be passed as a dictionary of variables to change.
-For example, the following two commands will run TGLF with saturation rule number 2 with and without electromagnetic effets. After each ``run()`` command, a ``read()`` is needed, to populate the *tglf.results* dictionary with the TGLF outputs (``label`` refers to the dictionary key for each run):
-
-.. code-block:: python
-
-    tglf.run( subFolderTGLF = 'yes_em_folder/', 
-              TGLFsettings  = 5,
-              extraOptions  = {},
-              restart       = False )
-
-    tglf.read( label = 'yes_em' )
-
-    tglf.run( subFolderTGLF = 'no_em_folder/', 
-              TGLFsettings  = 5,
-              extraOptions  = {'USE_BPER':False},
-              restart       = False )
-
-    tglf.read( label = 'no_em' )
-
-.. tip::
-
-    In this example, ``tglf.results['yes_em']`` and ``tglf.results['no_em']`` are themselves dictionaries, so please do ``.keys()`` to get all the possible results that have been obtained.
-
-TGLF results can be plotted together by indicating what labels to plot:
-    
-.. code-block:: python
-
-    tglf.plot( labels = ['yes_em', 'no_em'] )
-
-As a result, a TGLF notebook with different tabs will be opened with all relevant output quantities:
-
-.. image:: ./figs/TGLFnotebook.png
-   :align: center
-   :alt: TGLF_Notebook
-
-.. raw:: html
-
-   <br><br>
+   notebooks/tglf.ipynb
 
 Run TGLF from TRANSP results file
 ---------------------------------
