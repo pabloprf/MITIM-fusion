@@ -58,19 +58,13 @@ class ASTRA():
         self.astra_job.define_machine(
             "astra",
             f"{astra_name}/",
-            launchSlurm=True,
-            slurm_settings={
-                "minutes": slurm_options['time'],
-                "ntasks": 1,
-                "name": astra_name,
-                "cpuspertask": slurm_options['cpus'],
-            },
+            launchSlurm=False,
         )
 
         # What to run 
         self.command_to_run_astra = f'''
 cd {self.astra_job.folderExecution}/{name} 
-exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug
+exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
 '''
 
         self.shellPreCommand = f'cd {self.astra_job.folderExecution}/{name} &&  ./install.sh'
