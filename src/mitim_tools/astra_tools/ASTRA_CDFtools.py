@@ -358,7 +358,7 @@ class CDFreactor:
         self.plot_chi_i(time_aims=time_aims)
         self.plot_heat_fluxes(time_aims=time_aims)
         # self.plot_flux_matching(time_aims = time_aims)
-        self.plot_pulse()
+        self.plot_pulse(time_aims=time_aims)
 
         self.fn.show()
         # sys.exit(self.fn.app.exec_())
@@ -766,7 +766,7 @@ class CDFreactor:
 
     def plot_pulse(
         self,
-        time_aims=time_aims,
+        time_aims=[10.20, 10.201, 10.2015, 10.202, 10.210, 10.212],
         rho_tor_aims=[0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6],
     ):
         fig = self.fn.add_figure(label="Pulse")
