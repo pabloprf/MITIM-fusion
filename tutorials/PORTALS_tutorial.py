@@ -26,7 +26,7 @@ PORTALS_fun.PORTALSparameters["model_used"] = "tglf_neo-tgyro"
 # TGLF specifications
 PORTALS_fun.TGLFparameters[
     "TGLFsettings"
-] = 5  # SAT2 EM, check out mitim_tools/gacode_tools/aux/GACODEdefaults.py for more options
+] = 5  # SAT2 EM, check out templates/input.tglf.models.json for more options
 PORTALS_fun.TGLFparameters["extraOptionsTGLF"] = {"BPER_USE": False}  # Turn off BPER
 
 # Plasma preparation: remove fast species, adjust quasineutrality
