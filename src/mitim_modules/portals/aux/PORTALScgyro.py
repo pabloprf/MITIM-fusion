@@ -504,7 +504,7 @@ def modifyResults(
         for i in range(Qe.shape[0]):
             if Qi[i] < Qi_criterion_stable:
                 print(
-                    f"\t- Plasma considered stable (Qi = {Qi[i]} < {Qi_criterion_stable} MW/m2) at position {i}, using minimum errors of {minErrorPercent}% of targets",
+                    f"\t- Based on 'Qi_criterion_stable', plasma considered stable (Qi = {Qi[i]:.2e} < {Qi_criterion_stable:.2e} MW/m2) at position #{i}, using minimum errors of {minErrorPercent}% of targets",
                     typeMsg="w",
                 )
                 QeE[i] = Qe_min[i]
