@@ -370,6 +370,10 @@ class PRF_BO:
         self.askQuestions = askQuestions
         self.seed = seed
 
+        if (not self.restartYN) and askQuestions:
+            if not print(f'\t* Because {restartYN = }, MITIM will try to read existing results from folder', typeMsg='q'):
+                raise Exception('[MITIM] - User requested to stop')
+
         if self.mainFunction.name_objectives is None:
             self.mainFunction.name_objectives = "y"
 
