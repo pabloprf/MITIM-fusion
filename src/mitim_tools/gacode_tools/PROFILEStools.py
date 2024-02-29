@@ -37,7 +37,7 @@ class PROFILES_GACODE:
         Depending on resolution, derived can be expensive, so I mmay not do it every time
         """
 
-        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type"]
+        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
         self.titles_singleArr = [
             "masse",
             "mass",
