@@ -1,6 +1,7 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools,IOtools
 from IPython import embed
 
 """
@@ -9,7 +10,7 @@ Modifications are made for nice visualizations and a few extra derivations.
 """
 
 class MITIMgeqdsk:
-    def __init__(self, filename, fullLCFS=False):
+    def __init__(self, filename, fullLCFS=False,removeCoils=True):
         """
         Read g-eqdsk file using OMFIT classes (dynamic loading)
 
@@ -17,6 +18,17 @@ class MITIMgeqdsk:
                 I impose FindSeparatrix because I don't trust the g-file one
         """
 
+        if removeCoils:
+            print(f"\t- If geqdsk is appended with coils, removing them to read {filename}")
+            with open(filename, "r") as f:
+                lines = f.readlines()
+            with open(f"{filename}_noCoils.geqdsk", "w") as f:
+                for line in lines:
+                    if line[:2] == '  ': break
+                    f.write(line)
+            filename = f"{filename}_noCoils.geqdsk"
+
+        # -------------------------------------------------------------
         import omfit_classes.omfit_eqdsk
 
         self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(
@@ -26,6 +38,44 @@ class MITIMgeqdsk:
 
         # Extra derivations in MITIM
         self.derive(fullLCFS=fullLCFS)
+
+        if removeCoils:
+            os.system(f'rm {filename}')
+
+    @classmethod
+    def timeslices(cls, filename, fullLCFS=False,removeCoils=True):
+        print("\n...Opening GEQ file with several time slices")
+
+        with open(filename,'rb') as f:
+            lines_full = f.readlines()
+
+        resolutions = [int(a) for a in lines_full[0].split()[-3:]]
+
+        lines_files = []
+        lines_files0 = []
+        for i in range(len(lines_full)):
+            line = lines_full[i]
+            resols = []
+            try:
+                resols = [int(a) for a in line.split()[-3:]]
+            except:
+                pass
+            if (resols == resolutions) and (i != 0):
+                lines_files.append(lines_files0)
+                lines_files0 = []
+            lines_files0.append(line)
+        lines_files.append(lines_files0)
+
+        # Write files
+        gs = []
+        for i in range(len(lines_files)):
+            with open(f"{filename}_time{i}.geqdsk",'wb') as f:
+                f.writelines(lines_files[i])
+            
+            gs.append(cls(f"{filename}_time{i}.geqdsk", fullLCFS=fullLCFS,removeCoils=removeCoils))
+            os.system(f'rm {filename}_time{i}.geqdsk')
+
+        return gs
 
     def derive(self, fullLCFS=False):
         self.Jt = self.g.surfAvg("Jt") * 1e-6
