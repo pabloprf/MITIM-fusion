@@ -1912,7 +1912,7 @@ def read_from_scratch(file):
     """
 
     mainFunction = FUNmain(None)
-    prf = PRF_BO(mainFunction, onlyInitialize=True)
+    prf = PRF_BO(mainFunction, onlyInitialize=True, askQuestions=False)
     prf = prf.read(file=file, iteration=-1, provideFullClass=True)
 
     return prf
