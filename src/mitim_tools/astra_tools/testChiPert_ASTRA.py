@@ -197,14 +197,13 @@ class chiPertCalculator(object):
 
             popt, pcov = curve_fit(linear, rPulse[j,:],tPulse[j,:])
             tSlope[j] = popt[0]
-            tSlope_err[j] = pcov[1,1]**0.5
+            tSlope_err[j] = pcov[0,0]**0.5
 
             if self.plotPulse: 
                 plt.ion()
                 fig, ax = plt.subplots()
-                plt.scatter(self.rPulse[j,:], self.tPulse[j,:]) 
+                plt.scatter(rPulse[j,:], tPulse[j,:]) 
                 plt.plot(rPulse[j,:], popt[1] + popt[0] * rPulse[j,:])
-
                 plt.xlabel('Radius')
                 plt.ylabel('Time of max Te')
 
@@ -227,7 +226,7 @@ class chiPertCalculator(object):
         for j in range(0,Npulse):
             popt, pcov = curve_fit(linear, rPulse[j,:],logApulse[j,:])
             aSlope[j] = popt[0]
-            aSlope_err[j] = pcov[1,1]**0.5
+            aSlope_err[j] = pcov[0,0]**0.5
 
             indexStart = (np.abs(self.pulseTimes[j]
                                       - self.eleTempTime)).argmin()
