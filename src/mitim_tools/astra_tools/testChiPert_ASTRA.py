@@ -291,6 +291,9 @@ class chiPertCalculator(object):
         #Correct for Shafranov Shift
         alpha = ((self.a-self.s)/self.a)*alphaDag
         print('alpha: ' + str(alpha))
+        alpha_err = np.sqrt(100 * (self.a-self.s)**2 * aSlope_err**2)
+        print('alpha_err: ' + str(alpha_err))
+        embed()
 
         #Calculate the perturbative thermal diffusivity
         chiPert = 4.2 * ((self.a*np.sqrt(self.elong))*vP)/alpha
