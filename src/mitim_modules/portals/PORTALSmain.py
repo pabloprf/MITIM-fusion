@@ -333,7 +333,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         _, tgyro, _, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
-            numPORTALS,
             dictDVs,
             name,
             extra_params_model=extra_params_model,
@@ -497,7 +496,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 results, tgyro, powerstate, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
-                    numPORTALS,
                     dictDVs,
                     name,
                     restart=restartIfExists,
@@ -532,7 +530,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 def runModelEvaluator(
     self,
     FolderEvaluation,
-    numPORTALS,
     dictDVs,
     name,
     restart=False,

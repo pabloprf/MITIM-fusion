@@ -720,7 +720,6 @@ class PORTALSanalyzer:
             resultsO, tgyroO, powerstateO, _ = runModelEvaluator(
                 self.opt_fun.prfs_model.mainFunction,
                 FolderEvaluation,
-                0,
                 dictDVs,
                 name0,
                 restart=restart,
@@ -741,7 +740,6 @@ class PORTALSanalyzer:
         resultsB, tgyroB, powerstateB, _ = runModelEvaluator(
             self.opt_fun.prfs_model.mainFunction,
             FolderEvaluation,
-            self.res.best_absolute_index,
             dictDVs,
             name,
             restart=restart,

@@ -1,15 +1,16 @@
-import os, copy, datetime, torch, botorch
-from IPython import embed
+import copy
+import datetime
+import torch
+import botorch
 import dill as pickle_dill
 import numpy as np
-import matplotlib.pyplot as plt
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools import SURROGATEtools, OPTtools, BOTORCHtools
 from mitim_tools.opt_tools.aux import TESTtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def identity(X, *args):
     return X, {}
@@ -109,10 +110,10 @@ class OPTstep:
     def fit_step(self, avoidPoints=[], fitWithTrainingDataIfContains=None):
         """
         Notes:
-                - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
-                        to fit those surrogate variables that contain 'Tar' in their names. This is useful when in
-                        mitim I want to simply use the training in a file and not directly from train_X,Y,Yvar for
-                        the fluxes but I do want *new* target calculation
+            - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
+                    to fit those surrogate variables that contain 'Tar' in their names. This is useful when in
+                    PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
+                    the fluxes but I do want *new* target calculation
         """
 
         """
@@ -294,7 +295,7 @@ class OPTstep:
         # Combine them in a ModelListGP (create one single with MV but do not fit)
         # ------------------------------------------------------------------------------------------------------
 
-        print(f"~ MV model to initialize combination")
+        print("~ MV model to initialize combination")
 
         self.GP["combined_model"] = SURROGATEtools.surrogate_model(
             self.x,
@@ -489,8 +490,6 @@ class OPTstep:
         # ~~~~~~~~ Evaluate Adquisition
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        time1 = datetime.datetime.now()
-
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("~~~~ Running optimization methods")
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -515,14 +514,10 @@ class OPTstep:
             f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points"
         )
 
-        txt_time = IOtools.getTimeDifference(time1)
-
     def curate_outliers(self):
         # Remove outliers
         self.outliers = removeOutliers(
-            self.x,
             self.y,
-            self.yvar,
             stds_outside=self.surrogateOptions["stds_outside"],
             stds_outside_checker=self.surrogateOptions["stds_outside_checker"],
             alreadyAvoided=self.avoidPoints,
@@ -544,7 +539,7 @@ class OPTstep:
 
 
 def removeOutliers(
-    x, y, yvar, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]
+    y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]
 ):
     """
     This routine finds outliers to remove
