@@ -40,42 +40,16 @@ class chiPertCalculator(object):
         self.eleTempTime            = None
         self.radiusDiag             = None
         self.radiusDiagTime         = None
-        self.zDiag                  = None
 
         self.a                      = None
         self.elong                  = None
         self.s                      = None
-        self.q                      = None
-        self.qpsi                   = None
-        self.avgq                   = None
         
-        self.dcnDen                 = None
-        self.avgTemp                = None
-        self.avgGradT               = None
-
-        self.RmajIn                 = None
-        self.RmajOut                = None
-        self.rhoTorIn               = None
-        self.rhoTorOut              = None
-
-        self.radiusDiagRmagAxis     = None
-        self.teRhoPol               = None
-        self.rMinorAvg              = None
-        self.rMagAxAvg              = None
-        
-        self.expErrorPct            = None
-
         self.tPulse                 = None
         self.aPulse                 = None
         self.rPulse                 = None
 
         self.chiPert                = None
-        self.chiPertPulse           = None
-        self.chiPertComposite       = None
-        self.stdError               = None
-        self.expError               = None
-        self.totError               = None
-
 
         #get radius from CDF--> assumes Pablo's code is right
         #self.rhosC                  = np.linspace(rhoRange[0],rhoRange[1],self.numChan)
