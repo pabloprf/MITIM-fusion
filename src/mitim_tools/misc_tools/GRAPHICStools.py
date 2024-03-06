@@ -428,6 +428,7 @@ def drawLineWithTxt(
     horizontalalignment="left",
     separation=0,
     box=False,
+    explicit_rotation=None,
 ):
     bbox = dict(facecolor="white", alpha=0.5) if box else None  # dict()
 
@@ -442,7 +443,7 @@ def drawLineWithTxt(
             fontweight=fontweight,
             horizontalalignment=horizontalalignment,
             verticalalignment=verticalalignment,
-            rotation=90,
+            rotation=90 if explicit_rotation is None else explicit_rotation,
             bbox=bbox,
         )
 
@@ -457,6 +458,7 @@ def drawLineWithTxt(
             fontweight=fontweight,
             horizontalalignment=horizontalalignment,
             verticalalignment=verticalalignment,
+            rotation=0 if explicit_rotation is None else explicit_rotation,
         )
 
 
