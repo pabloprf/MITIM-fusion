@@ -941,13 +941,20 @@ def runTGLF(
         },
     )
 
+    # I would like the mitim_job to check if the retrieved folders were complete
+    check_files_in_folder = {}
+    for folder in folders_red:
+        check_files_in_folder[folder] = filesToRetrieve
+    # ---------------------------------------------
+
     tglf_job.prep(
         TGLFcommand,
         input_folders=folders,
         output_folders=folders_red,
+        check_files_in_folder= check_files_in_folder
     )
 
-    tglf_job.run()
+    tglf_job.run() #removeScratchFolders=False)
 
     # ---------------------------------------------
     # Organize

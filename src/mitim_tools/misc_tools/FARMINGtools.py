@@ -127,6 +127,7 @@ class mitim_job:
         input_folders=[],
         output_files=[],
         output_folders=[],
+        check_files_in_folder = {},
         shellPreCommands=[],
         shellPostCommands=[],
         label_log_files="",
@@ -135,6 +136,10 @@ class mitim_job:
         command:
             Option 1: string with commands to execute separated by &&
             Option 2: list of strings with commands to execute
+
+        check_files_in_folder is a dictionary with the folder name as key and a list of files to check as value, optionally.
+            Otherwise, it will just check if the folder was received, but not the files inside it.
+            
         """
 
         # Pass to class
@@ -143,6 +148,7 @@ class mitim_job:
         self.input_folders = input_folders
         self.output_files = output_files
         self.output_folders = output_folders
+        self.check_files_in_folder = check_files_in_folder
 
         self.shellPreCommands = shellPreCommands
         self.shellPostCommands = shellPostCommands
@@ -193,7 +199,7 @@ class mitim_job:
 
         # Process
         self.full_process(
-            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs, check_if_files_received=waitYN,
+            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs, check_if_files_received=waitYN,check_files_in_folder=self.check_files_in_folder,
         )
 
         # Get jobid
@@ -210,7 +216,12 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self, comm, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
+    def full_process(self,
+                     comm, 
+                     timeoutSecs=1e6, 
+                     removeScratchFolders=True, 
+                     check_if_files_received=True,
+                     check_files_in_folder={}):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
@@ -243,7 +254,7 @@ class mitim_job:
         )
 
         # ~~~~~~ Retrieve
-        received = self.retrieve(check_if_files_received=check_if_files_received)
+        received = self.retrieve(check_if_files_received=check_if_files_received,check_files_in_folder=check_files_in_folder)
 
         # ~~~~~~ Remove scratch folder
         if received:
@@ -494,7 +505,7 @@ class mitim_job:
 
         return output, error
 
-    def retrieve(self, check_if_files_received=True):
+    def retrieve(self, check_if_files_received=True, check_files_in_folder={}):
         print(
             f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
         )
@@ -564,14 +575,14 @@ class mitim_job:
 
         # Check if all files were received
         if check_if_files_received:
-            received = self.check_all_received()
+            received = self.check_all_received(check_files_in_folder=check_files_in_folder)
             if received:
                 print("\t\t- All correct")
             else:
                 print("\t* Not all received, trying once again", typeMsg="w")
                 time.sleep(10)
                 _ = self.retrieve(check_if_files_received=False)
-                received = self.check_all_received()
+                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
         else:
             received = True
 
@@ -707,17 +718,28 @@ class mitim_job:
             txt += f". Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines"
         print(txt)
 
-    def check_all_received(self):
+    def check_all_received(self, check_files_in_folder = {}):
         print("\t* Checking if all expected files & folders were received")
         received = True
+
+        # Check if all files were received
         for file in self.output_files:
             if not os.path.exists(os.path.join(self.folder_local, file)):
                 print(f"\t\t- File {file} not received", typeMsg="w")
                 received = False
+        
         for folder in self.output_folders:
+            # Check if all folders were received
             if not os.path.exists(os.path.join(self.folder_local, folder)):
                 print(f"\t\t- Folder {folder} not received", typeMsg="w")
                 received = False
+            # Check if all files in folder were received (optional information provided at job execution)
+            else:
+                if folder in check_files_in_folder:
+                    for file in check_files_in_folder[folder]:
+                        if not os.path.exists(os.path.join(self.folder_local, folder, file)):
+                            print(f"\t\t- File {file} not received in folder {folder}", typeMsg="w")
+                            received = False
 
         return received
 
