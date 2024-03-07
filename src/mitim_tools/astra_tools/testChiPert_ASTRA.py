@@ -12,29 +12,25 @@ def linear(x, c1, c2):
 #Object class that holds all information about calculation
 class chiPertCalculator(object):
 
-    def __init__(self, cdf, pulseTimes, rhoRange, timeRange, plotBool):
+    def __init__(self, cdf, pulseTime, rhoRange, timeRange, plotBool):
 
         self.cdf = cdf
 
-        self.pulseTimes             = pulseTimes
+        self.pulseTime              = pulseTime
         self.timeRange              = timeRange
         self.plotPulse              = plotBool
 
 
         ## This is supposed to be the toroidal flux coordinate at the last sawtooth? But I don't have sawteeth?
-        it = np.argmin(np.abs(cdf.t-pulseTimes[0]))
+        it                          = np.argmin(np.abs(cdf.t-pulseTime))
         x_lw                        = cdf.rho_tor[it, :]
 
         # Adaptation for using the number of channels available in the simulation
-        self.numPulses              = 1     #I am hard coding this in 
         ix1                         = np.argmin(np.abs(x_lw-rhoRange[0]))
         ix2                         = np.argmin(np.abs(x_lw-rhoRange[1]))
         self.rhosC                  = x_lw[ix1:ix2+1] #np.linspace(rhoRange[0],rhoRange[1],self.numChan)
         self.numChan                = len(self.rhosC)
         print('Number of Channels: ' + str(self.numChan))
-
-        self.inChannel              = 1
-        self.outChannel             = self.numChan
 
         self.eleTemp                = None
         self.eleTempTime            = None
@@ -51,8 +47,6 @@ class chiPertCalculator(object):
 
         self.chiPert                = None
 
-        #get radius from CDF--> assumes Pablo's code is right
-        #self.rhosC                  = np.linspace(rhoRange[0],rhoRange[1],self.numChan)
         eleTemp                     = []
         eleTempTime                 = []
         radiusTime                  = []
@@ -85,189 +79,173 @@ class chiPertCalculator(object):
 
         #create empty arrays to hold the time, amplitude and radius
         #of measurement channels for calculation of chiPert
-        self.tPulse = np.zeros([self.numPulses,self.numChan])
-        self.aPulse = np.zeros([self.numPulses,self.numChan])
-        self.rPulse = np.zeros([self.numPulses,self.numChan])
-        self.teBackground = np.zeros([self.numPulses,self.numChan])
-
-        #loop through pulses j
-        for j in range(0,self.numPulses):
-
-            indexStart = (np.abs(self.pulseTimes[j]
-                                      - self.eleTempTime)).argmin()
-
-            indexEnd = (np.abs((self.pulseTimes[j]+self.timeRange)
-                                      - self.eleTempTime)).argmin()
-
-            #temporary variables for storage
-            tPeak = np.zeros(self.numChan)
-            amp = np.zeros(self.numChan)
-            rad = np.zeros(self.numChan)
-            teBackground = np.zeros(self.numChan)
-
-            #loop through channels
-            for i in range(self.numChan):
-
-                #Generate smoothed temperature data (get rid of bit noise)
-
-                # Smoothing not needed in TRANSP
-                smoothedTe = self.eleTemp[i,indexStart:indexEnd]
-                smoothedgradTe = self.gradTemp[i,indexStart:indexEnd]
-                    
-                #The peak temperature
-                peakTe = np.amax(smoothedTe)
-
-                #The background temperature - I don't think this should be an attribute since that only lets you save the last background temp
-                backgroundAvg = 1  #value Pablo set
-                backgroundTe = np.mean(smoothedTe[0:backgroundAvg])
+        self.tPulse = np.zeros([self.numChan])
+        self.aPulse = np.zeros([self.numChan])
+        self.rPulse = np.zeros([self.numChan])
+        self.teBackground = np.zeros([self.numChan])
 
 
-                #index of peak temperature
-                peakIndex = np.argmax(smoothedTe)
+        indexStart = (np.abs(self.pulseTime
+                                  - self.eleTempTime)).argmin()
 
-                #time for peak temperature
-                peakTime = self.eleTempTime[i,peakIndex+indexStart]
+        indexEnd = (np.abs((self.pulseTime+self.timeRange)
+                                  - self.eleTempTime)).argmin()
 
-                #this is where the plotting routine was before
+        #temporary variables for storage
+        tPeak = np.zeros(self.numChan)
+        amp = np.zeros(self.numChan)
+        rad = np.zeros(self.numChan)
+        teBackground = np.zeros(self.numChan)
 
-                #Find the index for the radius
-                radiusIndex = (np.abs(self.radiusDiagTime[i,:]
-                                      - peakTime)).argmin()
+        #loop through channels
+        for i in range(self.numChan):
 
-                #look up the radius of a given channel
-                #Use radius mapped to magnetic axis
-                radius = self.radiusDiag[i,radiusIndex]
+            #Look at temperatures during time period of interest
+            selectedTe = self.eleTemp[i,indexStart:indexEnd]
+            selectedgradTe = self.gradTemp[i,indexStart:indexEnd]
+                
+            #The peak temperature
+            peakTe = np.amax(selectedTe)
 
-                #store calculated peaks in temporary variables
-                tPeak[i - self.inChannel+1] = peakTime
-                amp[i - self.inChannel+1] = peakTe - backgroundTe
-                rad[i - self.inChannel+1] = radius
-                teBackground[i - self.inChannel+1] = backgroundTe
-            
-            #Store peaks in final variables, for all pulses
-            self.tPulse[j,:] = tPeak
-            self.aPulse[j,:] = amp
-            self.rPulse[j,:] = rad
-            self.teBackground[j,:] = teBackground
+            #The background temperature at start of time period of interest
+            backgroundTe = selectedTe[0]
+
+            #index of peak temperature
+            peakIndex = np.argmax(selectedTe)
+
+            #time for peak temperature
+            peakTime = self.eleTempTime[i,peakIndex+indexStart]
+
+            #this is where the plotting routine was before
+
+            #Find the index for the radius
+            radiusIndex = (np.abs(self.radiusDiagTime[i,:]
+                                  - peakTime)).argmin()
+
+            #look up the radius of a given channel
+            #Use radius mapped to magnetic axis
+            radius = self.radiusDiag[i,radiusIndex]
+
+            #store calculated peaks in temporary variables
+            tPeak[i] = peakTime
+            amp[i] = peakTe - backgroundTe
+            rad[i] = radius
+            teBackground[i] = backgroundTe
+        
+            #Store peaks in final variables
+            self.tPulse = tPeak
+            self.aPulse = amp
+            self.rPulse = rad
+            self.teBackground = teBackground
 
         print('    Data Prepared')
 
         return
 
-    def calcChiPert(self, tPulse, aPulse, rPulse): # I'm not sure why this doesn't just look at self
+    def calcChiPert(self): 
 
-        #The number of heat pulses to average over
-        Npulse = tPulse.shape[0]
-        Nradii = tPulse.shape[1]
+        ######## Pulse propagation inverse speed calculation######
+        tSlope = 0
+        tSlope_err = 0
+        aSlope = 0
+        aSlope_err = 0
 
-        #arrays of the slopes of the radius against time and against amplitude
-        tSlope = np.zeros([Npulse])
-        tSlope_err = np.zeros([Npulse])
-        aSlope = np.zeros([Npulse])
-        aSlope_err = np.zeros([Npulse])
+        popt, pcov = curve_fit(linear, self.rPulse, self.tPulse)
+        tSlope = popt[0]
+        tSlope_err = pcov[0,0]**0.5
 
-    
-        for j in range(0,Npulse):
+        if self.plotPulse: 
+            plt.ion()
+            fig, ax = plt.subplots()
+            plt.scatter(self.rPulse, self.tPulse) 
+            plt.plot(self.rPulse, popt[1] + tSlope * self.rPulse)
+            plt.xlabel('Radius')
+            plt.ylabel('Time of max Te')
 
-            popt, pcov = curve_fit(linear, rPulse[j,:],tPulse[j,:])
-            tSlope[j] = popt[0]
-            tSlope_err[j] = pcov[0,0]**0.5
-
-            if self.plotPulse: 
-                plt.ion()
-                fig, ax = plt.subplots()
-                plt.scatter(rPulse[j,:], tPulse[j,:]) 
-                plt.plot(rPulse[j,:], popt[1] + popt[0] * rPulse[j,:])
-                plt.xlabel('Radius')
-                plt.ylabel('Time of max Te')
-
-
-        #Average over pulses
-        tSlopeAverage = (1/float(Npulse))*(np.sum(tSlope))
 
         #Uncorrected pulse velocity
-        vPdag = 1/tSlopeAverage
+        vPdag = 1/tSlope
         print('vPdag: ' + str(vPdag))
 
         #Correct for curvature and Shafranov shift
         vP = np.sqrt(self.elong)*((self.a)/(self.a-self.s))*vPdag
         print('vP: ' + str(vP))
 
-        #Array of logarithms of amplitudes (*1000 keV to eV)
-        logApulse = np.log10(aPulse*1000)
 
-        #loop through pulses j (use same indexing convention as prepareData to facilitate plotting)
-        for j in range(0,Npulse):
-            popt, pcov = curve_fit(linear, rPulse[j,:],logApulse[j,:])
-            aSlope[j] = popt[0]
-            aSlope_err[j] = pcov[0,0]**0.5
+        ######## Pulse amplitude decay rate calculation##########
+        logApulse = np.log10(self.aPulse*1000)
 
-            indexStart = (np.abs(self.pulseTimes[j]
-                                      - self.eleTempTime)).argmin()
+        popt, pcov = curve_fit(linear, self.rPulse,logApulse)
+        aSlope = popt[0]
+        aSlope_err = pcov[0,0]**0.5
 
-            indexEnd = (np.abs((self.pulseTimes[j]+self.timeRange)
-                                      - self.eleTempTime)).argmin()
+        # Time index to start and end amplitude decay rate calulcation
+        indexStart = (np.abs(self.pulseTime
+                                  - self.eleTempTime)).argmin()
 
+        indexEnd = (np.abs((self.pulseTime+self.timeRange)
+                                  - self.eleTempTime)).argmin()
+
+        if self.plotPulse:
+            plt.ion()
+            fig, ax = plt.subplots()
+            plt.scatter(self.rPulse, logApulse) 
+            plt.plot(self.rPulse, popt[1] + aSlope * self.rPulse)
+
+            plt.xlabel('Radius')
+            plt.ylabel('logApulse')
+
+
+            plt.ion()
+            fig, ax = plt.subplots()
+
+
+        for i in range(self.numChan):
+
+            #Look at temperatures during time period of interest
+            selectedTe = self.eleTemp[i,indexStart:indexEnd]
+            selectedgradTe = self.gradTemp[i,indexStart:indexEnd]
+                
+            #The peak temperature
+            peakTe = np.amax(selectedTe)
+
+            #index of peak temperature
+            peakIndex = np.argmax(selectedTe)
+
+            #time for peak temperature
+            peakTime = self.eleTempTime[i,peakIndex+indexStart]
+
+            #Plot pulses if desired
             if self.plotPulse:
-                plt.ion()
-                fig, ax = plt.subplots()
-                plt.scatter(self.rPulse[j,:], logApulse[j,:]) 
-                plt.plot(rPulse[j,:], popt[1] + popt[0] * rPulse[j,:])
+                colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']    
 
-                plt.xlabel('Radius')
-                plt.ylabel('logApulse')
-
-
-                plt.ion()
-                fig, ax = plt.subplots()
-
-            for i in range(self.numChan):
-
-                # Smoothing not needed in TRANSP
-                smoothedTe = self.eleTemp[i,indexStart:indexEnd]
-                smoothedgradTe = self.gradTemp[i,indexStart:indexEnd]
-                    
-                #The peak temperature
-                peakTe = np.amax(smoothedTe)
-
-                #index of peak temperature
-                peakIndex = np.argmax(smoothedTe)
-
-                #time for peak temperature
-                peakTime = self.eleTempTime[i,peakIndex+indexStart]
-
-                #Plot pulses if desired
-                if self.plotPulse:
-                    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']    
-
-                    plt.plot(self.eleTempTime[i,indexStart:indexEnd]*1000,
-                        (self.eleTemp[i,indexStart:indexEnd]), #-backgroundTe
-                        color = colors[i%7],linewidth=2, label = str(self.rhosC[i])[0:4])
-                    
-                    plt.scatter(self.tPulse*1E3, self.aPulse + self.teBackground, label = '_nolegend_', c='k')
+                plt.plot(self.eleTempTime[i,indexStart:indexEnd]*1000,
+                    (self.eleTemp[i,indexStart:indexEnd]), #-backgroundTe
+                    color = colors[i%7],linewidth=2, label = str(self.rhosC[i])[0:4])
+                
+                plt.scatter(self.tPulse*1E3, self.aPulse + self.teBackground, label = '_nolegend_', c='k')
 
 
-                    axes = plt.gca()
-                    axes.set_title(str(self.pulseTimes[j]))
-                    axes.set_ylabel('Pulse Amplitude (keV)',fontsize=20)
-                    axes.set_xlabel('Time (ms)',fontsize=20)
+                axes = plt.gca()
+                axes.set_title(str(self.pulseTime))
+                axes.set_ylabel('Pulse Amplitude (keV)',fontsize=20)
+                axes.set_xlabel('Time (ms)',fontsize=20)
 
-            
-            if self.plotPulse:
-                plt.legend(fontsize=16, title = r'$\rho_{tor}$', loc='right')
+        
+        if self.plotPulse:
+            plt.legend(fontsize=16, title = r'$\rho_{tor}$', loc='right')
 
-        #Average over pulses
-        aSlopeAverage = (1/float(Npulse))*(np.sum(aSlope))
 
         #Calculated uncorrected alpha radial damping parameter (in dB)
-        alphaDag = np.abs(10*self.a*aSlopeAverage)
+        alphaDag = np.abs(10*self.a*aSlope)
 
         #Correct for Shafranov Shift
         alpha = ((self.a-self.s)/self.a)*alphaDag
         print('alpha: ' + str(alpha))
+
+        # calulcate error on alpha calculation
         alpha_err = np.sqrt(100 * (self.a-self.s)**2 * aSlope_err**2)
         print('alpha_err: ' + str(alpha_err))
-        embed()
 
         #Calculate the perturbative thermal diffusivity
         chiPert = 4.2 * ((self.a*np.sqrt(self.elong))*vP)/alpha
