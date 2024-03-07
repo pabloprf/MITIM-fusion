@@ -220,6 +220,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         grabFrom=None,
         reevaluateTargets=0,
         seedInitial=None,
+        askQuestions=True,
     ):
         """
         grabFrom is a folder from which to grab TabularData and MITIMextra
@@ -299,6 +300,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
             hardGradientLimits=hardGradientLimits,
             dfT=self.dfT,
             seedInitial=seedInitial,
+            checkForSpecies=askQuestions
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 

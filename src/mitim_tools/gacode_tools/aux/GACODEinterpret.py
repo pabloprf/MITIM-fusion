@@ -1,10 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-
-from IPython import embed
-
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 
 def Waveform_read(file, fileOut):
