@@ -45,8 +45,6 @@ class chiPertCalculator(object):
         self.aPulse                 = None
         self.rPulse                 = None
 
-        self.chiPert                = None
-
         eleTemp                     = []
         eleTempTime                 = []
         radiusTime                  = []
@@ -70,6 +68,7 @@ class chiPertCalculator(object):
         self.a                      = cdf.a[it]
         self.elong                  = cdf.elong[it]
         self.s                      = cdf.shift[it]
+        self.ac                     = self.a*np.sqrt(self.elong)
 
         return
 
@@ -145,10 +144,6 @@ class chiPertCalculator(object):
     def calcChiPert(self): 
 
         ######## Pulse propagation inverse speed calculation######
-        tSlope = 0
-        tSlope_err = 0
-        aSlope = 0
-        aSlope_err = 0
 
         popt, pcov = curve_fit(linear, self.rPulse, self.tPulse)
         tSlope = popt[0]
@@ -170,6 +165,10 @@ class chiPertCalculator(object):
         #Correct for curvature and Shafranov shift
         vP = np.sqrt(self.elong)*((self.a)/(self.a-self.s))*vPdag
         print('vP: ' + str(vP))
+
+        #Pulse veloctiy error
+        vP_err = np.sqrt(vP**2 * vPdag**2 * tSlope_err**2)
+        print('vP_err: ' + str(vP_err))
 
 
         ######## Pulse amplitude decay rate calculation##########
@@ -248,7 +247,17 @@ class chiPertCalculator(object):
         print('alpha_err: ' + str(alpha_err))
 
         #Calculate the perturbative thermal diffusivity
-        chiPert = 4.2 * ((self.a*np.sqrt(self.elong))*vP)/alpha
+        const = 4.2
+        chiPert = const * self.ac * vP /alpha
         print('chiPert: ' + str(chiPert))
 
-        return chiPert
+        #Calculate the error on the perturbative thermal diffusivity
+        const_err = 0.1 * const #10% error according to Creely's thesis
+        chiPert_err = (self.ac * vP / alpha)**2 * const_err**2 +\
+                        (const * self.ac / alpha)**2 * vP_err**2 +\
+                        (const * self.ac * vP / alpha**2)**2 * alpha_err**2 
+
+        print('chiPert_err: ' + str(chiPert_err))
+
+
+        return chiPert , chiPert_err
