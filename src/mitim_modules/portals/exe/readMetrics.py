@@ -16,7 +16,7 @@ parser.add_argument("--remote", "-r", type=str, required=False, default=None)
 parser.add_argument(
     "--max", type=int, required=False, default=None
 )  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
-parser.add_argument("--index_extra", type=int, required=False, default=None)
+parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*")
 parser.add_argument(
     "--all", required=False, default=False, action="store_true"
 )  # Plot all fluxes?
@@ -27,9 +27,7 @@ parser.add_argument(
     "--complete", "-c", required=False, default=False, action="store_true"
 )
 
-
 args = parser.parse_args()
-
 
 folders = args.folders
 
@@ -38,7 +36,7 @@ for folderWork in folders:
     folderRemote_reduced = args.remote
     file = args.file
     indexToMaximize = args.max
-    index_extra = args.index_extra
+    indeces_extra = args.indeces_extra
     plotAllFluxes = args.all
     complete = args.complete
 
@@ -99,7 +97,7 @@ for i in range(len(folders)):
             fig=fig,
             indexToMaximize=indexToMaximize,
             plotAllFluxes=plotAllFluxes,
-            index_extra=index_extra,
+            indeces_extra=indeces_extra,
             file_save=file if len(folders) == 1 else None,
             extra_lab=lab,
         )

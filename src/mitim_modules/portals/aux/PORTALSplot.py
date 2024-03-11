@@ -1,3 +1,4 @@
+from turtle import color
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ def PORTALSanalyzer_plotMetrics(
     fig=None,
     indexToMaximize=None,
     plotAllFluxes=False,
-    index_extra=None,
+    indeces_extra=[],
     stds=2,
     plotFlows=True,
     fontsize_leg=5,
@@ -32,8 +33,7 @@ def PORTALSanalyzer_plotMetrics(
 ):
     print("- Plotting PORTALS Metrics")
 
-    if index_extra is not None:
-        self.iextra = index_extra
+    self.iextra = indeces_extra
 
     if fig is None:
         plt.ion()
@@ -265,15 +265,14 @@ def PORTALSanalyzer_plotMetrics(
 
     msFlux = 3
 
-    for cont, (indexUse, col, lab) in enumerate(
+    indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
+    for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [self.i0, self.ibest, self.iextra],
-            ["r", "g", "m"],
-            [
-                f"Initial (#{self.i0})",
-                f"Best (#{self.ibest})",
-                f"Last (#{self.iextra})",
-            ],
+            indeces_plot,
+            colors_plot,
+            labels_plot,
+            markers_plot,
         )
     ):
         if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -523,12 +522,14 @@ def PORTALSanalyzer_plotMetrics(
             label=self.labelsFluxes["w0"],
         )
 
+    indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [self.i0, self.ibest, self.iextra],
-            ["r", "g", "m"],
-            ["Initial", "Best", "Last"],
-            ["o", "s", "*"],
+            indeces_plot,
+            colors_plot,
+            labels_plot,
+            markers_plot,
         )
     ):
         if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -633,12 +634,14 @@ def PORTALSanalyzer_plotMetrics(
         ax.plot(
             self.evaluations, resChosen, "-o", lw=1.0, c=c, markersize=2, label=label
         )
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [self.i0, self.ibest, self.iextra],
-                ["r", "g", "m"],
-                ["Initial", "Best", "Last"],
-                ["o", "s", "*"],
+                indeces_plot,
+                colors_plot,
+                labels_plot,
+                markers_plot,
             )
         ):
             if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -697,12 +700,14 @@ def PORTALSanalyzer_plotMetrics(
         label=r"$||\Delta x||_\infty$",
     )  #'$\\Delta$ $a/L_{X}$ (%)')
 
+    indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [self.i0, self.ibest, self.iextra],
-            ["r", "g", "m"],
-            ["Initial", "Best", "Last"],
-            ["o", "s", "*"],
+            indeces_plot,
+            colors_plot,
+            labels_plot,
+            markers_plot,
         )
     ):
         if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -765,12 +770,14 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$\\chi_R$",
         )
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [self.i0, self.ibest, self.iextra],
-                ["r", "g", "m"],
-                ["Initial", "Best", "Last"],
-                ["o", "s", "*"],
+                indeces_plot,
+                colors_plot,
+                labels_plot,
+                markers_plot,
             )
         ):
             if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -863,12 +870,14 @@ def PORTALSanalyzer_plotMetrics(
         # ax.yaxis.set_label_position("right")
 
     ax.plot(self.evaluations, v, "-o", lw=1.0, c="olive", markersize=2, label="$Q$")
+    indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
     for cont, (indexUse, col, lab, mars) in enumerate(
         zip(
-            [self.i0, self.ibest, self.iextra],
-            ["r", "g", "m"],
-            ["Initial", "Best", "Last"],
-            ["o", "s", "*"],
+            indeces_plot,
+            colors_plot,
+            labels_plot,
+            markers_plot,
         )
     ):
         if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -961,12 +970,14 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$P_{fus}$",
         )
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
-                [self.i0, self.ibest, self.iextra],
-                ["r", "g", "m"],
-                ["Initial", "Best", "Last"],
-                ["o", "s", "*"],
+                indeces_plot,
+                colors_plot,
+                labels_plot,
+                markers_plot,
             )
         ):
             if (indexUse is None) or (indexUse >= len(self.profiles)):
@@ -1009,6 +1020,38 @@ def PORTALSanalyzer_plotMetrics(
     # Save plot
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
+
+
+def define_extra_iterators(self):
+
+    # Always plot initial and best
+    indeces_plot = [self.i0, self.ibest]
+    colors_plot = ["r", "g"]
+    labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+
+    if (len(self.iextra) == 0) and (self.ibest != self.evaluations[-1]):
+        self.iextra = [-1]
+        if self.ibest != self.evaluations[-2]:
+            self.iextra = self.iextra + [self.evaluations[-2]]
+
+
+    # Add extra points
+    colors = GRAPHICStools.listColors()
+    colors = [color for color in colors if color not in ['r', 'b']]
+    indeces_plot = indeces_plot + self.iextra
+    colors_plot = colors_plot+colors[:len(self.iextra)]
+
+    for i in range(len(self.iextra)):
+
+        if self.iextra[i] == -1 or self.iextra[i] == self.evaluations[-1]:
+            ll = 'Last'
+        else:
+            ll = 'Extra'
+        labels_plot = labels_plot + [f"{ll} (#{self.evaluations[self.iextra[i]]})"]
+
+    markers_plot = GRAPHICStools.listmarkers()[:len(indeces_plot)]
+
+    return indeces_plot, colors_plot, labels_plot, markers_plot
 
 
 def PORTALSanalyzer_plotExpected(
