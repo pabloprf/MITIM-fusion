@@ -170,6 +170,7 @@ def nminfactor(nmin, n):
         l = len(n)
     except:
         l = 0
+
     if l == 0:
         n = [n]
 
@@ -177,9 +178,11 @@ def nminfactor(nmin, n):
         l2 = len(nmin)
     except:
         l2 = 0
-    if l2 == 0:
-        nmin = [nmin]
 
+    if l2 == 0:
+        nmin = [nmin]*l
+
+   
     nminfact = []
     for i in range(len(n)):
         if n[i] < nmin[i]:
