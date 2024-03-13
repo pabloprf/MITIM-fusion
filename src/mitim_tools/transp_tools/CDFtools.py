@@ -7019,14 +7019,14 @@ class CDFreactor:
             self.t,
             self.Porcelli.dWmhd,
             c="c",
-            label="$\\delta\\hat{W}_{MHD}=\delta\\hat{W}_{Bussac}+\\delta\\hat{W}_{el.}$",
+            label="$\\delta\\hat{W}_{MHD}=\\delta\\hat{W}_{Bussac}+\\delta\\hat{W}_{el.}$",
         )
         ax.plot(
             self.t,
             self.Porcelli.dWcore,
             c="b",
             lw=3,
-            label="$\\delta\\hat{W}_{core}=\delta\\hat{W}_{MHD}+\\delta\\hat{W}_{K.O.}$",
+            label="$\\delta\\hat{W}_{core}=\\delta\\hat{W}_{MHD}+\\delta\\hat{W}_{K.O.}$",
         )
 
         ax.plot(
@@ -12473,7 +12473,7 @@ class CDFreactor:
 
         # -----------
         ax = fig.add_subplot(grid[1, 0])
-        ax.plot(self.t, self.Energy_LCFS, lw=2, label="$\int P_{SOL}dt$")
+        ax.plot(self.t, self.Energy_LCFS, lw=2, label="$\\int P_{SOL}dt$")
 
         ax.set_title("Accumulated Energy ($MJ$)")
         ax.set_ylabel("Energy ($MJ$)")
@@ -16074,7 +16074,6 @@ def profilePower(x, volumes, TotalPower, mixRadius, blend=0.05):
 
     if ix > 1:
 
-        print(ix)
         y1 = PLASMAtools.fitTANHPedestal(
             w=w, xgrid=np.linspace(0, 1, len(x[:ix])), perc=[0.01, 0.01]
         )
