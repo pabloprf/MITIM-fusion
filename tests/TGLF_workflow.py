@@ -22,7 +22,7 @@ tglf.run(
     restart=restart,
     forceIfRestart=True,
     extraOptions={"USE_BPER": True},
-    slurm_setup={"cores": 1, "minutes": 5},
+    slurm_setup={"cores": 4, "minutes": 1},
 )
 
 tglf.read(label="run1")
