@@ -27,7 +27,7 @@ setup(
         "xlsxwriter",
         "statsmodels",
         "dill",
-        "ipython",
+        "IPython",
         "pyDOE",
         "multiprocessing_on_dill",
         "deap",
