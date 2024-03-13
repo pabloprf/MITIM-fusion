@@ -166,22 +166,15 @@ def LHthreshold_Martin1_up(n, Bt, S, nmin=0):
 
 
 def nminfactor(nmin, n):
-    try:
-        l = len(n)
-    except:
-        l = 0
 
-    if l == 0:
+    if isinstance(n, (float, np.floating)):
+        l = 1
         n = [n]
+    else:
+        l = len(n)
 
-    try:
-        l2 = len(nmin)
-    except:
-        l2 = 0
-
-    if l2 == 0:
-        nmin = [nmin]*l
-
+    if isinstance(nmin, (float, np.floating)):
+        nmin = [nmin]
    
     nminfact = []
     for i in range(len(n)):
@@ -190,7 +183,7 @@ def nminfactor(nmin, n):
         else:
             nminfact.append(1.0)
 
-    if l == 0:
+    if l == 1:
         return nminfact[0]
     else:
         return np.array(nminfact)
