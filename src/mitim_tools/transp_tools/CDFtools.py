@@ -16070,11 +16070,18 @@ def profilePower(x, volumes, TotalPower, mixRadius, blend=0.05):
     w = blend * 2
 
     # Normalized function
-    ix = np.argmin(np.abs(x - (x1 + blend * 2)))
-    warnings.filterwarnings("ignore", module="scipy")
-    y1 = PLASMAtools.fitTANHPedestal(
-        w=w, xgrid=np.linspace(0, 1, len(x[:ix])), perc=[0.01, 0.01]
-    )
+    ix = np.argmin(np.abs(x - (x1 + w)))
+
+    if ix > 1:
+
+        print(ix)
+        y1 = PLASMAtools.fitTANHPedestal(
+            w=w, xgrid=np.linspace(0, 1, len(x[:ix])), perc=[0.01, 0.01]
+        )
+
+    # Is it's a point, just give zero, not worry about calculating
+    else:
+        y1 = np.zeros(len(x[:ix]))
 
     y2 = np.zeros(len(x[ix:]))
 

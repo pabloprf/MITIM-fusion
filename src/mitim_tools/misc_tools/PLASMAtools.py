@@ -645,8 +645,7 @@ def fitTANHPedestal(
     debug=False,
 ):
     def f(x, a1=-1, a2=10, a3=-10, a4=1):
-        formule = a1 * np.tanh(a2 * x + a3) + a4
-        return formule
+        return a1 * np.tanh(a2 * x + a3) + a4
 
     # generate points used to plot
     xp = [0, xsym - w, xsym - w / 2, 2]
@@ -658,7 +657,6 @@ def fitTANHPedestal(
     ]
 
     from scipy.optimize import curve_fit
-
     popt, pcov = curve_fit(f, xp, yp, p0=[-1, 10, -10, 1])
 
     y = f(xgrid, *popt) * TtopN
