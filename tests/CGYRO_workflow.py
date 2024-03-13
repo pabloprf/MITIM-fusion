@@ -4,7 +4,7 @@ from mitim_tools.gacode_tools import CGYROtools
 
 restart = True
 
-gacode_file = '/Users/pablorf/scratch/input.gacode' #IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
+gacode_file = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
 folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/cgyro_test/")
 
 if restart and os.path.exists(folder):
@@ -17,8 +17,14 @@ cgyro = CGYROtools.CGYRO(gacode_file)
 
 cgyro.prep(folder)
 
-cgyro.run_test(name='run1')
+cgyro.run_test(name='test1')
 
 cgyro.check(every_n_minutes=5)
 
 cgyro.get()
+
+cgyro.run(name='run1')
+
+cgyro.read(label="cgyro1")
+
+cgyro.plotLS()
