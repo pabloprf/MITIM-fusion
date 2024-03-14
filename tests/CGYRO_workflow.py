@@ -13,18 +13,37 @@ if restart and os.path.exists(folder):
 if not os.path.exists(folder):
     os.system(f"mkdir -p {folder}")
 
-cgyro = CGYROtools.CGYRO(gacode_file)
 
-cgyro.prep(folder)
 
-cgyro.run_test(name='test1')
+cgyro = CGYROtools.CGYRO()
 
-cgyro.check(every_n_minutes=5)
+cgyro.prep(folder,gacode_file)
 
-cgyro.get()
+# cgyro.run(
+#     'linear_test',
+#     name='test1',CGYROsettings=0,test_run=True)
 
-cgyro.run(name='run1')
+# cgyro.check(every_n_minutes=5)
+# cgyro.get()
 
+cgyro.run(
+    'linear',
+    roa = 0.55,
+    CGYROsettings=0,
+    extraOptions={
+        'KY':0.4
+    })
 cgyro.read(label="cgyro1")
+
+cgyro.run(
+    'linear',
+    roa = 0.55,
+    CGYROsettings=0,
+    extraOptions={
+        'KY':0.5
+    })
+cgyro.read(label="cgyro2")
+
+
 
 cgyro.plotLS()

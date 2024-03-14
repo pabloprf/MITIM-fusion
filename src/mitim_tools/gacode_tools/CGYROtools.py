@@ -1,9 +1,9 @@
 import os
+import copy
 import datetime
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.aux import GACODEplotting
@@ -14,10 +14,7 @@ from IPython import embed
 
 
 class CGYRO:
-    def __init__(self,inputgacode_file):  
-
-        self.inputgacode_file = inputgacode_file
-        self.input_cgyro_file_defaults = '$MITIM_PATH/templates/input.cgyro.controls' 
+    def __init__(self):  
 
         self.output_files_test = [
             "out.cgyro.equilibrium",
@@ -66,70 +63,98 @@ class CGYRO:
 
         self.results = {}
 
-    def prep(self,folder):
+    def prep(self,folder, inputgacode_file):
 
+        # Prepare main folder with input.gacode 
         self.folder = IOtools.expandPath(folder)
 
-        self.input_cgyro_file = f'{self.folder}/input.cgyro'
-        os.system(f'cp {self.input_cgyro_file_defaults} {self.input_cgyro_file}')
-        os.system(f'cp {self.inputgacode_file} {self.folder}/input.gacode')
+        if not os.path.exists(self.folder):
+            os.system(f"mkdir -p {self.folder}")
 
         self.inputgacode_file = f'{self.folder}/input.gacode'
+        os.system(f'cp {inputgacode_file} {self.inputgacode_file}')
 
-    def run_test(self,name='run1'):
-
-        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
-
-        name = f'mitim_cgyro_{name}_test'
-
-        self.cgyro_job.define_machine(
-            'cgyro',
-            name,
-            slurm_settings = {
-                'name': name,
-                'minutes': 5,
-                'cpuspertask': 1,
-                'ntasks': 1,
-            }
-        )
-        
-        CGYROcommand = 'cgyro -t .'
-
-        self.cgyro_job.prep(
-            CGYROcommand,
-            input_files=[self.input_cgyro_file,self.inputgacode_file],
-            output_files=self.output_files_test,
-        )
-
-        self.cgyro_job.run(waitYN=not self.cgyro_job.launchSlurm)
-
-    def run(self,name='run1',
-                n = 16,
-                nomp = 1
+    def run(self,
+            subFolderCGYRO,
+            roa = 0.55,
+            CGYROsettings= None,
+            extraOptions={},
+            multipliers={},
+            test_run = False,
+            n = 16,
+            nomp = 1,
             ):
 
-        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
 
-        name = f'mitim_cgyro_{name}_test'
+        self.folderCGYRO = f'{self.folder}/{subFolderCGYRO}_{roa:.6f}/'
 
-        self.cgyro_job.define_machine(
-            'cgyro',
-            name,
-            launchSlurm=False,
+        if not os.path.exists(self.folderCGYRO):
+            os.system(f"mkdir -p {self.folderCGYRO}")
+
+
+        input_cgyro_file = f'{self.folderCGYRO}/input.cgyro'
+        inputCGYRO = CGYROinput(file=input_cgyro_file)
+
+        inputgacode_file_this = f'{self.folderCGYRO}/input.gacode'
+        os.system(f'cp {self.inputgacode_file} {inputgacode_file_this}')
+
+        ResultsFiles_new = []
+        for i in self.output_files:
+            if "mitim.out" not in i:
+                ResultsFiles_new.append(i)
+        self.output_files = ResultsFiles_new
+
+
+        inputCGYRO = GACODErun.modifyInputs(
+            inputCGYRO,
+            Settings=CGYROsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            addControlFunction=GACODEdefaults.addCGYROcontrol,
+            rmin = roa,
         )
-        
-        if self.cgyro_job.launchSlurm:
-            CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -repo {self.cgyro_job.machineSettings["slurm"]["account"]} -queue {self.cgyro_job.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
+
+        inputCGYRO.writeCurrentStatus()
+
+        self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
+
+        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}{"_test" if test_run else ""}' 
+
+        if test_run:
+
+            self.cgyro_job.define_machine(
+                'cgyro',
+                name,
+                slurm_settings = {
+                    'name': name,
+                    'minutes': 5,
+                    'cpuspertask': 1,
+                    'ntasks': 1,
+                }
+            )
+            
+            CGYROcommand = 'cgyro -t .'
+
         else:
 
-            CGYROcommand = f'cgyro -e . -n {n} -nomp {nomp} '
+            self.cgyro_job.define_machine(
+                'cgyro',
+                name,
+                launchSlurm=False,
+            )
+            
+            if self.cgyro_job.launchSlurm:
+                CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -repo {self.cgyro_job.machineSettings["slurm"]["account"]} -queue {self.cgyro_job.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
+            else:
+
+                CGYROcommand = f'cgyro -e . -n {n} -nomp {nomp}'
 
         self.cgyro_job.prep(
             CGYROcommand,
-            input_files=[self.input_cgyro_file,self.inputgacode_file],
-            output_files=self.output_files,
+            input_files=[input_cgyro_file,inputgacode_file_this],
+            output_files=self.output_files if not test_run else self.output_files_test,
         )
-
+        
         self.cgyro_job.run(waitYN=not self.cgyro_job.launchSlurm) #,removeScratchFolders=False)
 
     def check(self,every_n_minutes=5):
@@ -168,7 +193,7 @@ class CGYRO:
             
     def read(self, label="cgyro1", folder=None):
 
-        folder = folder or self.folder
+        folder = folder or self.folderCGYRO
 
         try:
             self.results[label] = cgyrodata_plot(folder)
@@ -357,192 +382,6 @@ class CGYRO:
         for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-
-
-class CGYRO2:
-    def __init__(
-        self, alreadyRun=None, cdf=None, time=100.0, rhos=[0.4, 0.6], avTime=0.0
-    ):
-        if alreadyRun is not None:
-            # For the case in which I have run TGLF somewhere else, not using to plot and modify the class
-            self.__class__ = alreadyRun.__class__
-            self.__dict__ = alreadyRun.__dict__
-            print("Readying previously-run case")
-        else:
-            self.ResultsFiles = [
-                "bin.cgyro.ky_cflux",
-                "input.cgyro.gen",
-                "out.cgyro.memory",
-                "out.cgyro.startups",
-                "bin.cgyro.ky_flux",
-                "out.cgyro.version",
-                "out.cgyro.egrid",
-                "bin.cgyro.geo",
-                "out.cgyro.grids",
-                "out.cgyro.mpi",
-                "out.cgyro.tag",
-                "out.cgyro.hosts",
-                "out.cgyro.prec",
-                "out.cgyro.time",
-                "bin.cgyro.kxky_phi",
-                "bin.cgyro.restart",
-                "out.cgyro.equilibrium",
-                "out.cgyro.info",
-                "out.cgyro.rotation",
-                "out.cgyro.timing",
-            ]
-
-            # self.ResultsFiles.append('bin.cgyro.freq')
-            self.ResultsFiles.append("out.cgyro.freq")
-            self.ResultsFiles.append("bin.cgyro.phib")
-            self.ResultsFiles.append("bin.cgyro.aparb")
-
-            self.LocationCDF = cdf
-            try:
-                self.folderWork, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
-            except:
-                self.folderWork, self.nameRunid = None, None
-
-            self.rhos, self.time, self.avTime = rhos, time, avTime
-
-            self.results, self.scans, self.tgyro = {}, {}, None
-
-            self.NormalizationSets = None
-
-    def prep(
-        self,
-        FolderGACODE,
-        restart=False,
-        newGACODE=True,
-        remove_tmpTGYRO=False,
-        onlyThermal_TGYRO=False,
-        cdf_open=None,
-    ):
-        self.norm_select = "PROFILES"
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by preparing a tgyro class and running for -1 iterations
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        # TGYRO class. It checks existence and creates input.profiles/input.gacode
-
-        self.tgyro = TGYROtools.TGYRO(
-            cdf=self.LocationCDF, time=self.time, avTime=self.avTime
-        )
-        self.tgyro.prep(
-            FolderGACODE,
-            restart=restart,
-            remove_tmp=remove_tmpTGYRO,
-            subfolder="tmp_tgyro_prep",
-            newGACODE=newGACODE,
-        )
-
-        self.FolderGACODE, self.FolderGACODE_tmp = (
-            self.tgyro.FolderGACODE,
-            self.tgyro.FolderGACODE_tmp,
-        )
-
-    def runLinear(
-        self,
-        subFolderCGYRO="cgyro1/",
-        CGYROsettings=1,
-        kys=[0.3],
-        cores_per_ky=32,
-        restart=False,
-        forceIfRestart=False,
-        extra_name="",
-    ):
-        """
-        kys = [minky,num_toroidal]
-        """
-
-        self.kys = kys
-        numcores = int(len(self.kys) * cores_per_ky)
-
-        self.FolderCGYRO = IOtools.expandPath(self.FolderGACODE + subFolderCGYRO + "/")
-        self.FolderCGYRO_tmp = self.FolderCGYRO + "/tmp_standard/"
-
-        exists = not restart
-        for ir in self.rhos:
-            for j in self.ResultsFiles:
-                exists = exists and os.path.exists(f"{self.FolderCGYRO}{j}_{ir:.2f}")
-
-        if not exists:
-            IOtools.askNewFolder(self.FolderCGYRO, force=forceIfRestart)
-            IOtools.askNewFolder(self.FolderCGYRO_tmp)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of CGYRO
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        ky = self.kys[0]
-        self.latest_inputsFileCGYRO = changeANDwrite_CGYRO(
-            self.rhos, ky, self.FolderCGYRO, CGYROsettings=CGYROsettings
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # input.gacode
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        inputGacode = self.FolderCGYRO_tmp + "/input.gacode"
-        self.tgyro.profiles.writeCurrentStatus(file=inputGacode)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Run CGYRO
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if exists:
-            print(
-                " --> CGYRO not run b/c results found. Please ensure those were run with same inputs (restart may be good)"
-            )
-        else:
-            GACODErun.runCGYRO(
-                self.rhos,
-                self.FolderCGYRO,
-                self.FolderCGYRO_tmp,
-                self.latest_inputsFileCGYRO,
-                inputGacode,
-                numcores=numcores,
-                filesToRetrieve=self.ResultsFiles,
-                name=f'cgyro_{self.nameRunid}_{subFolderCGYRO.strip("/")}{extra_name}',
-            )
-
-    def read(self, label="cgyro1", folder=None):
-        # ~~~~ If no specified folder, check the last one
-        if folder is None:
-            folder = self.FolderCGYRO
-        if folder[-1] != "/":
-            folder += "/"
-
-        # ~~~~ Read using PYGACODE package
-        # tmpf = f'{folder}/tmp_pygacode/'
-        # os.system(f'mkdir {tmpf}')
-        # allfiles = IOtools.findExistingFiles(folder,'')
-        # for i in allfiles: os.system(f'cp {folder}/{i} {tmpf}/{i.split("_")[0]}')
-        # self.results[label] = cgyrodata_plot(tmpf)
-        # #os.system('rm -r {0}'.format(tmpf))
-
-        try:
-            self.results[label] = cgyrodata_plot(folder)
-        except:
-            if (
-                True
-            ):  # print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.system(f"cd {folder} && cgyro -t")
-            self.results[label] = cgyrodata_plot(folder)
-
-        # Extra postprocessing
-        self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
-        self.results[label].all_flags = np.arange(0, len(self.results[label].z), 1)
-        self.results[label].ions_flags = self.results[label].all_flags[
-            self.results[label].all_flags != self.results[label].electron_flag
-        ]
-
-        self.results[label].all_names = [
-            f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})"
-            for i in self.results[label].all_flags
-        ]
 
     def get_flux(self, label="", moment="e", ispec=0, retrieveSpecieFlag=True):
         cgyro = self.results[label]
@@ -804,15 +643,38 @@ class CGYRO2:
                 plotLegend=j == len(labels) - 1,
             )
 
+class CGYROinput:
+    def __init__(self, file=None):
+        self.file = file
 
+        if self.file is not None and os.path.exists(self.file):
+            with open(self.file, "r") as f:
+                lines = f.readlines()
+            self.file_txt = "".join(lines)
+        else:
+            self.file_txt = ""
 
-def changeANDwrite_CGYRO(rhos, ky, FolderCGYRO, CGYROsettings=1):
-    inputFilesCGYRO = {}
+        self.controls = GACODErun.buildDictFromInput(self.file_txt)
 
-    for i in rhos:
-        rmin = i
-        inputFilesCGYRO[i], CGYROoptions = GACODEdefaults.addCGYROcontrol(
-            rmin, ky, CGYROsettings=CGYROsettings
-        )
+    def writeCurrentStatus(self, file=None):
+        print("\t- Writting CGYRO input file")
 
-    return inputFilesCGYRO
+        if file is None:
+            file = self.file
+
+        with open(file, "w") as f:
+            f.write(
+                "#-------------------------------------------------------------------------\n"
+            )
+            f.write(
+                "# CGYRO input file modified by MITIM framework (Rodriguez-Fernandez, 2020)\n"
+            )
+            f.write(
+                "#-------------------------------------------------------------------------"
+            )
+
+            f.write("\n\n# Control parameters\n")
+            f.write("# ------------------\n\n")
+            for ikey in self.controls:
+                var = self.controls[ikey]
+                f.write(f"{ikey.ljust(23)} = {var}\n")

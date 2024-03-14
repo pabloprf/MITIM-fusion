@@ -14,7 +14,7 @@
 #============================
 
 #Simulation Type (0=Linear, 1=Nonlinear)
-NONLINEAR_FLAG=0 #1
+NONLINEAR_FLAG=1
 
 #Radius used for simulation
 RMIN=0.55
@@ -26,7 +26,7 @@ PROFILE_MODEL=2
 EQUILIBRIUM_MODEL=2
 
 #Fluctuating fields evolved (1=phi, 2=phi+A_par,3=phi+A_par+B_par)
-N_FIELD=1
+N_FIELD=3
 
 #Data field output flag
 MOMENT_PRINT_FLAG=1

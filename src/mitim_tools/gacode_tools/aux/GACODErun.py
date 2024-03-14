@@ -91,6 +91,125 @@ def runTGYRO(
 
     tgyro_job.run()
 
+def modifyInputs(
+    input_class,
+    Settings=None,
+    extraOptions={},
+    multipliers={},
+    position_change=0,
+    addControlFunction=None,
+    **kwargs_to_function,
+):
+    if Settings is not None:
+        _, CodeOptions, label = addControlFunction(Settings=Settings, **kwargs_to_function)
+
+        # ~~~~~~~~~~ Change with presets
+        print(
+            f" \t- Using presets Settings = {Settings} ({label})", typeMsg="i"
+        )
+        input_class.controls = CodeOptions
+
+    else:
+        print(
+            "\t- Input file was not modified by Settings, using what was there before",
+            typeMsg="w",
+        )
+
+    # Make all upper case
+    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Change with external options -> Input directly, not as multiplier
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if len(extraOptions) > 0:
+        print("\t- External options:")
+    for ikey in extraOptions:
+        if isinstance(extraOptions[ikey], (list, np.ndarray)):
+            value_to_change_to = extraOptions[ikey][position_change]
+        else:
+            value_to_change_to = extraOptions[ikey]
+
+        # is a specie one?
+        try:
+            isspecie = ikey.split("_")[0] in input_class.species[1]
+        except:
+            isspecie = False
+
+        if isspecie:
+            specie = int(ikey.split("_")[-1])
+            varK = "_".join(ikey.split("_")[:-1])
+            var_orig = input_class.species[specie][varK]
+            var_new = value_to_change_to
+            input_class.species[specie][varK] = var_new
+        else:
+            if ikey in input_class.controls:
+                var_orig = input_class.controls[ikey]
+                var_new = value_to_change_to
+                input_class.controls[ikey] = var_new
+            elif ikey in input_class.geom:
+                var_orig = input_class.geom[ikey]
+                var_new = value_to_change_to
+                input_class.geom[ikey] = var_new
+            elif ikey in input_class.plasma:
+                var_orig = input_class.plasma[ikey]
+                var_new = value_to_change_to
+                input_class.plasma[ikey] = var_new
+            else:
+                # If the variable in extraOptions wasn't in there, consider it a control param
+                print(
+                    "\t\t- Variable to change did not exist previously, creating now",
+                    typeMsg="i",
+                )
+                var_orig = None
+                var_new = value_to_change_to
+                input_class.controls[ikey] = var_new
+
+        print(
+            f"\t\t- Changing {ikey} from {var_orig} to {var_new}",
+            typeMsg="i",
+        )
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Change with multipliers -> Input directly, not as multiplier
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if len(multipliers) > 0:
+        print("\t\t- Variables change:")
+    for ikey in multipliers:
+        # is a specie one?
+        if ikey.split("_")[0] in input_class.species[1]:
+            specie = int(ikey.split("_")[-1])
+            varK = "_".join(ikey.split("_")[:-1])
+            var_orig = input_class.species[specie][varK]
+            var_new = var_orig * multipliers[ikey]
+            input_class.species[specie][varK] = var_new
+        else:
+            if ikey in input_class.controls:
+                var_orig = input_class.controls[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.controls[ikey] = var_new
+            elif ikey in input_class.geom:
+                var_orig = input_class.geom[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.geom[ikey] = var_new
+            elif ikey in input_class.plasma:
+                var_orig = input_class.plasma[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.plasma[ikey] = var_new
+            else:
+                print(
+                    "\t- Variable to scan did not exist in original file, add it as extraOptions first",
+                    typeMsg="w",
+                )
+
+        print(
+            "\t\t\t- Changing {0} from {1} to {2} (x{3})".format(
+                ikey, var_orig, var_new, multipliers[ikey]
+            ),
+            typeMsg="i",
+        )
+
+    return input_class
+
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
@@ -793,54 +912,6 @@ def defineNewGrid(
         plt.show()
 
     return x[imin:imax], y[imin:imax]
-
-
-def runCGYRO(
-    rhos,
-    finalFolder,
-    tmpFolder,
-    inputFilesCGYRO,
-    inputGacode,
-    numcores=32,
-    extraFlag="",
-    filesToRetrieve=["cgyro/out.cgyro.info"],
-    name="",
-):
-    MaxRunsWithoutWait, timewaitSendRun = 4, 10
-
-    for rho in rhos:
-        print(f" ~~ Running CGYRO at rho={rho:.4f}")
-        if len(rhos) > MaxRunsWithoutWait:
-            time.sleep(timewaitSendRun)
-
-        fileCGYRO = executeCGYRO(
-            tmpFolder,
-            inputFilesCGYRO[rho],
-            inputGacode,
-            numcores=numcores,
-            outputFiles=filesToRetrieve,
-            name=name,
-        )
-
-        for file in filesToRetrieve:
-            fr = f"{file}_{rho:.4f}{extraFlag}"
-            ff = f"{finalFolder}/{fr}"
-            if os.path.exists(ff):
-                os.system("rm " + ff)
-            os.system(f"mv {tmpFolder}/{file} {ff}")
-
-            if verbose_level in [4, 5]:
-                print("\t- Retrieving files and changing names for storing")
-                if not os.path.exists(ff):
-                    print(f"\t!! file {file} ({fr}) could not be retrived")
-                # else:
-                # print(
-                #     f"\t\t~ {file} successfully retrieved, converted into {fr}",
-                #     verbose=verbose_level,
-                # )
-
-        os.system(f"mv {fileCGYRO} {finalFolder}/input.cgyro_{rho:.4f}")
-
 
 def runTGLF(
     rhos,

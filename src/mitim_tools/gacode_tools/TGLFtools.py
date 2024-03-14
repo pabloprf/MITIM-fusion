@@ -3469,13 +3469,14 @@ def changeANDwrite_TGLF(
     for i, rho in enumerate(rhos):
         print(f"\t- Changing input file for rho={rho:.4f}")
         NS = inputs[rho].plasma["NS"]
-        inputTGLF_rho = modifyInputToTGLF(
+        inputTGLF_rho = GACODErun.modifyInputs(
             inputs[rho],
-            TGLFsettings=TGLFsettings,
+            Settings=TGLFsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
-            NS=NS,
             position_change=i,
+            addControlFunction=GACODEdefaults.addTGLFcontrol,
+            NS=NS,
         )
 
         newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
@@ -4083,127 +4084,6 @@ def identifySpecie(dict_species, dict_find):
             break
 
     return found_index
-
-
-def modifyInputToTGLF(
-    inputTGLF,
-    TGLFsettings=None,
-    extraOptions={},
-    multipliers={},
-    NS=2,
-    position_change=0,
-):
-    if TGLFsettings is not None:
-        _, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(
-            TGLFsettings=TGLFsettings, NS=NS
-        )
-
-        # ~~~~~~~~~~ Change with presets
-        print(
-            f" \t- Using presets TGLFsettings = {TGLFsettings} ({label})", typeMsg="i"
-        )
-        inputTGLF.controls = TGLFoptions
-
-    else:
-        print(
-            "\t- TGLF file was not modified by TGLF settings, using what was there before",
-            typeMsg="w",
-        )
-
-    # Make all upper case
-    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Change with external options -> Input directly, not as multiplier
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if len(extraOptions) > 0:
-        print("\t- External options:")
-    for ikey in extraOptions:
-        if isinstance(extraOptions[ikey], (list, np.ndarray)):
-            value_to_change_to = extraOptions[ikey][position_change]
-        else:
-            value_to_change_to = extraOptions[ikey]
-
-        # is a specie one?
-        try:
-            isspecie = ikey.split("_")[0] in inputTGLF.species[1]
-        except:
-            isspecie = False
-
-        if isspecie:
-            specie = int(ikey.split("_")[-1])
-            varK = "_".join(ikey.split("_")[:-1])
-            var_orig = inputTGLF.species[specie][varK]
-            var_new = value_to_change_to
-            inputTGLF.species[specie][varK] = var_new
-        else:
-            if ikey in inputTGLF.controls:
-                var_orig = inputTGLF.controls[ikey]
-                var_new = value_to_change_to
-                inputTGLF.controls[ikey] = var_new
-            elif ikey in inputTGLF.geom:
-                var_orig = inputTGLF.geom[ikey]
-                var_new = value_to_change_to
-                inputTGLF.geom[ikey] = var_new
-            elif ikey in inputTGLF.plasma:
-                var_orig = inputTGLF.plasma[ikey]
-                var_new = value_to_change_to
-                inputTGLF.plasma[ikey] = var_new
-            else:
-                # If the variable in extraOptions wasn't in there, consider it a control param
-                print(
-                    "\t\t- Variable to change did not exist previously, creating now",
-                    typeMsg="i",
-                )
-                var_orig = None
-                var_new = value_to_change_to
-                inputTGLF.controls[ikey] = var_new
-
-        print(
-            f"\t\t- Changing {ikey} from {var_orig} to {var_new}",
-            typeMsg="i",
-        )
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Change with multipliers -> Input directly, not as multiplier
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if len(multipliers) > 0:
-        print("\t\t- Variables change:")
-    for ikey in multipliers:
-        # is a specie one?
-        if ikey.split("_")[0] in inputTGLF.species[1]:
-            specie = int(ikey.split("_")[-1])
-            varK = "_".join(ikey.split("_")[:-1])
-            var_orig = inputTGLF.species[specie][varK]
-            var_new = var_orig * multipliers[ikey]
-            inputTGLF.species[specie][varK] = var_new
-        else:
-            if ikey in inputTGLF.controls:
-                var_orig = inputTGLF.controls[ikey]
-                var_new = var_orig * multipliers[ikey]
-                inputTGLF.controls[ikey] = var_new
-            elif ikey in inputTGLF.geom:
-                var_orig = inputTGLF.geom[ikey]
-                var_new = var_orig * multipliers[ikey]
-                inputTGLF.geom[ikey] = var_new
-            elif ikey in inputTGLF.plasma:
-                var_orig = inputTGLF.plasma[ikey]
-                var_new = var_orig * multipliers[ikey]
-                inputTGLF.plasma[ikey] = var_new
-            else:
-                print(
-                    "\t- Variable to scan did not exist in original file, add it as extraOptions first",
-                    typeMsg="w",
-                )
-
-        print(
-            "\t\t\t- Changing {0} from {1} to {2} (x{3})".format(
-                ikey, var_orig, var_new, multipliers[ikey]
-            ),
-            typeMsg="i",
-        )
-
-    return inputTGLF
 
 
 # From file to dict
