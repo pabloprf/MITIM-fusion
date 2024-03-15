@@ -62,6 +62,7 @@ class CDFreactor:
         self.Cubs = self.f["CUBS"][:]
         self.CD = self.f["CD"][:]
         self.Mu = self.f["MU"][:]
+        self.q_onaxis = 1/self.Mu[:,0]
         self.MV = self.f["MV"][:]
         self.FV = self.f["FV"][:]
         self.VP = self.f["VP"][:]
@@ -140,8 +141,11 @@ class CDFreactor:
         self.CIMP2   = self.f['CIMP2'][:]
         self.CIMP3   = self.f['CIMP3'][:]
         self.ZRD1 = self.f["ZRD1"][:]
+        self.ZRD1X = self.f["ZRD1X"][:]
         self.ZRD2 = self.f["ZRD2"][:]
+        self.ZRD2X = self.f["ZRD2X"][:]
         self.ZRD3 = self.f["ZRD3"][:]
+        self.ZRD3X = self.f["ZRD3X"][:]
         self.ZRD4 = self.f["ZRD4"][:]
         self.ZRD5 = self.f["ZRD5"][:]
         self.ZRD6 = self.f["ZRD6"][:]
@@ -232,6 +236,12 @@ class CDFreactor:
 
         self.AMJ = self.f["AMJ"][:]
         self.AMAIN = self.f['AMAIN'][:]
+        self.AIM1 = self.f['AIM1'][:]
+        self.AIM2 = self.f['AIM2'][:]
+        self.AIM3 = self.f['AIM3'][:]
+        self.ZIM1 = self.f['ZIM1'][:]
+        self.ZIM2 = self.f['ZIM2'][:]
+        self.ZIM3 = self.f['ZIM3'][:]
         self.ZMJ = self.f["ZMJ"][:]
         self.ZEF = self.f["ZEF"][:]
         self.ROC = self.f["ROC"][:]
@@ -311,10 +321,12 @@ class CDFreactor:
         self.QE = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QI = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QRAD = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.QOH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.Wtot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.ne_avg = np.zeros([len(self.PEICR[:,-1])])
         self.Te_avg = np.zeros([len(self.PEICR[:,-1])])
         self.Ti_avg = np.zeros([len(self.PEICR[:,-1])])
-        self.H98 = np.zeros([len(self.PEICR[:,-1])])
+        self.tau98 = np.zeros([len(self.PEICR[:,-1])])
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
         for kk in range(0,len(self.PEDT[:,-1])):
@@ -323,11 +335,16 @@ class CDFreactor:
              self.QE[kk,:] = np.cumsum(self.PE[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QI[kk,:] = np.cumsum(self.PI[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QRAD[kk,:] = np.cumsum(self.PRAD[kk,:]*self.HRO[kk]*self.VR[kk,:])
+             self.QOH[kk,:] = np.cumsum(self.POH[kk,:]*self.HRO[kk]*self.VR[kk,:])
+             self.Wtot[kk,:] = np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.H98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*(self.ne_avg[kk])**0.41*(self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
+             self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*(self.ne_avg[kk])**0.41*(self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
 
+        self.Wtot = 0.0024*self.Wtot   #check formula in ASTRA
+        self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)
+        self.H98 = self.tauE[:,-1]/self.tau98
         self.NDEUT = self.f["NDEUT"][:]
         self.NTRIT = self.f["NTRIT"][:]
         self.NIZ1 = self.f["NIZ1"][:]
@@ -357,17 +374,19 @@ class CDFreactor:
         self.quasi = (self.f['NE'][:]-self.f['NMAIN'][:]*self.f['ZMAIN'][:]-self.f['NIZ1'][:]*self.f['ZIM1'][:]-self.f['NIZ2'][:]*self.f['ZIM2'][:]-self.f['NIZ3'][:]*self.f['ZIM3'][:])/self.f['NE'][:]
 
         ##  some global and performance parameters
-        self.Q = (self.QDT[:,-1]/self.QICRH[:,-1])/0.2    ## in teh D+T fusion reactions 20% goes to He and 80% to neutrons
+        self.Q = (self.QDT[:,-1]/(self.QICRH[:,-1]+self.QOH[:,-1]))/0.2    ## in teh D+T fusion reactions 20% goes to He and 80% to neutrons
         self.Pfus = self.QDT/0.2
         self.betaN = np.zeros(len(self.PEDT[:,-1]))
         for kk in range(0,len(self.PEDT[:,-1])):
              self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
-        self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941
-        self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922
-        self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96
+        self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941*(2/self.AMAIN[:,-1])
+        self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922*(2/self.AMAIN[:,-1])
+        self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96*(2/self.AMAIN[:,-1])
         self.PLH_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH
         self.PLH_lower_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_lower
         self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper
+        self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])
+        self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr
 
         rtor_matrix = np.zeros(self.rho.shape)
         for i in range(rtor_matrix.shape[1]):
