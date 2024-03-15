@@ -101,7 +101,7 @@ def modifyInputs(
     **kwargs_to_function,
 ):
     if Settings is not None:
-        _, CodeOptions, label = addControlFunction(Settings=Settings, **kwargs_to_function)
+        _, CodeOptions, label = addControlFunction(Settings, **kwargs_to_function)
 
         # ~~~~~~~~~~ Change with presets
         print(

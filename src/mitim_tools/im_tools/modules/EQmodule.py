@@ -776,7 +776,7 @@ def writeBoundary(nameFile, rs_orig, zs_orig):
         zs_extra = np.array([zs_orig[int(closerInteg * 10) :]])
         np.savetxt(f, zs_extra, fmt="%7.3f")
     f.write(
-        "\n"
+        ""
     )
     f.close()
 

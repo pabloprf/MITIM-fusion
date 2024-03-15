@@ -7,7 +7,7 @@ from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 
-def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
+def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     """
     ********************************************************************************
     Define dictionary to start with
@@ -75,7 +75,7 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 
 
 def TGLFinTRANSP(TGLFsettings, NS=3):
-    _, TGLFoptions, label = addTGLFcontrol(TGLFsettings=TGLFsettings, NS=NS)
+    _, TGLFoptions, label = addTGLFcontrol(TGLFsettings, NS=NS)
 
     """
 	------------------------------------------------------------------------------------------------------
@@ -133,7 +133,7 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     return TGLFoptions, label
 
 
-def addCGYROcontrol(rmin, Settings=0):
+def addCGYROcontrol(Settings,rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
         "$MITIM_PATH/templates/input.cgyro.controls", caseInsensitive=False
