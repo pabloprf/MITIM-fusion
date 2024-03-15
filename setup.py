@@ -40,7 +40,7 @@ setup(
         "pyqt": "PyQt6",
         "omfit": [
             "omfit_classes",
-            "xarray==2022.3.0",  # As of 12/07/2023, omfit_classes fails for higher versions
+            "xarray==2022.3.0",  # As of 12/07/2023, omfit_classes fails for higher versions (but higher is needed for other applications! like PLASMAstate....)
             "matplotlib==3.5.3",  # As of 12/07/2023, omfit_classes fails for higher versions
             "omas",
             "fortranformat",
