@@ -397,35 +397,10 @@ class TGLF:
 
         self.inputsTGLF = {self.rhos[0]: inputclass}
 
-    def run(
-        self,
-        subFolderTGLF,  # 'tglf1/',
-        TGLFsettings=None,
-        extraOptions={},
-        multipliers={},
-        runWaveForms=[],  # e.g. runWaveForms = [0.3,1.0]
-        forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
-        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
-        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
-        launchSlurm=True,
-        restart=False,
-        forceIfRestart=False,
-        extra_name="exe",
-        slurm_setup={
-            "cores": 4,
-            "minutes": 5,
-        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-    ):
-        inputs = copy.deepcopy(self.inputsTGLF)
-
-        self.FolderTGLF = IOtools.expandPath(self.FolderGACODE + subFolderTGLF + "/")
-
-        ResultsFiles_new = []
-        for i in self.ResultsFiles:
-            if "mitim.out" not in i:
-                ResultsFiles_new.append(i)
-        self.ResultsFiles = ResultsFiles_new
-
+    def restart_checker(self,restart=False,forceIfRestart=False):
+        """
+        This function checks if the TGLF inputs are already in the folder. If they are, it returns True
+        """
         exists = not restart
         if not restart:
             rhosEvaluate = []
@@ -452,23 +427,9 @@ class TGLF:
                     typeMsg="i",
                 )
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        return exists, rhosEvaluate
 
-        (
-            self.latest_inputsFileTGLF,
-            self.latest_inputsFileTGLFDict,
-        ) = changeANDwrite_TGLF(
-            self.rhos,
-            inputs,
-            self.FolderTGLF,
-            TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-        )
+    def anticipate_problems(self,rhosEvaluate,slurm_setup,launchSlurm):
 
         # -----------------------------------
         # ------ Check density for problems
@@ -504,6 +465,68 @@ class TGLF:
                 typeMsg="" if expected_allocated_cores < warning else "q",
             )
 
+
+    def run(
+        self,
+        subFolderTGLF,  # 'tglf1/',
+        TGLFsettings=None,
+        extraOptions={},
+        multipliers={},
+        runWaveForms=[],  # e.g. runWaveForms = [0.3,1.0]
+        forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
+        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
+        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
+        launchSlurm=True,
+        restart=False,
+        forceIfRestart=False,
+        extra_name="exe",
+        slurm_setup={
+            "cores": 4,
+            "minutes": 5,
+        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+    ):
+        
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Prepare for run
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        inputs = copy.deepcopy(self.inputsTGLF)
+
+        self.FolderTGLF = IOtools.expandPath(self.FolderGACODE + subFolderTGLF + "/")
+
+        ResultsFiles_new = []
+        for i in self.ResultsFiles:
+            if "mitim.out" not in i:
+                ResultsFiles_new.append(i)
+        self.ResultsFiles = ResultsFiles_new
+
+        # Do I need to run all radii?
+        exists, rhosEvaluate = self.restart_checker(restart=restart, forceIfRestart=forceIfRestart)
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Change this specific run of TGLF
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        (
+            self.latest_inputsFileTGLF,
+            self.latest_inputsFileTGLFDict,
+        ) = changeANDwrite_TGLF(
+            self.rhos,
+            inputs,
+            self.FolderTGLF,
+            TGLFsettings=TGLFsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+        )
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Stop if I expect problems
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self.anticipate_problems(rhosEvaluate,slurm_setup,launchSlurm)
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Run TGLF
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -526,16 +549,39 @@ class TGLF:
                 typeMsg="f",
             )
 
-        # Store previous stuff
-        FolderTGLF_old = copy.deepcopy(self.FolderTGLF)
-        ResultsFiles = copy.deepcopy(self.ResultsFiles)
-
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Waveform if requested
         # 	Runs each radii separately to allow for different ky at each radii (e.g. unstable at each)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.ky_single = runWaveForms
+        self.run_wf(
+            runWaveForms,
+            subFolderTGLF,
+            forceClosestUnstableWF=forceClosestUnstableWF,
+            TGLFsettings=TGLFsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            restart=restart,
+            forceIfRestart=forceIfRestart,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup)
+
+
+    def run_wf(
+            self,
+            kys,
+            subFolderTGLF,
+            **kwargs_TGLFrun):
+        
+        # Store previous stuff
+        FolderTGLF_old = copy.deepcopy(self.FolderTGLF)
+        ResultsFiles = copy.deepcopy(self.ResultsFiles)
+        # -----------
+
+        self.ky_single = kys
         self.ResultsFiles = copy.deepcopy(self.ResultsFiles_WF)
 
         self.FoldersTGLF_WF = {}
@@ -554,7 +600,7 @@ class TGLF:
                     ky_singles = []
                     for i, ir in enumerate(self.rhos):
                         # -------- Get the closest unstable mode to the one requested
-                        if forceClosestUnstableWF:
+                        if kwargs_TGLFrun['forceClosestUnstableWF']:
                             # Only unstable ones
                             kys_n = []
                             for j in range(
@@ -588,7 +634,9 @@ class TGLF:
                         ky_singles.append(ky_single)
                         # ------------------------------------------------------------
 
-                    extraOptions_WF = copy.deepcopy(extraOptions)
+                    extraOptions_WF = copy.deepcopy(kwargs_TGLFrun['extraOptions'])
+                    kwargs_TGLFrun0 = copy.deepcopy(kwargs_TGLFrun)
+                    del kwargs_TGLFrun0['extraOptions']
 
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
@@ -601,26 +649,16 @@ class TGLF:
 
                     tglf_wf.run(
                         f"{subFolderTGLF}/ky{ky_single0}",
-                        TGLFsettings=TGLFsettings,
                         extraOptions=extraOptions_WF,
-                        multipliers=multipliers,
-                        runWaveForms=[],
-                        ApplyCorrections=ApplyCorrections,
-                        Quasineutral=Quasineutral,
-                        launchSlurm=launchSlurm,
-                        restart=restart,
-                        forceIfRestart=forceIfRestart,
-                        extra_name=extra_name,
-                        slurm_setup=slurm_setup,
+                        **kwargs_TGLFrun0,
                     )
 
                     del self.results[f"ky{ky_single0}"]
         except FileNotFoundError:
             self.ky_single = None
             print(
-                "> Waveform analysis FAILED (maybe due to TGLF version?)", typeMsg="w"
+                "> Waveform analysis FAILED (maybe due to TGLF version?)", typeMsg="q"
             )
-            embed()
 
         # Recover previous stuff
         self.ResultsFiles_WF = copy.deepcopy(self.ResultsFiles)
