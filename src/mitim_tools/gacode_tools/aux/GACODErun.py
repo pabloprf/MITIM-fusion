@@ -914,23 +914,23 @@ def defineNewGrid(
     return x[imin:imax], y[imin:imax]
 
 def runTGLF(
-    rhos,
-    finalFolder,
-    inputFilesTGLF,
+    FolderGACODE,
+    tglf_executor,
     minutes=5,
     cores_tglf=4,
     extraFlag="",
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
+    cores_todo_array=128, #32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    tmpFolder = finalFolder + "/tmp_tglf/"
-    IOtools.askNewFolder(tmpFolder)
+    tmpFolder = f"{FolderGACODE}/tmp_tglf/"
+    IOtools.askNewFolder(tmpFolder,force=True)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
@@ -939,40 +939,44 @@ def runTGLF(
         f"mitim_{name}/",
     )
 
-    # ---------------------------------------------
-    # Prepare files and folders
-    # ---------------------------------------------
-
     folders, folders_red = [], []
-    for i, rho in enumerate(rhos):
-        print(f"\t- Preparing TGLF at rho={rho:.4f}")
+    for subFolderTGLF in tglf_executor:
 
-        folderTGLF_this = f"{tmpFolder}/rho_{rho:.4f}"
-        folders.append(folderTGLF_this)
-        folders_red.append(f"rho_{rho:.4f}")
+        rhos = list(tglf_executor[subFolderTGLF].keys())
+        
+        # ---------------------------------------------
+        # Prepare files and folders
+        # ---------------------------------------------
 
-        if not os.path.exists(folderTGLF_this):
-            os.system(f"mkdir {folderTGLF_this}")
+        for i, rho in enumerate(rhos):
+            print(f"\t- Preparing TGLF ({subFolderTGLF}) at rho={rho:.4f}")
 
-        fileTGLF = f"{folderTGLF_this}/input.tglf"
-        with open(fileTGLF, "w") as f:
-            f.write(inputFilesTGLF[rho])
+            folderTGLF_this = f"{tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}"
+            folders.append(folderTGLF_this)
+            folders_red.append(f"{subFolderTGLF}/rho_{rho:.4f}")
+
+            if not os.path.exists(folderTGLF_this):
+                os.system(f"mkdir -p {folderTGLF_this}")
+
+            fileTGLF = f"{folderTGLF_this}/input.tglf"
+            with open(fileTGLF, "w") as f:
+                f.write(tglf_executor[subFolderTGLF][rho]['inputs'])
 
     # ---------------------------------------------
     # Prepare command
     # ---------------------------------------------
 
-    total_tglf_cores = int(cores_tglf * len(rhos))
+    total_tglf_cores = int(cores_tglf * len(rhos) * len(tglf_executor))
 
     if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
-        typeRun = "job" if total_tglf_cores <= 32 else "array"
+        typeRun = "job" if total_tglf_cores <= cores_todo_array else "array"
     else:
         typeRun = "bash"
 
     if typeRun in ["bash", "job"]:
         TGLFcommand = ""
-        for i, rho in enumerate(rhos):
-            TGLFcommand += f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
+        for folder in folders_red:
+            TGLFcommand += f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
 
         TGLFcommand += (
             "\nwait"  # This is needed so that the script doesn't end before each job
@@ -983,6 +987,7 @@ def runTGLF(
         cpuspertask = cores_tglf
 
     elif typeRun in ["array"]:
+        raise Exception("TGLF array not implemented yet")
         print(
             f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",
             typeMsg="i",
@@ -1025,7 +1030,7 @@ def runTGLF(
         check_files_in_folder= check_files_in_folder
     )
 
-    tglf_job.run() #removeScratchFolders=False)
+    tglf_job.run(removeScratchFolders=False)
 
     # ---------------------------------------------
     # Organize
@@ -1033,24 +1038,26 @@ def runTGLF(
 
     print("\t- Retrieving files and changing names for storing")
     fineall = True
-    for i, rho in enumerate(rhos):
-        for file in filesToRetrieve:
-            original_file = f"{file}_{rho:.4f}{extraFlag}"
-            final_destination = f"{finalFolder}/{original_file}"
+    for subFolderTGLF in tglf_executor:
 
-            if os.path.exists(final_destination):
-                os.system(f"rm {final_destination}")
+        for i, rho in enumerate(tglf_executor[subFolderTGLF].keys()):
+            for file in filesToRetrieve:
+                original_file = f"{file}_{rho:.4f}{extraFlag}"
+                final_destination = f"{tglf_executor[subFolderTGLF][rho]['folder']}/{original_file}"
 
-            os.system(f"mv {tmpFolder}/rho_{rho:.4f}/{file} {final_destination}")
+                if os.path.exists(final_destination):
+                    os.system(f"rm {final_destination}")
 
-            fineall = fineall and os.path.exists(final_destination)
+                os.system(f"mv {tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}/{file} {final_destination}")
 
-            if not os.path.exists(final_destination):
-                print(
-                    f"\t!! file {file} ({original_file}) could not be retrived",
-                    typeMsg="w",
-                    verbose=verbose_level,
-                )
+                fineall = fineall and os.path.exists(final_destination)
+
+                if not os.path.exists(final_destination):
+                    print(
+                        f"\t!! file {file} ({original_file}) could not be retrived",
+                        typeMsg="w",
+                        verbose=verbose_level,
+                    )
 
     if fineall:
         print("\t\t- All files were successfully retrieved")
