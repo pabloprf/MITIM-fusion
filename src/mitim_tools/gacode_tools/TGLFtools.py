@@ -148,12 +148,12 @@ class TGLF:
                 "out.tglf.nsts_crossphase_spectrum",
                 "out.tglf.width_spectrum",
                 "out.tglf.version",
-                "input.tglf.gen",
                 "out.tglf.scalar_saturation_parameters",
                 "out.tglf.spectral_shift_spectrum",
                 "out.tglf.ave_p0_spectrum",
                 "out.tglf.field_spectrum",
                 "out.tglf.QL_flux_spectrum",
+                "input.tglf.gen",
             ]
 
             self.ResultsFiles_WF = [
@@ -447,8 +447,6 @@ class TGLF:
             tglf_executor,
             tglf_executor_full=tglf_executor_full,
             TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
             runWaveForms=runWaveForms,
             forceClosestUnstableWF=forceClosestUnstableWF,
             ApplyCorrections=ApplyCorrections,
@@ -466,6 +464,9 @@ class TGLF:
             tglf_executor,
             tglf_executor_full={},
             **kwargs_TGLFrun):
+        '''
+        extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor for WF
+        '''
 
         print("\n> Run TGLF")
 
@@ -509,8 +510,6 @@ class TGLF:
         TGLFsettings=None,
         extraOptions={},
         multipliers={},
-        runWaveForms=[],  # e.g. runWaveForms = [0.3,1.0]
-        forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         ApplyCorrections=True,  # Removing ions with too low density and that are fast species
         Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
         launchSlurm=True,
@@ -521,6 +520,7 @@ class TGLF:
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+        **kwargs,
     ):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare for run
@@ -588,6 +588,9 @@ class TGLF:
             kys,
             tglf_executor,
             **kwargs_TGLFrun):
+        '''
+        extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor
+        '''
 
         if 'runWaveForms' in kwargs_TGLFrun:
             del kwargs_TGLFrun['runWaveForms']
@@ -689,8 +692,6 @@ class TGLF:
             self._run(
                 tglf_executorWF,
                 runWaveForms = [],
-                extraOptions=extraOptions_WF,
-                multipliers=multipliers_WF,
                 **kwargs_TGLFrun0,
             )
 
@@ -2129,6 +2130,38 @@ class TGLF:
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
+        
+        tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
+            subFolderTGLF,
+            multipliers=multipliers,
+            variable=variable,
+            varUpDown=varUpDown,
+            relativeChanges=relativeChanges,
+            **kwargs_TGLFrun,
+        )
+
+        # Run them all
+        self._run(
+            tglf_executor,
+            tglf_executor_full=tglf_executor_full,
+            **kwargs_TGLFrun,
+        )
+
+        # Read results
+        for cont_mult, mult in enumerate(varUpDown_new):
+            name = f"{variable}_{mult}"
+            self.read(label=f"{self.subFolderTGLF_scan}_{name}",folder=folders[cont_mult])
+
+
+    def _prepare_scan(
+        self,
+        subFolderTGLF,  # 'scan1',
+        multipliers={},
+        variable="RLTS_1",
+        varUpDown=[0.5, 1.0, 1.5],
+        relativeChanges=True,
+        **kwargs_TGLFrun):
+
         """
         Multipliers will be modified by adding the scaning variables, but I don't want to modify the original
         multipliers, as they may be passed to the next scan
@@ -2211,18 +2244,8 @@ class TGLF:
 
             folders.append(copy.deepcopy(folderlast))
 
-        # Run them all
-        self._run(
-            tglf_executor,
-            tglf_executor_full=tglf_executor_full,
-            multipliers=multipliers_mod,
-            **kwargs_TGLFrun,
-        )
+        return tglf_executor, tglf_executor_full, folders, varUpDown_new
 
-        # Read results
-        for cont_mult, mult in enumerate(varUpDown_new):
-            name = f"{variable}_{mult}"
-            self.read(label=f"{self.subFolderTGLF_scan}_{name}",folder=folders[cont_mult])
 
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
@@ -2913,7 +2936,7 @@ class TGLF:
 
     def runScanTurbulenceDrives(
         self,
-        subFolderTGLF="scan1",
+        subFolderTGLF="drives1",
         resolutionPoints=5,
         variation=0.5,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
@@ -2943,7 +2966,7 @@ class TGLF:
 
             self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
-    def plotScanTurbulenceDrives(self, label="scan1", figs=None, **kwargs_TGLFscanPlot):
+    def plotScanTurbulenceDrives(self, label="drives1", figs=None, **kwargs_TGLFscanPlot):
         labels = []
         for variable in self.variablesDrives:
             labels.append(f"{label}_{variable}")

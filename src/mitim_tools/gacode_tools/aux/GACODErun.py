@@ -922,7 +922,7 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=128, #32,
+    cores_todo_array=1E6, #32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
