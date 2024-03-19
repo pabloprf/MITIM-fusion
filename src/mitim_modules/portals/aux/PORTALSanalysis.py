@@ -894,13 +894,18 @@ class PORTALSinitializer:
                 prof = PROFILEStools.PROFILES_GACODE(
                     f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}"
                 )
+            except FileNotFoundError:
+                break
+            self.profiles.append(prof)
+
+        for i in range(100):
+            try:
                 p = STATEtools.read_saved_state(
                     f"{self.folder}/Initialization/initialization_simple_relax/portals_{IOtools.reducePathLevel(self.folder)[1]}_ev{i}/powerstate.pkl"
                 )
             except FileNotFoundError:
                 break
 
-            self.profiles.append(prof)
             p.profiles.deriveQuantities()
             self.powerstates.append(p)
 
@@ -992,4 +997,8 @@ class PORTALSinitializer:
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                     lw=0.5,
                     ms=0,
+                    label=f'profile #{i}',
                 )
+
+            axs[0].legend(prop={"size": 8})
+            axsGrads[0].legend(prop={"size": 8})
