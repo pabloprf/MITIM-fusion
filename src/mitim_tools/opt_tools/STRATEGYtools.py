@@ -84,6 +84,10 @@ class FUNmain:
         print(f"\t- Folder: {self.folder}")
 
         if self.folder is not None:
+
+            if self.folder[-1] != "/":
+                self.folder += "/"
+
             self.folder = IOtools.expandPath(self.folder)
             if not os.path.exists(self.folder):
                 IOtools.askNewFolder(self.folder)
