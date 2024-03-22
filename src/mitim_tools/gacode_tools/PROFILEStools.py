@@ -206,7 +206,7 @@ class PROFILES_GACODE:
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
-                    varT = [float(j) if j[-4].upper() == "E" else 0.0 for j in var0[1:]]
+                    varT = [float(j) if (j[-4].upper() == "E" or '.' in j) else 0.0 for j in var0[1:]]
 
                     var.append(varT)
 
