@@ -18,7 +18,7 @@ To call:
 
 
 def commander(
-    script, folderWork0, num, partition, venv, n=32, hours=8, seed=0, extra_name=""
+    script, folderWork0, num, partition, venv, n=32, hours=8, seed=0, extra_name="",extra=None
 ):
     folderWork = folderWork0 + extra_name + "/"
 
@@ -27,9 +27,14 @@ def commander(
     if not os.path.exists(folderWork):
         os.system(f"mkdir {folderWork}")
 
+    if extra is not None:
+        extra_str = " ".join([str(e) for e in extra])
+    else:
+        extra_str = ""
+
     command = [
         f"source {venv}/bin/activate",
-        f"python3 {script} {folderWork} --seed {seed}",
+        f"python3 {script} {folderWork} {extra_str} --seed {seed}",
     ]
 
     _, fileSBTACH, _ = FARMINGtools.create_slurm_execution_files(
@@ -56,6 +61,7 @@ def run_slurm(
     hours=8,
     n=32,
     seed_specific=0,
+    extra=None,
 ):
     script = IOtools.expandPath(script)
     folderWork = IOtools.expandPath(folder)
@@ -75,6 +81,7 @@ def run_slurm(
                 extra_name=f"_s{j}",
                 hours=hours,
                 n=n,
+                extra=extra
             )
     else:
         commander(
@@ -86,6 +93,7 @@ def run_slurm(
             seed=seed_specific,
             hours=hours,
             n=n,
+            extra=extra
         )
 
 
@@ -106,6 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=64)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)
+    parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
 
     args = parser.parse_args()
 
@@ -118,5 +127,6 @@ if __name__ == "__main__":
         seeds=args.seeds,
         hours=args.hours,
         n=args.n,
+        extra=args.extra,
         seed_specific=args.seed_specific,
     )
