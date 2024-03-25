@@ -49,7 +49,7 @@ class fun_optimization:
 
         if forceAllPointsInBounds:
             print(
-                f"\t- Optimization will be performed by extending bounds to emcompass all training points",
+                "\t- Optimization will be performed by extending bounds to emcompass all training points",
                 typeMsg="i",
             )
 
