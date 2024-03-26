@@ -352,12 +352,16 @@ def TGYROmodeledVariables(
     portals_variables["labels"] = {
         "te": "$Q_e$ ($MW/m^2$)",
         "ti": "$Q_i$ ($MW/m^2$)",
-        "ne": "$Q_{conv}$ ($MW/m^2$)"
-        if useConvectiveFluxes
-        else "$\\Gamma_e$ ($10^{20}/s/m^2$)",
-        "nZ": "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
-        if useConvectiveFluxes
-        else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)",
+        "ne": (
+            "$Q_{conv}$ ($MW/m^2$)"
+            if useConvectiveFluxes
+            else "$\\Gamma_e$ ($10^{20}/s/m^2$)"
+        ),
+        "nZ": (
+            "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
+            if useConvectiveFluxes
+            else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)"
+        ),
         "w0": "$M_T$ ($J/m^2$)",
     }
 

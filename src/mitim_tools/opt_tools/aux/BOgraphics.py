@@ -556,9 +556,7 @@ def plotSensitivities_surrogate_model(
 
     # Point evaluation
     if y_center is not None:
-        confidence_region = (
-            stds * yVar_center**0.5 if yVar_center is not None else None
-        )
+        confidence_region = stds * yVar_center**0.5 if yVar_center is not None else None
         ax.errorbar(
             [0],
             y_center,
@@ -1354,9 +1352,9 @@ class ResultsOptimization:
             ) = self.getBest()
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
-            self.best_absolute = (
-                self.best_absolute_index
-            ) = self.best_absolute_full = None
+            self.best_absolute = self.best_absolute_index = self.best_absolute_full = (
+                None
+            )
 
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines

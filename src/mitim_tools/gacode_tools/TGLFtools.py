@@ -416,12 +416,12 @@ class TGLF:
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
     ):
-        
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare inputs
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        tglf_executor,tglf_executor_full,folderlast = self._prepare_run_radii(
+        tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
             subFolderTGLF,
             tglf_executor={},
             tglf_executor_full={},
@@ -457,16 +457,13 @@ class TGLF:
             extra_name=extra_name,
             slurm_setup=slurm_setup,
         )
-        
+
         self.FolderTGLFlast = folderlast
 
-    def _run(self,
-            tglf_executor,
-            tglf_executor_full={},
-            **kwargs_TGLFrun):
-        '''
+    def _run(self, tglf_executor, tglf_executor_full={}, **kwargs_TGLFrun):
+        """
         extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor for WF
-        '''
+        """
 
         print("\n> Run TGLF")
 
@@ -474,15 +471,29 @@ class TGLF:
         for subFolderTGLF in tglf_executor:
             c += len(tglf_executor[subFolderTGLF])
 
-        if c>0:
+        if c > 0:
             GACODErun.runTGLF(
                 self.FolderGACODE,
                 tglf_executor,
                 filesToRetrieve=self.ResultsFiles,
-                minutes=kwargs_TGLFrun['slurm_setup']['minutes'] if 'slurm_setup' in kwargs_TGLFrun and 'minutes' in kwargs_TGLFrun['slurm_setup'] else 5,
-                cores_tglf=kwargs_TGLFrun['slurm_setup']['cores'] if 'slurm_setup' in kwargs_TGLFrun and 'cores' in kwargs_TGLFrun['slurm_setup'] else 4,
+                minutes=(
+                    kwargs_TGLFrun["slurm_setup"]["minutes"]
+                    if "slurm_setup" in kwargs_TGLFrun
+                    and "minutes" in kwargs_TGLFrun["slurm_setup"]
+                    else 5
+                ),
+                cores_tglf=(
+                    kwargs_TGLFrun["slurm_setup"]["cores"]
+                    if "slurm_setup" in kwargs_TGLFrun
+                    and "cores" in kwargs_TGLFrun["slurm_setup"]
+                    else 4
+                ),
                 name=f"tglf_{self.nameRunid}{kwargs_TGLFrun['extra_name'] if 'extra_name' in kwargs_TGLFrun else ''}",
-                launchSlurm=kwargs_TGLFrun['launchSlurm'] if 'launchSlurm' in kwargs_TGLFrun else True,
+                launchSlurm=(
+                    kwargs_TGLFrun["launchSlurm"]
+                    if "launchSlurm" in kwargs_TGLFrun
+                    else True
+                ),
             )
         else:
             print(
@@ -495,16 +506,15 @@ class TGLF:
         #  Cannot be in parallel to the previous run, because it needs the results of unstable ky
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if 'runWaveForms' in kwargs_TGLFrun and len(kwargs_TGLFrun['runWaveForms'])>0:
+        if "runWaveForms" in kwargs_TGLFrun and len(kwargs_TGLFrun["runWaveForms"]) > 0:
             self._run_wf(
-                kwargs_TGLFrun['runWaveForms'],
-                tglf_executor_full,
-                **kwargs_TGLFrun)
+                kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun
+            )
 
     def _prepare_run_radii(
         self,
         subFolderTGLF,  # 'tglf1/',
-        rhos = None,
+        rhos=None,
         tglf_executor={},
         tglf_executor_full={},
         TGLFsettings=None,
@@ -540,7 +550,13 @@ class TGLF:
         self.ResultsFiles = ResultsFiles_new
 
         # Do I need to run all radii?
-        rhosEvaluate = restart_checker(rhos,self.ResultsFiles,FolderTGLF,restart=restart,forceIfRestart=forceIfRestart)
+        rhosEvaluate = restart_checker(
+            rhos,
+            self.ResultsFiles,
+            FolderTGLF,
+            restart=restart,
+            forceIfRestart=forceIfRestart,
+        )
 
         if len(rhosEvaluate) == len(rhos):
             # All radii need to be evaluated
@@ -567,40 +583,42 @@ class TGLF:
         tglf_executor_full[subFolderTGLF] = {}
         tglf_executor[subFolderTGLF] = {}
         for irho in self.rhos:
-            tglf_executor_full[subFolderTGLF][irho] = {  'folder': FolderTGLF,
-                                                    'dictionary': latest_inputsFileTGLFDict[irho],
-                                                    'inputs': latest_inputsFileTGLF[irho],
-                                                    'extraOptions': extraOptions,
-                                                    'multipliers': multipliers}
+            tglf_executor_full[subFolderTGLF][irho] = {
+                "folder": FolderTGLF,
+                "dictionary": latest_inputsFileTGLFDict[irho],
+                "inputs": latest_inputsFileTGLF[irho],
+                "extraOptions": extraOptions,
+                "multipliers": multipliers,
+            }
             if irho in rhosEvaluate:
-                tglf_executor[subFolderTGLF][irho] = tglf_executor_full[subFolderTGLF][irho]
+                tglf_executor[subFolderTGLF][irho] = tglf_executor_full[subFolderTGLF][
+                    irho
+                ]
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Stop if I expect problems
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        anticipate_problems(latest_inputsFileTGLFDict,rhosEvaluate,slurm_setup,launchSlurm)
+        anticipate_problems(
+            latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
+        )
 
-        return tglf_executor,tglf_executor_full,FolderTGLF
+        return tglf_executor, tglf_executor_full, FolderTGLF
 
-    def _run_wf(
-            self,
-            kys,
-            tglf_executor,
-            **kwargs_TGLFrun):
-        '''
+    def _run_wf(self, kys, tglf_executor, **kwargs_TGLFrun):
+        """
         extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor
-        '''
+        """
 
-        if 'runWaveForms' in kwargs_TGLFrun:
-            del kwargs_TGLFrun['runWaveForms']
+        if "runWaveForms" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["runWaveForms"]
 
         # Grab these from tglf_executor
-        if 'extraOptions' in kwargs_TGLFrun:
-            del kwargs_TGLFrun['extraOptions']
-        if 'multipliers' in kwargs_TGLFrun:
-            del kwargs_TGLFrun['multipliers']
-        
+        if "extraOptions" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["extraOptions"]
+        if "multipliers" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["multipliers"]
+
         self.ky_single = kys
         ResultsFiles = copy.deepcopy(self.ResultsFiles)
         self.ResultsFiles = copy.deepcopy(self.ResultsFiles_WF)
@@ -617,18 +635,26 @@ class TGLF:
 
                     ky_single_orig = copy.deepcopy(ky_single0)
 
-                    FolderTGLF_old = tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]['folder']
+                    FolderTGLF_old = tglf_executor[subFolderTGLF][
+                        list(tglf_executor[subFolderTGLF].keys())[0]
+                    ]["folder"]
 
                     self.ky_single = None
                     self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old)
                     self.ky_single = kys
 
-                    self.FoldersTGLF_WF[f"ky{ky_single0}"][FolderTGLF_old] = f"{FolderTGLF_old}/ky{ky_single0}/"
+                    self.FoldersTGLF_WF[f"ky{ky_single0}"][
+                        FolderTGLF_old
+                    ] = f"{FolderTGLF_old}/ky{ky_single0}/"
 
                     ky_singles = []
                     for i, ir in enumerate(self.rhos):
                         # -------- Get the closest unstable mode to the one requested
-                        if kwargs_TGLFrun['forceClosestUnstableWF'] if 'forceClosestUnstableWF' in kwargs_TGLFrun else True:
+                        if (
+                            kwargs_TGLFrun["forceClosestUnstableWF"]
+                            if "forceClosestUnstableWF" in kwargs_TGLFrun
+                            else True
+                        ):
                             # Only unstable ones
                             kys_n = []
                             for j in range(
@@ -663,24 +689,28 @@ class TGLF:
                         # ------------------------------------------------------------
 
                     kwargs_TGLFrun0 = copy.deepcopy(kwargs_TGLFrun)
-                    if 'extraOptions' in kwargs_TGLFrun:
-                        extraOptions_WF = copy.deepcopy(kwargs_TGLFrun['extraOptions'])
-                        del kwargs_TGLFrun0['extraOptions']
+                    if "extraOptions" in kwargs_TGLFrun:
+                        extraOptions_WF = copy.deepcopy(kwargs_TGLFrun["extraOptions"])
+                        del kwargs_TGLFrun0["extraOptions"]
 
                     else:
                         extraOptions_WF = {}
 
-                    extraOptions_WF = tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]['extraOptions']
-                    multipliers_WF = tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]['multipliers']
-                    
+                    extraOptions_WF = tglf_executor[subFolderTGLF][
+                        list(tglf_executor[subFolderTGLF].keys())[0]
+                    ]["extraOptions"]
+                    multipliers_WF = tglf_executor[subFolderTGLF][
+                        list(tglf_executor[subFolderTGLF].keys())[0]
+                    ]["multipliers"]
+
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
                     extraOptions_WF["KY"] = ky_singles
-                    extraOptions_WF[
-                        "VEXB_SHEAR"
-                    ] = 0.0  # See email from G. Staebler on 05/16/2021
+                    extraOptions_WF["VEXB_SHEAR"] = (
+                        0.0  # See email from G. Staebler on 05/16/2021
+                    )
 
-                    tglf_executorWF,_,_ = self._prepare_run_radii(
+                    tglf_executorWF, _, _ = self._prepare_run_radii(
                         f"{subFolderTGLF}/ky{ky_single0}",
                         tglf_executor=tglf_executorWF,
                         extraOptions=extraOptions_WF,
@@ -691,7 +721,7 @@ class TGLF:
             # Run them all
             self._run(
                 tglf_executorWF,
-                runWaveForms = [],
+                runWaveForms=[],
                 **kwargs_TGLFrun0,
             )
 
@@ -784,11 +814,11 @@ class TGLF:
                 for ir in self.rhos:
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
 
-                    self.results[label]["wavefunction"][f"ky{ky_single0}"][
-                        ir
-                    ] = GACODEinterpret.Waveform_read(
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.wavefunction{suffix0}",
-                        f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
+                    self.results[label]["wavefunction"][f"ky{ky_single0}"][ir] = (
+                        GACODEinterpret.Waveform_read(
+                            f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.wavefunction{suffix0}",
+                            f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
+                        )
                     )
 
     def plot(
@@ -869,13 +899,23 @@ class TGLF:
         # *** TGLF Figures
         fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
         fig2 = self.fn.add_figure(label=f"{extratitle}Contributors", tab_color=fn_color)
-        figFluctuations = self.fn.add_figure(label=f"{extratitle}Spectra", tab_color=fn_color)
-        figFields1 = self.fn.add_figure(label=f"{extratitle}Fields: Phi", tab_color=fn_color)
+        figFluctuations = self.fn.add_figure(
+            label=f"{extratitle}Spectra", tab_color=fn_color
+        )
+        figFields1 = self.fn.add_figure(
+            label=f"{extratitle}Fields: Phi", tab_color=fn_color
+        )
         if "a_par" in max_fields:
-            figFields2 = self.fn.add_figure(label=f"{extratitle}Fields: A_par", tab_color=fn_color)
+            figFields2 = self.fn.add_figure(
+                label=f"{extratitle}Fields: A_par", tab_color=fn_color
+            )
         if "a_per" in max_fields:
-            figFields3 = self.fn.add_figure(label=f"{extratitle}Fields: A_per", tab_color=fn_color)
-        figO = self.fn.add_figure(label=f"{extratitle}Model Details", tab_color=fn_color)
+            figFields3 = self.fn.add_figure(
+                label=f"{extratitle}Fields: A_per", tab_color=fn_color
+            )
+        figO = self.fn.add_figure(
+            label=f"{extratitle}Model Details", tab_color=fn_color
+        )
 
         figsWF = {}
         if self.ky_single is not None:
@@ -884,29 +924,51 @@ class TGLF:
                     label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
                 )
         fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
-        fig7 = self.fn.add_figure(label=f"{extratitle}Input Controls", tab_color=fn_color)
+        fig7 = self.fn.add_figure(
+            label=f"{extratitle}Input Controls", tab_color=fn_color
+        )
 
         # *** Postprocess Figures
         if successful_normalization:
             figS = self.fn.add_figure(label=f"{extratitle}Simple", tab_color=fn_color)
-            figF = self.fn.add_figure(label=f"{extratitle}Fluctuations", tab_color=fn_color)
+            figF = self.fn.add_figure(
+                label=f"{extratitle}Fluctuations", tab_color=fn_color
+            )
             fig4 = (
-                self.fn.add_figure(label=f"{extratitle}Normalization", tab_color=fn_color)
+                self.fn.add_figure(
+                    label=f"{extratitle}Normalization", tab_color=fn_color
+                )
                 if plotNormalizations
                 else None
             )
-            fig3 = self.fn.add_figure(label=f"{extratitle}Exp. Fluxes", tab_color=fn_color)
+            fig3 = self.fn.add_figure(
+                label=f"{extratitle}Exp. Fluxes", tab_color=fn_color
+            )
 
         # *** GACODE Figures
 
         if plotGACODE:
-            figProf_1 = self.fn.add_figure(label=f"{extratitle}GACODE-Prof.", tab_color=fn_color)
-            figProf_2 = self.fn.add_figure(label=f"{extratitle}GACODE-Power", tab_color=fn_color)
-            figProf_3 = self.fn.add_figure(label=f"{extratitle}GACODE-Geom.", tab_color=fn_color)
-            figProf_4 = self.fn.add_figure(label=f"{extratitle}GACODE-Grad.", tab_color=fn_color)
-            figProf_5 = self.fn.add_figure(label=f"{extratitle}GACODE-Flows", tab_color=fn_color)
-            figProf_6 = self.fn.add_figure(label=f"{extratitle}GACODE-Other", tab_color=fn_color)
-            figProf_7 = self.fn.add_figure(label=f"{extratitle}GACODE-Imp.", tab_color=fn_color)
+            figProf_1 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Prof.", tab_color=fn_color
+            )
+            figProf_2 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Power", tab_color=fn_color
+            )
+            figProf_3 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Geom.", tab_color=fn_color
+            )
+            figProf_4 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Grad.", tab_color=fn_color
+            )
+            figProf_5 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Flows", tab_color=fn_color
+            )
+            figProf_6 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Other", tab_color=fn_color
+            )
+            figProf_7 = self.fn.add_figure(
+                label=f"{extratitle}GACODE-Imp.", tab_color=fn_color
+            )
 
         grid = plt.GridSpec(4, 3, hspace=0.7, wspace=0.2)
         axsTGLF1 = np.empty((4, 3), dtype=plt.Axes)
@@ -2130,7 +2192,7 @@ class TGLF:
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
-        
+
         tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
             subFolderTGLF,
             multipliers=multipliers,
@@ -2150,8 +2212,9 @@ class TGLF:
         # Read results
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
-            self.read(label=f"{self.subFolderTGLF_scan}_{name}",folder=folders[cont_mult])
-
+            self.read(
+                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult]
+            )
 
     def _prepare_scan(
         self,
@@ -2160,8 +2223,8 @@ class TGLF:
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
         relativeChanges=True,
-        **kwargs_TGLFrun):
-
+        **kwargs_TGLFrun,
+    ):
         """
         Multipliers will be modified by adding the scaning variables, but I don't want to modify the original
         multipliers, as they may be passed to the next scan
@@ -2234,7 +2297,7 @@ class TGLF:
                 "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
             )
 
-            tglf_executor,tglf_executor_full,folderlast = self._prepare_run_radii(
+            tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
                 f"{self.subFolderTGLF_scan}_{name}",
                 tglf_executor=tglf_executor,
                 tglf_executor_full=tglf_executor_full,
@@ -2246,7 +2309,6 @@ class TGLF:
 
         return tglf_executor, tglf_executor_full, folders, varUpDown_new
 
-
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
     ):
@@ -2256,7 +2318,6 @@ class TGLF:
 
         if subFolderTGLF is None:
             subFolderTGLF = self.subFolderTGLF_scan
-
 
         self.scans[label] = {}
         self.scans[label]["variable"] = variable
@@ -2909,7 +2970,7 @@ class TGLF:
             for contLabel, ikey in enumerate(labels):
 
                 labelsExtraPlot = self.scans[ikey]["results_tags"]
-                labels_legend = [lab.split('_')[-1] for lab in labelsExtraPlot]
+                labels_legend = [lab.split("_")[-1] for lab in labelsExtraPlot]
 
                 colorsC = np.transpose(
                     np.array(colorsChosen[contLabel]), axes=(1, 0, 2)
@@ -2929,7 +2990,7 @@ class TGLF:
                     plotNormalizations=False,
                     plotGACODE=False,
                     fn_color=contLabel,
-                    WarnMeAboutPlots=False, # Do not warn me because I have already accepted/declined
+                    WarnMeAboutPlots=False,  # Do not warn me because I have already accepted/declined
                 )
 
     # ~~~~~~~~~~~~~~ Extra complete analysis options
@@ -2955,7 +3016,7 @@ class TGLF:
                 "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
             )
 
-            scan_name = f"{subFolderTGLF}_{variable}"   # e.g. turbDrives_RLTS_1
+            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
 
             self.runScan(
                 subFolderTGLF=subFolderTGLF,
@@ -2966,7 +3027,9 @@ class TGLF:
 
             self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
 
-    def plotScanTurbulenceDrives(self, label="drives1", figs=None, **kwargs_TGLFscanPlot):
+    def plotScanTurbulenceDrives(
+        self, label="drives1", figs=None, **kwargs_TGLFscanPlot
+    ):
         labels = []
         for variable in self.variablesDrives:
             labels.append(f"{label}_{variable}")
@@ -5969,12 +6032,12 @@ def createCombinedRuns(tglfs=(), new_names=(), results_names=(), isItScan=False)
 
 
 def restart_checker(
-        rhos,
-        ResultsFiles,
-        FolderTGLF,
-        restart=False,
-        forceIfRestart=False,
-        ):
+    rhos,
+    ResultsFiles,
+    FolderTGLF,
+    restart=False,
+    forceIfRestart=False,
+):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
     """
@@ -5995,14 +6058,16 @@ def restart_checker(
 
     if len(rhosEvaluate) < len(rhos) and len(rhosEvaluate) > 0:
         print(
-                "~ Not all radii are found, but not removing folder and running only those that are needed",
+            "~ Not all radii are found, but not removing folder and running only those that are needed",
             typeMsg="i",
         )
 
     return rhosEvaluate
 
 
-def anticipate_problems(latest_inputsFileTGLFDict,rhosEvaluate,slurm_setup,launchSlurm):
+def anticipate_problems(
+    latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
+):
 
     # -----------------------------------
     # ------ Check density for problems

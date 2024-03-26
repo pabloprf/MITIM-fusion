@@ -23,7 +23,6 @@ UseCUDAifAvailable = True
 
 
 class surrogate_model:
-
     """
     This is where each of the fittings take place.
     Data is given unnormalized. The GP normalizes the data if requested and fits the model for trainY
@@ -426,9 +425,11 @@ class surrogate_model:
         # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
         # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
 
-        with fundamental_model_context(
-            self
-        ) if produceFundamental else contextlib.nullcontext(self) as surrogate_model:
+        with (
+            fundamental_model_context(self)
+            if produceFundamental
+            else contextlib.nullcontext(self)
+        ) as surrogate_model:
             posterior = surrogate_model.gpmodel.posterior(X)
 
         mean = posterior.mean

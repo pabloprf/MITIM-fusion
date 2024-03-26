@@ -60,7 +60,6 @@ def performCurveRegression(
             printMessages=printMessages,
         )
 
-
     """
 	Construct curve in a coarse grid
 	----------------------------------------------------------------------------------------------------
@@ -85,7 +84,6 @@ def performCurveRegression(
             dict_param,
             printMessages=printMessages,
         )
-
 
     return (
         dict_param["aLy_coarse"],

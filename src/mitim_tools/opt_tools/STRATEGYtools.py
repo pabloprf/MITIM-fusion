@@ -229,14 +229,14 @@ class FUNmain:
             self.prfs_model.folderOutputs = self.prfs_model.folderOutputs.replace(
                 self.prfs_model.folderExecution, self.folder
             )
-            self.prfs_model.MITIMextra = (
-                self.prfs_model.mainFunction.MITIMextra
-            ) = self.prfs_model.MITIMextra.replace(
-                self.prfs_model.folderExecution, self.folder
+            self.prfs_model.MITIMextra = self.prfs_model.mainFunction.MITIMextra = (
+                self.prfs_model.MITIMextra.replace(
+                    self.prfs_model.folderExecution, self.folder
+                )
             )
-            self.prfs_model.folderExecution = (
-                self.prfs_model.mainFunction.folder
-            ) = self.folder
+            self.prfs_model.folderExecution = self.prfs_model.mainFunction.folder = (
+                self.folder
+            )
         except:
             pass
 
@@ -293,9 +293,9 @@ class FUNmain:
         self.read_optimization_results(
             plotYN=plotYN and (analysis_level >= 0),
             folderRemote=folderRemote,
-            analysis_level=retrieval_level
-            if (retrieval_level is not None)
-            else analysis_level,
+            analysis_level=(
+                retrieval_level if (retrieval_level is not None) else analysis_level
+            ),
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
         )
 
@@ -375,8 +375,11 @@ class PRF_BO:
         self.seed = seed
 
         if (not self.restartYN) and askQuestions:
-            if not print(f'\t* Because {restartYN = }, MITIM will try to read existing results from folder', typeMsg='q'):
-                raise Exception('[MITIM] - User requested to stop')
+            if not print(
+                f"\t* Because {restartYN = }, MITIM will try to read existing results from folder",
+                typeMsg="q",
+            ):
+                raise Exception("[MITIM] - User requested to stop")
 
         if self.mainFunction.name_objectives is None:
             self.mainFunction.name_objectives = "y"
@@ -1215,7 +1218,7 @@ class PRF_BO:
             try:
                 with open(f"{self.folderExecution}/Outputs/TabularData.dat", "r") as f:
                     aux = f.readlines()
-                tabExists = (len(aux)-1) >= self.initialPoints
+                tabExists = (len(aux) - 1) >= self.initialPoints
                 print(
                     f"\t- TabularData file has {len(aux)-1} elements, and initialPoints were {self.initialPoints}"
                 )

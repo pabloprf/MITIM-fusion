@@ -125,14 +125,7 @@ def LHthreshold_Martin1(n, Bt, S, nmin=0):
 
 
 def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=0):
-    return (
-        2.15
-        * n**0.782
-        * Bt**0.772
-        * a**0.975
-        * nminfactor(nmin, n)
-        * Rmajor**0.999
-    )
+    return 2.15 * n**0.782 * Bt**0.772 * a**0.975 * nminfactor(nmin, n) * Rmajor**0.999
 
 
 def LHthreshold_Schmid1(n, Bt, S, nmin=0):
@@ -175,7 +168,7 @@ def nminfactor(nmin, n):
 
     if isinstance(nmin, (float, np.floating)):
         nmin = [nmin]
-   
+
     nminfact = []
     for i in range(len(n)):
         if n[i] < nmin[i]:
@@ -657,6 +650,7 @@ def fitTANHPedestal(
     ]
 
     from scipy.optimize import curve_fit
+
     popt, pcov = curve_fit(f, xp, yp, p0=[-1, 10, -10, 1])
 
     y = f(xgrid, *popt) * TtopN
@@ -893,15 +887,11 @@ def evaluate_qstar(
 
     if includeShaping:
         shapingFactor = (
-            shapingFactor
-            * (1 + kappa**2 * (1 + 2 * delta**2 - 1.2 * delta**3))
-            / 2.0
+            shapingFactor * (1 + kappa**2 * (1 + 2 * delta**2 - 1.2 * delta**3)) / 2.0
         )  # Uckan 1990 (used by MARS)
 
     if ITERcorrection:
-        shapingFactor = (
-            shapingFactor * (1.17 - 0.65 * epsilon) / (1 - epsilon**2) ** 2
-        )
+        shapingFactor = shapingFactor * (1.17 - 0.65 * epsilon) / (1 - epsilon**2) ** 2
 
     qstar = Constant * mainformulation * shapingFactor / varInput
     Ip = Constant * mainformulation * shapingFactor / varInput
@@ -1021,9 +1011,7 @@ def tauNA(Rmajor, kappa, ne_l, a, mbg, Bt, Ip, delta=0.0, tauE=None):
     else:
         alpha_mbg = 0.2
 
-    tau_scaling = (
-        0.07 * ne_l * q * np.sqrt(kappa) * a * Rmajor**2.0 * mbg**alpha_mbg
-    )
+    tau_scaling = 0.07 * ne_l * q * np.sqrt(kappa) * a * Rmajor**2.0 * mbg**alpha_mbg
 
     return tau_scaling, tauE / tau_scaling if tauE is not None else None
 
@@ -1125,11 +1113,7 @@ def calculateHeatFluxWidth_Brunner(press_atm):
 def calculateHeatFluxWidth_Eich(Bp_OMP, Psol, R0, epsilon):
     Lambda_q_Eich14 = 0.63 * Bp_OMP ** (-1.19)
     Lambda_q_Eich15 = (
-        1.35
-        * (Psol * 1e6) ** (-0.02)
-        * Bp_OMP ** (-0.92)
-        * R0**0.04
-        * epsilon**0.42
+        1.35 * (Psol * 1e6) ** (-0.02) * Bp_OMP ** (-0.92) * R0**0.04 * epsilon**0.42
     )
 
     return Lambda_q_Eich14, Lambda_q_Eich15

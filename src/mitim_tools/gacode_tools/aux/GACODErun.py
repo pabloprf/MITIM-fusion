@@ -91,6 +91,7 @@ def runTGYRO(
 
     tgyro_job.run()
 
+
 def modifyInputs(
     input_class,
     Settings=None,
@@ -104,9 +105,7 @@ def modifyInputs(
         _, CodeOptions, label = addControlFunction(Settings, **kwargs_to_function)
 
         # ~~~~~~~~~~ Change with presets
-        print(
-            f" \t- Using presets Settings = {Settings} ({label})", typeMsg="i"
-        )
+        print(f" \t- Using presets Settings = {Settings} ({label})", typeMsg="i")
         input_class.controls = CodeOptions
 
     else:
@@ -913,6 +912,7 @@ def defineNewGrid(
 
     return x[imin:imax], y[imin:imax]
 
+
 def runTGLF(
     FolderGACODE,
     tglf_executor,
@@ -922,7 +922,7 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=1E6, #32,
+    cores_todo_array=1e6,  # 32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
@@ -930,7 +930,7 @@ def runTGLF(
     """
 
     tmpFolder = f"{FolderGACODE}/tmp_tglf/"
-    IOtools.askNewFolder(tmpFolder,force=True)
+    IOtools.askNewFolder(tmpFolder, force=True)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
@@ -943,7 +943,7 @@ def runTGLF(
     for subFolderTGLF in tglf_executor:
 
         rhos = list(tglf_executor[subFolderTGLF].keys())
-        
+
         # ---------------------------------------------
         # Prepare files and folders
         # ---------------------------------------------
@@ -960,7 +960,7 @@ def runTGLF(
 
             fileTGLF = f"{folderTGLF_this}/input.tglf"
             with open(fileTGLF, "w") as f:
-                f.write(tglf_executor[subFolderTGLF][rho]['inputs'])
+                f.write(tglf_executor[subFolderTGLF][rho]["inputs"])
 
     # ---------------------------------------------
     # Prepare command
@@ -976,7 +976,9 @@ def runTGLF(
     if typeRun in ["bash", "job"]:
         TGLFcommand = ""
         for folder in folders_red:
-            TGLFcommand += f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
+            TGLFcommand += (
+                f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
+            )
 
         TGLFcommand += (
             "\nwait"  # This is needed so that the script doesn't end before each job
@@ -1027,7 +1029,7 @@ def runTGLF(
         TGLFcommand,
         input_folders=folders,
         output_folders=folders_red,
-        check_files_in_folder= check_files_in_folder
+        check_files_in_folder=check_files_in_folder,
     )
 
     tglf_job.run(removeScratchFolders=False)
@@ -1043,12 +1045,16 @@ def runTGLF(
         for i, rho in enumerate(tglf_executor[subFolderTGLF].keys()):
             for file in filesToRetrieve:
                 original_file = f"{file}_{rho:.4f}{extraFlag}"
-                final_destination = f"{tglf_executor[subFolderTGLF][rho]['folder']}/{original_file}"
+                final_destination = (
+                    f"{tglf_executor[subFolderTGLF][rho]['folder']}/{original_file}"
+                )
 
                 if os.path.exists(final_destination):
                     os.system(f"rm {final_destination}")
 
-                os.system(f"mv {tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}/{file} {final_destination}")
+                os.system(
+                    f"mv {tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}/{file} {final_destination}"
+                )
 
                 fineall = fineall and os.path.exists(final_destination)
 

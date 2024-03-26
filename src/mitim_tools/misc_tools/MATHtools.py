@@ -11,6 +11,7 @@ from scipy.integrate import romb
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
+
 def is_inBetween(x, x1, x2):
     [d1, d2] = calculateDistance(x, [x1, x2])
     dT = calculateDistance(x1, [x2])[0]
@@ -120,6 +121,7 @@ def orderArray(arr, base=None):
 
     sortedList = sorted(zip(base, arr))
     return np.array([a for _, a in sortedList])
+
 
 def arePointsEqual(x1, x2):
     isEqual = True

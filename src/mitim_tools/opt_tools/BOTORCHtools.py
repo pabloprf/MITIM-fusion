@@ -248,7 +248,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         self.to(train_X)
 
     def store_training(self, x, xa, y, ya, yv, yva, input_transform, outcome_transform):
-        
+
         # x, y are raw untransformed, and I want raw transformed
         if input_transform is not None:
             x_tr = input_transform["tf1"](x)

@@ -71,9 +71,9 @@ def default_namelist(Optim):
     Optim["surrogateOptions"]["ensureTrainingBounds"] = True
 
     # Acquisition
-    Optim[
-        "optimizers"
-    ] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
+    Optim["optimizers"] = (
+        "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
+    )
     Optim["acquisitionType"] = "posterior_mean"
 
     return Optim
@@ -300,7 +300,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
             hardGradientLimits=hardGradientLimits,
             dfT=self.dfT,
             seedInitial=seedInitial,
-            checkForSpecies=askQuestions
+            checkForSpecies=askQuestions,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -487,13 +487,13 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 self_copy = copy.deepcopy(self)
                 if reevaluateTargets == 1:
                     self_copy.powerstate.TransportOptions["TypeTransport"] = None
-                    self_copy.powerstate.TransportOptions[
-                        "TypeTarget"
-                    ] = self_copy.powerstate.TargetCalc = "powerstate"
+                    self_copy.powerstate.TransportOptions["TypeTarget"] = (
+                        self_copy.powerstate.TargetCalc
+                    ) = "powerstate"
                 else:
-                    self_copy.powerstate.TransportOptions[
-                        "TypeTransport"
-                    ] = "tglf_neo_tgyro"
+                    self_copy.powerstate.TransportOptions["TypeTransport"] = (
+                        "tglf_neo_tgyro"
+                    )
 
                 results, tgyro, powerstate, dictOFs = runModelEvaluator(
                     self_copy,

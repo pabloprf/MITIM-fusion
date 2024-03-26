@@ -12,6 +12,7 @@ from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+
 def identity(X, *args):
     return X, {}
 
@@ -413,29 +414,29 @@ class OPTstep:
             )
 
         elif self.acquisitionType == "ei_mc":
-            self.evaluators[
-                "acq_function"
-            ] = botorch.acquisition.monte_carlo.qExpectedImprovement(
-                self.evaluators["GP"].gpmodel,
-                objective=self.evaluators["objective"],
-                best_f=best_f,
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.monte_carlo.qExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    best_f=best_f,
+                )
             )
 
         elif self.acquisitionType == "logei_mc":
-            self.evaluators[
-                "acq_function"
-            ] = botorch.acquisition.logei.qLogExpectedImprovement(
-                self.evaluators["GP"].gpmodel,
-                objective=self.evaluators["objective"],
-                best_f=best_f,
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.logei.qLogExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    best_f=best_f,
+                )
             )
 
         elif self.acquisitionType == "logei":
             print("* Chosen an analytic acquisition, igoring objective", typeMsg="w")
-            self.evaluators[
-                "acq_function"
-            ] = botorch.acquisition.analytic.LogExpectedImprovement(
-                self.evaluators["GP"].gpmodel, best_f=best_f
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.analytic.LogExpectedImprovement(
+                    self.evaluators["GP"].gpmodel, best_f=best_f
+                )
             )
 
         # **************************************************************************************************
@@ -541,9 +542,7 @@ class OPTstep:
             print(f"\t ~~ Avoiding {len(self.avoidPoints)} points: ", self.avoidPoints)
 
 
-def removeOutliers(
-    y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]
-):
+def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]):
     """
     This routine finds outliers to remove
     """

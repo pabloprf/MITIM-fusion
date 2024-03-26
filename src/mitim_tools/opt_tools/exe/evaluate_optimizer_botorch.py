@@ -251,9 +251,7 @@ for i in range(numVariations):
     label = (
         f"num_restarts = {int(num_restarts_cases[i])}"
         if test == 2
-        else f"raw_samples = {int(raw_samples_cases[i])}"
-        if test == 3
-        else ""
+        else f"raw_samples = {int(raw_samples_cases[i])}" if test == 3 else ""
     )
 
     for s in range(numSeeds):

@@ -24,9 +24,7 @@ parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
     "--var", type=float, required=False, default=0.05
 )  # Variation in inputs (5% default)
-parser.add_argument(
-    "--num", type=int, required=False, default=10
-)
+parser.add_argument("--num", type=int, required=False, default=10)
 parser.add_argument(
     "--restart", "-r", required=False, default=False, action="store_true"
 )

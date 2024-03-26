@@ -375,7 +375,7 @@ def tr_cancel(runid, FolderTRANSP, tok, howManyCancel=1, MinWaitDeletion=2):
             input_files=inputFiles,
         )
 
-        transp_job.run(waitYN=False,timeoutSecs=5)
+        transp_job.run(waitYN=False, timeoutSecs=5)
 
     # Leave some more time for deletion
     print(

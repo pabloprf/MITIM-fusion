@@ -127,7 +127,7 @@ class mitim_job:
         input_folders=[],
         output_files=[],
         output_folders=[],
-        check_files_in_folder = {},
+        check_files_in_folder={},
         shellPreCommands=[],
         shellPostCommands=[],
         label_log_files="",
@@ -139,7 +139,7 @@ class mitim_job:
 
         check_files_in_folder is a dictionary with the folder name as key and a list of files to check as value, optionally.
             Otherwise, it will just check if the folder was received, but not the files inside it.
-            
+
         """
 
         # Pass to class
@@ -159,7 +159,7 @@ class mitim_job:
             removeScratchFolders = False
 
         # Always start by going to the folder (inside sbatch file)
-        command_str_mod = [ f"cd {self.folderExecution}", f"{self.command}" ]
+        command_str_mod = [f"cd {self.folderExecution}", f"{self.command}"]
 
         # ****** Prepare SLURM job *****************************
         comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
@@ -199,7 +199,11 @@ class mitim_job:
 
         # Process
         self.full_process(
-            comm, removeScratchFolders=removeScratchFolders, timeoutSecs=timeoutSecs, check_if_files_received=waitYN,check_files_in_folder=self.check_files_in_folder,
+            comm,
+            removeScratchFolders=removeScratchFolders,
+            timeoutSecs=timeoutSecs,
+            check_if_files_received=waitYN,
+            check_files_in_folder=self.check_files_in_folder,
         )
 
         # Get jobid
@@ -207,7 +211,7 @@ class mitim_job:
             with open(self.folder_local + "/mitim.out", "r") as f:
                 aux = f.readlines()
             for line in aux:
-                if 'Submitted batch job ' in line:
+                if "Submitted batch job " in line:
                     self.jobid = line.split()[-1]
         else:
             self.jobid = None
@@ -216,12 +220,14 @@ class mitim_job:
     # SSH executions
     # --------------------------------------------------------------------
 
-    def full_process(self,
-                     comm, 
-                     timeoutSecs=1e6, 
-                     removeScratchFolders=True, 
-                     check_if_files_received=True,
-                     check_files_in_folder={}):
+    def full_process(
+        self,
+        comm,
+        timeoutSecs=1e6,
+        removeScratchFolders=True,
+        check_if_files_received=True,
+        check_files_in_folder={},
+    ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
@@ -236,7 +242,7 @@ class mitim_job:
 
         # ~~~~~~ Connect
         self.connect(log_file=f"{self.folder_local}/paramiko.log")
-        
+
         # ~~~~~~ Prepare scratch folder
         if removeScratchFolders:
             self.remove_scratch_folder()
@@ -254,7 +260,10 @@ class mitim_job:
         )
 
         # ~~~~~~ Retrieve
-        received = self.retrieve(check_if_files_received=check_if_files_received,check_files_in_folder=check_files_in_folder)
+        received = self.retrieve(
+            check_if_files_received=check_if_files_received,
+            check_files_in_folder=check_files_in_folder,
+        )
 
         # ~~~~~~ Remove scratch folder
         if received:
@@ -344,16 +353,23 @@ class mitim_job:
             if key_jump is not None:
                 key_jump = IOtools.expandPath(key_jump)
                 if not os.path.exists(key_jump):
-                    if print('Key file "' + key_jump + '" does not exist, continue without key',typeMsg='q'):
+                    if print(
+                        'Key file "'
+                        + key_jump
+                        + '" does not exist, continue without key',
+                        typeMsg="q",
+                    ):
                         key_jump = None
-                        
+
             # Connect to the jump host
             self.jump_client.connect(
                 self.jump_host,
                 username=self.jump_user,
-                port=self.machineSettings["port"]
-                if self.machineSettings["port"] is not None
-                else 22,
+                port=(
+                    self.machineSettings["port"]
+                    if self.machineSettings["port"] is not None
+                    else 22
+                ),
                 key_filename=key_jump,
                 allow_agent=True,
             )
@@ -388,13 +404,17 @@ class mitim_job:
             if self.key_filename is not None:
                 self.key_filename = IOtools.expandPath(self.key_filename)
                 if not os.path.exists(self.key_filename):
-                    if print('Key file "' + self.key_filename + '" does not exist, continue without key',typeMsg='q'):
+                    if print(
+                        'Key file "'
+                        + self.key_filename
+                        + '" does not exist, continue without key',
+                        typeMsg="q",
+                    ):
                         self.key_filename = None
-                        
 
     def create_scratch_folder(self):
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
-        print(f'\t\t{self.folderExecution}')
+        print(f"\t\t{self.folderExecution}")
 
         command = "mkdir -p " + self.folderExecution
 
@@ -428,9 +448,7 @@ class mitim_job:
             ) as t:
                 self.sftp.put(
                     os.path.join(self.folder_local, "mitim_send.tar.gz"),
-                    os.path.join(
-                        self.folderExecution, "mitim_send.tar.gz"
-                    ),
+                    os.path.join(self.folderExecution, "mitim_send.tar.gz"),
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
@@ -453,10 +471,7 @@ class mitim_job:
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(os.path.join(self.folder_local, "mitim_send.tar.gz"))
-        self.execute(
-            "rm "
-            + os.path.join(self.folderExecution, "mitim_send.tar.gz")
-        )
+        self.execute("rm " + os.path.join(self.folderExecution, "mitim_send.tar.gz"))
 
     def execute(self, command_str, **kwargs):
 
@@ -490,7 +505,7 @@ class mitim_job:
                 output = stdout.read()
                 error = stderr.read()
         except socket.timeout:
-            print("\t> Command timed out!",typeMsg='w')
+            print("\t> Command timed out!", typeMsg="w")
 
         return output, error
 
@@ -511,7 +526,9 @@ class mitim_job:
         )
 
         # Create a tarball of the output files & folders on the remote machine
-        print("\t\t- Removing local output files & folders that potentially exist from previous runs")
+        print(
+            "\t\t- Removing local output files & folders that potentially exist from previous runs"
+        )
         for file in self.output_files:
             if os.path.exists(os.path.join(self.folder_local, file)):
                 os.remove(os.path.join(self.folder_local, file))
@@ -542,18 +559,14 @@ class mitim_job:
                 + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             ) as t:
                 self.sftp.get(
-                    os.path.join(
-                        self.folderExecution, "mitim_receive.tar.gz"
-                    ),
+                    os.path.join(self.folderExecution, "mitim_receive.tar.gz"),
                     os.path.join(self.folder_local, "mitim_receive.tar.gz"),
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
             os.system(
                 "cp "
-                + os.path.join(
-                    self.folderExecution, "mitim_receive.tar.gz"
-                )
+                + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
                 + " "
                 + os.path.join(self.folder_local, "mitim_receive.tar.gz")
             )
@@ -568,21 +581,22 @@ class mitim_job:
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(os.path.join(self.folder_local, "mitim_receive.tar.gz"))
-        self.execute(
-            "rm "
-            + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
-        )
+        self.execute("rm " + os.path.join(self.folderExecution, "mitim_receive.tar.gz"))
 
         # Check if all files were received
         if check_if_files_received:
-            received = self.check_all_received(check_files_in_folder=check_files_in_folder)
+            received = self.check_all_received(
+                check_files_in_folder=check_files_in_folder
+            )
             if received:
                 print("\t\t- All correct")
             else:
                 print("\t* Not all received, trying once again", typeMsg="w")
                 time.sleep(10)
                 _ = self.retrieve(check_if_files_received=False)
-                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
+                received = self.check_all_received(
+                    check_files_in_folder=check_files_in_folder
+                )
         else:
             received = True
 
@@ -626,11 +640,9 @@ class mitim_job:
         else:
             txt_look = f"-n {self.slurm_settings['name']}"
 
-        command = (
-            f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
-        )
+        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
 
-        if 'output_files' in self.__dict__:
+        if "output_files" in self.__dict__:
             output_files_backup = copy.deepcopy(self.output_files)
             output_folders_backup = copy.deepcopy(self.output_folders)
             wasThere = True
@@ -638,8 +650,8 @@ class mitim_job:
             wasThere = False
 
         self.output_files = [
-            "slurm_output.dat",    # The slurm results of the main job!
-            "squeue_output.dat"    # The output of the squeue command
+            "slurm_output.dat",  # The slurm results of the main job!
+            "squeue_output.dat",  # The output of the squeue command
         ]
         self.output_folders = []
 
@@ -655,12 +667,12 @@ class mitim_job:
             self.output_files = output_files_backup
 
     def interpret_status(self):
-        '''
+        """
         Status of job:
             0: Submitted/pending
             1: Running
             2: Not found / finished
-        '''
+        """
 
         # -----------------------------------------------
         # Read output of squeue command -> self.infoSLURM
@@ -669,14 +681,16 @@ class mitim_job:
         with open(self.folder_local + "/squeue_output.dat", "r") as f:
             output_squeue = f.read()
         output_squeue = str(output_squeue)[3:].split("\n")
-        
-        if (len(output_squeue[0].split()) == 0) or (len(output_squeue[1])==0):
-            self.infoSLURM = {'STATE': 'NOT FOUND'}
+
+        if (len(output_squeue[0].split()) == 0) or (len(output_squeue[1]) == 0):
+            self.infoSLURM = {"STATE": "NOT FOUND"}
             self.jobid_found = None
         else:
             self.infoSLURM = {}
             for i in range(len(output_squeue[0].split())):
-                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
+                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[
+                    i
+                ]
 
             self.jobid_found = self.infoSLURM["JOBID"]
 
@@ -686,12 +700,14 @@ class mitim_job:
 
         if self.infoSLURM["STATE"] == "PENDING":
             self.status = 0
-        elif (self.infoSLURM["STATE"] == "RUNNING") or (self.infoSLURM["STATE"] == "COMPLETING"):
+        elif (self.infoSLURM["STATE"] == "RUNNING") or (
+            self.infoSLURM["STATE"] == "COMPLETING"
+        ):
             self.status = 1
         elif self.infoSLURM["STATE"] == "NOT FOUND":
             self.status = 2
         else:
-            print('Unknown SLURM status, please check')
+            print("Unknown SLURM status, please check")
             embed()
 
         # ------------------------------------------------------------
@@ -718,7 +734,7 @@ class mitim_job:
             txt += f". Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines"
         print(txt)
 
-    def check_all_received(self, check_files_in_folder = {}):
+    def check_all_received(self, check_files_in_folder={}):
         print("\t* Checking if all expected files & folders were received")
         received = True
 
@@ -727,7 +743,7 @@ class mitim_job:
             if not os.path.exists(os.path.join(self.folder_local, file)):
                 print(f"\t\t- File {file} not received", typeMsg="w")
                 received = False
-        
+
         for folder in self.output_folders:
             # Check if all folders were received
             if not os.path.exists(os.path.join(self.folder_local, folder)):
@@ -737,8 +753,13 @@ class mitim_job:
             else:
                 if folder in check_files_in_folder:
                     for file in check_files_in_folder[folder]:
-                        if not os.path.exists(os.path.join(self.folder_local, folder, file)):
-                            print(f"\t\t- File {file} not received in folder {folder}", typeMsg="w")
+                        if not os.path.exists(
+                            os.path.join(self.folder_local, folder, file)
+                        ):
+                            print(
+                                f"\t\t- File {file} not received in folder {folder}",
+                                typeMsg="w",
+                            )
                             received = False
 
         return received

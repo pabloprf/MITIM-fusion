@@ -208,7 +208,10 @@ class PROFILES_GACODE:
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
-                    varT = [float(j) if (j[-4].upper() == "E" or '.' in j) else 0.0 for j in var0[1:]]
+                    varT = [
+                        float(j) if (j[-4].upper() == "E" or "." in j) else 0.0
+                        for j in var0[1:]
+                    ]
 
                     var.append(varT)
 
@@ -544,7 +547,7 @@ class PROFILES_GACODE:
         self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
         self.derived["ge_10E20m2"] = self.derived["ge_10E20miller"] / (volp)
 
-        self.derived['QiQe'] = self.derived['qi_MWm2']/self.derived['qe_MWm2']
+        self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
 
         # "Convective" flux
         self.derived["ce_MWmiller"] = PLASMAtools.convective_flux(
@@ -1164,11 +1167,11 @@ class PROFILES_GACODE:
                 self.deriveQuantities()
                 self.printInfo(label=label, reDeriveIfNotFound=False)
 
-    def export_to_table(self,table=None,name=None):
+    def export_to_table(self, table=None, name=None):
 
         # TO REMOVE
-        if 'QiQe' not in self.derived:
-            self.derived['QiQe'] = self.derived['qi_MWm2']/self.derived['qe_MWm2']
+        if "QiQe" not in self.derived:
+            self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
 
         if table is None:
             table = DataTable()
@@ -1176,18 +1179,25 @@ class PROFILES_GACODE:
         data = [name]
         for var in table.variables:
             if table.variables[var][1] is not None:
-                if table.variables[var][1].split('_')[0] == 'rho':
-                    ix = np.argmin(np.abs(self.profiles['rho(-)'] - float(table.variables[var][1].split('_')[1]) ))
-                elif table.variables[var][1].split('_')[0] == 'pos':
-                    ix = int(table.variables[var][1].split('_')[1])
-                vari = self.__dict__[table.variables[var][2]][table.variables[var][0]][ix]
+                if table.variables[var][1].split("_")[0] == "rho":
+                    ix = np.argmin(
+                        np.abs(
+                            self.profiles["rho(-)"]
+                            - float(table.variables[var][1].split("_")[1])
+                        )
+                    )
+                elif table.variables[var][1].split("_")[0] == "pos":
+                    ix = int(table.variables[var][1].split("_")[1])
+                vari = self.__dict__[table.variables[var][2]][table.variables[var][0]][
+                    ix
+                ]
             else:
                 vari = self.__dict__[table.variables[var][2]][table.variables[var][0]]
 
-            data.append(f'{vari*table.variables[var][4]:{table.variables[var][3]}}')
+            data.append(f"{vari*table.variables[var][4]:{table.variables[var][3]}}")
 
         table.data.append(data)
-        print(f'\t* Exported {name} to table')
+        print(f"\t* Exported {name} to table")
 
         return table
 
@@ -3574,7 +3584,7 @@ class PROFILES_GACODE:
 
 
 class DataTable:
-    def __init__(self,variables=None):
+    def __init__(self, variables=None):
 
         if variables is not None:
             self.variables = variables
@@ -3582,47 +3592,62 @@ class DataTable:
 
             # Default for confinement mode access studies (JWH 03/2024)
             self.variables = {
-                'Bt': ['bcentr(T)', 'pos_0', 'profiles','.1f',1,'T'],
-                'Ip': ['current(MA)', 'pos_0', 'profiles','.1f',1,'MA'],
-                'Pin': ['qIn', None, 'derived','.1f',1,'MW'],
-                'Te @rho=0.9': ['te(keV)', 'rho_0.90', 'profiles','.2f',1,'keV'],
-                'ne @rho=0.9': ['ne(10^19/m^3)', 'rho_0.90', 'profiles','.2f',0.1,'E20m-3'],
-                'ptot @rho=0.9': ['ptot_manual', 'rho_0.90', 'derived','.1f',1E3,'kPa'],
-                'Ti/Te @rho=0.9': ['tite', 'rho_0.90', 'derived','.2f',1,None],
-                'Zeff': ['Zeff_vol', None, 'derived','.1f',1,None],
-                'fDT': ['fmain', None, 'derived','.2f',1,None],
-                'H89p': ['H89', None, 'derived','.2f',1,None],
-                'fG': ['fG', None, 'derived','.2f',1,None],
-                'Pfus': ['Pfus', None, 'derived','.1f',1,'MW'],
-                'Q': ['Q', None, 'derived','.2f',1,None],
-                'Psol': ['Psol', None, 'derived','.1f',1,'MW'],
-                'Qi/Qe @rho=0.9': ['QiQe', 'rho_0.90', 'derived','.2f',1,None],
+                "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
+                "Ip": ["current(MA)", "pos_0", "profiles", ".1f", 1, "MA"],
+                "Pin": ["qIn", None, "derived", ".1f", 1, "MW"],
+                "Te @rho=0.9": ["te(keV)", "rho_0.90", "profiles", ".2f", 1, "keV"],
+                "ne @rho=0.9": [
+                    "ne(10^19/m^3)",
+                    "rho_0.90",
+                    "profiles",
+                    ".2f",
+                    0.1,
+                    "E20m-3",
+                ],
+                "ptot @rho=0.9": [
+                    "ptot_manual",
+                    "rho_0.90",
+                    "derived",
+                    ".1f",
+                    1e3,
+                    "kPa",
+                ],
+                "Ti/Te @rho=0.9": ["tite", "rho_0.90", "derived", ".2f", 1, None],
+                "Zeff": ["Zeff_vol", None, "derived", ".1f", 1, None],
+                "fDT": ["fmain", None, "derived", ".2f", 1, None],
+                "H89p": ["H89", None, "derived", ".2f", 1, None],
+                "fG": ["fG", None, "derived", ".2f", 1, None],
+                "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
+                "Q": ["Q", None, "derived", ".2f", 1, None],
+                "Psol": ["Psol", None, "derived", ".1f", 1, "MW"],
+                "Qi/Qe @rho=0.9": ["QiQe", "rho_0.90", "derived", ".2f", 1, None],
             }
 
         self.data = []
 
     def export_to_csv(self, filename, title=None):
 
-        title_data = ['']
+        title_data = [""]
         for key in self.variables:
             if self.variables[key][5] is None:
-                title_data.append(f'{key}')
+                title_data.append(f"{key}")
             else:
-                title_data.append(f'{key} ({self.variables[key][5]})')
+                title_data.append(f"{key} ({self.variables[key][5]})")
 
         # Open a file with the given filename in write mode
-        with open(filename, mode='w', newline='') as file:
+        with open(filename, mode="w", newline="") as file:
             writer = csv.writer(file)
-            
+
             # Write the title row first if it is provided
             if title:
-                writer.writerow([title] + [''] * (len(self.data[0]) - 1))
-            
+                writer.writerow([title] + [""] * (len(self.data[0]) - 1))
+
             writer.writerow(title_data)
 
             # Write each row in self.data to the CSV file
             for row in self.data:
                 writer.writerow(row)
+
 
 def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
     if fig is None:

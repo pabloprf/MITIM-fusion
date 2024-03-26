@@ -10,13 +10,16 @@ from mitim_tools.transp_tools.tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+
 class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
 
         self.job_id, self.job_name = None, None
 
-    def defineRunParameters(self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, **kwargs):
+    def defineRunParameters(
+        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, **kwargs
+    ):
         super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
@@ -81,12 +84,12 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         retrieveAC=False,
         **kwargs,
     ):
-    
+
         runSINGULARITY_look(
             self.FolderTRANSP,
             self.job.folderExecution,
             self.runid,
-            self.job_name+'_look', 
+            self.job_name + "_look",
         )
 
         self.cdfs[label] = TRANSPmain.storeCDF(
@@ -431,7 +434,7 @@ def interpretRun(infoSLURM, log_file):
 
     info = {"slurm": infoSLURM, "info": {}}
 
-    if (infoSLURM is not None) and (infoSLURM['STATE'] != 'NOT FOUND'):
+    if (infoSLURM is not None) and (infoSLURM["STATE"] != "NOT FOUND"):
         """
         Case is running		#if infoSLURM['STATE'] in ['RUNNING']
         """
@@ -531,7 +534,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
 
 
-def runSINGULARITY_look(folderWork,folderTRANSP, runid, job_name):
+def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 

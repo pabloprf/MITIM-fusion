@@ -14,7 +14,7 @@ from IPython import embed
 
 
 class CGYRO:
-    def __init__(self):  
+    def __init__(self):
 
         self.output_files_test = [
             "out.cgyro.equilibrium",
@@ -24,7 +24,7 @@ class CGYRO:
             "out.cgyro.egrid",
             "out.cgyro.grids",
             "out.cgyro.memory",
-            "out.cgyro.rotation"
+            "out.cgyro.rotation",
         ]
 
         self.output_files = [
@@ -63,40 +63,39 @@ class CGYRO:
 
         self.results = {}
 
-    def prep(self,folder, inputgacode_file):
+    def prep(self, folder, inputgacode_file):
 
-        # Prepare main folder with input.gacode 
+        # Prepare main folder with input.gacode
         self.folder = IOtools.expandPath(folder)
 
         if not os.path.exists(self.folder):
             os.system(f"mkdir -p {self.folder}")
 
-        self.inputgacode_file = f'{self.folder}/input.gacode'
-        os.system(f'cp {inputgacode_file} {self.inputgacode_file}')
+        self.inputgacode_file = f"{self.folder}/input.gacode"
+        os.system(f"cp {inputgacode_file} {self.inputgacode_file}")
 
-    def run(self,
-            subFolderCGYRO,
-            roa = 0.55,
-            CGYROsettings= None,
-            extraOptions={},
-            multipliers={},
-            test_run = False,
-            n = 16,
-            nomp = 1,
-            ):
+    def run(
+        self,
+        subFolderCGYRO,
+        roa=0.55,
+        CGYROsettings=None,
+        extraOptions={},
+        multipliers={},
+        test_run=False,
+        n=16,
+        nomp=1,
+    ):
 
-
-        self.folderCGYRO = f'{self.folder}/{subFolderCGYRO}_{roa:.6f}/'
+        self.folderCGYRO = f"{self.folder}/{subFolderCGYRO}_{roa:.6f}/"
 
         if not os.path.exists(self.folderCGYRO):
             os.system(f"mkdir -p {self.folderCGYRO}")
 
-
-        input_cgyro_file = f'{self.folderCGYRO}/input.cgyro'
+        input_cgyro_file = f"{self.folderCGYRO}/input.cgyro"
         inputCGYRO = CGYROinput(file=input_cgyro_file)
 
-        inputgacode_file_this = f'{self.folderCGYRO}/input.gacode'
-        os.system(f'cp {self.inputgacode_file} {inputgacode_file_this}')
+        inputgacode_file_this = f"{self.folderCGYRO}/input.gacode"
+        os.system(f"cp {self.inputgacode_file} {inputgacode_file_this}")
 
         ResultsFiles_new = []
         for i in self.output_files:
@@ -104,93 +103,98 @@ class CGYRO:
                 ResultsFiles_new.append(i)
         self.output_files = ResultsFiles_new
 
-
         inputCGYRO = GACODErun.modifyInputs(
             inputCGYRO,
             Settings=CGYROsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
             addControlFunction=GACODEdefaults.addCGYROcontrol,
-            rmin = roa,
+            rmin=roa,
         )
 
         inputCGYRO.writeCurrentStatus()
 
         self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
 
-        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}{"_test" if test_run else ""}' 
+        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}{"_test" if test_run else ""}'
 
         if test_run:
 
             self.cgyro_job.define_machine(
-                'cgyro',
+                "cgyro",
                 name,
-                slurm_settings = {
-                    'name': name,
-                    'minutes': 5,
-                    'cpuspertask': 1,
-                    'ntasks': 1,
-                }
+                slurm_settings={
+                    "name": name,
+                    "minutes": 5,
+                    "cpuspertask": 1,
+                    "ntasks": 1,
+                },
             )
-            
-            CGYROcommand = 'cgyro -t .'
+
+            CGYROcommand = "cgyro -t ."
 
         else:
 
             self.cgyro_job.define_machine(
-                'cgyro',
+                "cgyro",
                 name,
                 launchSlurm=False,
             )
-            
+
             if self.cgyro_job.launchSlurm:
                 CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -repo {self.cgyro_job.machineSettings["slurm"]["account"]} -queue {self.cgyro_job.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
             else:
 
-                CGYROcommand = f'cgyro -e . -n {n} -nomp {nomp}'
+                CGYROcommand = f"cgyro -e . -n {n} -nomp {nomp}"
 
         self.cgyro_job.prep(
             CGYROcommand,
-            input_files=[input_cgyro_file,inputgacode_file_this],
+            input_files=[input_cgyro_file, inputgacode_file_this],
             output_files=self.output_files if not test_run else self.output_files_test,
         )
-        
-        self.cgyro_job.run(waitYN=not self.cgyro_job.launchSlurm) #,removeScratchFolders=False)
 
-    def check(self,every_n_minutes=5):
+        self.cgyro_job.run(
+            waitYN=not self.cgyro_job.launchSlurm
+        )  # ,removeScratchFolders=False)
+
+    def check(self, every_n_minutes=5):
 
         if self.cgyro_job.launchSlurm:
-            print('- Checker job status')
+            print("- Checker job status")
 
             while True:
                 self.cgyro_job.check()
-                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})')
+                print(
+                    f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})'
+                )
                 if self.cgyro_job.status == 2:
                     break
                 else:
-                    print(f'\t- Waiting {every_n_minutes} minutes')
-                    time.sleep(every_n_minutes*60)
+                    print(f"\t- Waiting {every_n_minutes} minutes")
+                    time.sleep(every_n_minutes * 60)
         else:
-            print('- Not checking status because this was run command line (not slurm)')    
-            
-        print('\t- Job considered finished')
+            print("- Not checking status because this was run command line (not slurm)")
+
+        print("\t- Job considered finished")
 
     def get(self):
-        '''
+        """
         For a job that has been submitted but not waited for, once it is done, get the results
-        '''
+        """
 
         if self.cgyro_job.launchSlurm:
             self.cgyro_job.connect()
             self.cgyro_job.retrieve()
             self.cgyro_job.close()
         else:
-            print('- Not retrieving results because this was run command line (not slurm)')
+            print(
+                "- Not retrieving results because this was run command line (not slurm)"
+            )
 
     # ---------------------------------------------------------------------------------------------------------
     # Reading and plotting
     # ---------------------------------------------------------------------------------------------------------
-            
+
     def read(self, label="cgyro1", folder=None):
 
         folder = folder or self.folderCGYRO
@@ -215,7 +219,6 @@ class CGYRO:
             f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})"
             for i in self.results[label].all_flags
         ]
-
 
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
@@ -642,6 +645,7 @@ class CGYRO:
                 c=colors[j],
                 plotLegend=j == len(labels) - 1,
             )
+
 
 class CGYROinput:
     def __init__(self, file=None):

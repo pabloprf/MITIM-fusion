@@ -91,7 +91,7 @@ class TRANSPgeneric:
         shotnumber,
         mpisettings={"trmpi": 1, "toricmpi": 1, "ptrmpi": 1},
         shotNumberReal=None,
-        **kwargs
+        **kwargs,
     ):
         self.runid = runid  # 12345A01
         self.shotnumber = shotnumber  # 12345
@@ -206,7 +206,6 @@ class TRANSPgeneric:
             self.cdfs[label].plot(time=time)
 
             self.fn = self.cdfs[label].fn
-  
 
     def checkUntilFinished(
         self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False

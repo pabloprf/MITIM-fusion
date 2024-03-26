@@ -108,24 +108,24 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     # **** New ones that are TRANSP-specific
 
     TGLFoptions["TGLFMOD"] = 1
-    TGLFoptions[
-        "NSPEC"
-    ] = NS  # Number of species used in tglf model (maximum 10 species allowed)
+    TGLFoptions["NSPEC"] = (
+        NS  # Number of species used in tglf model (maximum 10 species allowed)
+    )
     TGLFoptions["NLGRAD"] = False  # Output flux gradients
     TGLFoptions["ALPHA_N"] = 0.0  # Scaling factor for vn shear
     TGLFoptions["ALPHA_T"] = 0.0  # Scaling factor for vt shear
     # TGLFoptions['ALPHA_DIA'] 		= 0.0 	# Scaling factor for diamagnetic terms to exb shear
     TGLFoptions["CBETAE"] = 1.0  # Betae multiplier (needed for e-m calcs)
     TGLFoptions["CXNU"] = 1.0  # Collisionality multiplier
-    TGLFoptions[
-        "EM_STAB"
-    ] = 0.0  # EM factor for the ion temperature gradient 	--- Is this the right default?
-    TGLFoptions[
-        "PEVOLVING"
-    ] = 0  # Evolving temperature and its gradients 	   	--- Is this the right default?
-    TGLFoptions[
-        "kinetic_fast_ion"
-    ] = 0  # Fast ion species model in TGLF			   	--- Is this the right default?
+    TGLFoptions["EM_STAB"] = (
+        0.0  # EM factor for the ion temperature gradient 	--- Is this the right default?
+    )
+    TGLFoptions["PEVOLVING"] = (
+        0  # Evolving temperature and its gradients 	   	--- Is this the right default?
+    )
+    TGLFoptions["kinetic_fast_ion"] = (
+        0  # Fast ion species model in TGLF			   	--- Is this the right default?
+    )
 
     # **** Other modifications
     TGLFoptions["UNITS"] = f"'{TGLFoptions['UNITS']}'"
@@ -133,7 +133,7 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     return TGLFoptions, label
 
 
-def addCGYROcontrol(Settings,rmin):
+def addCGYROcontrol(Settings, rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
         "$MITIM_PATH/templates/input.cgyro.controls", caseInsensitive=False
@@ -175,6 +175,7 @@ def addCGYROcontrol(Settings,rmin):
     CGYROinput.append("")
 
     return CGYROinput, CGYROoptions, label
+
 
 def addTGYROcontrol(
     num_it=0,
@@ -237,78 +238,78 @@ def addTGYROcontrol(
     # ----------- Overarching Options
 
     TGYROoptions["TGYRO_MODE"] = "1"  # 1: Transport code, 3: multi-job generator
-    TGYROoptions[
-        "LOC_RESTART_FLAG"
-    ] = f"{int(restart)}"  # 0: Start from beginning, 1: Continue from last iteration
+    TGYROoptions["LOC_RESTART_FLAG"] = (
+        f"{int(restart)}"  # 0: Start from beginning, 1: Continue from last iteration
+    )
     TGYROoptions["TGYRO_RELAX_ITERATIONS"] = f"{num_it}"  # Number of iterations
-    TGYROoptions[
-        "TGYRO_WRITE_PROFILES_FLAG"
-    ] = "1"  # 1: Create new input.profiles at end, 0: Nothing, -1: At all iterations
+    TGYROoptions["TGYRO_WRITE_PROFILES_FLAG"] = (
+        "1"  # 1: Create new input.profiles at end, 0: Nothing, -1: At all iterations
+    )
 
     # ----------- Optimization
 
-    TGYROoptions[
-        "LOC_RESIDUAL_METHOD"
-    ] = f"{solver_options['res_method']}"  # 2: |F|, 3: |F|^2
-    TGYROoptions[
-        "TGYRO_ITERATION_METHOD"
-    ] = f"{solver_options['tgyro_method']}"  # 1: Standard local residual, 2 3 4 5 6
-    TGYROoptions[
-        "LOC_DX"
-    ] = f"{solver_options['step_jac']}"  # Step length for Jacobian calculation (df: 0.1), units of a/Lx
-    TGYROoptions[
-        "LOC_DX_MAX"
-    ] = f"{solver_options['step_max']}"  # Max length for any Newton step (df: 1.0)
-    TGYROoptions[
-        "LOC_RELAX"
-    ] = f"{solver_options['relax_param']}"  # Parameter 𝐶𝜂 controlling shrinkage of relaxation parameter
+    TGYROoptions["LOC_RESIDUAL_METHOD"] = (
+        f"{solver_options['res_method']}"  # 2: |F|, 3: |F|^2
+    )
+    TGYROoptions["TGYRO_ITERATION_METHOD"] = (
+        f"{solver_options['tgyro_method']}"  # 1: Standard local residual, 2 3 4 5 6
+    )
+    TGYROoptions["LOC_DX"] = (
+        f"{solver_options['step_jac']}"  # Step length for Jacobian calculation (df: 0.1), units of a/Lx
+    )
+    TGYROoptions["LOC_DX_MAX"] = (
+        f"{solver_options['step_max']}"  # Max length for any Newton step (df: 1.0)
+    )
+    TGYROoptions["LOC_RELAX"] = (
+        f"{solver_options['relax_param']}"  # Parameter 𝐶𝜂 controlling shrinkage of relaxation parameter
+    )
 
     # ----------- Prediction Options
-    TGYROoptions[
-        "LOC_SCENARIO"
-    ] = f"{physics_options['TargetType']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
+    TGYROoptions["LOC_SCENARIO"] = (
+        f"{physics_options['TargetType']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
+    )
     TGYROoptions["LOC_TI_FEEDBACK_FLAG"] = f"{Tipred}"  # Evolve Ti?
     TGYROoptions["LOC_TE_FEEDBACK_FLAG"] = f"{Tepred}"  # Evolve Te?
     TGYROoptions["LOC_ER_FEEDBACK_FLAG"] = f"{Erpred}"  # Evolve Er?
     TGYROoptions["TGYRO_DEN_METHOD0"] = f"{nepred}"  # Evolve ne?
-    TGYROoptions[
-        "LOC_PFLUX_METHOD"
-    ] = f"{physics_options['ParticleFlux']}"  # Particle flux method. 1 = zero target flux, 2 = beam, 3 = beam+wall
+    TGYROoptions["LOC_PFLUX_METHOD"] = (
+        f"{physics_options['ParticleFlux']}"  # Particle flux method. 1 = zero target flux, 2 = beam, 3 = beam+wall
+    )
     TGYROoptions["TGYRO_RMIN"] = f"{fromRho}"
     TGYROoptions["TGYRO_RMAX"] = f"{ToRho}"
-    TGYROoptions[
-        "TGYRO_USE_RHO"
-    ] = f"{solver_options['UseRho']}"  # 1: Grid provided in input.tgyro is for rho values
+    TGYROoptions["TGYRO_USE_RHO"] = (
+        f"{solver_options['UseRho']}"  # 1: Grid provided in input.tgyro is for rho values
+    )
 
     # ----------- Physics
     TGYROoptions["TGYRO_ROTATION_FLAG"] = "1"  # Trigger rotation physics?
-    TGYROoptions[
-        "TGYRO_NEO_METHOD"
-    ] = f"{physics_options['neoclassical']}"  # 0: None, 1: H&H, 2: NEO
-    TGYROoptions[
-        "TGYRO_TGLF_REVISION"
-    ] = "0"  # 0: Use input.tglf in folders, instead of GA defaults.
-    TGYROoptions[
-        "TGYRO_EXPWD_FLAG"
-    ] = f"{physics_options['TurbulentExchange']}"  # Add turbulent exchange to exchange powers in targets?
+    TGYROoptions["TGYRO_NEO_METHOD"] = (
+        f"{physics_options['neoclassical']}"  # 0: None, 1: H&H, 2: NEO
+    )
+    TGYROoptions["TGYRO_TGLF_REVISION"] = (
+        "0"  # 0: Use input.tglf in folders, instead of GA defaults.
+    )
+    TGYROoptions["TGYRO_EXPWD_FLAG"] = (
+        f"{physics_options['TurbulentExchange']}"  # Add turbulent exchange to exchange powers in targets?
+    )
     # TGYROoptions['TGYRO_ZEFF_FLAG'] 			= '1'													# 1: Use Zeff from input.gacode
 
     # ----------- Assumptions
     for i in physics_options["quasineutrality"]:
-        TGYROoptions[
-            f"TGYRO_DEN_METHOD{i}"
-        ] = "-1"  # Species used to ensure quasineutrality
+        TGYROoptions[f"TGYRO_DEN_METHOD{i}"] = (
+            "-1"  # Species used to ensure quasineutrality
+        )
     # TGYROoptions['LOC_NUM_EQUIL_FLAG'] 			= f"{physics_options['usingINPUTgeo']}"		# 0: Use Miller, 1: Use numerical equilibrium (not valid for TGLF_scans)	#DEPRECATED IN LATEST VERSIONS
-    TGYROoptions[
-        "LOC_LOCK_PROFILE_FLAG"
-    ] = f"{physics_options['InputType']}"  # 0: Re-compute profiles from coarse gradients grid, 	 1: Use exact profiles (only valid at first iteration)
-    TGYROoptions[
-        "TGYRO_CONSISTENT_FLAG"
-    ] = f"{physics_options['GradientsType']}"  # 0: Finite-difference gradients used from input.gacode, 1: Gradients from coarse profiles?
+    TGYROoptions["LOC_LOCK_PROFILE_FLAG"] = (
+        f"{physics_options['InputType']}"  # 0: Re-compute profiles from coarse gradients grid, 	 1: Use exact profiles (only valid at first iteration)
+    )
+    TGYROoptions["TGYRO_CONSISTENT_FLAG"] = (
+        f"{physics_options['GradientsType']}"  # 0: Finite-difference gradients used from input.gacode, 1: Gradients from coarse profiles?
+    )
     TGYROoptions["LOC_EVOLVE_GRAD_ONLY_FLAG"] = "0"  # 1: Do not change absolute values
-    TGYROoptions[
-        "TGYRO_PTOT_FLAG"
-    ] = f"{physics_options['PtotType']}"  # 0: Compute pressure from profiles, 1: correct from input.gacode PTOT profile
+    TGYROoptions["TGYRO_PTOT_FLAG"] = (
+        f"{physics_options['PtotType']}"  # 0: Compute pressure from profiles, 1: correct from input.gacode PTOT profile
+    )
 
     # ----------- Radii
 
@@ -358,9 +359,9 @@ def addTGYROspecies(Species, onlyThermal=False, limitSpecies=100):
 
         print(f'\t\t- Specie Z={Species[i]["Z"]} added')
 
-        TGYROoptions[
-            f"TGYRO_CALC_FLAG{cont+1}"
-        ] = "1"  # Use this ion in the flux calculation?
+        TGYROoptions[f"TGYRO_CALC_FLAG{cont+1}"] = (
+            "1"  # Use this ion in the flux calculation?
+        )
 
         if Species[i]["S"] == "fast":
             TGYROoptions[f"TGYRO_THERM_FLAG{cont+1}"] = 0

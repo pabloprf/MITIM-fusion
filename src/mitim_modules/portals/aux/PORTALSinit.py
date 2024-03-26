@@ -108,11 +108,14 @@ def initializeProblem(
     if checkForSpecies:
         speciesNotFound = []
         for i in range(len(profiles.Species)):
-            c = TARGETStools.get_chebyshev_coeffs(profiles.Species[i]['N'])
-            if c[0]<=-1E10:
-                speciesNotFound.append(profiles.Species[i]['N'])
-        if len(speciesNotFound)>0:
-            a = print(f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions", typeMsg="q")
+            c = TARGETStools.get_chebyshev_coeffs(profiles.Species[i]["N"])
+            if c[0] <= -1e10:
+                speciesNotFound.append(profiles.Species[i]["N"])
+        if len(speciesNotFound) > 0:
+            a = print(
+                f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions",
+                typeMsg="q",
+            )
             if not a:
                 raise ValueError("Species not found")
     """
@@ -168,9 +171,9 @@ def initializeProblem(
     portals_fun.powerstate.calculateTargets()
 
     # Prepare powerstate for evaluations
-    portals_fun.powerstate.TransportOptions[
-        "TypeTransport"
-    ] = portals_fun.PORTALSparameters["model_used"]
+    portals_fun.powerstate.TransportOptions["TypeTransport"] = (
+        portals_fun.PORTALSparameters["model_used"]
+    )
     if ModelOptions is not None:
         portals_fun.powerstate.TransportOptions["ModelOptions"] = ModelOptions
     else:

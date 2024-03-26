@@ -17,9 +17,9 @@ def default_namelist(Optim):
     Optim["initialPoints"] = 8
     Optim["BOiterations"] = 20
     Optim["newPoints"] = 4
-    Optim[
-        "parallelCalls"
-    ] = 4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
+    Optim["parallelCalls"] = (
+        4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
+    )
     Optim["surrogateOptions"]["TypeMean"] = 2
     Optim["StrategyOptions"]["AllowedExcursions"] = [0.1, 0.1]
     Optim["StrategyOptions"]["HitBoundsIncrease"] = [1.1, 1.1]

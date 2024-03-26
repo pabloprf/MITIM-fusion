@@ -236,17 +236,21 @@ def runFreeGS(self, dictDVs, plot=False, figs=None, onlyPrepare=False, debug=Fal
     out = FREEGStools.evaluator(
         dictDVs,
         CoilCurrents=self.function_parameters["CoilCurrents"],
-        CoilCurrents_lower=self.function_parameters["CoilCurrents_lower"]
-        if "CoilCurrents_lower" in self.function_parameters
-        else None,
+        CoilCurrents_lower=(
+            self.function_parameters["CoilCurrents_lower"]
+            if "CoilCurrents_lower" in self.function_parameters
+            else None
+        ),
         Constraints=self.function_parameters["Constraints"],
         optionsFREEGS=self.function_parameters["optionsFREEGS"],
         plot=plot,
         figs=figs,
         debug=debug,
-        ProblemExtras=self.function_parameters["params"]
-        if "params" in self.function_parameters
-        else None,
+        ProblemExtras=(
+            self.function_parameters["params"]
+            if "params" in self.function_parameters
+            else None
+        ),
         onlyPrepare=onlyPrepare,
     )
 

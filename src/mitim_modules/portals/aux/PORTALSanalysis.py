@@ -68,12 +68,17 @@ class PORTALSanalyzer:
                 return cls(opt_fun, folderAnalysis=folderAnalysis)
 
             except (FileNotFoundError, AttributeError) as e:
-                print("\t- Could not read optimization results due to error:", typeMsg="w")
+                print(
+                    "\t- Could not read optimization results due to error:", typeMsg="w"
+                )
                 print(e)
                 print("\t- Trying to read PORTALS initialization...", typeMsg="w")
                 return PORTALSinitializer(folder)
         else:
-            print("\t- Folder does not exist, are you sure you are on the right path?", typeMsg="w")
+            print(
+                "\t- Folder does not exist, are you sure you are on the right path?",
+                typeMsg="w",
+            )
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):
@@ -408,7 +413,7 @@ class PORTALSanalyzer:
         self.plotExpected(fig=fig)
 
         fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4)
-        _,_ = self.plotModelComparison(fig=fig)
+        _, _ = self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
@@ -666,9 +671,9 @@ class PORTALSanalyzer:
         if not os.path.exists(folder):
             os.system(f"mkdir {folder}")
 
-        if onlyBest: 
+        if onlyBest:
             ranges = [self.ibest]
-        else: 
+        else:
             ranges = range(self.ilast + 1)
 
         for ev in ranges:
@@ -997,7 +1002,7 @@ class PORTALSinitializer:
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                     lw=0.5,
                     ms=0,
-                    label=f'profile #{i}',
+                    label=f"profile #{i}",
                 )
 
             axs[0].legend(prop={"size": 8})

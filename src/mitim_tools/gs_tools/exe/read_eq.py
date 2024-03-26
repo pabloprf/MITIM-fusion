@@ -10,7 +10,7 @@ files = args.files
 gs = []
 for file in files:
     gs.extend(GEQtools.MITIMgeqdsk.timeslices(file))
-    
+
 if len(gs) == 1:
     gs[0].plot()
 else:

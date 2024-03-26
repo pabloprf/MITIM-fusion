@@ -107,9 +107,11 @@ def machineSettings(
         "modules": "source $MITIM_PATH/config/mitim.bashrc",
         "folderWork": scratch,
         "slurm": {},
-        "isTunnelSameMachine": bool(s[machine]["isTunnelSameMachine"])
-        if "isTunnelSameMachine" in s[machine]
-        else False,
+        "isTunnelSameMachine": (
+            bool(s[machine]["isTunnelSameMachine"])
+            if "isTunnelSameMachine" in s[machine]
+            else False
+        ),
     }
 
     # I can give extra things to load in the config file
@@ -118,9 +120,9 @@ def machineSettings(
         and s[machine]["modules"] is not None
         and s[machine]["modules"] != ""
     ):
-        machineSettings[
-            "modules"
-        ] = f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
+        machineSettings["modules"] = (
+            f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
+        )
 
     checkers = ["slurm", "identity", "tunnel", "port"]
     for i in checkers:
@@ -128,9 +130,9 @@ def machineSettings(
             machineSettings[i] = s[machine][i]
 
     if "scratch_tunnel" in s[machine]:
-        machineSettings[
-            "folderWorkTunnel"
-        ] = f"{s[machine]['scratch_tunnel']}/{nameScratch}"
+        machineSettings["folderWorkTunnel"] = (
+            f"{s[machine]['scratch_tunnel']}/{nameScratch}"
+        )
 
     # ************************************************************************************************************************
     # Specific case of being already in the machine where I need to run

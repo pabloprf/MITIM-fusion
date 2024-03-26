@@ -634,7 +634,9 @@ def PORTALSanalyzer_plotMetrics(
         ax.plot(
             self.evaluations, resChosen, "-o", lw=1.0, c=c, markersize=2, label=label
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
+            self
+        )
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -770,7 +772,9 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$\\chi_R$",
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
+            self
+        )
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -970,7 +974,9 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$P_{fus}$",
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
+            self
+        )
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -1034,22 +1040,21 @@ def define_extra_iterators(self):
         if self.ibest != self.evaluations[-2]:
             self.iextra = self.iextra + [self.evaluations[-2]]
 
-
     # Add extra points
     colors = GRAPHICStools.listColors()
-    colors = [color for color in colors if color not in ['r', 'b']]
+    colors = [color for color in colors if color not in ["r", "b"]]
     indeces_plot = indeces_plot + self.iextra
-    colors_plot = colors_plot+colors[:len(self.iextra)]
+    colors_plot = colors_plot + colors[: len(self.iextra)]
 
     for i in range(len(self.iextra)):
 
         if self.iextra[i] == -1 or self.iextra[i] == self.evaluations[-1]:
-            ll = 'Last'
+            ll = "Last"
         else:
-            ll = 'Extra'
+            ll = "Extra"
         labels_plot = labels_plot + [f"{ll} (#{self.evaluations[self.iextra[i]]})"]
 
-    markers_plot = GRAPHICStools.listmarkers()[:len(indeces_plot)]
+    markers_plot = GRAPHICStools.listmarkers()[: len(indeces_plot)]
 
     return indeces_plot, colors_plot, labels_plot, markers_plot
 
@@ -1977,7 +1982,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
     quantityY = "QeGB_sim_turb"
     quantityY_stds = "QeGB_sim_turb_stds"
-    metrics['Qe'] = plotModelComparison_quantity(
+    metrics["Qe"] = plotModelComparison_quantity(
         self,
         axs[0],
         quantityX=quantityX,
@@ -1999,7 +2004,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
     quantityY = "QiGBIons_sim_turb_thr"
     quantityY_stds = "QiGBIons_sim_turb_thr_stds"
-    metrics['Qi'] = plotModelComparison_quantity(
+    metrics["Qi"] = plotModelComparison_quantity(
         self,
         axs[1],
         quantityX=quantityX,
@@ -2021,7 +2026,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
     quantityY = "GeGB_sim_turb"
     quantityY_stds = "GeGB_sim_turb_stds"
-    metrics['Ge'] = plotModelComparison_quantity(
+    metrics["Ge"] = plotModelComparison_quantity(
         self,
         axs[2],
         quantityX=quantityX,
@@ -2059,7 +2064,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "GiGB_sim_turb_stds" if UseTGLFfull_x is None else None
         quantityY = "GiGB_sim_turb"
         quantityY_stds = "GiGB_sim_turb_stds"
-        metrics['Gi'] = plotModelComparison_quantity(
+        metrics["Gi"] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2105,7 +2110,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "MtGB_sim_turb_stds"
         quantityY = "MtGB_sim_turb"
         quantityY_stds = "MtGB_sim_turb_stds"
-        metrics['Mt'] = plotModelComparison_quantity(
+        metrics["Mt"] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2142,7 +2147,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "EXeGB_sim_turb_stds"
         quantityY = "EXeGB_sim_turb"
         quantityY_stds = "EXeGB_sim_turb_stds"
-        metrics['EX'] = plotModelComparison_quantity(
+        metrics["EX"] = plotModelComparison_quantity(
             self,
             axs[2 + cont],
             quantityX=quantityX,
@@ -2171,7 +2176,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    return axs,metrics
+    return axs, metrics
 
 
 def plotModelComparison_quantity(
@@ -2314,6 +2319,7 @@ def plotModelComparison_quantity(
             legend.get_title().set_fontsize(sizeLeg)
 
     return metrics
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -3033,7 +3039,11 @@ def plotFluxComparison(
                     y = tBest.derived[var] * mult
                 if plotTargets:
                     ax.plot(
-                        tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
+                        (
+                            tBest.profiles["rho(-)"]
+                            if not useRoa
+                            else tBest.derived["roa"]
+                        ),
                         y,
                         "-.",
                         lw=0.5,
@@ -3043,7 +3053,11 @@ def plotFluxComparison(
                     )
                 else:
                     ax.plot(
-                        tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
+                        (
+                            tBest.profiles["rho(-)"]
+                            if not useRoa
+                            else tBest.derived["roa"]
+                        ),
                         y,
                         "--",
                         lw=2,

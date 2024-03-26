@@ -1088,7 +1088,18 @@ def reduceVariable(var, howmanytimes, t=None, trange=[0, 100]):
 
 
 # chatgpt
-def drawArrow(ax, x1, y1, x2, y2, txt="", alpha=1.0, linewidth=1.0, colorArrow='k', arrowstyle="->"):
+def drawArrow(
+    ax,
+    x1,
+    y1,
+    x2,
+    y2,
+    txt="",
+    alpha=1.0,
+    linewidth=1.0,
+    colorArrow="k",
+    arrowstyle="->",
+):
     """
     Draw an arrow on the given ax from (x1, y1) to (x2, y2), with specified transparency and line width.
 
@@ -1106,7 +1117,12 @@ def drawArrow(ax, x1, y1, x2, y2, txt="", alpha=1.0, linewidth=1.0, colorArrow='
         xycoords="data",
         xytext=(x1, y1),
         textcoords="data",
-        arrowprops=dict(arrowstyle=arrowstyle, connectionstyle="arc3", linewidth=linewidth, color=colorArrow),
+        arrowprops=dict(
+            arrowstyle=arrowstyle,
+            connectionstyle="arc3",
+            linewidth=linewidth,
+            color=colorArrow,
+        ),
         alpha=alpha,
     )
 

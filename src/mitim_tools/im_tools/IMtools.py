@@ -1372,9 +1372,9 @@ def defineInterpretiveFeatures(mitimNML, cdffile, timeUpdate, calculateRadiation
         200.0,
     )
     mitimNML.TRANSPnamelist["nqmoda(1)"] = 4  # (equivalent to nlqdata=T)
-    mitimNML.TRANSPnamelist[
-        "nqmodb(1)"
-    ] = 2  # Do not try to match Ip, to avoid changed to q-profile (although Ip may differ)
+    mitimNML.TRANSPnamelist["nqmodb(1)"] = (
+        2  # Do not try to match Ip, to avoid changed to q-profile (although Ip may differ)
+    )
     mitimNML.TRANSPnamelist["nmodpoh"] = 2  # Use eta for evaluation
 
     return outtims

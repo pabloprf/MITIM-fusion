@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools,IOtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
 from IPython import embed
 
 """
@@ -9,8 +9,9 @@ Note that this module relies on OMFIT classes (https://omfit.io/classes.html) pr
 Modifications are made for nice visualizations and a few extra derivations.
 """
 
+
 class MITIMgeqdsk:
-    def __init__(self, filename, fullLCFS=False,removeCoils=True):
+    def __init__(self, filename, fullLCFS=False, removeCoils=True):
         """
         Read g-eqdsk file using OMFIT classes (dynamic loading)
 
@@ -19,12 +20,15 @@ class MITIMgeqdsk:
         """
 
         if removeCoils:
-            print(f"\t- If geqdsk is appended with coils, removing them to read {filename}")
+            print(
+                f"\t- If geqdsk is appended with coils, removing them to read {filename}"
+            )
             with open(filename, "r") as f:
                 lines = f.readlines()
             with open(f"{filename}_noCoils.geqdsk", "w") as f:
                 for line in lines:
-                    if line[:2] == '  ': break
+                    if line[:2] == "  ":
+                        break
                     f.write(line)
             filename = f"{filename}_noCoils.geqdsk"
 
@@ -40,13 +44,13 @@ class MITIMgeqdsk:
         self.derive(fullLCFS=fullLCFS)
 
         if removeCoils:
-            os.system(f'rm {filename}')
+            os.system(f"rm {filename}")
 
     @classmethod
-    def timeslices(cls, filename, fullLCFS=False,removeCoils=True):
+    def timeslices(cls, filename, fullLCFS=False, removeCoils=True):
         print("\n...Opening GEQ file with several time slices")
 
-        with open(filename,'rb') as f:
+        with open(filename, "rb") as f:
             lines_full = f.readlines()
 
         resolutions = [int(a) for a in lines_full[0].split()[-3:]]
@@ -69,11 +73,17 @@ class MITIMgeqdsk:
         # Write files
         gs = []
         for i in range(len(lines_files)):
-            with open(f"{filename}_time{i}.geqdsk",'wb') as f:
+            with open(f"{filename}_time{i}.geqdsk", "wb") as f:
                 f.writelines(lines_files[i])
-            
-            gs.append(cls(f"{filename}_time{i}.geqdsk", fullLCFS=fullLCFS,removeCoils=removeCoils))
-            os.system(f'rm {filename}_time{i}.geqdsk')
+
+            gs.append(
+                cls(
+                    f"{filename}_time{i}.geqdsk",
+                    fullLCFS=fullLCFS,
+                    removeCoils=removeCoils,
+                )
+            )
+            os.system(f"rm {filename}_time{i}.geqdsk")
 
         return gs
 

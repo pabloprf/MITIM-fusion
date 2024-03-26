@@ -18,7 +18,16 @@ To call:
 
 
 def commander(
-    script, folderWork0, num, partition, venv, n=32, hours=8, seed=0, extra_name="",extra=None
+    script,
+    folderWork0,
+    num,
+    partition,
+    venv,
+    n=32,
+    hours=8,
+    seed=0,
+    extra_name="",
+    extra=None,
 ):
     folderWork = folderWork0 + extra_name + "/"
 
@@ -81,7 +90,7 @@ def run_slurm(
                 extra_name=f"_s{j}",
                 hours=hours,
                 n=n,
-                extra=extra
+                extra=extra,
             )
     else:
         commander(
@@ -93,7 +102,7 @@ def run_slurm(
             seed=seed_specific,
             hours=hours,
             n=n,
-            extra=extra
+            extra=extra,
         )
 
 

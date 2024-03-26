@@ -293,7 +293,7 @@ def convertACtoCDF(file, guidingCenter=True, copyWhereOriginal=True, extralab="_
     finFile2 = f"{runid}_fi_{num}{extralab}.cdf"
 
     _, fileonly = IOtools.reducePathLevel(file, level=1)
-    commandOrder = f"trfbm_order {fileonly}" # This alias is defined in .bashrc of e.g. mfews: alias trfbm_order='python3 /home/pablorf/TRANSPhub/05_Utilities/acsort.py'
+    commandOrder = f"trfbm_order {fileonly}"  # This alias is defined in .bashrc of e.g. mfews: alias trfbm_order='python3 /home/pablorf/TRANSPhub/05_Utilities/acsort.py'
 
     runGetFBM(
         folderOrig, commandMain, file, finFile, name=runid, commandOrder=commandOrder

@@ -1232,9 +1232,7 @@ def printUser(users, NBImissing_isStopped=True):
             typeMsg = (
                 "w"
                 if par["status_flag"] in ["stopped", "not started yet"]
-                else "a"
-                if par["status_flag"] in ["finished"]
-                else "i"
+                else "a" if par["status_flag"] in ["finished"] else "i"
             )
             print(
                 f"  * {user_complete.ljust(22)}: {par['runid'].ljust(9)} {par['tok'].ljust(4)} {par['year'].ljust(2)} -- STATUS: {par['status_flag'].ljust(8)} ({par['machine'].ljust(8)}, {par['mpis']})",

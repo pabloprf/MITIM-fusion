@@ -28,8 +28,8 @@ user = s[s["preferences"]["ntcc"]]["username"]
 
 
 def cancelRun(namerun):
-    t = TRANSPtools.TRANSP(IOtools.expandPath(s['local']['scratch']), args.tokamak)
-    t.defineRunParameters(namerun, namerun, ensureMPIcompatibility= False)
+    t = TRANSPtools.TRANSP(IOtools.expandPath(s["local"]["scratch"]), args.tokamak)
+    t.defineRunParameters(namerun, namerun, ensureMPIcompatibility=False)
 
     _, _, infoGrid = t.check()
 

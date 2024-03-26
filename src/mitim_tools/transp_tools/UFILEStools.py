@@ -758,9 +758,9 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
     # Modify variables
     UF.Variables["X"], UF.Variables["Z"] = x, np.transpose(z)
     if dim == 2:
-        UF.Variables[
-            "Y"
-        ] = y  # ---> 'Y' is always the time coordinate when reading a 2D UFfile
+        UF.Variables["Y"] = (
+            y  # ---> 'Y' is always the time coordinate when reading a 2D UFfile
+        )
 
     #  Write new UFile
     UF.writeUFILE(ufile)
