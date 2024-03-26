@@ -112,7 +112,7 @@ if __name__ == "__main__":
         "--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env")
     )
     parser.add_argument("--hours", type=int, required=False, default=8)
-    parser.add_argument("--n", type=int, required=False, default=64)
+    parser.add_argument("--n", type=int, required=False, default=16)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)
     parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
 
