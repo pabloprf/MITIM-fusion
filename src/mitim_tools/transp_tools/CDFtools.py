@@ -7019,14 +7019,14 @@ class CDFreactor:
             self.t,
             self.Porcelli.dWmhd,
             c="c",
-            label="$\\delta\\hat{W}_{MHD}=\delta\\hat{W}_{Bussac}+\\delta\\hat{W}_{el.}$",
+            label="$\\delta\\hat{W}_{MHD}=\\delta\\hat{W}_{Bussac}+\\delta\\hat{W}_{el.}$",
         )
         ax.plot(
             self.t,
             self.Porcelli.dWcore,
             c="b",
             lw=3,
-            label="$\\delta\\hat{W}_{core}=\delta\\hat{W}_{MHD}+\\delta\\hat{W}_{K.O.}$",
+            label="$\\delta\\hat{W}_{core}=\\delta\\hat{W}_{MHD}+\\delta\\hat{W}_{K.O.}$",
         )
 
         ax.plot(
@@ -12473,7 +12473,7 @@ class CDFreactor:
 
         # -----------
         ax = fig.add_subplot(grid[1, 0])
-        ax.plot(self.t, self.Energy_LCFS, lw=2, label="$\int P_{SOL}dt$")
+        ax.plot(self.t, self.Energy_LCFS, lw=2, label="$\\int P_{SOL}dt$")
 
         ax.set_title("Accumulated Energy ($MJ$)")
         ax.set_ylabel("Energy ($MJ$)")
@@ -16070,11 +16070,17 @@ def profilePower(x, volumes, TotalPower, mixRadius, blend=0.05):
     w = blend * 2
 
     # Normalized function
-    ix = np.argmin(np.abs(x - (x1 + blend * 2)))
-    warnings.filterwarnings("ignore", module="scipy")
-    y1 = PLASMAtools.fitTANHPedestal(
-        w=w, xgrid=np.linspace(0, 1, len(x[:ix])), perc=[0.01, 0.01]
-    )
+    ix = np.argmin(np.abs(x - (x1 + w)))
+
+    if ix > 1:
+
+        y1 = PLASMAtools.fitTANHPedestal(
+            w=w, xgrid=np.linspace(0, 1, len(x[:ix])), perc=[0.01, 0.01]
+        )
+
+    # Is it's a point, just give zero, not worry about calculating
+    else:
+        y1 = np.zeros(len(x[:ix]))
 
     y2 = np.zeros(len(x[ix:]))
 

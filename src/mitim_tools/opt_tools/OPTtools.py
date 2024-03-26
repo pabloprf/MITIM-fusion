@@ -49,7 +49,7 @@ class fun_optimization:
 
         if forceAllPointsInBounds:
             print(
-                f"\t- Optimization will be performed by extending bounds to emcompass all training points",
+                "\t- Optimization will be performed by extending bounds to emcompass all training points",
                 typeMsg="i",
             )
 
@@ -207,7 +207,7 @@ def optAcq(
     the training and provide as solution, where I add random points to fulfill the number of
     points requirement.
 
-    The lambda functions provided in evaluators must be for maximization
+    The functions provided in evaluators must be for maximization
     """
 
     time1 = datetime.datetime.now()

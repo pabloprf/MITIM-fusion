@@ -382,10 +382,11 @@ class TGYRO:
             f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(self.FolderTGYRO_tmp)}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
-        inputclass_TGLF = TGLFtools.modifyInputToTGLF(
+        inputclass_TGLF = GACODErun.modifyInputs(
             inputclass_TGLF,
-            TGLFsettings=TGLFsettings,
+            Settings=TGLFsettings,
             extraOptions=extraOptionsTGLF,
+            addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
         )
         inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp + "input.tglf")

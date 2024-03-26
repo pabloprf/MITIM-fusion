@@ -220,6 +220,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         grabFrom=None,
         reevaluateTargets=0,
         seedInitial=None,
+        askQuestions=True,
     ):
         """
         grabFrom is a folder from which to grab TabularData and MITIMextra
@@ -299,6 +300,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
             hardGradientLimits=hardGradientLimits,
             dfT=self.dfT,
             seedInitial=seedInitial,
+            checkForSpecies=askQuestions
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -333,7 +335,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         _, tgyro, _, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
-            numPORTALS,
             dictDVs,
             name,
             extra_params_model=extra_params_model,
@@ -497,7 +498,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 results, tgyro, powerstate, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
-                    numPORTALS,
                     dictDVs,
                     name,
                     restart=restartIfExists,
@@ -532,7 +532,6 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 def runModelEvaluator(
     self,
     FolderEvaluation,
-    numPORTALS,
     dictDVs,
     name,
     restart=False,

@@ -1,10 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-
-from IPython import embed
-
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 
 def Waveform_read(file, fileOut):
@@ -70,11 +66,15 @@ def Waveform_read(file, fileOut):
     for ir in range(len(aux)):
         if "ky:" in aux[ir]:
             break
-
     ky = float(aux[ir].split()[-1])
+
+    for ir in range(len(aux)):
+        if "(wr,wi)" in aux[ir]:
+            break
+
     g, f = [], []
-    for i in range(len(aux[ir + 2 :])):
-        a = aux[ir + 2 + i].split()
+    for i in range(len(aux[ir:])):
+        a = aux[ir].split()
         f.append(float(a[1]))
         g.append(float(a[2]))
 

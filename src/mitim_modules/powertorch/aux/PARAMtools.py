@@ -42,21 +42,24 @@ def performCurveRegression(
         preSmoothing=preSmoothing,
         PreventNegative=PreventNegative,
     )
-    deparametrizer = lambda x, y, printMessages=printDeviations: constructCurve(
-        x,
-        y,
-        dict_param["y_bc"],
-        dict_param["y_bc_real"],
-        dict_param["x_trail"],
-        dict_param["y_trail"],
-        integrator_function,
-        derivator_function,
-        xBS=dict_param["x_notrail"],
-        xCoord=r_coord,
-        Te=y_coord,
-        extraP=dict_param["aLy_coarse"][-1],
-        printMessages=printMessages,
-    )
+
+    def deparametrizer(x, y, printMessages=printDeviations):
+        return constructCurve(
+            x,
+            y,
+            dict_param["y_bc"],
+            dict_param["y_bc_real"],
+            dict_param["x_trail"],
+            dict_param["y_trail"],
+            integrator_function,
+            derivator_function,
+            xBS=dict_param["x_notrail"],
+            xCoord=r_coord,
+            Te=y_coord,
+            extraP=dict_param["aLy_coarse"][-1],
+            printMessages=printMessages,
+        )
+
 
     """
 	Construct curve in a coarse grid
@@ -67,12 +70,14 @@ def performCurveRegression(
 	x=xCPs, y=yCPs must be (batch, radii),	BC must be (1)
 	"""
 
-    deparametrizer_coarse = lambda x, y, printMessages=printDeviations: (
-        x,
-        integrator_function(x, y, dict_param["y_bc_real"]),
-    )
-    deparametrizer_coarse_middle = (
-        lambda x, y, printMessages=printDeviations: deparam_coarse(
+    def deparametrizer_coarse(x, y, printMessages=printDeviations):
+        return (
+            x,
+            integrator_function(x, y, dict_param["y_bc_real"]),
+        )
+
+    def deparametrizer_coarse_middle(x, y, printMessages=printDeviations):
+        return deparam_coarse(
             x,
             y,
             dict_param["aLy_coarse"][:, 0][:-1],
@@ -80,7 +85,7 @@ def performCurveRegression(
             dict_param,
             printMessages=printMessages,
         )
-    )
+
 
     return (
         dict_param["aLy_coarse"],

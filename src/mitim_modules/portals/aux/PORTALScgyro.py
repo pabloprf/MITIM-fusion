@@ -24,7 +24,7 @@ trick_hardcoded_f = None
 # trick_harcoded_f is the name of the file until the iteration number. E.g. '/Users/pablorf/PROJECTS/project_2022_mitimalcc/iter/cgyro3/run3_recover/Outputs/cgyro_results/iter_rmp_75_'
 
 # e.g.:
-# includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2023_PRISAd3d/cgyro_recover3/run1//Outputs/cgyro_results/d3d_5chan_it_'
+# includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2024_PORTALSdatabase/d3d_iss5chan_arx2023/mitim_run1/Outputs/cgyro_results/d3d_5chan_it_'
 
 
 def evaluateCGYRO(

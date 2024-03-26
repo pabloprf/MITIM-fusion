@@ -428,6 +428,7 @@ def drawLineWithTxt(
     horizontalalignment="left",
     separation=0,
     box=False,
+    explicit_rotation=None,
 ):
     bbox = dict(facecolor="white", alpha=0.5) if box else None  # dict()
 
@@ -442,7 +443,7 @@ def drawLineWithTxt(
             fontweight=fontweight,
             horizontalalignment=horizontalalignment,
             verticalalignment=verticalalignment,
-            rotation=90,
+            rotation=90 if explicit_rotation is None else explicit_rotation,
             bbox=bbox,
         )
 
@@ -457,6 +458,7 @@ def drawLineWithTxt(
             fontweight=fontweight,
             horizontalalignment=horizontalalignment,
             verticalalignment=verticalalignment,
+            rotation=0 if explicit_rotation is None else explicit_rotation,
         )
 
 
@@ -1086,7 +1088,7 @@ def reduceVariable(var, howmanytimes, t=None, trange=[0, 100]):
 
 
 # chatgpt
-def drawArrow(ax, x1, y1, x2, y2, txt="", alpha=1.0, linewidth=1.0):
+def drawArrow(ax, x1, y1, x2, y2, txt="", alpha=1.0, linewidth=1.0, colorArrow='k', arrowstyle="->"):
     """
     Draw an arrow on the given ax from (x1, y1) to (x2, y2), with specified transparency and line width.
 
@@ -1104,7 +1106,7 @@ def drawArrow(ax, x1, y1, x2, y2, txt="", alpha=1.0, linewidth=1.0):
         xycoords="data",
         xytext=(x1, y1),
         textcoords="data",
-        arrowprops=dict(arrowstyle="->", connectionstyle="arc3", linewidth=linewidth),
+        arrowprops=dict(arrowstyle=arrowstyle, connectionstyle="arc3", linewidth=linewidth, color=colorArrow),
         alpha=alpha,
     )
 

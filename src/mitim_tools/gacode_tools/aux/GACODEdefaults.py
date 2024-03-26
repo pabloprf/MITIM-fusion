@@ -7,7 +7,7 @@ from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 
-def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
+def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     """
     ********************************************************************************
     Define dictionary to start with
@@ -75,7 +75,7 @@ def addTGLFcontrol(TGLFsettings=1, NS=2, minimal=False):
 
 
 def TGLFinTRANSP(TGLFsettings, NS=3):
-    _, TGLFoptions, label = addTGLFcontrol(TGLFsettings=TGLFsettings, NS=NS)
+    _, TGLFoptions, label = addTGLFcontrol(TGLFsettings, NS=NS)
 
     """
 	------------------------------------------------------------------------------------------------------
@@ -133,84 +133,48 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     return TGLFoptions, label
 
 
-def addCGYROcontrol(rmin, ky, CGYROsettings=1):
-    # Defaults OMFIT
-    CGYROoptions = {
-        "NONLINEAR_FLAG": 0,
-        "EQUILIBRIUM_MODEL": 2,
-        "RMIN": rmin,
-        "IPCCW": 1.0,
-        "BTCCW": -1.0,
-        "UDSYMMETRY_FLAG": 1,
-        "PROFILE_MODEL": 2,
-        "AMP": 1e-10,
-        "AMP0": 0.0,
-        "N_FIELD": 2,
-        "BETAE_UNIT_SCALE": 1.0,
-        "N_RADIAL": 6,
-        "N_THETA": 24,
-        "N_XI": 16,
-        "N_ENERGY": 8,
-        "E_MAX": 8.0,
-        "N_TOROIDAL": 1,
-        "KY": ky,
-        "BOX_SIZE": 1,
-        "UP_THETA": 1.0,
-        "UP_RADIAL": 1.0,
-        "DELTA_T": 0.01,
-        "MAX_TIME": 29,
-        "FREQ_TOL": 1e-3,
-        "PRINT_STEP": 100,
-        "RESTART_STEP": 10,
-        "COLLISION_MODEL": 4,
-        "NU_EE_SCALE": 1.0,
-        "Z_EFF_METHOD": 1,
-        "GAMMA_E_SCALE": 0.0,
-        "GAMMA_P_SCALE": 1.0,
-        "MACH_SCALE": 1.0,
-        "DLNTDR_1_SCALE": 1.0,
-        "DLNTDR_2_SCALE": 1.0,
-        "DLNTDR_3_SCALE": 1.0,
-        "DLNNDR_1_SCALE": 1.0,
-        "DLNNDR_2_SCALE": 1.0,
-        "DLNNDR_3_SCALE": 1.0,
-        "THETA_PLOT": 1,
-    }
+def addCGYROcontrol(Settings,rmin):
 
-    # Species
-    CGYROoptions["N_SPECIES"] = 3
-    CGYROoptions["Z_1"] = 1.0
-    CGYROoptions["MASS_1"] = 1.0
-    CGYROoptions["Z_2"] = 6.0
-    CGYROoptions["MASS_2"] = 6.0
-    CGYROoptions["Z_3"] = -1.0
-    CGYROoptions["MASS_3"] = 0.0002724486
+    CGYROoptions = IOtools.generateMITIMNamelist(
+        "$MITIM_PATH/templates/input.cgyro.controls", caseInsensitive=False
+    )
 
-    # ----------------------------------------------------------------
-    # Options
-    # ----------------------------------------------------------------
+    """
+	********************************************************************************
+	Standard sets of TGLF control parameters
+	  (rest of parameters are as defaults)
+	********************************************************************************
+	"""
 
-    if CGYROsettings == 1:
-        CGYROoptions[
-            "DELTA_T"
-        ] = 2e-3  # Higher ks smaller than this maybe. 2E-3 for low-k, 1E-3 med-k 5E-4 high-k
-        CGYROoptions[
-            "MAX_TIME"
-        ] = 30000  # NTH: If it doesn't converg earlier, do not limit by time
+    with open(
+        IOtools.expandPath("$MITIM_PATH/templates/input.cgyro.models.json"), "r"
+    ) as f:
+        settings = json.load(f)
 
-        CGYROoptions["N_RADIAL"] = 12  # NTH
-        CGYROoptions[
-            "N_THETA"
-        ] = 24  # NTH: Change to 48 to see if answer changes for the most unstable (>10%?)
+    if str(Settings) in settings:
+        sett = settings[str(Settings)]
+        label = sett["label"]
+        for ikey in sett["controls"]:
+            CGYROoptions[ikey] = sett["controls"][ikey]
+    else:
+        print(
+            "\t- Settings not found in input.cgyro.models.json, using defaults",
+            typeMsg="w",
+        )
+        label = "unspecified"
 
-        CGYROoptions["RESTART_STEP"] = 500  # NTH
+    CGYROoptions["RMIN"] = rmin
 
-    CGYROinput = ["# Written by MITIM (P. Rodriguez-Fernandez, 2021)"]
+    # --------------------------------
+    # From dictionary to text
+    # --------------------------------
+
+    CGYROinput = [""]
     for ikey in CGYROoptions:
         CGYROinput.append(f"{ikey} = {CGYROoptions[ikey]}")
+    CGYROinput.append("")
 
-    return CGYROinput, CGYROoptions
-
+    return CGYROinput, CGYROoptions, label
 
 def addTGYROcontrol(
     num_it=0,

@@ -6,7 +6,7 @@ from mitim_modules.portals.aux import PORTALSanalysis
 This script is useful to understand why PORTALS may fail at reproducing TGLF fluxes. You can select the iteration
 to use as base case, and scan parameters to see how TGLF behaves (understand if it has discontinuities)
 	e.g.
-		runTGLF.py --folder run11/ --ev 5 --pos 0 2 --params RLTS_2 RLTS_1 --wf 0.2 1.0 --var 0.05
+		runTGLF.py --folder run11/ --ev 5 --pos 0 2 --params RLTS_2 RLTS_1 --wf 0.2 1.0 --var 0.05 --num 10
 
 Notes:
 	- wf runs scan with waveform too (slightly more expensive, as it will require 1 extra sim per run, but cheaper)
@@ -23,7 +23,10 @@ parser.add_argument("--params", type=str, required=False, default=["RLTS_2"], na
 parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument(
     "--var", type=float, required=False, default=0.05
-)  # Variation in inputs (10% default)
+)  # Variation in inputs (5% default)
+parser.add_argument(
+    "--num", type=int, required=False, default=10
+)
 parser.add_argument(
     "--restart", "-r", required=False, default=False, action="store_true"
 )
@@ -38,6 +41,7 @@ wf = args.wf
 var = args.var
 restart = args.restart
 drives = args.drives
+num = args.num
 
 # --- Workflow
 
@@ -45,7 +49,7 @@ portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
 
 if not drives:
-    varUpDown = np.linspace(1.0 - var, 1.0 + var, 10)
+    varUpDown = np.linspace(1.0 - var, 1.0 + var, num)
 
     labels = []
     for param in params:

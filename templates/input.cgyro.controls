@@ -26,7 +26,7 @@ PROFILE_MODEL=2
 EQUILIBRIUM_MODEL=2
 
 #Fluctuating fields evolved (1=phi, 2=phi+A_par,3=phi+A_par+B_par)
-N_FIELD=1
+N_FIELD=3
 
 #Data field output flag
 MOMENT_PRINT_FLAG=1
@@ -42,16 +42,16 @@ MOMENT_PRINT_FLAG=1
 #===================================
 
 #Minimum Simulated Ky
-KY=0.106
+KY=3
 
 #Number of simulated Toroidal Modes
-N_TOROIDAL=12
+N_TOROIDAL=1
 
 #Radial Box Size (Integer)
-BOX_SIZE=4
+BOX_SIZE=1
 
 #Number of radial modes
-N_RADIAL=128
+N_RADIAL=12
 
 #Number of pitch-angle points
 N_XI=16
@@ -97,7 +97,7 @@ DELTA_T=0.01
 PRINT_STEP=100
 
 #Max simulation time (units a/c_s)
-MAX_TIME=900
+MAX_TIME=100 #900
 
 #Number of data outputs before saving a restart (DELTA_T*PRINT_STEP is one data output)
 RESTART_STEP=10
@@ -108,7 +108,7 @@ RESTART_STEP=10
 
 # Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugma
 #5 = Fast diagonal Lorentz)
-COLLISION_MODEL=1
+COLLISION_MODEL=4
 
 #Rotation Scaling of Exp. Values
 ROTATION_MODEL=2

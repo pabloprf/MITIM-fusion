@@ -12,7 +12,7 @@ baseUFFolder         = None                   # If no equilibrium reconstruction
 baseNMFolder         = None                   # folder where TR.DAT is. If None: generate baseline namelist for this machine 
 
 excelProfile         = $STUDIES_PATH/information/IM_FILES/SPARC/initialProfiles/V1E.xlsx     # Excel file to initialize (1st phase) Te, Ti, ne, q. V=0 and RBt and Ip not ramp
-baseCDFfile          = $PROJECTS_PATH/required_data/initialCDFs/V1E_20200312.CDF             # If excelProfile=None, CDF file to initialize Te, Ti, ne, V, q, RBt, Ip
+baseCDFfile          = $PROJECTS_PATH/heavy_data_studies/required_data/initialCDFs/V1E_20200312.CDF             # If excelProfile=None, CDF file to initialize Te, Ti, ne, V, q, RBt, Ip
 # (Note: Even if excelProfile is used instead of baseCDFfile, baseCDFfile is used for BetaN, shaping ratios and CoordinateMapping for Pedestal)
 
 retriesMITIM       = 1     # How many times to run IM before I send FAIL flag

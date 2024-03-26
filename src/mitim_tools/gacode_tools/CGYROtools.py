@@ -1,9 +1,9 @@
 import os
+import copy
 import datetime
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.aux import GACODEplotting
@@ -14,10 +14,7 @@ from IPython import embed
 
 
 class CGYRO:
-    def __init__(self,inputgacode_file):  
-
-        self.inputgacode_file = inputgacode_file
-        self.input_cgyro_file_defaults = '$MITIM_PATH/templates/input.cgyro.controls' 
+    def __init__(self):  
 
         self.output_files_test = [
             "out.cgyro.equilibrium",
@@ -30,77 +27,152 @@ class CGYRO:
             "out.cgyro.rotation"
         ]
 
-    def prep(self,folder):
+        self.output_files = [
+            "bin.cgyro.geo",
+            "bin.cgyro.kxky_e",
+            "bin.cgyro.kxky_n",
+            "bin.cgyro.kxky_phi",
+            "bin.cgyro.kxky_v",
+            "bin.cgyro.ky_cflux",
+            "bin.cgyro.ky_flux",
+            "bin.cgyro.phib",
+            "bin.cgyro.restart",
+            "bin.cgyro.restart.old",
+            "input.cgyro",
+            "input.cgyro.gen",
+            "input.gacode",
+            "mitim.out",
+            "mitim_bash.src",
+            "mitim_shell_executor.sh",
+            "out.cgyro.egrid",
+            "out.cgyro.equilibrium",
+            "out.cgyro.freq",
+            "out.cgyro.grids",
+            "out.cgyro.hosts",
+            "out.cgyro.info",
+            "out.cgyro.memory",
+            "out.cgyro.mpi",
+            "out.cgyro.prec",
+            "out.cgyro.rotation",
+            "out.cgyro.startups",
+            "out.cgyro.tag",
+            "out.cgyro.time",
+            "out.cgyro.timing",
+            "out.cgyro.version",
+        ]
 
+        self.results = {}
+
+    def prep(self,folder, inputgacode_file):
+
+        # Prepare main folder with input.gacode 
         self.folder = IOtools.expandPath(folder)
 
-        self.input_cgyro_file = f'{self.folder}/input.cgyro'
-        os.system(f'cp {self.input_cgyro_file_defaults} {self.input_cgyro_file}')
-        os.system(f'cp {self.inputgacode_file} {self.folder}/input.gacode')
+        if not os.path.exists(self.folder):
+            os.system(f"mkdir -p {self.folder}")
 
         self.inputgacode_file = f'{self.folder}/input.gacode'
+        os.system(f'cp {inputgacode_file} {self.inputgacode_file}')
 
-    def run_test(self,name='run1'):
+    def run(self,
+            subFolderCGYRO,
+            roa = 0.55,
+            CGYROsettings= None,
+            extraOptions={},
+            multipliers={},
+            test_run = False,
+            n = 16,
+            nomp = 1,
+            ):
 
-        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
 
-        name = f'mitim_cgyro_{name}_test'
+        self.folderCGYRO = f'{self.folder}/{subFolderCGYRO}_{roa:.6f}/'
 
-        self.cgyro_job.define_machine(
-            'cgyro',
-            name,
-            slurm_settings = {
-                'name': name,
-                'minutes': 5,
-                'cpuspertask': 1,
-                'ntasks': 1,
-            }
+        if not os.path.exists(self.folderCGYRO):
+            os.system(f"mkdir -p {self.folderCGYRO}")
+
+
+        input_cgyro_file = f'{self.folderCGYRO}/input.cgyro'
+        inputCGYRO = CGYROinput(file=input_cgyro_file)
+
+        inputgacode_file_this = f'{self.folderCGYRO}/input.gacode'
+        os.system(f'cp {self.inputgacode_file} {inputgacode_file_this}')
+
+        ResultsFiles_new = []
+        for i in self.output_files:
+            if "mitim.out" not in i:
+                ResultsFiles_new.append(i)
+        self.output_files = ResultsFiles_new
+
+
+        inputCGYRO = GACODErun.modifyInputs(
+            inputCGYRO,
+            Settings=CGYROsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            addControlFunction=GACODEdefaults.addCGYROcontrol,
+            rmin = roa,
         )
-        
-        CGYROcommand = 'cgyro -t .'
+
+        inputCGYRO.writeCurrentStatus()
+
+        self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
+
+        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}{"_test" if test_run else ""}' 
+
+        if test_run:
+
+            self.cgyro_job.define_machine(
+                'cgyro',
+                name,
+                slurm_settings = {
+                    'name': name,
+                    'minutes': 5,
+                    'cpuspertask': 1,
+                    'ntasks': 1,
+                }
+            )
+            
+            CGYROcommand = 'cgyro -t .'
+
+        else:
+
+            self.cgyro_job.define_machine(
+                'cgyro',
+                name,
+                launchSlurm=False,
+            )
+            
+            if self.cgyro_job.launchSlurm:
+                CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -repo {self.cgyro_job.machineSettings["slurm"]["account"]} -queue {self.cgyro_job.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
+            else:
+
+                CGYROcommand = f'cgyro -e . -n {n} -nomp {nomp}'
 
         self.cgyro_job.prep(
             CGYROcommand,
-            input_files=[self.input_cgyro_file,self.inputgacode_file],
-            output_files=self.output_files_test,
-        )
-
-        self.cgyro_job.run(waitYN=False)
-
-    def run(self,name='run1'):
-
-        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
-
-        name = f'mitim_cgyro_{name}_test'
-
-        self.cgyro_job.define_machine(
-            'cgyro',
-            name,
-            launchSlurm=False,
+            input_files=[input_cgyro_file,inputgacode_file_this],
+            output_files=self.output_files if not test_run else self.output_files_test,
         )
         
-        CGYROcommand = f'gacode_qsub -e . -n 12 -nomp 32 -repo {self.machineSettings["slurm"]["account"]} -queue {self.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
-
-        self.cgyro_job.prep(
-            CGYROcommand,
-            input_files=[self.input_cgyro_file,self.inputgacode_file],
-            output_files=self.output_files_test,
-        )
-
-        self.cgyro_job.run(waitYN=False)
+        self.cgyro_job.run(waitYN=not self.cgyro_job.launchSlurm) #,removeScratchFolders=False)
 
     def check(self,every_n_minutes=5):
 
-        print('- Checker job status')
+        if self.cgyro_job.launchSlurm:
+            print('- Checker job status')
 
-        while True:
-            self.cgyro_job.check()
-            print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})')
-            if self.cgyro_job.status == 2:
-                break
-            else:
-                print(f'\t- Waiting {every_n_minutes} minutes')
-                time.sleep(every_n_minutes*60)
+            while True:
+                self.cgyro_job.check()
+                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})')
+                if self.cgyro_job.status == 2:
+                    break
+                else:
+                    print(f'\t- Waiting {every_n_minutes} minutes')
+                    time.sleep(every_n_minutes*60)
+        else:
+            print('- Not checking status because this was run command line (not slurm)')    
+            
         print('\t- Job considered finished')
 
     def get(self):
@@ -108,174 +180,20 @@ class CGYRO:
         For a job that has been submitted but not waited for, once it is done, get the results
         '''
 
-        self.cgyro_job.connect()
-        self.cgyro_job.retrieve()
-        self.cgyro_job.close()
-
-
-
-class CGYRO2:
-    def __init__(
-        self, alreadyRun=None, cdf=None, time=100.0, rhos=[0.4, 0.6], avTime=0.0
-    ):
-        if alreadyRun is not None:
-            # For the case in which I have run TGLF somewhere else, not using to plot and modify the class
-            self.__class__ = alreadyRun.__class__
-            self.__dict__ = alreadyRun.__dict__
-            print("Readying previously-run case")
+        if self.cgyro_job.launchSlurm:
+            self.cgyro_job.connect()
+            self.cgyro_job.retrieve()
+            self.cgyro_job.close()
         else:
-            self.ResultsFiles = [
-                "bin.cgyro.ky_cflux",
-                "input.cgyro.gen",
-                "out.cgyro.memory",
-                "out.cgyro.startups",
-                "bin.cgyro.ky_flux",
-                "out.cgyro.version",
-                "out.cgyro.egrid",
-                "bin.cgyro.geo",
-                "out.cgyro.grids",
-                "out.cgyro.mpi",
-                "out.cgyro.tag",
-                "out.cgyro.hosts",
-                "out.cgyro.prec",
-                "out.cgyro.time",
-                "bin.cgyro.kxky_phi",
-                "bin.cgyro.restart",
-                "out.cgyro.equilibrium",
-                "out.cgyro.info",
-                "out.cgyro.rotation",
-                "out.cgyro.timing",
-            ]
+            print('- Not retrieving results because this was run command line (not slurm)')
 
-            # self.ResultsFiles.append('bin.cgyro.freq')
-            self.ResultsFiles.append("out.cgyro.freq")
-            self.ResultsFiles.append("bin.cgyro.phib")
-            self.ResultsFiles.append("bin.cgyro.aparb")
-
-            self.LocationCDF = cdf
-            try:
-                self.folderWork, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
-            except:
-                self.folderWork, self.nameRunid = None, None
-
-            self.rhos, self.time, self.avTime = rhos, time, avTime
-
-            self.results, self.scans, self.tgyro = {}, {}, None
-
-            self.NormalizationSets = None
-
-    def prep(
-        self,
-        FolderGACODE,
-        restart=False,
-        newGACODE=True,
-        remove_tmpTGYRO=False,
-        onlyThermal_TGYRO=False,
-        cdf_open=None,
-    ):
-        self.norm_select = "PROFILES"
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by preparing a tgyro class and running for -1 iterations
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        # TGYRO class. It checks existence and creates input.profiles/input.gacode
-
-        self.tgyro = TGYROtools.TGYRO(
-            cdf=self.LocationCDF, time=self.time, avTime=self.avTime
-        )
-        self.tgyro.prep(
-            FolderGACODE,
-            restart=restart,
-            remove_tmp=remove_tmpTGYRO,
-            subfolder="tmp_tgyro_prep",
-            newGACODE=newGACODE,
-        )
-
-        self.FolderGACODE, self.FolderGACODE_tmp = (
-            self.tgyro.FolderGACODE,
-            self.tgyro.FolderGACODE_tmp,
-        )
-
-    def runLinear(
-        self,
-        subFolderCGYRO="cgyro1/",
-        CGYROsettings=1,
-        kys=[0.3],
-        cores_per_ky=32,
-        restart=False,
-        forceIfRestart=False,
-        extra_name="",
-    ):
-        """
-        kys = [minky,num_toroidal]
-        """
-
-        self.kys = kys
-        numcores = int(len(self.kys) * cores_per_ky)
-
-        self.FolderCGYRO = IOtools.expandPath(self.FolderGACODE + subFolderCGYRO + "/")
-        self.FolderCGYRO_tmp = self.FolderCGYRO + "/tmp_standard/"
-
-        exists = not restart
-        for ir in self.rhos:
-            for j in self.ResultsFiles:
-                exists = exists and os.path.exists(f"{self.FolderCGYRO}{j}_{ir:.2f}")
-
-        if not exists:
-            IOtools.askNewFolder(self.FolderCGYRO, force=forceIfRestart)
-            IOtools.askNewFolder(self.FolderCGYRO_tmp)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of CGYRO
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        ky = self.kys[0]
-        self.latest_inputsFileCGYRO = changeANDwrite_CGYRO(
-            self.rhos, ky, self.FolderCGYRO, CGYROsettings=CGYROsettings
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # input.gacode
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        inputGacode = self.FolderCGYRO_tmp + "/input.gacode"
-        self.tgyro.profiles.writeCurrentStatus(file=inputGacode)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Run CGYRO
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if exists:
-            print(
-                " --> CGYRO not run b/c results found. Please ensure those were run with same inputs (restart may be good)"
-            )
-        else:
-            GACODErun.runCGYRO(
-                self.rhos,
-                self.FolderCGYRO,
-                self.FolderCGYRO_tmp,
-                self.latest_inputsFileCGYRO,
-                inputGacode,
-                numcores=numcores,
-                filesToRetrieve=self.ResultsFiles,
-                name=f'cgyro_{self.nameRunid}_{subFolderCGYRO.strip("/")}{extra_name}',
-            )
-
+    # ---------------------------------------------------------------------------------------------------------
+    # Reading and plotting
+    # ---------------------------------------------------------------------------------------------------------
+            
     def read(self, label="cgyro1", folder=None):
-        # ~~~~ If no specified folder, check the last one
-        if folder is None:
-            folder = self.FolderCGYRO
-        if folder[-1] != "/":
-            folder += "/"
 
-        # ~~~~ Read using PYGACODE package
-        # tmpf = f'{folder}/tmp_pygacode/'
-        # os.system(f'mkdir {tmpf}')
-        # allfiles = IOtools.findExistingFiles(folder,'')
-        # for i in allfiles: os.system(f'cp {folder}/{i} {tmpf}/{i.split("_")[0]}')
-        # self.results[label] = cgyrodata_plot(tmpf)
-        # #os.system('rm -r {0}'.format(tmpf))
+        folder = folder or self.folderCGYRO
 
         try:
             self.results[label] = cgyrodata_plot(folder)
@@ -297,6 +215,173 @@ class CGYRO2:
             f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})"
             for i in self.results[label].all_flags
         ]
+
+
+    def plotLS(self, labels=["cgyro1"], fig=None):
+        colors = GRAPHICStools.listColors()
+
+        if fig is None:
+            # fig = plt.figure(figsize=(15,9))
+
+            from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+            self.fnLS = FigureNotebook(
+                "Linear CGYRO Notebook",
+                geometry="1600x1000",
+            )
+            fig1 = self.fnLS.add_figure(label="Linear Stability")
+            fig2 = self.fnLS.add_figure(label="Ballooning")
+
+        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
+        ax00 = fig1.add_subplot(grid[0, 0])
+        ax10 = fig1.add_subplot(grid[1, 0], sharex=ax00)
+        ax01 = fig1.add_subplot(grid[0, 1])
+        ax11 = fig1.add_subplot(grid[1, 1], sharex=ax01)
+
+        K, G, F = [], [], []
+        for cont, label in enumerate(self.results):
+            c = self.results[label]
+            baseColor = colors[cont]
+            colorsC, _ = GRAPHICStools.colorTableFade(
+                len(c.ky),
+                startcolor=baseColor,
+                endcolor=baseColor,
+                alphalims=[1.0, 0.4],
+            )
+
+            ax = ax00
+            for ky in range(len(c.ky)):
+                ax.plot(
+                    c.t,
+                    c.freq[1, ky, :],
+                    color=colorsC[ky],
+                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                )
+
+            ax = ax10
+            for ky in range(len(c.ky)):
+                ax.plot(
+                    c.t,
+                    c.freq[0, ky, :],
+                    color=colorsC[ky],
+                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                )
+
+            K.append(np.abs(c.ky[0]))
+            G.append(c.freq[1, 0, -1])
+            F.append(c.freq[0, 0, -1])
+
+        GACODEplotting.plotTGLFspectrum(
+            [ax01, ax11],
+            K,
+            G,
+            freq=F,
+            coeff=0.0,
+            c=colors[0],
+            ls="-",
+            lw=1,
+            label="",
+            facecolors=colors[: len(K)],
+            markersize=50,
+            alpha=1.0,
+            titles=["Growth Rate", "Real Frequency"],
+            removeLow=1e-4,
+            ylabel=True,
+        )
+
+        ax = ax00
+        ax.set_xlabel("Time $(a/c_s)$")
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+        ax.set_ylabel("$\\gamma$ $(c_s/a)$")
+        ax.set_title("Growth Rate")
+        ax.set_xlim(left=0)
+        ax.legend()
+        ax = ax10
+        ax.set_xlabel("Time $(a/c_s)$")
+        ax.set_ylabel("$\\omega$ $(c_s/a)$")
+        ax.set_title("Real Frequency")
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+        ax.set_xlim(left=0)
+
+        ax = ax01
+        ax.set_xlim([5e-2, 50.0])
+
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+        ax00 = fig2.add_subplot(grid[0, 0])
+        ax01 = fig2.add_subplot(grid[0, 1], sharex=ax00, sharey=ax00)
+        ax02 = fig2.add_subplot(grid[0, 2], sharex=ax00, sharey=ax00)
+        ax10 = fig2.add_subplot(grid[1, 0], sharex=ax00, sharey=ax00)
+        ax11 = fig2.add_subplot(grid[1, 1], sharex=ax01, sharey=ax00)
+        ax12 = fig2.add_subplot(grid[1, 2], sharex=ax02, sharey=ax00)
+
+        it = -1
+
+        for cont, label in enumerate(self.results):
+            c = self.results[label]
+            baseColor = colors[cont]
+
+            colorsC, _ = GRAPHICStools.colorTableFade(
+                len(c.ky),
+                startcolor=baseColor,
+                endcolor=baseColor,
+                alphalims=[1.0, 0.4],
+            )
+
+            ax = ax00
+            for ky in range(len(c.ky)):
+                for var, axs, label in zip(
+                    ["phib", "aparb", "bparb"],
+                    [[ax00, ax10], [ax01, ax11], [ax02, ax12]],
+                    ["phi", "abar", "aper"],
+                ):
+                    try:
+                        f = c.__dict__[var][0, :, it] + 1j * c.__dict__[var][1, :, it]
+                        y1 = np.real(f)
+                        y2 = np.imag(f)
+                        x = c.thetab / np.pi
+
+                        ax = axs[0]
+                        ax.plot(
+                            x,
+                            y1,
+                            color=colorsC[ky],
+                            ls="-",
+                            label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                        )
+                        ax = axs[1]
+                        ax.plot(x, y2, color=colorsC[ky], ls="-")
+                    except:
+                        pass
+
+        ax = ax00
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Re($\\delta\\phi$)")
+        ax.set_title("$\\delta\\phi$")
+        ax.legend(loc="best")
+
+        ax.set_xlim([-2 * np.pi, 2 * np.pi])
+
+        ax = ax01
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Re($\\delta A\\parallel$)")
+        ax.set_title("$\\delta A\\parallel$")
+        ax = ax02
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Re($\\delta B\\parallel$)")
+        ax.set_title("$\\delta B\\parallel$")
+        ax = ax10
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Im($\\delta\\phi$)")
+        ax = ax11
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Im($\\delta A\\parallel$)")
+        ax = ax12
+        ax.set_xlabel("$\\theta/\\pi$")
+        ax.set_ylabel("Im($\\delta B\\parallel$)")
+
+        for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
+            ax.axvline(x=0, lw=0.5, ls="--", c="k")
+            ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
     def get_flux(self, label="", moment="e", ispec=0, retrieveSpecieFlag=True):
         cgyro = self.results[label]
@@ -558,180 +643,38 @@ class CGYRO2:
                 plotLegend=j == len(labels) - 1,
             )
 
-    def plotLS(self, labels=["cgyro1"], fig=None):
-        colors = GRAPHICStools.listColors()
+class CGYROinput:
+    def __init__(self, file=None):
+        self.file = file
 
-        if fig is None:
-            # fig = plt.figure(figsize=(15,9))
+        if self.file is not None and os.path.exists(self.file):
+            with open(self.file, "r") as f:
+                lines = f.readlines()
+            self.file_txt = "".join(lines)
+        else:
+            self.file_txt = ""
 
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
+        self.controls = GACODErun.buildDictFromInput(self.file_txt)
 
-            self.fnLS = FigureNotebook(
-                f"CGYRO Notebook, run #{self.nameRunid}, time {self.time:3f}s",
-                geometry="1600x1000",
+    def writeCurrentStatus(self, file=None):
+        print("\t- Writting CGYRO input file")
+
+        if file is None:
+            file = self.file
+
+        with open(file, "w") as f:
+            f.write(
+                "#-------------------------------------------------------------------------\n"
             )
-            fig1 = self.fnLS.add_figure(label="Linear Stability")
-            fig2 = self.fnLS.add_figure(label="Ballooning")
-
-        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
-        ax00 = fig1.add_subplot(grid[0, 0])
-        ax10 = fig1.add_subplot(grid[1, 0], sharex=ax00)
-        ax01 = fig1.add_subplot(grid[0, 1])
-        ax11 = fig1.add_subplot(grid[1, 1], sharex=ax01)
-
-        K, G, F = [], [], []
-        for cont, label in enumerate(self.results):
-            c = self.results[label]
-            baseColor = colors[cont]
-            colorsC, _ = GRAPHICStools.colorTableFade(
-                len(c.ky),
-                startcolor=baseColor,
-                endcolor=baseColor,
-                alphalims=[1.0, 0.4],
+            f.write(
+                "# CGYRO input file modified by MITIM framework (Rodriguez-Fernandez, 2020)\n"
+            )
+            f.write(
+                "#-------------------------------------------------------------------------"
             )
 
-            ax = ax00
-            for ky in range(len(c.ky)):
-                ax.plot(
-                    c.t,
-                    c.freq[1, ky, :],
-                    color=colorsC[ky],
-                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                )
-
-            ax = ax10
-            for ky in range(len(c.ky)):
-                ax.plot(
-                    c.t,
-                    c.freq[0, ky, :],
-                    color=colorsC[ky],
-                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                )
-
-            K.append(np.abs(c.ky[0]))
-            G.append(c.freq[1, 0, -1])
-            F.append(c.freq[0, 0, -1])
-
-        GACODEplotting.plotTGLFspectrum(
-            [ax01, ax11],
-            K,
-            G,
-            freq=F,
-            coeff=0.0,
-            c=colors[0],
-            ls="-",
-            lw=1,
-            label="",
-            facecolors=colors[: len(K)],
-            markersize=50,
-            alpha=1.0,
-            titles=["Growth Rate", "Real Frequency"],
-            removeLow=1e-4,
-            ylabel=True,
-        )
-
-        ax = ax00
-        ax.set_xlabel("Time $(a/c_s)$")
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-        ax.set_ylabel("$\\gamma$ $(c_s/a)$")
-        ax.set_title("Growth Rate")
-        ax.set_xlim(left=0)
-        ax.legend()
-        ax = ax10
-        ax.set_xlabel("Time $(a/c_s)$")
-        ax.set_ylabel("$\\omega$ $(c_s/a)$")
-        ax.set_title("Real Frequency")
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-        ax.set_xlim(left=0)
-
-        ax = ax01
-        ax.set_xlim([5e-2, 50.0])
-
-        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-        ax00 = fig2.add_subplot(grid[0, 0])
-        ax01 = fig2.add_subplot(grid[0, 1], sharex=ax00, sharey=ax00)
-        ax02 = fig2.add_subplot(grid[0, 2], sharex=ax00, sharey=ax00)
-        ax10 = fig2.add_subplot(grid[1, 0], sharex=ax00, sharey=ax00)
-        ax11 = fig2.add_subplot(grid[1, 1], sharex=ax01, sharey=ax00)
-        ax12 = fig2.add_subplot(grid[1, 2], sharex=ax02, sharey=ax00)
-
-        it = -1
-
-        for cont, label in enumerate(self.results):
-            c = self.results[label]
-            baseColor = colors[cont]
-
-            colorsC, _ = GRAPHICStools.colorTableFade(
-                len(c.ky),
-                startcolor=baseColor,
-                endcolor=baseColor,
-                alphalims=[1.0, 0.4],
-            )
-
-            ax = ax00
-            for ky in range(len(c.ky)):
-                for var, axs, label in zip(
-                    ["phib", "aparb", "bparb"],
-                    [[ax00, ax10], [ax01, ax11], [ax02, ax12]],
-                    ["phi", "abar", "aper"],
-                ):
-                    try:
-                        f = c.__dict__[var][0, :, it] + 1j * c.__dict__[var][1, :, it]
-                        y1 = np.real(f)
-                        y2 = np.imag(f)
-                        x = c.thetab / np.pi
-
-                        ax = axs[0]
-                        ax.plot(
-                            x,
-                            y1,
-                            color=colorsC[ky],
-                            ls="-",
-                            label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                        )
-                        ax = axs[1]
-                        ax.plot(x, y2, color=colorsC[ky], ls="-")
-                    except:
-                        pass
-
-        ax = ax00
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Re($\\delta\\phi$)")
-        ax.set_title("$\\delta\\phi$")
-        ax.legend(loc="best")
-
-        ax.set_xlim([-2 * np.pi, 2 * np.pi])
-
-        ax = ax01
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Re($\\delta A\\parallel$)")
-        ax.set_title("$\\delta A\\parallel$")
-        ax = ax02
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Re($\\delta B\\parallel$)")
-        ax.set_title("$\\delta B\\parallel$")
-        ax = ax10
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Im($\\delta\\phi$)")
-        ax = ax11
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Im($\\delta A\\parallel$)")
-        ax = ax12
-        ax.set_xlabel("$\\theta/\\pi$")
-        ax.set_ylabel("Im($\\delta B\\parallel$)")
-
-        for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
-            ax.axvline(x=0, lw=0.5, ls="--", c="k")
-            ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-
-def changeANDwrite_CGYRO(rhos, ky, FolderCGYRO, CGYROsettings=1):
-    inputFilesCGYRO = {}
-
-    for i in rhos:
-        rmin = i
-        inputFilesCGYRO[i], CGYROoptions = GACODEdefaults.addCGYROcontrol(
-            rmin, ky, CGYROsettings=CGYROsettings
-        )
-
-    return inputFilesCGYRO
+            f.write("\n\n# Control parameters\n")
+            f.write("# ------------------\n\n")
+            for ikey in self.controls:
+                var = self.controls[ikey]
+                f.write(f"{ikey.ljust(23)} = {var}\n")

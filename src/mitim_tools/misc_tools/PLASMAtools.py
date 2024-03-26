@@ -166,20 +166,16 @@ def LHthreshold_Martin1_up(n, Bt, S, nmin=0):
 
 
 def nminfactor(nmin, n):
-    try:
-        l = len(n)
-    except:
-        l = 0
-    if l == 0:
+
+    if isinstance(n, (float, np.floating)):
+        l = 1
         n = [n]
+    else:
+        l = len(n)
 
-    try:
-        l2 = len(nmin)
-    except:
-        l2 = 0
-    if l2 == 0:
+    if isinstance(nmin, (float, np.floating)):
         nmin = [nmin]
-
+   
     nminfact = []
     for i in range(len(n)):
         if n[i] < nmin[i]:
@@ -187,7 +183,7 @@ def nminfactor(nmin, n):
         else:
             nminfact.append(1.0)
 
-    if l == 0:
+    if l == 1:
         return nminfact[0]
     else:
         return np.array(nminfact)
@@ -649,8 +645,7 @@ def fitTANHPedestal(
     debug=False,
 ):
     def f(x, a1=-1, a2=10, a3=-10, a4=1):
-        formule = a1 * np.tanh(a2 * x + a3) + a4
-        return formule
+        return a1 * np.tanh(a2 * x + a3) + a4
 
     # generate points used to plot
     xp = [0, xsym - w, xsym - w / 2, 2]
@@ -662,7 +657,6 @@ def fitTANHPedestal(
     ]
 
     from scipy.optimize import curve_fit
-
     popt, pcov = curve_fit(f, xp, yp, p0=[-1, 10, -10, 1])
 
     y = f(xgrid, *popt) * TtopN

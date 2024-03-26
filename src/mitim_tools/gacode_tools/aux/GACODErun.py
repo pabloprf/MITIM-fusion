@@ -91,6 +91,125 @@ def runTGYRO(
 
     tgyro_job.run()
 
+def modifyInputs(
+    input_class,
+    Settings=None,
+    extraOptions={},
+    multipliers={},
+    position_change=0,
+    addControlFunction=None,
+    **kwargs_to_function,
+):
+    if Settings is not None:
+        _, CodeOptions, label = addControlFunction(Settings, **kwargs_to_function)
+
+        # ~~~~~~~~~~ Change with presets
+        print(
+            f" \t- Using presets Settings = {Settings} ({label})", typeMsg="i"
+        )
+        input_class.controls = CodeOptions
+
+    else:
+        print(
+            "\t- Input file was not modified by Settings, using what was there before",
+            typeMsg="w",
+        )
+
+    # Make all upper case
+    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Change with external options -> Input directly, not as multiplier
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if len(extraOptions) > 0:
+        print("\t- External options:")
+    for ikey in extraOptions:
+        if isinstance(extraOptions[ikey], (list, np.ndarray)):
+            value_to_change_to = extraOptions[ikey][position_change]
+        else:
+            value_to_change_to = extraOptions[ikey]
+
+        # is a specie one?
+        try:
+            isspecie = ikey.split("_")[0] in input_class.species[1]
+        except:
+            isspecie = False
+
+        if isspecie:
+            specie = int(ikey.split("_")[-1])
+            varK = "_".join(ikey.split("_")[:-1])
+            var_orig = input_class.species[specie][varK]
+            var_new = value_to_change_to
+            input_class.species[specie][varK] = var_new
+        else:
+            if ikey in input_class.controls:
+                var_orig = input_class.controls[ikey]
+                var_new = value_to_change_to
+                input_class.controls[ikey] = var_new
+            elif ikey in input_class.geom:
+                var_orig = input_class.geom[ikey]
+                var_new = value_to_change_to
+                input_class.geom[ikey] = var_new
+            elif ikey in input_class.plasma:
+                var_orig = input_class.plasma[ikey]
+                var_new = value_to_change_to
+                input_class.plasma[ikey] = var_new
+            else:
+                # If the variable in extraOptions wasn't in there, consider it a control param
+                print(
+                    "\t\t- Variable to change did not exist previously, creating now",
+                    typeMsg="i",
+                )
+                var_orig = None
+                var_new = value_to_change_to
+                input_class.controls[ikey] = var_new
+
+        print(
+            f"\t\t- Changing {ikey} from {var_orig} to {var_new}",
+            typeMsg="i",
+        )
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Change with multipliers -> Input directly, not as multiplier
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if len(multipliers) > 0:
+        print("\t\t- Variables change:")
+    for ikey in multipliers:
+        # is a specie one?
+        if ikey.split("_")[0] in input_class.species[1]:
+            specie = int(ikey.split("_")[-1])
+            varK = "_".join(ikey.split("_")[:-1])
+            var_orig = input_class.species[specie][varK]
+            var_new = var_orig * multipliers[ikey]
+            input_class.species[specie][varK] = var_new
+        else:
+            if ikey in input_class.controls:
+                var_orig = input_class.controls[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.controls[ikey] = var_new
+            elif ikey in input_class.geom:
+                var_orig = input_class.geom[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.geom[ikey] = var_new
+            elif ikey in input_class.plasma:
+                var_orig = input_class.plasma[ikey]
+                var_new = var_orig * multipliers[ikey]
+                input_class.plasma[ikey] = var_new
+            else:
+                print(
+                    "\t- Variable to scan did not exist in original file, add it as extraOptions first",
+                    typeMsg="w",
+                )
+
+        print(
+            "\t\t\t- Changing {0} from {1} to {2} (x{3})".format(
+                ikey, var_orig, var_new, multipliers[ikey]
+            ),
+            typeMsg="i",
+        )
+
+    return input_class
+
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
@@ -794,72 +913,24 @@ def defineNewGrid(
 
     return x[imin:imax], y[imin:imax]
 
-
-def runCGYRO(
-    rhos,
-    finalFolder,
-    tmpFolder,
-    inputFilesCGYRO,
-    inputGacode,
-    numcores=32,
-    extraFlag="",
-    filesToRetrieve=["cgyro/out.cgyro.info"],
-    name="",
-):
-    MaxRunsWithoutWait, timewaitSendRun = 4, 10
-
-    for rho in rhos:
-        print(f" ~~ Running CGYRO at rho={rho:.4f}")
-        if len(rhos) > MaxRunsWithoutWait:
-            time.sleep(timewaitSendRun)
-
-        fileCGYRO = executeCGYRO(
-            tmpFolder,
-            inputFilesCGYRO[rho],
-            inputGacode,
-            numcores=numcores,
-            outputFiles=filesToRetrieve,
-            name=name,
-        )
-
-        for file in filesToRetrieve:
-            fr = f"{file}_{rho:.4f}{extraFlag}"
-            ff = f"{finalFolder}/{fr}"
-            if os.path.exists(ff):
-                os.system("rm " + ff)
-            os.system(f"mv {tmpFolder}/{file} {ff}")
-
-            if verbose_level in [4, 5]:
-                print("\t- Retrieving files and changing names for storing")
-                if not os.path.exists(ff):
-                    print(f"\t!! file {file} ({fr}) could not be retrived")
-                # else:
-                # print(
-                #     f"\t\t~ {file} successfully retrieved, converted into {fr}",
-                #     verbose=verbose_level,
-                # )
-
-        os.system(f"mv {fileCGYRO} {finalFolder}/input.cgyro_{rho:.4f}")
-
-
 def runTGLF(
-    rhos,
-    finalFolder,
-    inputFilesTGLF,
+    FolderGACODE,
+    tglf_executor,
     minutes=5,
     cores_tglf=4,
     extraFlag="",
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
+    cores_todo_array=1E6, #32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    tmpFolder = finalFolder + "/tmp_tglf/"
-    IOtools.askNewFolder(tmpFolder)
+    tmpFolder = f"{FolderGACODE}/tmp_tglf/"
+    IOtools.askNewFolder(tmpFolder,force=True)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
@@ -868,40 +939,44 @@ def runTGLF(
         f"mitim_{name}/",
     )
 
-    # ---------------------------------------------
-    # Prepare files and folders
-    # ---------------------------------------------
-
     folders, folders_red = [], []
-    for i, rho in enumerate(rhos):
-        print(f"\t- Preparing TGLF at rho={rho:.4f}")
+    for subFolderTGLF in tglf_executor:
 
-        folderTGLF_this = f"{tmpFolder}/rho_{rho:.4f}"
-        folders.append(folderTGLF_this)
-        folders_red.append(f"rho_{rho:.4f}")
+        rhos = list(tglf_executor[subFolderTGLF].keys())
+        
+        # ---------------------------------------------
+        # Prepare files and folders
+        # ---------------------------------------------
 
-        if not os.path.exists(folderTGLF_this):
-            os.system(f"mkdir {folderTGLF_this}")
+        for i, rho in enumerate(rhos):
+            print(f"\t- Preparing TGLF ({subFolderTGLF}) at rho={rho:.4f}")
 
-        fileTGLF = f"{folderTGLF_this}/input.tglf"
-        with open(fileTGLF, "w") as f:
-            f.write(inputFilesTGLF[rho])
+            folderTGLF_this = f"{tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}"
+            folders.append(folderTGLF_this)
+            folders_red.append(f"{subFolderTGLF}/rho_{rho:.4f}")
+
+            if not os.path.exists(folderTGLF_this):
+                os.system(f"mkdir -p {folderTGLF_this}")
+
+            fileTGLF = f"{folderTGLF_this}/input.tglf"
+            with open(fileTGLF, "w") as f:
+                f.write(tglf_executor[subFolderTGLF][rho]['inputs'])
 
     # ---------------------------------------------
     # Prepare command
     # ---------------------------------------------
 
-    total_tglf_cores = int(cores_tglf * len(rhos))
+    total_tglf_cores = int(cores_tglf * len(rhos) * len(tglf_executor))
 
     if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
-        typeRun = "job" if total_tglf_cores <= 32 else "array"
+        typeRun = "job" if total_tglf_cores <= cores_todo_array else "array"
     else:
         typeRun = "bash"
 
     if typeRun in ["bash", "job"]:
         TGLFcommand = ""
-        for i, rho in enumerate(rhos):
-            TGLFcommand += f"tglf -e rho_{rho:.4f}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
+        for folder in folders_red:
+            TGLFcommand += f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
 
         TGLFcommand += (
             "\nwait"  # This is needed so that the script doesn't end before each job
@@ -912,6 +987,7 @@ def runTGLF(
         cpuspertask = cores_tglf
 
     elif typeRun in ["array"]:
+        raise Exception("TGLF array not implemented yet")
         print(
             f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",
             typeMsg="i",
@@ -941,13 +1017,20 @@ def runTGLF(
         },
     )
 
+    # I would like the mitim_job to check if the retrieved folders were complete
+    check_files_in_folder = {}
+    for folder in folders_red:
+        check_files_in_folder[folder] = filesToRetrieve
+    # ---------------------------------------------
+
     tglf_job.prep(
         TGLFcommand,
         input_folders=folders,
         output_folders=folders_red,
+        check_files_in_folder= check_files_in_folder
     )
 
-    tglf_job.run()
+    tglf_job.run(removeScratchFolders=False)
 
     # ---------------------------------------------
     # Organize
@@ -955,24 +1038,26 @@ def runTGLF(
 
     print("\t- Retrieving files and changing names for storing")
     fineall = True
-    for i, rho in enumerate(rhos):
-        for file in filesToRetrieve:
-            original_file = f"{file}_{rho:.4f}{extraFlag}"
-            final_destination = f"{finalFolder}/{original_file}"
+    for subFolderTGLF in tglf_executor:
 
-            if os.path.exists(final_destination):
-                os.system(f"rm {final_destination}")
+        for i, rho in enumerate(tglf_executor[subFolderTGLF].keys()):
+            for file in filesToRetrieve:
+                original_file = f"{file}_{rho:.4f}{extraFlag}"
+                final_destination = f"{tglf_executor[subFolderTGLF][rho]['folder']}/{original_file}"
 
-            os.system(f"mv {tmpFolder}/rho_{rho:.4f}/{file} {final_destination}")
+                if os.path.exists(final_destination):
+                    os.system(f"rm {final_destination}")
 
-            fineall = fineall and os.path.exists(final_destination)
+                os.system(f"mv {tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}/{file} {final_destination}")
 
-            if not os.path.exists(final_destination):
-                print(
-                    f"\t!! file {file} ({original_file}) could not be retrived",
-                    typeMsg="w",
-                    verbose=verbose_level,
-                )
+                fineall = fineall and os.path.exists(final_destination)
+
+                if not os.path.exists(final_destination):
+                    print(
+                        f"\t!! file {file} ({original_file}) could not be retrived",
+                        typeMsg="w",
+                        verbose=verbose_level,
+                    )
 
     if fineall:
         print("\t\t- All files were successfully retrieved")

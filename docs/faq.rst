@@ -57,6 +57,11 @@ Issues during MITIM tests
       
       ! [ -z "$PS1" ] && echo "Example echo statement that only runs in interactive shells"
 
+.. dropdown:: ``AuthenticationException: Authentication failed`` error when connecting to server through tunnel:
+
+   Make sure you that, if you have keys, you have added them to authorized_keys in both server and tunnel machines.
+   
+
 
 Issues during PORTALS simulations
 ---------------------------------

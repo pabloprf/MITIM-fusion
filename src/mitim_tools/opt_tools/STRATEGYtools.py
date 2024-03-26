@@ -84,6 +84,10 @@ class FUNmain:
         print(f"\t- Folder: {self.folder}")
 
         if self.folder is not None:
+
+            if self.folder[-1] != "/":
+                self.folder += "/"
+
             self.folder = IOtools.expandPath(self.folder)
             if not os.path.exists(self.folder):
                 IOtools.askNewFolder(self.folder)
@@ -555,9 +559,7 @@ class PRF_BO:
             for i in self.bounds:
                 inputs.append(i)
 
-            self.lambdaSingleObjective = (
-                lambda Y: self.mainFunction.scalarized_objective(Y)
-            )
+            self.lambdaSingleObjective = self.mainFunction.scalarized_objective
 
             self.TabularData = BOgraphics.TabularData(
                 inputs,
@@ -840,7 +842,7 @@ class PRF_BO:
         del copyClass.ResultsOptimization.PRF_BO
 
         # -------------------------------------------------------------------------------------------------
-        # Saving state files with lambda functions is very expensive
+        # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TO REMOVE]
         # -------------------------------------------------------------------------------------------------
 
         del copyClass.lambdaSingleObjective
@@ -866,9 +868,7 @@ class PRF_BO:
 
         copyClass.ResultsOptimization.PRF_BO = copy.deepcopy(self)
 
-        copyClass.lambdaSingleObjective = (
-            lambda Y: copyClass.mainFunction.scalarized_objective(Y)
-        )
+        copyClass.lambdaSingleObjective = copyClass.mainFunction.scalarized_objective
 
         for i in range(len(copyClass.steps)):
             copyClass.steps[i].defineFunctions(copyClass.lambdaSingleObjective)
