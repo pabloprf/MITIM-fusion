@@ -391,7 +391,7 @@ class OPTstep:
         # Objective (Multi-objective model -> single objective residual)
         # **************************************************************************************************
 
-        # Build lambda function to pass to acquisition
+        # Build function to pass to acquisition
         def residual(Y):
             return lambdaSingleObjective(Y)[2]
 
@@ -454,7 +454,10 @@ class OPTstep:
         # Selector (Takes x and residuals of optimized points, and provides the indices for organization)
         # **************************************************************************************************
 
-        self.evaluators["lambdaSelect"] = lambda x, res: correctResidualForProximity(
+        self.evaluators["lambdaSelect"] = self.lambda_select
+
+    def lambda_select(self, x, res):
+        return correctResidualForProximity(
             x,
             res,
             self.train_X[self.BOmetrics["overall"]["indBest"]],

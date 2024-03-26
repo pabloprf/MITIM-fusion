@@ -207,7 +207,7 @@ def optAcq(
     the training and provide as solution, where I add random points to fulfill the number of
     points requirement.
 
-    The lambda functions provided in evaluators must be for maximization
+    The functions provided in evaluators must be for maximization
     """
 
     time1 = datetime.datetime.now()
