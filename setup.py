@@ -1,6 +1,12 @@
 from setuptools import setup, find_packages
 from src.mitim_tools import __version__
 
+'''
+Note that this MITIM package was tested with gacode:
+    branch: mit_development
+    commit: d18993ddbc51139b5a143375280b6cea5a882c0b
+'''
+
 setup(
     name="MITIM",
     version=__version__,
