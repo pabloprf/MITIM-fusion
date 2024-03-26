@@ -3033,7 +3033,7 @@ def plotFluxComparison(
                     y = tBest.derived[var] * mult
                 if plotTargets:
                     ax.plot(
-                        tBest.profiles["rho(-)"],
+                        tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
                         y,
                         "-.",
                         lw=0.5,
@@ -3043,7 +3043,7 @@ def plotFluxComparison(
                     )
                 else:
                     ax.plot(
-                        tBest.profiles["rho(-)"],
+                        tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
                         y,
                         "--",
                         lw=2,
@@ -3080,7 +3080,7 @@ def plotFluxComparison(
         setlab = ["Transport", f"$\\pm{stds}\\sigma$"]
     if plotFlows:
         (l4,) = axTe_f.plot(
-            tBest.profiles["rho(-)"],
+            tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
             tBest.derived["qe_MWm2"],
             "-.",
             c="k",
