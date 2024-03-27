@@ -334,7 +334,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, tgyro, _, dictOFs = runModelEvaluator(
+        _, tgyro, powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
@@ -357,7 +357,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         if self.MITIMextra is not None:
             with open(self.MITIMextra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
-            dictStore[int(numPORTALS)] = {"tgyro": tgyro}
+            dictStore[int(numPORTALS)] = {"tgyro": tgyro, 'powerstate':powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
             )
