@@ -1,4 +1,3 @@
-from turtle import color
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -358,6 +357,14 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
+        if self.TGYROparameters['TGYRO_physics_options']['TargetType'] < 3:
+            if cont == 0: print('- This run uses partial targets, using HR to plot target fluxes, otherwise TGYRO plot will have wrong targets',typeMsg='i')
+            plotTargets = False
+            plotFlows = True
+        else:
+            plotTargets = True
+            plotFlows = plotFlows and (self.ibest == indexUse)
+
         plotFluxComparison(
             p,
             t,
@@ -376,7 +383,8 @@ def PORTALSanalyzer_plotMetrics(
             useConvectiveFluxes=useConvectiveFluxes,
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
-            plotFlows=plotFlows and (self.ibest == indexUse),
+            plotFlows=plotFlows,
+            plotTargets=plotTargets
         )
 
     ax = axTe
