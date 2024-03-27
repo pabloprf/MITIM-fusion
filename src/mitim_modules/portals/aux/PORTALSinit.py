@@ -105,7 +105,7 @@ def initializeProblem(
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
-    if checkForSpecies:
+    if checkForSpecies and (portals_fun.TGYROparameters['TGYRO_physics_options']['TargetType'] == 3):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
             c = TARGETStools.get_chebyshev_coeffs(profiles.Species[i]["N"])

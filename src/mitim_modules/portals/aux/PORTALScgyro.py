@@ -25,7 +25,6 @@ trick_hardcoded_f = None
 
 # e.g.:
 # includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2024_PORTALSdatabase/d3d_iss5chan_arx2023/mitim_run1/Outputs/cgyro_results/d3d_5chan_it_'
-includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = False, 1, 0,100, '/Users/pablorf/PROJECTS/project_2024_PORTALSdatabase/iter_ibs_H/mitim_run1/Outputs/cgyro_results/iter_h_it_'
 
 
 def evaluateCGYRO(
