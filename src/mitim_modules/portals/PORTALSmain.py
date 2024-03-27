@@ -106,6 +106,8 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 		------------------------------
 			These parameters are used to initialize the input.gacode to work with, before any PORTALS workflow
 			( passed directly to profiles.correct() )
+            Bear in mind that this is not necessary, you provide an already ready-to-go input.gacode without the need
+            to run these corrections.
 		"""
 
         self.INITparameters = {
