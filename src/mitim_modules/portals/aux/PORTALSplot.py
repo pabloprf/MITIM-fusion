@@ -1,12 +1,11 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import GRAPHICStools,PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 factor_dw0dr = 1e-5
 label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
@@ -359,7 +358,7 @@ def PORTALSanalyzer_plotMetrics(
             )
 
         if self.TGYROparameters['TGYRO_physics_options']['TargetType'] < 3:
-            if cont == 0: print('- This run uses partial targets, using powerstate to plot target fluxes, otherwise TGYRO plot will have wrong targets',typeMsg='i')
+            if cont == 0: print('- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets',typeMsg='w')
             powerstate = power
         else:
             powerstate = None
@@ -2805,10 +2804,7 @@ def plotFluxComparison(
 
     r = t.rho if not useRoa else t.roa
 
-    if powerstate is None:
-        ixF = 0 if includeFirst else 1
-    else:
-        ixF = 1
+    ixF = 0 if includeFirst else 1
 
     # Prep
 
@@ -2997,26 +2993,31 @@ def plotFluxComparison(
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    rad    = r[0][ixF:] if powerstate is None else r[0][1:]
     Qe_tar = t.Qe_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pe'].numpy()[0][:]
     Qi_tar = t.Qi_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pi'].numpy()[0][:]
 
-    if useConvectiveFluxes:
-        Ge_tar = t.Ce_tar[0][ixF:] if powerstate is None else powerstate.plasma['Ce'].numpy()[0][:]
-    else:
-        Ge_tar = t.Ge_tar[0][ixF:] if powerstate is None else powerstate.plasma['Ce'].numpy()[0][:]
-
     if forceZeroParticleFlux:
-        Ge_tar = Ge_tar * 0.0
+        Ge_tar = Qe_tar * 0.0
+    else:
+        if powerstate is not None:
+            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][1:] # Special because Ge is not stored in powerstate
+            if useConvectiveFluxes:
+                Ge_tar = PLASMAtools.convective_flux(powerstate.plasma["te"][0][1:], Ge_tar).numpy()
+        else:
+            if useConvectiveFluxes:
+                Ge_tar = t.Ce_tar[0][ixF:]
+            else:
+                Ge_tar = t.Ge_tar[0][ixF:]
 
     GZ_tar = t.Ge_tar * 0.0
-
     Mt_tar = t.Mt_tar[0][ixF:] if powerstate is None else powerstate.plasma['Mt'].numpy()[0][:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     if axTe_f is not None:
         axTe_f.plot(
-            r[0][ixF:],
+            rad,
             Qe_tar,
             "--",
             c=col,
@@ -3031,7 +3032,7 @@ def plotFluxComparison(
 
     if axTi_f is not None:
         axTi_f.plot(
-            r[0][ixF:],
+            rad,
             Qi_tar,
             "--",
             c=col,
@@ -3046,7 +3047,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
         axne_f.plot(
-            r[0][ixF:],
+            rad,
             Ge_tar,
             "--",
             c=col,
@@ -3061,7 +3062,7 @@ def plotFluxComparison(
 
     if axnZ_f is not None:
         axnZ_f.plot(
-            r[0][ixF:],
+            rad,
             GZ_tar,
             "--",
             c=col,
@@ -3071,12 +3072,12 @@ def plotFluxComparison(
         )
 
         if maxStore:
-            GZBest_max = np.max([M_Gi.max(), GZ_tar[0][ixF:].max()])
-            GZBest_min = np.min([m_Gi.min(), GZ_tar[0][ixF:].min()])
+            GZBest_max = np.max([M_Gi.max(), GZ_tar.max()])
+            GZBest_min = np.min([m_Gi.min(), GZ_tar.min()])
 
     if axw0_f is not None:
         axw0_f.plot(
-            r[0][ixF:],
+            rad,
             Mt_tar,
             "--*",
             c=col,
