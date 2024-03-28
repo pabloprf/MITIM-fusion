@@ -1914,14 +1914,16 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         label="final",
     )
 
-    p = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
+    ms = 0
+
+    p = self.mitim_runs[self.i0]["tgyro"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="b",
         lastRho=self.TGYROparameters["RhoLocations"][-1],
-        ms=0,
+        ms=ms,
         lw=1.0,
-        label="#0",
+        label="Initial (#0)",
         ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
@@ -1936,20 +1938,21 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             axsR,
             color="r",
             lastRho=self.TGYROparameters["RhoLocations"][-1],
-            ms=0,
+            ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
 
+    p = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="g",
         lastRho=self.TGYROparameters["RhoLocations"][-1],
-        ms=0,
+        ms=ms,
         lw=1.0,
-        label=f"#{self.opt_fun.res.best_absolute_index} (best)",
+        label=f"Best (#{self.opt_fun.res.best_absolute_index})",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
