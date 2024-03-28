@@ -5,8 +5,10 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
-def selectSurrogate(output, surrogateOptions):
+    print(f'\t- Selecting surrogate options for "{output}" to be run in {"CGYRO" if CGYROrun else "TGLF"}')
+
     if output is not None:
         # If it's a target, just linear
         if output[2:5] == "Tar":

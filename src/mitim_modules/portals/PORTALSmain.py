@@ -3,6 +3,7 @@ import torch
 import copy
 import numpy as np
 import dill as pickle_dill
+from functools import partial
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
@@ -41,11 +42,11 @@ Reading analysis for PORTALS has more options than standard:
 """
 
 
-def default_namelist(Optim):
+def default_namelist(Optim,CGYROrun=False):
     """
     This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
     """
-
+    
     # Initialization
     Optim["initialPoints"] = 5
     Optim["initializationFun"] = PORTALSoptimization.initialization_simple_relax
@@ -59,13 +60,19 @@ def default_namelist(Optim):
         1e-1,
     ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
     Optim["minimumResidual"] = -5e-3  # Reducing residual by 200x is enough
-    Optim["StrategyOptions"]["AllowedExcursions"] = [
-        0.05,
-        0.05,
-    ]  # This would be 10% if [-100,100]
+
+    if CGYROrun:
+        # Do not allow excursions for CGYRO, at least by default
+        Optim["StrategyOptions"]["AllowedExcursions"] = [0.0,0.0]
+    else:
+        # Allow excursions for TGLF
+        Optim["StrategyOptions"]["AllowedExcursions"] = [
+            0.05,
+            0.05,
+        ]  # This would be 10% if [-100,100]
 
     # Surrogate
-    Optim["surrogateOptions"]["selectSurrogate"] = PORTALStools.selectSurrogate
+    Optim["surrogateOptions"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
     # Optim['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
     Optim["surrogateOptions"]["ensureTrainingBounds"] = True
@@ -80,7 +87,7 @@ def default_namelist(Optim):
 
 
 class evaluatePORTALS(STRATEGYtools.FUNmain):
-    def __init__(self, folder, namelist=None, TensorsType=torch.double):
+    def __init__(self, folder, namelist=None, TensorsType=torch.double, CGYROrun=False):
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -90,11 +97,12 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         )
 
         # Store folder, namelist. Read namelist
+        
         super().__init__(
             folder,
             namelist=namelist,
             TensorsType=TensorsType,
-            default_namelist_function=default_namelist if (namelist is None) else None,
+            default_namelist_function=partial(default_namelist, CGYROrun=CGYROrun) if (namelist is None) else None,
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
