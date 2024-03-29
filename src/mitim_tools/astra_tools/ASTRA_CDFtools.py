@@ -52,6 +52,8 @@ class CDFreactor:
         self.ne = self.f["NE"][:]
         self.ni = self.f["NI"][:]
         self.FP = self.f["FP"][:]
+        self.VPOL = self.f["VPOL"][:]
+        self.VTOR = self.f["VTOR"][:]
         self.F1 = self.f["F1"][:]
         self.F2 = self.f["F2"][:]
         self.F3 = self.f["F3"][:]
