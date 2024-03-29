@@ -246,8 +246,9 @@ class PROFILES_GACODE:
             "jbs(MA/m^2)",
             "jbstor(MA/m^2)",
             "w0(rad/s)",
-            "ptot(Pa)",
-            "zeta(-)",
+            "ptot(Pa)",         # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",          # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "zmag(-)",
             self.varqpar,
             self.varqpar2,
             "shape_cos0(-)",
