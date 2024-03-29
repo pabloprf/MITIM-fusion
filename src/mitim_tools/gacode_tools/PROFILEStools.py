@@ -247,6 +247,7 @@ class PROFILES_GACODE:
             "jbstor(MA/m^2)",
             "w0(rad/s)",
             "ptot(Pa)",
+            "zeta(-)",
             self.varqpar,
             self.varqpar2,
             "shape_cos0(-)",
