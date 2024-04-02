@@ -1,5 +1,4 @@
 import copy
-from turtle import title
 import torch
 import csv
 import numpy as np
@@ -713,6 +712,10 @@ class PROFILES_GACODE:
         self.derived["aLw0"] = aLT(self.profiles["rmin(m)"], self.profiles["w0(rad/s)"])
         self.derived["dw0dr"] = -grad(
             self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
+        )
+
+        self.derived["dqdr"] = grad(
+            self.profiles["rmin(m)"], self.profiles["q(-)"]
         )
 
         """
