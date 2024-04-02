@@ -171,13 +171,18 @@ class PORTALSanalyzer:
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
 
-        self.profiles, self.tgyros = [], []
+        self.profiles, self.tgyros, self.powerstates = [], [], []
         for i in range(self.ilast + 1):
+            if 'powerstate' in self.mitim_runs[i]:          # TO REMOVE
+                power = self.mitim_runs[i]["powerstate"]
+            else:
+                power = None
             t = self.mitim_runs[i]["tgyro"].results["use"]
             p = t.profiles_final
 
             self.tgyros.append(t)
             self.profiles.append(p)
+            self.powerstates.append(power)
 
         if len(self.profiles) <= self.ibest:
             print(

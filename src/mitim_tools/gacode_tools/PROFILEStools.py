@@ -1,5 +1,4 @@
 import copy
-from turtle import title
 import torch
 import csv
 import numpy as np
@@ -246,6 +245,9 @@ class PROFILES_GACODE:
             "jbs(MA/m^2)",
             "jbstor(MA/m^2)",
             "w0(rad/s)",
+            "ptot(Pa)",         # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",          # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "zmag(m)",
             self.varqpar,
             self.varqpar2,
             "shape_cos0(-)",
@@ -712,6 +714,10 @@ class PROFILES_GACODE:
             self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
         )
 
+        self.derived["dqdr"] = grad(
+            self.profiles["rmin(m)"], self.profiles["q(-)"]
+        )
+
         """
 		Other, performance
 		"""
@@ -724,8 +730,9 @@ class PROFILES_GACODE:
         self.derived["Q"] = self.derived["Pfus"] / self.derived["qIn"]
         self.derived["qHeat"] = qIn[-1] + qFus[-1]
 
-        self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
+        self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
 
+        self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
 
         self.derived["ni_thr"] = []
@@ -1172,6 +1179,9 @@ class PROFILES_GACODE:
         # TO REMOVE
         if "QiQe" not in self.derived:
             self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
+        if 'qTr' not in self.derived:
+            self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
+
 
         if table is None:
             table = DataTable()
@@ -1183,6 +1193,13 @@ class PROFILES_GACODE:
                     ix = np.argmin(
                         np.abs(
                             self.profiles["rho(-)"]
+                            - float(table.variables[var][1].split("_")[1])
+                        )
+                    )
+                elif table.variables[var][1].split("_")[0] == "psi":
+                    ix = np.argmin(
+                        np.abs(
+                            self.derived["psi_pol_n"]
                             - float(table.variables[var][1].split("_")[1])
                         )
                     )
@@ -3592,10 +3609,15 @@ class DataTable:
 
             # Default for confinement mode access studies (JWH 03/2024)
             self.variables = {
+                "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
+                "ageo":[ "a", "pos_0", "derived", ".2f", 1, "m"],
+                "kappa @psi=0.95":["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
+                "delta @psi=0.95":["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
                 "Ip": ["current(MA)", "pos_0", "profiles", ".1f", 1, "MA"],
                 "Pin": ["qIn", None, "derived", ".1f", 1, "MW"],
                 "Te @rho=0.9": ["te(keV)", "rho_0.90", "profiles", ".2f", 1, "keV"],
+                "Ti/Te @rho=0.9": ["tite", "rho_0.90", "derived", ".2f", 1, None],
                 "ne @rho=0.9": [
                     "ne(10^19/m^3)",
                     "rho_0.90",
@@ -3612,14 +3634,15 @@ class DataTable:
                     1e3,
                     "kPa",
                 ],
-                "Ti/Te @rho=0.9": ["tite", "rho_0.90", "derived", ".2f", 1, None],
                 "Zeff": ["Zeff_vol", None, "derived", ".1f", 1, None],
                 "fDT": ["fmain", None, "derived", ".2f", 1, None],
                 "H89p": ["H89", None, "derived", ".2f", 1, None],
+                "ne (vol avg)": ["ne_vol20", None, "derived", ".2f", 1, "E20m-3"],
                 "fG": ["fG", None, "derived", ".2f", 1, None],
                 "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
+                "Prad": ["Prad", None, "derived", ".1f", 1, "MW"],
                 "Q": ["Q", None, "derived", ".2f", 1, None],
-                "Psol": ["Psol", None, "derived", ".1f", 1, "MW"],
+                "Pnet @rho=0.9": ["qTr",  "rho_0.90", "derived", ".1f", 1, "MW"],
                 "Qi/Qe @rho=0.9": ["QiQe", "rho_0.90", "derived", ".2f", 1, None],
             }
 

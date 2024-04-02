@@ -376,16 +376,18 @@ def tgyro_model(
     # For consistency, modify input.gacode.new with the targets used in PORTALS (i.e. sometimes with POWESTATE calculations)
     # ------------------------------------------------------------------------------------------------------------------------
 
-    for lab in labels_results:
-        print(
-            f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.tgyro_current.results[lab].profiles_final.file)}",
-        )
-        TRANSFORMtools.insertPowersNew(
-            self.tgyro_current.results[lab].profiles_final, state=self
-        )
-        self.tgyro_current.results[lab].profiles_final.writeCurrentStatus(
-            file=self.tgyro_current.results[lab].profiles_final.file
-        )
+    # PRF: Removed for the time being because this correction happens after each TGYRO call, and this would always assume Target=3
+
+    # for lab in labels_results:
+    #     print(
+    #         f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.tgyro_current.results[lab].profiles_final.file)}",
+    #     )
+    #     TRANSFORMtools.insertPowersNew(
+    #         self.tgyro_current.results[lab].profiles_final, state=self
+    #     )
+    #     self.tgyro_current.results[lab].profiles_final.writeCurrentStatus(
+    #         file=self.tgyro_current.results[lab].profiles_final.file
+    #     )
 
     return TGYROresults
 

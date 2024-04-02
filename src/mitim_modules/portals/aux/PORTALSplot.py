@@ -1,13 +1,11 @@
-from turtle import color
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import GRAPHICStools,PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 factor_dw0dr = 1e-5
 label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
@@ -280,6 +278,7 @@ def PORTALSanalyzer_plotMetrics(
 
         p = self.profiles[indexUse]
         t = self.tgyros[indexUse]
+        power = self.powerstates[indexUse]
 
         ix = np.argmin(np.abs(p.profiles["rho(-)"] - t.rho[0][-1]))
         axTe.plot(
@@ -358,6 +357,12 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
+        if self.TGYROparameters['TGYRO_physics_options']['TargetType'] < 3:
+            if cont == 0: print('- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets',typeMsg='w')
+            powerstate = power
+        else:
+            powerstate = None
+
         plotFluxComparison(
             p,
             t,
@@ -366,6 +371,7 @@ def PORTALSanalyzer_plotMetrics(
             axne_f,
             axnZ_f,
             axw0_f,
+            powerstate=powerstate,
             runWithImpurity=self.runWithImpurity,
             fontsize_leg=fontsize_leg,
             stds=stds,
@@ -377,6 +383,7 @@ def PORTALSanalyzer_plotMetrics(
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
             plotFlows=plotFlows and (self.ibest == indexUse),
+            addFlowLegend= cont == len(indeces_plot)-1,
         )
 
     ax = axTe
@@ -1907,14 +1914,16 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         label="final",
     )
 
-    p = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
+    ms = 0
+
+    p = self.mitim_runs[self.i0]["tgyro"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="b",
         lastRho=self.TGYROparameters["RhoLocations"][-1],
-        ms=0,
+        ms=ms,
         lw=1.0,
-        label="#0",
+        label="Initial (#0)",
         ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
@@ -1929,20 +1938,21 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             axsR,
             color="r",
             lastRho=self.TGYROparameters["RhoLocations"][-1],
-            ms=0,
+            ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
 
+    p = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="g",
         lastRho=self.TGYROparameters["RhoLocations"][-1],
-        ms=0,
+        ms=ms,
         lw=1.0,
-        label=f"#{self.opt_fun.res.best_absolute_index} (best)",
+        label=f"Best (#{self.opt_fun.res.best_absolute_index})",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -2770,6 +2780,7 @@ def plotFluxComparison(
     axne_f,
     axnZ_f,
     axw0_f,
+    powerstate=None,
     forceZeroParticleFlux=False,
     runWithImpurity=3,
     labZ="Z",
@@ -2782,12 +2793,24 @@ def plotFluxComparison(
     useConvectiveFluxes=False,
     maxStore=False,
     plotFlows=True,
-    plotTargets=True,
+    addFlowLegend=True,
     decor=True,
     fontsize_leg=12,
     useRoa=False,
     locLeg="upper left",
 ):
+
+    '''
+    By default this plots the fluxes and targets from tgyro
+    If powerstate is provided, it will grab the targets from it
+    '''
+
+    r = t.rho if not useRoa else t.roa
+
+    ixF = 0 if includeFirst else 1
+
+    # Prep
+
     labelsFluxesF = {
         "te": "$Q_e$ ($MW/m^2$)",
         "ti": "$Q_i$ ($MW/m^2$)",
@@ -2795,10 +2818,6 @@ def plotFluxComparison(
         "nZ": f"$\\Gamma_{labZ}$ ($10^{{20}}/s/m^2$)",
         "w0": "$M_T$ ($J/m^2$)",
     }
-
-    r = t.rho if not useRoa else t.roa
-
-    ixF = 0 if includeFirst else 1
 
     (
         QeBest_min,
@@ -2813,99 +2832,42 @@ def plotFluxComparison(
         MtBest_max,
     ) = [None] * 10
 
-    axTe_f.plot(
-        r[0][ixF:],
-        t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:],
-        "-s",
-        c=col,
-        lw=2,
-        markersize=msFlux,
-        label="Transport",
-        alpha=alpha,
-    )
-    if plotTargets:
+    # -----------------------------------------------------------------------------------------------
+    # Electron energy flux
+    # -----------------------------------------------------------------------------------------------
+
+    if axTe_f is not None:
         axTe_f.plot(
             r[0][ixF:],
-            t.Qe_tar[0][ixF:],
-            "--",
+            t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:],
+            "-s",
             c=col,
             lw=2,
-            label="Target",
+            markersize=msFlux,
+            label="Transport",
             alpha=alpha,
         )
 
-    try:
-        sigma = t.Qe_sim_turb_stds[0][ixF:] + t.Qe_sim_neo_stds[0][ixF:]
-    except:
-        print("Could not find errors to plot!", typeMsg="w")
-        sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        if 'Qe_sim_turb_stds' in t.__dict__:
+            sigma = t.Qe_sim_turb_stds[0][ixF:] + t.Qe_sim_neo_stds[0][ixF:]
+        else:
+            print("Could not find errors to plot!", typeMsg="w")
+            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
 
-    m, M = (t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]) - stds * sigma, (
-        t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]
-    ) + stds * sigma
-    axTe_f.fill_between(r[0][ixF:], m, M, facecolor=col, alpha=alpha / 3)
+        m_Qe, M_Qe = (t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]) - stds * sigma, (
+            t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]
+        ) + stds * sigma
+        axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
-    if maxStore:
-        QeBest_max = np.max([M.max(), t.Qe_tar[0][ixF:].max()])
-        QeBest_min = np.min([m.min(), t.Qe_tar[0][ixF:].min()])
 
-    axTi_f.plot(
-        r[0][ixF:],
-        t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:],
-        "-s",
-        markersize=msFlux,
-        c=col,
-        lw=2,
-        label="Transport",
-        alpha=alpha,
-    )
-    if plotTargets:
+    # -----------------------------------------------------------------------------------------------
+    # Ion energy flux
+    # -----------------------------------------------------------------------------------------------
+
+    if axTi_f is not None:
         axTi_f.plot(
             r[0][ixF:],
-            t.Qi_tar[0][ixF:],
-            "--",
-            c=col,
-            lw=2,
-            label="Target",
-            alpha=alpha,
-        )
-
-    try:
-        sigma = t.QiIons_sim_turb_thr_stds[0][ixF:] + t.QiIons_sim_neo_thr_stds[0][ixF:]
-    except:
-        sigma = t.Qe_sim_turb[0][ixF:] * 0.0
-
-    m, M = (
-        t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
-    ) - stds * sigma, (
-        t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
-    ) + stds * sigma
-    axTi_f.fill_between(r[0][ixF:], m, M, facecolor=col, alpha=alpha / 3)
-
-    if maxStore:
-        QiBest_max = np.max([M.max(), t.Qi_tar[0][ixF:].max()])
-        QiBest_min = np.min([m.min(), t.Qi_tar[0][ixF:].min()])
-
-    if useConvectiveFluxes:
-        Ge, Ge_tar = t.Ce_sim_turb + t.Ce_sim_neo, t.Ce_tar
-        try:
-            sigma = t.Ce_sim_turb_stds[0][ixF:] + t.Ce_sim_neo_stds[0][ixF:]
-        except:
-            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
-    else:
-        Ge, Ge_tar = (t.Ge_sim_turb + t.Ge_sim_neo), t.Ge_tar
-        try:
-            sigma = t.Ge_sim_turb_stds[0][ixF:] + t.Ge_sim_neo_stds[0][ixF:]
-        except:
-            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
-
-    if forceZeroParticleFlux:
-        Ge_tar = Ge_tar * 0.0
-
-    if axne_f is not None:
-        axne_f.plot(
-            r[0][ixF:],
-            Ge[0][ixF:],
+            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2913,50 +2875,77 @@ def plotFluxComparison(
             label="Transport",
             alpha=alpha,
         )
-        if plotTargets:
+
+        if 'QiIons_sim_turb_thr_stds' in t.__dict__:
+            sigma = t.QiIons_sim_turb_thr_stds[0][ixF:] + t.QiIons_sim_neo_thr_stds[0][ixF:]
+        else:
+            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+
+        m_Qi, M_Qi = (
+            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
+        ) - stds * sigma, (
+            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
+        ) + stds * sigma
+        axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
+
+    # -----------------------------------------------------------------------------------------------
+    # Electron particle flux
+    # -----------------------------------------------------------------------------------------------
+
+    if axne_f is not None:
+
+        if useConvectiveFluxes:
+            Ge = t.Ce_sim_turb + t.Ce_sim_neo
+            if 'Ce_sim_turb_stds' in t.__dict__:
+                sigma = t.Ce_sim_turb_stds[0][ixF:] + t.Ce_sim_neo_stds[0][ixF:]
+            else:
+                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        else:
+            Ge = (t.Ge_sim_turb + t.Ge_sim_neo)
+            if 'Ge_sim_turb_stds' in t.__dict__:
+                sigma = t.Ge_sim_turb_stds[0][ixF:] + t.Ge_sim_neo_stds[0][ixF:]
+            else:
+                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+
             axne_f.plot(
                 r[0][ixF:],
-                Ge_tar[0][ixF:],
-                "--",
+                Ge[0][ixF:],
+                "-s",
+                markersize=msFlux,
                 c=col,
                 lw=2,
-                label="Target",
+                label="Transport",
                 alpha=alpha,
             )
 
-        m, M = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
-        axne_f.fill_between(r[0][ixF:], m, M, facecolor=col, alpha=alpha / 3)
+        m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
+        axne_f.fill_between(r[0][ixF:], m_Ge, M_Ge, facecolor=col, alpha=alpha / 3)
 
-    if maxStore:
-        GeBest_max = np.max([M.max(), Ge_tar[0][ixF:].max()])
-        GeBest_min = np.min([m.min(), Ge_tar[0][ixF:].min()])
+    # -----------------------------------------------------------------------------------------------
+    # Impurity flux
+    # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
         if useConvectiveFluxes:
-            GZ, GZ_tar = (
-                t.Ci_sim_turb[runWithImpurity, :, :]
-                + t.Ci_sim_neo[runWithImpurity, :, :],
-                t.Ge_tar * 0.0,
-            )
-            try:
+            GZ = t.Ci_sim_turb[runWithImpurity, :, :]+ t.Ci_sim_neo[runWithImpurity, :, :]
+
+            if 'Ci_sim_turb_stds' in t.__dict__:
                 sigma = (
                     t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:]
                     + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
-            except:
+            else:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
-            GZ, GZ_tar = (
-                t.Gi_sim_turb[runWithImpurity, :, :]
-                + t.Gi_sim_neo[runWithImpurity, :, :]
-            ), t.Ge_tar * 0.0
-            try:
+            GZ = t.Gi_sim_turb[runWithImpurity, :, :]+ t.Gi_sim_neo[runWithImpurity, :, :]
+            if 'Gi_sim_turb_stds' in t.__dict__:
                 sigma = (
                     t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:]
                     + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
                 )
-            except:
+            else:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+
         axnZ_f.plot(
             r[0][ixF:],
             GZ[0][ixF:],
@@ -2967,26 +2956,16 @@ def plotFluxComparison(
             label="Transport",
             alpha=alpha,
         )
-        if plotTargets:
-            axnZ_f.plot(
-                r[0][ixF:],
-                GZ_tar[0][ixF:],
-                "--",
-                c=col,
-                lw=2,
-                label="Target",
-                alpha=alpha,
-            )
 
-        m, M = (
+        m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,
             GZ[0][ixF:] + stds * sigma,
         )
-        axnZ_f.fill_between(r[0][ixF:], m, M, facecolor=col, alpha=alpha / 3)
+        axnZ_f.fill_between(r[0][ixF:], m_Gi, M_Gi, facecolor=col, alpha=alpha / 3)
 
-        if maxStore:
-            GZBest_max = np.max([M.max(), GZ_tar[0][ixF:].max()])
-            GZBest_min = np.min([m.min(), GZ_tar[0][ixF:].min()])
+    # -----------------------------------------------------------------------------------------------
+    # Momentum flux
+    # -----------------------------------------------------------------------------------------------
 
     if axw0_f is not None:
         axw0_f.plot(
@@ -2999,34 +2978,126 @@ def plotFluxComparison(
             label="Transport",
             alpha=alpha,
         )
-        if plotTargets:
-            axw0_f.plot(
-                r[0][ixF:],
-                t.Mt_tar[0][ixF:],
-                "--*",
-                c=col,
-                lw=2,
-                markersize=0,
-                label="Target",
-                alpha=alpha,
-            )
 
-        try:
+        if 'Mt_sim_turb_stds' in t.__dict__:
             sigma = t.Mt_sim_turb_stds[0][ixF:] + t.Mt_sim_neo_stds[0][ixF:]
-        except:
+        else:
             sigma = t.Qe_sim_turb[0][ixF:] * 0.0
 
-        m, M = (t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:]) - stds * sigma, (
+        m_Mt, M_Mt = (t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:]) - stds * sigma, (
             t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:]
         ) + stds * sigma
-        axw0_f.fill_between(r[0][ixF:], m, M, facecolor=col, alpha=alpha / 3)
+        axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
+
+
+    # -----------------------------------------------------------------------------------------------
+    # Plot targets
+    # -----------------------------------------------------------------------------------------------
+
+    # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    rad    = r[0][ixF:] if powerstate is None else r[0][1:]
+    Qe_tar = t.Qe_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pe'].numpy()[0][:]
+    Qi_tar = t.Qi_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pi'].numpy()[0][:]
+
+    if forceZeroParticleFlux:
+        Ge_tar = Qe_tar * 0.0
+    else:
+        if powerstate is not None:
+            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][1:] # Special because Ge is not stored in powerstate
+            if useConvectiveFluxes:
+                Ge_tar = PLASMAtools.convective_flux(powerstate.plasma["te"][0][1:], Ge_tar).numpy()
+        else:
+            if useConvectiveFluxes:
+                Ge_tar = t.Ce_tar[0][ixF:]
+            else:
+                Ge_tar = t.Ge_tar[0][ixF:]
+
+    GZ_tar = t.Ge_tar * 0.0
+    Mt_tar = t.Mt_tar[0][ixF:] if powerstate is None else powerstate.plasma['Mt'].numpy()[0][:]
+
+    # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    if axTe_f is not None:
+        axTe_f.plot(
+            rad,
+            Qe_tar,
+            "--",
+            c=col,
+            lw=2,
+            label="Target",
+            alpha=alpha,
+        )
 
         if maxStore:
-            MtBest_max = np.max([M.max(), t.Mt_tar[0][ixF:].max()])
-            MtBest_min = np.min([m.min(), t.Mt_tar[0][ixF:].min()])
+            QeBest_max = np.max([M_Qe.max(), Qe_tar.max()])
+            QeBest_min = np.min([m_Qe.min(), Qe_tar.min()])
 
+    if axTi_f is not None:
+        axTi_f.plot(
+            rad,
+            Qi_tar,
+            "--",
+            c=col,
+            lw=2,
+            label="Target",
+            alpha=alpha,
+        )
+
+        if maxStore:
+            QiBest_max = np.max([M_Qi.max(), Qi_tar.max()])
+            QiBest_min = np.min([m_Qi.min(), Qi_tar.min()])
+
+    if axne_f is not None:
+        axne_f.plot(
+            rad,
+            Ge_tar,
+            "--",
+            c=col,
+            lw=2,
+            label="Target",
+            alpha=alpha,
+        )
+
+        if maxStore:    
+            GeBest_max = np.max([M_Ge.max(), Ge_tar.max()])
+            GeBest_min = np.min([m_Ge.min(), Ge_tar.min()])
+
+    if axnZ_f is not None:
+        axnZ_f.plot(
+            rad,
+            GZ_tar,
+            "--",
+            c=col,
+            lw=2,
+            label="Target",
+            alpha=alpha,
+        )
+
+        if maxStore:
+            GZBest_max = np.max([M_Gi.max(), GZ_tar.max()])
+            GZBest_min = np.min([m_Gi.min(), GZ_tar.min()])
+
+    if axw0_f is not None:
+        axw0_f.plot(
+            rad,
+            Mt_tar,
+            "--*",
+            c=col,
+            lw=2,
+            markersize=0,
+            label="Target",
+            alpha=alpha,
+        )
+
+        if maxStore:
+            MtBest_max = np.max([M_Mt.max(), Mt_tar.max()])
+            MtBest_min = np.min([m_Mt.min(), Mt_tar.min()])
+
+    # Plot HR ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    tBest = t.profiles_final
     if plotFlows:
-        tBest = t.profiles_final
         for ax, var, mult in zip(
             [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
             ["qe_MWm2", "qi_MWm2", "ge_10E20m2", None, "mt_Jm2"],
@@ -3037,34 +3108,23 @@ def plotFluxComparison(
                     y = tBest.profiles["rho(-)"] * 0.0
                 else:
                     y = tBest.derived[var] * mult
-                if plotTargets:
-                    ax.plot(
-                        (
-                            tBest.profiles["rho(-)"]
-                            if not useRoa
-                            else tBest.derived["roa"]
-                        ),
-                        y,
-                        "-.",
-                        lw=0.5,
-                        c=col,
-                        label="Flow",
-                        alpha=alpha,
-                    )
-                else:
-                    ax.plot(
-                        (
-                            tBest.profiles["rho(-)"]
-                            if not useRoa
-                            else tBest.derived["roa"]
-                        ),
-                        y,
-                        "--",
-                        lw=2,
-                        c=col,
-                        label="Target",
-                        alpha=alpha,
-                    )
+                ax.plot(
+                    (
+                        tBest.profiles["rho(-)"]
+                        if not useRoa
+                        else tBest.derived["roa"]
+                    ),
+                    y,
+                    "-.",
+                    lw=0.5,
+                    c=col,
+                    label="Flow",
+                    alpha=alpha,
+                )
+
+    # -----------------------------------------------------------------------------------------------
+    # Some decor
+    # -----------------------------------------------------------------------------------------------
 
     # -- for legend
     (l1,) = axTe_f.plot(
@@ -3086,13 +3146,11 @@ def plotFluxComparison(
         facecolor="k",
         alpha=0.3,
     )
-    if plotTargets:
-        setl = [l1, l3, l2]
-        setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
-    else:
-        setl = [l1, l3]
-        setlab = ["Transport", f"$\\pm{stds}\\sigma$"]
-    if plotFlows:
+
+    setl = [l1, l3, l2]
+    setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
+
+    if addFlowLegend:
         (l4,) = axTe_f.plot(
             tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
             tBest.derived["qe_MWm2"],
@@ -3100,7 +3158,6 @@ def plotFluxComparison(
             c="k",
             lw=1,
             markersize=0,
-            label="Transport",
         )
         setl.append(l4)
         setlab.append("Target HR")
