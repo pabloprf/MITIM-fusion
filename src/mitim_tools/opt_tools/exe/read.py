@@ -1,6 +1,7 @@
 import argparse
 import copy
 import matplotlib.pyplot as plt
+import torch  # This import is usually needed if torch is called within the pickling object
 import numpy as np
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
