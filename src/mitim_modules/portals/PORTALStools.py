@@ -82,7 +82,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 # ----------------------------------------------------------------------
 
 
-def transformmitim(X, surrogate_parameters, output):
+def transformmitim(X, surrogate_parameters, output):   # TO REMOVE: call it transformPORTALS
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------

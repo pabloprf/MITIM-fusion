@@ -372,8 +372,8 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
     """
     Notes
     -----
-            - Works with tensors
-            - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
+        - Works with tensors
+        - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
