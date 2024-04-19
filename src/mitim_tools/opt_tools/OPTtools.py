@@ -1,13 +1,15 @@
-import torch, datetime, copy, botorch
+import torch
+import datetime
+import copy
+import botorch
 import numpy as np
-from IPython import embed
 from mitim_tools.opt_tools.aux import SBOcorrections, TESTtools, SAMPLINGtools
 from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
-
 
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, StrategyOptions):
