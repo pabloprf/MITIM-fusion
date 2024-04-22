@@ -1165,7 +1165,49 @@ class MITIMgeqdsk:
             )
 
         return cs
+    
+    def get_MXH_coeff(self):
+        """
+        Calculates MXH Coefficients based on R,Z coordinates of poloidal flux
+        """
+        from scipy.interpolate import CubicSpline
+        PSIRZ = self.g["PSIRZ"]
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        print("PSI_NORM:",psis)
+        n = psis.size
+        print(psis.size)
+        # need to construct level contours for each flux surface 
+        R_array = np.zeros((n,n))
+        Z_array = np.zeros((n,n))
+        for i, psi in enumerate(psis):
+            Ri, Zi = MATHtools.drawContours(
+                self.g["AuxQuantities"]["R"],
+                self.g["AuxQuantities"]["Z"],
+                self.g["AuxQuantities"]["PSIRZ_NORM"],
+                psis.size,
+                psi,
+            )
 
+            # interpolate R,Z contours to have the same dimensions
+            Ri, Zi = Ri[0], Zi[0]
+            Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
+            Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
+            # Add to R(psi,l) and Z(psi,l) arrays
+            R_array[i,:] = Ri
+            Z_array[i,:] = Zi
+
+        # compute bounding box
+
+        #solve for polar angles
+
+        # fourier decompose to find coefficients
+        return R_array, Z_array
+
+g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC Modeling/ASTRA-POPCON matching/astra.geqdsk')
+Rb, Yb = g.get_MXH_coeff()
+fig, ax = plt.subplots()
+ax.plot(Rb[-1,:], Yb[-1,:])
+plt.show()
 
 def plotSurfaces(
     R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True

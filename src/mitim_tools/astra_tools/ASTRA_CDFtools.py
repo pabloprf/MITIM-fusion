@@ -21,7 +21,6 @@ import math
 
 verbose_level = read_verbose_level()
 
-
 class CDFreactor:
     """
     Some variables are model-specific, because the formulas are not automatically saved in every astra run.
