@@ -1523,6 +1523,41 @@ class PROFILES_GACODE:
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
         )
 
+    def changeZeff(self,Zeff,ion_pos=2,enforceSameGradients=False):
+        """
+        if (D,Z1,Z2), pos 1 -> change Z1
+        """
+
+        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} ({self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]})', typeMsg="i")
+
+        fi_orig = self.derived["fi"][:, ion_pos]
+
+        # Contributions to Zeff
+        fZ2 = np.zeros(self.derived["fi"].shape[0])
+        for i in range(len(self.Species)):
+            if i != ion_pos:
+                fZ2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
+
+        contribution_to_Zeff = Zeff - fZ2
+
+        if contribution_to_Zeff.mean() < 0:
+            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
+        else:
+            fi = contribution_to_Zeff / self.Species[ion_pos]["Z"] ** 2
+
+        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fi * self.profiles["ne(10^19/m^3)"]
+
+        self.readSpecies()
+
+        if enforceSameGradients:
+            self.scaleAllThermalDensities()
+        self.deriveQuantities()
+
+        fi_new = self.derived["fi"][:, ion_pos]
+
+        print(f'\t\t\t- Dilution changed from {fi_orig.mean():.2e} (vol avg) to {fi_new.mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f}', typeMsg="i")
+
+
     def moveSpecie(self, pos=2, pos_new=1):
         """
         if (D,Z1,Z2), pos 1 pos_new 2-> (Z1,D,Z2)
@@ -3610,7 +3645,7 @@ class DataTable:
             # Default for confinement mode access studies (JWH 03/2024)
             self.variables = {
                 "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
-                "ageo":[ "a", "pos_0", "derived", ".2f", 1, "m"],
+                "ageo":[ "a", None, "derived", ".2f", 1, "m"],
                 "kappa @psi=0.95":["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "delta @psi=0.95":["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
