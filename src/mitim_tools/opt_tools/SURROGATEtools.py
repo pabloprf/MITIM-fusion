@@ -178,7 +178,7 @@ class surrogate_model:
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
 
-        if self.train_X_added.shape[0] > 0:
+        if (self.train_X_added.shape[0] > 0) and (self.train_X.shape[0] > 0):
             self.ensureMinimalVariationSuppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
