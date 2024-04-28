@@ -1166,48 +1166,118 @@ class MITIMgeqdsk:
 
         return cs
     
-    def get_MXH_coeff(self):
+    def get_MXH_coeff(self, n, n_coeff=3, plot=False):
         """
-        Calculates MXH Coefficients based on R,Z coordinates of poloidal flux
+        Calculates MXH Coefficients as a function of poloidal flux
         """
-        from scipy.interpolate import CubicSpline
+        # Select only the R and Z values within the LCFS
+        Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
+        R = np.linspace(np.min(Raux),np.max(Raux),n)
+        Z = np.linspace(np.min(Zaux),np.max(Zaux),n)
+        Psi_norm = MATHtools.interp2D(R, Z, Raux, Zaux, self.g["AuxQuantities"]["PSIRZ_NORM"])
+        # calculate the LCFS boundary
+        # if the point is outside of the boundary, set the flux to -1 to avoid errors
+        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb))) # extra index for tolerance
+        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))
+        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))
+        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))
+        Psi_norm[:,:R_min_ind] = 2
+        Psi_norm[:,R_max_ind:] = 2#np.nan
+        Psi_norm[:Z_min_ind,:] = 2#np.nan
+        Psi_norm[Z_max_ind:,:] = 2#np.nan
+
         PSIRZ = self.g["PSIRZ"]
-        psis = self.g["AuxQuantities"]["PSI_NORM"]
-        print("PSI_NORM:",psis)
-        n = psis.size
-        print(psis.size)
+        psis = np.linspace(0,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size) # skip psi=1 surface
+
         # need to construct level contours for each flux surface 
-        R_array = np.zeros((n,n))
-        Z_array = np.zeros((n,n))
+        cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
         for i, psi in enumerate(psis):
+            print(f" \t\t--> Finding g-file flux-surface with psiN = {psi}")
+            if psi == 0: continue
+            
             Ri, Zi = MATHtools.drawContours(
-                self.g["AuxQuantities"]["R"],
-                self.g["AuxQuantities"]["Z"],
-                self.g["AuxQuantities"]["PSIRZ_NORM"],
-                psis.size,
+                R,#self.g["AuxQuantities"]["R"],
+                Z,#self.g["AuxQuantities"]["Z"],
+                Psi_norm,
+                n,
                 psi,
             )
-
-            # interpolate R,Z contours to have the same dimensions
             Ri, Zi = Ri[0], Zi[0]
+                
+            # interpolate R,Z contours to have the same dimensions
             Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
             Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
-            # Add to R(psi,l) and Z(psi,l) arrays
-            R_array[i,:] = Ri
-            Z_array[i,:] = Zi
 
-        # compute bounding box
+            #calculate Miller Extended Harmionic coefficients
+            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
 
-        #solve for polar angles
+        if plot:
+            fig, axes = plt.subplots(2,1)
+            for i in np.arange(n_coeff):
+                axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
+                axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
+            axes[0].legend() ; axes[1].legend()
+            axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
+            axes[0].grid() ; axes[1].grid()
+            axes[0].set_title("MXH Coefficients - Cosine")
+            axes[1].set_title("MXH Coefficients - Sine")
+            plt.tight_layout()
+            plt.show()
+        print(np.interp(0.995,psis, sn[1,:]))
+        return cn, sn, gn
+        
+def get_flux_surface_geometry(R, Z, n_coeff=3):
+    """
+    Calculates MXH Coefficients for a flux surface
+    """
+    Z = np.roll(Z, -np.argmax(R))
+    R = np.roll(R, -np.argmax(R))
+    if Z[1] < Z[0]: # reverses array so that theta increases
+        Z = np.flip(Z)
+        R = np.flip(R)
 
-        # fourier decompose to find coefficients
-        return R_array, Z_array
+    # compute bounding box for each flux surface
+    r = 0.5*(np.max(R)-np.min(R))
+    kappa = 0.5*(np.max(Z) - np.min(Z))/r
+    R0 = 0.5*(np.max(R)+np.min(R))
+    Z0 = 0.5*(np.max(Z)+np.min(Z))
+    bbox = [R0, r, Z0, kappa]
 
-g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC Modeling/ASTRA-POPCON matching/astra.geqdsk')
-Rb, Yb = g.get_MXH_coeff()
-fig, ax = plt.subplots()
-ax.plot(Rb[-1,:], Yb[-1,:])
-plt.show()
+    # solve for polar angles
+    # need to use np.clip to avoid floating-point precision errors
+    theta_r = np.arccos(np.clip(((R - R0) / r), -1, 1))
+    theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
+
+    # Find the continuation of theta and theta_r to [0,2pi]
+    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+
+    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+
+    theta_cont[:max_theta] = theta_cont[:max_theta]
+    theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
+    theta_cont[max_theta_r:min_theta] = np.pi-theta[max_theta_r:min_theta]
+    theta_cont[min_theta:] = 2*np.pi+theta[min_theta:]
+
+    theta_r_cont[:max_theta] = theta_r_cont[:max_theta]
+    theta_r_cont[max_theta:max_theta_r] = theta_r[max_theta:max_theta_r]
+    theta_r_cont[max_theta_r:min_theta] = 2*np.pi - theta_r[max_theta_r:min_theta]
+    theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
+
+    theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
+    
+    # fourier decompose to find coefficients
+    c = np.zeros(n_coeff)
+    s = np.zeros(n_coeff)
+    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
+    from scipy.integrate import quad
+    for i in np.arange(n_coeff):
+        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
+        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
+        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
+
+    return c, s, bbox
 
 def plotSurfaces(
     R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True
