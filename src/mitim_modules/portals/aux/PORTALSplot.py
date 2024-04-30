@@ -753,10 +753,8 @@ def PORTALSanalyzer_plotMetrics(
 
     ax.set_ylabel("$\\Delta$ $a/L_{X}$ (%)")
     ax.set_xlim(left=0)
-    try:
+    if not np.isinf(self.DVdistMetric_y).all():
         ax.set_yscale("log")
-    except:
-        pass
     ax.set_xticklabels([])
 
     if includeRicci and self.chiR_Ricci is not None:
@@ -843,10 +841,10 @@ def PORTALSanalyzer_plotMetrics(
             pass
 
         ax.set_ylabel("$\\Delta$ $a/L_{X}^*$ (%)")
-        try:
-            ax.set_yscale("log")
-        except:
-            pass
+        # try:
+        #     ax.set_yscale("log")
+        # except:
+        #     pass
 
         (l2,) = axA.plot(
             x0,
