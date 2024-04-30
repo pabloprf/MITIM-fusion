@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
 from IPython import embed
+from time import time
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
@@ -1166,17 +1167,27 @@ class MITIMgeqdsk:
 
         return cs
     
-    def get_MXH_coeff(self, n, n_coeff=3, plot=False):
+    def get_MXH_coeff(self, n, n_coeff=3, plot=False): 
         """
         Calculates MXH Coefficients as a function of poloidal flux
+        n: number of grid points to interpolate the flux surfaces
+           NOT the number of radial points returned. This function
+           will return n_coeff sin and cosine coefficients for each
+           flux surface in the geqdsk file. Changing n is only nessary
+           if the last closed flux surface is not well resolved.
         """
-        # Select only the R and Z values within the LCFS
+        start=time()
+        
+        # Upsample the poloidal flux grid
         Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
         R = np.linspace(np.min(Raux),np.max(Raux),n)
         Z = np.linspace(np.min(Zaux),np.max(Zaux),n)
         Psi_norm = MATHtools.interp2D(R, Z, Raux, Zaux, self.g["AuxQuantities"]["PSIRZ_NORM"])
+
         # calculate the LCFS boundary
-        # if the point is outside of the boundary, set the flux to -1 to avoid errors
+        # Select only the R and Z values within the LCFS- I psi_norm outside to 2
+        # this works fine for fixed-boundary equilibria but needs v. high tolerance
+        # for the full equilibrium with x-point.
         R_max_ind = np.argmin(np.abs(R-np.max(self.Rb))) # extra index for tolerance
         Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))
         R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))
@@ -1191,8 +1202,9 @@ class MITIMgeqdsk:
 
         # need to construct level contours for each flux surface 
         cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
+        print(f" \t\t--> Finding g-file flux-surfaces")
         for i, psi in enumerate(psis):
-            print(f" \t\t--> Finding g-file flux-surface with psiN = {psi}")
+            
             if psi == 0: continue
             
             Ri, Zi = MATHtools.drawContours(
@@ -1207,10 +1219,13 @@ class MITIMgeqdsk:
             # interpolate R,Z contours to have the same dimensions
             Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
             Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
-
+    
             #calculate Miller Extended Harmionic coefficients
             cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
 
+        end=time()
+
+        print(f'\ntotal run time: {end-start} s')
         if plot:
             fig, axes = plt.subplots(2,1)
             for i in np.arange(n_coeff):
@@ -1223,7 +1238,7 @@ class MITIMgeqdsk:
             axes[1].set_title("MXH Coefficients - Sine")
             plt.tight_layout()
             plt.show()
-        print(np.interp(0.995,psis, sn[1,:]))
+        print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
         return cn, sn, gn
         
 def get_flux_surface_geometry(R, Z, n_coeff=3):
@@ -1276,8 +1291,10 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
         c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
         integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
         s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
-
     return c, s, bbox
+
+
+
 
 def plotSurfaces(
     R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True
@@ -1440,3 +1457,9 @@ def create_geo_MXH3(
         plt.show()
 
     return R, Z
+g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
+shape_sin, shape_cos, bbox = g.get_MXH_coeff(n=100, n_coeff=6, plot=True)
+print(shape_cos.shape)
+#print(g.delta95)
+#print(g.delta995)
+#cn, sn, bbox = g.get_MXH_coeff(n=1000, n_coeff=4,plot=True)
