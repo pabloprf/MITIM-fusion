@@ -41,6 +41,8 @@ class CDFreactor:
             del self.nc_file
 
     def getProfiles(self):
+        self.rho = self.f["RHO"][:]
+        self.xrho = self.f["XRHO"][:]
         self.BTOR = self.f["BTOR"][:]
         self.IPL = self.f["IPL"][:]
         self.Te = self.f["TE"][:]
@@ -51,14 +53,13 @@ class CDFreactor:
         self.ne = self.f["NE"][:]
         self.ni = self.f["NI"][:]
         self.FP = self.f["FP"][:]
+        self.TF = self.rho[-1,:] * np.pi * self.BTOR[-1]
         self.VPOL = self.f["VPOL"][:]
         self.VTOR = self.f["VTOR"][:]
         self.F1 = self.f["F1"][:]
         self.F2 = self.f["F2"][:]
         self.F3 = self.f["F3"][:]
         self.VR = self.f["VR"][:]
-        self.rho = self.f["RHO"][:]
-        self.xrho = self.f["XRHO"][:]
         self.Cu = self.f["CU"][:]
         self.Cubs = self.f["CUBS"][:]
         self.CD = self.f["CD"][:]
@@ -854,6 +855,10 @@ class CDFreactor:
         self.make_radial_plots(self.axCAR53r, self.CAR53, time_aims)
         self.axCAR53r.set_ylabel("Pulse [MW/m^3]")
         plt.legend(title="Times")
+
+    def toGACODE(self):
+        
+        pass
 
 
 ### Operations: Not part of the CDF class ###

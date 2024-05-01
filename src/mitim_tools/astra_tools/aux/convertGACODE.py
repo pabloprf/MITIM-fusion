@@ -5,6 +5,7 @@ import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 import matplotlib.pyplot as plt
+import datetime
 
 parser = argparse.ArgumentParser()
 parser.add_argument("directories", type=str, nargs="*")
@@ -25,6 +26,11 @@ def convertGACODE(astra_root,
     3. Writes the input.gacode file - default is scratch directory
     4. returns a mitim gacode object
     """
+
+    template_path = "/Users/hallj/MITIM-fusion/tests/data/input.gacode"
+    p = PROFILEStools.PROFILES_GACODE(template_path)
+    params = p.profiles
+    print(params.keys())
 
     # Extract CDF file
     cdf_file = None
@@ -66,90 +72,110 @@ def convertGACODE(astra_root,
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
-    shape_sin, shape_cos, bbox = g.get_MXH_coeff(n=200, n_coeff=6, plot=False)
-    print(shape_cos.shape)
+    shape_cos, shape_sin, bbox = g.get_MXH_coeff(n=100, n_coeff=6, plot=False)
+    print(bbox.shape)
     print("Done.")
+
+    params["nexp"] = nexp
+    params["nion"] = nion
+    params["shot"] = 12345
 
     nexp_grid = np.linspace(0,1,nexp)
     interp_to_nexp = lambda x: np.interp(nexp_grid,np.linspace(0,1,x.size),x)
-
-    print("Getting Profiles ...")
-    mass = np.zeros(nion)
+    '''(['nexp', 'nion', 'shot', 'name', 'type', 'masse', 'mass', 
+'ze', 'z', 'torfluxa(Wb/radian)', 'rcentr(m)', 'bcentr(T)', 
+'current(MA)', 'rho(-)', 'rmin(m)', 'polflux(Wb/radian)', 
+'q(-)', 'w0(rad/s)', 'rmaj(m)', 'zmag(m)', 'kappa(-)', 
+'delta(-)', 'zeta(-)', 'shape_cos0(-)', 'shape_cos1(-)', 
+'shape_cos2(-)', 'shape_cos3(-)', 'shape_cos4(-)', 'shape_cos5(-)', 
+'shape_sin3(-)', 'shape_sin4(-)', 'shape_sin5(-)', 'ne(10^19/m^3)', 
+'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'ptot(Pa)', 'johm(MA/m^2)', 'jbs(MA/m^2)', 
+'jbstor(MA/m^2)', 'z_eff(-)', 'vtor(m/s)', 'qohme(MW/m^3)', 'qbeame(MW/m^3)', 
+'qbeami(MW/m^3)', 'qrfe(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 
+'qei(MW/m^3)', 'qione(MW/m^3)', 'qioni(MW/m^3)', 'qpar_beam(MW/m^3)', 'qmom(MW/m^3)', 
+'qpar_wall(MW/m^3)', 'qmom(N/m^2)'])'''
+    print("Getting Profiles from ASTRA...")
+    name = "D T C He" ; params['name'] = name
+    type = '[therm] [therm] [therm] [fast]' ; params['type'] = type
+    masse = 0.00054489 ; params['masse'] = masse
+    mass = np.zeros(nion) ; params['mass'] = mass
+    print("masse:",params["masse"])
+    ze = 0.
     z = np.zeros(nion)
-    torfluxa = 0
-    rcenter = 0
-    bcentr = 0 
-    current = 0
-    rho = np.zeros(nexp) ; rho[:] = interp_to_nexp(c.rho[-1])
-    rmin = np.zeros(nexp) ; rmin[:] = interp_to_nexp(bbox[:,1])
-    polflux = np.zeros(nexp) ; polflux[:] = interp_to_nexp(c.FP[-1])
-    q = np.zeros(nexp) ; q[:] = interp_to_nexp(c.q[-1])
-    rmaj = np.zeros(nexp) ; rmaj[:] = interp_to_nexp(bbox[:,0])
-    zmag = np.zeros(nexp)
-    kappa = np.zeros(nexp)
-    delta = np.zeros(nexp)
-    zeta = np.zeros(nexp)
-    shape_cos0 = np.zeros(nexp)
-    shape_cos1 = np.zeros(nexp)
-    shape_cos2 = np.zeros(nexp)
-    shape_cos3 = np.zeros(nexp)
-    shape_cos4 = np.zeros(nexp)
-    shape_cos5 = np.zeros(nexp)
-    shape_sin3 = np.zeros(nexp)
-    shape_sin4 = np.zeros(nexp)
-    shape_sin5 = np.zeros(nexp)
-    ne = np.zeros(nexp)
-    ni = np.zeros((nexp,nion))
-    te = np.zeros(nexp)
-    ti = np.zeros((nexp,nion))
-    ptot = np.zeros(nexp)
-    johm = np.zeros(nexp)
-    jbs = np.zeros(nexp)
-    jbstor = np.zeros(nexp)
-    z_eff = np.zeros(nexp)
-    qohme = np.zeros(nexp)
-    qrfe = np.zeros(nexp)
-    qrfi = np.zeros(nion)
-    qfuse = np.zeros(nexp)
-    qfusi = np.zeros(nexp)
-    qbrem = np.zeros(nexp)
-    qsync = np.zeros(nexp)
-    qline = np.zeros(nexp)
-    qei = np.zeros(nexp)
-    qione = np.zeros(nexp)
-    qioni = np.zeros(nion)
-    qpar_beam = np.zeros(nexp)
-    w0 = np.zeros(nexp)
+    torfluxa = c.TF[-1] ; params['torfluxa(Wb/radian)'] = torfluxa
+    rcenter = c.RTOR[-1] ; params['rcentr(m)'] = rcenter
+    bcentr = c.BTOR[-1] ; params['bcentr(T)'] = bcentr
+    current = c.IPL[-1] ; params['current(MA)'] = current
+    rho = interp_to_nexp(c.rho[-1]/c.rho[-1,-1]) ; params['rho(-)'] = rho
+    polflux = interp_to_nexp(c.FP[-1]) ; params['polflux(Wb/radian)'] = polflux
+    q = interp_to_nexp(c.q[-1]) ; params['q(-)'] = q
+    rmaj = interp_to_nexp(bbox[0,:]) ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_nexp(bbox[1,:]) ; params['rmin(m)'] = rmin
+    zmag = interp_to_nexp(bbox[2,:]) ; params['zmag(m)'] = zmag
+    kappa = interp_to_nexp(bbox[3,:]) ; params['kappa(-)'] = kappa
+    delta = interp_to_nexp(shape_sin[1,:]) ; params['delta(-)'] = delta
+    zeta = -interp_to_nexp(shape_sin[2,:]) ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_nexp(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_nexp(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_nexp(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_nexp(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_nexp(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_nexp(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
+    shape_sin3 = interp_to_nexp(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_nexp(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_nexp(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    ne = interp_to_nexp(c.ne[-1,:]) ; params['ne(10^19/m^3)'] = ne
+    ni = interp_to_nexp(c.ne[-1,:]) ; params['ni(10^19/m^3)'] = np.tile(ni, (nion, 1)).T
+    te = interp_to_nexp(c.Te[-1,:]) ; params['te(keV)'] = te
+    ti = np.zeros((nexp,nion)) ; params['ti(keV)'] = np.tile(te, (nion, 1)).T # te=ti
+    ptot = interp_to_nexp(c.ptot[-1,:]) ; params['ptot(Pa)'] = ptot
+    johm = np.zeros(nexp) ; params["johm(MA/m^2)"] = johm
+    jbs = np.zeros(nexp) ; params["jbs(MA/m^2)"] = jbs
+    jbstor = np.zeros(nexp) ; params["jbstor(MA/m^2)"] = jbstor
+    z_eff = interp_to_nexp(c.ZEF[-1]) ; params['z_eff(-)'] = z_eff
+    vtor = interp_to_nexp(c.VTOR[-1]) ; params['vtor(m/s)'] = vtor
+    qohme = interp_to_nexp(c.QOH[-1]) ; params['qohme(MW/m^3)'] = qohme
+    qbeame = np.zeros(nexp) ; params['qbeame(MW/m^3)'] = qbeame
+    qbeami = np.zeros(nexp) ; params['qbeami(MW/m^3)'] = qbeami
+    qbrem = interp_to_nexp(c.QRAD[-1]) ; params['qbrem(MW/m^3)'] = qbrem
+    qsync = np.zeros(nexp) ; params['qsync(MW/m^3)'] = qsync
+    qline = np.zeros(nexp) ; params['qline(MW/m^3)'] = qline
+    qei = interp_to_nexp(c.PEICR[-1]) ; params["qei(MW/m^3)"] = qei#np.zeros(nexp)
+    qrfe = interp_to_nexp(c.PEICR[-1]) ; params['qrfe(MW/m^3)'] = qrfe
+    qfuse = interp_to_nexp(c.PEDT[-1]) ; params['qfuse(MW/m^3)'] = qfuse
+    qfusi = interp_to_nexp(c.PIDT[-1]) ; params['qfusi(MW/m^3)'] = qfusi
+    qione = np.zeros(nexp) ; params['qione(MW/m^3)'] = qione
+    qioni = np.zeros(nexp) ; params['qioni(MW/m^3)'] = qioni
+    qpar_beam = np.zeros(nexp) ; params['qpar_beam(MW/m^3)'] = qpar_beam
+    qmom = np.zeros(nexp) ; params['qmom(MW/m^3)'] = qmom
+    qpar_wall = np.zeros(nexp) ; params['qpar_wall(MW/m^3)'] = qpar_wall
+    qmom = np.zeros(nexp) ; params['qmom(N/m^2)'] = qmom
+    w0 = np.zeros(nexp) ; params['w0(rad/s)'] = w0
     qpar_wall = np.zeros(nexp)
     print("Done.")
 
-    params = {'nexp':nexp, 'nion':nion, 'shot':12345, 'name':'D T F He',
-              'mass':mass,'z':z,'torfluxa':torfluxa,'rcenter':rcenter,
-              'bcentr':bcentr,'current':current,
-              'rho':rho,'rmin':rmin,'polflux':polflux,'q':q,
-              'rmaj':rmaj,'zmag':zmag,'kappa':kappa,'delta':delta,'zeta':zeta,
-              'shape_cos0':shape_cos0,'shape_cos1':shape_cos1,
-              'shape_cos2':shape_cos2,'shape_cos3':shape_cos3,
-              'shape_cos4':shape_cos4,'shape_cos5':shape_cos5,
-              'shape_sin3':shape_sin3,'shape_sin4':shape_sin4,
-              'shape_sin5':shape_sin5,'ne':ne,'ni':ni,'te':te,
-              'ti':ti,'ptot':ptot,'johm':johm,'jbs':jbs,'jbstor':jbstor,
-              'z_eff':z_eff,'qohme':qohme,'qrfe':qrfe,'qrfi':qrfi,
-              'qfuse':qfuse,'qfusi':qfusi,'qbrem':qbrem,'qsync':qsync,
-              'qline':qline,'qei':qei,'qione':qione,'qioni':qioni,
-              'qpar_beam':qpar_beam,'w0':w0,'qpar_wall':qpar_wall,
-              }
-
-    filename = os.path.join(astra_root, "input.gacode")
+    gacode_filename = os.path.join(astra_root, "input.gacode")
+    print(params["ni(10^19/m^3)"])
+    print(params["ni(10^19/m^3)"].shape)
     print("Writing File ...")
-    with open(filename, 'w') as f:
+    with open(gacode_filename, 'w') as f:
+        f.write(f"#  *original : {datetime.datetime.now().strftime('%a %b %d %H:%M:%S %Z %Y')}\n")
+        f.write(f"# *statefile : {os.path.basename(cdf_file)}\n")
+        f.write(f"#     *gfile : {os.path.basename(geometry_file)}\n")
         for key, param in params.items():
             print(f"Writing {key} ...")
-            f.write(f"# {key} | -\n")
+            f.write(f"# {key}\n")
             try:
                 if isinstance(param, np.ndarray) and param.ndim == 1:
-                    for i, value in enumerate(param, start=1):
-                        f.write(f"{i:3d}  {value:.7e}\n")
+                    if param.size == nexp:
+                        for i, value in enumerate(param, start=1):
+                            f.write(f"{i:3d}  {value:.7e}\n")
+                    elif param.size == nion:
+                        for i, value in enumerate(param, start=1):
+                            f.write(f" {value:.7e}")
+                        f.write("\n")
+                    elif param.size == 1:
+                        f.write(f" {param[0]:.7e}\n")
                 elif isinstance(param, np.ndarray) and param.ndim == 2:
                     for i, row in enumerate(param, start=1):
                         f.write(f"{i:3d}")
@@ -166,9 +192,12 @@ def convertGACODE(astra_root,
                     raise(ValueError(f"Unrecognized type for {key}"))
             except:
                 print(f"Error writing {key}")
-    print("Done.")
+    
+    return p
 
     
 
 for directory in directories:
-    convertGACODE(directory)
+    p = convertGACODE(directory)
+
+p.plot()
