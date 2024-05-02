@@ -284,7 +284,7 @@ class PROFILES_GACODE:
             self.profiles["shape_sin5(-)"],
             self.profiles["shape_sin6(-)"],
         ]
-
+        print(self.shape_cos)
     def readSpecies(self, maxSpecies=100):
         maxSpecies = int(self.profiles["nion"][0])
 
@@ -377,11 +377,15 @@ class PROFILES_GACODE:
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_miller" not in self.derived):
+
+            #self.produce_shape_lists()
+
             (
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
                 self.derived["geo_bt"],
+<<<<<<< HEAD
             ) = GEOMETRYtools.calculateGeometricFactors(
                 self,
                 n_theta=n_theta_geo,
@@ -407,6 +411,31 @@ class PROFILES_GACODE:
                     "\t- Cannot calculate flux surface geometry out of the MXH3 moments",
                     typeMsg="w",
                 )
+=======
+            ) = GEOMETRYtools.calculateGeometricFactors(self, n_theta=n_theta_geo)
+            
+            #try:
+            (
+                self.derived["R_surface"],
+                self.derived["Z_surface"],
+            ) = GEQtools.create_geo_MXH3(
+                self.profiles["rmaj(m)"],
+                self.profiles["rmin(m)"],
+                self.profiles["zmag(m)"],
+                self.profiles["kappa(-)"],
+                self.profiles["delta(-)"],
+                self.profiles["zeta(-)"],
+                self.shape_cos,
+                self.shape_sin,
+                debugPlot=False
+            )
+            #except:
+            #self.derived["R_surface"] = self.derived["Z_surface"] = None
+            print(
+                "\t- Cannot calculate flux surface geometry out of the MXH3 moments",
+                typeMsg="w",
+            )
+>>>>>>> 3c863cb (works with file output, can't derive profiles)
 
             self.derived["R_LF"] = self.derived["R_surface"].max(
                 axis=1

@@ -1458,14 +1458,3 @@ def create_geo_MXH3(
         plt.show()
 
     return R, Z
-#g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
-#shape_cos, shape_sin, bbox = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
-#print(shape_cos.shape)
-#print(g.delta95)
-#print(g.delta995)
-#cn, sn, bbox = g.get_MXH_coeff(n=1000, n_coeff=4,plot=True)
-#R, Z = create_geo_MXH3(bbox[0,:],bbox[1,:],bbox[2,:],bbox[3,:],shape_sin[1,:],-shape_sin[2,:],shape_cos,shape_sin,)
-#for i in range(R.shape[0]):
-    #plt.plot(R[i,:],Z[i,:])
-    #plt.plot(R[-i,:],Z[-i,:], color="r")
-#plt.show()

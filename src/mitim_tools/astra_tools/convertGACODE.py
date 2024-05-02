@@ -13,7 +13,7 @@ import datetime
 
 #directories = args.directories
 
-def convertGACODE(astra_root, 
+def convert_astra_gacode(astra_root, 
                   nexp=112, # number of grid points for gacode output
                   nion=4, # number of thermal and fast ion species
                   shot=None,
@@ -195,15 +195,7 @@ def convertGACODE(astra_root,
 
     p.writeCurrentStatus(file=gacode_filename)
     p.deriveQuantities()
-    p.readProfiles()
-    p.plot()
+    #p.plot()
     p.writeCurrentStatus(file=gacode_filename2)
 
     return p
-
-#for directory in directories:
-    #p = convertGACODE(directory)
-
-#gacode_file = PROFILEStools.PROFILES_GACODE(p)
-#gacode_file.plot()
-#plt.show()
