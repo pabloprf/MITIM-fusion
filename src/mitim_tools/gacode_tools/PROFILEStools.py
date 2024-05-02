@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from IPython import embed
-
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
@@ -254,7 +253,7 @@ class PROFILES_GACODE:
             self.varqmom,
         ]
 
-        num_moments = 5  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
         for i in range(num_moments):
             some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
             if i > 1:
@@ -268,20 +267,22 @@ class PROFILES_GACODE:
 
     def produce_shape_lists(self):
         self.shape_cos = [
-            self.profiles["shape_cos0(-)"],
+            self.profiles["shape_cos0(-)"],     # tilt
             self.profiles["shape_cos1(-)"],
             self.profiles["shape_cos2(-)"],
             self.profiles["shape_cos3(-)"],
             self.profiles["shape_cos4(-)"],
             self.profiles["shape_cos5(-)"],
+            self.profiles["shape_cos6(-)"],
         ]
         self.shape_sin = [
             None,
-            None,
-            None,
+            None,                               # s1 is triangularity
+            None,                               # s2 is minus squareness
             self.profiles["shape_sin3(-)"],
             self.profiles["shape_sin4(-)"],
             self.profiles["shape_sin5(-)"],
+            self.profiles["shape_sin6(-)"],
         ]
 
     def readSpecies(self, maxSpecies=100):
@@ -374,14 +375,16 @@ class PROFILES_GACODE:
         )
 
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
-
+        
         if rederiveGeometry or ("volp_miller" not in self.derived):
             (
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
                 self.derived["geo_bt"],
-            ) = GEOMETRYtools.calculateGeometricFactors(self, n_theta=n_theta_geo)
+            ) = GEOMETRYtools.calculateGeometricFactors(self,
+                                                        n_theta=n_theta_geo,
+            )
 
             try:
                 (
@@ -1138,7 +1141,6 @@ class PROFILES_GACODE:
                     self.derived["tite"][0],
                 )
             )
-            print(f"\t<Ti>  = {self.derived['Ti_vol']:.2f} keV")
             print(
                 "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
                     self.derived["fG"], self.derived["ne_vol20"]
@@ -2587,6 +2589,7 @@ class PROFILES_GACODE:
         ax = axs6[3]
         ax.plot(self.profiles["rho(-)"], self.derived["q_fus_MWmiller"], c=color, lw=lw)
         ax.set_ylabel("$P_{fus}$ ($MW$)")
+        ax.set_xlim([0, 1])
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)

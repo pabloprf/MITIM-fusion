@@ -1,11 +1,10 @@
-import copy
+import profile
 import numpy as np
+from mitim_tools.misc_tools import MATHtools
 from IPython import embed
 
-from mitim_tools.misc_tools import MATHtools
+def calculateGeometricFactors(profiles, n_theta=1001):
 
-
-def calculateGeometricFactors(profiles, Miller=True, n_theta=1001):
     # ----------------------------------------
     # Raw parameters from the file
     # 	in expro_util.f90, it performs those divisions to pass to geo library
@@ -17,29 +16,9 @@ def calculateGeometricFactors(profiles, Miller=True, n_theta=1001):
     delta = profiles.profiles["delta(-)"]
     zeta = profiles.profiles["zeta(-)"]
     zmag = profiles.profiles["zmag(m)"] / profiles.profiles["rmin(m)"][-1]
-
-    try:
-        cos0 = profiles.profiles["shape_cos0(-)"]
-    except:
-        cos0 = copy.deepcopy(r) * 0.0
-    try:
-        cos1 = profiles.profiles["shape_cos1(-)"]
-    except:
-        cos1 = copy.deepcopy(r) * 0.0
-    try:
-        cos2 = profiles.profiles["shape_cos2(-)"]
-    except:
-        cos2 = copy.deepcopy(r) * 0.0
-    try:
-        cos3 = profiles.profiles["shape_cos3(-)"]
-    except:
-        cos3 = copy.deepcopy(r) * 0.0
-    try:
-        sin3 = profiles.profiles["shape_sin3(-)"]
-    except:
-        sin3 = copy.deepcopy(r) * 0.0
-
     q = profiles.profiles["q(-)"]
+
+    shape_coeffs = profiles.shape_cos+profiles.shape_sin
 
     # ----------------------------------------
     # Derivatives as defined in expro_util.f90
@@ -50,11 +29,13 @@ def calculateGeometricFactors(profiles, Miller=True, n_theta=1001):
     s_zeta = r * MATHtools.deriv(r, zeta)
     dzmag = MATHtools.deriv(r, zmag)
     dRmag = MATHtools.deriv(r, R)
-    cos0_s = r * MATHtools.deriv(r, cos0)
-    cos1_s = r * MATHtools.deriv(r, cos1)
-    cos2_s = r * MATHtools.deriv(r, cos2)
-    cos3_s = r * MATHtools.deriv(r, cos3)
-    sin3_s = r * MATHtools.deriv(r, sin3)
+
+    s_shape_coeffs = []
+    for i in range(len(shape_coeffs)):
+        if shape_coeffs[i] is not None:
+            s_shape_coeffs.append(r * MATHtools.deriv(r, shape_coeffs[i]))
+        else:
+            s_shape_coeffs.append(None)
 
     # ----------------------------------------
     # Calculate the differencial volume at each radii
@@ -68,38 +49,38 @@ def calculateGeometricFactors(profiles, Miller=True, n_theta=1001):
     for j in range(len(R)):
         i = j - 1
 
-        cos_sin = [cos0[i + 1], cos1[i + 1], cos2[i + 1], cos3[i + 1], sin3[i + 1]]
-        cos_sin_s = [
-            cos0_s[i + 1],
-            cos1_s[i + 1],
-            cos2_s[i + 1],
-            cos3_s[i + 1],
-            sin3_s[i + 1],
-        ]
+        cos_sin = []
+        cos_sin_s = []
+        for k in range(len(shape_coeffs)):
+            if shape_coeffs[k] is not None:
+                cos_sin.append(shape_coeffs[k][i + 1])
+                cos_sin_s.append(s_shape_coeffs[k][i + 1])
+            else:
+                cos_sin.append(None)
+                cos_sin_s.append(None)
 
-        if Miller:
-            (
-                geo_volume_prime[i + 1],
-                geo_surf[i + 1],
-                geo_fluxsurfave_grad_r[i + 1],
-                geo_bt0[i + 1],
-            ) = volp_surf_Miller(
-                R[i + 1],
-                r[i + 1],
-                delta[i + 1],
-                kappa[i + 1],
-                cos_sin,
-                cos_sin_s,
-                zeta[i + 1],
-                zmag[i + 1],
-                s_delta[i + 1],
-                s_kappa[i + 1],
-                s_zeta[i + 1],
-                dzmag[i + 1],
-                dRmag[i + 1],
-                q[i + 1],
-                n_theta=n_theta,
-            )
+        (
+            geo_volume_prime[i + 1],
+            geo_surf[i + 1],
+            geo_fluxsurfave_grad_r[i + 1],
+            geo_bt0[i + 1],
+        ) = volp_surf_Miller(
+            R[i + 1],
+            r[i + 1],
+            delta[i + 1],
+            kappa[i + 1],
+            cos_sin,
+            cos_sin_s,
+            zeta[i + 1],
+            zmag[i + 1],
+            s_delta[i + 1],
+            s_kappa[i + 1],
+            s_zeta[i + 1],
+            dzmag[i + 1],
+            dRmag[i + 1],
+            q[i + 1],
+            n_theta=n_theta,
+        )
 
     """
 	from expro_util.f90 we have:
@@ -143,7 +124,16 @@ def volp_surf_Miller(
         geo_shape_cos1_in,
         geo_shape_cos2_in,
         geo_shape_cos3_in,
+        geo_shape_cos4_in,
+        geo_shape_cos5_in,
+        geo_shape_cos6_in,
+        _,
+        _,
+        _,
         geo_shape_sin3_in,
+        geo_shape_sin4_in,
+        geo_shape_sin5_in,
+        geo_shape_sin6_in,
     ] = cos_sin
 
     [
@@ -151,7 +141,16 @@ def volp_surf_Miller(
         geo_shape_s_cos1_in,
         geo_shape_s_cos2_in,
         geo_shape_s_cos3_in,
+        geo_shape_s_cos4_in,
+        geo_shape_s_cos5_in,
+        geo_shape_s_cos6_in,
+        _,
+        _,
+        _,
         geo_shape_s_sin3_in,
+        geo_shape_s_sin4_in,
+        geo_shape_s_sin5_in,
+        geo_shape_s_sin6_in,
     ] = cos_sin_s
 
     geo_signb_in = 1.0
@@ -199,26 +198,45 @@ def volp_surf_Miller(
             + geo_shape_cos1_in * cos(theta)
             + geo_shape_cos2_in * cos(2 * theta)
             + geo_shape_cos3_in * cos(3 * theta)
+            + geo_shape_cos4_in * cos(4 * theta)
+            + geo_shape_cos5_in * cos(5 * theta)
+            + geo_shape_cos6_in * cos(6 * theta)
+            + geo_shape_sin3_in * sin(3 * theta)
             + x * sin(theta)
             - geo_zeta_in * sin(2 * theta)
             + geo_shape_sin3_in * sin(3 * theta)
+            + geo_shape_sin4_in * sin(4 * theta)
+            + geo_shape_sin5_in * sin(5 * theta)
+            + geo_shape_sin6_in * sin(6 * theta)
         )
         a_t = (
             1.0
             - geo_shape_cos1_in * sin(theta)
             - 2 * geo_shape_cos2_in * sin(2 * theta)
             - 3 * geo_shape_cos3_in * sin(3 * theta)
+            - 4 * geo_shape_cos4_in * sin(4 * theta)
+            - 5 * geo_shape_cos5_in * sin(5 * theta)
+            - 6 * geo_shape_cos6_in * sin(6 * theta)
             + x * cos(theta)
             - 2 * geo_zeta_in * cos(2 * theta)
             + 3 * geo_shape_sin3_in * cos(3 * theta)
+            + 4 * geo_shape_sin4_in * cos(4 * theta)
+            + 5 * geo_shape_sin5_in * cos(5 * theta)
+            + 6 * geo_shape_sin6_in * cos(6 * theta)
         )
         a_tt = (
             -geo_shape_cos1_in * cos(theta)
             - 4 * geo_shape_cos2_in * cos(2 * theta)
             - 9 * geo_shape_cos3_in * cos(3 * theta)
+            - 16 * geo_shape_cos4_in * cos(4 * theta)
+            - 25 * geo_shape_cos5_in * cos(5 * theta)
+            - 36 * geo_shape_cos6_in * cos(6 * theta)
             - x * sin(theta)
             + 4 * geo_zeta_in * sin(2 * theta)
             - 9 * geo_shape_sin3_in * sin(3 * theta)
+            - 16 * geo_shape_sin4_in * sin(4 * theta)
+            - 25 * geo_shape_sin5_in * sin(5 * theta)
+            - 36 * geo_shape_sin6_in * sin(6 * theta)
         )
 
         #! R(theta)
@@ -235,9 +253,15 @@ def volp_surf_Miller(
                 + geo_shape_s_cos1_in * cos(theta)
                 + geo_shape_s_cos2_in * cos(2 * theta)
                 + geo_shape_s_cos3_in * cos(3 * theta)
+                + geo_shape_s_cos4_in * cos(4 * theta)
+                + geo_shape_s_cos5_in * cos(5 * theta)
+                + geo_shape_s_cos6_in * cos(6 * theta)
                 + geo_s_delta_in / cos(x) * sin(theta)
                 - geo_s_zeta_in * sin(2 * theta)
                 + geo_shape_s_sin3_in * sin(3 * theta)
+                + geo_shape_s_sin4_in * sin(4 * theta)
+                + geo_shape_s_sin5_in * sin(5 * theta)
+                + geo_shape_s_sin6_in * sin(6 * theta)
             )
         )
         geov_bigr_t[i] = -geo_rmin_in * a_t * sin(a)
