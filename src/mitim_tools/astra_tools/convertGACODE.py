@@ -15,7 +15,7 @@ import datetime
 
 def convert_astra_gacode(astra_root, 
                   nexp=112, # number of grid points for gacode output
-                  nion=4, # number of thermal and fast ion species
+                  nion=5, # number of thermal and fast ion species
                   gacode_out=True, # whether to output a file along with gacode object
                   plot_result=False # whether to plot the gacode object
                   ):
@@ -81,11 +81,11 @@ def convert_astra_gacode(astra_root,
     interp_to_nexp = lambda x: np.interp(nexp_grid,np.linspace(0,1,x.size),x)
     
     print("Getting Profiles from ASTRA...")
-    name = np.array(["D", "T", "He", "F"]) ; params['name'] = name
-    iontype = np.array(['[therm]', '[therm]', '[therm]', '[therm]']) ; params['type'] = iontype
+    name = np.array(["D", "T", "He", "W", "F"]) ; params['name'] = name
+    iontype = np.array(['[therm]', '[therm]', '[therm]', '[therm]', '[therm]']) ; params['type'] = iontype
     masse = np.array([0.00054489]) ; params['masse'] = masse
-    mass = np.array([2., 3., c.AIM1[-2], c.AIM3[-2]]) ; params['mass'] = mass # assumes 50/50 D/T !!!!
-    z = np.array([1., 1., c.ZIM1[-2,-2], c.ZIM3[-2,-2]]) ; params['z'] = z
+    mass = np.array([2., 3., c.AIM1[-2],c.AIM2[-2], c.AIM3[-2]]) ; params['mass'] = mass # assumes 50/50 D/T !!!!
+    z = np.array([1., 1., c.ZIM1[-2,-2], 74., c.ZIM3[-2,-2]]) ; params['z'] = z
 
     torfluxa = np.array([c.TF[-2]])             ; params['torfluxa(Wb/radian)'] = torfluxa
     rcenter = np.array([c.RTOR[-2]])            ; params['rcentr(m)'] = rcenter
@@ -113,8 +113,10 @@ def convert_astra_gacode(astra_root,
     ne = interp_to_nexp(c.ne[-2,:])             ; params['ne(10^19/m^3)'] = ne
     ni_main = interp_to_nexp(c.NMAIN[-2,:])
     ni_He = interp_to_nexp(c.NIZ1[-2,:])
-    ni_I = interp_to_nexp(c.NIZ3[-2,:])
-    ni = np.vstack((ni_main/2, ni_main/2, ni_He, ni_I)).T
+    ni_W = interp_to_nexp(c.NIZ2[-2,:])
+    ni_F = interp_to_nexp(c.NIZ3[-2,:])
+    ni = np.vstack((ni_main/2, ni_main/2, ni_He, ni_W, ni_F)).T
+    
     params['ni(10^19/m^3)'] = ni
 
     te = interp_to_nexp(c.Te[-2,:])             ; params['te(keV)'] = te

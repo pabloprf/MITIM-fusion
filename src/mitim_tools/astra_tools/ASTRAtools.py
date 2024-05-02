@@ -94,3 +94,9 @@ exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -
     def plot(self):
 
         pass
+
+    def convert_output_to_gacode():
+        '''
+        Work in progress
+        '''
+        pass
