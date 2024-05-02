@@ -62,6 +62,8 @@ class CDFreactor:
         self.VR = self.f["VR"][:]
         self.Cu = self.f["CU"][:]
         self.Cubs = self.f["CUBS"][:]
+        #self.CuOhm = self.f["CUOHM"][:]
+        self.CuTor = self.f["CUTOR"][:]
         self.CD = self.f["CD"][:]
         self.Mu = self.f["MU"][:]
         self.q_onaxis = 1/self.Mu[:,0]

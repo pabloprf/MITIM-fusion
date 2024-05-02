@@ -1177,7 +1177,7 @@ class MITIMgeqdsk:
            if the last closed flux surface is not well resolved.
         """
         start=time()
-        
+
         # Upsample the poloidal flux grid
         Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
         R = np.linspace(np.min(Raux),np.max(Raux),n)
@@ -1198,7 +1198,7 @@ class MITIMgeqdsk:
         Psi_norm[Z_max_ind:,:] = 2#np.nan
 
         PSIRZ = self.g["PSIRZ"]
-        psis = np.linspace(0,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size) # skip psi=1 surface
+        psis = np.linspace(0.0001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
 
         # need to construct level contours for each flux surface 
         cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
@@ -1424,6 +1424,7 @@ def create_geo_MXH3(
         if i > 1:
             shape_sin_n.append(shape_sin[i + 1])
     shape_cos_n = np.array(shape_cos_n)
+    print(shape_sin_n)
     shape_sin_n = np.array(shape_sin_n)
 
     R, Z = [], []
@@ -1457,9 +1458,14 @@ def create_geo_MXH3(
         plt.show()
 
     return R, Z
-g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
-shape_sin, shape_cos, bbox = g.get_MXH_coeff(n=100, n_coeff=6, plot=True)
-print(shape_cos.shape)
+#g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
+#shape_cos, shape_sin, bbox = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+#print(shape_cos.shape)
 #print(g.delta95)
 #print(g.delta995)
 #cn, sn, bbox = g.get_MXH_coeff(n=1000, n_coeff=4,plot=True)
+#R, Z = create_geo_MXH3(bbox[0,:],bbox[1,:],bbox[2,:],bbox[3,:],shape_sin[1,:],-shape_sin[2,:],shape_cos,shape_sin,)
+#for i in range(R.shape[0]):
+    #plt.plot(R[i,:],Z[i,:])
+    #plt.plot(R[-i,:],Z[-i,:], color="r")
+#plt.show()
