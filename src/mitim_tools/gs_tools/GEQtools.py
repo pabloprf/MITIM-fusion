@@ -1424,7 +1424,6 @@ def create_geo_MXH3(
         if i > 1:
             shape_sin_n.append(shape_sin[i + 1])
     shape_cos_n = np.array(shape_cos_n)
-    print(shape_sin_n)
     shape_sin_n = np.array(shape_sin_n)
 
     R, Z = [], []
