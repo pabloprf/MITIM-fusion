@@ -50,9 +50,9 @@ def convert_astra_gacode(astra_root,
     c.calcProfiles()
     print("Testing ASTRA output:")
     print("Q:",c.Q[-2])
-    print("Pfus:",c.Pfus[-1,-1])
-    print("H98:",c.H98[-1])
-    print("betan:",c.betaN[-1])
+    print("Pfus:",c.Pfus[-2,-1])
+    print("H98:",c.H98[-2])
+    print("betan:",c.betaN[-2])
 
     # Extract Geometry info
     geometry_file = None
@@ -84,16 +84,16 @@ def convert_astra_gacode(astra_root,
     name = np.array(["D", "T", "He", "F"]) ; params['name'] = name
     iontype = np.array(['[therm]', '[therm]', '[therm]', '[therm]']) ; params['type'] = iontype
     masse = np.array([0.00054489]) ; params['masse'] = masse
-    mass = np.array([2., 3., c.AIM1[-1], c.AIM3[-1]]) ; params['mass'] = mass # assumes 50/50 D/T !!!!
-    z = np.array([1., 1., c.ZIM1[-1,-1], c.ZIM3[-1,-1]]) ; params['z'] = z
+    mass = np.array([2., 3., c.AIM1[-2], c.AIM3[-2]]) ; params['mass'] = mass # assumes 50/50 D/T !!!!
+    z = np.array([1., 1., c.ZIM1[-2,-2], c.ZIM3[-2,-2]]) ; params['z'] = z
 
-    torfluxa = np.array([c.TF[-1]])             ; params['torfluxa(Wb/radian)'] = torfluxa
-    rcenter = np.array([c.RTOR[-1]])            ; params['rcentr(m)'] = rcenter
-    bcentr = np.array([c.BTOR[-1]])             ; params['bcentr(T)'] = bcentr
-    current = np.array([c.IPL[-1]])             ; params['current(MA)'] = current
-    rho = interp_to_nexp(c.rho[-1]/c.rho[-1,-1]); params['rho(-)'] = rho
-    polflux = interp_to_nexp(c.FP[-1])          ; params['polflux(Wb/radian)'] = polflux
-    q = interp_to_nexp(c.q[-1])                 ; params['q(-)'] = q
+    torfluxa = np.array([c.TF[-2]])             ; params['torfluxa(Wb/radian)'] = torfluxa
+    rcenter = np.array([c.RTOR[-2]])            ; params['rcentr(m)'] = rcenter
+    bcentr = np.array([c.BTOR[-2]])             ; params['bcentr(T)'] = bcentr
+    current = np.array([c.IPL[-2]])             ; params['current(MA)'] = current
+    rho = interp_to_nexp(c.rho[-2]/c.rho[-2,-1]); params['rho(-)'] = rho
+    polflux = interp_to_nexp(c.FP[-2])          ; params['polflux(Wb/radian)'] = polflux
+    q = interp_to_nexp(c.q[-2])                 ; params['q(-)'] = q
     rmaj = interp_to_nexp(bbox[0,:])            ; params['rmaj(m)'] = rmaj
     rmin = interp_to_nexp(bbox[1,:])            ; params['rmin(m)'] = rmin
     zmag = interp_to_nexp(bbox[2,:])            ; params['zmag(m)'] = zmag
@@ -109,24 +109,30 @@ def convert_astra_gacode(astra_root,
     shape_sin3 = interp_to_nexp(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
     shape_sin4 = interp_to_nexp(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
     shape_sin5 = interp_to_nexp(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
-    ne = interp_to_nexp(c.ne[-1,:])             ; params['ne(10^19/m^3)'] = ne
-    ni = interp_to_nexp(c.ne[-1,:])             ; params['ni(10^19/m^3)'] = np.tile(ni, (nion, 1)).T
-    te = interp_to_nexp(c.Te[-1,:])             ; params['te(keV)'] = te
-    ti = interp_to_nexp(c.Ti[-1,:])             ; params['ti(keV)'] = np.tile(ti, (nion, 1)).T # all ions have same temperature
-    ptot = interp_to_nexp(c.ptot[-1,:])         ; params['ptot(Pa)'] = ptot
-    jbs = interp_to_nexp(c.Cubs[-1,:])          ; params["jbs(MA/m^2)"] = jbs
-    z_eff = interp_to_nexp(c.ZEF[-1])           ; params['z_eff(-)'] = z_eff
-    vtor = interp_to_nexp(c.VTOR[-1])           ; params['vtor(m/s)'] = vtor
-    qohme = interp_to_nexp(c.QOH[-1])           ; params['qohme(MW/m^3)'] = qohme
-    qbrem = interp_to_nexp(c.QRAD[-1])          ; params['qbrem(MW/m^3)'] = qbrem 
+
+    ne = interp_to_nexp(c.ne[-2,:])             ; params['ne(10^19/m^3)'] = ne
+    ni_main = interp_to_nexp(c.NMAIN[-2,:])
+    ni_He = interp_to_nexp(c.NIZ1[-2,:])
+    ni_I = interp_to_nexp(c.NIZ3[-2,:])
+    ni = np.vstack((ni_main/2, ni_main/2, ni_He, ni_I)).T
+    params['ni(10^19/m^3)'] = ni
+
+    te = interp_to_nexp(c.Te[-2,:])             ; params['te(keV)'] = te
+    ti = interp_to_nexp(c.Ti[-2,:])             ; params['ti(keV)'] = np.tile(ti, (nion, 1)).T # all ions have same temperature
+    ptot = interp_to_nexp(c.ptot[-2,:])         ; params['ptot(Pa)'] = ptot
+    jbs = interp_to_nexp(c.Cubs[-2,:])          ; params["jbs(MA/m^2)"] = jbs
+    z_eff = interp_to_nexp(c.ZEF[-2])           ; params['z_eff(-)'] = z_eff
+    vtor = interp_to_nexp(c.VTOR[-2])           ; params['vtor(m/s)'] = vtor
+    qohme = interp_to_nexp(c.POH[-2])           ; params['qohme(MW/m^3)'] = qohme
+    qbrem = interp_to_nexp(c.PRAD[-2])          ; params['qbrem(MW/m^3)'] = qbrem 
     # setting qbrem equal to total radiation
     # includes line and synchrotron radiation
     qsync = np.zeros(nexp)                      ; params['qsync(MW/m^3)'] = qsync
     qline = np.zeros(nexp)                      ; params['qline(MW/m^3)'] = qline
-    qei = interp_to_nexp(c.PEICR[-1])           ; params["qei(MW/m^3)"] = qei
-    qrfe = interp_to_nexp(c.PEICR[-1])          ; params['qrfe(MW/m^3)'] = qrfe
-    qfuse = interp_to_nexp(c.PEDT[-1])          ; params['qfuse(MW/m^3)'] = qfuse
-    qfusi = interp_to_nexp(c.PIDT[-1])          ; params['qfusi(MW/m^3)'] = qfusi
+    qei = interp_to_nexp(c.PEICR[-2])           ; params["qei(MW/m^3)"] = qei
+    qrfe = interp_to_nexp(c.PEICR[-2])          ; params['qrfe(MW/m^3)'] = qrfe
+    qfuse = interp_to_nexp(c.PEDT[-2])          ; params['qfuse(MW/m^3)'] = qfuse
+    qfusi = interp_to_nexp(c.PIDT[-2])          ; params['qfusi(MW/m^3)'] = qfusi
     # remaining parameters, need to derive w0 but set the rest zero for now
     jbstor = np.zeros(nexp) ; params["jbstor(MA/m^2)"] = jbstor
     johm = np.zeros(nexp) ; params["johm(MA/m^2)"] = johm

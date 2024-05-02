@@ -1167,7 +1167,7 @@ class MITIMgeqdsk:
 
         return cs
     
-    def get_MXH_coeff(self, n, n_coeff=3, plot=False): 
+    def get_MXH_coeff(self, n, n_coeff=6, plot=False): 
         """
         Calculates MXH Coefficients as a function of poloidal flux
         n: number of grid points to interpolate the flux surfaces
@@ -1176,6 +1176,7 @@ class MITIMgeqdsk:
            flux surface in the geqdsk file. Changing n is only nessary
            if the last closed flux surface is not well resolved.
         """
+        from scipy.signal import savgol_filter
         start=time()
 
         # Upsample the poloidal flux grid
@@ -1188,17 +1189,17 @@ class MITIMgeqdsk:
         # Select only the R and Z values within the LCFS- I psi_norm outside to 2
         # this works fine for fixed-boundary equilibria but needs v. high tolerance
         # for the full equilibrium with x-point.
-        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb))) # extra index for tolerance
-        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))
-        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))
-        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))
+        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
+        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
+        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
+        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
         Psi_norm[:,:R_min_ind] = 2
         Psi_norm[:,R_max_ind:] = 2#np.nan
         Psi_norm[:Z_min_ind,:] = 2#np.nan
         Psi_norm[Z_max_ind:,:] = 2#np.nan
 
         PSIRZ = self.g["PSIRZ"]
-        psis = np.linspace(0.0001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
+        psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
 
         # need to construct level contours for each flux surface 
         cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
@@ -1221,7 +1222,11 @@ class MITIMgeqdsk:
             Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
     
             #calculate Miller Extended Harmionic coefficients
+            #enforce zero at the innermost flux surface
+            
             cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
+            if i == 0:
+                cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
 
         end=time()
 
@@ -1287,10 +1292,13 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
     f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
     from scipy.integrate import quad
     for i in np.arange(n_coeff):
-        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
-        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
         integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
+        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+
         s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
+        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
+        
+        
     return c, s, bbox
 
 
@@ -1457,3 +1465,6 @@ def create_geo_MXH3(
         plt.show()
 
     return R, Z
+#g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
+#g.get_MXH_coeff(500, n_coeff=6, plot=True)
+#plt.show()
