@@ -341,7 +341,7 @@ def plot_surrogate_model(
             isCeterProvidedTransformed = True
 
         self.plotSensitivities(
-            ToPlotAround_x,
+            x_center0=ToPlotAround_x,
             isCeterProvidedTransformed=isCeterProvidedTransformed,
             y_center=yEvaluated,
             yVar_center=yVarEvaluated,
@@ -390,7 +390,7 @@ def plot_surrogate_model(
                 isCeterProvidedTransformed = True
 
             self.plotSensitivities(
-                ToPlotAround_x,
+                x_center0=ToPlotAround_x,
                 isCeterProvidedTransformed=isCeterProvidedTransformed,
                 y_center=yEvaluated,
                 yVar_center=yVarEvaluated,
@@ -446,7 +446,7 @@ def plot_surrogate_model(
 
 def plotSensitivities_surrogate_model(
     self,
-    x_center0,
+    x_center0=None,
     isCeterProvidedTransformed=False,
     y_center=None,
     yVar_center=None,
@@ -454,7 +454,7 @@ def plotSensitivities_surrogate_model(
     extralab="",
     alpha=0.1,
     legendYN=None,
-    labelWhich="",
+    labelWhich="case provided",
     plotRelativeX=True,
     labels=None,
     plotFundamental=True,
@@ -467,6 +467,10 @@ def plotSensitivities_surrogate_model(
     """
     x_center0 should be given raw, untransformed, even if I choose plotFundamental
     """
+
+    if x_center0 is None:
+        x_center0 = self.train_X[-1, :]
+        labelWhich = "last trained point"
 
     colors = GRAPHICStools.listColors()
 
@@ -493,6 +497,8 @@ def plotSensitivities_surrogate_model(
     for i in range(xgrid.shape[1]):
         if labels is not None:
             case = labels[i]
+        else:
+            case = f"Variable {i}"
 
         xgrid_new = xgrid.clone()
 
@@ -503,12 +509,18 @@ def plotSensitivities_surrogate_model(
 
         # Range defined as the training range or with bounds (to deal with cases where I read values from file)
         if plotFundamental:
-            boundsRange, labelx = trainX[:, i].max() - trainX[:, i].min(), "train"
+            if trainX is not None:
+                boundsRange, labelx = (
+                    trainX[:, i].max() - trainX[:, i].min(),
+                    "train range",
+                )
+            else:
+                boundsRange, labelx = centerPoint, "parameter"
         else:
             boundsRange, labelx = (
                 self.bounds[list(self.bounds.keys())[i]].max()
                 - self.bounds[list(self.bounds.keys())[i]].min(),
-                "bounds",
+                "bounds range",
             )
 
         minRange = centerPoint - boundsRange * percent
@@ -571,7 +583,7 @@ def plotSensitivities_surrogate_model(
         )
 
     if plotRelativeX:
-        ax.set_xlabel(f"% of {labelx} range around {labelWhich}")
+        ax.set_xlabel(f"% of {labelx} around {labelWhich}")
     else:
         ax.set_ylabel("X")
 

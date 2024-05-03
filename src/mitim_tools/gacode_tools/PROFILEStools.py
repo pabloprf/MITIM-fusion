@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from IPython import embed
-
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
@@ -245,8 +244,8 @@ class PROFILES_GACODE:
             "jbs(MA/m^2)",
             "jbstor(MA/m^2)",
             "w0(rad/s)",
-            "ptot(Pa)",         # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",          # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
             "zmag(m)",
             self.varqpar,
             self.varqpar2,
@@ -254,7 +253,7 @@ class PROFILES_GACODE:
             self.varqmom,
         ]
 
-        num_moments = 5  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
         for i in range(num_moments):
             some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
             if i > 1:
@@ -268,20 +267,22 @@ class PROFILES_GACODE:
 
     def produce_shape_lists(self):
         self.shape_cos = [
-            self.profiles["shape_cos0(-)"],
+            self.profiles["shape_cos0(-)"],  # tilt
             self.profiles["shape_cos1(-)"],
             self.profiles["shape_cos2(-)"],
             self.profiles["shape_cos3(-)"],
             self.profiles["shape_cos4(-)"],
             self.profiles["shape_cos5(-)"],
+            self.profiles["shape_cos6(-)"],
         ]
         self.shape_sin = [
             None,
-            None,
-            None,
+            None,  # s1 is triangularity
+            None,  # s2 is minus squareness
             self.profiles["shape_sin3(-)"],
             self.profiles["shape_sin4(-)"],
             self.profiles["shape_sin5(-)"],
+            self.profiles["shape_sin6(-)"],
         ]
 
     def readSpecies(self, maxSpecies=100):
@@ -381,7 +382,10 @@ class PROFILES_GACODE:
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
                 self.derived["geo_bt"],
-            ) = GEOMETRYtools.calculateGeometricFactors(self, n_theta=n_theta_geo)
+            ) = GEOMETRYtools.calculateGeometricFactors(
+                self,
+                n_theta=n_theta_geo,
+            )
 
             try:
                 (
@@ -714,9 +718,7 @@ class PROFILES_GACODE:
             self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
         )
 
-        self.derived["dqdr"] = grad(
-            self.profiles["rmin(m)"], self.profiles["q(-)"]
-        )
+        self.derived["dqdr"] = grad(self.profiles["rmin(m)"], self.profiles["q(-)"])
 
         """
 		Other, performance
@@ -730,7 +732,12 @@ class PROFILES_GACODE:
         self.derived["Q"] = self.derived["Pfus"] / self.derived["qIn"]
         self.derived["qHeat"] = qIn[-1] + qFus[-1]
 
-        self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
+        self.derived["qTr"] = (
+            self.derived["qe_aux_MWmiller"]
+            + self.derived["qi_aux_MWmiller"]
+            + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
+            - self.derived["qrad_MWmiller"]
+        )
 
         self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
@@ -1138,7 +1145,6 @@ class PROFILES_GACODE:
                     self.derived["tite"][0],
                 )
             )
-            print(f"\t<Ti>  = {self.derived['Ti_vol']:.2f} keV")
             print(
                 "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
                     self.derived["fG"], self.derived["ne_vol20"]
@@ -1179,9 +1185,13 @@ class PROFILES_GACODE:
         # TO REMOVE
         if "QiQe" not in self.derived:
             self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
-        if 'qTr' not in self.derived:
-            self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
-
+        if "qTr" not in self.derived:
+            self.derived["qTr"] = (
+                self.derived["qe_aux_MWmiller"]
+                + self.derived["qi_aux_MWmiller"]
+                + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
+                - self.derived["qrad_MWmiller"]
+            )
 
         if table is None:
             table = DataTable()
@@ -1521,6 +1531,46 @@ class PROFILES_GACODE:
         # Contributions to dilution and to Zeff
         print(
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
+        )
+
+    def changeZeff(self, Zeff, ion_pos=2, enforceSameGradients=False):
+        """
+        if (D,Z1,Z2), pos 1 -> change Z1
+        """
+
+        print(
+            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} ({self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]})',
+            typeMsg="i",
+        )
+
+        fi_orig = self.derived["fi"][:, ion_pos]
+
+        # Contributions to Zeff
+        fZ2 = np.zeros(self.derived["fi"].shape[0])
+        for i in range(len(self.Species)):
+            if i != ion_pos:
+                fZ2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
+
+        contribution_to_Zeff = Zeff - fZ2
+
+        if contribution_to_Zeff.mean() < 0:
+            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
+        else:
+            fi = contribution_to_Zeff / self.Species[ion_pos]["Z"] ** 2
+
+        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fi * self.profiles["ne(10^19/m^3)"]
+
+        self.readSpecies()
+
+        if enforceSameGradients:
+            self.scaleAllThermalDensities()
+        self.deriveQuantities()
+
+        fi_new = self.derived["fi"][:, ion_pos]
+
+        print(
+            f'\t\t\t- Dilution changed from {fi_orig.mean():.2e} (vol avg) to {fi_new.mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f}',
+            typeMsg="i",
         )
 
     def moveSpecie(self, pos=2, pos_new=1):
@@ -2552,6 +2602,7 @@ class PROFILES_GACODE:
         ax = axs6[3]
         ax.plot(self.profiles["rho(-)"], self.derived["q_fus_MWmiller"], c=color, lw=lw)
         ax.set_ylabel("$P_{fus}$ ($MW$)")
+        ax.set_xlim([0, 1])
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
@@ -3610,9 +3661,9 @@ class DataTable:
             # Default for confinement mode access studies (JWH 03/2024)
             self.variables = {
                 "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
-                "ageo":[ "a", "pos_0", "derived", ".2f", 1, "m"],
-                "kappa @psi=0.95":["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
-                "delta @psi=0.95":["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
+                "ageo": ["a", None, "derived", ".2f", 1, "m"],
+                "kappa @psi=0.95": ["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
+                "delta @psi=0.95": ["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
                 "Ip": ["current(MA)", "pos_0", "profiles", ".1f", 1, "MA"],
                 "Pin": ["qIn", None, "derived", ".1f", 1, "MW"],
@@ -3642,7 +3693,7 @@ class DataTable:
                 "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
                 "Prad": ["Prad", None, "derived", ".1f", 1, "MW"],
                 "Q": ["Q", None, "derived", ".2f", 1, None],
-                "Pnet @rho=0.9": ["qTr",  "rho_0.90", "derived", ".1f", 1, "MW"],
+                "Pnet @rho=0.9": ["qTr", "rho_0.90", "derived", ".1f", 1, "MW"],
                 "Qi/Qe @rho=0.9": ["QiQe", "rho_0.90", "derived", ".2f", 1, None],
             }
 

@@ -20,7 +20,7 @@ parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--ev", type=int, required=False, default=None)
 parser.add_argument("--pos", type=int, required=False, default=[0.5], nargs="*")
 parser.add_argument("--params", type=str, required=False, default=["RLTS_2"], nargs="*")
-parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
+parser.add_argument("--wf", type=float, required=False, default=[], nargs="*")
 parser.add_argument(
     "--var", type=float, required=False, default=0.05
 )  # Variation in inputs (5% default)

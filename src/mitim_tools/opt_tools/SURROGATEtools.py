@@ -154,8 +154,7 @@ class surrogate_model:
             )
             self.train_Y_added = y
 
-            # print('Multiplying variance by 9!!!!',typeMsg='w')
-            self.train_Yvar_added = yvar  # * 9 ### CAREFUL
+            self.train_Yvar_added = yvar
 
         else:
             if self.fileTraining is not None:
@@ -178,7 +177,7 @@ class surrogate_model:
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
 
-        if self.train_X_added.shape[0] > 0:
+        if (self.train_X_added.shape[0] > 0) and (self.train_X.shape[0] > 1):
             self.ensureMinimalVariationSuppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
