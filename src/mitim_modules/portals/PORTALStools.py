@@ -5,9 +5,12 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
-    print(f'\t- Selecting surrogate options for "{output}" to be run in {"CGYRO" if CGYROrun else "TGLF"}')
+    print(
+        f'\t- Selecting surrogate options for "{output}" to be run in {"CGYRO" if CGYROrun else "TGLF"}'
+    )
 
     if output is not None:
         # If it's a target, just linear
@@ -82,7 +85,9 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 # ----------------------------------------------------------------------
 
 
-def transformmitim(X, surrogate_parameters, output):   # TO REMOVE: call it transformPORTALS
+def transformmitim(
+    X, surrogate_parameters, output
+):  # TO REMOVE: call it transformPORTALS
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------

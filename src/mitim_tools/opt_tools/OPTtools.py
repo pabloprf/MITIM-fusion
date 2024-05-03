@@ -11,6 +11,7 @@ from IPython import embed
 
 verbose_level = read_verbose_level()
 
+
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, StrategyOptions):
         self.stepSettings = stepSettings

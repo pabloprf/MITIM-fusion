@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools,PLASMAtools
+from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -357,8 +357,12 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
-        if self.TGYROparameters['TGYRO_physics_options']['TargetType'] < 3:
-            if cont == 0: print('- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets',typeMsg='w')
+        if self.TGYROparameters["TGYRO_physics_options"]["TargetType"] < 3:
+            if cont == 0:
+                print(
+                    "- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets",
+                    typeMsg="w",
+                )
             powerstate = power
         else:
             powerstate = None
@@ -383,7 +387,7 @@ def PORTALSanalyzer_plotMetrics(
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
             plotFlows=plotFlows and (self.ibest == indexUse),
-            addFlowLegend= cont == len(indeces_plot)-1,
+            addFlowLegend=cont == len(indeces_plot) - 1,
         )
 
     ax = axTe
@@ -2797,11 +2801,10 @@ def plotFluxComparison(
     useRoa=False,
     locLeg="upper left",
 ):
-
-    '''
+    """
     By default this plots the fluxes and targets from tgyro
     If powerstate is provided, it will grab the targets from it
-    '''
+    """
 
     r = t.rho if not useRoa else t.roa
 
@@ -2846,7 +2849,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if 'Qe_sim_turb_stds' in t.__dict__:
+        if "Qe_sim_turb_stds" in t.__dict__:
             sigma = t.Qe_sim_turb_stds[0][ixF:] + t.Qe_sim_neo_stds[0][ixF:]
         else:
             print("Could not find errors to plot!", typeMsg="w")
@@ -2856,7 +2859,6 @@ def plotFluxComparison(
             t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]
         ) + stds * sigma
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
-
 
     # -----------------------------------------------------------------------------------------------
     # Ion energy flux
@@ -2874,8 +2876,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if 'QiIons_sim_turb_thr_stds' in t.__dict__:
-            sigma = t.QiIons_sim_turb_thr_stds[0][ixF:] + t.QiIons_sim_neo_thr_stds[0][ixF:]
+        if "QiIons_sim_turb_thr_stds" in t.__dict__:
+            sigma = (
+                t.QiIons_sim_turb_thr_stds[0][ixF:] + t.QiIons_sim_neo_thr_stds[0][ixF:]
+            )
         else:
             sigma = t.Qe_sim_turb[0][ixF:] * 0.0
 
@@ -2894,13 +2898,13 @@ def plotFluxComparison(
 
         if useConvectiveFluxes:
             Ge = t.Ce_sim_turb + t.Ce_sim_neo
-            if 'Ce_sim_turb_stds' in t.__dict__:
+            if "Ce_sim_turb_stds" in t.__dict__:
                 sigma = t.Ce_sim_turb_stds[0][ixF:] + t.Ce_sim_neo_stds[0][ixF:]
             else:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
-            Ge = (t.Ge_sim_turb + t.Ge_sim_neo)
-            if 'Ge_sim_turb_stds' in t.__dict__:
+            Ge = t.Ge_sim_turb + t.Ge_sim_neo
+            if "Ge_sim_turb_stds" in t.__dict__:
                 sigma = t.Ge_sim_turb_stds[0][ixF:] + t.Ge_sim_neo_stds[0][ixF:]
             else:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
@@ -2925,9 +2929,12 @@ def plotFluxComparison(
 
     if axnZ_f is not None:
         if useConvectiveFluxes:
-            GZ = t.Ci_sim_turb[runWithImpurity, :, :]+ t.Ci_sim_neo[runWithImpurity, :, :]
+            GZ = (
+                t.Ci_sim_turb[runWithImpurity, :, :]
+                + t.Ci_sim_neo[runWithImpurity, :, :]
+            )
 
-            if 'Ci_sim_turb_stds' in t.__dict__:
+            if "Ci_sim_turb_stds" in t.__dict__:
                 sigma = (
                     t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:]
                     + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
@@ -2935,8 +2942,11 @@ def plotFluxComparison(
             else:
                 sigma = t.Qe_sim_turb[0][ixF:] * 0.0
         else:
-            GZ = t.Gi_sim_turb[runWithImpurity, :, :]+ t.Gi_sim_neo[runWithImpurity, :, :]
-            if 'Gi_sim_turb_stds' in t.__dict__:
+            GZ = (
+                t.Gi_sim_turb[runWithImpurity, :, :]
+                + t.Gi_sim_neo[runWithImpurity, :, :]
+            )
+            if "Gi_sim_turb_stds" in t.__dict__:
                 sigma = (
                     t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:]
                     + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
@@ -2977,7 +2987,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if 'Mt_sim_turb_stds' in t.__dict__:
+        if "Mt_sim_turb_stds" in t.__dict__:
             sigma = t.Mt_sim_turb_stds[0][ixF:] + t.Mt_sim_neo_stds[0][ixF:]
         else:
             sigma = t.Qe_sim_turb[0][ixF:] * 0.0
@@ -2987,24 +2997,35 @@ def plotFluxComparison(
         ) + stds * sigma
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
-
     # -----------------------------------------------------------------------------------------------
     # Plot targets
     # -----------------------------------------------------------------------------------------------
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    rad    = r[0][ixF:] if powerstate is None else r[0][1:]
-    Qe_tar = t.Qe_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pe'].numpy()[0][:]
-    Qi_tar = t.Qi_tar[0][ixF:] if powerstate is None else powerstate.plasma['Pi'].numpy()[0][:]
+    rad = r[0][ixF:] if powerstate is None else r[0][1:]
+    Qe_tar = (
+        t.Qe_tar[0][ixF:]
+        if powerstate is None
+        else powerstate.plasma["Pe"].numpy()[0][:]
+    )
+    Qi_tar = (
+        t.Qi_tar[0][ixF:]
+        if powerstate is None
+        else powerstate.plasma["Pi"].numpy()[0][:]
+    )
 
     if forceZeroParticleFlux:
         Ge_tar = Qe_tar * 0.0
     else:
         if powerstate is not None:
-            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][1:] # Special because Ge is not stored in powerstate
+            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][
+                1:
+            ]  # Special because Ge is not stored in powerstate
             if useConvectiveFluxes:
-                Ge_tar = PLASMAtools.convective_flux(powerstate.plasma["te"][0][1:], Ge_tar).numpy()
+                Ge_tar = PLASMAtools.convective_flux(
+                    powerstate.plasma["te"][0][1:], Ge_tar
+                ).numpy()
         else:
             if useConvectiveFluxes:
                 Ge_tar = t.Ce_tar[0][ixF:]
@@ -3012,7 +3033,11 @@ def plotFluxComparison(
                 Ge_tar = t.Ge_tar[0][ixF:]
 
     GZ_tar = t.Ge_tar * 0.0
-    Mt_tar = t.Mt_tar[0][ixF:] if powerstate is None else powerstate.plasma['Mt'].numpy()[0][:]
+    Mt_tar = (
+        t.Mt_tar[0][ixF:]
+        if powerstate is None
+        else powerstate.plasma["Mt"].numpy()[0][:]
+    )
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3057,7 +3082,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if maxStore:    
+        if maxStore:
             GeBest_max = np.max([M_Ge.max(), Ge_tar.max()])
             GeBest_min = np.min([m_Ge.min(), Ge_tar.min()])
 
@@ -3107,11 +3132,7 @@ def plotFluxComparison(
                 else:
                     y = tBest.derived[var] * mult
                 ax.plot(
-                    (
-                        tBest.profiles["rho(-)"]
-                        if not useRoa
-                        else tBest.derived["roa"]
-                    ),
+                    (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,
                     "-.",
                     lw=0.5,

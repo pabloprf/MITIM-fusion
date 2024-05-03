@@ -17,6 +17,7 @@ The CGYRO file must contain GB units, and the gb unit is MW/m^2, 1E19m^2/s
 The CGYRO file must use particle flux. Convective transformation occurs later
 """
 
+
 def evaluateCGYRO(
     PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, rad=4
 ):
@@ -28,8 +29,8 @@ def evaluateCGYRO(
     # ------------------------------------------------------------------------------------------------
     # Harcoded
     # ------------------------------------------------------------------------------------------------
-    if 'hardCodedCGYRO' in PORTALSparameters:
-        '''
+    if "hardCodedCGYRO" in PORTALSparameters:
+        """
         train_sep is the number of initial runs in it#0 results file. Now, it's usually 1
         start_num is the number of the first iteration, usually 0
         trick_harcoded_f is the name of the file until the iteration number. E.g. '/Users/pablorf/PROJECTS/project_2022_mitimalcc/iter/cgyro3/run3_recover/Outputs/cgyro_results/iter_rmp_75_'
@@ -37,13 +38,15 @@ def evaluateCGYRO(
         e.g.:
             includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2024_PORTALSdatabase/d3d_iss5chan_arx2023/mitim_run1/Outputs/cgyro_results/d3d_5chan_it_'
 
-        '''
+        """
 
-        includeMtAndGz_hardcoded = PORTALSparameters['hardCodedCGYRO']['includeMtAndGz_hardcoded']
-        train_sep = PORTALSparameters['hardCodedCGYRO']['train_sep']
-        start_num = PORTALSparameters['hardCodedCGYRO']['start_num']
-        last_one = PORTALSparameters['hardCodedCGYRO']['last_one']
-        trick_hardcoded_f = PORTALSparameters['hardCodedCGYRO']['trick_hardcoded_f']
+        includeMtAndGz_hardcoded = PORTALSparameters["hardCodedCGYRO"][
+            "includeMtAndGz_hardcoded"
+        ]
+        train_sep = PORTALSparameters["hardCodedCGYRO"]["train_sep"]
+        start_num = PORTALSparameters["hardCodedCGYRO"]["start_num"]
+        last_one = PORTALSparameters["hardCodedCGYRO"]["last_one"]
+        trick_hardcoded_f = PORTALSparameters["hardCodedCGYRO"]["trick_hardcoded_f"]
     else:
         includeMtAndGz_hardcoded = None
         train_sep = None

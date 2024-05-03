@@ -154,7 +154,7 @@ class surrogate_model:
             )
             self.train_Y_added = y
 
-            self.train_Yvar_added = yvar 
+            self.train_Yvar_added = yvar
 
         else:
             if self.fileTraining is not None:

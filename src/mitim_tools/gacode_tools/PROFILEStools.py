@@ -244,8 +244,8 @@ class PROFILES_GACODE:
             "jbs(MA/m^2)",
             "jbstor(MA/m^2)",
             "w0(rad/s)",
-            "ptot(Pa)",         # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",          # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
             "zmag(m)",
             self.varqpar,
             self.varqpar2,
@@ -267,7 +267,7 @@ class PROFILES_GACODE:
 
     def produce_shape_lists(self):
         self.shape_cos = [
-            self.profiles["shape_cos0(-)"],     # tilt
+            self.profiles["shape_cos0(-)"],  # tilt
             self.profiles["shape_cos1(-)"],
             self.profiles["shape_cos2(-)"],
             self.profiles["shape_cos3(-)"],
@@ -277,8 +277,8 @@ class PROFILES_GACODE:
         ]
         self.shape_sin = [
             None,
-            None,                               # s1 is triangularity
-            None,                               # s2 is minus squareness
+            None,  # s1 is triangularity
+            None,  # s2 is minus squareness
             self.profiles["shape_sin3(-)"],
             self.profiles["shape_sin4(-)"],
             self.profiles["shape_sin5(-)"],
@@ -375,15 +375,16 @@ class PROFILES_GACODE:
         )
 
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
-        
+
         if rederiveGeometry or ("volp_miller" not in self.derived):
             (
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
                 self.derived["geo_bt"],
-            ) = GEOMETRYtools.calculateGeometricFactors(self,
-                                                        n_theta=n_theta_geo,
+            ) = GEOMETRYtools.calculateGeometricFactors(
+                self,
+                n_theta=n_theta_geo,
             )
 
             try:
@@ -717,9 +718,7 @@ class PROFILES_GACODE:
             self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
         )
 
-        self.derived["dqdr"] = grad(
-            self.profiles["rmin(m)"], self.profiles["q(-)"]
-        )
+        self.derived["dqdr"] = grad(self.profiles["rmin(m)"], self.profiles["q(-)"])
 
         """
 		Other, performance
@@ -733,7 +732,12 @@ class PROFILES_GACODE:
         self.derived["Q"] = self.derived["Pfus"] / self.derived["qIn"]
         self.derived["qHeat"] = qIn[-1] + qFus[-1]
 
-        self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
+        self.derived["qTr"] = (
+            self.derived["qe_aux_MWmiller"]
+            + self.derived["qi_aux_MWmiller"]
+            + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
+            - self.derived["qrad_MWmiller"]
+        )
 
         self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
@@ -1181,9 +1185,13 @@ class PROFILES_GACODE:
         # TO REMOVE
         if "QiQe" not in self.derived:
             self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
-        if 'qTr' not in self.derived:
-            self.derived['qTr'] =  self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"] + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]) - self.derived["qrad_MWmiller"]
-
+        if "qTr" not in self.derived:
+            self.derived["qTr"] = (
+                self.derived["qe_aux_MWmiller"]
+                + self.derived["qi_aux_MWmiller"]
+                + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
+                - self.derived["qrad_MWmiller"]
+            )
 
         if table is None:
             table = DataTable()
@@ -1525,12 +1533,15 @@ class PROFILES_GACODE:
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
         )
 
-    def changeZeff(self,Zeff,ion_pos=2,enforceSameGradients=False):
+    def changeZeff(self, Zeff, ion_pos=2, enforceSameGradients=False):
         """
         if (D,Z1,Z2), pos 1 -> change Z1
         """
 
-        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} ({self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]})', typeMsg="i")
+        print(
+            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} ({self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]})',
+            typeMsg="i",
+        )
 
         fi_orig = self.derived["fi"][:, ion_pos]
 
@@ -1557,8 +1568,10 @@ class PROFILES_GACODE:
 
         fi_new = self.derived["fi"][:, ion_pos]
 
-        print(f'\t\t\t- Dilution changed from {fi_orig.mean():.2e} (vol avg) to {fi_new.mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f}', typeMsg="i")
-
+        print(
+            f'\t\t\t- Dilution changed from {fi_orig.mean():.2e} (vol avg) to {fi_new.mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f}',
+            typeMsg="i",
+        )
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
@@ -3648,9 +3661,9 @@ class DataTable:
             # Default for confinement mode access studies (JWH 03/2024)
             self.variables = {
                 "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
-                "ageo":[ "a", None, "derived", ".2f", 1, "m"],
-                "kappa @psi=0.95":["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
-                "delta @psi=0.95":["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
+                "ageo": ["a", None, "derived", ".2f", 1, "m"],
+                "kappa @psi=0.95": ["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
+                "delta @psi=0.95": ["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
                 "Ip": ["current(MA)", "pos_0", "profiles", ".1f", 1, "MA"],
                 "Pin": ["qIn", None, "derived", ".1f", 1, "MW"],
@@ -3680,7 +3693,7 @@ class DataTable:
                 "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
                 "Prad": ["Prad", None, "derived", ".1f", 1, "MW"],
                 "Q": ["Q", None, "derived", ".2f", 1, None],
-                "Pnet @rho=0.9": ["qTr",  "rho_0.90", "derived", ".1f", 1, "MW"],
+                "Pnet @rho=0.9": ["qTr", "rho_0.90", "derived", ".1f", 1, "MW"],
                 "Qi/Qe @rho=0.9": ["QiQe", "rho_0.90", "derived", ".2f", 1, None],
             }
 

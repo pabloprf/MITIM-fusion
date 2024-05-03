@@ -469,7 +469,7 @@ def plotSensitivities_surrogate_model(
     """
 
     if x_center0 is None:
-        x_center0 = self.train_X[-1,:]
+        x_center0 = self.train_X[-1, :]
         labelWhich = "last trained point"
 
     colors = GRAPHICStools.listColors()
@@ -510,7 +510,10 @@ def plotSensitivities_surrogate_model(
         # Range defined as the training range or with bounds (to deal with cases where I read values from file)
         if plotFundamental:
             if trainX is not None:
-                boundsRange, labelx = trainX[:, i].max() - trainX[:, i].min(), "train range"
+                boundsRange, labelx = (
+                    trainX[:, i].max() - trainX[:, i].min(),
+                    "train range",
+                )
             else:
                 boundsRange, labelx = centerPoint, "parameter"
         else:

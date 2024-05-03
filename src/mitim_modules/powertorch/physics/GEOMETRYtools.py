@@ -3,6 +3,7 @@ import numpy as np
 from mitim_tools.misc_tools import MATHtools
 from IPython import embed
 
+
 def calculateGeometricFactors(profiles, n_theta=1001):
 
     # ----------------------------------------
@@ -18,7 +19,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     zmag = profiles.profiles["zmag(m)"] / profiles.profiles["rmin(m)"][-1]
     q = profiles.profiles["q(-)"]
 
-    shape_coeffs = profiles.shape_cos+profiles.shape_sin
+    shape_coeffs = profiles.shape_cos + profiles.shape_sin
 
     # ----------------------------------------
     # Derivatives as defined in expro_util.f90

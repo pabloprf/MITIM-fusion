@@ -42,11 +42,11 @@ Reading analysis for PORTALS has more options than standard:
 """
 
 
-def default_namelist(Optim,CGYROrun=False):
+def default_namelist(Optim, CGYROrun=False):
     """
     This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
     """
-    
+
     # Initialization
     Optim["initialPoints"] = 5
     Optim["initializationFun"] = PORTALSoptimization.initialization_simple_relax
@@ -63,7 +63,7 @@ def default_namelist(Optim,CGYROrun=False):
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
-        Optim["StrategyOptions"]["AllowedExcursions"] = [0.0,0.0]
+        Optim["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
     else:
         # Allow excursions for TGLF
         Optim["StrategyOptions"]["AllowedExcursions"] = [
@@ -72,7 +72,9 @@ def default_namelist(Optim,CGYROrun=False):
         ]  # This would be 10% if [-100,100]
 
     # Surrogate
-    Optim["surrogateOptions"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
+    Optim["surrogateOptions"]["selectSurrogate"] = partial(
+        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
+    )
     # Optim['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
     Optim["surrogateOptions"]["ensureTrainingBounds"] = True
@@ -97,12 +99,16 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         )
 
         # Store folder, namelist. Read namelist
-        
+
         super().__init__(
             folder,
             namelist=namelist,
             TensorsType=TensorsType,
-            default_namelist_function=partial(default_namelist, CGYROrun=CGYROrun) if (namelist is None) else None,
+            default_namelist_function=(
+                partial(default_namelist, CGYROrun=CGYROrun)
+                if (namelist is None)
+                else None
+            ),
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -365,7 +371,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         if self.MITIMextra is not None:
             with open(self.MITIMextra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
-            dictStore[int(numPORTALS)] = {"tgyro": tgyro, 'powerstate':powerstate}
+            dictStore[int(numPORTALS)] = {"tgyro": tgyro, "powerstate": powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
             )
