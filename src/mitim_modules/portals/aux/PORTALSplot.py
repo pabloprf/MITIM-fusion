@@ -2067,7 +2067,7 @@ def PORTALSanalyzer_plotModelComparison(
     thre = 10 ** round(np.log10(np.abs(val_calc).min()))
     axs[2].set_xscale("symlog", linthresh=thre)
     axs[2].set_yscale("symlog", linthresh=thre)
-    axs[2].tick_params(axis="both", which="major", labelsize=8)
+    # axs[2].tick_params(axis="both", which="major", labelsize=8)
 
     cont = 1
     if "nZ" in self.ProfilesPredicted:

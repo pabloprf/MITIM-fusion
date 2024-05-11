@@ -344,10 +344,12 @@ def output_figure_papers(name, fig=None):
     if name is not None:
         if fig is None:
             plt.savefig(name + ".svg", transparent=True)
+            plt.savefig(name + ".jpeg", transparent=True, dpi=300)
             plt.savefig(name + ".png", transparent=True, dpi=300)
             plt.savefig(name + "_white.png", transparent=False, dpi=300)
         else:
             fig.savefig(name + ".svg", transparent=True)
+            fig.savefig(name + ".jpeg", transparent=True, dpi=300)
             fig.savefig(name + ".png", transparent=True, dpi=300)
             fig.savefig(name + "_white.png", transparent=False, dpi=300)
 

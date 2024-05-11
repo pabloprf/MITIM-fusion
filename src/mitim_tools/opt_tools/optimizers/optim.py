@@ -52,7 +52,7 @@ def powell(
     # ************
     # Root process
     # ************
-    f0 = func(xGuess0)[0]
+    f0,_ = func(xGuess0)
     print(
         f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}",
         verbose=verbose_level,
@@ -62,7 +62,7 @@ def powell(
         func, xGuess0, jac=True, method=solver, tol=None, options=algorithmOptions
     )
 
-    f = func(sol.x)[0]
+    f,_ = func(sol.x)
     print(
         f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}",
         verbose=verbose_level,
