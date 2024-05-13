@@ -3,9 +3,8 @@ import os
 import torch
 import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
-from mitim_tools.gacode_tools import TGYROtools
+from mitim_tools.gacode_tools import TGYROtools, TGLFtools
 from mitim_modules.portals.aux import PORTALScgyro
-from mitim_modules.powertorch.aux import TRANSFORMtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -135,8 +134,6 @@ def tgyro_model(
         applyCorrections=MODELparameters["applyCorrections"],
     )
 
-    # VGEN?
-
     # copy for future modifications
     self.file_profs_mod = f"{self.file_profs}_modified"
     os.system(f"cp {self.file_profs} {self.file_profs_mod}")
@@ -145,13 +142,13 @@ def tgyro_model(
     # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
     # ------------------------------------------------------------------------------------------------------------------------
 
-    self.model_current = TGYROtools.TGYRO(cdf=dummyCDF(folder, FolderEvaluation_TGYRO))
-    self.model_current.prep(FolderEvaluation_TGYRO, profilesclass_custom=profiles)
-
     RadiisToRun = [
         self.plasma["rho"][0, 1:][i].item()
         for i in range(len(self.plasma["rho"][0, 1:]))
     ]
+
+    self.model_current = TGYROtools.TGYRO(cdf=dummyCDF(folder, FolderEvaluation_TGYRO))
+    self.model_current.prep(FolderEvaluation_TGYRO, profilesclass_custom=profiles)
 
     if launchMODELviaSlurm:
         print("\t- Launching TGYRO evaluation as a batch job")
@@ -167,7 +164,7 @@ def tgyro_model(
         PredictionSet=ProfilesTGYRO,
         TGLFsettings=TGLFparameters["TGLFsettings"],
         extraOptionsTGLF=TGLFparameters["extraOptionsTGLF"],
-        Physics_options=MODELparameters["Physics_options"],
+        TGYRO_physics_options=MODELparameters["Physics_options"],
         launchSlurm=launchMODELviaSlurm,
         minutesJob=5,
         forcedName=name,
@@ -177,6 +174,30 @@ def tgyro_model(
 
     # Copy one with evaluated targets
     self.file_profs_targets = f"{self.model_current.FolderTGYRO}/input.gacode.new"
+
+
+    # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+    # Run TGLF standalone --> In preparation for the transition
+    # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+    self.tglf = TGLFtools.TGLF(rhos=RadiisToRun)
+    _ = self.tglf.prep(folder+'/stds/', inputgacode=self.file_profs, restart=restart)
+
+    self.tglf.run(
+        subFolderTGLF="tglf_neo_original/",
+        TGLFsettings=TGLFparameters["TGLFsettings"],
+        restart=restart,
+        forceIfRestart=True,
+        extraOptions=TGLFparameters["extraOptionsTGLF"],
+        launchSlurm=launchMODELviaSlurm,
+        slurm_setup={"cores": 4, "minutes": 1},
+    )
+
+    self.tglf.read(label="tglf_neo_original")
+
+    results = self.tglf.tgyroing(label="tglf_neo_original")
+    # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+    # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
     # ------------------------------------------------------------------------------------------------------------------------
     # 2. tglf_neo: Write TGLF, NEO and TARGET errors in tgyro files as well

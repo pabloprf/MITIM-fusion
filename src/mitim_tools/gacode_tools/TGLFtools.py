@@ -223,7 +223,6 @@ class TGLF:
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
         forceIfRestart=False,  # Extra flag
-        remove_tmpTGYRO=False,  # Extra flag
     ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
@@ -249,7 +248,7 @@ class TGLF:
         self.tgyro.prep(
             FolderGACODE,
             restart=restart,
-            remove_tmp=remove_tmpTGYRO,
+            remove_tmp=True,
             subfolder="tmp_tgyro_prep",
             profilesclass_custom=profiles,
             forceIfRestart=forceIfRestart,
@@ -820,6 +819,19 @@ class TGLF:
                             f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
                         )
                     )
+
+    def tgyroing(self,label="tglf1",results = {}):
+        '''
+        This routine will take the results from TGLF run at several locations and produce outputs similar to the TGYRO class
+        '''
+
+        results['Qe_sim_turb'] = [0.0]
+        for ix in range(len(self.rhos)):
+            results['Qe_sim_turb'].append(self.results[label]['TGLFout'][ix].Qe_unn)
+        results['Qe_sim_turb'] = np.array([results['Qe_sim_turb']])
+
+        return results
+
 
     def plot(
         self,

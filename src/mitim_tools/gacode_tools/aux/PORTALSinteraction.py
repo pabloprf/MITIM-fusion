@@ -128,9 +128,8 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
 def TGYROmodeledVariables(
-    self,
+    TGYROresults,
     useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
     includeFast=False,
@@ -142,11 +141,11 @@ def TGYROmodeledVariables(
     """
     impurityPosition will be substracted one
     """
-    if "tgyro_stds" not in self.__dict__:
-        self.tgyro_stds = False
+    if "tgyro_stds" not in TGYROresults.__dict__:
+        TGYROresults.tgyro_stds = False
 
     if UseFineGridTargets:
-        self.useFineGridTargets(impurityPosition=impurityPosition)
+        TGYROresults.useFineGridTargets(impurityPosition=impurityPosition)
 
     portals_variables = {}
 
@@ -154,93 +153,93 @@ def TGYROmodeledVariables(
     # *********** Electron Energy Fluxes
     # **********************************
 
-    portals_variables["Qe_turb"] = self.Qe_sim_turb[:, :]
-    portals_variables["Qe_neo"] = self.Qe_sim_neo[:, :]
-    portals_variables["Qe"] = self.Qe_tar[:, :]
+    portals_variables["Qe_turb"] = TGYROresults.Qe_sim_turb[:, :]
+    portals_variables["Qe_neo"] = TGYROresults.Qe_sim_neo[:, :]
+    portals_variables["Qe"] = TGYROresults.Qe_tar[:, :]
 
     portals_variables["Qe_turb_stds"] = (
-        self.Qe_sim_turb_stds if self.tgyro_stds else None
+        TGYROresults.Qe_sim_turb_stds if TGYROresults.tgyro_stds else None
     )
-    portals_variables["Qe_neo_stds"] = self.Qe_sim_neo_stds if self.tgyro_stds else None
-    portals_variables["Qe_stds"] = self.Qe_tar_stds if self.tgyro_stds else None
+    portals_variables["Qe_neo_stds"] = TGYROresults.Qe_sim_neo_stds if TGYROresults.tgyro_stds else None
+    portals_variables["Qe_stds"] = TGYROresults.Qe_tar_stds if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Ion Energy Fluxes
     # **********************************
 
     if includeFast:
-        portals_variables["Qi_turb"] = self.QiIons_sim_turb[:, :]
-        portals_variables["Qi_neo"] = self.QiIons_sim_neo[:, :]
+        portals_variables["Qi_turb"] = TGYROresults.QiIons_sim_turb[:, :]
+        portals_variables["Qi_neo"] = TGYROresults.QiIons_sim_neo[:, :]
 
         portals_variables["Qi_turb_stds"] = (
-            self.QiIons_sim_turb_stds if self.tgyro_stds else None
+            TGYROresults.QiIons_sim_turb_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Qi_neo_stds"] = (
-            self.QiIons_sim_neo_stds if self.tgyro_stds else None
+            TGYROresults.QiIons_sim_neo_stds if TGYROresults.tgyro_stds else None
         )
 
     else:
-        portals_variables["Qi_turb"] = self.QiIons_sim_turb_thr[:, :]
-        portals_variables["Qi_neo"] = self.QiIons_sim_neo_thr[:, :]
+        portals_variables["Qi_turb"] = TGYROresults.QiIons_sim_turb_thr[:, :]
+        portals_variables["Qi_neo"] = TGYROresults.QiIons_sim_neo_thr[:, :]
 
         portals_variables["Qi_turb_stds"] = (
-            self.QiIons_sim_turb_thr_stds if self.tgyro_stds else None
+            TGYROresults.QiIons_sim_turb_thr_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Qi_neo_stds"] = (
-            self.QiIons_sim_neo_thr_stds if self.tgyro_stds else None
+            TGYROresults.QiIons_sim_neo_thr_stds if TGYROresults.tgyro_stds else None
         )
 
-    portals_variables["Qi"] = self.Qi_tar[:, :]
-    portals_variables["Qi_stds"] = self.Qi_tar_stds[:, :] if self.tgyro_stds else None
+    portals_variables["Qi"] = TGYROresults.Qi_tar[:, :]
+    portals_variables["Qi_stds"] = TGYROresults.Qi_tar_stds[:, :] if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Momentum Fluxes
     # **********************************
 
-    portals_variables["Mt_turb"] = self.Mt_sim_turb[
+    portals_variables["Mt_turb"] = TGYROresults.Mt_sim_turb[
         :, :
     ]  # So far, let's include fast in momentum
-    portals_variables["Mt_neo"] = self.Mt_sim_neo[:, :]
-    portals_variables["Mt"] = self.Mt_tar[:, :]
+    portals_variables["Mt_neo"] = TGYROresults.Mt_sim_neo[:, :]
+    portals_variables["Mt"] = TGYROresults.Mt_tar[:, :]
 
     portals_variables["Mt_turb_stds"] = (
-        self.Mt_sim_turb_stds if self.tgyro_stds else None
+        TGYROresults.Mt_sim_turb_stds if TGYROresults.tgyro_stds else None
     )
-    portals_variables["Mt_neo_stds"] = self.Mt_sim_neo_stds if self.tgyro_stds else None
-    portals_variables["Mt_stds"] = self.Mt_tar_stds[:, :] if self.tgyro_stds else None
+    portals_variables["Mt_neo_stds"] = TGYROresults.Mt_sim_neo_stds if TGYROresults.tgyro_stds else None
+    portals_variables["Mt_stds"] = TGYROresults.Mt_tar_stds[:, :] if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Particle Fluxes
     # **********************************
 
     if not useConvectiveFluxes:
-        portals_variables["Ge_turb"] = self.Ge_sim_turb[:, :]
-        portals_variables["Ge_neo"] = self.Ge_sim_neo[:, :]
-        portals_variables["Ge"] = self.Ge_tar[:, :]
+        portals_variables["Ge_turb"] = TGYROresults.Ge_sim_turb[:, :]
+        portals_variables["Ge_neo"] = TGYROresults.Ge_sim_neo[:, :]
+        portals_variables["Ge"] = TGYROresults.Ge_tar[:, :]
 
         portals_variables["Ge_turb_stds"] = (
-            self.Ge_sim_turb_stds if self.tgyro_stds else None
+            TGYROresults.Ge_sim_turb_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Ge_neo_stds"] = (
-            self.Ge_sim_neo_stds if self.tgyro_stds else None
+            TGYROresults.Ge_sim_neo_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Ge_stds"] = (
-            self.Ge_tar_stds[:, :] if self.tgyro_stds else None
+            TGYROresults.Ge_tar_stds[:, :] if TGYROresults.tgyro_stds else None
         )
 
     else:
-        portals_variables["Ge_turb"] = self.Ce_sim_turb[:, :]
-        portals_variables["Ge_neo"] = self.Ce_sim_neo[:, :]
-        portals_variables["Ge"] = self.Ce_tar[:, :]
+        portals_variables["Ge_turb"] = TGYROresults.Ce_sim_turb[:, :]
+        portals_variables["Ge_neo"] = TGYROresults.Ce_sim_neo[:, :]
+        portals_variables["Ge"] = TGYROresults.Ce_tar[:, :]
 
         portals_variables["Ge_turb_stds"] = (
-            self.Ce_sim_turb_stds if self.tgyro_stds else None
+            TGYROresults.Ce_sim_turb_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Ge_neo_stds"] = (
-            self.Ce_sim_neo_stds if self.tgyro_stds else None
+            TGYROresults.Ce_sim_neo_stds if TGYROresults.tgyro_stds else None
         )
         portals_variables["Ge_stds"] = (
-            self.Ce_tar_stds[:, :] if self.tgyro_stds else None
+            TGYROresults.Ce_tar_stds[:, :] if TGYROresults.tgyro_stds else None
         )
 
     # **********************************
@@ -249,51 +248,51 @@ def TGYROmodeledVariables(
 
     if not useConvectiveFluxes:
         portals_variables["GZ_turb"] = (
-            self.Gi_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
+            TGYROresults.Gi_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
         )
         portals_variables["GZ_neo"] = (
-            self.Gi_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
+            TGYROresults.Gi_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
         )
-        portals_variables["GZ"] = self.Gi_tar[impurityPosition - 1, :, :] / OriginalFimp
+        portals_variables["GZ"] = TGYROresults.Gi_tar[impurityPosition - 1, :, :] / OriginalFimp
 
         portals_variables["GZ_turb_stds"] = (
-            self.Gi_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
         portals_variables["GZ_neo_stds"] = (
-            self.Gi_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
         portals_variables["GZ_stds"] = (
-            self.Gi_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Gi_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
 
     else:
         portals_variables["GZ_neo"] = (
-            self.Ci_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
+            TGYROresults.Ci_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
         )
         portals_variables["GZ_turb"] = (
-            self.Ci_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
+            TGYROresults.Ci_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
         )
-        portals_variables["GZ"] = self.Ci_tar[impurityPosition - 1, :, :] / OriginalFimp
+        portals_variables["GZ"] = TGYROresults.Ci_tar[impurityPosition - 1, :, :] / OriginalFimp
 
         portals_variables["GZ_turb_stds"] = (
-            self.Ci_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Ci_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
         portals_variables["GZ_neo_stds"] = (
-            self.Ci_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Ci_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
         portals_variables["GZ_stds"] = (
-            self.Ci_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
+            TGYROresults.Ci_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
+            if TGYROresults.tgyro_stds
             else None
         )
 
@@ -301,13 +300,13 @@ def TGYROmodeledVariables(
     # *********** Energy Exchange
     # **********************************
 
-    portals_variables["PexchTurb"] = self.EXe_sim_turb[:, :]  # MW/m^3
+    portals_variables["PexchTurb"] = TGYROresults.EXe_sim_turb[:, :]  # MW/m^3
     portals_variables["PexchTurb_stds"] = (
-        self.EXe_sim_turb_stds[:, :] if self.tgyro_stds else None
+        TGYROresults.EXe_sim_turb_stds[:, :] if TGYROresults.tgyro_stds else None
     )
 
     if forceZeroParticleFlux:
-        portals_variables["Ge"] = self.Ge_tar[:, :] * 0.0
+        portals_variables["Ge"] = TGYROresults.Ge_tar[:, :] * 0.0
 
     # ----------------------------------------------------------------------------------------
     # Prepare dictionary that is equal to what portals pseudo does in PORTALSmain (calculatePseudos)
@@ -338,7 +337,7 @@ def TGYROmodeledVariables(
         portals_variables["var_dict"][ikey] = torch.Tensor(
             portals_variables[mapper[ikey]]
         ).to(dfT)[:, 1:]
-        if self.tgyro_stds:
+        if TGYROresults.tgyro_stds:
             portals_variables["var_dict"][ikey + "_stds"] = torch.Tensor(
                 portals_variables[mapper[ikey] + "_stds"]
             ).to(dfT)[:, 1:]

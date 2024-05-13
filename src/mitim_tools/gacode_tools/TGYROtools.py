@@ -181,7 +181,7 @@ class TGYRO:
         forceIfRestart=False,
         minutesJob=30,
         launchSlurm=True,
-        Physics_options={},
+        TGYRO_physics_options={},
         TGYRO_solver_options={},
         TGYROcontinue=None,
         rhosCopy=[],
@@ -204,11 +204,11 @@ class TGYRO:
 		onlyThermal=True does not include the fast particles (end of file)
 		Note: running with onlyThermal will result in a input.gacode.new that has 0.0 in the columns of the fast particles
 		"""
-        onlyThermal = Physics_options.get("onlyThermal", False)
-        limitSpecies = Physics_options.get(
+        onlyThermal = TGYRO_physics_options.get("onlyThermal", False)
+        limitSpecies = TGYRO_physics_options.get(
             "limitSpecies", 100
         )  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
-        quasineutrality = Physics_options.get("quasineutrality", [])
+        quasineutrality = TGYRO_physics_options.get("quasineutrality", [])
 
         if (
             (iterations == 0)
@@ -407,7 +407,7 @@ class TGYRO:
             inputclass_TGYRO,
             vectorRange,
             iterations,
-            Physics_options,
+            TGYRO_physics_options,
             TGYRO_solver_options,
             Tepred=Tepred,
             Tipred=Tipred,
@@ -432,7 +432,7 @@ class TGYRO:
         minn_true = []
         for i in minn:
             if (self.profiles.Species[i]["S"] != "fast") or (
-                not Physics_options["onlyThermal"]
+                not TGYRO_physics_options["onlyThermal"]
             ):
                 minn_true.append(i)
 
@@ -478,7 +478,7 @@ class TGYRO:
                     self.FolderTGYRO_tmp + "input.gacode.new"
                 )
 
-                if Physics_options["TargetType"] < 3:
+                if TGYRO_physics_options["TargetType"] < 3:
                     for ikey in [
                         "qbrem(MW/m^3)",
                         "qsync(MW/m^3)",
@@ -498,7 +498,7 @@ class TGYRO:
                                 inputgacode_new.profiles["rho(-)"] * 0.0
                             )
 
-                if Physics_options["TargetType"] < 2:
+                if TGYRO_physics_options["TargetType"] < 2:
                     for ikey in ["qei(MW/m^3)"]:
                         print(
                             f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode"
@@ -566,7 +566,7 @@ class TGYRO:
         extraOptionsTGLF={},
         forceIfRestart=False,
         launchSlurm=True,
-        Physics_options={},
+        TGYRO_physics_options={},
         TGYRO_solver_options={},
     ):
         """
@@ -596,7 +596,7 @@ class TGYRO:
             TGLFsettings=TGLFsettings,
             extraOptionsTGLF=extraOptionsTGLF,
             TGYRO_solver_options=solver,
-            Physics_options=Physics_options,
+            TGYRO_physics_options=TGYRO_physics_options,
         )
         self.read(label=f"{self.nameRuns_default}_1")
 
@@ -608,7 +608,7 @@ class TGYRO:
         # 	special_radii=special_radii,vectorRange=vectorRange,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
-        # 	TGYRO_solver_options=solver,Physics_options = Physics_options)
+        # 	TGYRO_solver_options=solver,TGYRO_physics_options = TGYRO_physics_options)
         # self.read(label = f'{self.nameRuns_default}_1')
 
         """
@@ -625,7 +625,7 @@ class TGYRO:
         # 	special_radii=rhos,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
-        # 	TGYRO_solver_options=solver,Physics_options = physics_options)
+        # 	TGYRO_solver_options=solver,TGYRO_physics_options = physics_options)
         # tgyro.read(label = 'run2')
 
         """
@@ -733,7 +733,7 @@ class TGYRO:
 
         # ---- Set up to only generate files without no much calcs
         TGLFsettings = 0
-        Physics_options = {
+        TGYRO_physics_options = {
             "TargetType": 1,  # Do not do anything with targets
             "TurbulentExchange": 0,  # Do not calculate turbulent exchange
             "InputType": 1,  # Use exact profiles
@@ -748,7 +748,7 @@ class TGYRO:
             self.run(
                 subFolderTGYRO=subFolderTGYRO,
                 TGLFsettings=TGLFsettings,
-                Physics_options=Physics_options,
+                TGYRO_physics_options=TGYRO_physics_options,
                 iterations=0,
                 restart=restart,
                 forceIfRestart=True,
@@ -4642,7 +4642,7 @@ def modifyInputToTGYRO(
     inputTGYRO,
     vectorRange,
     iterations,
-    Physics_options,
+    TGYRO_physics_options,
     solver_options,
     Tepred=1,
     Tipred=1,
@@ -4652,7 +4652,7 @@ def modifyInputToTGYRO(
 ):
     (
         TGYROoptions,
-        Physics_options_new,
+        TGYRO_physics_options_new,
         solver_options_new,
     ) = GACODEdefaults.addTGYROcontrol(
         howmany=vectorRange[2],
@@ -4662,14 +4662,14 @@ def modifyInputToTGYRO(
         Tepred=Tepred,
         Tipred=Tipred,
         nepred=nepred,
-        physics_options=Physics_options,
+        physics_options=TGYRO_physics_options,
         solver_options=solver_options,
         restart=TGYROcontinue,
         special_radii=special_radii,
     )
 
     # Print after adding the defaults, to see what's really running
-    print_options(Physics_options_new, solver_options_new)
+    print_options(TGYRO_physics_options_new, solver_options_new)
 
     # ~~~~~~~~~~ Change with presets
     for ikey in TGYROoptions:
