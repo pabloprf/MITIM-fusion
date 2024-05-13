@@ -173,10 +173,7 @@ class PORTALSanalyzer:
 
         self.profiles, self.tgyros, self.powerstates = [], [], []
         for i in range(self.ilast + 1):
-            if "powerstate" in self.mitim_runs[i]:  # TO REMOVE
-                power = self.mitim_runs[i]["powerstate"]
-            else:
-                power = None
+            power = self.mitim_runs[i]["powerstate"]
             t = self.mitim_runs[i]["transport_model"].results["use"]
             p = t.profiles_final
 

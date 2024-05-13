@@ -1182,17 +1182,6 @@ class PROFILES_GACODE:
 
     def export_to_table(self, table=None, name=None):
 
-        # TO REMOVE
-        if "QiQe" not in self.derived:
-            self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
-        if "qTr" not in self.derived:
-            self.derived["qTr"] = (
-                self.derived["qe_aux_MWmiller"]
-                + self.derived["qi_aux_MWmiller"]
-                + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
-                - self.derived["qrad_MWmiller"]
-            )
-
         if table is None:
             table = DataTable()
 
