@@ -372,23 +372,6 @@ def tgyro_model(
     self.plasma["CZ_tr"] = self.plasma["CZ_tr_turb"] + self.plasma["CZ_tr_neo"]
     self.plasma["Mt_tr"] = self.plasma["Mt_tr_turb"] + self.plasma["Mt_tr_neo"]
 
-    # ------------------------------------------------------------------------------------------------------------------------
-    # For consistency, modify input.gacode.new with the targets used in PORTALS (i.e. sometimes with POWESTATE calculations)
-    # ------------------------------------------------------------------------------------------------------------------------
-
-    # PRF: Removed for the time being because this correction happens after each TGYRO call, and this would always assume Target=3
-
-    # for lab in labels_results:
-    #     print(
-    #         f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.model_current.results[lab].profiles_final.file)}",
-    #     )
-    #     TRANSFORMtools.insertPowersNew(
-    #         self.model_current.results[lab].profiles_final, state=self
-    #     )
-    #     self.model_current.results[lab].profiles_final.writeCurrentStatus(
-    #         file=self.model_current.results[lab].profiles_final.file
-    #     )
-
     return TGYROresults
 
 
