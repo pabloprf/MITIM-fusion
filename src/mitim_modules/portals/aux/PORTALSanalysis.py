@@ -147,12 +147,12 @@ class PORTALSanalyzer:
             self.iextra = self.ilast
 
         # Store setup of TGYRO run
-        self.rhos = self.mitim_runs[0]["tgyro"].results["tglf_neo"].rho[0, 1:]
-        self.roa = self.mitim_runs[0]["tgyro"].results["tglf_neo"].roa[0, 1:]
+        self.rhos = self.mitim_runs[0]["transport_model"].results["tglf_neo"].rho[0, 1:]
+        self.roa = self.mitim_runs[0]["transport_model"].results["tglf_neo"].roa[0, 1:]
 
         self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
         self.MODELparameters = self.opt_fun.prfs_model.mainFunction.MODELparameters
-        self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
+        self.MODELparameters["transport_model"] = self.opt_fun.prfs_model.mainFunction.MODELparameters["transport_model"]
 
         # Useful flags
         self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
@@ -177,7 +177,7 @@ class PORTALSanalyzer:
                 power = self.mitim_runs[i]["powerstate"]
             else:
                 power = None
-            t = self.mitim_runs[i]["tgyro"].results["use"]
+            t = self.mitim_runs[i]["transport_model"].results["use"]
             p = t.profiles_final
 
             self.tgyros.append(t)
@@ -465,7 +465,7 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles
+        p0 = self.mitim_runs[evaluation]["transport_model"].results["use"].profiles
 
         p = copy.deepcopy(p0)
 
@@ -475,7 +475,7 @@ class PORTALSanalyzer:
                 typeMsg="i",
             )
 
-            p1 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles_final
+            p1 = self.mitim_runs[evaluation]["transport_model"].results["use"].profiles_final
 
             for ikey in [
                 "qei(MW/m^3)",
@@ -552,7 +552,7 @@ class PORTALSanalyzer:
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
         portals_fun.MODELparameters = portals_fun_original.MODELparameters
-        portals_fun.TGLFparameters = portals_fun_original.TGLFparameters
+        portals_fun.MODELparameters["transport_model"] = portals_fun_original.MODELparameters["transport_model"]
 
         # PRINTING
         print(
@@ -560,7 +560,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.TGLFparameters, portals_fun.Optim
+                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.MODELparameters["transport_model"], portals_fun.Optim
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
@@ -594,8 +594,8 @@ class PORTALSanalyzer:
             folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True
         )
 
-        TGLFsettings = self.TGLFparameters["TGLFsettings"]
-        extraOptionsTGLF = self.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
+        extraOptionsTGLF = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
         PredictionSet = [
             int("te" in self.MODELparameters["ProfilesPredicted"]),
             int("ti" in self.MODELparameters["ProfilesPredicted"]),
@@ -646,8 +646,8 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
 
-        TGLFsettings = self.TGLFparameters["TGLFsettings"]
-        extraOptions = self.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
+        extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
 
         return tglf, TGLFsettings, extraOptions
 

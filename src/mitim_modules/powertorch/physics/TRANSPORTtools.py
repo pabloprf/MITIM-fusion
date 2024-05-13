@@ -145,8 +145,8 @@ def tgyro_model(
     # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
     # ------------------------------------------------------------------------------------------------------------------------
 
-    self.tgyro_current = TGYROtools.TGYRO(cdf=dummyCDF(folder, FolderEvaluation_TGYRO))
-    self.tgyro_current.prep(FolderEvaluation_TGYRO, profilesclass_custom=profiles)
+    self.model_current = TGYROtools.TGYRO(cdf=dummyCDF(folder, FolderEvaluation_TGYRO))
+    self.model_current.prep(FolderEvaluation_TGYRO, profilesclass_custom=profiles)
 
     RadiisToRun = [
         self.plasma["rho"][0, 1:][i].item()
@@ -158,7 +158,7 @@ def tgyro_model(
     else:
         print("\t- Launching TGYRO evaluation as a terminal job")
 
-    self.tgyro_current.run(
+    self.model_current.run(
         subFolderTGYRO="tglf_neo_original/",
         restart=restart,
         forceIfRestart=True,
@@ -173,10 +173,10 @@ def tgyro_model(
         forcedName=name,
     )
 
-    self.tgyro_current.read(label="tglf_neo_original")
+    self.model_current.read(label="tglf_neo_original")
 
     # Copy one with evaluated targets
-    self.file_profs_targets = f"{self.tgyro_current.FolderTGYRO}/input.gacode.new"
+    self.file_profs_targets = f"{self.model_current.FolderTGYRO}/input.gacode.new"
 
     # ------------------------------------------------------------------------------------------------------------------------
     # 2. tglf_neo: Write TGLF, NEO and TARGET errors in tgyro files as well
@@ -191,7 +191,7 @@ def tgyro_model(
 
     # Add errors and merge fluxes as we would do if this was a CGYRO run
     curateTGYROfiles(
-        self.tgyro_current.results["tglf_neo_original"],
+        self.model_current.results["tglf_neo_original"],
         f"{FolderEvaluation_TGYRO}/tglf_neo/",
         percentError,
         impurityPosition=impurityPosition,
@@ -199,14 +199,14 @@ def tgyro_model(
     )
 
     # Read again to capture errors
-    self.tgyro_current.read(
+    self.model_current.read(
         label="tglf_neo", folder=f"{FolderEvaluation_TGYRO}/tglf_neo/"
     )
     labels_results.append("tglf_neo")
 
     # Produce right quantities
 
-    TGYROresults = self.tgyro_current.results["tglf_neo"]
+    TGYROresults = self.model_current.results["tglf_neo"]
 
     portals_variables = TGYROresults.TGYROmodeledVariables(
         useConvectiveFluxes=useConvectiveFluxes,
@@ -257,10 +257,10 @@ def tgyro_model(
 
         # Read TGYRO files and construct portals variables
 
-        self.tgyro_current.read(
+        self.model_current.read(
             label="cgyro_neo", folder=f"{FolderEvaluation_TGYRO}/cgyro_neo"
         )  # Re-read TGYRO to store
-        TGYROresults = self.tgyro_current.results["cgyro_neo"]
+        TGYROresults = self.model_current.results["cgyro_neo"]
         labels_results.append("cgyro_neo")
 
         portals_variables = TGYROresults.TGYROmodeledVariables(
@@ -283,14 +283,14 @@ def tgyro_model(
             )
 
         # **
-        self.tgyro_current.results["use"] = self.tgyro_current.results["cgyro_neo"]
+        self.model_current.results["use"] = self.model_current.results["cgyro_neo"]
 
     else:
         # copy profiles too!
         profilesToShare(self, extra_params)
 
         # **
-        self.tgyro_current.results["use"] = self.tgyro_current.results["tglf_neo"]
+        self.model_current.results["use"] = self.model_current.results["tglf_neo"]
 
     labels_results.append("use")
 
@@ -300,7 +300,7 @@ def tgyro_model(
 
     iteration = 0
     tuple_rho_indeces = ()
-    for rho in self.tgyro_current.rhosToSimulate:
+    for rho in self.model_current.rhosToSimulate:
         tuple_rho_indeces += (np.argmin(np.abs(rho - TGYROresults.rho)),)
 
     mapper = {
@@ -380,13 +380,13 @@ def tgyro_model(
 
     # for lab in labels_results:
     #     print(
-    #         f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.tgyro_current.results[lab].profiles_final.file)}",
+    #         f"\t- Inserting PORTALS powers into {IOtools.clipstr(self.model_current.results[lab].profiles_final.file)}",
     #     )
     #     TRANSFORMtools.insertPowersNew(
-    #         self.tgyro_current.results[lab].profiles_final, state=self
+    #         self.model_current.results[lab].profiles_final, state=self
     #     )
-    #     self.tgyro_current.results[lab].profiles_final.writeCurrentStatus(
-    #         file=self.tgyro_current.results[lab].profiles_final.file
+    #     self.model_current.results[lab].profiles_final.writeCurrentStatus(
+    #         file=self.model_current.results[lab].profiles_final.file
     #     )
 
     return TGYROresults

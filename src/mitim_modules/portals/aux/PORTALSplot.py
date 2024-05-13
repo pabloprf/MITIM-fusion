@@ -1823,8 +1823,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot Comparison
     # -------------------------------------------------------
 
-    profile_original = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
-    profile_best = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
+    profile_original = self.mitim_runs[0]["transport_model"].results["tglf_neo"].profiles
+    profile_best = self.mitim_runs[self.ibest]["transport_model"].results["tglf_neo"].profiles
 
     profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
     profile_original_0 = self.mitim_runs["profiles_original"]
@@ -1918,7 +1918,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
 
     ms = 0
 
-    p = self.mitim_runs[self.i0]["tgyro"].results["tglf_neo"].profiles
+    p = self.mitim_runs[self.i0]["transport_model"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="b",
@@ -1935,7 +1935,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         if not isinstance(self.mitim_runs[ikey], dict):
             break
 
-        p = self.mitim_runs[ikey]["tgyro"].results["tglf_neo"].profiles
+        p = self.mitim_runs[ikey]["transport_model"].results["tglf_neo"].profiles
         p.plotGradients(
             axsR,
             color="r",
@@ -1947,7 +1947,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             plotRotation=self.runWithRotation,
         )
 
-    p = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
+    p = self.mitim_runs[self.ibest]["transport_model"].results["tglf_neo"].profiles
     p.plotGradients(
         axsR,
         color="g",
@@ -2053,7 +2053,7 @@ def PORTALSanalyzer_plotModelComparison(
     )
 
     if UseTGLFfull_x is None:
-        val_calc = self.mitim_runs[0]["tgyro"].results["use"].__dict__[quantityX][0, 1:]
+        val_calc = self.mitim_runs[0]["transport_model"].results["use"].__dict__[quantityX][0, 1:]
     else:
         val_calc = np.array(
             [
@@ -2093,7 +2093,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         if UseTGLFfull_x is None:
             val_calc = (
-                self.mitim_runs[0]["tgyro"]
+                self.mitim_runs[0]["transport_model"]
                 .results["use"]
                 .__dict__[quantityX][self.runWithImpurity, 0, 1:]
             )
@@ -2139,7 +2139,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["tgyro"]
+                    self.mitim_runs[0]["transport_model"]
                     .results["use"]
                     .__dict__[quantityX][0, 1:]
                 ).min()
@@ -2176,7 +2176,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["tgyro"]
+                    self.mitim_runs[0]["transport_model"]
                     .results["use"]
                     .__dict__[quantityX][0, 1:]
                 ).min()
@@ -2208,7 +2208,7 @@ def plotModelComparison_quantity(
     resultsX = "tglf_neo"
     quantity_label_resultsX = "(TGLF)"
 
-    if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
+    if "cgyro_neo" in self.mitim_runs[0]["transport_model"].results:
         resultsY = "cgyro_neo"
         quantity_label_resultsY = "(CGYRO)"
     else:
@@ -2221,7 +2221,7 @@ def plotModelComparison_quantity(
         """
         Read the fluxes to be plotted in Y from the TGYRO results
         """
-        t = self.mitim_runs[i]["tgyro"].results
+        t = self.mitim_runs[i]["transport_model"].results
         Y.append(
             t[resultsY].__dict__[quantityY][
                 ... if runWithImpurity is None else runWithImpurity, 0, 1:

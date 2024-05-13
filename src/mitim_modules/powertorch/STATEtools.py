@@ -1076,7 +1076,7 @@ class powerstate:
             """
 
             tuple_rho_indeces = ()
-            for rho in self.tgyro_current.rhosToSimulate:
+            for rho in self.model_current.rhosToSimulate:
                 tuple_rho_indeces += (np.argmin(np.abs(rho - self.TGYROresults.rho)),)
 
             (

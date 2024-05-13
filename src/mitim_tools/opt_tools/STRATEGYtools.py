@@ -373,6 +373,7 @@ class PRF_BO:
         self.storeClass = storeClass
         self.askQuestions = askQuestions
         self.seed = seed
+        self.avoidPoints = []
 
         if (not self.restartYN) and askQuestions:
             if not print(
