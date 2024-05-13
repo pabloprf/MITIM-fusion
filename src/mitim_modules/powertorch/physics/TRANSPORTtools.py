@@ -99,14 +99,14 @@ def tgyro_model(
 ):
     # ******************************************* Parameters that are needed ***************************************************
 
-    TGYROparameters = ModelOptions["TGYROparameters"]
-    TGLFparameters = ModelOptions["TGLFparameters"]
+    MODELparameters = ModelOptions["MODELparameters"]
+    TGLFparameters = ModelOptions["MODELparameters"]["transport_model"]
     includeFast = ModelOptions["includeFastInQi"]
     impurityPosition = ModelOptions["impurityPosition"]
     useConvectiveFluxes = ModelOptions["useConvectiveFluxes"]
     UseFineGridTargets = ModelOptions["UseFineGridTargets"]
 
-    launchTGYROviaSlurm = ModelOptions.get("launchTGYROviaSlurm", False)
+    launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
     restart = ModelOptions.get("restart", False)
     provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
     profiles_postprocessing_fun = ModelOptions.get("profiles_postprocessing_fun", None)
@@ -132,7 +132,7 @@ def tgyro_model(
     profiles = self.insertProfiles(
         self.profiles,
         writeFile=self.file_profs,
-        applyCorrections=TGYROparameters["applyCorrections"],
+        applyCorrections=MODELparameters["applyCorrections"],
     )
 
     # VGEN?
@@ -153,7 +153,7 @@ def tgyro_model(
         for i in range(len(self.plasma["rho"][0, 1:]))
     ]
 
-    if launchTGYROviaSlurm:
+    if launchMODELviaSlurm:
         print("\t- Launching TGYRO evaluation as a batch job")
     else:
         print("\t- Launching TGYRO evaluation as a terminal job")
@@ -167,8 +167,8 @@ def tgyro_model(
         PredictionSet=ProfilesTGYRO,
         TGLFsettings=TGLFparameters["TGLFsettings"],
         extraOptionsTGLF=TGLFparameters["extraOptionsTGLF"],
-        TGYRO_physics_options=TGYROparameters["TGYRO_physics_options"],
-        launchSlurm=launchTGYROviaSlurm,
+        Physics_options=MODELparameters["Physics_options"],
+        launchSlurm=launchMODELviaSlurm,
         minutesJob=5,
         forcedName=name,
     )

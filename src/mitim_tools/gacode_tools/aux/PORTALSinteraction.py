@@ -368,7 +368,7 @@ def TGYROmodeledVariables(
     return portals_variables
 
 
-def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
+def calculatePseudos(var_dict, PORTALSparameters, MODELparameters, powerstate):
     """
     Notes
     -----
@@ -398,7 +398,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
         torch.Tensor().to(dfT),
         torch.Tensor().to(dfT),
     )
-    for prof in TGYROparameters["ProfilesPredicted"]:
+    for prof in MODELparameters["ProfilesPredicted"]:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":
@@ -477,7 +477,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
 
 
 def calculatePseudos_distributions(
-    var_dict, PORTALSparameters, TGYROparameters, powerstate
+    var_dict, PORTALSparameters, MODELparameters, powerstate
 ):
     """
     Notes
@@ -509,7 +509,7 @@ def calculatePseudos_distributions(
 
     of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
     ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
-    for prof in TGYROparameters["ProfilesPredicted"]:
+    for prof in MODELparameters["ProfilesPredicted"]:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":

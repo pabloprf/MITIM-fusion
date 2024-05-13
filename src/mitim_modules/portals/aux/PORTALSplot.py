@@ -357,7 +357,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
-        if self.TGYROparameters["TGYRO_physics_options"]["TargetType"] < 3:
+        if self.MODELparameters["Physics_options"]["TargetType"] < 3:
             if cont == 0:
                 print(
                     "- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets",
@@ -1207,7 +1207,7 @@ def PORTALSanalyzer_plotExpected(
 
     rho = self.profiles[0].profiles["rho(-)"]
     roa = self.profiles[0].derived["roa"]
-    rhoVals = self.TGYROparameters["RhoLocations"]
+    rhoVals = self.MODELparameters["RhoLocations"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
@@ -1385,7 +1385,7 @@ def PORTALSanalyzer_plotExpected(
         ranges = [-30, 30]
 
         rho = self.profiles_next_new.profiles["rho(-)"]
-        rhoVals = self.TGYROparameters["RhoLocations"]
+        rhoVals = self.MODELparameters["RhoLocations"]
         roaVals = np.interp(rhoVals, rho, roa)
 
         p0 = self.profiles[plotPoints[0]]
@@ -1872,10 +1872,10 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             axs4,
             color=colors[i],
             label=label,
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.MODELparameters["RhoLocations"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.TGYROparameters["RhoLocations"],
+            RhoLocationsPlot=self.MODELparameters["RhoLocations"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
@@ -1922,7 +1922,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plotGradients(
         axsR,
         color="b",
-        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        lastRho=self.MODELparameters["RhoLocations"][-1],
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
@@ -1939,7 +1939,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         p.plotGradients(
             axsR,
             color="r",
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
@@ -1951,7 +1951,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plotGradients(
         axsR,
         color="g",
-        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        lastRho=self.MODELparameters["RhoLocations"][-1],
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
@@ -2368,8 +2368,8 @@ def varToReal(y, prfs_model):
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        for rad in prfs_model.mainFunction.TGYROparameters["RhoLocations"]:
+    for prof in prfs_model.mainFunction.MODELparameters["ProfilesPredicted"]:
+        for rad in prfs_model.mainFunction.MODELparameters["RhoLocations"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2442,7 +2442,7 @@ def plotVars(
             .plasma["roa"][0, 1:]
             .cpu()
             .numpy()
-        )  # prfs_model.mainFunction.TGYROparameters['RhoLocations']
+        )  # prfs_model.mainFunction.MODELparameters['RhoLocations']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
@@ -3267,7 +3267,7 @@ def plotFluxComparison(
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
 ):
-    rhos = np.append([0], self_complete.TGYROparameters["RhoLocations"])
+    rhos = np.append([0], self_complete.MODELparameters["RhoLocations"])
     aLTe, aLTi, aLne, aLnZ, aLw0 = (
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
@@ -3288,20 +3288,20 @@ def produceInfoRanges(
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
     X = torch.zeros(
-        ((len(rhos) - 1) * len(self_complete.TGYROparameters["ProfilesPredicted"]), 2)
+        ((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2)
     )
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
 
     cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
         cont += 1
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
@@ -3354,7 +3354,7 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3377,7 +3377,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3400,7 +3400,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],

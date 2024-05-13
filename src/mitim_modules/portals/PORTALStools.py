@@ -9,7 +9,7 @@ from IPython import embed
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     print(
-        f'\t- Selecting surrogate options for "{output}" to be run in {"CGYRO" if CGYROrun else "TGLF"}'
+        f'\t- Selecting surrogate options for "{output}" to be run'
     )
 
     if output is not None:

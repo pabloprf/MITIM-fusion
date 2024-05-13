@@ -38,8 +38,8 @@ def calculator(
                 "ModelOptions": {
                     "restart": restart,
                     "launchSlurm": True,
-                    "TGYROparameters": {
-                        "TGYRO_physics_options": {
+                    "MODELparameters": {
+                        "Physics_options": {
                             "TargetType": 3,
                             "TurbulentExchange": 0,
                             "PtotType": 1,

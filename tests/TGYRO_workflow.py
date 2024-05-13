@@ -42,7 +42,7 @@ tgyro.run(
     PredictionSet=[1, 1, 0],
     TGLFsettings=1,
     TGYRO_solver_options=solver,
-    TGYRO_physics_options=physics_options,
+    Physics_options=physics_options,
 )
 tgyro.read(label="run1")
 tgyro.plot(labels=["run1"])

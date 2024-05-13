@@ -70,13 +70,13 @@ def initializeProblem(
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
 
     # About radial locations
-    if "RoaLocations" in portals_fun.TGYROparameters:
-        roa = portals_fun.TGYROparameters["RoaLocations"]
+    if "RoaLocations" in portals_fun.MODELparameters:
+        roa = portals_fun.MODELparameters["RoaLocations"]
         rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
-        portals_fun.TGYROparameters["RhoLocations"] = rho
+        portals_fun.MODELparameters["RhoLocations"] = rho
 
     if (
         len(INITparameters["removeIons"]) > 0
@@ -88,7 +88,7 @@ def initializeProblem(
         profiles.correct(options=INITparameters)
 
     # Resolution of input.gacode
-    defineNewGridmitim(profiles, np.array(portals_fun.TGYROparameters["RhoLocations"]))
+    defineNewGridmitim(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
     profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_original")
@@ -106,7 +106,7 @@ def initializeProblem(
 
     # Check if I will be able to calculate radiation
     if checkForSpecies and (
-        portals_fun.TGYROparameters["TGYRO_physics_options"]["TargetType"] == 3
+        portals_fun.MODELparameters["Physics_options"]["TargetType"] == 3
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
@@ -127,7 +127,7 @@ def initializeProblem(
 	"""
 
     xCPs = torch.from_numpy(
-        np.append([0], np.array(portals_fun.TGYROparameters["RhoLocations"]))
+        np.append([0], np.array(portals_fun.MODELparameters["RhoLocations"]))
     ).to(
         dfT
     )  # Added zero
@@ -136,9 +136,9 @@ def initializeProblem(
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
         xCPs,
-        ProfilesPredicted=portals_fun.TGYROparameters["ProfilesPredicted"],
+        ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
         TargetOptions={
-            "TypeTarget": portals_fun.TGYROparameters["TGYRO_physics_options"][
+            "TypeTarget": portals_fun.MODELparameters["Physics_options"][
                 "TargetType"
             ],
             "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
@@ -150,13 +150,13 @@ def initializeProblem(
 
     # Store parameterization in dictCPs_base (to define later the relative variations) and modify profiles class with parameterized profiles
     dictCPs_base = {}
-    for name in portals_fun.TGYROparameters["ProfilesPredicted"]:
+    for name in portals_fun.MODELparameters["ProfilesPredicted"]:
         dictCPs_base[name] = portals_fun.powerstate.update_var(name, var=None)[0, :]
 
     # Maybe it was provided from earlier run
     if grabFrom is not None:
         dictCPs_base = grabPrevious(grabFrom, dictCPs_base)
-        for name in portals_fun.TGYROparameters["ProfilesPredicted"]:
+        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
             _ = portals_fun.powerstate.update_var(
                 name, var=dictCPs_base[name].unsqueeze(0)
             )
@@ -165,7 +165,7 @@ def initializeProblem(
     _ = portals_fun.powerstate.insertProfiles(
         profiles,
         writeFile=f"{FolderInitialization}/input.gacode",
-        applyCorrections=portals_fun.TGYROparameters["applyCorrections"],
+        applyCorrections=portals_fun.MODELparameters["applyCorrections"],
     )
 
     # Original complete targets
@@ -181,11 +181,10 @@ def initializeProblem(
     else:
         portals_fun.powerstate.TransportOptions["ModelOptions"] = {
             "restart": False,
-            "launchTGYROviaSlurm": portals_fun.PORTALSparameters[
+            "launchMODELviaSlurm": portals_fun.PORTALSparameters[
                 "launchEvaluationsAsSlurmJobs"
             ],
-            "TGYROparameters": portals_fun.TGYROparameters,
-            "TGLFparameters": portals_fun.TGLFparameters,
+            "MODELparameters": portals_fun.MODELparameters,
             "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
             "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
             "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
@@ -213,9 +212,9 @@ def initializeProblem(
         powerstate_extra = STATEtools.powerstate(
             profileForBase,
             xCPs,
-            ProfilesPredicted=portals_fun.TGYROparameters["ProfilesPredicted"],
+            ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
             TargetOptions={
-                "TypeTarget": portals_fun.TGYROparameters["TGYRO_physics_options"][
+                "TypeTarget": portals_fun.MODELparameters["Physics_options"][
                     "TargetType"
                 ],
                 "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
@@ -224,7 +223,7 @@ def initializeProblem(
         )
 
         dictCPs_base_extra = {}
-        for name in portals_fun.TGYROparameters["ProfilesPredicted"]:
+        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
             dictCPs_base_extra[name] = powerstate_extra.update_var(name, var=None)[0, :]
 
         dictCPs_base = dictCPs_base_extra
@@ -274,7 +273,7 @@ def initializeProblem(
         elif ikey == "w0":
             var = "Mt"
 
-        for i in range(len(portals_fun.TGYROparameters["RhoLocations"])):
+        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
             ofs.append(f"{var}Turb_{i+1}")
             ofs.append(f"{var}Neo_{i+1}")
 
@@ -283,7 +282,7 @@ def initializeProblem(
             name_objectives.append(f"{var}Res_{i+1}")
 
     if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
-        for i in range(len(portals_fun.TGYROparameters["RhoLocations"])):
+        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
             ofs.append(f"PexchTurb_{i+1}")
 
     name_transformed_ofs = []
@@ -343,7 +342,7 @@ def initializeProblem(
         portals_fun.file_in_lines_initial_input_gacode = f.readlines()
 
 
-def defineNewGridmitim(profiles, rhoTGYRO):
+def defineNewGridmitim(profiles, rhoMODEL):
     """
     Resolution of input.gacode
     **************************
@@ -364,13 +363,13 @@ def defineNewGridmitim(profiles, rhoTGYRO):
     # 1. Fill up spaces in between the points until the total is total_points
     # ----------------------------------------------------------------------------------
 
-    num_points_rest = int(np.max([3, total_points / (len(rhoTGYRO) + 1)]))
+    num_points_rest = int(np.max([3, total_points / (len(rhoMODEL) + 1)]))
 
     # Correction: If I do a very fine grid, but with a first point away from 0.0, it'll	have a piecewise behavior from 0 to the first points, so ensure a few more
     num_points_0 = int(np.max([num_points_rest, 10]))
     # *******
 
-    rho_new0 = np.append(np.append([0], rhoTGYRO), [1])
+    rho_new0 = np.append(np.append([0], rhoMODEL), [1])
     rho_new = np.array([])
     for i in range(rho_new0.shape[0] - 1):
         num_points = num_points_rest if i > 0 else num_points_0
@@ -379,13 +378,13 @@ def defineNewGridmitim(profiles, rhoTGYRO):
         )
 
     # ----------------------------------------------------------------------------------
-    # 2. Add extra resolution around the TGYRO poitns
+    # 2. Add extra resolution around the modelled (e.g. TGYRO) poitns
     # ----------------------------------------------------------------------------------
 
     for i in range(points_updown):
         rho_new = np.append(
-            np.append(rho_new, rhoTGYRO + d_spacing_coarse * (i + 1)),
-            rhoTGYRO - d_spacing_coarse * (i + 1),
+            np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
+            rhoMODEL - d_spacing_coarse * (i + 1),
         )
 
     # ----------------------------------------------------------------------------------
@@ -432,17 +431,17 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 isAbsValFixed = False
 
             Variations = {
-                "aLte": "te" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLti": "ti" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLne": "ne" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLw0": "w0" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "te": ("te" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "aLte": "te" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLti": "ti" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLne": "ne" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLw0": "w0" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "te": ("te" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "ti": ("ti" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "ti": ("ti" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "ne": ("ne" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "ne": ("ne" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "w0": ("w0" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "w0": ("w0" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
             }
 
@@ -466,20 +465,20 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 isAbsValFixed = False
 
             Variations = {
-                "aLte": "te" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLti": "ti" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLne": "ne" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLw0": "w0" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "aLnZ": "nZ" in portals_fun.TGYROparameters["ProfilesPredicted"],
-                "te": ("te" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "aLte": "te" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLti": "ti" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLne": "ne" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLw0": "w0" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "aLnZ": "nZ" in portals_fun.MODELparameters["ProfilesPredicted"],
+                "te": ("te" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "ti": ("ti" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "ti": ("ti" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "ne": ("ne" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "ne": ("ne" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "w0": ("w0" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "w0": ("w0" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
-                "nZ": ("nZ" in portals_fun.TGYROparameters["ProfilesPredicted"])
+                "nZ": ("nZ" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
             }
 

@@ -138,19 +138,19 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         }
 
         """
-		Parameters to run TGYRO
-		-----------------------
+		Parameters to run the model
+		---------------------------
 			The corrections are applied prior to each evaluation, so that things are consistent.
 			Here, do not include things that are not specific for a given iteration. Otherwise if they are general
 			changes to input.gacode, then that should go into INITparameters.
 
-			if TGYROparameters contains RoaLocations, use that instead of RhoLocations
+			if MODELparameters contains RoaLocations, use that instead of RhoLocations
 		"""
 
-        self.TGYROparameters = {
+        self.MODELparameters = {
             "RhoLocations": [0.25, 0.45, 0.65, 0.85],
             "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
-            "TGYRO_physics_options": {
+            "Physics_options": {
                 "TargetType": 3,
                 "TurbulentExchange": 0,  # In PORTALS TGYRO evaluations, let's always calculate turbulent exchange, but NOT include it in targets!
                 "PtotType": 1,  # In PORTALS TGYRO evaluations, let's always use the PTOT column (so control of that comes from the ap)
@@ -164,14 +164,8 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
                 "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
             },
+            "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}}
         }
-
-        """
-		Parameters to run TGLF
-		-----------------------
-		"""
-
-        self.TGLFparameters = {"TGLFsettings": 5, "extraOptionsTGLF": {}}
 
         """
 		Physics-informed parameters to fit surrogates
@@ -245,8 +239,8 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
         ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
                 ymax_rel = np.array([   [1.0, 0.5, 0.5, 0.5],
-                                                                [0.5, 0.5, 0.5, 0.5],
-                                                                [1.0, 0.5, 0.5, 0.5]    ])
+                                        [0.5, 0.5, 0.5, 0.5],
+                                        [1.0, 0.5, 0.5, 0.5]    ])
 
         seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
@@ -266,38 +260,38 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
         if (
-            "InputType" not in self.TGYROparameters["TGYRO_physics_options"]
-        ) or self.TGYROparameters["TGYRO_physics_options"]["InputType"] != 1:
+            "InputType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["InputType"] != 1:
             print(
                 "\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",
                 typeMsg="i",
             )
-            self.TGYROparameters["TGYRO_physics_options"]["InputType"] = 1
+            self.MODELparameters["Physics_options"]["InputType"] = 1
 
         if (
-            "GradientsType" not in self.TGYROparameters["TGYRO_physics_options"]
-        ) or self.TGYROparameters["TGYRO_physics_options"]["GradientsType"] != 0:
+            "GradientsType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
             print(
                 "\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",
                 typeMsg="i",
             )
-            self.TGYROparameters["TGYRO_physics_options"]["GradientsType"] = 0
+            self.MODELparameters["Physics_options"]["GradientsType"] = 0
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         keycheck = (
-            "RoaLocations" if "RoaLocations" in self.TGYROparameters else "RhoLocations"
+            "RoaLocations" if "RoaLocations" in self.MODELparameters else "RhoLocations"
         )
         if IOtools.isfloat(ymax_rel):
             ymax_rel = np.array(
-                [ymax_rel * np.ones(len(self.TGYROparameters[keycheck]))]
-                * len(self.TGYROparameters["ProfilesPredicted"])
+                [ymax_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                * len(self.MODELparameters["ProfilesPredicted"])
             )
         if IOtools.isfloat(ymin_rel):
             ymin_rel = np.array(
-                [ymin_rel * np.ones(len(self.TGYROparameters[keycheck]))]
-                * len(self.TGYROparameters["ProfilesPredicted"])
+                [ymin_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                * len(self.MODELparameters["ProfilesPredicted"])
             )
 
         # Initialize
@@ -349,7 +343,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, tgyro, powerstate, dictOFs = runModelEvaluator(
+        _, transport_model, powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
@@ -372,7 +366,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         if self.MITIMextra is not None:
             with open(self.MITIMextra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
-            dictStore[int(numPORTALS)] = {"tgyro": tgyro, "powerstate": powerstate}
+            dictStore[int(numPORTALS)] = {"transport_model": transport_model, "powerstate": powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
             )
@@ -417,14 +411,14 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 		"""
 
         of, cal, _, res = PORTALSinteraction.calculatePseudos(
-            var_dict, self.PORTALSparameters, self.TGYROparameters, self.powerstate
+            var_dict, self.PORTALSparameters, self.MODELparameters, self.powerstate
         )
 
         return of, cal, res
 
     def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2):
         """
-        analysis_level = 2: Standard as other classes. Run best case, plot TGYRO
+        analysis_level = 2: Standard as other classes. Run best case, plot transport model analysis
         analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
         """
         return analyze_results(
@@ -438,7 +432,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         reevaluateTargets:
                 0: No
                 1: Quick targets from powerstate with no transport calculation
-                2: Full original model (either with tgyro targets or powerstate targets, but also calculate transport)
+                2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
         """
 
         if not os.path.exists(folderNew):
@@ -512,7 +506,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                         "tglf_neo_tgyro"
                     )
 
-                results, tgyro, powerstate, dictOFs = runModelEvaluator(
+                _,_,_, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
                     dictDVs,
@@ -561,8 +555,8 @@ def runModelEvaluator(
     # Prep run
     # ---------------------------------------------------------------------------------------------------
 
-    FolderEvaluation_TGYRO = FolderEvaluation + "/model_complete/"
-    os.system(f"mkdir {FolderEvaluation_TGYRO}")
+    FolderEvaluation_model = FolderEvaluation + "/model_complete/"
+    os.system(f"mkdir {FolderEvaluation_model}")
 
     # Better to write/read each time than passing the class in self.portals_parameters, because self.portals_parameters will be used during the surrogate, which can be expensive
 
@@ -595,16 +589,16 @@ def runModelEvaluator(
     powerstate.TransportOptions["ModelOptions"]["restart"] = restart
 
     powerstate.calculate(
-        X, nameRun=name, folder=FolderEvaluation_TGYRO, extra_params=extra_params_model
+        X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
     )
 
-    tgyro_current_results = (
-        powerstate.tgyro_current.results["use"]
-        if "tgyro_current" in powerstate.__dict__
+    model_current_results = (
+        powerstate.model_current.results["use"]
+        if "model_current" in powerstate.__dict__
         else None
     )
-    tgyro_current = (
-        powerstate.tgyro_current if "tgyro_current" in powerstate.__dict__ else None
+    model_current = (
+        powerstate.model_current if "model_current" in powerstate.__dict__ else None
     )
 
     # ---------------------------------------------------------------------------------------------------
@@ -671,7 +665,7 @@ def runModelEvaluator(
                     "PexchTurb_stds"
                 ][0, i]
 
-    return tgyro_current_results, tgyro_current, powerstate, dictOFs
+    return model_current_results, model_current, powerstate, dictOFs
 
 
 def analyze_results(

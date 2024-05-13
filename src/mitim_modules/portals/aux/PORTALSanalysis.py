@@ -151,11 +151,11 @@ class PORTALSanalyzer:
         self.roa = self.mitim_runs[0]["tgyro"].results["tglf_neo"].roa[0, 1:]
 
         self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
-        self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
+        self.MODELparameters = self.opt_fun.prfs_model.mainFunction.MODELparameters
         self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
 
         # Useful flags
-        self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
+        self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
 
         self.runWithImpurity = (
             self.PORTALSparameters["ImpurityOfInterest"] - 1
@@ -267,7 +267,7 @@ class PORTALSanalyzer:
             _, _, source, res = PORTALSinteraction.calculatePseudos(
                 portals_variables["var_dict"],
                 self.PORTALSparameters,
-                self.TGYROparameters,
+                self.MODELparameters,
                 powerstate,
             )
 
@@ -278,7 +278,7 @@ class PORTALSanalyzer:
             GZ_resR = np.zeros(self.rhos.shape[0])
             Mt_resR = np.zeros(self.rhos.shape[0])
             cont = 0
-            for prof in self.TGYROparameters["ProfilesPredicted"]:
+            for prof in self.MODELparameters["ProfilesPredicted"]:
                 for ix in range(self.rhos.shape[0]):
                     if prof == "te":
                         Qe_resR[ix] = source[0, cont].abs()
@@ -313,7 +313,7 @@ class PORTALSanalyzer:
                     ) = PORTALSinteraction.calculatePseudos_distributions(
                         portals_variables["var_dict"],
                         self.PORTALSparameters,
-                        self.TGYROparameters,
+                        self.MODELparameters,
                         powerstate,
                     )
 
@@ -370,14 +370,14 @@ class PORTALSanalyzer:
 
         self.resCheck = (
             self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.TGYROparameters["ProfilesPredicted"])
+        ) / len(self.MODELparameters["ProfilesPredicted"])
 
         # ---------------------------------------------------------------------------------------------------------------------
         # Jacobian
         # ---------------------------------------------------------------------------------------------------------------------
 
         DeltaQ1 = []
-        for i in self.TGYROparameters["ProfilesPredicted"]:
+        for i in self.MODELparameters["ProfilesPredicted"]:
             if i == "te":
                 DeltaQ1.append(-self.resTe)
             if i == "ti":
@@ -551,7 +551,7 @@ class PORTALSanalyzer:
 
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
-        portals_fun.TGYROparameters = portals_fun_original.TGYROparameters
+        portals_fun.MODELparameters = portals_fun_original.MODELparameters
         portals_fun.TGLFparameters = portals_fun_original.TGLFparameters
 
         # PRINTING
@@ -560,7 +560,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.TGYROparameters, portals_fun.TGLFparameters, portals_fun.Optim
+                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.TGLFparameters, portals_fun.Optim
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
@@ -597,9 +597,9 @@ class PORTALSanalyzer:
         TGLFsettings = self.TGLFparameters["TGLFsettings"]
         extraOptionsTGLF = self.TGLFparameters["extraOptionsTGLF"]
         PredictionSet = [
-            int("te" in self.TGYROparameters["ProfilesPredicted"]),
-            int("ti" in self.TGYROparameters["ProfilesPredicted"]),
-            int("ne" in self.TGYROparameters["ProfilesPredicted"]),
+            int("te" in self.MODELparameters["ProfilesPredicted"]),
+            int("ti" in self.MODELparameters["ProfilesPredicted"]),
+            int("ne" in self.MODELparameters["ProfilesPredicted"]),
         ]
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
@@ -613,12 +613,12 @@ class PORTALSanalyzer:
         """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
-            1. self.TGYROparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
+            1. self.MODELparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         However, this should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable # TO FIX
         """
-        rhos_considered = self.TGYROparameters["RhoLocations"]
+        rhos_considered = self.MODELparameters["RhoLocations"]
 
         if positions is None:
             rhos = rhos_considered
