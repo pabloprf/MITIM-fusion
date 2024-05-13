@@ -85,9 +85,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 # ----------------------------------------------------------------------
 
 
-def transformmitim(
-    X, surrogate_parameters, output
-):  # TO REMOVE: call it transformPORTALS
+def transformPORTALS(X, surrogate_parameters, output):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
@@ -164,7 +162,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     return PexchTurb_integrated
 
 
-# def transformmitim(X,Y,Yvar,surrogate_parameters,output):
+# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
 # 	'''
 # 	Transform direct evaluation output to something that the model understands better.
 
@@ -183,14 +181,14 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return Ytr,Ytr_var
 
 
-# def untransformmitim(X, mean, upper, lower, surrogate_parameters, output):
+# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
 # 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformmitim)
+# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
 
 # 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
 # 		- Transforms and produces Y and confidence bounds (batch1,...,)
 
-# 	This untransforms whatever has happened in the transformmitim function
+# 	This untransforms whatever has happened in the transformPORTALS function
 # 	'''
 
 # 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)

@@ -903,9 +903,7 @@ class powerstate:
         Update the transport of the current state
         """
 
-        # ******* Nothing
-        if self.TransportOptions["TypeTransport"] is None:
-            for i in [
+        var_list = [
                 "Pe_tr",
                 "Pi_tr",
                 "Ce_tr",
@@ -921,7 +919,11 @@ class powerstate:
                 "Ce_tr_neo",
                 "CZ_tr_neo",
                 "Mt_tr_neo",
-            ]:
+            ]
+
+        # ******* Nothing
+        if self.TransportOptions["TypeTransport"] is None:
+            for i in var_list:
                 self.plasma[i] = self.plasma["te"][:, 1:] * 0.0
 
             for i in ["Pe", "Pi", "Ce", "CZ", "Mt"]:
@@ -951,23 +953,7 @@ class powerstate:
             TRANSPORTtools.surrogate_model(self, self.TransportOptions["ModelOptions"])
 
         # Make sure that the variables are on-repeat
-        for i in [
-            "Pe_tr",
-            "Pi_tr",
-            "Ce_tr",
-            "CZ_tr",
-            "Mt_tr",
-            "Pe_tr_turb",
-            "Pi_tr_turb",
-            "Ce_tr_turb",
-            "CZ_tr_turb",
-            "Mt_tr_turb",
-            "Pe_tr_neo",
-            "Pi_tr_neo",
-            "Ce_tr_neo",
-            "CZ_tr_neo",
-            "Mt_tr_neo",
-        ]:
+        for i in var_list:
             self.keys1D_derived[i] = 1
 
     def metric(self):
