@@ -20,23 +20,10 @@ class power_transport:
         self.extra_params = extra_params
         self.powerstate = powerstate
 
-        self.variables = [
-                "Pe_tr",
-                "Pi_tr",
-                "Ce_tr",
-                "CZ_tr",
-                "Mt_tr",
-                "Pe_tr_turb",
-                "Pi_tr_turb",
-                "Ce_tr_turb",
-                "CZ_tr_turb",
-                "Mt_tr_turb",
-                "Pe_tr_neo",
-                "Pi_tr_neo",
-                "Ce_tr_neo",
-                "CZ_tr_neo",
-                "Mt_tr_neo",
-            ]
+        # Allowed fluxes in powerstate so far
+        self.quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
+
+        self.variables = [f'{i}_tr' for i in self.quantities] + [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
 
     def produce_profiles(self):
 
@@ -58,12 +45,10 @@ class power_transport:
         for i in self.variables:
             self.powerstate.plasma[i] = self.powerstate.plasma["te"][:, 1:] * 0.0
 
-        for i in ["Pe", "Pi", "Ce", "CZ", "Mt"]:
+        for i in self.quantities:
             self.powerstate.plasma[i] = self.powerstate.plasma[i][:, 1:]
 
-        self.results = None
-
-        self.transport_model = None
+        self.results, self.model_results = None, None
 
     def clean(self):
 
@@ -366,12 +351,11 @@ class tgyro_model(power_transport):
         self.powerstate.plasma["CZ_tr"] = self.powerstate.plasma["CZ_tr_turb"] + self.powerstate.plasma["CZ_tr_neo"]
         self.powerstate.plasma["Mt_tr"] = self.powerstate.plasma["Mt_tr_turb"] + self.powerstate.plasma["Mt_tr_neo"]
 
-
         # ------------------------------------------------------------------------------------------------------------------------
         # Results
         # ------------------------------------------------------------------------------------------------------------------------
 
-        self.transport_model = tgyro # Pass the TGYRO class
+        self.model_results = tgyro.results # Pass the TGYRO results class 
 
 # ------------------------------------------------------------------
 # SIMPLE Diffusion

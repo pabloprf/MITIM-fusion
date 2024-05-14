@@ -88,14 +88,11 @@ class PORTALSanalyzer:
         )
 
         merged_mitim_runs = {}
-        merged_profiles = []
-        merged_tgyros = []
         cont = 0
         for instance in instances:
             for key in range(0, instance.ilast + 1):
                 merged_mitim_runs[cont + key] = instance.mitim_runs[key]
-                merged_profiles.append(instance.profiles[key])
-                merged_tgyros.append(instance.tgyros[key])
+            
             cont += instance.ilast + 1
 
         base_instance = instances[base_index]
@@ -147,12 +144,11 @@ class PORTALSanalyzer:
             self.iextra = self.ilast
 
         # Store setup of TGYRO run
-        self.rhos = self.mitim_runs[0]["transport_model"].results["tglf_neo"].rho[0, 1:]
-        self.roa = self.mitim_runs[0]["transport_model"].results["tglf_neo"].roa[0, 1:]
+        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].numpy()
+        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].numpy()
 
         self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
         self.MODELparameters = self.opt_fun.prfs_model.mainFunction.MODELparameters
-        self.MODELparameters["transport_model"] = self.opt_fun.prfs_model.mainFunction.MODELparameters["transport_model"]
 
         # Useful flags
         self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
@@ -174,7 +170,7 @@ class PORTALSanalyzer:
         self.profiles, self.tgyros, self.powerstates = [], [], []
         for i in range(self.ilast + 1):
             power = self.mitim_runs[i]["powerstate"]
-            t = self.mitim_runs[i]["transport_model"].results["use"]
+            t = power.transport.model_results["use"]
             p = t.profiles_final
 
             self.tgyros.append(t)
@@ -462,7 +458,7 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 = self.mitim_runs[evaluation]["transport_model"].results["use"].profiles
+        p0 =  self.mitim_runs[evaluation]["powerstate"].transport.model_results["use"].profiles
 
         p = copy.deepcopy(p0)
 
@@ -472,7 +468,7 @@ class PORTALSanalyzer:
                 typeMsg="i",
             )
 
-            p1 = self.mitim_runs[evaluation]["transport_model"].results["use"].profiles_final
+            p1 =  self.mitim_runs[evaluation]["powerstate"].transport.model_results["use"].profiles_final
 
             for ikey in [
                 "qei(MW/m^3)",
@@ -482,7 +478,8 @@ class PORTALSanalyzer:
                 "qfuse(MW/m^3)",
                 "qfusi(MW/m^3)",
             ]:
-                p.profiles[ikey] = p1.profiles[ikey]
+                if ikey in p.profiles:
+                    p.profiles[ikey] = p1.profiles[ikey]
 
         return p
 
@@ -549,7 +546,6 @@ class PORTALSanalyzer:
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
         portals_fun.MODELparameters = portals_fun_original.MODELparameters
-        portals_fun.MODELparameters["transport_model"] = portals_fun_original.MODELparameters["transport_model"]
 
         # PRINTING
         print(
@@ -557,7 +553,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.MODELparameters["transport_model"], portals_fun.Optim
+                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.Optim
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:

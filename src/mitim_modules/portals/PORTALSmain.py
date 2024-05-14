@@ -343,7 +343,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        transport_model, powerstate, dictOFs = runModelEvaluator(
+        powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
@@ -366,7 +366,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         if self.MITIMextra is not None:
             with open(self.MITIMextra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
-            dictStore[int(numPORTALS)] = {"transport_model": transport_model, "powerstate": powerstate}
+            dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
             )
@@ -506,7 +506,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                         "tglf_neo_tgyro"
                     )
 
-                _,_, dictOFs = runModelEvaluator(
+                _, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
                     dictDVs,
@@ -592,8 +592,6 @@ def runModelEvaluator(
         X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
     )
 
-    transport_model = powerstate.transport.transport_model
-
     # ---------------------------------------------------------------------------------------------------
     # Produce dictOFs is asked for
     # ---------------------------------------------------------------------------------------------------
@@ -658,7 +656,7 @@ def runModelEvaluator(
                     "PexchTurb_stds"
                 ][0, i]
 
-    return transport_model, powerstate, dictOFs
+    return powerstate, dictOFs
 
 
 def analyze_results(
