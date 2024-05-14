@@ -343,7 +343,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, transport_model, powerstate, dictOFs = runModelEvaluator(
+        transport_model, powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
@@ -506,7 +506,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                         "tglf_neo_tgyro"
                     )
 
-                _,_,_, dictOFs = runModelEvaluator(
+                _,_, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
                     dictDVs,
@@ -592,14 +592,7 @@ def runModelEvaluator(
         X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
     )
 
-    model_current_results = (
-        powerstate.model_current.results["use"]
-        if "model_current" in powerstate.__dict__
-        else None
-    )
-    model_current = (
-        powerstate.model_current if "model_current" in powerstate.__dict__ else None
-    )
+    transport_model = powerstate.transport.transport_model
 
     # ---------------------------------------------------------------------------------------------------
     # Produce dictOFs is asked for
@@ -665,7 +658,7 @@ def runModelEvaluator(
                     "PexchTurb_stds"
                 ][0, i]
 
-    return model_current_results, model_current, powerstate, dictOFs
+    return transport_model, powerstate, dictOFs
 
 
 def analyze_results(

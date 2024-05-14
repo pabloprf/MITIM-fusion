@@ -724,7 +724,7 @@ class PORTALSanalyzer:
             a, b = IOtools.reducePathLevel(self.folder, level=1)
             name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
 
-            resultsO, tgyroO, powerstateO, _ = runModelEvaluator(
+            tgyroO, powerstateO, _ = runModelEvaluator(
                 self.opt_fun.prfs_model.mainFunction,
                 FolderEvaluation,
                 dictDVs,
@@ -744,7 +744,7 @@ class PORTALSanalyzer:
         # Run
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{self.res.best_absolute_index}"  # e.g. portals_jet37_ev0
-        resultsB, tgyroB, powerstateB, _ = runModelEvaluator(
+        tgyroB, powerstateB, _ = runModelEvaluator(
             self.opt_fun.prfs_model.mainFunction,
             FolderEvaluation,
             dictDVs,

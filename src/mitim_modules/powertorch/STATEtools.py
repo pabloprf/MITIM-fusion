@@ -261,7 +261,7 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def calculate(
-        self, X, nameRun="test", folder="~/scratch/", storeInfo=False, extra_params={}
+        self, X, nameRun="test", folder="~/scratch/", extra_params={}
     ):
         """
         Provide what's needed for flux-matching
@@ -283,7 +283,6 @@ class powerstate:
         self.calculateTransport(
             nameRun=nameRun,
             folder=folder,
-            storeInfo=storeInfo,
             extra_params=extra_params,
         )
 
@@ -897,64 +896,33 @@ class powerstate:
             self.keys1D_derived[i] = 1
 
     def calculateTransport(
-        self, nameRun="test", folder="~/scratch/", storeInfo=False, extra_params={}
+        self, nameRun="test", folder="~/scratch/", extra_params={}
     ):
         """
         Update the transport of the current state
         """
 
-        var_list = [
-                "Pe_tr",
-                "Pi_tr",
-                "Ce_tr",
-                "CZ_tr",
-                "Mt_tr",
-                "Pe_tr_turb",
-                "Pi_tr_turb",
-                "Ce_tr_turb",
-                "CZ_tr_turb",
-                "Mt_tr_turb",
-                "Pe_tr_neo",
-                "Pi_tr_neo",
-                "Ce_tr_neo",
-                "CZ_tr_neo",
-                "Mt_tr_neo",
-            ]
-
         # ******* Nothing
         if self.TransportOptions["TypeTransport"] is None:
-            for i in var_list:
-                self.plasma[i] = self.plasma["te"][:, 1:] * 0.0
-
-            for i in ["Pe", "Pi", "Ce", "CZ", "Mt"]:
-                self.plasma[i] = self.plasma[i][:, 1:]
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import power_transport as transport
         # ******* TGLF+NEO
         elif "tgyro" in self.TransportOptions["TypeTransport"]:
-            TGYROresults = TRANSPORTtools.tgyro_model(
-                self,
-                self.TransportOptions["ModelOptions"],
-                name=nameRun,
-                folder=folder,
-                provideTargets=self.TargetCalc == "tgyro",
-                TypeTransport=self.TransportOptions["TypeTransport"],
-                extra_params=extra_params,
-            )
-
-            if storeInfo:
-                self.TGYROresults = TGYROresults
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import tgyro_model as transport
         # ******* Transport coefficients
         elif self.TransportOptions["TypeTransport"] == "chis":
-            TRANSPORTtools.diffusion_model(self, self.TransportOptions["ModelOptions"])
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import diffusion_model as transport
         # ******* Surrogate Model
         elif self.TransportOptions["TypeTransport"] == "surrogate":
-            TRANSPORTtools.surrogate_model(self, self.TransportOptions["ModelOptions"])
+            from mitim_modules.powertorch.physics.TRANSPORTtools import surrogate_model as transport
 
-        # Make sure that the variables are on-repeat
-        for i in var_list:
-            self.keys1D_derived[i] = 1
+        # *******************************************************************************************
+        # ******* Process
+        # *******************************************************************************************
+
+        self.transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        self.transport.produce_profiles()
+        self.transport.evaluate()
+        self.transport.clean()
 
     def metric(self):
         """
@@ -1023,75 +991,46 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def determinePerformance(self, nameRun="test", folder="~/scratch/"):
+        '''
+        At this moment, this recalculates fusion and radiation, etc
+        '''
         folder = IOtools.expandPath(folder)
 
         # ************************************
         # Calculate state
         # ************************************
 
-        self.calculate(None, nameRun=nameRun, folder=folder, storeInfo=True)
+        self.calculate(None, nameRun=nameRun, folder=folder)
 
         # ************************************
         # Postprocessing
         # ************************************
 
-        if self.TargetCalc == "tgyro":
-            """
-            Full targets
-            """
-
-            tuple_rho_indeces = ()
-            for rho in self.model_current.rhosToSimulate:
-                tuple_rho_indeces += (np.argmin(np.abs(rho - self.TGYROresults.rho)),)
-
-            (
-                self.plasma["Pfuse"],
-                self.plasma["Pfusi"],
-                self.plasma["Pie"],
-                self.plasma["Prad_bremms"],
-                self.plasma["Prad_sync"],
-                self.plasma["Prad_line"],
-            ) = TRANSPORTtools.full_targets(self.TGYROresults, tuple_rho_indeces)
-            for i in ["Pfuse", "Pfusi", "Pie", "Prad_bremms", "Prad_sync", "Prad_line"]:
-                self.plasma[i] = (
-                    torch.from_numpy(self.plasma[i]).to(self.dfT).unsqueeze(0)
-                )
-
-            self.plasma["Pfus"] = (self.plasma["Pfuse"] + self.plasma["Pfusi"])[
-                :, -1
-            ] * 5.0
-            self.plasma["Prad"] = (
-                self.plasma["Prad_bremms"]
-                + self.plasma["Prad_sync"]
-                + self.plasma["Prad_line"]
-            )[:, -1]
-
-        else:
-            self.plasma["Pfus"] = (
-                self.volume_integrate(
-                    (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
-                )
-                * self.plasma["volp"]
-            )[:, -1]
-            self.plasma["Prad"] = (
-                self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
-            )[:, -1]
-
-            self.insertProfiles(
-                self.profiles,
-                writeFile=f"{folder}/input.gacode.new.powerstate",
-                PositionInBatch=0,
-                applyCorrections={
-                    "Tfast_ratio": False,
-                    "Ti_thermals": False,
-                    "ni_thermals": False,
-                    "recompute_ptot": False,
-                    "ensureMachNumber": None,
-                },
-                insertPowers=True,
-                rederive_profiles=False,
-                reRead=False,
+        self.plasma["Pfus"] = (
+            self.volume_integrate(
+                (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
             )
+            * self.plasma["volp"]
+        )[:, -1]
+        self.plasma["Prad"] = (
+            self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
+        )[:, -1]
+
+        self.insertProfiles(
+            self.profiles,
+            writeFile=f"{folder}/input.gacode.new.powerstate",
+            PositionInBatch=0,
+            applyCorrections={
+                "Tfast_ratio": False,
+                "Ti_thermals": False,
+                "ni_thermals": False,
+                "recompute_ptot": False,
+                "ensureMachNumber": None,
+            },
+            insertPowers=True,
+            rederive_profiles=False,
+            reRead=False,
+        )
 
         self.plasma["Pin"] = (
             (self.plasma["PauxE"] + self.plasma["PauxI"]) * self.plasma["volp"]

@@ -18,7 +18,7 @@ def calculator(
     typeCalculation=2,
     folder="~/scratch/",
     restart=True,
-    rho_vec=np.linspace(0, 0.9, 20),
+    rho_vec=np.linspace(0, 0.9, 10),
     profProvided=False,
 ):
     profiles = (
@@ -54,8 +54,8 @@ def calculator(
                             "ni_thermals": True,
                             "recompute_ptot": False,
                         },
+                        "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     },
-                    "TGLFparameters": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     "includeFastInQi": False,
                 },
             },
