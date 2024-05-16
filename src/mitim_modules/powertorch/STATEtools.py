@@ -108,9 +108,9 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-        input_gacode = copy.deepcopy(input_gacode_orig)
-        if "derived" not in input_gacode.__dict__:
-            input_gacode.deriveQuantities()
+        self.profiles = copy.deepcopy(input_gacode_orig)
+        if "derived" not in self.profiles.__dict__:
+            self.profiles.deriveQuantities()
 
         """
 		------------------------------------------------------------------------------------------------------------------------------
@@ -140,7 +140,7 @@ class powerstate:
             rho_new = torch.sort(rho_new)[0]
 
             # Recalculate with higher resolution
-            TRANSFORMtools.fromGacodeToPower(self, input_gacode, rho_new)
+            TRANSFORMtools.fromGacodeToPower(self, self.profiles, rho_new)
 
             # Insert back
             self.plasma_fine = copy.deepcopy(self.plasma)
@@ -159,7 +159,7 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
-        TRANSFORMtools.fromGacodeToPower(self, input_gacode, self.plasma["rho"])
+        TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
 
         # -------------------------------------------------------------------------------------
         # Postprocessing operations
@@ -184,6 +184,9 @@ class powerstate:
         rederive_profiles=True,
         reRead=True,
     ):
+        '''
+        "profies" is a PROFILES_GACODE object to use as basecase
+        '''
         print(">> Inserting powerstate profiles into input.gacode")
 
         profiles = TRANSFORMtools.fromPowerToGacode(
@@ -919,10 +922,13 @@ class powerstate:
         # ******* Process
         # *******************************************************************************************
 
-        self.transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
-        self.transport.produce_profiles()
-        self.transport.evaluate()
-        self.transport.clean()
+        transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        transport.produce_profiles()
+        transport.evaluate()
+        transport.clean()
+
+        # Pass the results as part of the powerstate class
+        self.model_results = transport.model_results
 
     def metric(self):
         """

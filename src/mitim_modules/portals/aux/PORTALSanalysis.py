@@ -170,7 +170,7 @@ class PORTALSanalyzer:
         self.profiles, self.tgyros, self.powerstates = [], [], []
         for i in range(self.ilast + 1):
             power = self.mitim_runs[i]["powerstate"]
-            t = power.transport.model_results["use"]
+            t = power.model_results["use"]
             p = t.profiles_final
 
             self.tgyros.append(t)
@@ -458,7 +458,7 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 =  self.mitim_runs[evaluation]["powerstate"].transport.model_results["use"].profiles
+        p0 =  self.mitim_runs[evaluation]["powerstate"].model_results["use"].profiles
 
         p = copy.deepcopy(p0)
 
@@ -468,7 +468,7 @@ class PORTALSanalyzer:
                 typeMsg="i",
             )
 
-            p1 =  self.mitim_runs[evaluation]["powerstate"].transport.model_results["use"].profiles_final
+            p1 =  self.mitim_runs[evaluation]["powerstate"].model_results["use"].profiles_final
 
             for ikey in [
                 "qei(MW/m^3)",

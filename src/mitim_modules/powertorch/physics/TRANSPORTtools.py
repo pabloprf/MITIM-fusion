@@ -27,12 +27,17 @@ class power_transport:
 
     def produce_profiles(self):
 
+        if 'MODELparameters' in self.powerstate.TransportOptions["ModelOptions"] and 'applyCorrections' in self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]:
+            applyCorrections = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"]
+        else:
+            applyCorrections = {}
+
         # Write this updated profiles class (with parameterized profiles)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
         self.profiles = self.powerstate.insertProfiles(
             self.powerstate.profiles,
             writeFile=self.file_profs,
-            applyCorrections=self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"],
+            applyCorrections=applyCorrections,
         )
 
         # copy for future modifications
