@@ -79,7 +79,7 @@ opt_fun1D = opt_class(folderWork, namelist)
 opt_fun1D.Optim["initialPoints"] = 2
 
 # Initialize BO framework
-PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=True, askQuestions=False)
+PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)
 
 # Run BO framework
 PRF_BO.run()

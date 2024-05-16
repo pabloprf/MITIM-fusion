@@ -1391,9 +1391,7 @@ class ResultsOptimization:
                 linesBatch += "\nPredicted optimum point as of this iteration"
             else:
                 linesBatch += (
-                    "\nRunning high-fidelity evaluations for {0} points...".format(
-                        includePoints[1] - includePoints[0]
-                    )
+                    f"\nRunning high-fidelity evaluations for {includePoints[1] - includePoints[0]} points..."
                 )
                 if timingString is not None:
                     linesBatch += f" (took total of {timingString})"
@@ -1579,7 +1577,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
         )
 
-        best_absolute_index = np.nanargmin(res)
+        best_absolute_index = np.nanargmax(res)
         best_absolute = res[best_absolute_index]
 
         if rangeT is not None:
@@ -1741,14 +1739,16 @@ Workflow start time: {IOtools.getStringFromTime()}
         self.plotMetrics(fig2)
         self.plotCalibrations(figs=[fig3, fig3b, fig3c, fig3cE], tab_color=tab_color)
 
-        grid = plt.GridSpec(1, 3, hspace=0.3, wspace=0.3)
-        ax0 = fig4.add_subplot(grid[0, 0])
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+        ax0 = fig4.add_subplot(grid[:, 0])
         GRAPHICStools.addDenseAxis(ax0)
         ax1 = fig4.add_subplot(grid[0, 1], sharex=ax0)
         GRAPHICStools.addDenseAxis(ax1)
-        ax2 = fig4.add_subplot(grid[0, 2], sharex=ax0)
+        ax2 = fig4.add_subplot(grid[1, 1], sharex=ax0)
         GRAPHICStools.addDenseAxis(ax2)
-        _, _ = self.plotImprovement(axs=[ax0, ax1, ax2])
+        ax3 = fig4.add_subplot(grid[:, 2], sharex=ax0)
+        GRAPHICStools.addDenseAxis(ax3)
+        _, _ = self.plotImprovement(axs=[ax0, ax1, ax2, ax3])
 
         if log is not None:
             log.plot(axs=[axsTimes[0], axsTimes[1]])
@@ -1943,7 +1943,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 x,
                 y[:, 1] * mult,
                 "-s",
-                label=i.split("VarPRF_")[-1],
+                label=i,
                 lw=2,
                 c=colors[cont],
                 markersize=3,
@@ -2263,7 +2263,7 @@ Workflow start time: {IOtools.getStringFromTime()}
         axl = axs[1, 1]
         axR = axs[3, 0]
         axRl = axs[3, 1]
-        x, yT, yTM, res = plotAndGrab(
+        x, yT, yTM, _ = plotAndGrab(
             ax,
             axl,
             axR,
@@ -2274,7 +2274,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.PRF_BO.lambdaSingleObjective,
             OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
         )
-        xe, yTe, yTMe, resM = plotAndGrab(
+        xe, yTe, yTMe, _ = plotAndGrab(
             ax,
             axl,
             axR,
@@ -2401,7 +2401,6 @@ Workflow start time: {IOtools.getStringFromTime()}
                 plotModel=True,
                 onlyFinals=True,
                 onlyThis=i,
-                leg=False,
                 colorsS=["b", "r"],
             )
 
@@ -2521,14 +2520,15 @@ Workflow start time: {IOtools.getStringFromTime()}
         if axs is None:
             plt.ion()
             fig = plt.figure()
-            grid = plt.GridSpec(3, 1, hspace=0.3, wspace=0.3)
-            ax0 = fig.add_subplot(grid[0, 0])
-            ax1 = fig.add_subplot(grid[1, 0], sharex=ax0)
-            ax2 = fig.add_subplot(grid[2, 0], sharex=ax0)
+            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+            ax0 = fig.add_subplot(grid[:, 0])
+            ax1 = fig.add_subplot(grid[0, 1], sharex=ax0)
+            ax2 = fig.add_subplot(grid[1,1], sharex=ax0)
+            ax3 = fig.add_subplot(grid[:, 2], sharex=ax0)
         else:
-            [ax0, ax1, ax2] = axs
+            [ax0, ax1, ax2, ax3] = axs
 
-        xe, yTe, yTMe, _ = plotAndGrab(
+        xe, yTe, yTMe, res = plotAndGrab(
             None,
             None,
             None,
@@ -2544,9 +2544,10 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         xe = xe * iterationsMultiplier + iterationsOffset
 
-        bestMaxSoFar, bestMeanSoFar = np.inf, np.inf
+        bestMaxSoFar, bestMeanSoFar, bestResSoFar = np.inf, np.inf, -np.inf
         yMax, yMean = np.zeros(len(yTe)), np.zeros(len(yTe))
         yCummMax, yCummMean = np.zeros(len(yTe)), np.zeros(len(yTe))
+        resCumm = np.zeros(len(yTe))
         for i in range(len(yTe)):
             yMax[i] = yTe[i].max()
             yMean[i] = yTe[i].mean()
@@ -2554,6 +2555,9 @@ Workflow start time: {IOtools.getStringFromTime()}
             bestMeanSoFar = np.min([yTe[i].mean(), bestMeanSoFar])
             yCummMax[i] = bestMaxSoFar
             yCummMean[i] = bestMeanSoFar
+
+            bestResSoFar = np.max([res[i], bestResSoFar])
+            resCumm[i] = bestResSoFar
 
         if cumulative:
             yPlotMax, yPlotMean = yCummMax, yCummMean
@@ -2588,7 +2592,8 @@ Workflow start time: {IOtools.getStringFromTime()}
                 markersize=3,
                 lw=1.0,
             )
-        ax.set_ylabel("Best Residue (Normalized L1-norm)")
+        ax.set_ylabel("Best Residue")
+        ax.set_title("Normalized L1-norm of [of-cal] components")
         ax.set_xlabel("High-Fidelity Evaluations")
         if legYN:
             ax.legend(loc="best", prop={"size": 5})
@@ -2662,7 +2667,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 markersize=2,
                 lw=0.5,
             )
-        ax.set_ylabel("Best Residue (Normalized L1-norm)")
+        ax.set_ylabel("Best Residue")
         ax.set_xlabel("High-Fidelity Evaluations")
         ax.set_yscale("log")
 
@@ -2708,6 +2713,53 @@ Workflow start time: {IOtools.getStringFromTime()}
 
             for i in [100.0, 10.0, 1.0, 0.1]:
                 ax.axhline(y=i, ls="-.", lw=0.5, color="k")
+
+            if plotAllVlines:
+                for i in self.optimaPositions[2:]:
+                    ax.axvline(x=i - 0.5, ls="-.", lw=0.1, color=color)
+
+
+        if ax3 is not None:
+            ax = ax3
+
+            ax.plot(xe, resCumm, "-s", c=color)
+
+            ax.set_ylabel("Best scalarized function")
+            ax.set_title("User-defined scalarized function (to max)")
+            ax.set_xlabel("High-Fidelity Evaluations")
+
+            GRAPHICStools.drawLineWithTxt(
+                ax,
+                self.optimaPositions[1] - 0.5,
+                label="training",
+                orientation="vertical",
+                color=color,
+                lw=0.2,
+                ls="-.",
+                alpha=1.0,
+                fontsize=10,
+                fromtop=0.8,
+                fontweight="normal",
+                separation=0,
+                verticalalignment="center",
+                horizontalalignment="right",
+            )
+            GRAPHICStools.drawLineWithTxt(
+                ax,
+                self.optimaPositions[1] - 0.5,
+                label="optimization",
+                orientation="vertical",
+                color=color,
+                lw=0.2,
+                ls="-.",
+                alpha=1.0,
+                fontsize=10,
+                fromtop=0.8,
+                fontweight="normal",
+                separation=0,
+                verticalalignment="center",
+                horizontalalignment="left",
+            )
 
             if plotAllVlines:
                 for i in self.optimaPositions[2:]:
@@ -3430,8 +3482,8 @@ def plotAndGrab(
     of, cal, y = lambdaSingleObjective(torch.from_numpy(yT))
     ofM, calM, yM = lambdaSingleObjective(torch.from_numpy(yTM))
 
-    of, cal, y = of.cpu().numpy(), cal.cpu().numpy(), -y.cpu().numpy()
-    ofM, calM, yM = ofM.cpu().numpy(), calM.cpu().numpy(), -yM.cpu().numpy()
+    of, cal, y = of.cpu().numpy(), cal.cpu().numpy(), y.cpu().numpy()
+    ofM, calM, yM = ofM.cpu().numpy(), calM.cpu().numpy(), yM.cpu().numpy()
 
     ofcaldif = np.abs(of - cal)
     ofcalMdif = np.abs(ofM - calM)
