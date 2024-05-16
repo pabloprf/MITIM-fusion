@@ -33,7 +33,8 @@ PORTALS_fun.TGLFparameters["extraOptionsTGLF"] = {"BPER_USE": False}  # Turn off
 PORTALS_fun.INITparameters["removeFast"] = True
 
 # Stopping criterion 1: 200x improvement in residual
-PORTALS_fun.Optim["minimumResidual"] = -5e-3
+PORTALS_fun.Optim["maximumValue"] = 200.0
+PORTALS_fun.Optim["maximumValueIsRel"] = True
 
 # Stopping criterion 2: inputs vary less than 0.1% for 3 consecutive iterations after 10 evaluations
 PORTALS_fun.Optim["minimumDVvariation"] = [10, 3, 1e-1]

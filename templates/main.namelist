@@ -31,7 +31,8 @@ OPT_cvs_max     = []                  # Maximum values for each allowed ( inf re
 # Stopping criteria
 
 OPT_BOiterations       = 5            # Number of BO iterations (1 means only evaluate optimum from initial batch training)
-OPT_minimumResidual    = -1E-3        # (if not None) Residual for the stopping criterion. If negative: relative to base case (e.g. -1E3: 1000x better residual)
+OPT_maximumValue       = -1E-3        # (if not None) Maximum value for the stopping criterion. If negative: relative to base case (e.g. -1E3: 1000x better residual)
+OPT_maximumValueIsRel  = False 		  # If True: maximumValue is relative to base case (e.g. 1E3: 1000x better residual)
 OPT_minimumDVvariation = [10,3,1E-2]  # (if not None) After iteration #0 check #1 in a row of #2 individuals of minimum DV variation (in %) compared to previous
 
 # Initialization
@@ -60,9 +61,8 @@ OPT_newPoints       = 1		    # New batch of points for next iteration. If -1 = i
 
 # Stopping criteria (in surrogate optimization -> acquisition works with maximum)
 
-OPT_relativePerformanceSurrogate = 0.02         # (if not None) Relative performance change in surrogate based on previous best to stop surrogate-optimization
-OPT_favorProximityType        	 = 0 	        # 0: Organize by acquisition, 1: favor closest if acquisition change by 100x
-OPT_ensureNewPoints 		  	 = True         # Continue surrogate techniques until newPoints have been found
+OPT_favorProximityType        	 = 0 	       # 0: Organize by acquisition, 1: favor closest if acquisition change by 100x
+OPT_ensureNewPoints 		  	 = True        # Continue surrogate techniques until newPoints have been found
 
 # Refinements
 

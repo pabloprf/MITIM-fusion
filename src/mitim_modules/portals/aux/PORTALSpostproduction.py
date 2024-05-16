@@ -1,11 +1,12 @@
-import torch, os, copy
+import torch
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.opt_tools import OPTtools, STEPtools, STRATEGYtools
+from mitim_tools.opt_tools import STEPtools, STRATEGYtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 """
 Technique to reutilize flux surrogates to predict new conditions
@@ -84,7 +85,7 @@ def externalFluxMatch(
 
     # Use full optimization
 
-    step.stepSettings["Optim"]["minimumResidual"] = 1e-4
+    step.stepSettings["Optim"]["maximumValue"] = -1e-4
     step.stepSettings["Optim"]["relativePerformanceSurrogate"] = None
 
     step.BOmetrics["overall"]["indBest"] = -1

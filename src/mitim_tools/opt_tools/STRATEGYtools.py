@@ -1114,17 +1114,19 @@ class PRF_BO:
         # Stopping criterion based on the minimum residual indicated in namelist
         # ~~~~~~~~~~~~~~~~~~
 
-        if self.Optim["minimumResidual"] is not None:
+        if self.Optim["maximumValue"] is not None:
             print("- Checking residual...")
-            _, _, residuals = self.lambdaSingleObjective(
+            _, _, maximization_value = self.lambdaSingleObjective(
                 torch.from_numpy(self.train_Y).to(self.dfT)
             )
-            min_residual = np.nanmin(-residuals.cpu().numpy())
+
+            best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
+
             print(
-                f'\t- Minimum residual: {min_residual:.3e} (absolute stopping criterion: {self.Optim["minimumResidual"]:.3e}), based on original: {self.original_minimumResidual:.3e}'
+                f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {self.Optim["maximumValue"]:.3e}), based on original: {self.original_maximumValue:.3e}'
             )
 
-            if min_residual < self.Optim["minimumResidual"]:
+            if best_value_so_far > self.Optim["maximumValue"]:
                 hard_finish_residual = True
 
         # ~~~~~~~~~~~~~~~~~~
@@ -1439,20 +1441,19 @@ class PRF_BO:
         # ~~~~~~~~ Determine relative residuals
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.original_minimumResidual = copy.deepcopy(self.Optim["minimumResidual"])
+        self.original_maximumValue = copy.deepcopy(self.Optim["maximumValue"])
 
-        if (self.Optim["minimumResidual"] is not None) and self.Optim[
-            "minimumResidual"
-        ] < 0:
-            res_base = self.BOmetrics["overall"]["Residual"][0].item()
-            res_new = -self.Optim["minimumResidual"] * res_base
+        if (self.Optim["maximumValue"] is not None) and self.Optim["maximumValueIsRel"]:
+
+            res_base = -self.BOmetrics["overall"]["Residual"][0].item()
+            res_new = self.Optim["maximumValue"] * res_base
             print(
-                f'- Minimum residual for MITIM optimization provided as relative value of {-self.Optim["minimumResidual"]} from base {res_base:.3e} --> {res_new:.3e}',
+                f'- Maximum value for MITIM optimization provided as relative value of {self.Optim["maximumValue"]} from base {res_base:.3e} --> {res_new:.3e}',
                 typeMsg="i",
             )
 
-            self.stepSettings["Optim"]["minimumResidual"] = self.Optim[
-                "minimumResidual"
+            self.stepSettings["Optim"]["maximumValue"] = self.Optim[
+                "maximumValue"
             ] = res_new
 
         """

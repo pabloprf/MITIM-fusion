@@ -31,7 +31,7 @@ def default_namelist(Optim):
     Optim["initialPoints"] = 32
     Optim["BOiterations"] = 100
     Optim["parallelCalls"] = 16
-    Optim["minimumResidual"] = 1e-2  # This is 0.1mm, enough accuracy
+    Optim["maximumValue"] = -1e-2  # This is 0.1mm, enough accuracy
     Optim["relativePerformanceSurrogate"] = 1e3  # x1000 improvement
     Optim["newPoints"] = 16  # I found this better
     Optim["surrogateOptions"]["FixedNoise"] = False

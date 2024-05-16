@@ -59,7 +59,8 @@ def default_namelist(Optim, CGYROrun=False):
         3,
         1e-1,
     ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
-    Optim["minimumResidual"] = -5e-3  # Reducing residual by 200x is enough
+    Optim["maximumValueIsRel"]  = True
+    Optim["maximumValue"]       = 5e-3  # Reducing residual by 200x is enough
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default

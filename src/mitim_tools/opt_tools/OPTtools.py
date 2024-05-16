@@ -135,35 +135,6 @@ class fun_optimization:
         if previous_solutions is not None:
             x_opt, y_opt_residual, z_opt = previous_solutions
 
-            # ---------------------- What residual to use as stopping criterion? -------------------------------------------------
-            # TO FIX
-
-            # Residual level based on original base case
-            residualTotal = self.stepSettings["Optim"]["minimumResidual"]
-            if residualTotal is not None:
-                residualTotal = -residualTotal
-
-            # Residual level based on previous optimization
-            if (
-                self.stepSettings["Optim"]["relativePerformanceSurrogate"] is not None
-            ) and (best_performance_previous_iteration is not None):
-                residualPrevious = (
-                    self.stepSettings["Optim"]["relativePerformanceSurrogate"]
-                    * best_performance_previous_iteration
-                )
-            else:
-                residualPrevious = None
-
-            # What's lowest?
-            if residualTotal is None:
-                enoughPerformance = residualPrevious
-            elif residualPrevious is None:
-                enoughPerformance = residualTotal
-            else:
-                enoughPerformance = np.min([residualTotal, residualPrevious])
-
-            # -------------------------------------------------------------------------------------------------------------------
-
             x_opt, y_opt_residual, z_opt, hard_finish_surrogate = pointSelection(
                 x_opt2,
                 y_opt_residual2,
@@ -174,7 +145,7 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=enoughPerformance,
+                enoughPerformance=self.stepSettings["Optim"]["maximumValue"],
             )
 
         else:
@@ -385,7 +356,7 @@ def pointSelection(
         print(
             f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... "
         )
-        best_now = y_res[0].item()
+        best_now = -y_res[0].item()
         if best_now > enoughPerformance:
             print(
                 f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer..."
