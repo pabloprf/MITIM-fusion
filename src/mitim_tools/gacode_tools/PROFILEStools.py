@@ -2412,6 +2412,8 @@ class PROFILES_GACODE:
         ax.set_xlabel("$\\rho$")
         ax.set_ylabel(varL)
 
+        
+
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
 
@@ -2439,8 +2441,6 @@ class PROFILES_GACODE:
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
-        # ax00c.set_ylim([-yl,yl])
-        # ax01c.set_ylim([-yl,yl])
 
         ax = ax02c
         var = self.profiles["q(-)"]
@@ -2455,6 +2455,8 @@ class PROFILES_GACODE:
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0.0)
+
+        
 
         ax = ax12c
         var = self.profiles["polflux(Wb/radian)"]
@@ -2473,6 +2475,7 @@ class PROFILES_GACODE:
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
+
         ax.set_xlabel("$\\rho$")
         # ax.set_ylim(bottom=0)
         ax.set_ylabel("$\\rho$")
@@ -3800,7 +3803,7 @@ def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
     ax00c = figProf_3.add_subplot(grid[0, 0])
     axsProf_3 = [
         ax00c,
-        figProf_3.add_subplot(grid[1, 0], sharey=ax00c),
+        figProf_3.add_subplot(grid[1, 0], sharex=ax00c),
         figProf_3.add_subplot(grid[2, 0]),
         figProf_3.add_subplot(grid[0, 1]),
         figProf_3.add_subplot(grid[1, 1]),
