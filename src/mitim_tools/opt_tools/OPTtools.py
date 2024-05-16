@@ -139,7 +139,9 @@ class fun_optimization:
             # TO FIX
 
             # Residual level based on original base case
-            residualTotal = -self.stepSettings["Optim"]["minimumResidual"]  # ACQ
+            residualTotal = self.stepSettings["Optim"]["minimumResidual"]
+            if residualTotal is not None:
+                residualTotal = -residualTotal
 
             # Residual level based on previous optimization
             if (
