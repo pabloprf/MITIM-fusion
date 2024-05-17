@@ -1194,23 +1194,26 @@ class MITIMgeqdsk:
         R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
         Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
         Psi_norm[:,:R_min_ind] = 2
-        Psi_norm[:,R_max_ind:] = 2#np.nan
-        Psi_norm[:Z_min_ind,:] = 2#np.nan
-        Psi_norm[Z_max_ind:,:] = 2#np.nan
+        Psi_norm[:,R_max_ind:] = 2
+        Psi_norm[:Z_min_ind,:] = 2
+        Psi_norm[Z_max_ind:,:] = 2
 
-        PSIRZ = self.g["PSIRZ"]
-        psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
-
-        # need to construct level contours for each flux surface 
+        #psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
+        #psi_reg = self.g["AuxQuantities"]["PSI"]
+        rhos = self.g["AuxQuantities"]["RHO"]
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        
         cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
         print(f" \t\t--> Finding g-file flux-surfaces")
         for i, psi in enumerate(psis):
             
-            if psi == 0: continue
-            
+            if psi == 0:
+                psi+=0.0001
+
+            # need to construct level contours for each flux surface 
             Ri, Zi = MATHtools.drawContours(
-                R,#self.g["AuxQuantities"]["R"],
-                Z,#self.g["AuxQuantities"]["Z"],
+                R,
+                Z,
                 Psi_norm,
                 n,
                 psi,
@@ -1244,7 +1247,7 @@ class MITIMgeqdsk:
             plt.tight_layout()
             plt.show()
         print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
-        return cn, sn, gn
+        return cn, sn, gn, psis
         
 def get_flux_surface_geometry(R, Z, n_coeff=3):
     """
@@ -1467,4 +1470,5 @@ def create_geo_MXH3(
     return R, Z
 #g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
 #g.get_MXH_coeff(500, n_coeff=6, plot=True)
+#plt.tight_layout()
 #plt.show()

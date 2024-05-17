@@ -70,7 +70,8 @@ def convert_astra_gacode(astra_root,
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
-    shape_cos, shape_sin, bbox = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+    # these are all on a poloidal flux grid
+    shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -93,24 +94,35 @@ def convert_astra_gacode(astra_root,
     current = np.array([c.IPL[-2]])             ; params['current(MA)'] = current
     rho = interp_to_nexp(c.rho[-2]/c.rho[-2,-1]); params['rho(-)'] = rho
     polflux = interp_to_nexp(c.FP[-2])          ; params['polflux(Wb/radian)'] = polflux
-    q = interp_to_nexp(c.q[-2])                 ; params['q(-)'] = q
-    rmaj = interp_to_nexp(bbox[0,:])            ; params['rmaj(m)'] = rmaj
-    rmin = interp_to_nexp(bbox[1,:])            ; params['rmin(m)'] = rmin
-    zmag = interp_to_nexp(bbox[2,:])            ; params['zmag(m)'] = zmag
-    kappa = interp_to_nexp(bbox[3,:])           ; params['kappa(-)'] = kappa
-    delta = interp_to_nexp(shape_sin[1,:])      ; params['delta(-)'] = delta
-    zeta = interp_to_nexp(-shape_sin[2,:])      ; params['zeta(-)'] = zeta
-    shape_cos0 = interp_to_nexp(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
-    shape_cos1 = interp_to_nexp(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
-    shape_cos2 = interp_to_nexp(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
-    shape_cos3 = interp_to_nexp(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
-    shape_cos4 = interp_to_nexp(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
-    shape_cos5 = interp_to_nexp(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
-    shape_sin3 = interp_to_nexp(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
-    shape_sin4 = interp_to_nexp(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
-    shape_sin5 = interp_to_nexp(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
+                                         
+    # interpolate all geometry quantities to rho grid
 
-    ne = interp_to_nexp(c.ne[-2,:])             ; params['ne(10^19/m^3)'] = ne
+    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)    
+    #plt.plot(psin_grid, label="psin")
+    #plt.plot(interp_to_rho(psin_grid))
+    #plt.plot(polflux_norm, label="rho")
+    #plt.plot(rho)
+    q = interp_to_nexp(c.q[-2])                 ; params['q(-)'] = q
+    rmaj = interp_to_rho(bbox[0,:])            ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_rho(bbox[1,:])            ; params['rmin(m)'] = rmin
+    zmag = interp_to_rho(bbox[2,:])            ; params['zmag(m)'] = zmag
+    kappa = interp_to_rho(bbox[3,:])           ; params['kappa(-)'] = kappa
+    delta = interp_to_rho(shape_sin[1,:])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-shape_sin[2,:])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
+    shape_cos6 = np.zeros(nexp) ; params['shape_cos6(-)'] = shape_cos6
+    shape_sin3 = interp_to_rho(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin6 = np.zeros(nexp) ; params['shape_sin6(-)'] = shape_sin6
+
+    ne = interp_to_nexp(c.ne[-2,:])            ; params['ne(10^19/m^3)'] = ne
     ni_main = interp_to_nexp(c.NMAIN[-2,:])
     ni_He = interp_to_nexp(c.NIZ1[-2,:])
     ni_W = interp_to_nexp(c.NIZ2[-2,:])
@@ -131,8 +143,9 @@ def convert_astra_gacode(astra_root,
     # includes line and synchrotron radiation
     qsync = np.zeros(nexp)                      ; params['qsync(MW/m^3)'] = qsync
     qline = np.zeros(nexp)                      ; params['qline(MW/m^3)'] = qline
-    qei = interp_to_nexp(c.PEICR[-2])           ; params["qei(MW/m^3)"] = qei
+    qei = np.zeros(nexp)                        ; params["qei(MW/m^3)"] = qei
     qrfe = interp_to_nexp(c.PEICR[-2])          ; params['qrfe(MW/m^3)'] = qrfe
+    qrfi = interp_to_nexp(c.PIICR[-2])          ; params['qrfi(MW/m^3)'] = qrfi
     qfuse = interp_to_nexp(c.PEDT[-2])          ; params['qfuse(MW/m^3)'] = qfuse
     qfusi = interp_to_nexp(c.PIDT[-2])          ; params['qfusi(MW/m^3)'] = qfusi
     # remaining parameters, need to derive w0 but set the rest zero for now
@@ -152,6 +165,8 @@ def convert_astra_gacode(astra_root,
 
     # rederive quantities
     p.deriveQuantities()
+
+    p.printInfo()
     
     if gacode_out:
         gacode_filename = os.path.join(astra_root, "input.gacode")
@@ -160,3 +175,8 @@ def convert_astra_gacode(astra_root,
         p.plot()
 
     return p
+
+if __name__ == "__main__":
+    astra_root = "/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/ARC_V2A_15MW"
+    convert_astra_gacode(astra_root, plot_result=True)
+    plt.show()
