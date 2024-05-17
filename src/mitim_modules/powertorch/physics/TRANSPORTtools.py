@@ -361,7 +361,7 @@ class tgyro_model(power_transport):
         # Results
         # ------------------------------------------------------------------------------------------------------------------------
 
-        self.model_results = tgyro.results # Pass the TGYRO results class 
+        self.model_results = copy.deepcopy(tgyro.results["use"]) # Pass the TGYRO results class that should be use for plotting and analysis
 
 # ------------------------------------------------------------------
 # SIMPLE Diffusion

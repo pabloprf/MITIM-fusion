@@ -214,7 +214,7 @@ class PORTALSanalyzer:
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 
-            t = power.model_results["use"]
+            t = power.model_results
             p = t.profiles_final
 
             self.evaluations.append(i)
@@ -456,7 +456,7 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 =  self.mitim_runs[evaluation]["powerstate"].model_results["use"].profiles
+        p0 =  self.mitim_runs[evaluation]["powerstate"].model_results.profiles
 
         p = copy.deepcopy(p0)
 
@@ -466,7 +466,7 @@ class PORTALSanalyzer:
                 typeMsg="i",
             )
 
-            p1 =  self.mitim_runs[evaluation]["powerstate"].model_results["use"].profiles_final
+            p1 =  self.mitim_runs[evaluation]["powerstate"].model_results.profiles_final
 
             for ikey in [
                 "qei(MW/m^3)",

@@ -63,7 +63,7 @@ def PORTALSanalyzer_plotMetrics(
         axne = axne_g = axne_f = None
 
     if self.runWithImpurity:
-        p = self.powerstates[0].model_results["use"].profiles_final,
+        p = self.powerstates[0].model_results.profiles_final,
         labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
@@ -112,7 +112,7 @@ def PORTALSanalyzer_plotMetrics(
             else:
                 lab = ""
 
-            t = self.powerstates[self.i0].model_results["use"]
+            t = self.powerstates[self.i0].model_results
             p = t.profiles_final
 
             ix = np.argmin(
@@ -280,7 +280,7 @@ def PORTALSanalyzer_plotMetrics(
             continue
 
         power = self.powerstates[indexUse]
-        t = power.model_results["use"]
+        t = power.model_results
         p = t.profiles_final
         
 
@@ -1173,7 +1173,7 @@ def PORTALSanalyzer_plotExpected(
     else:
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
-        p = self.powerstates[0].model_results["use"].profiles_final
+        p = self.powerstates[0].model_results.profiles_final
         labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
@@ -1210,7 +1210,7 @@ def PORTALSanalyzer_plotExpected(
                 coli += 1
             colors.append(colorsA[coli])
 
-    p = self.powerstates[0].model_results["use"].profiles_final
+    p = self.powerstates[0].model_results.profiles_final
 
     rho = p.profiles["rho(-)"]
     roa = p.derived["roa"]
@@ -1223,7 +1223,7 @@ def PORTALSanalyzer_plotExpected(
     for i in plotPoints:
         cont += 1
 
-        p = p = self.powerstates[i].model_results["use"].profiles_final
+        p = p = self.powerstates[i].model_results.profiles_final
 
         ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
 
@@ -1395,7 +1395,7 @@ def PORTALSanalyzer_plotExpected(
         rhoVals = self.MODELparameters["RhoLocations"]
         roaVals = np.interp(rhoVals, rho, roa)
 
-        p0 = self.powerstates[plotPoints[0]].model_results["use"].profiles_final
+        p0 = self.powerstates[plotPoints[0]].model_results.profiles_final
         zVals = []
         z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
         for roai in roaVals:
@@ -1403,7 +1403,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.powerstates[plotPoints[1]].model_results["use"].profiles_final
+            p0 = self.powerstates[plotPoints[1]].model_results.profiles_final
             zVals = []
             z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
             for roai in roaVals:
@@ -1413,7 +1413,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.set_ylim(ranges)
         axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
 
-        p0 = self.powerstates[plotPoints[0]].model_results["use"].profiles_final
+        p0 = self.powerstates[plotPoints[0]].model_results.profiles_final
         zVals = []
         z = (
             (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1424,7 +1424,7 @@ def PORTALSanalyzer_plotExpected(
         axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.powerstates[plotPoints[1]].model_results["use"].profiles_final
+            p0 = self.powerstates[plotPoints[1]].model_results.profiles_final
             zVals = []
             z = (
                 (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1443,7 +1443,7 @@ def PORTALSanalyzer_plotExpected(
         if axne_g is not None:
             axne_g_twin = axne_g.twinx()
 
-            p0 = self.powerstates[plotPoints[0]].model_results["use"].profiles_final
+            p0 = self.powerstates[plotPoints[0]].model_results.profiles_final
             zVals = []
             z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
             for roai in roaVals:
@@ -1451,7 +1451,7 @@ def PORTALSanalyzer_plotExpected(
             axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.powerstates[plotPoints[1]].model_results["use"].profiles_final
+                p0 = self.powerstates[plotPoints[1]].model_results.profiles_final
                 zVals = []
                 z = (
                     (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
@@ -1470,7 +1470,7 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             axnZ_g_twin = axnZ_g.twinx()
 
-            p0 = self.powerstates[plotPoints[0]].model_results["use"].profiles_final
+            p0 = self.powerstates[plotPoints[0]].model_results.profiles_final
             zVals = []
             z = (
                 (
@@ -1484,7 +1484,7 @@ def PORTALSanalyzer_plotExpected(
             axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.powerstates[plotPoints[1]].model_results["use"].profiles_final
+                p0 = self.powerstates[plotPoints[1]].model_results.profiles_final
                 zVals = []
                 z = (
                     (
@@ -1507,7 +1507,7 @@ def PORTALSanalyzer_plotExpected(
         if axw0_g is not None:
             axw0_g_twin = axw0_g.twinx()
 
-            p0 = self.powerstates[plotPoints[0]].model_results["use"].profiles_final
+            p0 = self.powerstates[plotPoints[0]].model_results.profiles_final
             zVals = []
             z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
             for roai in roaVals:
@@ -1515,7 +1515,7 @@ def PORTALSanalyzer_plotExpected(
             axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.powerstates[plotPoints[1]].model_results["use"].profiles_final
+                p0 = self.powerstates[plotPoints[1]].model_results.profiles_final
                 zVals = []
                 z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
                 for roai in roaVals:
@@ -1795,7 +1795,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     power = self.powerstates[indecesPlot[1]]
-    t = power.model_results["use"]
+    t = power.model_results
 
     t.plot(
         fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ", fn_color=fn_color
@@ -1803,7 +1803,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     if indecesPlot[0] < len(self.powerstates):
 
         power = self.powerstates[indecesPlot[0]]
-        t = power.model_results["use"]
+        t = power.model_results
         t.plot(
             fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ", fn_color=fn_color
         )
@@ -1825,8 +1825,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     if indecesPlot[0] < len(self.powerstates):
         _ = PROFILEStools.plotAll(
             [
-                self.powerstates[indecesPlot[1]].model_results["use"].profiles_final,
-                self.powerstates[indecesPlot[0]].model_results["use"].profiles_final,
+                self.powerstates[indecesPlot[1]].model_results.profiles_final,
+                self.powerstates[indecesPlot[0]].model_results.profiles_final,
             ],
             figs=figs,
             extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
@@ -1836,8 +1836,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot Comparison
     # -------------------------------------------------------
 
-    profile_original = self.mitim_runs[0]["powerstate"].model_results["tglf_neo"].profiles
-    profile_best =  self.mitim_runs[self.ibest]["powerstate"].model_results["tglf_neo"].profiles
+    profile_original = self.mitim_runs[0]["powerstate"].model_results.profiles
+    profile_best =  self.mitim_runs[self.ibest]["powerstate"].model_results.profiles
 
     profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
     profile_original_0 = self.mitim_runs["profiles_original"]
@@ -1931,7 +1931,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
 
     ms = 0
 
-    p = self.mitim_runs[self.i0]["powerstate"].model_results["tglf_neo"].profiles
+    p = self.mitim_runs[self.i0]["powerstate"].model_results.profiles
     p.plotGradients(
         axsR,
         color="b",
@@ -1948,7 +1948,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         if not isinstance(self.mitim_runs[ikey], dict):
             break
 
-        p = self.mitim_runs[ikey]["powerstate"].model_results["tglf_neo"].profiles
+        p = self.mitim_runs[ikey]["powerstate"].model_results.profiles
         p.plotGradients(
             axsR,
             color="r",
@@ -1960,7 +1960,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             plotRotation=self.runWithRotation,
         )
 
-    p = self.mitim_runs[self.ibest]["powerstate"].model_results["tglf_neo"].profiles
+    p = self.mitim_runs[self.ibest]["powerstate"].model_results.profiles
     p.plotGradients(
         axsR,
         color="g",
@@ -2066,7 +2066,7 @@ def PORTALSanalyzer_plotModelComparison(
     )
 
     if UseTGLFfull_x is None:
-        val_calc = self.mitim_runs[0]["powerstate"].model_results["use"].__dict__[quantityX][0, 1:]
+        val_calc = self.mitim_runs[0]["powerstate"].model_results.__dict__[quantityX][0, 1:]
     else:
         val_calc = np.array(
             [
@@ -2106,7 +2106,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         if UseTGLFfull_x is None:
             val_calc = (
-                self.mitim_runs[0]["powerstate"].model_results["use"]
+                self.mitim_runs[0]["powerstate"].model_results
                 .__dict__[quantityX][self.runWithImpurity, 0, 1:]
             )
         else:
@@ -2151,7 +2151,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["powerstate"].model_results["use"]
+                    self.mitim_runs[0]["powerstate"].model_results
                     .__dict__[quantityX][0, 1:]
                 ).min()
             )
@@ -2187,7 +2187,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["powerstate"].model_results["use"]
+                    self.mitim_runs[0]["powerstate"].model_results
                     .__dict__[quantityX][0, 1:]
                 ).min()
             )
