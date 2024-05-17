@@ -58,7 +58,7 @@ class PORTALSanalyzer:
 
         if os.path.exists(folder) or folderRemote is not None:
 
-            opt_fun = STRATEGYtools.FUNmain(folder)
+            opt_fun = STRATEGYtools.opt_evaluator(folder)
 
             try:
                 opt_fun.read_optimization_results(

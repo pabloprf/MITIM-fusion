@@ -274,7 +274,7 @@ print(
 print(f"(Analysis level {analysis_level})\n")
 
 if len(foldersWork) == 1:
-    opt_fun = STRATEGYtools.FUNmain(foldersWork[0])
+    opt_fun = STRATEGYtools.opt_evaluator(foldersWork[0])
     opt_fun.plot_optimization_results(
         analysis_level=analysis_level,
         folderRemote=foldersRemote[0],
@@ -285,7 +285,7 @@ if len(foldersWork) == 1:
 else:
     opt_funs = []
     for folderWork, folderRemote in zip(foldersWork, foldersRemote):
-        opt_fun = STRATEGYtools.FUNmain(folderWork)
+        opt_fun = STRATEGYtools.opt_evaluator(folderWork)
         try:
             opt_fun.plot_optimization_results(
                 analysis_level=analysis_level,

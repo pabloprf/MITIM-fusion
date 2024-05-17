@@ -33,7 +33,7 @@ def default_namelist(Optim):
     return Optim
 
 
-class vitals(STRATEGYtools.FUNmain):
+class vitals(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist=None):
         print(
             "\n-----------------------------------------------------------------------------------------"

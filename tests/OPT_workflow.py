@@ -18,7 +18,7 @@ if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
 # -----------------------------------------------------------------------------------------------------
 
 
-class opt_class(STRATEGYtools.FUNmain):
+class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist):
         # Store folder, namelist. Read namelist
         super().__init__(folder, namelist=namelist)

@@ -5,7 +5,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.im_tools import IMtools
 
 
-class opt_class(STRATEGYtools.FUNmain):
+class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, IMnamelist):
         # Store folder, namelist. Read namelist
         super().__init__(

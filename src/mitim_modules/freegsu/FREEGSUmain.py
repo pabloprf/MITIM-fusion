@@ -44,7 +44,7 @@ def default_namelist(Optim):
     return Optim
 
 
-class freegsu(STRATEGYtools.FUNmain):
+class freegsu(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist=None, function_parameters={}):
         print(
             "\n-----------------------------------------------------------------------------------------"

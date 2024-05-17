@@ -23,7 +23,7 @@ step_num = args.step
 
 # Read
 
-opt_fun = STRATEGYtools.FUNmain(folderWork)
+opt_fun = STRATEGYtools.opt_evaluator(folderWork)
 opt_fun.read_optimization_results(analysis_level=4)
 strat = opt_fun.prfs_model
 

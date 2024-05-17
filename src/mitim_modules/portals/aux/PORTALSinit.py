@@ -508,9 +508,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
 
 
 def grabPrevious(foldermitim, dictCPs_base):
-    from mitim_tools.opt_tools.STRATEGYtools import FUNmain
+    from mitim_tools.opt_tools.STRATEGYtools import opt_evaluator
 
-    opt_fun = FUNmain(foldermitim)
+    opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(plotYN=False, analysis_level=1)
     x = opt_fun.prfs_model.BOmetrics["overall"]["xBest"].cpu().numpy()
     dvs = opt_fun.prfs_model.Optim["dvs"]

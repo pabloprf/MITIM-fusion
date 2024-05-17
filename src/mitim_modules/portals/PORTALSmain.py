@@ -89,7 +89,7 @@ def default_namelist(Optim, CGYROrun=False):
     return Optim
 
 
-class portals(STRATEGYtools.FUNmain):
+class portals(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist=None, TensorsType=torch.double, CGYROrun=False):
         print(
             "\n-----------------------------------------------------------------------------------------"

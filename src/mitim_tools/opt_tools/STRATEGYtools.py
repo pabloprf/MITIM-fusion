@@ -28,7 +28,7 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Define function to optimize
 
-		class mainFunction(FUNmain):
+		class mainFunction(opt_evaluator):
 
 			def __init__(self,folder,namelist=None,function_parameters={}):
 
@@ -65,7 +65,7 @@ Notes:
 
 
 # Parent optimization function
-class FUNmain:
+class opt_evaluator:
     def __init__(
         self,
         folder,
@@ -77,7 +77,7 @@ class FUNmain:
         Namelist file can be provided and will be copied to the folder
         """
 
-        print("- Parent FUNmain function initialized")
+        print("- Parent opt_evaluator function initialized")
 
         self.folder = folder
 
@@ -1916,7 +1916,7 @@ def read_from_scratch(file):
     This reads a pickle file for the entire class
     """
 
-    mainFunction = FUNmain(None)
+    mainFunction = opt_evaluator(None)
     prf = PRF_BO(mainFunction, onlyInitialize=True, askQuestions=False)
     prf = prf.read(file=file, iteration=-1, provideFullClass=True)
 
