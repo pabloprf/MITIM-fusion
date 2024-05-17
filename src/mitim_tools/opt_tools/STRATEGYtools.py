@@ -318,11 +318,11 @@ class FUNmain:
                     typeMsg="i",
                 )
 
-                if class_name == "evaluateFREEGSU":
+                if class_name == "freegsu":
                     from mitim_modules.freegsu.FREEGSUmain import analyze_results
-                elif class_name == "evaluateVITALS":
+                elif class_name == "vitals":
                     from mitim_modules.vitals.VITALSmain import analyze_results
-                elif class_name == "evaluatePORTALS":
+                elif class_name == "portals":
                     from mitim_modules.portals.PORTALSmain import analyze_results
                 else:
                     analyze_results = None

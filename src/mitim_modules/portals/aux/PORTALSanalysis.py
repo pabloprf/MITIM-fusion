@@ -539,9 +539,9 @@ class PORTALSanalyzer:
         p.writeCurrentStatus(file=fileGACODE)
 
         # New class
-        from mitim_modules.portals.PORTALSmain import evaluatePORTALS
+        from mitim_modules.portals.PORTALSmain import portals
 
-        portals_fun = evaluatePORTALS(folder)
+        portals_fun = portals(folder)
 
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters

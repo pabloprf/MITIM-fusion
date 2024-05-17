@@ -68,7 +68,7 @@ tglf.NormalizationSets["EXP"]["exp_Qi_error"] = [Qi_base * 0.2]
 file = folderWork + "tglf.pkl"
 tglf.save_pkl(file)
 
-vitals_fun = VITALSmain.evaluateVITALS(folderWork)
+vitals_fun = VITALSmain.vitals(folderWork)
 vitals_fun.Optim["BOiterations"] = 2
 vitals_fun.TGLFparameters["TGLFsettings"] = TGLFsettings
 

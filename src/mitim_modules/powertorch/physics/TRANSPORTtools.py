@@ -3,7 +3,7 @@ import os
 import torch
 import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
-from mitim_tools.gacode_tools import TGYROtools, TGLFtools
+from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.aux import PORTALScgyro
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -142,6 +142,7 @@ class tgyro_model(power_transport):
         # Run TGLF standalone --> In preparation for the transition
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
+        # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=RadiisToRun)
         # _ = tglf.prep(self.folder+'/stds/', inputgacode=self.file_profs, restart=restart)
 
