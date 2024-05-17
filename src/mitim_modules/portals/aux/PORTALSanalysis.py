@@ -167,17 +167,12 @@ class PORTALSanalyzer:
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
 
-        self.profiles, self.tgyros, self.powerstates = [], [], []
+        self.powerstates = []
         for i in range(self.ilast + 1):
             power = self.mitim_runs[i]["powerstate"]
-            t = power.model_results["use"]
-            p = t.profiles_final
-
-            self.tgyros.append(t)
-            self.profiles.append(p)
             self.powerstates.append(power)
 
-        if len(self.profiles) <= self.ibest:
+        if len(self.powerstates) <= self.ibest:
             print(
                 "\t- PORTALS was read after new residual was computed but before pickle was written!",
                 typeMsg="w",
@@ -216,8 +211,11 @@ class PORTALSanalyzer:
         else:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
-        for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
-            print(f"\t\t- Processing evaluation {i}/{len(self.profiles)-1}")
+        for i, power in enumerate(self.powerstates):
+            print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
+
+            t = power.model_results["use"]
+            p = t.profiles_final
 
             self.evaluations.append(i)
             self.FusionGain.append(p.derived["Q"])
@@ -964,13 +962,13 @@ class PORTALSinitializer:
             axsRes.set_xlim([0, i])
 
         # GRADIENTS
-        if len(self.profiles) > 0:
+        if len(self.powerstates) > 0:
             grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
             axsGrads = []
             for j in range(5):
                 for i in range(2):
                     axsGrads.append(figG.add_subplot(grid[i, j]))
-            for i, p in enumerate(self.profiles):
+            for i, p in enumerate(self.powerstates):
                 p.plotGradients(
                     axsGrads,
                     color=colors[i],
@@ -991,7 +989,7 @@ class PORTALSinitializer:
                 axs[4],
                 axs[9],
             ]
-            for i, p in enumerate(self.profiles):
+            for i, p in enumerate(self.powerstates):
                 p.plotGradients(
                     axsGrads_extra,
                     color=colors[i],
