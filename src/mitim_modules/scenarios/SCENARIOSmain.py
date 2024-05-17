@@ -1,5 +1,3 @@
-import torch
-import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.im_tools import IMtools

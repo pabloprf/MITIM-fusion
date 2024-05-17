@@ -2218,7 +2218,7 @@ def plotModelComparison_quantity(
     resultsX = "tglf_neo"
     quantity_label_resultsX = "(TGLF)"
 
-    if "cgyro_neo" in self.mitim_runs[0]["powerstate"].model_results:
+    if "cgyro_neo" in self.mitim_runs[0]["powerstate"].model_results.extra_analysis:
         resultsY = "cgyro_neo"
         quantity_label_resultsY = "(CGYRO)"
     else:
@@ -2231,7 +2231,7 @@ def plotModelComparison_quantity(
         """
         Read the fluxes to be plotted in Y from the TGYRO results
         """
-        t = self.mitim_runs[i]["powerstate"].model_results
+        t = self.mitim_runs[i]["powerstate"].model_results.extra_analysis
         Y.append(
             t[resultsY].__dict__[quantityY][
                 ... if runWithImpurity is None else runWithImpurity, 0, 1:

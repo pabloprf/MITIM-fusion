@@ -317,19 +317,13 @@ class tgyro_model(power_transport):
                 }
             )
         else:
-            self.powerstate.plasma["Pe"] = self.powerstate.plasma["Pe"][:, 1:]
-            self.powerstate.plasma["Pi"] = self.powerstate.plasma["Pi"][:, 1:]
-            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce"][:, 1:]
-            self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ"][:, 1:]
-            self.powerstate.plasma["Mt"] = self.powerstate.plasma["Mt"][:, 1:]
+            for ikey in self.quantities:
+                self.powerstate.plasma[ikey] = self.powerstate.plasma[ikey][:, 1:]
 
             percentErrorTarget = percentError[2] / 100.0
 
-            self.powerstate.plasma["Pe_stds"] = abs(self.powerstate.plasma["Pe"]) * percentErrorTarget
-            self.powerstate.plasma["Pi_stds"] = abs(self.powerstate.plasma["Pi"]) * percentErrorTarget
-            self.powerstate.plasma["Ce_stds"] = abs(self.powerstate.plasma["Ce"]) * percentErrorTarget
-            self.powerstate.plasma["CZ_stds"] = abs(self.powerstate.plasma["CZ"]) * percentErrorTarget
-            self.powerstate.plasma["Mt_stds"] = abs(self.powerstate.plasma["Mt"]) * percentErrorTarget
+            for ikey in self.quantities:
+                self.powerstate.plasma[ikey+"_stds"] = self.powerstate.plasma[ikey] * percentErrorTarget
 
         for ikey in mapper:
             self.powerstate.plasma[ikey] = (
@@ -348,20 +342,22 @@ class tgyro_model(power_transport):
             )
 
         # ------------------------------------------------------------------------------------------------------------------------
-        # Sum here, after modifications
+        # Sum here turbulence and neoclassical, after modifications
         # ------------------------------------------------------------------------------------------------------------------------
 
-        self.powerstate.plasma["Pe_tr"] = self.powerstate.plasma["Pe_tr_turb"] + self.powerstate.plasma["Pe_tr_neo"]
-        self.powerstate.plasma["Pi_tr"] = self.powerstate.plasma["Pi_tr_turb"] + self.powerstate.plasma["Pi_tr_neo"]
-        self.powerstate.plasma["Ce_tr"] = self.powerstate.plasma["Ce_tr_turb"] + self.powerstate.plasma["Ce_tr_neo"]
-        self.powerstate.plasma["CZ_tr"] = self.powerstate.plasma["CZ_tr_turb"] + self.powerstate.plasma["CZ_tr_neo"]
-        self.powerstate.plasma["Mt_tr"] = self.powerstate.plasma["Mt_tr_turb"] + self.powerstate.plasma["Mt_tr_neo"]
-
+        for ikey in self.quantities:
+            self.powerstate.plasma[ikey+"_tr"] = self.powerstate.plasma[ikey+"_tr_turb"] + self.powerstate.plasma[ikey+"_tr_neo"]
+            
         # ------------------------------------------------------------------------------------------------------------------------
         # Results
         # ------------------------------------------------------------------------------------------------------------------------
 
         self.model_results = copy.deepcopy(tgyro.results["use"]) # Pass the TGYRO results class that should be use for plotting and analysis
+
+        self.model_results.extra_analysis = {}
+        for ikey in tgyro.results:
+            if ikey != "use":
+                self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
 # ------------------------------------------------------------------
 # SIMPLE Diffusion
