@@ -2173,8 +2173,8 @@ class TGYROoutput:
         self.Ge_tarMW = self.Ge_tar * self.dvoldr
         self.Ce_tarMW = self.Ce_tar * self.dvoldr
 
-    def TGYROmodeledVariables(self, **kwargs):
-        return PORTALSinteraction.TGYROmodeledVariables(self, **kwargs)
+    def TGYROmodeledVariables(self, *args, **kwargs):
+        return PORTALSinteraction.TGYROmodeledVariables(self, *args, **kwargs)
 
     def plot(self, fn=None, label="", prelabel="", fn_color=None):
         if fn is None:

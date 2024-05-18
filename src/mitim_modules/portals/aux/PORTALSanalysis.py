@@ -229,7 +229,7 @@ class PORTALSanalyzer:
                 power.repeat(do_fine=False)
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
-                power.portals_variables["var_dict"],
+                power.var_dict,
                 self.PORTALSparameters,
                 self.MODELparameters,
                 power,
@@ -275,7 +275,7 @@ class PORTALSanalyzer:
                         y1_std,
                         y2_std,
                     ) = PORTALSinteraction.calculatePseudos_distributions(
-                        power.portals_variables["var_dict"],
+                        power.var_dict,
                         self.PORTALSparameters,
                         self.MODELparameters,
                         power,
@@ -305,7 +305,7 @@ class PORTALSanalyzer:
                     calculateRicci = None
                     self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
-        self.labelsFluxes = power.portals_variables["labels"]
+        self.labelsFluxes = power.labelsFluxes
 
         self.FusionGain = np.array(self.FusionGain)
         self.FusionPower = np.array(self.FusionPower)

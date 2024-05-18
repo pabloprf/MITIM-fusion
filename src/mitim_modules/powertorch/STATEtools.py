@@ -927,7 +927,6 @@ class powerstate:
 
         # Pass the results as part of the powerstate class
         self.model_results = transport.model_results
-        self.portals_variables = transport.portals_variables
 
     def metric(self):
         """
@@ -942,38 +941,38 @@ class powerstate:
         for c, i in enumerate(self.ProfilesPredicted):
             if i == "te":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pe"]), dim=1
+                    (self.plasma["P"], self.plasma["Pe"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pe_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Pe_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "ti":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pi"]), dim=1
+                    (self.plasma["P"], self.plasma["Pi"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pi_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Pi_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "ne":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Ce"]), dim=1
+                    (self.plasma["P"], self.plasma["Ce"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Ce_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Ce_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "nZ":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["CZ"]), dim=1
+                    (self.plasma["P"], self.plasma["CZ"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["CZ_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["CZ_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "w0":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Mt"]), dim=1
+                    (self.plasma["P"], self.plasma["Mt"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Mt_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Mt_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
 
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]

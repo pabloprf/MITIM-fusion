@@ -70,75 +70,6 @@ class power_transport:
                 insertPowers=True,      # So that later I can read it fully with the powers, fusion, etc
             )
 
-
-    def map_portals_to_powerstate(
-            self,
-            provideTurbulentExchange=False,
-            provideTargets=False,
-            percentError=[5, 1, 0.5],
-            index_tuple = (0, ())):
-
-        # Mapper between PORTALS and POWESTATE
-        mapper = {
-            "Pe_tr_turb": "Qe_turb",
-            "Pi_tr_turb": "Qi_turb",
-            "Ce_tr_turb": "Ge_turb",
-            "CZ_tr_turb": "GZ_turb",
-            "Mt_tr_turb": "Mt_turb",
-            "Pe_tr_neo": "Qe_neo",
-            "Pi_tr_neo": "Qi_neo",
-            "Ce_tr_neo": "Ge_neo",
-            "CZ_tr_neo": "GZ_neo",
-            "Mt_tr_neo": "Mt_neo",
-        }
-
-        if provideTurbulentExchange:
-            mapper.update(
-                {"PexchTurb": "PexchTurb"}
-            )  # I need to do this outside of provideTargets because powerstate cannot compute this
-
-        if provideTargets:
-            mapper.update(
-                {
-                    "Pe": "Qe",
-                    "Pi": "Qi",
-                    "Ce": "Ge",
-                    "CZ": "GZ",
-                    "Mt": "Mt",
-                }
-            )
-        else:
-            for ikey in self.quantities:
-                self.powerstate.plasma[ikey] = self.powerstate.plasma[ikey][:, 1:]
-
-            percentErrorTarget = percentError[2] / 100.0
-
-            for ikey in self.quantities:
-                self.powerstate.plasma[ikey+"_stds"] = self.powerstate.plasma[ikey] * percentErrorTarget
-
-        for ikey in mapper:
-            self.powerstate.plasma[ikey] = (
-                torch.from_numpy(
-                    self.portals_variables[mapper[ikey]][index_tuple]
-                )
-                .to(self.powerstate.dfT)
-                .unsqueeze(0)
-            )
-            self.powerstate.plasma[ikey + "_stds"] = (
-                torch.from_numpy(
-                    self.portals_variables[mapper[ikey] + "_stds"][index_tuple]
-                )
-                .to(self.powerstate.dfT)
-                .unsqueeze(0)
-            )
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Sum here turbulence and neoclassical, after modifications
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        for ikey in self.quantities:
-            self.powerstate.plasma[ikey+"_tr"] = self.powerstate.plasma[ikey+"_tr_turb"] + self.powerstate.plasma[ikey+"_tr_neo"]
-
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
@@ -150,11 +81,6 @@ class power_transport:
 
         for i in self.quantities:
             self.powerstate.plasma[i] = self.powerstate.plasma[i][:, 1:]
-
-        portals_variables_names = ['Qe', 'Qi', 'Ge', 'GZ', 'Mt']
-        self.portals_variables = {}
-        for i in portals_variables_names:
-            self.portals_variables[i] = self.powerstate.plasma[i][:, 1:]
 
         self.results = None
         self.model_results = None
@@ -236,6 +162,11 @@ class tgyro_model(power_transport):
         # Copy one with evaluated targets
         self.file_profs_targets = f"{tgyro.FolderTGYRO}/input.gacode.new"
 
+        tuple_rho_indeces = ()
+        for rho in np.append([0],tgyro.rhosToSimulate):
+            tuple_rho_indeces += (np.argmin(np.abs(rho - self.powerstate.plasma['rho'].numpy())),)
+
+
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # Run TGLF standalone --> In preparation for the transition
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -287,11 +218,9 @@ class tgyro_model(power_transport):
         )
         labels_results.append("tglf_neo")
 
-        # Produce right quantities
-
-        TGYROresults = tgyro.results["tglf_neo"]
-
-        self.portals_variables = TGYROresults.TGYROmodeledVariables(
+        # Produce right quantities (TGYRO -> powerstate.plasma and powerstate.var_dict)
+        self.powerstate = tgyro.results["tglf_neo"].TGYROmodeledVariables(
+            self.powerstate,
             useConvectiveFluxes=useConvectiveFluxes,
             includeFast=includeFast,
             impurityPosition=impurityPosition,
@@ -299,6 +228,10 @@ class tgyro_model(power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             dfT=dfT,
+            provideTurbulentExchange=provideTurbulentExchange,
+            provideTargets=provideTargets,
+            percentError=percentError,
+            index_tuple = (0, tuple_rho_indeces)
         )
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -346,7 +279,8 @@ class tgyro_model(power_transport):
             TGYROresults = tgyro.results["cgyro_neo"]
             labels_results.append("cgyro_neo")
 
-            self.portals_variables = TGYROresults.TGYROmodeledVariables(
+            self.powerstate = TGYROresults.TGYROmodeledVariables(
+                self.powerstate,
                 useConvectiveFluxes=useConvectiveFluxes,
                 includeFast=includeFast,
                 impurityPosition=impurityPosition,
@@ -354,6 +288,10 @@ class tgyro_model(power_transport):
                 OriginalFimp=OriginalFimp,
                 forceZeroParticleFlux=forceZeroParticleFlux,
                 dfT=dfT,
+                provideTurbulentExchange=provideTurbulentExchange,
+                provideTargets=provideTargets,
+                percentError=percentError,
+                index_tuple = (0, tuple_rho_indeces)
             )
 
             print("\t- Checking model modifications:")
@@ -376,21 +314,6 @@ class tgyro_model(power_transport):
             tgyro.results["use"] = tgyro.results["tglf_neo"]
 
         labels_results.append("use")
-
-        # --------------------------------------------------------------------------------------------------------------------------------
-        # TURBULENCE and NEOCLASSICAL
-        # --------------------------------------------------------------------------------------------------------------------------------
-
-        tuple_rho_indeces = ()
-        for rho in tgyro.rhosToSimulate:
-            tuple_rho_indeces += (np.argmin(np.abs(rho - self.powerstate.plasma['rho'].numpy())),)
-
-        self.map_portals_to_powerstate(
-            provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=provideTargets,
-            percentError=percentError,
-            index_tuple=(0, tuple_rho_indeces)
-        )
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Results

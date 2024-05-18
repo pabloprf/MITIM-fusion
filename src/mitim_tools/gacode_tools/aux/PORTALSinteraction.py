@@ -1,11 +1,9 @@
 import torch
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import PLASMAtools
-from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def parabolizePlasma(self):
     _, T = PLASMAtools.parabolicProfile(
@@ -128,8 +126,8 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def TGYROmodeledVariables(
-    TGYROresults,
+def TGYROmodeledVariables(TGYROresults,
+    powerstate,
     useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
     includeFast=False,
@@ -137,6 +135,10 @@ def TGYROmodeledVariables(
     UseFineGridTargets=False,
     OriginalFimp=1.0,
     dfT=torch.Tensor(),
+    provideTurbulentExchange=False,
+    provideTargets=False,
+    percentError=[5, 1, 0.5],
+    index_tuple = (0, ())
 ):
     """
     impurityPosition will be substracted one
@@ -380,7 +382,83 @@ def TGYROmodeledVariables(
         "w0": "$M_T$ ($J/m^2$)",
     }
 
-    return portals_variables
+    # Mapper between PORTALS and powerstate
+    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
+    mapper = {
+        "Pe_tr_turb": "Qe_turb",
+        "Pi_tr_turb": "Qi_turb",
+        "Ce_tr_turb": "Ge_turb",
+        "CZ_tr_turb": "GZ_turb",
+        "Mt_tr_turb": "Mt_turb",
+        "Pe_tr_neo": "Qe_neo",
+        "Pi_tr_neo": "Qi_neo",
+        "Ce_tr_neo": "Ge_neo",
+        "CZ_tr_neo": "GZ_neo",
+        "Mt_tr_neo": "Mt_neo",
+    }
+
+    # Pass raw too
+    mapper.update(
+        {"Ce_tr_turb_raw": "Ge_turb_raw",
+         "CZ_tr_turb_raw": "GZ_turb_raw",
+         "Ce_tr_neo_raw": "Ge_neo_raw",
+         "CZ_tr_neo_raw": "GZ_neo_raw",
+         "Ce_raw": "Ge_raw",
+         "CZ_raw": "GZ_raw",
+        }
+    )
+
+    if provideTurbulentExchange:
+        mapper.update(
+            {"PexchTurb": "PexchTurb"}
+        )  # I need to do this outside of provideTargets because powerstate cannot compute this
+
+    if provideTargets:
+        mapper.update(
+            {
+                "Pe": "Qe",
+                "Pi": "Qi",
+                "Ce": "Ge",
+                "CZ": "GZ",
+                "Mt": "Mt",
+            }
+        )
+    else:
+        for ikey in quantities:
+            powerstate.plasma[ikey] = powerstate.plasma[ikey][:, 1:]
+
+        percentErrorTarget = percentError[2] / 100.0
+
+        for ikey in quantities:
+            powerstate.plasma[ikey+"_stds"] = powerstate.plasma[ikey] * percentErrorTarget
+
+    for ikey in mapper:
+        powerstate.plasma[ikey] = (
+            torch.from_numpy(
+                portals_variables[mapper[ikey]][index_tuple]
+            )
+            .to(powerstate.dfT)
+            .unsqueeze(0)
+        )
+        powerstate.plasma[ikey + "_stds"] = (
+            torch.from_numpy(
+                portals_variables[mapper[ikey] + "_stds"][index_tuple]
+            )
+            .to(powerstate.dfT)
+            .unsqueeze(0)
+        )
+
+    # ------------------------------------------------------------------------------------------------------------------------
+    # Sum here turbulence and neoclassical, after modifications
+    # ------------------------------------------------------------------------------------------------------------------------
+
+    for ikey in quantities:
+        powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
+
+    powerstate.var_dict = portals_variables["var_dict"]
+    powerstate.labelsFluxes = portals_variables["labels"]
+
+    return powerstate
 
 
 def calculatePseudos(var_dict, PORTALSparameters, MODELparameters, powerstate):
