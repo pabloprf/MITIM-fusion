@@ -410,9 +410,7 @@ class portals(STRATEGYtools.opt_evaluator):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALSinteraction.calculatePseudos(
-            var_dict, self.PORTALSparameters, self.MODELparameters, self.powerstate
-        )
+        of, cal, _, res = PORTALSinteraction.calculatePseudos(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
 
         return of, cal, res
 

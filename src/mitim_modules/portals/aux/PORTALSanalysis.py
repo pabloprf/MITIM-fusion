@@ -229,10 +229,8 @@ class PORTALSanalyzer:
                 power.repeat(do_fine=False)
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
-                power.var_dict,
-                self.PORTALSparameters,
-                self.MODELparameters,
                 power,
+                self.PORTALSparameters,
             )
 
             # Make sense of tensor "source" which are defining the entire predictive set in
@@ -275,10 +273,8 @@ class PORTALSanalyzer:
                         y1_std,
                         y2_std,
                     ) = PORTALSinteraction.calculatePseudos_distributions(
-                        power.var_dict,
-                        self.PORTALSparameters,
-                        self.MODELparameters,
                         power,
+                        self.PORTALSparameters,
                     )
 
                     QR, chiR = PLASMAtools.RicciMetric(

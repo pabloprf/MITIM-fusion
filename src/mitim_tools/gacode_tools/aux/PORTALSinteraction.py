@@ -140,8 +140,12 @@ def TGYROmodeledVariables(TGYROresults,
     index_tuple = (0, ())
 ):
     """
-    impurityPosition will be substracted one
+    This function is used to extract the TGYRO results and store them in the powerstate object, from numpy arrays to torch tensors.
+
+    Notes:
+    - impurityPosition will be substracted one
     """
+
     if "tgyro_stds" not in TGYROresults.__dict__:
         TGYROresults.tgyro_stds = False
 
@@ -309,38 +313,6 @@ def TGYROmodeledVariables(TGYROresults,
             powerstate.plasma[ikey+"_stds"] = powerstate.plasma[ikey] * percentErrorTarget
 
     # ----------------------------------------------------------------------------------------
-    # Prepare dictionary that is equal to what portals pseudo does in PORTALSmain (calculatePseudos)
-    # ----------------------------------------------------------------------------------------
-
-    powerstate.var_dict = {}
-
-    mapper = {
-        "QeTurb": "Pe_tr_turb",
-        "QiTurb": "Pi_tr_turb",
-        "GeTurb": "Ce_tr_turb",
-        "GZTurb": "CZ_tr_turb",
-        "MtTurb": "Mt_tr_turb",
-        "QeNeo": "Pe_tr_neo",
-        "QiNeo": "Pi_tr_neo",
-        "GeNeo": "Ce_tr_neo",
-        "GZNeo": "CZ_tr_neo",
-        "MtNeo": "Mt_tr_neo",
-        "QeTar": "Pe",
-        "QiTar": "Pi",
-        "GeTar": "Ce",
-        "GZTar": "CZ",
-        "MtTar": "Mt",
-        "PexchTurb": "PexchTurb"
-    }
-
-    for ikey in mapper:
-        powerstate.var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
-        if TGYROresults.tgyro_stds:
-            powerstate.var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
-        else:
-            powerstate.var_dict[ikey + "_stds"] = None
-
-    # ----------------------------------------------------------------------------------------
     # labels for plotting
     # ----------------------------------------------------------------------------------------
 
@@ -370,13 +342,47 @@ def TGYROmodeledVariables(TGYROresults,
     return powerstate
 
 
-def calculatePseudos(var_dict, PORTALSparameters, MODELparameters, powerstate):
+def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
     """
     Notes
     -----
         - Works with tensors
         - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "QeTurb": "Pe_tr_turb",
+            "QiTurb": "Pi_tr_turb",
+            "GeTurb": "Ce_tr_turb",
+            "GZTurb": "CZ_tr_turb",
+            "MtTurb": "Mt_tr_turb",
+            "QeNeo": "Pe_tr_neo",
+            "QiNeo": "Pi_tr_neo",
+            "GeNeo": "Ce_tr_neo",
+            "GZNeo": "CZ_tr_neo",
+            "MtNeo": "Mt_tr_neo",
+            "QeTar": "Pe",
+            "QiTar": "Pi",
+            "GeTar": "Ce",
+            "GZTar": "CZ",
+            "MtTar": "Mt",
+            "PexchTurb": "PexchTurb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
 
@@ -400,7 +406,7 @@ def calculatePseudos(var_dict, PORTALSparameters, MODELparameters, powerstate):
         torch.Tensor().to(dfT),
         torch.Tensor().to(dfT),
     )
-    for prof in MODELparameters["ProfilesPredicted"]:
+    for prof in powerstate.ProfilesPredicted:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":
@@ -479,7 +485,7 @@ def calculatePseudos(var_dict, PORTALSparameters, MODELparameters, powerstate):
 
 
 def calculatePseudos_distributions(
-    var_dict, PORTALSparameters, MODELparameters, powerstate
+    powerstate, PORTALSparameters, specific_vars=None,
 ):
     """
     Notes
@@ -487,6 +493,40 @@ def calculatePseudos_distributions(
             - Works with tensors
             - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "QeTurb": "Pe_tr_turb",
+            "QiTurb": "Pi_tr_turb",
+            "GeTurb": "Ce_tr_turb",
+            "GZTurb": "CZ_tr_turb",
+            "MtTurb": "Mt_tr_turb",
+            "QeNeo": "Pe_tr_neo",
+            "QiNeo": "Pi_tr_neo",
+            "GeNeo": "Ce_tr_neo",
+            "GZNeo": "CZ_tr_neo",
+            "MtNeo": "Mt_tr_neo",
+            "QeTar": "Pe",
+            "QiTar": "Pi",
+            "GeTar": "Ce",
+            "GZTar": "CZ",
+            "MtTar": "Mt",
+            "PexchTurb": "PexchTurb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
 
@@ -511,7 +551,7 @@ def calculatePseudos_distributions(
 
     of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
     ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
-    for prof in MODELparameters["ProfilesPredicted"]:
+    for prof in powerstate.ProfilesPredicted:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":

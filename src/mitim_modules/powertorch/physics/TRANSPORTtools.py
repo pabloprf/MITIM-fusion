@@ -95,28 +95,25 @@ class tgyro_model(power_transport):
 
     def evaluate(self):
 
-        FolderEvaluation_TGYRO  = IOtools.expandPath(self.folder)
-        TransportOptions        = self.powerstate.TransportOptions
-        provideTargets          = self.powerstate.TargetCalc == "tgyro"
-        ProfilesPredicted       = self.powerstate.ProfilesPredicted
-    
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        MODELparameters = TransportOptions["ModelOptions"]["MODELparameters"]
+        FolderEvaluation_TGYRO  = IOtools.expandPath(self.folder)
+
+        MODELparameters = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]
         
-        includeFast = TransportOptions["ModelOptions"].get("includeFastInQi",False)
-        impurityPosition = TransportOptions["ModelOptions"].get("impurityPosition", 1)
-        useConvectiveFluxes = TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
-        UseFineGridTargets = TransportOptions["ModelOptions"].get("UseFineGridTargets", False)
-        launchMODELviaSlurm = TransportOptions["ModelOptions"].get("launchMODELviaSlurm", False)
-        restart = TransportOptions["ModelOptions"].get("restart", False)
-        provideTurbulentExchange = TransportOptions["ModelOptions"].get("TurbulentExchange", False)
-        profiles_postprocessing_fun = TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
-        OriginalFimp = TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False)
-        percentError = TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])
+        includeFast = self.powerstate.TransportOptions["ModelOptions"].get("includeFastInQi",False)
+        impurityPosition = self.powerstate.TransportOptions["ModelOptions"].get("impurityPosition", 1)
+        useConvectiveFluxes = self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
+        UseFineGridTargets = self.powerstate.TransportOptions["ModelOptions"].get("UseFineGridTargets", False)
+        launchMODELviaSlurm = self.powerstate.TransportOptions["ModelOptions"].get("launchMODELviaSlurm", False)
+        restart = self.powerstate.TransportOptions["ModelOptions"].get("restart", False)
+        provideTurbulentExchange = self.powerstate.TransportOptions["ModelOptions"].get("TurbulentExchange", False)
+        profiles_postprocessing_fun = self.powerstate.TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
+        OriginalFimp = self.powerstate.TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
+        forceZeroParticleFlux = self.powerstate.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False)
+        percentError = self.powerstate.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])
         
         labels_results = []
 
@@ -144,9 +141,9 @@ class tgyro_model(power_transport):
             special_radii=RadiisToRun,
             iterations=0,
             PredictionSet=[
-                int("te" in ProfilesPredicted),
-                int("ti" in ProfilesPredicted),
-                int("ne" in ProfilesPredicted),
+                int("te" in self.powerstate.ProfilesPredicted),
+                int("ti" in self.powerstate.ProfilesPredicted),
+                int("ne" in self.powerstate.ProfilesPredicted),
             ],
             TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
             extraOptionsTGLF=MODELparameters["transport_model"]["extraOptionsTGLF"],
@@ -217,7 +214,7 @@ class tgyro_model(power_transport):
         )
         labels_results.append("tglf_neo")
 
-        # Produce right quantities (TGYRO -> powerstate.plasma and powerstate.var_dict)
+        # Produce right quantities (TGYRO -> powerstate.plasma)
         self.powerstate = tgyro.results["tglf_neo"].TGYROmodeledVariables(
             self.powerstate,
             useConvectiveFluxes=useConvectiveFluxes,
@@ -227,7 +224,7 @@ class tgyro_model(power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=provideTargets,
+            provideTargets=self.powerstate.TargetCalc == "tgyro",
             percentError=percentError,
             index_tuple = (0, tuple_rho_indeces)
         )
@@ -236,7 +233,7 @@ class tgyro_model(power_transport):
         # 3. cgyro_neo: Trick to fake a tgyro output to reflect CGYRO
         # ------------------------------------------------------------------------------------------------------------------------
 
-        if TransportOptions['TypeTransport'] == "cgyro_neo-tgyro":
+        if self.powerstate.TransportOptions['TypeTransport'] == "cgyro_neo-tgyro":
 
             print(
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
@@ -285,7 +282,7 @@ class tgyro_model(power_transport):
                 OriginalFimp=OriginalFimp,
                 forceZeroParticleFlux=forceZeroParticleFlux,
                 provideTurbulentExchange=provideTurbulentExchange,
-                provideTargets=provideTargets,
+                provideTargets=self.powerstate.TargetCalc == "tgyro",
                 percentError=percentError,
                 index_tuple = (0, tuple_rho_indeces)
             )
