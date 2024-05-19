@@ -99,7 +99,6 @@ class tgyro_model(power_transport):
         TransportOptions        = self.powerstate.TransportOptions
         provideTargets          = self.powerstate.TargetCalc == "tgyro"
         ProfilesPredicted       = self.powerstate.ProfilesPredicted
-        dfT                     = self.powerstate.dfT
     
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
@@ -227,7 +226,6 @@ class tgyro_model(power_transport):
             UseFineGridTargets=UseFineGridTargets,
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
-            dfT=dfT,
             provideTurbulentExchange=provideTurbulentExchange,
             provideTargets=provideTargets,
             percentError=percentError,
@@ -286,7 +284,6 @@ class tgyro_model(power_transport):
                 UseFineGridTargets=UseFineGridTargets,
                 OriginalFimp=OriginalFimp,
                 forceZeroParticleFlux=forceZeroParticleFlux,
-                dfT=dfT,
                 provideTurbulentExchange=provideTurbulentExchange,
                 provideTargets=provideTargets,
                 percentError=percentError,
