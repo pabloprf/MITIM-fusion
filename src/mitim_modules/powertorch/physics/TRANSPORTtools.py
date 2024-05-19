@@ -238,8 +238,7 @@ class tgyro_model(power_transport):
         # 3. cgyro_neo: Trick to fake a tgyro output to reflect CGYRO
         # ------------------------------------------------------------------------------------------------------------------------
 
-        if TransportOptions == "cgyro_neo-tgyro":
-            portals_variables_orig = copy.deepcopy(self.portals_variables)
+        if TransportOptions['TypeTransport'] == "cgyro_neo-tgyro":
 
             print(
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
@@ -263,9 +262,8 @@ class tgyro_model(power_transport):
 
                 # CGYRO writter
                 cgyro_trick(
-                    self.powerstate,
+                    self,
                     f"{FolderEvaluation_TGYRO}/cgyro_neo",
-                    portals_variables=self.portals_variables,
                     profiles_postprocessing_fun=profiles_postprocessing_fun,
                     extra_params=self.extra_params,
                     name=self.name,
@@ -273,13 +271,14 @@ class tgyro_model(power_transport):
 
             # Read TGYRO files and construct portals variables
 
+            labels_results.append("cgyro_neo")
             tgyro.read(
                 label="cgyro_neo", folder=f"{FolderEvaluation_TGYRO}/cgyro_neo"
             )  # Re-read TGYRO to store
-            TGYROresults = tgyro.results["cgyro_neo"]
-            labels_results.append("cgyro_neo")
 
-            self.powerstate = TGYROresults.TGYROmodeledVariables(
+            powerstate_orig = copy.deepcopy(self.powerstate)
+
+            self.powerstate = tgyro.results["cgyro_neo"].TGYROmodeledVariables(
                 self.powerstate,
                 useConvectiveFluxes=useConvectiveFluxes,
                 includeFast=includeFast,
@@ -295,12 +294,12 @@ class tgyro_model(power_transport):
             )
 
             print("\t- Checking model modifications:")
-            for r in ["Qe_turb", "Qi_turb", "Ge_turb", "GZ_turb", "Mt_turb", "PexchTurb"]:
+            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TO FIX
                 print(
-                    f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(portals_variables_orig[r][0][1:],portals_variables_orig[r+'_stds'][0][1:]) ])}"
+                    f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}"
                 )
                 print(
-                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.portals_variables[r][0][1:],self.portals_variables[r+'_stds'][0][1:]) ])}"
+                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}"
                 )
 
             # **
@@ -553,11 +552,11 @@ def profilesToShare(self):
 def cgyro_trick(
     self,
     FolderEvaluation_TGYRO,
-    portals_variables=None,
     profiles_postprocessing_fun=None,
     extra_params={},
     name="",
 ):
+
     with open(f"{FolderEvaluation_TGYRO}/mitim_flag", "w") as f:
         f.write("0")
 
@@ -565,26 +564,25 @@ def cgyro_trick(
     # Print Information
     # **************************************************************************************************************************
 
-    if portals_variables is not None:
-        txt = "\nFluxes to be matched by CGYRO ( TARGETS - NEO ):"
+    txt = "\nFluxes to be matched by CGYRO ( TARGETS - NEO ):"
 
-        for var, varn in zip(
-            ["r/a  ", "rho  ", "a/LTe", "a/LTi", "a/Lne", "a/LnZ", "a/Lw0"],
-            ["roa", "rho", "aLte", "aLti", "aLne", "aLnZ", "aLw0"],
-        ):
-            txt += f"\n{var}        = "
-            for j in range(self.plasma["rho"].shape[1] - 1):
-                txt += f"{self.plasma[varn][0,j+1]:.6f}   "
+    for var, varn in zip(
+        ["r/a  ", "rho  ", "a/LTe", "a/LTi", "a/Lne", "a/LnZ", "a/Lw0"],
+        ["roa", "rho", "aLte", "aLti", "aLne", "aLnZ", "aLw0"],
+    ):
+        txt += f"\n{var}        = "
+        for j in range(self.powerstate.plasma["rho"].shape[1] - 1):
+            txt += f"{self.powerstate.plasma[varn][0,j+1]:.6f}   "
 
-        for var, varn in zip(
-            ["Qe (MW/m^2)", "Qi (MW/m^2)", "Ce (MW/m^2)", "CZ (MW/m^2)", "Mt (J/m^2) "],
-            ["Qe", "Qi", "Ge", "GZ", "Mt"],
-        ):
-            txt += f"\n{var}  = "
-            for j in range(self.plasma["rho"].shape[1] - 1):
-                txt += f"{portals_variables[varn][0,j+1]-portals_variables[f'{varn}_neo'][0,j+1]:.4e}   "
+    for var, varn in zip(
+        ["Qe (MW/m^2)", "Qi (MW/m^2)", "Ce (MW/m^2)", "CZ (MW/m^2)", "Mt (J/m^2) "],
+        ["Pe", "Pi", "Ce", "CZ", "Mt"],
+    ):
+        txt += f"\n{var}  = "
+        for j in range(self.powerstate.plasma["rho"].shape[1] - 1):
+            txt += f"{self.powerstate.plasma[varn][0,j+1]-self.powerstate.plasma[f'{varn}_tr_neo'][0,j+1]:.4e}   "
 
-        print(txt)
+    print(txt)
 
     # **************************************************************************************************************************
     # Modification to input.gacode (e.g. lump impurities)
@@ -610,7 +608,7 @@ def cgyro_trick(
         extra_params["numPORTALS"],
         FolderEvaluation_TGYRO,
         self.file_profs,
-        rad=self.plasma["rho"].shape[1] - 1,
+        rad=self.powerstate.plasma["rho"].shape[1] - 1,
     )
 
     # **************************************************************************************************************************
@@ -620,7 +618,7 @@ def cgyro_trick(
     # Make tensors
     for i in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]:
         try:
-            self.plasma[i] = torch.from_numpy(self.plasma[i]).to(self.dfT).unsqueeze(0)
+            self.powerstate.plasma[i] = torch.from_numpy(self.powerstate.plasma[i]).to(self.powerstate.dfT).unsqueeze(0)
         except:
             pass
 
