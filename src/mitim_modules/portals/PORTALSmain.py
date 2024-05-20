@@ -232,6 +232,7 @@ class portals(STRATEGYtools.opt_evaluator):
         reevaluateTargets=0,
         seedInitial=None,
         askQuestions=True,
+        ModelOptions=None,
     ):
         """
         grabFrom is a folder from which to grab TabularData and MITIMextra
@@ -312,6 +313,7 @@ class portals(STRATEGYtools.opt_evaluator):
             dfT=self.dfT,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
+            ModelOptions=ModelOptions,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 

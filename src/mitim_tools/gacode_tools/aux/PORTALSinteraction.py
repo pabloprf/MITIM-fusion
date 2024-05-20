@@ -300,26 +300,6 @@ def TGYROmodeledVariables(TGYROresults,
         powerstate.plasma["Ce"] = powerstate.plasma["Ce"] * 0.0
         powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_stds"] * 0.0
 
-    # ----------------------------------------------------------------------------------------
-    # labels for plotting
-    # ----------------------------------------------------------------------------------------
-
-    powerstate.labelsFluxes = {
-        "te": "$Q_e$ ($MW/m^2$)",
-        "ti": "$Q_i$ ($MW/m^2$)",
-        "ne": (
-            "$Q_{conv}$ ($MW/m^2$)"
-            if useConvectiveFluxes
-            else "$\\Gamma_e$ ($10^{20}/s/m^2$)"
-        ),
-        "nZ": (
-            "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
-            if useConvectiveFluxes
-            else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)"
-        ),
-        "w0": "$M_T$ ($J/m^2$)",
-    }
-
     # ------------------------------------------------------------------------------------------------------------------------
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------

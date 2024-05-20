@@ -2,12 +2,12 @@ import copy
 import torch
 import datetime
 import matplotlib.pyplot as plt
-import numpy as np
+import os
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
-from mitim_modules.powertorch.physics import TARGETStools, TRANSPORTtools, CALCtools
+from mitim_modules.powertorch.physics import TARGETStools, CALCtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -201,6 +201,8 @@ class powerstate:
 
         if writeFile is not None:
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(writeFile)}")
+            if not os.path.exists(os.path.dirname(writeFile)):
+                os.makedirs(os.path.dirname(writeFile))
             profiles.writeCurrentStatus(file=writeFile)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused

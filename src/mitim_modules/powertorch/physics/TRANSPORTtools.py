@@ -34,9 +34,6 @@ class power_transport:
         # Each flux component has a standard deviation
         self.variables += [f'{i}_stds' for i in self.variables]
 
-        # There is also target components
-        self.variables += [f'{i}' for i in self.quantities] + [f'{i}_stds' for i in self.quantities]
-
         # There is also turbulent exchange
         self.variables += ['PexchTurb', 'PexchTurb_stds']
 
@@ -45,6 +42,33 @@ class power_transport:
 
         # Model results is None by default, but can be assigned in evaluate
         self.model_results = None
+
+        # Assign zeros to transport ones if not evaluated
+        for i in self.variables:
+            self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
+
+        # There is also target components
+        self.variables += [f'{i}' for i in self.quantities] + [f'{i}_stds' for i in self.quantities]
+
+        # ----------------------------------------------------------------------------------------
+        # labels for plotting
+        # ----------------------------------------------------------------------------------------
+
+        self.powerstate.labelsFluxes = {
+            "te": "$Q_e$ ($MW/m^2$)",
+            "ti": "$Q_i$ ($MW/m^2$)",
+            "ne": (
+                "$Q_{conv}$ ($MW/m^2$)"
+                if self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
+                else "$\\Gamma_e$ ($10^{20}/s/m^2$)"
+            ),
+            "nZ": (
+                "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
+                if self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
+                else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)"
+            ),
+            "w0": "$M_T$ ($J/m^2$)",
+        }
 
     def produce_profiles(self,deriveQuantities=True):
 
@@ -89,10 +113,7 @@ class power_transport:
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
         print("Nothing to evaluate", typeMsg="w")
-
-        # Assign zeros if not evaluated
-        for i in self.variables:
-            self.powerstate.plasma[i] = self.powerstate.plasma["te"][:, 1:] * 0.0
+        pass
 
 # ----------------------------------------------------------------------------------------------------
 # FULL TGYRO
@@ -169,7 +190,6 @@ class tgyro_model(power_transport):
         tuple_rho_indeces = ()
         for rho in np.append([0],tgyro.rhosToSimulate):
             tuple_rho_indeces += (np.argmin(np.abs(rho - self.powerstate.plasma['rho'].numpy())),)
-
 
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # Run TGLF standalone --> In preparation for the transition
@@ -339,8 +359,8 @@ class diffusion_model(power_transport):
             self.powerstate.plasma["ne"],
             self.powerstate.plasma["te"],
             self.powerstate.TransportOptions["ModelOptions"]["chi_e"],
-            self.plasma["aLte"],
-            self.plasma["a"],
+            self.powerstate.plasma["aLte"],
+            self.powerstate.plasma["a"],
         )
         Pi_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ni"].sum(axis=-1),
@@ -350,25 +370,14 @@ class diffusion_model(power_transport):
             self.powerstate.plasma["a"],
         )
 
-        self.powerstate.plasma["Pe_tr_turb"] = Pe_tr[:, 1:] * 2 / 3
-        self.powerstate.plasma["Pi_tr_turb"] = Pi_tr[:, 1:] * 2 / 3
+        self.powerstate.plasma["Pe_tr_turb"] = Pe_tr * 2 / 3
+        self.powerstate.plasma["Pi_tr_turb"] = Pi_tr * 2 / 3
 
-        self.powerstate.plasma["Pe_tr_neo"] = Pe_tr[:, 1:] * 1 / 3
-        self.powerstate.plasma["Pi_tr_neo"] = Pi_tr[:, 1:] * 1 / 3
+        self.powerstate.plasma["Pe_tr_neo"] = Pe_tr * 1 / 3
+        self.powerstate.plasma["Pi_tr_neo"] = Pi_tr * 1 / 3
 
         self.powerstate.plasma["Pe_tr"] = self.powerstate.plasma["Pe_tr_turb"] + self.powerstate.plasma["Pe_tr_neo"]
         self.powerstate.plasma["Pi_tr"] = self.powerstate.plasma["Pi_tr_turb"] + self.powerstate.plasma["Pi_tr_neo"]
-
-        self.powerstate.plasma["Pe"] = self.powerstate.plasma["Pe"][:, 1:]  # This should be fixed later
-        self.powerstate.plasma["Pi"] = self.powerstate.plasma["Pi"][:, 1:]  # This should be fixed later
-
-        self.powerstate.plasma["Ce_tr_turb"] = self.powerstate.plasma["Pe_tr"] * 0.0
-        self.powerstate.plasma["Ce_tr_neo"] = self.powerstate.plasma["Pe_tr"] * 0.0
-        self.powerstate.plasma["Ce_tr"] = self.powerstate.plasma["Pe_tr"] * 0.0
-        self.powerstate.plasma["Ce"] = self.powerstate.plasma["Pe"] * 0.0
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        self.model_results = None
 
 # ------------------------------------------------------------------
 # SURROGATE
