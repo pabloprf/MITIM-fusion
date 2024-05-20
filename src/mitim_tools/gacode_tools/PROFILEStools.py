@@ -1930,7 +1930,8 @@ class PROFILES_GACODE:
 
                 self.fn = FigureNotebook("PROFILES Notebook", geometry="1600x1000")
 
-            fig = self.fn.add_figure(label="Profiles" + fnlab)
+            fig, fig2, fig3, fig4, fig5, fig6, fig7 = add_figures(self.fn, fnlab=fnlab)
+
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
             axs1 = [
                 fig.add_subplot(grid[0, 0]),
@@ -1944,7 +1945,7 @@ class PROFILES_GACODE:
                 fig.add_subplot(grid[2, 2]),
             ]
 
-            fig2 = self.fn.add_figure(label="Powers" + fnlab)
+            
             grid = plt.GridSpec(3, 2, hspace=0.3, wspace=0.3)
             axs2 = [
                 fig2.add_subplot(grid[0, 0]),
@@ -1955,7 +1956,7 @@ class PROFILES_GACODE:
                 fig2.add_subplot(grid[2, 1]),
             ]
 
-            fig3 = self.fn.add_figure(label="Geometry" + fnlab)
+            
             grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.5)
             ax00c = fig3.add_subplot(grid[0, 0])
             axs3 = [
@@ -1973,7 +1974,7 @@ class PROFILES_GACODE:
                 fig3.add_subplot(grid[2, 3], sharex=ax00c),
             ]
 
-            fig4 = self.fn.add_figure(label="Gradients" + fnlab)
+            
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axs4 = [
                 fig4.add_subplot(grid[0, 0]),
@@ -1984,7 +1985,6 @@ class PROFILES_GACODE:
                 fig4.add_subplot(grid[1, 2]),
             ]
 
-            fig5 = self.fn.add_figure(label="Flows" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
 
             axsFlows = [
@@ -1996,7 +1996,7 @@ class PROFILES_GACODE:
                 fig5.add_subplot(grid[1, 2]),
             ]
 
-            fig6 = self.fn.add_figure(label="Other" + fnlab)
+            
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axs6 = [
                 fig6.add_subplot(grid[0, 0]),
@@ -2008,7 +2008,7 @@ class PROFILES_GACODE:
                 fig6.add_subplot(grid[1, 3]),
             ]
 
-            fig7 = self.fn.add_figure(label="Impurities" + fnlab)
+            
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axsImps = [
                 fig7.add_subplot(grid[0, 0]),
@@ -3756,15 +3756,7 @@ def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
         fn = FigureNotebook("Profiles", geometry="1800x900")
-        figProf_1 = fn.add_figure(label="Profiles")
-        figProf_2 = fn.add_figure(label="Powers")
-        figProf_3 = fn.add_figure(label="Geometry")
-        figProf_4 = fn.add_figure(label="Gradients")
-
-        figFlows = fn.add_figure(label="Flows")
-
-        figProf_6 = fn.add_figure(label="Other")
-        fig7 = fn.add_figure(label="Impurities")
+        figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = add_figures(fn)
 
     grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
     axsProf_1 = [
@@ -4021,3 +4013,17 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p.deriveQuantities()
 
     return p
+
+def add_figures(fn, fnlab=''):
+
+    figProf_1 = fn.add_figure(label="Profiles" + fnlab)
+    figProf_2 = fn.add_figure(label="Powers" + fnlab)
+    figProf_3 = fn.add_figure(label="Geometry" + fnlab)
+    figProf_4 = fn.add_figure(label="Gradients" + fnlab)
+    figFlows = fn.add_figure(label="Flows" + fnlab)
+    figProf_6 = fn.add_figure(label="Other" + fnlab)
+    fig7 = fn.add_figure(label="Impurities" + fnlab)
+    figs = [figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7]
+
+    return figs
+

@@ -1,10 +1,11 @@
 import copy
 import torch
 import datetime
-import matplotlib.pyplot as plt
 import os
+import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
 from mitim_modules.powertorch.physics import TARGETStools, CALCtools
@@ -356,16 +357,9 @@ class powerstate:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook("PowerState", geometry="1800x900")
-            figMain = fn.add_figure(label="PowerState")
 
-            figProf_1 = fn.add_figure(label="Profiles")
-            figProf_2 = fn.add_figure(label="Powers")
-            figProf_3 = fn.add_figure(label="Geometry")
-            figProf_4 = fn.add_figure(label="Gradients")
-            figFlows = fn.add_figure(label="Flows")
-            figProf_6 = fn.add_figure(label="Other")
-            fig7 = fn.add_figure(label="Impurities")
-            figs = figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7
+            figMain = fn.add_figure(label="PowerState")
+            figs = PROFILEStools.add_figures(fn)
 
             grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.3)
 

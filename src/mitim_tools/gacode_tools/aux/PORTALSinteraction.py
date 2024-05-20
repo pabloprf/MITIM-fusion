@@ -135,9 +135,8 @@ def TGYROmodeledVariables(TGYROresults,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
     provideTurbulentExchange=False,
-    provideTargets=False,
-    index_tuple = (0, ())
-):
+    provideTargets=False
+    ):
     """
     This function is used to extract the TGYRO results and store them in the powerstate object, from numpy arrays to torch tensors.
 

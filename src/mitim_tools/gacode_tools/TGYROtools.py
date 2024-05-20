@@ -2,7 +2,6 @@ import os
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.misc_tools import (
     IOtools,
     GRAPHICStools,
@@ -11,6 +10,7 @@ from mitim_tools.misc_tools import (
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools.gacode_tools.aux import GACODEinterpret, GACODEdefaults, GACODErun
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 try:
     from mitim_tools.gacode_tools.aux import PORTALSinteraction
