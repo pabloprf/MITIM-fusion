@@ -2,9 +2,10 @@ import torch
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
+from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
+from mitim_modules.powertorch import STATEtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -1770,35 +1771,26 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     power = self.powerstates[indecesPlot[1]]
-    
-    # Plot Model
-    t = power.model_results
-    if t is not None:
-        t.plot(
+
+    if power.model_results is not None:
+
+        power.model_results.plot(
             fn=fn, prelabel=f"({indecesPlot[1]}) MODEL - ", fn_color=fn_color
         )
-    if indecesPlot[0] < len(self.powerstates):
+        
+        if indecesPlot[0] < len(self.powerstates):
 
-        power = self.powerstates[indecesPlot[0]]
-        t = power.model_results
-        if t is not None:
-            t.plot(
-                fn=fn, prelabel=f"({indecesPlot[0]}) MODEL - ", fn_color=fn_color
-            )
+            power = self.powerstates[indecesPlot[0]]
+            if power.model_results is not None:
+                power.model_results.plot(
+                    fn=fn, prelabel=f"({indecesPlot[0]}) MODEL - ", fn_color=fn_color
+                )
 
     # -------------------------------------------------------
     # Plot PROFILES
     # -------------------------------------------------------
 
-    figs = [
-        fn.add_figure(label="PROFILES - Profiles", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Powers", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Geometry", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Gradients", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Flows", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Other", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Impurities", tab_color=fn_color),
-    ]
+    figs = PROFILEStools.add_figures(fn,fnlab_pre = "PROFILES - ")
 
     if indecesPlot[0] < len(self.powerstates):
         _ = PROFILEStools.plotAll(
@@ -1869,10 +1861,22 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             RhoLocationsPlot=self.MODELparameters["RhoLocations"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
+            autoscale=i == 3,
         )
 
     axs4[0].legend(loc="best")
 
+    # -------------------------------------------------------
+    # Plot powerstate
+    # -------------------------------------------------------
+
+    fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
+    axs, axsRes = STATEtools.add_axes_fig1(fig)
+
+    for indeces,c in zip(indecesPlot,["g","r","m"]):
+        self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
+
+    axs[0].legend(loc="best")
 
 def PORTALSanalyzer_plotRanges(self, fig=None):
     if fig is None:

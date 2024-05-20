@@ -1,7 +1,6 @@
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
 from IPython import embed
 
 def plot(self, axs, axsRes, figs=None, c="r", label=""):

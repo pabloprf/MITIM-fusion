@@ -2802,6 +2802,7 @@ class PROFILES_GACODE:
         RhoLocationsPlot=[],
         plotImpurity=None,
         plotRotation=False,
+        autoscale=True,
     ):
         if axs4 is None:
             plt.ion()
@@ -2891,30 +2892,36 @@ class PROFILES_GACODE:
         ax = axs4[0]
         ax.set_ylabel("$T_e$ (keV)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax.legend(loc="best", fontsize=7)
         ax = axs4[2]
         ax.set_ylabel("$T_i$ (keV)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[4]
         ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         ax = axs4[1]
         ax.set_ylabel("$a/L_{Te}$")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[3]
         ax.set_ylabel("$a/L_{Ti}$")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[5]
         ax.set_ylabel("$a/L_{ne}$")
         ax.axhline(y=0, ls="--", lw=0.5, c="k")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         cont = 0
         if plotImpurity is not None:
@@ -2929,7 +2936,8 @@ class PROFILES_GACODE:
             )
             axs4[6 + cont].set_ylabel("$n_Z$ ($10^{20}m^{-3}$)")
             axs4[6].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             if "derived" in self.__dict__:
                 axs4[7 + cont].plot(
                     xcoord[:ix],
@@ -2943,7 +2951,8 @@ class PROFILES_GACODE:
             axs4[7 + cont].set_ylabel("$a/L_{nZ}$")
             axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
             axs4[7 + cont].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             cont += 2
 
         if plotRotation:
@@ -2971,7 +2980,8 @@ class PROFILES_GACODE:
             axs4[7 + cont].set_ylabel("-$d\\omega_0/dr$ (krad/s/cm)")
             axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
             axs4[7 + cont].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             cont += 2
 
         for x0 in RhoLocationsPlot:
@@ -4014,15 +4024,15 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     return p
 
-def add_figures(fn, fnlab=''):
+def add_figures(fn, fnlab='', fnlab_pre=''):
 
-    figProf_1 = fn.add_figure(label="Profiles" + fnlab)
-    figProf_2 = fn.add_figure(label="Powers" + fnlab)
-    figProf_3 = fn.add_figure(label="Geometry" + fnlab)
-    figProf_4 = fn.add_figure(label="Gradients" + fnlab)
-    figFlows = fn.add_figure(label="Flows" + fnlab)
-    figProf_6 = fn.add_figure(label="Other" + fnlab)
-    fig7 = fn.add_figure(label="Impurities" + fnlab)
+    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab)
+    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab)
+    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab)
+    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab)
+    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab)
+    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab)
+    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab)
     figs = [figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7]
 
     return figs

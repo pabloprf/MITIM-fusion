@@ -77,7 +77,7 @@ class power_transport:
         else:
             self.applyCorrections = {}
 
-        # Derive quantities so that 
+        # Derive quantities so that it's ready for analysis and plotting later
         if deriveQuantities:
             self.powerstate.profiles.deriveQuantities()
 
@@ -88,10 +88,6 @@ class power_transport:
             writeFile=self.file_profs,
             applyCorrections=self.applyCorrections,
         )
-
-        # copy for future modifications
-        self.file_profs_mod = f"{self.file_profs}_modified"
-        os.system(f"cp {self.file_profs} {self.file_profs_mod}")
 
     def clean(self):
 
@@ -125,8 +121,9 @@ class tgyro_model(power_transport):
 
     def evaluate(self):
 
-        # Only produce them if needed (i.e. when running TGYRO, not general)
-        self.produce_profiles()
+        # After producing the profiles, copy for future modifications
+        self.file_profs_mod = f"{self.file_profs}_modified"
+        os.system(f"cp {self.file_profs} {self.file_profs_mod}")
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options

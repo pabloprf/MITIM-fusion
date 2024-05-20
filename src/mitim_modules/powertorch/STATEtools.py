@@ -361,32 +361,7 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState")
             figs = PROFILEStools.add_figures(fn)
 
-            grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.3)
-
-            axs = [
-                figMain.add_subplot(grid[0, 1]),
-                figMain.add_subplot(grid[0, 2]),
-                figMain.add_subplot(grid[0, 3]),
-                figMain.add_subplot(grid[0, 4]),
-                figMain.add_subplot(grid[0, 5]),
-                figMain.add_subplot(grid[1, 1]),
-                figMain.add_subplot(grid[1, 2]),
-                figMain.add_subplot(grid[1, 3]),
-                figMain.add_subplot(grid[1, 4]),
-                figMain.add_subplot(grid[1, 5]),
-                figMain.add_subplot(grid[2, 1]),
-                figMain.add_subplot(grid[2, 2]),
-                figMain.add_subplot(grid[2, 3]),
-                figMain.add_subplot(grid[2, 4]),
-                figMain.add_subplot(grid[2, 5]),
-                figMain.add_subplot(grid[3, 1]),
-                figMain.add_subplot(grid[3, 2]),
-                figMain.add_subplot(grid[3, 3]),
-                figMain.add_subplot(grid[3, 4]),
-                figMain.add_subplot(grid[3, 5]),
-            ]
-
-            axsRes = figMain.add_subplot(grid[:, 0])
+            axs, axsRes = add_axes_fig1(figMain)
         
         else:
             axsNotGiven = False
@@ -930,6 +905,7 @@ class powerstate:
         # *******************************************************************************************
 
         transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        transport.produce_profiles()
         transport.evaluate()
         transport.clean()
 
@@ -1064,3 +1040,36 @@ class powerstate:
         )
 
         print(f"Prad = {self.plasma['Prad'].item():.2f}MW")
+
+
+
+def add_axes_fig1(figMain):
+
+    grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.5)
+
+    axs = [
+        figMain.add_subplot(grid[0, 1]),
+        figMain.add_subplot(grid[0, 2]),
+        figMain.add_subplot(grid[0, 3]),
+        figMain.add_subplot(grid[0, 4]),
+        figMain.add_subplot(grid[0, 5]),
+        figMain.add_subplot(grid[1, 1]),
+        figMain.add_subplot(grid[1, 2]),
+        figMain.add_subplot(grid[1, 3]),
+        figMain.add_subplot(grid[1, 4]),
+        figMain.add_subplot(grid[1, 5]),
+        figMain.add_subplot(grid[2, 1]),
+        figMain.add_subplot(grid[2, 2]),
+        figMain.add_subplot(grid[2, 3]),
+        figMain.add_subplot(grid[2, 4]),
+        figMain.add_subplot(grid[2, 5]),
+        figMain.add_subplot(grid[3, 1]),
+        figMain.add_subplot(grid[3, 2]),
+        figMain.add_subplot(grid[3, 3]),
+        figMain.add_subplot(grid[3, 4]),
+        figMain.add_subplot(grid[3, 5]),
+    ]
+
+    axsRes = figMain.add_subplot(grid[:, 0])
+
+    return axs, axsRes

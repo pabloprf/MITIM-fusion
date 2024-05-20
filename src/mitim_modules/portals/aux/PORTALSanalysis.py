@@ -212,6 +212,9 @@ class PORTALSanalyzer:
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 
+            if 'Q' not in power.profiles.derived:
+                power.profiles.deriveQuantities()
+
             self.evaluations.append(i)
             self.FusionGain.append(power.profiles.derived["Q"])
             self.FusionPower.append(power.profiles.derived["Pfus"])
