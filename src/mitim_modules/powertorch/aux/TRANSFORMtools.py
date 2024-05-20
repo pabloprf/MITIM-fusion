@@ -297,28 +297,28 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
 		- Because TGYRO doesn't care about convective fluxes, I need to convert it AFTER I have the ge_Miller integrated and interpolated, so this happens
 							at each powerstate evaluation
 	"""
-    self.plasma["PauxE"] = (
+    self.plasma["Paux_e"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["qe_aux_MWmiller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["PauxI"] = (
+    self.plasma["Paux_i"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["qi_aux_MWmiller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["GauxE"] = (
+    self.plasma["Gaux_e"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["ge_10E20miller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["GauxZ"] = self.plasma["GauxE"] * 0.0
+    self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
 
     # Momentum flux is J/m^2. Momentum source is given in input.gacode a N/m^2 or J/m^3. Integrated in volume is J or N*m
-    self.plasma["MauxT"] = (
+    self.plasma["Maux"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["mt_Jmiller"])
         ).to(dfT)

@@ -84,11 +84,11 @@ class powerstate:
             "ne": 1,
             "nZ": 1,
             "w0": 1,
-            "PauxE": 1,
-            "PauxI": 1,
-            "GauxE": 1,
-            "GauxZ": 1,
-            "MauxT": 1,
+            "Paux_e": 1,
+            "Paux_i": 1,
+            "Gaux_e": 1,
+            "Gaux_Z": 1,
+            "Maux": 1,
         }
         self.keys2D = {"ni": 1}
         self.keys0D = {}
@@ -631,7 +631,7 @@ class powerstate:
                 axis=1,
             )
 
-            self.plasma["w0"] = varN * factor_mult  # .clamp(min=0,max=200)
+            self.plasma["w0"] = varN * factor_mult
 
         return aLT_withZero
 
@@ -682,16 +682,9 @@ class powerstate:
 		------------------------------------------
 		"""
 
-        self.keys1D_derived["Qgb"] = 1
-        self.keys1D_derived["Ggb"] = 1
-        self.keys1D_derived["Pgb"] = 1
-        self.keys1D_derived["Sgb"] = 1
-        self.keys1D_derived["nuei"] = 1
-        self.keys1D_derived["rho_s"] = 1
-        self.keys1D_derived["c_s"] = 1
-        self.keys1D_derived["tite"] = 1
-        self.keys1D_derived["fZ"] = 1
-        self.keys1D_derived["beta_e"] = 1
+        quantities = ['Qgb', 'Ggb', 'Pgb', 'Sgb', 'nuei', 'rho_s', 'c_s', 'tite', 'fZ', 'beta_e']
+        for ikey in quantities:
+            self.keys1D_derived[ikey] = 1
 
         """
 		Rotation stuff
@@ -842,14 +835,14 @@ class powerstate:
         # **************************************************************************************************
 
         self.plasma["Pe"] = (
-            self.plasma["PauxE"] + P[: qe.shape[0], :] + PextraE
+            self.plasma["Paux_e"] + P[: qe.shape[0], :] + PextraE
         )  # MW/m^2
         self.plasma["Pi"] = (
-            self.plasma["PauxI"] + P[qe.shape[0] :, :] + PextraI
+            self.plasma["Paux_i"] + P[qe.shape[0] :, :] + PextraI
         )  # MW/m^2
-        self.plasma["Ce_raw"] = self.plasma["GauxE"]  # 1E20/s/m^2
-        self.plasma["CZ_raw"] = self.plasma["GauxZ"]  # 1E20/s/m^2
-        self.plasma["Mt"] = self.plasma["MauxT"]  # J/m^2
+        self.plasma["Ce_raw"] = self.plasma["Gaux_e"]  # 1E20/s/m^2
+        self.plasma["CZ_raw"] = self.plasma["Gaux_Z"]  # 1E20/s/m^2
+        self.plasma["Mt"] = self.plasma["Maux"]  # J/m^2
 
         if self.useConvectiveFluxes:
             self.plasma["Ce"] = PLASMAtools.convective_flux(
@@ -1060,7 +1053,7 @@ class powerstate:
         )
 
         self.plasma["Pin"] = (
-            (self.plasma["PauxE"] + self.plasma["PauxI"]) * self.plasma["volp"]
+            (self.plasma["Paux_e"] + self.plasma["Paux_i"]) * self.plasma["volp"]
         )[:, -1]
         self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
 
