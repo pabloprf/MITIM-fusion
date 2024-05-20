@@ -218,6 +218,7 @@ class TGLF:
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
+        recalculatePTOT=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
@@ -297,6 +298,7 @@ class TGLF:
                 rhos=self.rhos,
                 restart=not exists,
                 onlyThermal=onlyThermal_TGYRO,
+                recalculatePTOT=recalculatePTOT,
                 donotrun=donotrun,
             )
 
@@ -819,19 +821,6 @@ class TGLF:
                             f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
                         )
                     )
-
-    def tgyroing(self,label="tglf1",results = {}):
-        '''
-        This routine will take the results from TGLF run at several locations and produce outputs similar to the TGYRO class
-        '''
-
-        results['Qe_sim_turb'] = [0.0]
-        for ix in range(len(self.rhos)):
-            results['Qe_sim_turb'].append(self.results[label]['TGLFout'][ix].Qe_unn)
-        results['Qe_sim_turb'] = np.array([results['Qe_sim_turb']])
-
-        return results
-
 
     def plot(
         self,

@@ -200,7 +200,11 @@ class tgyro_model(power_transport):
 
         # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=RadiisToRun)
-        # _ = tglf.prep(self.folder+'/stds/', inputgacode=self.file_profs, restart=restart)
+        # _ = tglf.prep(
+        #     self.folder+'/stds/',
+        #     inputgacode=self.file_profs,
+        #     recalculatePTOT=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
+        #     restart=restart)
 
         # tglf.run(
         #     subFolderTGLF="tglf_neo_original/",
@@ -213,8 +217,6 @@ class tgyro_model(power_transport):
         # )
 
         # tglf.read(label="tglf_neo_original")
-
-        # results = tglf.tgyroing(label="tglf_neo_original")
 
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$

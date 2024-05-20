@@ -713,6 +713,7 @@ class TGYRO:
         restart=False,
         label="tgyro1",
         donotrun=False,
+        recalculatePTOT=True,
     ):
         """
         onlyThermal will remove from the TGYRO run the fast species, so the resulting input.tglf files will not have
@@ -741,6 +742,7 @@ class TGYRO:
             "onlyThermal": onlyThermal,
             "quasineutrality": quasineutrality,
             "neoclassical": 0,  # Do not run or check NEOTGYRO canno
+            "PtotType": int(not recalculatePTOT), # Recalculate Ptot or use what's there
         }
         # ------------------------------------------------------------
 
