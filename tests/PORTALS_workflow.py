@@ -25,6 +25,11 @@ portals_fun.Optim["BOiterations"] = 2
 portals_fun.Optim["initialPoints"] = 3
 portals_fun.INITparameters["removeFast"] = True
 
+portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne", 'nZ','w0']
+portals_fun.PORTALSparameters["ImpurityOfInterest"] = 3
+portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
+portals_fun.PORTALSparameters["fineTargetsResolution"] = 20
+
 # Prepare run
 portals_fun.prep(inputgacode, folderWork)
 

@@ -136,7 +136,6 @@ def TGYROmodeledVariables(TGYROresults,
     OriginalFimp=1.0,
     provideTurbulentExchange=False,
     provideTargets=False,
-    percentError=[5, 1, 0.5],
     index_tuple = (0, ())
 ):
     """
@@ -301,17 +300,6 @@ def TGYROmodeledVariables(TGYROresults,
         powerstate.plasma["Ce"] = powerstate.plasma["Ce"] * 0.0
         powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_stds"] * 0.0
 
-    # If I haven't provided targets
-    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
-    if not provideTargets:
-        for ikey in quantities:
-            powerstate.plasma[ikey] = powerstate.plasma[ikey][:, 1:]
-
-        percentErrorTarget = percentError[2] / 100.0
-
-        for ikey in quantities:
-            powerstate.plasma[ikey+"_stds"] = powerstate.plasma[ikey] * percentErrorTarget
-
     # ----------------------------------------------------------------------------------------
     # labels for plotting
     # ----------------------------------------------------------------------------------------
@@ -336,6 +324,7 @@ def TGYROmodeledVariables(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
+    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
 

@@ -1,4 +1,5 @@
 import torch
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
@@ -62,7 +63,7 @@ def PORTALSanalyzer_plotMetrics(
         axne = axne_g = axne_f = None
 
     if self.runWithImpurity:
-        p = self.powerstates[0].profiles,
+        p = self.powerstates[0].profiles
         labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
@@ -1965,10 +1966,10 @@ def PORTALSanalyzer_plotModelComparison(
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted) < 4 else 10))
+        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4 else 10))
 
     if axs is None:
-        if len(self.ProfilesPredicted) < 4:
+        if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4:
             axs = fig.subplots(ncols=3)
         else:
             axs = fig.subplots(ncols=3, nrows=2)
@@ -2348,6 +2349,7 @@ def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
 
 
 def varToReal(y, prfs_model):
+
     of, cal, res = prfs_model.mainFunction.scalarized_objective(
         torch.Tensor(y).to(prfs_model.mainFunction.dfT).unsqueeze(0)
     )
@@ -3250,7 +3252,7 @@ def produceInfoRanges(
     X = X.transpose(0, 1)
 
     powerstate = PORTALStools.constructEvaluationProfiles(
-        X, self_complete.surrogate_parameters, recalculateTargets=False
+        X, copy.deepcopy(self_complete.surrogate_parameters), recalculateTargets=False
     )
 
     GRAPHICStools.fillGraph(

@@ -276,10 +276,11 @@ class powerstate:
         # 2. Plasma parameters (te,ti,ne,nZ,w0 -> Qgb,Ggb,Pgb,Sgb,nuei,rho_s,c_s,tite,fZ,beta_e,w0_n,aLw0_n)
         self.calculateProfileFunctions()
 
-        # 3. Sources and sinks
-        self.calculateTargets()  # Calculate targets based on powerstate functions
+        # 3. Sources and sinks (populates components and Pe,Pi,...)
+        assumedPercentError = self.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
+        self.calculateTargets(assumedPercentError=assumedPercentError)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
-        # 4. Turbulent and neoclassical transport (populates Q,G,P,S)
+        # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
         self.calculateTransport(
             nameRun=nameRun,
             folder=folder,
@@ -698,7 +699,7 @@ class powerstate:
             self.keys1D_derived["w0_n"] = 1
             self.keys1D_derived["aLw0_n"] = 1
 
-    def calculateTargets(self):
+    def calculateTargets(self, assumedPercentError=1.0):
         """
         Update the targets of the current state
         """
@@ -837,22 +838,34 @@ class powerstate:
         self.plasma["Pi"] = (
             self.plasma["PauxI"] + P[qe.shape[0] :, :] + PextraI
         )  # MW/m^2
-        self.plasma["Ce"] = self.plasma["GauxE"]  # 1E20/s/m^2
-        self.plasma["CZ"] = self.plasma["GauxZ"]  # 1E20/s/m^2
+        self.plasma["Ce_raw"] = self.plasma["GauxE"]  # 1E20/s/m^2
+        self.plasma["CZ_raw"] = self.plasma["GauxZ"]  # 1E20/s/m^2
         self.plasma["Mt"] = self.plasma["MauxT"]  # J/m^2
 
         if self.useConvectiveFluxes:
             self.plasma["Ce"] = PLASMAtools.convective_flux(
-                self.plasma["te"], self.plasma["Ce"]
+                self.plasma["te"], self.plasma["Ce_raw"]
             )  # MW/m^2
             self.plasma["CZ"] = PLASMAtools.convective_flux(
-                self.plasma["te"], self.plasma["CZ"]
+                self.plasma["te"], self.plasma["CZ_raw"]
             )  # MW/m^2
+        else:
+            self.plasma["Ce"] = self.plasma["Ce_raw"]
+            self.plasma["CZ"] = self.plasma["CZ_raw"]
 
         if (
             "forceZeroParticleFlux" in self.TransportOptions["ModelOptions"]
         ) and self.TransportOptions["ModelOptions"]["forceZeroParticleFlux"]:
             self.plasma["Ce"] = self.plasma["Ce"] * 0
+
+        '''
+        **************************************************************************************************
+        Errors
+        **************************************************************************************************
+        '''
+
+        for i in ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]:
+            self.plasma[i + "_stds"] = self.plasma[i] * assumedPercentError / 100 
 
         """
 		**************************************************************************************************

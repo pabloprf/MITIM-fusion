@@ -564,7 +564,7 @@ def runModelEvaluator(
         f.writelines(self.file_in_lines_initial_input_gacode)
 
     # ---------------------------------------------------------------------------------------------------
-    # Prepare evaluating vector
+    # Prepare evaluating vector X
     # ---------------------------------------------------------------------------------------------------
 
     X = torch.zeros(
@@ -594,71 +594,78 @@ def runModelEvaluator(
     )
 
     # ---------------------------------------------------------------------------------------------------
-    # Produce dictOFs is asked for
+    # Produce dictOFs
     # ---------------------------------------------------------------------------------------------------
 
     if dictOFs is not None:
-        for var in powerstate.ProfilesPredicted:
-            # Write in OFs
-            for i in range(powerstate.plasma["rho"].shape[1] - 1): # Ignore position 0, which is rho=0
-                if var == "te":
-                    var0, var1 = "Qe", "Pe"
-                elif var == "ti":
-                    var0, var1 = "Qi", "Pi"
-                elif var == "ne":
-                    var0, var1 = "Ge", "Ce"
-                elif var == "nZ":
-                    var0, var1 = "GZ", "CZ"
-                elif var == "w0":
-                    var0, var1 = "Mt", "Mt"
-
-                """
-				TRANSPORT calculation
-				---------------------
-				"""
-
-                dictOFs[f"{var0}Turb_{i+1}"]["value"] = powerstate.plasma[
-                    f"{var1}_tr_turb"
-                ][0, i+1]
-                dictOFs[f"{var0}Turb_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_tr_turb_stds"
-                ][0, i+1]
-
-                dictOFs[f"{var0}Neo_{i+1}"]["value"] = powerstate.plasma[
-                    f"{var1}_tr_neo"
-                ][0, i+1]
-                dictOFs[f"{var0}Neo_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_tr_neo_stds"
-                ][0, i+1]
-
-                """
-				TARGET calculation
-				---------------------
-					If that radius & profile position has target, evaluate
-				"""
-
-                dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][
-                    0, i+1
-                ]
-                dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_stds"
-                ][0, i+1]
-
-        """
-		Turbulent Exchange
-		------------------
-		"""
-        if extra_params_model["PORTALSparameters"]["surrogateForTurbExch"]:
-            for i in range(powerstate.plasma["rho"].shape[1] - 1):
-                dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][
-                    0, i+1
-                ]
-                dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma[
-                    "PexchTurb_stds"
-                ][0, i+1]
+        dictOFs = map_powerstate_to_portals(powerstate, dictOFs)
 
     return powerstate, dictOFs
 
+def map_powerstate_to_portals(powerstate, dictOFs):
+    """
+    """
+
+    for var in powerstate.ProfilesPredicted:
+        # Write in OFs
+        for i in range(powerstate.plasma["rho"].shape[1] - 1): # Ignore position 0, which is rho=0
+            if var == "te":
+                var0, var1 = "Qe", "Pe"
+            elif var == "ti":
+                var0, var1 = "Qi", "Pi"
+            elif var == "ne":
+                var0, var1 = "Ge", "Ce"
+            elif var == "nZ":
+                var0, var1 = "GZ", "CZ"
+            elif var == "w0":
+                var0, var1 = "Mt", "Mt"
+
+            """
+            TRANSPORT calculation
+            ---------------------
+            """
+
+            dictOFs[f"{var0}Turb_{i+1}"]["value"] = powerstate.plasma[
+                f"{var1}_tr_turb"
+            ][0, i+1]
+            dictOFs[f"{var0}Turb_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_tr_turb_stds"
+            ][0, i+1]
+
+            dictOFs[f"{var0}Neo_{i+1}"]["value"] = powerstate.plasma[
+                f"{var1}_tr_neo"
+            ][0, i+1]
+            dictOFs[f"{var0}Neo_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_tr_neo_stds"
+            ][0, i+1]
+
+            """
+            TARGET calculation
+            ---------------------
+                If that radius & profile position has target, evaluate
+            """
+
+            dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][
+                0, i+1
+            ]
+            dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_stds"
+            ][0, i+1]
+
+    """
+    Turbulent Exchange
+    ------------------
+    """
+    if 'PexchTurb_1' in dictOFs:
+        for i in range(powerstate.plasma["rho"].shape[1] - 1):
+            dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][
+                0, i+1
+            ]
+            dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma[
+                "PexchTurb_stds"
+            ][0, i+1]
+
+    return dictOFs
 
 def analyze_results(
     self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False

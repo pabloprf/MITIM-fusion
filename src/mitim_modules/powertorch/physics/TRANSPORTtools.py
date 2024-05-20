@@ -28,8 +28,22 @@ class power_transport:
         # Allowed fluxes in powerstate so far
         self.quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
 
-        self.variables = [f'{i}_tr' for i in self.quantities] + [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
+        # Each flux has a turbulent and neoclassical component
+        self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
 
+        # Each flux component has a standard deviation
+        self.variables += [f'{i}_stds' for i in self.variables]
+
+        # There is also target components
+        self.variables += [f'{i}' for i in self.quantities] + [f'{i}_stds' for i in self.quantities]
+
+        # There is also turbulent exchange
+        self.variables += ['PexchTurb', 'PexchTurb_stds']
+
+        # And total transport flux
+        self.variables += [f'{i}_tr' for i in self.quantities]
+
+        # Model results is None by default, but can be assigned in evaluate
         self.model_results = None
 
     def produce_profiles(self,deriveQuantities=True):
@@ -76,14 +90,9 @@ class power_transport:
     def evaluate(self):
         print("Nothing to evaluate", typeMsg="w")
 
+        # Assign zeros if not evaluated
         for i in self.variables:
             self.powerstate.plasma[i] = self.powerstate.plasma["te"][:, 1:] * 0.0
-
-        for i in self.quantities:
-            self.powerstate.plasma[i] = self.powerstate.plasma[i][:, 1:]
-
-        self.results = None
-        self.model_results = None
 
 # ----------------------------------------------------------------------------------------------------
 # FULL TGYRO
@@ -101,8 +110,7 @@ class tgyro_model(power_transport):
 
         FolderEvaluation_TGYRO  = IOtools.expandPath(self.folder)
 
-        MODELparameters = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]
-        
+        MODELparameters = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters",None)
         includeFast = self.powerstate.TransportOptions["ModelOptions"].get("includeFastInQi",False)
         impurityPosition = self.powerstate.TransportOptions["ModelOptions"].get("impurityPosition", 1)
         useConvectiveFluxes = self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
@@ -225,7 +233,6 @@ class tgyro_model(power_transport):
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
             provideTargets=self.powerstate.TargetCalc == "tgyro",
-            percentError=percentError,
             index_tuple = (0, tuple_rho_indeces)
         )
 
@@ -283,7 +290,6 @@ class tgyro_model(power_transport):
                 forceZeroParticleFlux=forceZeroParticleFlux,
                 provideTurbulentExchange=provideTurbulentExchange,
                 provideTargets=self.powerstate.TargetCalc == "tgyro",
-                percentError=percentError,
                 index_tuple = (0, tuple_rho_indeces)
             )
 
@@ -362,8 +368,7 @@ class diffusion_model(power_transport):
         self.powerstate.plasma["Ce"] = self.powerstate.plasma["Pe"] * 0.0
 
         # ------------------------------------------------------------------------------------------------------------------------
-        self.results = None
-
+        self.model_results = None
 
 # ------------------------------------------------------------------
 # SURROGATE
