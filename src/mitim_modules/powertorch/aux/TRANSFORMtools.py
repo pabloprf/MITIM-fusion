@@ -179,11 +179,7 @@ def insertPowersNew(profiles, state=None):
 
     # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
     extra_points = 2  # If I don't allow this, it will fail
-    if 'fn' in state.__dict__:
-        fn = state.fn
-        del state.fn
     state_temp = copy.deepcopy(state)
-    state.fn = fn
     rhoy = profiles.profiles["rho(-)"][:-extra_points]
     with IOtools.HiddenPrints():
         state_temp.__init__(profiles, rhoy)

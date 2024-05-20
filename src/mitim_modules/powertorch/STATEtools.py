@@ -13,18 +13,15 @@ from IPython import embed
 
 UseCUDAifAvailable = True
 
-
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")
     with open(file, "rb") as handle:
         state = pickle.load(handle)
     return state
 
-
 # ------------------------------------------------------------------
 # POWERSTATE Class
 # ------------------------------------------------------------------
-
 
 class powerstate:
     def __init__(
@@ -358,19 +355,19 @@ class powerstate:
             axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fn = FigureNotebook("PowerState", geometry="1800x900")
-            figMain = self.fn.add_figure(label="PowerState")
+            fn = FigureNotebook("PowerState", geometry="1800x900")
+            figMain = fn.add_figure(label="PowerState")
 
-            figProf_1 = self.fn.add_figure(label="Profiles")
-            figProf_2 = self.fn.add_figure(label="Powers")
-            figProf_3 = self.fn.add_figure(label="Geometry")
-            figProf_4 = self.fn.add_figure(label="Gradients")
-            figFlows = self.fn.add_figure(label="Flows")
-            figProf_6 = self.fn.add_figure(label="Other")
-            fig7 = self.fn.add_figure(label="Impurities")
+            figProf_1 = fn.add_figure(label="Profiles")
+            figProf_2 = fn.add_figure(label="Powers")
+            figProf_3 = fn.add_figure(label="Geometry")
+            figProf_4 = fn.add_figure(label="Gradients")
+            figFlows = fn.add_figure(label="Flows")
+            figProf_6 = fn.add_figure(label="Other")
+            fig7 = fn.add_figure(label="Impurities")
             figs = figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7
 
-            grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.3)
 
             axs = [
                 figMain.add_subplot(grid[0, 1]),
@@ -399,11 +396,14 @@ class powerstate:
         
         else:
             axsNotGiven = False
+            fn = None
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
 
         if axsNotGiven:
-            self.fn.show()
+            fn.show()
+
+        return fn
 
     # ------------------------------------------------------------------
     # Main tools

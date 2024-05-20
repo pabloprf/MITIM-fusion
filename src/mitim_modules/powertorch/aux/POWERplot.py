@@ -1,14 +1,13 @@
-import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
+from IPython import embed
 
 def plot(self, axs, axsRes, figs=None, c="r", label=""):
     profiles_new = self.insertProfiles(self.profiles, insertPowers=True)
     if figs is not None:
-        fn = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
+        _ = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
 
     # plotPlasma(self,self.FluxMatch_plasma_orig,axs,color='b')
     plotPlasma(self, self.plasma, axs, color=c, label=label)
@@ -38,8 +37,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label=""):
 def plotPlasma(powerstate, plasma, axs, color="b", label=""):
     axs[0].set_title("Electron Temperature")
     axs[1].set_title("Ion Temperature")
-    axs[2].set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
-    # ax.set_ylim(bottom=0)
+    axs[2].set_title("Electron Density")
     axs[3].set_title("Impurity Density")
     axs[4].set_title("Rotation")
 
@@ -111,6 +109,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         )
         ax.set_xlim([0, 1])
         # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
 
         ax = axs[7]
         ax.plot(
@@ -187,220 +186,230 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         ax.set_ylabel("$-d\\omega_0/dr$ ($krad/s/cm$)")
         # ax.set_ylim(bottom=0)
 
-    ax = axs[10]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pe_tr"][0] / plasma["Qgb"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pe"][0] / plasma["Qgb"][0],
-        "--*",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.set_xlim([0, 1])
-    # ax.set_xlabel('$\\rho_N$');
-    ax.set_ylabel("$Q_e$ (GB)")
-    # ax.set_ylim(bottom=0)
-    ax.set_yscale("log")
+    if "te" in powerstate.ProfilesPredicted:
+        ax = axs[10]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pe_tr"][0,1:] / plasma["Qgb"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pe"][0,1:] / plasma["Qgb"][0,1:],
+            "--*",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.set_xlim([0, 1])
+        # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$Q_e$ (GB)")
+        # ax.set_ylim(bottom=0)
+        ax.set_yscale("log")
 
-    ax = axs[11]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pi_tr"][0] / plasma["Qgb"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pi"][0] / plasma["Qgb"][0],
-        "--*",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.set_xlim([0, 1])
-    # ax.set_xlabel('$\\rho_N$');
-    ax.set_ylabel("$Q_i$ (GB)")
-    # ax.set_ylim(bottom=0)
-    ax.set_yscale("log")
+    if "ti" in powerstate.ProfilesPredicted:
+        ax = axs[11]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pi_tr"][0,1:] / plasma["Qgb"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pi"][0,1:] / plasma["Qgb"][0,1:],
+            "--*",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.set_xlim([0, 1])
+        # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$Q_i$ (GB)")
+        # ax.set_ylim(bottom=0)
+        ax.set_yscale("log")
 
     Ggb = (
-        plasma["Qgb"][0] if powerstate.useConvectiveFluxes else plasma["Ggb"][0]
+        plasma["Qgb"][0,1:] if powerstate.useConvectiveFluxes else plasma["Ggb"][0,1:]
     )
 
-    ax = axs[12]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Ce_tr_turb"][0] / Ggb,
-        "-o",
-        color=color,
-        markersize=4,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Ce_tr"][0] / Ggb,
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Ce"][0] / Ggb,
-        "--*",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.set_xlim([0, 1])
-    # ax.set_xlabel('$\\rho_N$');
-    ax.set_ylabel("$Q_{conv,e}$ (GB, w/factor)")
-    ax.axhline(y=0, ls="--", c="k")
+    if "ne" in powerstate.ProfilesPredicted:
+        ax = axs[12]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Ce_tr_turb"][0,1:] / Ggb,
+            "-o",
+            color=color,
+            markersize=4,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Ce_tr"][0,1:] / Ggb,
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Ce"][0,1:] / Ggb,
+            "--*",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.set_xlim([0, 1])
+        # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$Q_{conv,e}$ (GB, w/factor)")
+        ax.axhline(y=0, ls="--", c="k")
 
-    ax = axs[13]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["CZ_tr_turb"][0] / Ggb,
-        "-o",
-        color=color,
-        markersize=4,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["CZ_tr"][0] / Ggb,
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["CZ"][0] / Ggb,
-        "--*",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.set_xlim([0, 1])
-    # ax.set_xlabel('$\\rho_N$');
-    ax.set_ylabel("$Q_{conv,Z}$ (GB, w/factor)")
-    ax.axhline(y=0, ls="--", c="k")
+    if "nZ" in powerstate.ProfilesPredicted:
+        ax = axs[13]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["CZ_tr_turb"][0,1:] / Ggb,
+            "-o",
+            color=color,
+            markersize=4,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["CZ_tr"][0,1:] / Ggb,
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["CZ"][0,1:] / Ggb,
+            "--*",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.set_xlim([0, 1])
+        # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$Q_{conv,Z}$ (GB, w/factor)")
+        ax.axhline(y=0, ls="--", c="k")
 
-    ax = axs[14]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Mt_tr"][0] / plasma["Pgb"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Mt"][0] / plasma["Pgb"][0],
-        "--*",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.set_xlim([0, 1])
-    # ax.set_xlabel('$\\rho_N$');
-    ax.set_ylabel("$\\Pi$ (GB)")
-    # ax.set_ylim(bottom=0)
-    # ax.set_yscale('log')
+    if "w0" in powerstate.ProfilesPredicted:
+        ax = axs[14]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Mt_tr"][0,1:] / plasma["Pgb"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Mt"][0,1:] / plasma["Pgb"][0,1:],
+            "--*",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.set_xlim([0, 1])
+        # ax.set_xlabel('$\\rho_N$');
+        ax.set_ylabel("$\\Pi$ (GB)")
+        # ax.set_ylim(bottom=0)
+        # ax.set_yscale('log')
 
-    ax = axs[15]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pe_tr"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0], plasma["Pe"][0], "--*", color=color, markersize=3, lw=1.0
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q_e$ ($MW/m^2$)")
-    # ax.set_ylim(bottom=0)
+    if "te" in powerstate.ProfilesPredicted:
+        ax = axs[15]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pe_tr"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:], plasma["Pe"][0,1:], "--*", color=color, markersize=3, lw=1.0
+        )
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q_e$ ($MW/m^2$)")
+        # ax.set_ylim(bottom=0)
 
-    ax = axs[16]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Pi_tr"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0], plasma["Pi"][0], "--*", color=color, markersize=3, lw=1.0
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q_i$ ($MW/m^2$)")
-    # ax.set_ylim(bottom=0)
+    if "ti" in powerstate.ProfilesPredicted:
+        ax = axs[16]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Pi_tr"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:], plasma["Pi"][0,1:], "--*", color=color, markersize=3, lw=1.0
+        )
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q_i$ ($MW/m^2$)")
+        # ax.set_ylim(bottom=0)
 
-    ax = axs[17]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Ce_tr"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0], plasma["Ce"][0], "--*", color=color, markersize=3, lw=1.0
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q_{conv,e}$ ($MW/m^2$)")
-    ax.axhline(y=0, ls="--", c="k")
+    if "ne" in powerstate.ProfilesPredicted:
+        ax = axs[17]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Ce_tr"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:], plasma["Ce"][0,1:], "--*", color=color, markersize=3, lw=1.0
+        )
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q_{conv,e}$ ($MW/m^2$)")
+        ax.axhline(y=0, ls="--", c="k")
 
-    ax = axs[18]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["CZ_tr"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0], plasma["CZ"][0], "--*", color=color, markersize=3, lw=1.0
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q_{conv,Z}$ ($MW/m^2$)")
-    ax.axhline(y=0, ls="--", c="k")
+    if "nZ" in powerstate.ProfilesPredicted:
+        ax = axs[18]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["CZ_tr"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:], plasma["CZ"][0,1:], "--*", color=color, markersize=3, lw=1.0
+        )
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q_{conv,Z}$ ($MW/m^2$)")
+        ax.axhline(y=0, ls="--", c="k")
 
-    ax = axs[19]
-    ax.plot(
-        plasma["rho"][0],
-        plasma["Mt_tr"][0],
-        "-o",
-        color=color,
-        markersize=3,
-        lw=1.0,
-    )
-    ax.plot(
-        plasma["rho"][0], plasma["Mt"][0], "--*", color=color, markersize=3, lw=1.0
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$\\Pi$ ($J/m^2$)")
-    # ax.set_ylim(bottom=0)
+    if "w0" in powerstate.ProfilesPredicted:
+        ax = axs[19]
+        ax.plot(
+            plasma["rho"][0,1:],
+            plasma["Mt_tr"][0,1:],
+            "-o",
+            color=color,
+            markersize=3,
+            lw=1.0,
+        )
+        ax.plot(
+            plasma["rho"][0,1:], plasma["Mt"][0,1:], "--*", color=color, markersize=3, lw=1.0
+        )
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$\\Pi$ ($J/m^2$)")
+        # ax.set_ylim(bottom=0)

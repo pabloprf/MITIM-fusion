@@ -923,7 +923,7 @@ class PORTALSinitializer:
                 for i in range(2):
                     axsGrads.append(figG.add_subplot(grid[i, j]))
             for i, p in enumerate(self.powerstates):
-                p.plotGradients(
+                p.profiles.plotGradients(
                     axsGrads,
                     color=colors[i],
                     plotImpurity=3,
@@ -944,7 +944,7 @@ class PORTALSinitializer:
                 axs[9],
             ]
             for i, p in enumerate(self.powerstates):
-                p.plotGradients(
+                p.profiles.plotGradients(
                     axsGrads_extra,
                     color=colors[i],
                     plotImpurity=3,
@@ -952,7 +952,7 @@ class PORTALSinitializer:
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                     lw=0.5,
                     ms=0,
-                    label=f"profile #{i}",
+                    label=f"profile #{i}" if i == 0 else '',
                 )
 
             axs[0].legend(prop={"size": 8})
