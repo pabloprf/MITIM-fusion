@@ -29,7 +29,7 @@ def initializeProblem(
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
-):
+    ):
     """
     Specification of points occur in rho coordinate, although internally the work is r/a
     restartYN = True if restart from beginning
@@ -88,7 +88,7 @@ def initializeProblem(
         profiles.correct(options=INITparameters)
 
     # Resolution of input.gacode
-    defineNewGridmitim(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
+    defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
     profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_original")
@@ -342,7 +342,7 @@ def initializeProblem(
         portals_fun.file_in_lines_initial_input_gacode = f.readlines()
 
 
-def defineNewGridmitim(profiles, rhoMODEL):
+def defineNewPORTALSGrid(profiles, rhoMODEL):
     """
     Resolution of input.gacode
     **************************

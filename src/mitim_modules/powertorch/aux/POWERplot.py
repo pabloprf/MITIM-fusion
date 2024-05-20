@@ -189,16 +189,16 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[10]
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Pe_tr"][0] / plasma["Qgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Pe_tr"][0] / plasma["Qgb"][0],
         "-o",
         color=color,
         markersize=3,
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Pe"][0] / plasma["Qgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Pe"][0] / plasma["Qgb"][0],
         "--*",
         color=color,
         markersize=3,
@@ -212,16 +212,16 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[11]
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Pi_tr"][0] / plasma["Qgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Pi_tr"][0] / plasma["Qgb"][0],
         "-o",
         color=color,
         markersize=3,
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Pi"][0] / plasma["Qgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Pi"][0] / plasma["Qgb"][0],
         "--*",
         color=color,
         markersize=3,
@@ -234,12 +234,12 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
     ax.set_yscale("log")
 
     Ggb = (
-        plasma["Qgb"][0, 1:] if powerstate.useConvectiveFluxes else plasma["Ggb"][0, 1:]
+        plasma["Qgb"][0] if powerstate.useConvectiveFluxes else plasma["Ggb"][0]
     )
 
     ax = axs[12]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Ce_tr_turb"][0] / Ggb,
         "-o",
         color=color,
@@ -247,7 +247,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Ce_tr"][0] / Ggb,
         "-o",
         color=color,
@@ -255,7 +255,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Ce"][0] / Ggb,
         "--*",
         color=color,
@@ -269,7 +269,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[13]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["CZ_tr_turb"][0] / Ggb,
         "-o",
         color=color,
@@ -277,7 +277,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["CZ_tr"][0] / Ggb,
         "-o",
         color=color,
@@ -285,7 +285,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["CZ"][0] / Ggb,
         "--*",
         color=color,
@@ -299,16 +299,16 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[14]
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Mt_tr"][0] / plasma["Pgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Mt_tr"][0] / plasma["Pgb"][0],
         "-o",
         color=color,
         markersize=3,
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:],
-        plasma["Mt"][0] / plasma["Pgb"][0, 1:],
+        plasma["rho"][0],
+        plasma["Mt"][0] / plasma["Pgb"][0],
         "--*",
         color=color,
         markersize=3,
@@ -322,7 +322,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[15]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Pe_tr"][0],
         "-o",
         color=color,
@@ -330,7 +330,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:], plasma["Pe"][0], "--*", color=color, markersize=3, lw=1.0
+        plasma["rho"][0], plasma["Pe"][0], "--*", color=color, markersize=3, lw=1.0
     )
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho_N$")
@@ -339,7 +339,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[16]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Pi_tr"][0],
         "-o",
         color=color,
@@ -347,7 +347,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:], plasma["Pi"][0], "--*", color=color, markersize=3, lw=1.0
+        plasma["rho"][0], plasma["Pi"][0], "--*", color=color, markersize=3, lw=1.0
     )
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho_N$")
@@ -356,7 +356,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[17]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Ce_tr"][0],
         "-o",
         color=color,
@@ -364,7 +364,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:], plasma["Ce"][0], "--*", color=color, markersize=3, lw=1.0
+        plasma["rho"][0], plasma["Ce"][0], "--*", color=color, markersize=3, lw=1.0
     )
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho_N$")
@@ -373,7 +373,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[18]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["CZ_tr"][0],
         "-o",
         color=color,
@@ -381,7 +381,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:], plasma["CZ"][0], "--*", color=color, markersize=3, lw=1.0
+        plasma["rho"][0], plasma["CZ"][0], "--*", color=color, markersize=3, lw=1.0
     )
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho_N$")
@@ -390,7 +390,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     ax = axs[19]
     ax.plot(
-        plasma["rho"][0, 1:],
+        plasma["rho"][0],
         plasma["Mt_tr"][0],
         "-o",
         color=color,
@@ -398,7 +398,7 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         lw=1.0,
     )
     ax.plot(
-        plasma["rho"][0, 1:], plasma["Mt"][0], "--*", color=color, markersize=3, lw=1.0
+        plasma["rho"][0], plasma["Mt"][0], "--*", color=color, markersize=3, lw=1.0
     )
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho_N$")

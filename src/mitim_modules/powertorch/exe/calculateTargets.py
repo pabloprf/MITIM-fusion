@@ -25,7 +25,7 @@ def calculator(
         input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
     )
 
-    PORTALSinit.defineNewGridmitim(profiles, rho_vec[1:])
+    PORTALSinit.defineNewPORTALSGrid(profiles, rho_vec[1:])
 
     # Calculate using TGYRO
     if typeCalculation == 1:

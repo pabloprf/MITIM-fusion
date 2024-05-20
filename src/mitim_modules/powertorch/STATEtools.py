@@ -355,6 +355,7 @@ class powerstate:
 
     def plot(self, axs=None, axsRes=None, figs=None, c="r", label=""):
         if axs is None:
+            axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             self.fn = FigureNotebook("PowerState", geometry="1800x900")
@@ -395,8 +396,14 @@ class powerstate:
             ]
 
             axsRes = figMain.add_subplot(grid[:, 0])
+        
+        else:
+            axsNotGiven = False
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
+
+        if axsNotGiven:
+            self.fn.show()
 
     # ------------------------------------------------------------------
     # Main tools
@@ -936,7 +943,6 @@ class powerstate:
         # *******************************************************************************************
 
         transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
-        transport.produce_profiles()
         transport.evaluate()
         transport.clean()
 

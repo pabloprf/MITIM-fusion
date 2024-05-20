@@ -260,6 +260,14 @@ class portals(STRATEGYtools.opt_evaluator):
                 )
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
+        if 'tgyro' not in self.PORTALSparameters["model_used"]:
+            if self.PORTALSparameters["TargetCalc"] == "tgyro":
+                print(
+                    "\t- Requested TGYRO targets, but model_used is not tgyro, so changing to powerstate",
+                    typeMsg="w",
+                )
+                self.PORTALSparameters["TargetCalc"] = "powerstate"
+
         if (
             "InputType" not in self.MODELparameters["Physics_options"]
         ) or self.MODELparameters["Physics_options"]["InputType"] != 1:

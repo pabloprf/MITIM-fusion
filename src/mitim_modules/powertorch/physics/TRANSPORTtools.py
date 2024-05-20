@@ -125,6 +125,9 @@ class tgyro_model(power_transport):
 
     def evaluate(self):
 
+        # Only produce them if needed (i.e. when running TGYRO, not general)
+        self.produce_profiles()
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
         # ------------------------------------------------------------------------------------------------------------------------

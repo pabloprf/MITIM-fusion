@@ -131,8 +131,9 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
         )
 
         # Save state so that I can check initializations
-        self.save(f"{folder}/powerstate.pkl")
-        os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
+        if "tgyro" in self.TransportOptions["TypeTransport"]:
+            self.save(f"{folder}/powerstate.pkl")
+            os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
 
         return QTransport, QTarget
 
