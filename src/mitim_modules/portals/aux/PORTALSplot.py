@@ -3032,7 +3032,7 @@ def plotFluxComparison(
             else:
                 Ge_tar = t.Ge_tar[0][ixF:]
 
-    GZ_tar = t.Ge_tar * 0.0
+    GZ_tar = rad * 0.0
     Mt_tar = (
         t.Mt_tar[0][ixF:]
         if powerstate is None
@@ -3134,8 +3134,8 @@ def plotFluxComparison(
                 ax.plot(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,
-                    "-.",
-                    lw=0.5,
+                    "--",
+                    lw=2,
                     c=col,
                     label="Flow",
                     alpha=alpha,
@@ -3167,7 +3167,7 @@ def plotFluxComparison(
     )
 
     setl = [l1, l3, l2]
-    setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
+    setlab = ["Transport", f"$\\pm{stds}\\sigma$"] #, "Target"]
 
     if addFlowLegend:
         (l4,) = axTe_f.plot(
