@@ -1468,7 +1468,3 @@ def create_geo_MXH3(
         plt.show()
 
     return R, Z
-#g = MITIMgeqdsk('/Users/hallj/Documents/Files/Research/ARC-Modeling/ASTRA-POPCON-matching/astra.geqdsk')
-#g.get_MXH_coeff(500, n_coeff=6, plot=True)
-#plt.tight_layout()
-#plt.show()

@@ -858,11 +858,6 @@ class CDFreactor:
         self.axCAR53r.set_ylabel("Pulse [MW/m^3]")
         plt.legend(title="Times")
 
-    def toGACODE(self):
-        
-        pass
-
-
 ### Operations: Not part of the CDF class ###
 def gradNorm(CDFc, varData, specialDerivative=None):
     """
