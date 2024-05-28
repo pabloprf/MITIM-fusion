@@ -340,18 +340,19 @@ def addDenseAxis(ax, grid=True, n=10, axTwinx=None, ensure_floats=False):
             ensurefloatsticks(axTwinx)
 
 
-def output_figure_papers(name, fig=None):
+def output_figure_papers(name, fig=None, dpi=445):
     if name is not None:
         if fig is None:
             plt.savefig(name + ".svg", transparent=True)
-            plt.savefig(name + ".jpeg", transparent=True, dpi=300)
-            plt.savefig(name + ".png", transparent=True, dpi=300)
-            plt.savefig(name + "_white.png", transparent=False, dpi=300)
+            plt.savefig(name + ".jpeg", transparent=True, dpi=dpi)
+            plt.savefig(name + ".png", transparent=True, dpi=dpi)
+            plt.savefig(name + "_white.png", transparent=False, dpi=dpi)
         else:
             fig.savefig(name + ".svg", transparent=True)
-            fig.savefig(name + ".jpeg", transparent=True, dpi=300)
-            fig.savefig(name + ".png", transparent=True, dpi=300)
-            fig.savefig(name + "_white.png", transparent=False, dpi=300)
+            fig.savefig(name + ".jpeg", transparent=True, dpi=dpi)
+            fig.savefig(name + ".png", transparent=True, dpi=dpi)
+            fig.savefig(name + "_white.png", transparent=False, dpi=dpi)
+
 
 
 def prep_figure_papers(size=15, slower_but_latex=False):
