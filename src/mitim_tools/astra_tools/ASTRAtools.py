@@ -102,7 +102,7 @@ def convert_ASTRA_to_gacode(astra_root,
                   nexp=112, # number of grid points for gacode output
                   nion=5, # number of thermal and fast ion species
                   ai=-3, # array index of astra timestep to convert
-                  gacode_out=True, # whether to output a file along with gacode object
+                  gacode_out=None, # whether to output a file along with gacode object
                   plot_result=False # whether to plot the gacode object
                   ):
     """
@@ -113,7 +113,7 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
-    template_path = "/Users/hallj/MITIM-fusion/tests/data/input.gacode"
+    template_path = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
@@ -251,9 +251,8 @@ def convert_ASTRA_to_gacode(astra_root,
     # Print output to check Q, Pfus, etc.
     p.printInfo()
     
-    if gacode_out:
-        gacode_filename = os.path.join(astra_root, "input.gacode")
-        p.writeCurrentStatus(file=gacode_filename)
+    if gacode_out is not None:
+        p.writeCurrentStatus(file=gacode_out)
     if plot_result:
         p.plot()
 
