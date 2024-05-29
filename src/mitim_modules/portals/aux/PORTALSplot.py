@@ -3135,7 +3135,7 @@ def plotFluxComparison(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,
                     "--",
-                    lw=2,
+                    lw=0.5,
                     c=col,
                     label="Flow",
                     alpha=alpha,
