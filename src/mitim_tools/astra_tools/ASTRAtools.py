@@ -224,7 +224,7 @@ def convert_ASTRA_to_gacode(astra_root,
     # includes line and synchrotron radiation
     qsync = np.zeros(nexp)                      ; params['qsync(MW/m^3)'] = qsync
     qline = np.zeros(nexp)                      ; params['qline(MW/m^3)'] = qline
-    qei = np.zeros()                            ; params["qei(MW/m^3)"] = qei
+    qei = np.zeros(nexp)                            ; params["qei(MW/m^3)"] = qei
     qrfe = interp_to_nexp(c.PEICR[ai])          ; params['qrfe(MW/m^3)'] = qrfe
     qrfi = interp_to_nexp(c.PIICR[ai])          ; params['qrfi(MW/m^3)'] = qrfi
     qfuse = interp_to_nexp(c.PEDT[ai])          ; params['qfuse(MW/m^3)'] = qfuse
