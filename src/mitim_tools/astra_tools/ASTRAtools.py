@@ -126,9 +126,9 @@ def convert_ASTRA_to_gacode(astra_root,
             break
 
     if cdf_file is None:
-        raise(FileNotFoundError("No CDF file found in {}".format(astra_results_dir)))
+        raise(FileNotFoundError(f"No CDF file found in {astra_results_dir}"))
     else:
-        print("Found CDF file: {}".format(cdf_file))
+        print(f"Found CDF file: {cdf_file}")
 
     c = ASTRA_CDFtools.CDFreactor(cdf_file)
     c.calcProfiles()
@@ -141,9 +141,9 @@ def convert_ASTRA_to_gacode(astra_root,
             break
 
     if geometry_file is None:
-        raise(FileNotFoundError("No geqdsk file found in {}".format(astra_results_dir)))
+        raise(FileNotFoundError(f"No geqdsk file found in {astra_results_dir}"))
     else:
-        print("Found gfile: {}".format(geometry_file))
+        print(f"Found gfile: {geometry_file}")
 
     try:
         g = GEQtools.MITIMgeqdsk(geometry_file)
