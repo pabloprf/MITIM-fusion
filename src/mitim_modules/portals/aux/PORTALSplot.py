@@ -1874,7 +1874,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     axs, axsRes = STATEtools.add_axes_fig1(fig)
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
-        self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
+        if indeces is not None:
+            self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
 
     axs[0].legend(loc="best")
 
