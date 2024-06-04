@@ -179,7 +179,16 @@ def insertPowersNew(profiles, state=None):
 
     # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
     extra_points = 2  # If I don't allow this, it will fail
-    state_temp = copy.deepcopy(state)
+
+    # ~~~ Perform copy of the state but without the unpickled fn
+    state_shallow_copy = copy.copy(state)
+    if hasattr(state_shallow_copy, 'fn'):
+        del state_shallow_copy.fn
+    if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
+        del state_shallow_copy.model_results.fn
+    state_temp = copy.deepcopy(state_shallow_copy)
+    # ~~~
+
     rhoy = profiles.profiles["rho(-)"][:-extra_points]
     with IOtools.HiddenPrints():
         state_temp.__init__(profiles, rhoy)
