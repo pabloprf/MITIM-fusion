@@ -1182,17 +1182,6 @@ class PROFILES_GACODE:
 
     def export_to_table(self, table=None, name=None):
 
-        # TO REMOVE
-        if "QiQe" not in self.derived:
-            self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
-        if "qTr" not in self.derived:
-            self.derived["qTr"] = (
-                self.derived["qe_aux_MWmiller"]
-                + self.derived["qi_aux_MWmiller"]
-                + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
-                - self.derived["qrad_MWmiller"]
-            )
-
         if table is None:
             table = DataTable()
 
@@ -1941,7 +1930,8 @@ class PROFILES_GACODE:
 
                 self.fn = FigureNotebook("PROFILES Notebook", geometry="1600x1000")
 
-            fig = self.fn.add_figure(label="Profiles" + fnlab)
+            fig, fig2, fig3, fig4, fig5, fig6, fig7 = add_figures(self.fn, fnlab=fnlab)
+
             grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
             axs1 = [
                 fig.add_subplot(grid[0, 0]),
@@ -1955,7 +1945,7 @@ class PROFILES_GACODE:
                 fig.add_subplot(grid[2, 2]),
             ]
 
-            fig2 = self.fn.add_figure(label="Powers" + fnlab)
+            
             grid = plt.GridSpec(3, 2, hspace=0.3, wspace=0.3)
             axs2 = [
                 fig2.add_subplot(grid[0, 0]),
@@ -1966,7 +1956,7 @@ class PROFILES_GACODE:
                 fig2.add_subplot(grid[2, 1]),
             ]
 
-            fig3 = self.fn.add_figure(label="Geometry" + fnlab)
+            
             grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.5)
             ax00c = fig3.add_subplot(grid[0, 0])
             axs3 = [
@@ -1984,7 +1974,7 @@ class PROFILES_GACODE:
                 fig3.add_subplot(grid[2, 3], sharex=ax00c),
             ]
 
-            fig4 = self.fn.add_figure(label="Gradients" + fnlab)
+            
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axs4 = [
                 fig4.add_subplot(grid[0, 0]),
@@ -1995,7 +1985,6 @@ class PROFILES_GACODE:
                 fig4.add_subplot(grid[1, 2]),
             ]
 
-            fig5 = self.fn.add_figure(label="Flows" + fnlab)
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
 
             axsFlows = [
@@ -2007,7 +1996,7 @@ class PROFILES_GACODE:
                 fig5.add_subplot(grid[1, 2]),
             ]
 
-            fig6 = self.fn.add_figure(label="Other" + fnlab)
+            
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axs6 = [
                 fig6.add_subplot(grid[0, 0]),
@@ -2019,7 +2008,7 @@ class PROFILES_GACODE:
                 fig6.add_subplot(grid[1, 3]),
             ]
 
-            fig7 = self.fn.add_figure(label="Impurities" + fnlab)
+            
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             axsImps = [
                 fig7.add_subplot(grid[0, 0]),
@@ -2813,6 +2802,7 @@ class PROFILES_GACODE:
         RhoLocationsPlot=[],
         plotImpurity=None,
         plotRotation=False,
+        autoscale=True,
     ):
         if axs4 is None:
             plt.ion()
@@ -2902,30 +2892,36 @@ class PROFILES_GACODE:
         ax = axs4[0]
         ax.set_ylabel("$T_e$ (keV)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax.legend(loc="best", fontsize=7)
         ax = axs4[2]
         ax.set_ylabel("$T_i$ (keV)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[4]
         ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         ax = axs4[1]
         ax.set_ylabel("$a/L_{Te}$")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[3]
         ax.set_ylabel("$a/L_{Ti}$")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
         ax = axs4[5]
         ax.set_ylabel("$a/L_{ne}$")
         ax.axhline(y=0, ls="--", lw=0.5, c="k")
         ax.set_xlabel(labelx)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        if autoscale:
+            GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         cont = 0
         if plotImpurity is not None:
@@ -2940,7 +2936,8 @@ class PROFILES_GACODE:
             )
             axs4[6 + cont].set_ylabel("$n_Z$ ($10^{20}m^{-3}$)")
             axs4[6].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             if "derived" in self.__dict__:
                 axs4[7 + cont].plot(
                     xcoord[:ix],
@@ -2954,7 +2951,8 @@ class PROFILES_GACODE:
             axs4[7 + cont].set_ylabel("$a/L_{nZ}$")
             axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
             axs4[7 + cont].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             cont += 2
 
         if plotRotation:
@@ -2982,7 +2980,8 @@ class PROFILES_GACODE:
             axs4[7 + cont].set_ylabel("-$d\\omega_0/dr$ (krad/s/cm)")
             axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
             axs4[7 + cont].set_xlabel(labelx)
-            GRAPHICStools.autoscale_y(ax, bottomy=0)
+            if autoscale:
+                GRAPHICStools.autoscale_y(ax, bottomy=0)
             cont += 2
 
         for x0 in RhoLocationsPlot:
@@ -3767,15 +3766,7 @@ def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
         fn = FigureNotebook("Profiles", geometry="1800x900")
-        figProf_1 = fn.add_figure(label="Profiles")
-        figProf_2 = fn.add_figure(label="Powers")
-        figProf_3 = fn.add_figure(label="Geometry")
-        figProf_4 = fn.add_figure(label="Gradients")
-
-        figFlows = fn.add_figure(label="Flows")
-
-        figProf_6 = fn.add_figure(label="Other")
-        fig7 = fn.add_figure(label="Impurities")
+        figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7 = add_figures(fn)
 
     grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
     axsProf_1 = [
@@ -4032,3 +4023,17 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p.deriveQuantities()
 
     return p
+
+def add_figures(fn, fnlab='', fnlab_pre=''):
+
+    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab)
+    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab)
+    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab)
+    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab)
+    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab)
+    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab)
+    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab)
+    figs = [figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7]
+
+    return figs
+

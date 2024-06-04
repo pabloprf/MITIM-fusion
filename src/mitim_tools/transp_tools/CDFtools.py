@@ -13830,7 +13830,6 @@ class CDFreactor:
             folderGACODE,
             restart=restartPreparation,
             onlyThermal_TGYRO=onlyThermal_TGYRO,
-            remove_tmpTGYRO=True,  # Remove intermediate to TGYRO (to avoid space problems with too many CDFs)
             cdf_open=self,
             forceIfRestart=forceIfRestart,
         )

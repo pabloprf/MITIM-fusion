@@ -28,7 +28,7 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Define function to optimize
 
-		class mainFunction(FUNmain):
+		class mainFunction(opt_evaluator):
 
 			def __init__(self,folder,namelist=None,function_parameters={}):
 
@@ -65,7 +65,7 @@ Notes:
 
 
 # Parent optimization function
-class FUNmain:
+class opt_evaluator:
     def __init__(
         self,
         folder,
@@ -77,7 +77,7 @@ class FUNmain:
         Namelist file can be provided and will be copied to the folder
         """
 
-        print("- Parent FUNmain function initialized")
+        print("- Parent opt_evaluator function initialized")
 
         self.folder = folder
 
@@ -318,11 +318,11 @@ class FUNmain:
                     typeMsg="i",
                 )
 
-                if class_name == "evaluateFREEGSU":
+                if class_name == "freegsu":
                     from mitim_modules.freegsu.FREEGSUmain import analyze_results
-                elif class_name == "evaluateVITALS":
+                elif class_name == "vitals":
                     from mitim_modules.vitals.VITALSmain import analyze_results
-                elif class_name == "evaluatePORTALS":
+                elif class_name == "portals":
                     from mitim_modules.portals.PORTALSmain import analyze_results
                 else:
                     analyze_results = None
@@ -373,6 +373,7 @@ class PRF_BO:
         self.storeClass = storeClass
         self.askQuestions = askQuestions
         self.seed = seed
+        self.avoidPoints = []
 
         if (not self.restartYN) and askQuestions:
             if not print(
@@ -1915,7 +1916,7 @@ def read_from_scratch(file):
     This reads a pickle file for the entire class
     """
 
-    mainFunction = FUNmain(None)
+    mainFunction = opt_evaluator(None)
     prf = PRF_BO(mainFunction, onlyInitialize=True, askQuestions=False)
     prf = prf.read(file=file, iteration=-1, provideFullClass=True)
 

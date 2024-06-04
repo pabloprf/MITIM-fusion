@@ -1,11 +1,9 @@
 import torch
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import PLASMAtools
-from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def parabolizePlasma(self):
     _, T = PLASMAtools.parabolicProfile(
@@ -128,253 +126,231 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-def TGYROmodeledVariables(
-    self,
+def TGYROmodeledVariables(TGYROresults,
+    powerstate,
     useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
     includeFast=False,
     impurityPosition=1,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
-    dfT=torch.Tensor(),
-):
+    provideTurbulentExchange=False,
+    provideTargets=False
+    ):
     """
-    impurityPosition will be substracted one
+    This function is used to extract the TGYRO results and store them in the powerstate object, from numpy arrays to torch tensors.
+
+    Notes:
+    - impurityPosition will be substracted one
     """
-    if "tgyro_stds" not in self.__dict__:
-        self.tgyro_stds = False
+
+    if "tgyro_stds" not in TGYROresults.__dict__:
+        TGYROresults.tgyro_stds = False
 
     if UseFineGridTargets:
-        self.useFineGridTargets(impurityPosition=impurityPosition)
-
-    portals_variables = {}
+        TGYROresults.useFineGridTargets(impurityPosition=impurityPosition)
 
     # **********************************
     # *********** Electron Energy Fluxes
     # **********************************
 
-    portals_variables["Qe_turb"] = self.Qe_sim_turb[:, :]
-    portals_variables["Qe_neo"] = self.Qe_sim_neo[:, :]
-    portals_variables["Qe"] = self.Qe_tar[:, :]
+    powerstate.plasma["Pe_tr_turb"] = torch.Tensor(TGYROresults.Qe_sim_turb[:, :]).to(powerstate.dfT)
+    powerstate.plasma["Pe_tr_neo"] = torch.Tensor(TGYROresults.Qe_sim_neo[:, :]).to(powerstate.dfT)
 
-    portals_variables["Qe_turb_stds"] = (
-        self.Qe_sim_turb_stds if self.tgyro_stds else None
-    )
-    portals_variables["Qe_neo_stds"] = self.Qe_sim_neo_stds if self.tgyro_stds else None
-    portals_variables["Qe_stds"] = self.Qe_tar_stds if self.tgyro_stds else None
+    powerstate.plasma["Pe_tr_turb_stds"] = torch.Tensor(TGYROresults.Qe_sim_turb_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Pe_tr_neo_stds"] = torch.Tensor(TGYROresults.Qe_sim_neo_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    
+    if provideTargets:
+        powerstate.plasma["Pe"] = torch.Tensor(TGYROresults.Qe_tar[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Pe_stds"] = torch.Tensor(TGYROresults.Qe_tar_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Ion Energy Fluxes
     # **********************************
 
     if includeFast:
-        portals_variables["Qi_turb"] = self.QiIons_sim_turb[:, :]
-        portals_variables["Qi_neo"] = self.QiIons_sim_neo[:, :]
 
-        portals_variables["Qi_turb_stds"] = (
-            self.QiIons_sim_turb_stds if self.tgyro_stds else None
-        )
-        portals_variables["Qi_neo_stds"] = (
-            self.QiIons_sim_neo_stds if self.tgyro_stds else None
-        )
+        powerstate.plasma["Pi_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Pi_tr_neo"] = torch.Tensor(TGYROresults.QiIons_sim_neo[:, :]).to(powerstate.dfT)
+        
+        powerstate.plasma["Pi_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Pi_tr_neo_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     else:
-        portals_variables["Qi_turb"] = self.QiIons_sim_turb_thr[:, :]
-        portals_variables["Qi_neo"] = self.QiIons_sim_neo_thr[:, :]
 
-        portals_variables["Qi_turb_stds"] = (
-            self.QiIons_sim_turb_thr_stds if self.tgyro_stds else None
-        )
-        portals_variables["Qi_neo_stds"] = (
-            self.QiIons_sim_neo_thr_stds if self.tgyro_stds else None
-        )
+        powerstate.plasma["Pi_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Pi_tr_neo"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr[:, :]).to(powerstate.dfT)
 
-    portals_variables["Qi"] = self.Qi_tar[:, :]
-    portals_variables["Qi_stds"] = self.Qi_tar_stds[:, :] if self.tgyro_stds else None
+        powerstate.plasma["Pi_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Pi_tr_neo_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+
+    if provideTargets:
+        powerstate.plasma["Pi"] = torch.Tensor(TGYROresults.Qi_tar[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Pi_stds"] = torch.Tensor(TGYROresults.Qi_tar_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Momentum Fluxes
     # **********************************
 
-    portals_variables["Mt_turb"] = self.Mt_sim_turb[
-        :, :
-    ]  # So far, let's include fast in momentum
-    portals_variables["Mt_neo"] = self.Mt_sim_neo[:, :]
-    portals_variables["Mt"] = self.Mt_tar[:, :]
+    powerstate.plasma["Mt_tr_turb"] = torch.Tensor(TGYROresults.Mt_sim_turb[:, :]).to(powerstate.dfT) # So far, let's include fast in momentum
+    powerstate.plasma["Mt_tr_neo"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :]).to(powerstate.dfT)
 
-    portals_variables["Mt_turb_stds"] = (
-        self.Mt_sim_turb_stds if self.tgyro_stds else None
-    )
-    portals_variables["Mt_neo_stds"] = self.Mt_sim_neo_stds if self.tgyro_stds else None
-    portals_variables["Mt_stds"] = self.Mt_tar_stds[:, :] if self.tgyro_stds else None
+    powerstate.plasma["Mt_tr_turb_stds"] = torch.Tensor(TGYROresults.Mt_sim_turb_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Mt_tr_neo_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    
+    if provideTargets:
+        powerstate.plasma["Mt"] = torch.Tensor(TGYROresults.Mt_tar[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Mt_stds"] = torch.Tensor(TGYROresults.Mt_tar_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Particle Fluxes
     # **********************************
 
-    if not useConvectiveFluxes:
-        portals_variables["Ge_turb"] = self.Ge_sim_turb[:, :]
-        portals_variables["Ge_neo"] = self.Ge_sim_neo[:, :]
-        portals_variables["Ge"] = self.Ge_tar[:, :]
+    # Store raw fluxes for better plotting later
+    powerstate.plasma["Ce_tr_turb_raw"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :]).to(powerstate.dfT)
+    powerstate.plasma["Ce_tr_neo_raw"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :]).to(powerstate.dfT)
 
-        portals_variables["Ge_turb_stds"] = (
-            self.Ge_sim_turb_stds if self.tgyro_stds else None
-        )
-        portals_variables["Ge_neo_stds"] = (
-            self.Ge_sim_neo_stds if self.tgyro_stds else None
-        )
-        portals_variables["Ge_stds"] = (
-            self.Ge_tar_stds[:, :] if self.tgyro_stds else None
-        )
+    powerstate.plasma["Ce_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ce_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    
+    if provideTargets:
+        powerstate.plasma["Ce_raw"] = torch.Tensor(TGYROresults.Ge_tar[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Ce_raw_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+
+    if not useConvectiveFluxes:
+
+        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ce_tr_turb_raw"]
+        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ce_tr_neo_raw"]
+
+        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ce_tr_turb_raw_stds"]
+        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ce_tr_neo_raw_stds"]
+        
+        if provideTargets:
+            powerstate.plasma["Ce"] = powerstate.plasma["Ce_raw"]
+            powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_raw_stds"]    
 
     else:
-        portals_variables["Ge_turb"] = self.Ce_sim_turb[:, :]
-        portals_variables["Ge_neo"] = self.Ce_sim_neo[:, :]
-        portals_variables["Ge"] = self.Ce_tar[:, :]
 
-        portals_variables["Ge_turb_stds"] = (
-            self.Ce_sim_turb_stds if self.tgyro_stds else None
-        )
-        portals_variables["Ge_neo_stds"] = (
-            self.Ce_sim_neo_stds if self.tgyro_stds else None
-        )
-        portals_variables["Ge_stds"] = (
-            self.Ce_tar_stds[:, :] if self.tgyro_stds else None
-        )
+        powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :]).to(powerstate.dfT)
+        powerstate.plasma["Ce_tr_neo"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :]).to(powerstate.dfT)
+
+        powerstate.plasma["Ce_tr_turb_stds"] = torch.Tensor(TGYROresults.Ce_sim_turb_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Ce_tr_neo_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        
+        if provideTargets:
+            powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[:, :]).to(powerstate.dfT)
+            powerstate.plasma["Ce_stds"] = torch.Tensor(TGYROresults.Ce_tar_stds).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Impurity Fluxes
     # **********************************
 
-    if not useConvectiveFluxes:
-        portals_variables["GZ_turb"] = (
-            self.Gi_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ_neo"] = (
-            self.Gi_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ"] = self.Gi_tar[impurityPosition - 1, :, :] / OriginalFimp
+    # Store raw fluxes for better plotting later
+    powerstate.plasma["CZ_tr_turb_raw"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+    powerstate.plasma["CZ_tr_neo_raw"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+    
+    powerstate.plasma["CZ_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
-        portals_variables["GZ_turb_stds"] = (
-            self.Gi_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_neo_stds"] = (
-            self.Gi_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_stds"] = (
-            self.Gi_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
+    if provideTargets:
+        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+
+    if not useConvectiveFluxes:
+
+        powerstate.plasma["CZ_tr_turb"] = powerstate.plasma["CZ_tr_turb_raw"]
+        powerstate.plasma["CZ_tr_neo"] = powerstate.plasma["CZ_tr_neo_raw"]
+        
+        powerstate.plasma["CZ_tr_turb_stds"] = powerstate.plasma["CZ_tr_turb_raw_stds"]
+        powerstate.plasma["CZ_tr_neo_stds"] = powerstate.plasma["CZ_tr_neo_raw_stds"]
+        
+        if provideTargets:
+            powerstate.plasma["CZ"] = powerstate.plasma["CZ_raw"]
+            powerstate.plasma["CZ_stds"] = powerstate.plasma["CZ_raw_stds"]
 
     else:
-        portals_variables["GZ_neo"] = (
-            self.Ci_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ_turb"] = (
-            self.Ci_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ"] = self.Ci_tar[impurityPosition - 1, :, :] / OriginalFimp
 
-        portals_variables["GZ_turb_stds"] = (
-            self.Ci_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_neo_stds"] = (
-            self.Ci_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_stds"] = (
-            self.Ci_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if self.tgyro_stds
-            else None
-        )
+        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+
+        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        
+        if provideTargets:
+            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp
+            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition - 1, :]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Energy Exchange
     # **********************************
 
-    portals_variables["PexchTurb"] = self.EXe_sim_turb[:, :]  # MW/m^3
-    portals_variables["PexchTurb_stds"] = (
-        self.EXe_sim_turb_stds[:, :] if self.tgyro_stds else None
-    )
+    if provideTurbulentExchange:
+        powerstate.plasma["PexchTurb"] = torch.Tensor(TGYROresults.EXe_sim_turb[:, :]).to(powerstate.dfT)
+        powerstate.plasma["PexchTurb_stds"] = torch.Tensor(TGYROresults.EXe_sim_turb_stds[:, :]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    else:
+        powerstate.plasma["PexchTurb"] = powerstate.plasma["Pe_tr_turb"] * 0.0
+        powerstate.plasma["PexchTurb_stds"] = powerstate.plasma["Pe_tr_turb"] * 0.0
 
-    if forceZeroParticleFlux:
-        portals_variables["Ge"] = self.Ge_tar[:, :] * 0.0
+    # **********************************
+    # *********** Traget extra
+    # **********************************
 
-    # ----------------------------------------------------------------------------------------
-    # Prepare dictionary that is equal to what portals pseudo does in PORTALSmain (calculatePseudos)
-    # ----------------------------------------------------------------------------------------
+    if forceZeroParticleFlux and provideTargets:
+        powerstate.plasma["Ce"] = powerstate.plasma["Ce"] * 0.0
+        powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_stds"] * 0.0
 
-    portals_variables["var_dict"] = {}
+    # ------------------------------------------------------------------------------------------------------------------------
+    # Sum here turbulence and neoclassical, after modifications
+    # ------------------------------------------------------------------------------------------------------------------------
 
-    mapper = {
-        "QeTurb": "Qe_turb",
-        "QiTurb": "Qi_turb",
-        "GeTurb": "Ge_turb",
-        "GZTurb": "GZ_turb",
-        "MtTurb": "Mt_turb",
-        "QeNeo": "Qe_neo",
-        "QiNeo": "Qi_neo",
-        "GeNeo": "Ge_neo",
-        "GZNeo": "GZ_neo",
-        "MtNeo": "Mt_neo",
-        "QeTar": "Qe",
-        "QiTar": "Qi",
-        "GeTar": "Ge",
-        "GZTar": "GZ",
-        "MtTar": "Mt",
-        "PexchTurb": "PexchTurb",
-    }
+    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
+    for ikey in quantities:
+        powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
 
-    for ikey in mapper:
-        portals_variables["var_dict"][ikey] = torch.Tensor(
-            portals_variables[mapper[ikey]]
-        ).to(dfT)[:, 1:]
-        if self.tgyro_stds:
-            portals_variables["var_dict"][ikey + "_stds"] = torch.Tensor(
-                portals_variables[mapper[ikey] + "_stds"]
-            ).to(dfT)[:, 1:]
-        else:
-            portals_variables["var_dict"][ikey + "_stds"] = None
-
-    # ----------------------------------------------------------------------------------------
-    # labels for plotting
-    # ----------------------------------------------------------------------------------------
-
-    portals_variables["labels"] = {
-        "te": "$Q_e$ ($MW/m^2$)",
-        "ti": "$Q_i$ ($MW/m^2$)",
-        "ne": (
-            "$Q_{conv}$ ($MW/m^2$)"
-            if useConvectiveFluxes
-            else "$\\Gamma_e$ ($10^{20}/s/m^2$)"
-        ),
-        "nZ": (
-            "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
-            if useConvectiveFluxes
-            else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)"
-        ),
-        "w0": "$M_T$ ($J/m^2$)",
-    }
-
-    return portals_variables
+    return powerstate
 
 
-def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
+def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
     """
     Notes
     -----
         - Works with tensors
         - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "QeTurb": "Pe_tr_turb",
+            "QiTurb": "Pi_tr_turb",
+            "GeTurb": "Ce_tr_turb",
+            "GZTurb": "CZ_tr_turb",
+            "MtTurb": "Mt_tr_turb",
+            "QeNeo": "Pe_tr_neo",
+            "QiNeo": "Pi_tr_neo",
+            "GeNeo": "Ce_tr_neo",
+            "GZNeo": "CZ_tr_neo",
+            "MtNeo": "Mt_tr_neo",
+            "QeTar": "Pe",
+            "QiTar": "Pi",
+            "GeTar": "Ce",
+            "GZTar": "CZ",
+            "MtTar": "Mt",
+            "PexchTurb": "PexchTurb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
 
@@ -398,7 +374,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
         torch.Tensor().to(dfT),
         torch.Tensor().to(dfT),
     )
-    for prof in TGYROparameters["ProfilesPredicted"]:
+    for prof in powerstate.ProfilesPredicted:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":
@@ -477,7 +453,7 @@ def calculatePseudos(var_dict, PORTALSparameters, TGYROparameters, powerstate):
 
 
 def calculatePseudos_distributions(
-    var_dict, PORTALSparameters, TGYROparameters, powerstate
+    powerstate, PORTALSparameters, specific_vars=None,
 ):
     """
     Notes
@@ -485,6 +461,40 @@ def calculatePseudos_distributions(
             - Works with tensors
             - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "QeTurb": "Pe_tr_turb",
+            "QiTurb": "Pi_tr_turb",
+            "GeTurb": "Ce_tr_turb",
+            "GZTurb": "CZ_tr_turb",
+            "MtTurb": "Mt_tr_turb",
+            "QeNeo": "Pe_tr_neo",
+            "QiNeo": "Pi_tr_neo",
+            "GeNeo": "Ce_tr_neo",
+            "GZNeo": "CZ_tr_neo",
+            "MtNeo": "Mt_tr_neo",
+            "QeTar": "Pe",
+            "QiTar": "Pi",
+            "GeTar": "Ce",
+            "GZTar": "CZ",
+            "MtTar": "Mt",
+            "PexchTurb": "PexchTurb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
 
@@ -509,7 +519,7 @@ def calculatePseudos_distributions(
 
     of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
     ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
-    for prof in TGYROparameters["ProfilesPredicted"]:
+    for prof in powerstate.ProfilesPredicted:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":

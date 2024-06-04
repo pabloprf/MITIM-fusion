@@ -37,7 +37,7 @@ numVariations = args.var
 # Preparation
 # ***************************************************************************************************
 
-opt_fun = STRATEGYtools.FUNmain(folder)
+opt_fun = STRATEGYtools.opt_evaluator(folder)
 opt_fun.read_optimization_results(analysis_level=4)
 step = opt_fun.prfs_model.steps[-1]
 

@@ -179,7 +179,16 @@ def insertPowersNew(profiles, state=None):
 
     # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
     extra_points = 2  # If I don't allow this, it will fail
-    state_temp = copy.deepcopy(state)
+
+    # ~~~ Perform copy of the state but without the unpickled fn
+    state_shallow_copy = copy.copy(state)
+    if hasattr(state_shallow_copy, 'fn'):
+        del state_shallow_copy.fn
+    if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
+        del state_shallow_copy.model_results.fn
+    state_temp = copy.deepcopy(state_shallow_copy)
+    # ~~~
+
     rhoy = profiles.profiles["rho(-)"][:-extra_points]
     with IOtools.HiddenPrints():
         state_temp.__init__(profiles, rhoy)
@@ -297,28 +306,28 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
 		- Because TGYRO doesn't care about convective fluxes, I need to convert it AFTER I have the ge_Miller integrated and interpolated, so this happens
 							at each powerstate evaluation
 	"""
-    self.plasma["PauxE"] = (
+    self.plasma["Paux_e"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["qe_aux_MWmiller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["PauxI"] = (
+    self.plasma["Paux_i"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["qi_aux_MWmiller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["GauxE"] = (
+    self.plasma["Gaux_e"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["ge_10E20miller"])
         ).to(dfT)
         / self.plasma["volp"]
     )
-    self.plasma["GauxZ"] = self.plasma["GauxE"] * 0.0
+    self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
 
     # Momentum flux is J/m^2. Momentum source is given in input.gacode a N/m^2 or J/m^3. Integrated in volume is J or N*m
-    self.plasma["MauxT"] = (
+    self.plasma["Maux"] = (
         torch.from_numpy(
             interpFunction(rho_vec, rho_use, input_gacode.derived["mt_Jmiller"])
         ).to(dfT)

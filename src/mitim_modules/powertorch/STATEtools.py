@@ -1,18 +1,18 @@
 import copy
 import torch
 import datetime
+import os
 import matplotlib.pyplot as plt
-import numpy as np
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
-from mitim_modules.powertorch.physics import TARGETStools, TRANSPORTtools, CALCtools
+from mitim_modules.powertorch.physics import TARGETStools, CALCtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 UseCUDAifAvailable = True
-
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")
@@ -20,11 +20,9 @@ def read_saved_state(file):
         state = pickle.load(handle)
     return state
 
-
 # ------------------------------------------------------------------
 # POWERSTATE Class
 # ------------------------------------------------------------------
-
 
 class powerstate:
     def __init__(
@@ -87,11 +85,11 @@ class powerstate:
             "ne": 1,
             "nZ": 1,
             "w0": 1,
-            "PauxE": 1,
-            "PauxI": 1,
-            "GauxE": 1,
-            "GauxZ": 1,
-            "MauxT": 1,
+            "Paux_e": 1,
+            "Paux_i": 1,
+            "Gaux_e": 1,
+            "Gaux_Z": 1,
+            "Maux": 1,
         }
         self.keys2D = {"ni": 1}
         self.keys0D = {}
@@ -108,9 +106,9 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-        input_gacode = copy.deepcopy(input_gacode_orig)
-        if "derived" not in input_gacode.__dict__:
-            input_gacode.deriveQuantities()
+        self.profiles = copy.deepcopy(input_gacode_orig)
+        if "derived" not in self.profiles.__dict__:
+            self.profiles.deriveQuantities()
 
         """
 		------------------------------------------------------------------------------------------------------------------------------
@@ -140,7 +138,7 @@ class powerstate:
             rho_new = torch.sort(rho_new)[0]
 
             # Recalculate with higher resolution
-            TRANSFORMtools.fromGacodeToPower(self, input_gacode, rho_new)
+            TRANSFORMtools.fromGacodeToPower(self, self.profiles, rho_new)
 
             # Insert back
             self.plasma_fine = copy.deepcopy(self.plasma)
@@ -159,7 +157,7 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
-        TRANSFORMtools.fromGacodeToPower(self, input_gacode, self.plasma["rho"])
+        TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
 
         # -------------------------------------------------------------------------------------
         # Postprocessing operations
@@ -184,6 +182,9 @@ class powerstate:
         rederive_profiles=True,
         reRead=True,
     ):
+        '''
+        "profies" is a PROFILES_GACODE object to use as basecase
+        '''
         print(">> Inserting powerstate profiles into input.gacode")
 
         profiles = TRANSFORMtools.fromPowerToGacode(
@@ -198,6 +199,8 @@ class powerstate:
 
         if writeFile is not None:
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(writeFile)}")
+            if not os.path.exists(os.path.dirname(writeFile)):
+                os.makedirs(os.path.dirname(writeFile))
             profiles.writeCurrentStatus(file=writeFile)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
@@ -261,29 +264,26 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def calculate(
-        self, X, nameRun="test", folder="~/scratch/", storeInfo=False, extra_params={}
+        self, X, nameRun="test", folder="~/scratch/", extra_params={}
     ):
         """
         Provide what's needed for flux-matching
         """
 
-        # 1. Modify gradients
+        # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
         self.modify(X)
 
-        # 2. Plasma parameters
+        # 2. Plasma parameters (te,ti,ne,nZ,w0 -> Qgb,Ggb,Pgb,Sgb,nuei,rho_s,c_s,tite,fZ,beta_e,w0_n,aLw0_n)
         self.calculateProfileFunctions()
 
-        # 3. Sources and sinks
-        if self.TargetCalc == "powerstate":
-            self.calculateTargets()  # Calculate targets based on powerstate functions
-        else:
-            pass  # Use what it is going to be calculated in the next step
+        # 3. Sources and sinks (populates components and Pe,Pi,...)
+        assumedPercentError = self.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
+        self.calculateTargets(assumedPercentError=assumedPercentError)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
-        # 4. Turbulent and neoclassical transport
+        # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
         self.calculateTransport(
             nameRun=nameRun,
             folder=folder,
-            storeInfo=storeInfo,
             extra_params=extra_params,
         )
 
@@ -353,48 +353,26 @@ class powerstate:
 
     def plot(self, axs=None, axsRes=None, figs=None, c="r", label=""):
         if axs is None:
+            axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fn = FigureNotebook("PowerState", geometry="1800x900")
-            figMain = self.fn.add_figure(label="PowerState")
+            fn = FigureNotebook("PowerState", geometry="1800x900")
 
-            figProf_1 = self.fn.add_figure(label="Profiles")
-            figProf_2 = self.fn.add_figure(label="Powers")
-            figProf_3 = self.fn.add_figure(label="Geometry")
-            figProf_4 = self.fn.add_figure(label="Gradients")
-            figFlows = self.fn.add_figure(label="Flows")
-            figProf_6 = self.fn.add_figure(label="Other")
-            fig7 = self.fn.add_figure(label="Impurities")
-            figs = figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7
+            figMain = fn.add_figure(label="PowerState")
+            figs = PROFILEStools.add_figures(fn)
 
-            grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.3)
-
-            axs = [
-                figMain.add_subplot(grid[0, 1]),
-                figMain.add_subplot(grid[0, 2]),
-                figMain.add_subplot(grid[0, 3]),
-                figMain.add_subplot(grid[0, 4]),
-                figMain.add_subplot(grid[0, 5]),
-                figMain.add_subplot(grid[1, 1]),
-                figMain.add_subplot(grid[1, 2]),
-                figMain.add_subplot(grid[1, 3]),
-                figMain.add_subplot(grid[1, 4]),
-                figMain.add_subplot(grid[1, 5]),
-                figMain.add_subplot(grid[2, 1]),
-                figMain.add_subplot(grid[2, 2]),
-                figMain.add_subplot(grid[2, 3]),
-                figMain.add_subplot(grid[2, 4]),
-                figMain.add_subplot(grid[2, 5]),
-                figMain.add_subplot(grid[3, 1]),
-                figMain.add_subplot(grid[3, 2]),
-                figMain.add_subplot(grid[3, 3]),
-                figMain.add_subplot(grid[3, 4]),
-                figMain.add_subplot(grid[3, 5]),
-            ]
-
-            axsRes = figMain.add_subplot(grid[:, 0])
+            axs, axsRes = add_axes_fig1(figMain)
+        
+        else:
+            axsNotGiven = False
+            fn = None
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
+
+        if axsNotGiven:
+            fn.show()
+
+        return fn
 
     # ------------------------------------------------------------------
     # Main tools
@@ -622,7 +600,7 @@ class powerstate:
                 axis=1,
             )
 
-            self.plasma["w0"] = varN * factor_mult  # .clamp(min=0,max=200)
+            self.plasma["w0"] = varN * factor_mult
 
         return aLT_withZero
 
@@ -673,16 +651,9 @@ class powerstate:
 		------------------------------------------
 		"""
 
-        self.keys1D_derived["Qgb"] = 1
-        self.keys1D_derived["Ggb"] = 1
-        self.keys1D_derived["Pgb"] = 1
-        self.keys1D_derived["Sgb"] = 1
-        self.keys1D_derived["nuei"] = 1
-        self.keys1D_derived["rho_s"] = 1
-        self.keys1D_derived["c_s"] = 1
-        self.keys1D_derived["tite"] = 1
-        self.keys1D_derived["fZ"] = 1
-        self.keys1D_derived["beta_e"] = 1
+        quantities = ['Qgb', 'Ggb', 'Pgb', 'Sgb', 'nuei', 'rho_s', 'c_s', 'tite', 'fZ', 'beta_e']
+        for ikey in quantities:
+            self.keys1D_derived[ikey] = 1
 
         """
 		Rotation stuff
@@ -699,7 +670,7 @@ class powerstate:
             self.keys1D_derived["w0_n"] = 1
             self.keys1D_derived["aLw0_n"] = 1
 
-    def calculateTargets(self):
+    def calculateTargets(self, assumedPercentError=1.0):
         """
         Update the targets of the current state
         """
@@ -833,27 +804,39 @@ class powerstate:
         # **************************************************************************************************
 
         self.plasma["Pe"] = (
-            self.plasma["PauxE"] + P[: qe.shape[0], :] + PextraE
+            self.plasma["Paux_e"] + P[: qe.shape[0], :] + PextraE
         )  # MW/m^2
         self.plasma["Pi"] = (
-            self.plasma["PauxI"] + P[qe.shape[0] :, :] + PextraI
+            self.plasma["Paux_i"] + P[qe.shape[0] :, :] + PextraI
         )  # MW/m^2
-        self.plasma["Ce"] = self.plasma["GauxE"]  # 1E20/s/m^2
-        self.plasma["CZ"] = self.plasma["GauxZ"]  # 1E20/s/m^2
-        self.plasma["Mt"] = self.plasma["MauxT"]  # J/m^2
+        self.plasma["Ce_raw"] = self.plasma["Gaux_e"]  # 1E20/s/m^2
+        self.plasma["CZ_raw"] = self.plasma["Gaux_Z"]  # 1E20/s/m^2
+        self.plasma["Mt"] = self.plasma["Maux"]  # J/m^2
 
         if self.useConvectiveFluxes:
             self.plasma["Ce"] = PLASMAtools.convective_flux(
-                self.plasma["te"], self.plasma["Ce"]
+                self.plasma["te"], self.plasma["Ce_raw"]
             )  # MW/m^2
             self.plasma["CZ"] = PLASMAtools.convective_flux(
-                self.plasma["te"], self.plasma["CZ"]
+                self.plasma["te"], self.plasma["CZ_raw"]
             )  # MW/m^2
+        else:
+            self.plasma["Ce"] = self.plasma["Ce_raw"]
+            self.plasma["CZ"] = self.plasma["CZ_raw"]
 
         if (
             "forceZeroParticleFlux" in self.TransportOptions["ModelOptions"]
         ) and self.TransportOptions["ModelOptions"]["forceZeroParticleFlux"]:
             self.plasma["Ce"] = self.plasma["Ce"] * 0
+
+        '''
+        **************************************************************************************************
+        Errors
+        **************************************************************************************************
+        '''
+
+        for i in ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]:
+            self.plasma[i + "_stds"] = self.plasma[i] * assumedPercentError / 100 
 
         """
 		**************************************************************************************************
@@ -897,99 +880,37 @@ class powerstate:
             self.keys1D_derived[i] = 1
 
     def calculateTransport(
-        self, nameRun="test", folder="~/scratch/", storeInfo=False, extra_params={}
+        self, nameRun="test", folder="~/scratch/", extra_params={}
     ):
         """
-        Update the transport of the current state
+        Update the transport of the current state.
+        By default, this is when powerstate interacts with input.gacode (produces it even if it's not used in the calculation)
         """
 
         # ******* Nothing
         if self.TransportOptions["TypeTransport"] is None:
-            for i in [
-                "Pe_tr",
-                "Pi_tr",
-                "Ce_tr",
-                "CZ_tr",
-                "Mt_tr",
-                "Pe_tr_turb",
-                "Pi_tr_turb",
-                "Ce_tr_turb",
-                "CZ_tr_turb",
-                "Mt_tr_turb",
-                "Pe_tr_neo",
-                "Pi_tr_neo",
-                "Ce_tr_neo",
-                "CZ_tr_neo",
-                "Mt_tr_neo",
-            ]:
-                self.plasma[i] = self.plasma["te"][:, 1:] * 0.0
-
-            for i in ["Pe", "Pi", "Ce", "CZ", "Mt"]:
-                self.plasma[i] = self.plasma[i][:, 1:]
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import power_transport as transport
         # ******* TGLF+NEO
         elif "tgyro" in self.TransportOptions["TypeTransport"]:
-            TGYROresults = TRANSPORTtools.tgyro_model(
-                self,
-                self.TransportOptions["ModelOptions"],
-                name=nameRun,
-                folder=folder,
-                provideTargets=self.TargetCalc == "tgyro",
-                TypeTransport=self.TransportOptions["TypeTransport"],
-                extra_params=extra_params,
-            )
-
-            if storeInfo:
-                self.TGYROresults = TGYROresults
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import tgyro_model as transport
         # ******* Transport coefficients
         elif self.TransportOptions["TypeTransport"] == "chis":
-            TRANSPORTtools.diffusion_model(self, self.TransportOptions["ModelOptions"])
-
+            from mitim_modules.powertorch.physics.TRANSPORTtools import diffusion_model as transport
         # ******* Surrogate Model
         elif self.TransportOptions["TypeTransport"] == "surrogate":
-            TRANSPORTtools.surrogate_model(self, self.TransportOptions["ModelOptions"])
+            from mitim_modules.powertorch.physics.TRANSPORTtools import surrogate_model as transport
 
-        # ******* Nothing
-        elif self.TransportOptions["TypeTransport"] is None:
-            for i in [
-                "Pe_tr",
-                "Pi_tr",
-                "Ce_tr",
-                "CZ_tr",
-                "Mt_tr",
-                "Pe_tr_turb",
-                "Pi_tr_turb",
-                "Ce_tr_turb",
-                "CZ_tr_turb",
-                "Mt_tr_turb",
-                "Pe_tr_neo",
-                "Pi_tr_neo",
-                "Ce_tr_neo",
-                "CZ_tr_neo",
-                "Mt_tr_neo",
-            ]:
-                self.plasma[i] = self.plasma["te"] * 0.0
+        # *******************************************************************************************
+        # ******* Process
+        # *******************************************************************************************
 
-        # Make sure that the variables are on-repeat
-        for i in [
-            "Pe_tr",
-            "Pi_tr",
-            "Ce_tr",
-            "CZ_tr",
-            "Mt_tr",
-            "Pe_tr_turb",
-            "Pi_tr_turb",
-            "Ce_tr_turb",
-            "CZ_tr_turb",
-            "Mt_tr_turb",
-            "Pe_tr_neo",
-            "Pi_tr_neo",
-            "Ce_tr_neo",
-            "CZ_tr_neo",
-            "Mt_tr_neo",
-        ]:
-            self.keys1D_derived[i] = 1
+        transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        transport.produce_profiles()
+        transport.evaluate()
+        transport.clean()
+
+        # Pass the results as part of the powerstate class
+        self.model_results = transport.model_results
 
     def metric(self):
         """
@@ -1004,38 +925,38 @@ class powerstate:
         for c, i in enumerate(self.ProfilesPredicted):
             if i == "te":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pe"]), dim=1
+                    (self.plasma["P"], self.plasma["Pe"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pe_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Pe_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "ti":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pi"]), dim=1
+                    (self.plasma["P"], self.plasma["Pi"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pi_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Pi_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "ne":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Ce"]), dim=1
+                    (self.plasma["P"], self.plasma["Ce"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Ce_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Ce_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "nZ":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["CZ"]), dim=1
+                    (self.plasma["P"], self.plasma["CZ"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["CZ_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["CZ_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
             if i == "w0":
                 self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Mt"]), dim=1
+                    (self.plasma["P"], self.plasma["Mt"][:,1:]), dim=1
                 ).to(self.plasma["P"])
                 self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Mt_tr"]), dim=1
+                    (self.plasma["P_tr"], self.plasma["Mt_tr"][:,1:]), dim=1
                 ).to(self.plasma["P"])
 
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
@@ -1058,78 +979,51 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def determinePerformance(self, nameRun="test", folder="~/scratch/"):
+        '''
+        At this moment, this recalculates fusion and radiation, etc
+        '''
         folder = IOtools.expandPath(folder)
 
         # ************************************
         # Calculate state
         # ************************************
 
-        self.calculate(None, nameRun=nameRun, folder=folder, storeInfo=True)
+        self.calculate(None, nameRun=nameRun, folder=folder)
 
         # ************************************
         # Postprocessing
         # ************************************
 
-        if self.TargetCalc == "tgyro":
-            """
-            Full targets
-            """
-
-            tuple_rho_indeces = ()
-            for rho in self.tgyro_current.rhosToSimulate:
-                tuple_rho_indeces += (np.argmin(np.abs(rho - self.TGYROresults.rho)),)
-
-            (
-                self.plasma["Pfuse"],
-                self.plasma["Pfusi"],
-                self.plasma["Pie"],
-                self.plasma["Prad_bremms"],
-                self.plasma["Prad_sync"],
-                self.plasma["Prad_line"],
-            ) = TRANSPORTtools.full_targets(self.TGYROresults, tuple_rho_indeces)
-            for i in ["Pfuse", "Pfusi", "Pie", "Prad_bremms", "Prad_sync", "Prad_line"]:
-                self.plasma[i] = (
-                    torch.from_numpy(self.plasma[i]).to(self.dfT).unsqueeze(0)
-                )
-
-            self.plasma["Pfus"] = (self.plasma["Pfuse"] + self.plasma["Pfusi"])[
-                :, -1
-            ] * 5.0
-            self.plasma["Prad"] = (
-                self.plasma["Prad_bremms"]
-                + self.plasma["Prad_sync"]
-                + self.plasma["Prad_line"]
-            )[:, -1]
-
-        else:
-            self.plasma["Pfus"] = (
-                self.volume_integrate(
-                    (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
-                )
-                * self.plasma["volp"]
-            )[:, -1]
-            self.plasma["Prad"] = (
-                self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
-            )[:, -1]
-
-            self.insertProfiles(
-                self.profiles,
-                writeFile=f"{folder}/input.gacode.new.powerstate",
-                PositionInBatch=0,
-                applyCorrections={
-                    "Tfast_ratio": False,
-                    "Ti_thermals": False,
-                    "ni_thermals": False,
-                    "recompute_ptot": False,
-                    "ensureMachNumber": None,
-                },
-                insertPowers=True,
-                rederive_profiles=False,
-                reRead=False,
+        self.plasma["Pfus"] = (
+            self.volume_integrate(
+                (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
             )
+            * self.plasma["volp"]
+        )[:, -1]
+        self.plasma["Prad"] = (
+            self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
+        )[:, -1]
+
+        self.profiles.deriveQuantities()
+        
+        self.insertProfiles(
+            self.profiles,
+            writeFile=f"{folder}/input.gacode.new.powerstate",
+            PositionInBatch=0,
+            applyCorrections={
+                "Tfast_ratio": False,
+                "Ti_thermals": False,
+                "ni_thermals": False,
+                "recompute_ptot": False,
+                "ensureMachNumber": None,
+            },
+            insertPowers=True,
+            rederive_profiles=False,
+            reRead=False,
+        )
 
         self.plasma["Pin"] = (
-            (self.plasma["PauxE"] + self.plasma["PauxI"]) * self.plasma["volp"]
+            (self.plasma["Paux_e"] + self.plasma["Paux_i"]) * self.plasma["volp"]
         )[:, -1]
         self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
 
@@ -1146,3 +1040,36 @@ class powerstate:
         )
 
         print(f"Prad = {self.plasma['Prad'].item():.2f}MW")
+
+
+
+def add_axes_fig1(figMain):
+
+    grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.5)
+
+    axs = [
+        figMain.add_subplot(grid[0, 1]),
+        figMain.add_subplot(grid[0, 2]),
+        figMain.add_subplot(grid[0, 3]),
+        figMain.add_subplot(grid[0, 4]),
+        figMain.add_subplot(grid[0, 5]),
+        figMain.add_subplot(grid[1, 1]),
+        figMain.add_subplot(grid[1, 2]),
+        figMain.add_subplot(grid[1, 3]),
+        figMain.add_subplot(grid[1, 4]),
+        figMain.add_subplot(grid[1, 5]),
+        figMain.add_subplot(grid[2, 1]),
+        figMain.add_subplot(grid[2, 2]),
+        figMain.add_subplot(grid[2, 3]),
+        figMain.add_subplot(grid[2, 4]),
+        figMain.add_subplot(grid[2, 5]),
+        figMain.add_subplot(grid[3, 1]),
+        figMain.add_subplot(grid[3, 2]),
+        figMain.add_subplot(grid[3, 3]),
+        figMain.add_subplot(grid[3, 4]),
+        figMain.add_subplot(grid[3, 5]),
+    ]
+
+    axsRes = figMain.add_subplot(grid[:, 0])
+
+    return axs, axsRes

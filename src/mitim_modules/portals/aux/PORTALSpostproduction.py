@@ -108,7 +108,7 @@ def externalFluxMatch(
     # ----------------------------------------------------
 
     if plotYN:
-        radii = len(prf_bo.mainFunction.TGYROparameters["RhoLocations"])
+        radii = len(prf_bo.mainFunction.MODELparameters["RhoLocations"])
 
         roa = prf_bo.mainFunction.powerstate.plasma["roa"]
 

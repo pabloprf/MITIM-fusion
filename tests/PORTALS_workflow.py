@@ -20,7 +20,7 @@ if restart and os.path.exists(folderWork):
 # --------------------------------------------------------------------------------------------
 
 # Initialize class
-portals_fun = PORTALSmain.evaluatePORTALS(folderWork)
+portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.Optim["BOiterations"] = 2
 portals_fun.Optim["initialPoints"] = 3
 portals_fun.INITparameters["removeFast"] = True

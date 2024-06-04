@@ -544,7 +544,7 @@ class OPTstep:
 
 def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]):
     """
-    This routine finds outliers to remove
+    This routine finds outliers to be removed
     """
 
     if stds_outside is not None:

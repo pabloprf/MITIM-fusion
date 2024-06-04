@@ -46,13 +46,13 @@ Select the location of the MITIM namelist (see :ref:`Understanding the MITIM nam
    folder    = IOtools.expandPath('$MITIM_PATH/tests/scratch/mitim_tut/')
    namelist  = IOtools.expandPath('$MITIM_PATH/templates/main.namelist')
 
-Then create your custom optimization object as a child of the parent ``STRATEGYtools.FUNmain`` class.
+Then create your custom optimization object as a child of the parent ``STRATEGYtools.opt_evaluator`` class.
 You only need to modify what operations need to occur inside the ``run()`` (where operations/simulations happen) and ``scalarized_objective()`` (to define what is the target to maximize) methods.
 In this example, we are using ``x**2`` as our function with a 2% evaluation error, to find ``x`` such that ``x**2=15``:
 
 .. code-block:: python
 
-   class opt_class(STRATEGYtools.FUNmain):
+   class opt_class(STRATEGYtools.opt_evaluator):
       def __init__(self, folder, namelist):
          # Store folder, namelist. Read namelist
          super().__init__(folder, namelist=namelist)

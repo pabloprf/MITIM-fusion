@@ -56,7 +56,7 @@ nResol = args.resol
 
 opt_funs = []
 for folderWork in foldersWork:
-    opt_fun = STRATEGYtools.FUNmain(folderWork)
+    opt_fun = STRATEGYtools.opt_evaluator(folderWork)
     opt_fun.read_optimization_results(plotYN=False, analysis_level=1)
     opt_funs.append(opt_fun)
 

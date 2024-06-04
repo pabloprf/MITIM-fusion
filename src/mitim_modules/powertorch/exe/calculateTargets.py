@@ -18,14 +18,14 @@ def calculator(
     typeCalculation=2,
     folder="~/scratch/",
     restart=True,
-    rho_vec=np.linspace(0, 0.9, 20),
+    rho_vec=np.linspace(0, 0.9, 10),
     profProvided=False,
 ):
     profiles = (
         input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
     )
 
-    PORTALSinit.defineNewGridmitim(profiles, rho_vec[1:])
+    PORTALSinit.defineNewPORTALSGrid(profiles, rho_vec[1:])
 
     # Calculate using TGYRO
     if typeCalculation == 1:
@@ -38,8 +38,8 @@ def calculator(
                 "ModelOptions": {
                     "restart": restart,
                     "launchSlurm": True,
-                    "TGYROparameters": {
-                        "TGYRO_physics_options": {
+                    "MODELparameters": {
+                        "Physics_options": {
                             "TargetType": 3,
                             "TurbulentExchange": 0,
                             "PtotType": 1,
@@ -54,8 +54,8 @@ def calculator(
                             "ni_thermals": True,
                             "recompute_ptot": False,
                         },
+                        "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     },
-                    "TGLFparameters": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     "includeFastInQi": False,
                 },
             },

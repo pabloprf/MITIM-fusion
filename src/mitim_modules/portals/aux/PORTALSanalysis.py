@@ -11,7 +11,6 @@ from mitim_tools.gacode_tools.aux import PORTALSinteraction
 from mitim_modules.portals.aux import PORTALSplot
 from mitim_modules.powertorch import STATEtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
 from IPython import embed
 
 
@@ -58,7 +57,7 @@ class PORTALSanalyzer:
 
         if os.path.exists(folder) or folderRemote is not None:
 
-            opt_fun = STRATEGYtools.FUNmain(folder)
+            opt_fun = STRATEGYtools.opt_evaluator(folder)
 
             try:
                 opt_fun.read_optimization_results(
@@ -88,14 +87,11 @@ class PORTALSanalyzer:
         )
 
         merged_mitim_runs = {}
-        merged_profiles = []
-        merged_tgyros = []
         cont = 0
         for instance in instances:
             for key in range(0, instance.ilast + 1):
                 merged_mitim_runs[cont + key] = instance.mitim_runs[key]
-                merged_profiles.append(instance.profiles[key])
-                merged_tgyros.append(instance.tgyros[key])
+            
             cont += instance.ilast + 1
 
         base_instance = instances[base_index]
@@ -147,15 +143,14 @@ class PORTALSanalyzer:
             self.iextra = self.ilast
 
         # Store setup of TGYRO run
-        self.rhos = self.mitim_runs[0]["tgyro"].results["tglf_neo"].rho[0, 1:]
-        self.roa = self.mitim_runs[0]["tgyro"].results["tglf_neo"].roa[0, 1:]
+        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].numpy()
+        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].numpy()
 
         self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
-        self.TGYROparameters = self.opt_fun.prfs_model.mainFunction.TGYROparameters
-        self.TGLFparameters = self.opt_fun.prfs_model.mainFunction.TGLFparameters
+        self.MODELparameters = self.opt_fun.prfs_model.mainFunction.MODELparameters
 
         # Useful flags
-        self.ProfilesPredicted = self.TGYROparameters["ProfilesPredicted"]
+        self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
 
         self.runWithImpurity = (
             self.PORTALSparameters["ImpurityOfInterest"] - 1
@@ -171,20 +166,11 @@ class PORTALSanalyzer:
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
 
-        self.profiles, self.tgyros, self.powerstates = [], [], []
+        self.powerstates = []
         for i in range(self.ilast + 1):
-            if "powerstate" in self.mitim_runs[i]:  # TO REMOVE
-                power = self.mitim_runs[i]["powerstate"]
-            else:
-                power = None
-            t = self.mitim_runs[i]["tgyro"].results["use"]
-            p = t.profiles_final
+            self.powerstates.append(self.mitim_runs[i]["powerstate"])
 
-            self.tgyros.append(t)
-            self.profiles.append(p)
-            self.powerstates.append(power)
-
-        if len(self.profiles) <= self.ibest:
+        if len(self.powerstates) <= self.ibest:
             print(
                 "\t- PORTALS was read after new residual was computed but before pickle was written!",
                 typeMsg="w",
@@ -223,52 +209,31 @@ class PORTALSanalyzer:
         else:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
-        for i, (p, t) in enumerate(zip(self.profiles, self.tgyros)):
-            print(f"\t\t- Processing evaluation {i}/{len(self.profiles)-1}")
+        for i, power in enumerate(self.powerstates):
+            print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
+
+            if 'Q' not in power.profiles.derived:
+                power.profiles.deriveQuantities()
 
             self.evaluations.append(i)
-            self.FusionGain.append(p.derived["Q"])
-            self.FusionPower.append(p.derived["Pfus"])
-            self.tauE.append(p.derived["tauE"])
+            self.FusionGain.append(power.profiles.derived["Q"])
+            self.FusionPower.append(power.profiles.derived["Pfus"])
+            self.tauE.append(power.profiles.derived["tauE"])
 
             # ------------------------------------------------
             # Residual definitions
             # ------------------------------------------------
 
-            powerstate = self.opt_fun.prfs_model.mainFunction.powerstate
-
-            try:
-                OriginalFimp = powerstate.TransportOptions["ModelOptions"][
-                    "OriginalFimp"
-                ]
-            except:
-                OriginalFimp = 1.0
-
-            impurityPosition = (
-                self.runWithImpurity + 1 if self.runWithImpurity is not None else 1
-            )
-
-            portals_variables = t.TGYROmodeledVariables(
-                useConvectiveFluxes=self.useConvectiveFluxes,
-                includeFast=self.includeFast,
-                impurityPosition=impurityPosition,
-                UseFineGridTargets=self.PORTALSparameters["fineTargetsResolution"],
-                OriginalFimp=OriginalFimp,
-                forceZeroParticleFlux=self.PORTALSparameters["forceZeroParticleFlux"],
-            )
-
             if (
-                len(powerstate.plasma["volp"].shape) > 1
-                and powerstate.plasma["volp"].shape[1] > 1
+                len(power.plasma["volp"].shape) > 1
+                and power.plasma["volp"].shape[1] > 1
             ):
-                powerstate.unrepeat(do_fine=False)
-                powerstate.repeat(do_fine=False)
+                power.unrepeat(do_fine=False)
+                power.repeat(do_fine=False)
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
-                portals_variables["var_dict"],
+                power,
                 self.PORTALSparameters,
-                self.TGYROparameters,
-                powerstate,
             )
 
             # Make sense of tensor "source" which are defining the entire predictive set in
@@ -278,7 +243,7 @@ class PORTALSanalyzer:
             GZ_resR = np.zeros(self.rhos.shape[0])
             Mt_resR = np.zeros(self.rhos.shape[0])
             cont = 0
-            for prof in self.TGYROparameters["ProfilesPredicted"]:
+            for prof in self.MODELparameters["ProfilesPredicted"]:
                 for ix in range(self.rhos.shape[0]):
                     if prof == "te":
                         Qe_resR[ix] = source[0, cont].abs()
@@ -311,10 +276,8 @@ class PORTALSanalyzer:
                         y1_std,
                         y2_std,
                     ) = PORTALSinteraction.calculatePseudos_distributions(
-                        portals_variables["var_dict"],
+                        power,
                         self.PORTALSparameters,
-                        self.TGYROparameters,
-                        powerstate,
                     )
 
                     QR, chiR = PLASMAtools.RicciMetric(
@@ -341,7 +304,7 @@ class PORTALSanalyzer:
                     calculateRicci = None
                     self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
-        self.labelsFluxes = portals_variables["labels"]
+        self.labelsFluxes = power.labelsFluxes
 
         self.FusionGain = np.array(self.FusionGain)
         self.FusionPower = np.array(self.FusionPower)
@@ -370,14 +333,14 @@ class PORTALSanalyzer:
 
         self.resCheck = (
             self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.TGYROparameters["ProfilesPredicted"])
+        ) / len(self.MODELparameters["ProfilesPredicted"])
 
         # ---------------------------------------------------------------------------------------------------------------------
         # Jacobian
         # ---------------------------------------------------------------------------------------------------------------------
 
         DeltaQ1 = []
-        for i in self.TGYROparameters["ProfilesPredicted"]:
+        for i in self.MODELparameters["ProfilesPredicted"]:
             if i == "te":
                 DeltaQ1.append(-self.resTe)
             if i == "ti":
@@ -451,41 +414,27 @@ class PORTALSanalyzer:
                 )
             UseTGLFfull_x = label
 
-        return PORTALSplot.PORTALSanalyzer_plotModelComparison(
-            self, UseTGLFfull_x=UseTGLFfull_x, **kwargs
-        )
+        if self.mitim_runs[0]["powerstate"].model_results is not None:
+            return PORTALSplot.PORTALSanalyzer_plotModelComparison(
+                self, UseTGLFfull_x=UseTGLFfull_x, **kwargs
+            )
+        else:
+            print("- No model results available to plot model comparisons", typeMsg="w")
+            return None, None
 
     # ****************************************************************************
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
-    def extractProfiles(self, evaluation=None, correct_targets=True):
+    def extractProfiles(self, evaluation=None):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles
+        p0 =  self.mitim_runs[evaluation]["powerstate"].profiles
 
         p = copy.deepcopy(p0)
-
-        if correct_targets:
-            print(
-                "\t- Replacing powers from input.gacode to have the same as input.gacode.new",
-                typeMsg="i",
-            )
-
-            p1 = self.mitim_runs[evaluation]["tgyro"].results["use"].profiles_final
-
-            for ikey in [
-                "qei(MW/m^3)",
-                "qbrem(MW/m^3)",
-                "qsync(MW/m^3)",
-                "qline(MW/m^3)",
-                "qfuse(MW/m^3)",
-                "qfusi(MW/m^3)",
-            ]:
-                p.profiles[ikey] = p1.profiles[ikey]
 
         return p
 
@@ -545,14 +494,13 @@ class PORTALSanalyzer:
         p.writeCurrentStatus(file=fileGACODE)
 
         # New class
-        from mitim_modules.portals.PORTALSmain import evaluatePORTALS
+        from mitim_modules.portals.PORTALSmain import portals
 
-        portals_fun = evaluatePORTALS(folder)
+        portals_fun = portals(folder)
 
         # Transfer settings
         portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
-        portals_fun.TGYROparameters = portals_fun_original.TGYROparameters
-        portals_fun.TGLFparameters = portals_fun_original.TGLFparameters
+        portals_fun.MODELparameters = portals_fun_original.MODELparameters
 
         # PRINTING
         print(
@@ -560,7 +508,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.TGYROparameters, portals_fun.TGLFparameters, portals_fun.Optim
+                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.Optim
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
@@ -594,12 +542,12 @@ class PORTALSanalyzer:
             folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True
         )
 
-        TGLFsettings = self.TGLFparameters["TGLFsettings"]
-        extraOptionsTGLF = self.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
+        extraOptionsTGLF = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
         PredictionSet = [
-            int("te" in self.TGYROparameters["ProfilesPredicted"]),
-            int("ti" in self.TGYROparameters["ProfilesPredicted"]),
-            int("ne" in self.TGYROparameters["ProfilesPredicted"]),
+            int("te" in self.MODELparameters["ProfilesPredicted"]),
+            int("ti" in self.MODELparameters["ProfilesPredicted"]),
+            int("ne" in self.MODELparameters["ProfilesPredicted"]),
         ]
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
@@ -613,12 +561,12 @@ class PORTALSanalyzer:
         """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
-            1. self.TGYROparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
+            1. self.MODELparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         However, this should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable # TO FIX
         """
-        rhos_considered = self.TGYROparameters["RhoLocations"]
+        rhos_considered = self.MODELparameters["RhoLocations"]
 
         if positions is None:
             rhos = rhos_considered
@@ -646,8 +594,8 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
 
-        TGLFsettings = self.TGLFparameters["TGLFsettings"]
-        extraOptions = self.TGLFparameters["extraOptionsTGLF"]
+        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
+        extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
 
         return tglf, TGLFsettings, extraOptions
 
@@ -727,7 +675,7 @@ class PORTALSanalyzer:
             a, b = IOtools.reducePathLevel(self.folder, level=1)
             name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
 
-            resultsO, tgyroO, powerstateO, _ = runModelEvaluator(
+            tgyroO, powerstateO, _ = runModelEvaluator(
                 self.opt_fun.prfs_model.mainFunction,
                 FolderEvaluation,
                 dictDVs,
@@ -747,7 +695,7 @@ class PORTALSanalyzer:
         # Run
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{self.res.best_absolute_index}"  # e.g. portals_jet37_ev0
-        resultsB, tgyroB, powerstateB, _ = runModelEvaluator(
+        tgyroB, powerstateB, _ = runModelEvaluator(
             self.opt_fun.prfs_model.mainFunction,
             FolderEvaluation,
             dictDVs,
@@ -971,14 +919,14 @@ class PORTALSinitializer:
             axsRes.set_xlim([0, i])
 
         # GRADIENTS
-        if len(self.profiles) > 0:
+        if len(self.powerstates) > 0:
             grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
             axsGrads = []
             for j in range(5):
                 for i in range(2):
                     axsGrads.append(figG.add_subplot(grid[i, j]))
-            for i, p in enumerate(self.profiles):
-                p.plotGradients(
+            for i, p in enumerate(self.powerstates):
+                p.profiles.plotGradients(
                     axsGrads,
                     color=colors[i],
                     plotImpurity=3,
@@ -998,8 +946,8 @@ class PORTALSinitializer:
                 axs[4],
                 axs[9],
             ]
-            for i, p in enumerate(self.profiles):
-                p.plotGradients(
+            for i, p in enumerate(self.powerstates):
+                p.profiles.plotGradients(
                     axsGrads_extra,
                     color=colors[i],
                     plotImpurity=3,
@@ -1007,7 +955,7 @@ class PORTALSinitializer:
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                     lw=0.5,
                     ms=0,
-                    label=f"profile #{i}",
+                    label=f"profile #{i}" if i == 0 else '',
                 )
 
             axs[0].legend(prop={"size": 8})

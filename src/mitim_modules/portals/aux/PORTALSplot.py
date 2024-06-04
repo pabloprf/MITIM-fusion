@@ -1,9 +1,11 @@
 import torch
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
+from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
+from mitim_modules.powertorch import STATEtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -25,7 +27,6 @@ def PORTALSanalyzer_plotMetrics(
     plotFlows=True,
     fontsize_leg=5,
     includeRicci=True,
-    useConvectiveFluxes=False,  # By default, plot in real particle units
     file_save=None,
     **kwargs,  # To allow pass fn that may be used in another plotMetrics method
 ):
@@ -63,7 +64,8 @@ def PORTALSanalyzer_plotMetrics(
         axne = axne_g = axne_f = None
 
     if self.runWithImpurity:
-        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
+        p = self.powerstates[0].profiles
+        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -97,8 +99,8 @@ def PORTALSanalyzer_plotMetrics(
     lwt = 0.1
     lw = 0.2
     alph = 0.6
-    for i, p in enumerate(self.profiles):
-        if p is not None:
+    for i, power in enumerate(self.powerstates):
+        if power is not None:
             if i < 5:
                 col = "k"
             else:
@@ -111,8 +113,11 @@ def PORTALSanalyzer_plotMetrics(
             else:
                 lab = ""
 
+            p = power.profiles
+            rho = power.plasma['rho'][0].numpy()
+
             ix = np.argmin(
-                np.abs(p.profiles["rho(-)"] - self.tgyros[self.i0].rho[0][-1])
+                np.abs(p.profiles["rho(-)"] - rho[-1].item())
             )
             axTe.plot(
                 p.profiles["rho(-)"],
@@ -195,37 +200,37 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
 
-        t = self.tgyros[i]
-        if (t is not None) and plotAllFluxes:
+        if plotAllFluxes:
             axTe_f.plot(
-                t.rho[0],
-                t.Qe_sim_turb[0] + t.Qe_sim_neo[0],
+                rho,
+                power.plasma['Pe_tr_turb'].numpy() + power.plasma['Pe_tr_neo'].numpy(),
                 "-",
                 c=col,
                 lw=lwt,
                 alpha=alph,
             )
-            axTe_f.plot(t.rho[0], t.Qe_tar[0], "--", c=col, lw=lwt, alpha=alph)
+            axTe_f.plot(rho, power.plasma['Pe'].numpy(), "--", c=col, lw=lwt, alpha=alph)
             axTi_f.plot(
-                t.rho[0],
-                t.QiIons_sim_turb_thr[0] + t.QiIons_sim_neo_thr[0],
+                rho,
+                power.plasma['Pi_tr_turb'].numpy() + power.plasma['Pi_tr_neo'].numpy(),
                 "-",
                 c=col,
                 lw=lwt,
                 alpha=alph,
             )
-            axTi_f.plot(t.rho[0], t.Qi_tar[0], "--", c=col, lw=lwt, alpha=alph)
+            axTi_f.plot(rho, power.plasma['Pi'].numpy(), "--", c=col, lw=lwt, alpha=alph)
 
-            if useConvectiveFluxes:
-                Ge, Ge_tar = t.Ce_sim_turb + t.Ce_sim_neo, t.Ce_tar
-            else:
-                Ge, Ge_tar = (t.Ge_sim_turb + t.Ge_sim_neo), t.Ge_tar
-
+            
             if axne_f is not None:
-                axne_f.plot(t.rho[0], Ge[0], "-", c=col, lw=lwt, alpha=alph)
+                # By default, use particle fluxes
+
                 axne_f.plot(
-                    t.rho[0],
-                    Ge_tar[0] * (1 - int(self.forceZeroParticleFlux)),
+                    rho, 
+                    power.plasma['Ce_tr_turb_raw'].numpy()+power.plasma['Ce_tr_neo_raw'].numpy(),
+                     "-", c=col, lw=lwt, alpha=alph)
+                axne_f.plot(
+                    rho,
+                    power.plasma['Ce_raw'].numpy() * (1 - int(self.forceZeroParticleFlux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -233,31 +238,20 @@ def PORTALSanalyzer_plotMetrics(
                 )
 
             if axnZ_f is not None:
-                if useConvectiveFluxes:
-                    GZ, GZ_tar = (
-                        t.Ci_sim_turb[self.runWithImpurity, :, :]
-                        + t.Ci_sim_turb[self.runWithImpurity, :, :],
-                        t.Ci_tar[self.runWithImpurity, :, :],
-                    )
-                else:
-                    GZ, GZ_tar = (
-                        t.Gi_sim_turb[self.runWithImpurity, :, :]
-                        + t.Gi_sim_neo[self.runWithImpurity, :, :]
-                    ), t.Gi_tar[self.runWithImpurity, :, :]
 
-                axnZ_f.plot(t.rho[0], GZ[0], "-", c=col, lw=lwt, alpha=alph)
-                axnZ_f.plot(t.rho[0], GZ_tar[0], "--", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_tr_turb_raw'].numpy()+power.plasma['CZ_tr_neo_raw'].numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw'].numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
-                    t.rho[0],
-                    t.Mt_sim_turb[0] + t.Mt_sim_neo[0],
+                    rho,
+                    power.plasma['Mt_tr_turb'].numpy() + power.plasma['Mt_tr_neo'].numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axw0_f.plot(t.rho[0], t.Mt_tar[0], "--", c=col, lw=lwt, alpha=alph)
+                axw0_f.plot(rho, power.plasma['Mt'].numpy(), "--", c=col, lw=lwt, alpha=alph)
 
     # ---------------------------------------------------------------------------------------------------------
 
@@ -273,14 +267,13 @@ def PORTALSanalyzer_plotMetrics(
             markers_plot,
         )
     ):
-        if (indexUse is None) or (indexUse >= len(self.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
 
-        p = self.profiles[indexUse]
-        t = self.tgyros[indexUse]
         power = self.powerstates[indexUse]
-
-        ix = np.argmin(np.abs(p.profiles["rho(-)"] - t.rho[0][-1]))
+        p = power.profiles
+        
+        ix = np.argmin(np.abs(p.profiles["rho(-)"] - rho[-1]))
         axTe.plot(
             p.profiles["rho(-)"], p.profiles["te(keV)"], lw=2, color=col, label=lab
         )
@@ -357,25 +350,13 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
             )
 
-        if self.TGYROparameters["TGYRO_physics_options"]["TargetType"] < 3:
-            if cont == 0:
-                print(
-                    "- This run uses partial targets, using POWERSTATE to plot target fluxes, otherwise TGYRO plot will have wrong targets",
-                    typeMsg="w",
-                )
-            powerstate = power
-        else:
-            powerstate = None
-
         plotFluxComparison(
-            p,
-            t,
+            power,
             axTe_f,
             axTi_f,
             axne_f,
             axnZ_f,
             axw0_f,
-            powerstate=powerstate,
             runWithImpurity=self.runWithImpurity,
             fontsize_leg=fontsize_leg,
             stds=stds,
@@ -383,7 +364,6 @@ def PORTALSanalyzer_plotMetrics(
             lab=lab,
             msFlux=msFlux,
             forceZeroParticleFlux=self.forceZeroParticleFlux,
-            useConvectiveFluxes=useConvectiveFluxes,
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
             plotFlows=plotFlows and (self.ibest == indexUse),
@@ -543,7 +523,7 @@ def PORTALSanalyzer_plotMetrics(
             markers_plot,
         )
     ):
-        if (indexUse is None) or (indexUse >= len(self.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         if "te" in self.ProfilesPredicted:
             v = self.resTeM
@@ -657,7 +637,7 @@ def PORTALSanalyzer_plotMetrics(
                 markers_plot,
             )
         ):
-            if (indexUse is None) or (indexUse >= len(self.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.powerstates)):
                 continue
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -723,7 +703,7 @@ def PORTALSanalyzer_plotMetrics(
             markers_plot,
         )
     ):
-        if (indexUse is None) or (indexUse >= len(self.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         v = self.chiR_Ricci
         # try:
@@ -793,7 +773,7 @@ def PORTALSanalyzer_plotMetrics(
                 markers_plot,
             )
         ):
-            if (indexUse is None) or (indexUse >= len(self.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.powerstates)):
                 continue
             v = self.chiR_Ricci
             axt.plot(
@@ -893,7 +873,7 @@ def PORTALSanalyzer_plotMetrics(
             markers_plot,
         )
     ):
-        if (indexUse is None) or (indexUse >= len(self.profiles)):
+        if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         ax.plot(
             [self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4
@@ -995,7 +975,7 @@ def PORTALSanalyzer_plotMetrics(
                 markers_plot,
             )
         ):
-            if (indexUse is None) or (indexUse >= len(self.profiles)):
+            if (indexUse is None) or (indexUse >= len(self.powerstates)):
                 continue
             axt6.plot(
                 [self.evaluations[indexUse]],
@@ -1169,7 +1149,8 @@ def PORTALSanalyzer_plotExpected(
     else:
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
-        labIon = f"Ion {self.runWithImpurity+1} ({self.profiles[0].Species[self.runWithImpurity]['N']}{int(self.profiles[0].Species[self.runWithImpurity]['Z'])},{int(self.profiles[0].Species[self.runWithImpurity]['A'])})"
+        p = self.powerstates[0].profiles
+        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1205,9 +1186,11 @@ def PORTALSanalyzer_plotExpected(
                 coli += 1
             colors.append(colorsA[coli])
 
-    rho = self.profiles[0].profiles["rho(-)"]
-    roa = self.profiles[0].derived["roa"]
-    rhoVals = self.TGYROparameters["RhoLocations"]
+    p = self.powerstates[0].profiles
+
+    rho = p.profiles["rho(-)"]
+    roa = p.derived["roa"]
+    rhoVals = self.MODELparameters["RhoLocations"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
@@ -1216,7 +1199,7 @@ def PORTALSanalyzer_plotExpected(
     for i in plotPoints:
         cont += 1
 
-        p = self.profiles[i]
+        p = p = self.powerstates[i].profiles
 
         ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
 
@@ -1385,10 +1368,10 @@ def PORTALSanalyzer_plotExpected(
         ranges = [-30, 30]
 
         rho = self.profiles_next_new.profiles["rho(-)"]
-        rhoVals = self.TGYROparameters["RhoLocations"]
+        rhoVals = self.MODELparameters["RhoLocations"]
         roaVals = np.interp(rhoVals, rho, roa)
 
-        p0 = self.profiles[plotPoints[0]]
+        p0 = self.powerstates[plotPoints[0]].profiles
         zVals = []
         z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
         for roai in roaVals:
@@ -1396,7 +1379,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.profiles[plotPoints[1]]
+            p0 = self.powerstates[plotPoints[1]].profiles
             zVals = []
             z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
             for roai in roaVals:
@@ -1406,7 +1389,7 @@ def PORTALSanalyzer_plotExpected(
         axTe_g_twin.set_ylim(ranges)
         axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
 
-        p0 = self.profiles[plotPoints[0]]
+        p0 = self.powerstates[plotPoints[0]].profiles
         zVals = []
         z = (
             (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1417,7 +1400,7 @@ def PORTALSanalyzer_plotExpected(
         axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
         if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.profiles[plotPoints[1]]
+            p0 = self.powerstates[plotPoints[1]].profiles
             zVals = []
             z = (
                 (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1436,7 +1419,7 @@ def PORTALSanalyzer_plotExpected(
         if axne_g is not None:
             axne_g_twin = axne_g.twinx()
 
-            p0 = self.profiles[plotPoints[0]]
+            p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
             for roai in roaVals:
@@ -1444,7 +1427,7 @@ def PORTALSanalyzer_plotExpected(
             axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[plotPoints[1]]
+                p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
                 z = (
                     (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
@@ -1463,7 +1446,7 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             axnZ_g_twin = axnZ_g.twinx()
 
-            p0 = self.profiles[plotPoints[0]]
+            p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = (
                 (
@@ -1477,7 +1460,7 @@ def PORTALSanalyzer_plotExpected(
             axnZ_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[plotPoints[1]]
+                p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
                 z = (
                     (
@@ -1500,7 +1483,7 @@ def PORTALSanalyzer_plotExpected(
         if axw0_g is not None:
             axw0_g_twin = axw0_g.twinx()
 
-            p0 = self.profiles[plotPoints[0]]
+            p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
             for roai in roaVals:
@@ -1508,7 +1491,7 @@ def PORTALSanalyzer_plotExpected(
             axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-                p0 = self.profiles[plotPoints[1]]
+                p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
                 z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
                 for roai in roaVals:
@@ -1787,33 +1770,33 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot TGYROs
     # -------------------------------------------------------
 
-    self.tgyros[indecesPlot[1]].plot(
-        fn=fn, prelabel=f"({indecesPlot[1]}) TGYRO - ", fn_color=fn_color
-    )
-    if indecesPlot[0] < len(self.tgyros):
-        self.tgyros[indecesPlot[0]].plot(
-            fn=fn, prelabel=f"({indecesPlot[0]}) TGYRO - ", fn_color=fn_color
+    power = self.powerstates[indecesPlot[1]]
+
+    if power.model_results is not None:
+
+        power.model_results.plot(
+            fn=fn, prelabel=f"({indecesPlot[1]}) MODEL - ", fn_color=fn_color
         )
+        
+        if indecesPlot[0] < len(self.powerstates):
+
+            power = self.powerstates[indecesPlot[0]]
+            if power.model_results is not None:
+                power.model_results.plot(
+                    fn=fn, prelabel=f"({indecesPlot[0]}) MODEL - ", fn_color=fn_color
+                )
 
     # -------------------------------------------------------
     # Plot PROFILES
     # -------------------------------------------------------
 
-    figs = [
-        fn.add_figure(label="PROFILES - Profiles", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Powers", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Geometry", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Gradients", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Flows", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Other", tab_color=fn_color),
-        fn.add_figure(label="PROFILES - Impurities", tab_color=fn_color),
-    ]
+    figs = PROFILEStools.add_figures(fn,fnlab_pre = "PROFILES - ")
 
-    if indecesPlot[0] < len(self.profiles):
+    if indecesPlot[0] < len(self.powerstates):
         _ = PROFILEStools.plotAll(
             [
-                self.profiles[indecesPlot[1]],
-                self.profiles[indecesPlot[0]],
+                self.powerstates[indecesPlot[1]].profiles,
+                self.powerstates[indecesPlot[0]].profiles,
             ],
             figs=figs,
             extralabs=[f"{indecesPlot[1]}", f"{indecesPlot[0]}"],
@@ -1823,8 +1806,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot Comparison
     # -------------------------------------------------------
 
-    profile_original = self.mitim_runs[0]["tgyro"].results["tglf_neo"].profiles
-    profile_best = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
+    profile_original = self.mitim_runs[0]["powerstate"].profiles
+    profile_best =  self.mitim_runs[self.ibest]["powerstate"].profiles
 
     profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
     profile_original_0 = self.mitim_runs["profiles_original"]
@@ -1872,16 +1855,29 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             axs4,
             color=colors[i],
             label=label,
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.MODELparameters["RhoLocations"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.TGYROparameters["RhoLocations"],
+            RhoLocationsPlot=self.MODELparameters["RhoLocations"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
+            autoscale=i == 3,
         )
 
     axs4[0].legend(loc="best")
 
+    # -------------------------------------------------------
+    # Plot powerstate
+    # -------------------------------------------------------
+
+    fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
+    axs, axsRes = STATEtools.add_axes_fig1(fig)
+
+    for indeces,c in zip(indecesPlot,["g","r","m"]):
+        if indeces is not None:
+            self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
+
+    axs[0].legend(loc="best")
 
 def PORTALSanalyzer_plotRanges(self, fig=None):
     if fig is None:
@@ -1918,11 +1914,11 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
 
     ms = 0
 
-    p = self.mitim_runs[self.i0]["tgyro"].results["tglf_neo"].profiles
+    p = self.mitim_runs[self.i0]["powerstate"].profiles
     p.plotGradients(
         axsR,
         color="b",
-        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        lastRho=self.MODELparameters["RhoLocations"][-1],
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
@@ -1935,11 +1931,11 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         if not isinstance(self.mitim_runs[ikey], dict):
             break
 
-        p = self.mitim_runs[ikey]["tgyro"].results["tglf_neo"].profiles
+        p = self.mitim_runs[ikey]["powerstate"].profiles
         p.plotGradients(
             axsR,
             color="r",
-            lastRho=self.TGYROparameters["RhoLocations"][-1],
+            lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
@@ -1947,11 +1943,11 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             plotRotation=self.runWithRotation,
         )
 
-    p = self.mitim_runs[self.ibest]["tgyro"].results["tglf_neo"].profiles
+    p = self.mitim_runs[self.ibest]["powerstate"].profiles
     p.plotGradients(
         axsR,
         color="g",
-        lastRho=self.TGYROparameters["RhoLocations"][-1],
+        lastRho=self.MODELparameters["RhoLocations"][-1],
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
@@ -1975,10 +1971,10 @@ def PORTALSanalyzer_plotModelComparison(
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted) < 4 else 10))
+        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4 else 10))
 
     if axs is None:
-        if len(self.ProfilesPredicted) < 4:
+        if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4:
             axs = fig.subplots(ncols=3)
         else:
             axs = fig.subplots(ncols=3, nrows=2)
@@ -2053,7 +2049,7 @@ def PORTALSanalyzer_plotModelComparison(
     )
 
     if UseTGLFfull_x is None:
-        val_calc = self.mitim_runs[0]["tgyro"].results["use"].__dict__[quantityX][0, 1:]
+        val_calc = self.mitim_runs[0]["powerstate"].model_results.__dict__[quantityX][0, 1:]
     else:
         val_calc = np.array(
             [
@@ -2093,8 +2089,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         if UseTGLFfull_x is None:
             val_calc = (
-                self.mitim_runs[0]["tgyro"]
-                .results["use"]
+                self.mitim_runs[0]["powerstate"].model_results
                 .__dict__[quantityX][self.runWithImpurity, 0, 1:]
             )
         else:
@@ -2139,8 +2134,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["tgyro"]
-                    .results["use"]
+                    self.mitim_runs[0]["powerstate"].model_results
                     .__dict__[quantityX][0, 1:]
                 ).min()
             )
@@ -2176,8 +2170,7 @@ def PORTALSanalyzer_plotModelComparison(
         thre = 10 ** round(
             np.log10(
                 np.abs(
-                    self.mitim_runs[0]["tgyro"]
-                    .results["use"]
+                    self.mitim_runs[0]["powerstate"].model_results
                     .__dict__[quantityX][0, 1:]
                 ).min()
             )
@@ -2208,7 +2201,7 @@ def plotModelComparison_quantity(
     resultsX = "tglf_neo"
     quantity_label_resultsX = "(TGLF)"
 
-    if "cgyro_neo" in self.mitim_runs[0]["tgyro"].results:
+    if "cgyro_neo" in self.mitim_runs[0]["powerstate"].model_results.extra_analysis:
         resultsY = "cgyro_neo"
         quantity_label_resultsY = "(CGYRO)"
     else:
@@ -2221,7 +2214,7 @@ def plotModelComparison_quantity(
         """
         Read the fluxes to be plotted in Y from the TGYRO results
         """
-        t = self.mitim_runs[i]["tgyro"].results
+        t = self.mitim_runs[i]["powerstate"].model_results.extra_analysis
         Y.append(
             t[resultsY].__dict__[quantityY][
                 ... if runWithImpurity is None else runWithImpurity, 0, 1:
@@ -2361,6 +2354,7 @@ def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
 
 
 def varToReal(y, prfs_model):
+
     of, cal, res = prfs_model.mainFunction.scalarized_objective(
         torch.Tensor(y).to(prfs_model.mainFunction.dfT).unsqueeze(0)
     )
@@ -2368,8 +2362,8 @@ def varToReal(y, prfs_model):
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in prfs_model.mainFunction.TGYROparameters["ProfilesPredicted"]:
-        for rad in prfs_model.mainFunction.TGYROparameters["RhoLocations"]:
+    for prof in prfs_model.mainFunction.MODELparameters["ProfilesPredicted"]:
+        for rad in prfs_model.mainFunction.MODELparameters["RhoLocations"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2442,7 +2436,7 @@ def plotVars(
             .plasma["roa"][0, 1:]
             .cpu()
             .numpy()
-        )  # prfs_model.mainFunction.TGYROparameters['RhoLocations']
+        )  # prfs_model.mainFunction.MODELparameters['RhoLocations']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
@@ -2775,14 +2769,12 @@ def plotVars(
 
 
 def plotFluxComparison(
-    p,
-    t,
+    power,
     axTe_f,
     axTi_f,
     axne_f,
     axnZ_f,
     axw0_f,
-    powerstate=None,
     forceZeroParticleFlux=False,
     runWithImpurity=3,
     labZ="Z",
@@ -2792,7 +2784,6 @@ def plotFluxComparison(
     col="b",
     lab="",
     msFlux=1,
-    useConvectiveFluxes=False,
     maxStore=False,
     plotFlows=True,
     addFlowLegend=True,
@@ -2801,12 +2792,8 @@ def plotFluxComparison(
     useRoa=False,
     locLeg="upper left",
 ):
-    """
-    By default this plots the fluxes and targets from tgyro
-    If powerstate is provided, it will grab the targets from it
-    """
 
-    r = t.rho if not useRoa else t.roa
+    r = power.plasma['rho'].numpy() if not useRoa else power.plasma['roa'].numpy()
 
     ixF = 0 if includeFirst else 1
 
@@ -2840,7 +2827,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         axTe_f.plot(
             r[0][ixF:],
-            t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:],
+            power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:],
             "-s",
             c=col,
             lw=2,
@@ -2849,14 +2836,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if "Qe_sim_turb_stds" in t.__dict__:
-            sigma = t.Qe_sim_turb_stds[0][ixF:] + t.Qe_sim_neo_stds[0][ixF:]
-        else:
-            print("Could not find errors to plot!", typeMsg="w")
-            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        sigma = power.plasma['Pe_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo_stds'].numpy()[0][ixF:]
 
-        m_Qe, M_Qe = (t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]) - stds * sigma, (
-            t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]
+        m_Qe, M_Qe = (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]
         ) + stds * sigma
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
@@ -2867,7 +2850,7 @@ def plotFluxComparison(
     if axTi_f is not None:
         axTi_f.plot(
             r[0][ixF:],
-            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:],
+            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2876,17 +2859,14 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if "QiIons_sim_turb_thr_stds" in t.__dict__:
-            sigma = (
-                t.QiIons_sim_turb_thr_stds[0][ixF:] + t.QiIons_sim_neo_thr_stds[0][ixF:]
-            )
-        else:
-            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        sigma = (
+            power.plasma['Pi_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo_stds'].numpy()[0][ixF:]
+        )
 
         m_Qi, M_Qi = (
-            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
+            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:]
         ) - stds * sigma, (
-            t.QiIons_sim_turb_thr[0][ixF:] + t.QiIons_sim_neo_thr[0][ixF:]
+            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:]
         ) + stds * sigma
         axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
 
@@ -2896,29 +2876,21 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        if useConvectiveFluxes:
-            Ge = t.Ce_sim_turb + t.Ce_sim_neo
-            if "Ce_sim_turb_stds" in t.__dict__:
-                sigma = t.Ce_sim_turb_stds[0][ixF:] + t.Ce_sim_neo_stds[0][ixF:]
-            else:
-                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
-        else:
-            Ge = t.Ge_sim_turb + t.Ge_sim_neo
-            if "Ge_sim_turb_stds" in t.__dict__:
-                sigma = t.Ge_sim_turb_stds[0][ixF:] + t.Ge_sim_neo_stds[0][ixF:]
-            else:
-                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        Ge = power.plasma['Ce_tr_turb_raw'].numpy() + power.plasma['Ce_tr_neo_raw'].numpy()
 
-            axne_f.plot(
-                r[0][ixF:],
-                Ge[0][ixF:],
-                "-s",
-                markersize=msFlux,
-                c=col,
-                lw=2,
-                label="Transport",
-                alpha=alpha,
-            )
+        axne_f.plot(
+            r[0][ixF:],
+            Ge[0][ixF:],
+            "-s",
+            markersize=msFlux,
+            c=col,
+            lw=2,
+            label="Transport",
+            alpha=alpha,
+        )
+
+        sigma = power.plasma['Ce_tr_turb_raw_stds'].numpy()[0][ixF:] + power.plasma['Ce_tr_neo_raw_stds'].numpy()[0][ixF:]
+
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
         axne_f.fill_between(r[0][ixF:], m_Ge, M_Ge, facecolor=col, alpha=alpha / 3)
@@ -2928,31 +2900,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        if useConvectiveFluxes:
-            GZ = (
-                t.Ci_sim_turb[runWithImpurity, :, :]
-                + t.Ci_sim_neo[runWithImpurity, :, :]
-            )
-
-            if "Ci_sim_turb_stds" in t.__dict__:
-                sigma = (
-                    t.Ci_sim_turb_stds[runWithImpurity, 0][ixF:]
-                    + t.Ci_sim_neo_stds[runWithImpurity, 0][ixF:]
-                )
-            else:
-                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
-        else:
-            GZ = (
-                t.Gi_sim_turb[runWithImpurity, :, :]
-                + t.Gi_sim_neo[runWithImpurity, :, :]
-            )
-            if "Gi_sim_turb_stds" in t.__dict__:
-                sigma = (
-                    t.Gi_sim_turb_stds[runWithImpurity, 0][ixF:]
-                    + t.Gi_sim_neo_stds[runWithImpurity, 0][ixF:]
-                )
-            else:
-                sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        GZ = power.plasma['CZ_tr_turb_raw'].numpy() + power.plasma['CZ_tr_neo_raw'].numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2964,6 +2912,8 @@ def plotFluxComparison(
             label="Transport",
             alpha=alpha,
         )
+
+        sigma = power.plasma['CZ_tr_turb_raw_stds'].numpy()[0][ixF:] + power.plasma['CZ_tr_neo_raw_stds'].numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,
@@ -2978,7 +2928,7 @@ def plotFluxComparison(
     if axw0_f is not None:
         axw0_f.plot(
             r[0][ixF:],
-            t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:],
+            power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2987,13 +2937,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        if "Mt_sim_turb_stds" in t.__dict__:
-            sigma = t.Mt_sim_turb_stds[0][ixF:] + t.Mt_sim_neo_stds[0][ixF:]
-        else:
-            sigma = t.Qe_sim_turb[0][ixF:] * 0.0
+        sigma = power.plasma['Mt_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo_stds'].numpy()[0][ixF:]
 
-        m_Mt, M_Mt = (t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:]) - stds * sigma, (
-            t.Mt_sim_turb[0][ixF:] + t.Mt_sim_neo[0][ixF:]
+        m_Mt, M_Mt = (power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:]
         ) + stds * sigma
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
@@ -3003,43 +2950,15 @@ def plotFluxComparison(
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    rad = r[0][ixF:] if powerstate is None else r[0][1:]
-    Qe_tar = (
-        t.Qe_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Pe"].numpy()[0][:]
-    )
-    Qi_tar = (
-        t.Qi_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Pi"].numpy()[0][:]
-    )
-
-    if forceZeroParticleFlux:
-        Ge_tar = Qe_tar * 0.0
-    else:
-        if powerstate is not None:
-            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][
-                1:
-            ]  # Special because Ge is not stored in powerstate
-            if useConvectiveFluxes:
-                Ge_tar = PLASMAtools.convective_flux(
-                    powerstate.plasma["te"][0][1:], Ge_tar
-                ).numpy()
-        else:
-            if useConvectiveFluxes:
-                Ge_tar = t.Ce_tar[0][ixF:]
-            else:
-                Ge_tar = t.Ge_tar[0][ixF:]
-
-    GZ_tar = rad * 0.0
-    Mt_tar = (
-        t.Mt_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Mt"].numpy()[0][:]
-    )
+    Qe_tar = power.plasma['Pe'].numpy()[0][ixF:]
+    Qi_tar = power.plasma['Pi'].numpy()[0][ixF:]
+    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:]
+    GZ_tar = power.plasma['CZ_raw'].numpy()[0][ixF:]
+    Mt_tar = power.plasma['Mt'].numpy()[0][ixF:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    rad = r[0][ixF:]
 
     if axTe_f is not None:
         axTe_f.plot(
@@ -3119,7 +3038,7 @@ def plotFluxComparison(
 
     # Plot HR ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    tBest = t.profiles_final
+    tBest = power.profiles
     if plotFlows:
         for ax, var, mult in zip(
             [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
@@ -3148,7 +3067,7 @@ def plotFluxComparison(
     # -- for legend
     (l1,) = axTe_f.plot(
         r[0][ixF:],
-        t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:],
+        power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:],
         "-",
         c="k",
         lw=2,
@@ -3156,12 +3075,12 @@ def plotFluxComparison(
         label="Transport",
     )
     (l2,) = axTe_f.plot(
-        r[0][ixF:], t.Qe_tar[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
+        r[0][ixF:], power.plasma['Pe'].numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
     )
     l3 = axTe_f.fill_between(
-        t.roa[0][ixF:],
-        (t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]) - stds,
-        (t.Qe_sim_turb[0][ixF:] + t.Qe_sim_neo[0][ixF:]) + stds,
+        r[0][ixF:],
+        (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) - stds,
+        (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) + stds,
         facecolor="k",
         alpha=0.3,
     )
@@ -3267,7 +3186,7 @@ def plotFluxComparison(
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
 ):
-    rhos = np.append([0], self_complete.TGYROparameters["RhoLocations"])
+    rhos = np.append([0], self_complete.MODELparameters["RhoLocations"])
     aLTe, aLTi, aLne, aLnZ, aLw0 = (
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
@@ -3288,27 +3207,27 @@ def produceInfoRanges(
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
     X = torch.zeros(
-        ((len(rhos) - 1) * len(self_complete.TGYROparameters["ProfilesPredicted"]), 2)
+        ((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2)
     )
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
 
     cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
         cont += 1
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
     X = X.transpose(0, 1)
 
     powerstate = PORTALStools.constructEvaluationProfiles(
-        X, self_complete.surrogate_parameters, recalculateTargets=False
+        X, copy.deepcopy(self_complete.surrogate_parameters), recalculateTargets=False
     )
 
     GRAPHICStools.fillGraph(
@@ -3354,7 +3273,7 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3377,7 +3296,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "nZ" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3400,7 +3319,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "w0" in self_complete.TGYROparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],

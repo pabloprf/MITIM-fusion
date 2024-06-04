@@ -218,12 +218,12 @@ class TGLF:
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
+        recalculatePTOT=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
         forceIfRestart=False,  # Extra flag
-        remove_tmpTGYRO=False,  # Extra flag
     ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
@@ -249,7 +249,7 @@ class TGLF:
         self.tgyro.prep(
             FolderGACODE,
             restart=restart,
-            remove_tmp=remove_tmpTGYRO,
+            remove_tmp=True,
             subfolder="tmp_tgyro_prep",
             profilesclass_custom=profiles,
             forceIfRestart=forceIfRestart,
@@ -298,6 +298,7 @@ class TGLF:
                 rhos=self.rhos,
                 restart=not exists,
                 onlyThermal=onlyThermal_TGYRO,
+                recalculatePTOT=recalculatePTOT,
                 donotrun=donotrun,
             )
 

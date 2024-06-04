@@ -83,7 +83,7 @@ Now TGYRO can be run:
                PredictionSet         = PredictionSet,
                TGLFsettings          = TGLFsettings,
                TGYRO_solver_options  = solver,
-               TGYRO_physics_options = physics_options)
+               Physics_options = physics_options)
 
 Read:
 

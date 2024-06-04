@@ -334,8 +334,6 @@ def sigmoid_PRF(xo, xbo, h=1e3):
 
     return s
 
-
-# To remove
 def sigmoidPenalty(x, x_unity=[1, 10], h_transition=0.5):
     # h_transition is the width for 0.5
 

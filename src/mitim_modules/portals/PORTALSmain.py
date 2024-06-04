@@ -89,7 +89,7 @@ def default_namelist(Optim, CGYROrun=False):
     return Optim
 
 
-class evaluatePORTALS(STRATEGYtools.FUNmain):
+class portals(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist=None, TensorsType=torch.double, CGYROrun=False):
         print(
             "\n-----------------------------------------------------------------------------------------"
@@ -138,19 +138,19 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         }
 
         """
-		Parameters to run TGYRO
-		-----------------------
+		Parameters to run the model
+		---------------------------
 			The corrections are applied prior to each evaluation, so that things are consistent.
 			Here, do not include things that are not specific for a given iteration. Otherwise if they are general
 			changes to input.gacode, then that should go into INITparameters.
 
-			if TGYROparameters contains RoaLocations, use that instead of RhoLocations
+			if MODELparameters contains RoaLocations, use that instead of RhoLocations
 		"""
 
-        self.TGYROparameters = {
+        self.MODELparameters = {
             "RhoLocations": [0.25, 0.45, 0.65, 0.85],
             "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
-            "TGYRO_physics_options": {
+            "Physics_options": {
                 "TargetType": 3,
                 "TurbulentExchange": 0,  # In PORTALS TGYRO evaluations, let's always calculate turbulent exchange, but NOT include it in targets!
                 "PtotType": 1,  # In PORTALS TGYRO evaluations, let's always use the PTOT column (so control of that comes from the ap)
@@ -164,14 +164,8 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
                 "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
             },
+            "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}}
         }
-
-        """
-		Parameters to run TGLF
-		-----------------------
-		"""
-
-        self.TGLFparameters = {"TGLFsettings": 5, "extraOptionsTGLF": {}}
 
         """
 		Physics-informed parameters to fit surrogates
@@ -238,6 +232,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         reevaluateTargets=0,
         seedInitial=None,
         askQuestions=True,
+        ModelOptions=None,
     ):
         """
         grabFrom is a folder from which to grab TabularData and MITIMextra
@@ -245,8 +240,8 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 
         ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
                 ymax_rel = np.array([   [1.0, 0.5, 0.5, 0.5],
-                                                                [0.5, 0.5, 0.5, 0.5],
-                                                                [1.0, 0.5, 0.5, 0.5]    ])
+                                        [0.5, 0.5, 0.5, 0.5],
+                                        [1.0, 0.5, 0.5, 0.5]    ])
 
         seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
@@ -265,39 +260,47 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                 )
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
+        if 'tgyro' not in self.PORTALSparameters["model_used"]:
+            if self.PORTALSparameters["TargetCalc"] == "tgyro":
+                print(
+                    "\t- Requested TGYRO targets, but model_used is not tgyro, so changing to powerstate",
+                    typeMsg="w",
+                )
+                self.PORTALSparameters["TargetCalc"] = "powerstate"
+
         if (
-            "InputType" not in self.TGYROparameters["TGYRO_physics_options"]
-        ) or self.TGYROparameters["TGYRO_physics_options"]["InputType"] != 1:
+            "InputType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["InputType"] != 1:
             print(
                 "\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",
                 typeMsg="i",
             )
-            self.TGYROparameters["TGYRO_physics_options"]["InputType"] = 1
+            self.MODELparameters["Physics_options"]["InputType"] = 1
 
         if (
-            "GradientsType" not in self.TGYROparameters["TGYRO_physics_options"]
-        ) or self.TGYROparameters["TGYRO_physics_options"]["GradientsType"] != 0:
+            "GradientsType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
             print(
                 "\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",
                 typeMsg="i",
             )
-            self.TGYROparameters["TGYRO_physics_options"]["GradientsType"] = 0
+            self.MODELparameters["Physics_options"]["GradientsType"] = 0
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         keycheck = (
-            "RoaLocations" if "RoaLocations" in self.TGYROparameters else "RhoLocations"
+            "RoaLocations" if "RoaLocations" in self.MODELparameters else "RhoLocations"
         )
         if IOtools.isfloat(ymax_rel):
             ymax_rel = np.array(
-                [ymax_rel * np.ones(len(self.TGYROparameters[keycheck]))]
-                * len(self.TGYROparameters["ProfilesPredicted"])
+                [ymax_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                * len(self.MODELparameters["ProfilesPredicted"])
             )
         if IOtools.isfloat(ymin_rel):
             ymin_rel = np.array(
-                [ymin_rel * np.ones(len(self.TGYROparameters[keycheck]))]
-                * len(self.TGYROparameters["ProfilesPredicted"])
+                [ymin_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                * len(self.MODELparameters["ProfilesPredicted"])
             )
 
         # Initialize
@@ -318,6 +321,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
             dfT=self.dfT,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
+            ModelOptions=ModelOptions,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -349,7 +353,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         extra_params_model["numPORTALS"] = numPORTALS
 
         # Run
-        _, tgyro, powerstate, dictOFs = runModelEvaluator(
+        powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
@@ -372,7 +376,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         if self.MITIMextra is not None:
             with open(self.MITIMextra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
-            dictStore[int(numPORTALS)] = {"tgyro": tgyro, "powerstate": powerstate}
+            dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
             )
@@ -416,15 +420,13 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALSinteraction.calculatePseudos(
-            var_dict, self.PORTALSparameters, self.TGYROparameters, self.powerstate
-        )
+        of, cal, _, res = PORTALSinteraction.calculatePseudos(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
 
         return of, cal, res
 
     def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2):
         """
-        analysis_level = 2: Standard as other classes. Run best case, plot TGYRO
+        analysis_level = 2: Standard as other classes. Run best case, plot transport model analysis
         analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
         """
         return analyze_results(
@@ -438,7 +440,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
         reevaluateTargets:
                 0: No
                 1: Quick targets from powerstate with no transport calculation
-                2: Full original model (either with tgyro targets or powerstate targets, but also calculate transport)
+                2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
         """
 
         if not os.path.exists(folderNew):
@@ -512,7 +514,7 @@ class evaluatePORTALS(STRATEGYtools.FUNmain):
                         "tglf_neo_tgyro"
                     )
 
-                results, tgyro, powerstate, dictOFs = runModelEvaluator(
+                _, dictOFs = runModelEvaluator(
                     self_copy,
                     FolderEvaluation,
                     dictDVs,
@@ -555,14 +557,15 @@ def runModelEvaluator(
     extra_params_model={},
     dictOFs=None,
 ):
+    # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
 
     # ---------------------------------------------------------------------------------------------------
     # Prep run
     # ---------------------------------------------------------------------------------------------------
 
-    FolderEvaluation_TGYRO = FolderEvaluation + "/model_complete/"
-    os.system(f"mkdir {FolderEvaluation_TGYRO}")
+    FolderEvaluation_model = FolderEvaluation + "/model_complete/"
+    os.system(f"mkdir {FolderEvaluation_model}")
 
     # Better to write/read each time than passing the class in self.portals_parameters, because self.portals_parameters will be used during the surrogate, which can be expensive
 
@@ -571,7 +574,7 @@ def runModelEvaluator(
         f.writelines(self.file_in_lines_initial_input_gacode)
 
     # ---------------------------------------------------------------------------------------------------
-    # Prepare evaluating vector
+    # Prepare evaluating vector X
     # ---------------------------------------------------------------------------------------------------
 
     X = torch.zeros(
@@ -588,91 +591,91 @@ def runModelEvaluator(
     # Run model through powerstate
     # ---------------------------------------------------------------------------------------------------
 
+    # Initialize with original profile
     powerstate.profiles = PROFILEStools.PROFILES_GACODE(
         readFile, calculateDerived=False
     )
 
     powerstate.TransportOptions["ModelOptions"]["restart"] = restart
 
+    # Evaluate X (DVs) through powerstate.calculate. This will populate .plasma with the results
     powerstate.calculate(
-        X, nameRun=name, folder=FolderEvaluation_TGYRO, extra_params=extra_params_model
-    )
-
-    tgyro_current_results = (
-        powerstate.tgyro_current.results["use"]
-        if "tgyro_current" in powerstate.__dict__
-        else None
-    )
-    tgyro_current = (
-        powerstate.tgyro_current if "tgyro_current" in powerstate.__dict__ else None
+        X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
     )
 
     # ---------------------------------------------------------------------------------------------------
-    # Produce dictOFs is asked for
+    # Produce dictOFs
     # ---------------------------------------------------------------------------------------------------
 
     if dictOFs is not None:
-        for var in powerstate.ProfilesPredicted:
-            # Write in OFs
-            for i in range(powerstate.plasma["rho"].shape[1] - 1):
-                if var == "te":
-                    var0, var1 = "Qe", "Pe"
-                elif var == "ti":
-                    var0, var1 = "Qi", "Pi"
-                elif var == "ne":
-                    var0, var1 = "Ge", "Ce"
-                elif var == "nZ":
-                    var0, var1 = "GZ", "CZ"
-                elif var == "w0":
-                    var0, var1 = "Mt", "Mt"
+        dictOFs = map_powerstate_to_portals(powerstate, dictOFs)
 
-                """
-				TRANSPORT calculation
-				---------------------
-				"""
+    return powerstate, dictOFs
 
-                dictOFs[f"{var0}Turb_{i+1}"]["value"] = powerstate.plasma[
-                    f"{var1}_tr_turb"
-                ][0, i]
-                dictOFs[f"{var0}Turb_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_tr_turb_stds"
-                ][0, i]
+def map_powerstate_to_portals(powerstate, dictOFs):
+    """
+    """
 
-                dictOFs[f"{var0}Neo_{i+1}"]["value"] = powerstate.plasma[
-                    f"{var1}_tr_neo"
-                ][0, i]
-                dictOFs[f"{var0}Neo_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_tr_neo_stds"
-                ][0, i]
+    for var in powerstate.ProfilesPredicted:
+        # Write in OFs
+        for i in range(powerstate.plasma["rho"].shape[1] - 1): # Ignore position 0, which is rho=0
+            if var == "te":
+                var0, var1 = "Qe", "Pe"
+            elif var == "ti":
+                var0, var1 = "Qi", "Pi"
+            elif var == "ne":
+                var0, var1 = "Ge", "Ce"
+            elif var == "nZ":
+                var0, var1 = "GZ", "CZ"
+            elif var == "w0":
+                var0, var1 = "Mt", "Mt"
 
-                """
-				TARGET calculation
-				---------------------
-					If that radius & profile position has target, evaluate
-				"""
+            """
+            TRANSPORT calculation
+            ---------------------
+            """
 
-                dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][
-                    0, i
-                ]
-                dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[
-                    f"{var1}_stds"
-                ][0, i]
+            dictOFs[f"{var0}Turb_{i+1}"]["value"] = powerstate.plasma[
+                f"{var1}_tr_turb"
+            ][0, i+1]
+            dictOFs[f"{var0}Turb_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_tr_turb_stds"
+            ][0, i+1]
 
-        """
-		Turbulent Exchange
-		------------------
-		"""
-        if extra_params_model["PORTALSparameters"]["surrogateForTurbExch"]:
-            for i in range(powerstate.plasma["rho"].shape[1] - 1):
-                dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][
-                    0, i
-                ]
-                dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma[
-                    "PexchTurb_stds"
-                ][0, i]
+            dictOFs[f"{var0}Neo_{i+1}"]["value"] = powerstate.plasma[
+                f"{var1}_tr_neo"
+            ][0, i+1]
+            dictOFs[f"{var0}Neo_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_tr_neo_stds"
+            ][0, i+1]
 
-    return tgyro_current_results, tgyro_current, powerstate, dictOFs
+            """
+            TARGET calculation
+            ---------------------
+                If that radius & profile position has target, evaluate
+            """
 
+            dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][
+                0, i+1
+            ]
+            dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[
+                f"{var1}_stds"
+            ][0, i+1]
+
+    """
+    Turbulent Exchange
+    ------------------
+    """
+    if 'PexchTurb_1' in dictOFs:
+        for i in range(powerstate.plasma["rho"].shape[1] - 1):
+            dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][
+                0, i+1
+            ]
+            dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma[
+                "PexchTurb_stds"
+            ][0, i+1]
+
+    return dictOFs
 
 def analyze_results(
     self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False

@@ -12,13 +12,13 @@ inputgacode = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
 folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/portals_tut/")
 
 # Initialize PORTALS class
-PORTALS_fun = PORTALSmain.evaluatePORTALS(folder)
+PORTALS_fun = PORTALSmain.portals(folder)
 
 # Radial locations (RhoLocations or RoaLocations)
-PORTALS_fun.TGYROparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
+PORTALS_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
-PORTALS_fun.TGYROparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
+PORTALS_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
 # Codes to use
 PORTALS_fun.PORTALSparameters["model_used"] = "tglf_neo-tgyro"
