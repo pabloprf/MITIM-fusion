@@ -2949,41 +2949,11 @@ def plotFluxComparison(
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    rad = r[0][ixF:] if powerstate is None else r[0][1:]
-    Qe_tar = (
-        t.Qe_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Pe"].numpy()[0][:]
-    )
-    Qi_tar = (
-        t.Qi_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Pi"].numpy()[0][:]
-    )
-
-    if forceZeroParticleFlux:
-        Ge_tar = Qe_tar * 0.0
-    else:
-        if powerstate is not None:
-            Ge_tar = powerstate.plasma["GauxE"].numpy()[0][
-                1:
-            ]  # Special because Ge is not stored in powerstate
-            if useConvectiveFluxes:
-                Ge_tar = PLASMAtools.convective_flux(
-                    powerstate.plasma["te"][0][1:], Ge_tar
-                ).numpy()
-        else:
-            if useConvectiveFluxes:
-                Ge_tar = t.Ce_tar[0][ixF:]
-            else:
-                Ge_tar = t.Ge_tar[0][ixF:]
-
-    GZ_tar = rad * 0.0
-    Mt_tar = (
-        t.Mt_tar[0][ixF:]
-        if powerstate is None
-        else powerstate.plasma["Mt"].numpy()[0][:]
-    )
+    Qe_tar = power.plasma['Pe'].numpy()[0][ixF:]
+    Qi_tar = power.plasma['Pi'].numpy()[0][ixF:]
+    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:]
+    GZ_tar = power.plasma['CZ_raw'].numpy()[0][ixF:]
+    Mt_tar = power.plasma['Mt'].numpy()[0][ixF:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
