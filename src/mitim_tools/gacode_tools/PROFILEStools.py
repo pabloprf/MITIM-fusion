@@ -1446,7 +1446,7 @@ class PROFILES_GACODE:
         print("\t\t\t- Set of ions in updated profiles: ", self.profiles["name"])
 
     def lumpSpecies(
-        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False
+        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False,
     ):
         """
         if (D,Z1,Z2), lumping Z1 and Z2 requires ions_list = [2,3]
@@ -1505,7 +1505,7 @@ class PROFILES_GACODE:
         A = Z * 2
         nZ = fZ1 / Z * self.profiles["ne(10^19/m^3)"]
 
-        print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f}")
+        print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f} (calculated as 2*Z)")
 
         # Insert cases
         self.profiles["nion"] = np.array([f"{int(self.profiles['nion'][0])+1}"])
