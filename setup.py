@@ -29,7 +29,7 @@ setup(
         "argparse",
         "h5py",
         "netCDF4",
-        "xarray",
+        "xarray==2022.6.0", # This is a compromise between the requirements of omfit_classes (fails for high versions) and the PLASMAstate xr reader (importlib_metadata issues)
         "xlsxwriter",
         "statsmodels",
         "dill",
@@ -46,7 +46,6 @@ setup(
         "pyqt": "PyQt6",
         "omfit": [
             "omfit_classes",
-            "xarray==2022.3.0",  # As of 12/07/2023, omfit_classes fails for higher versions (but higher is needed for other applications! like PLASMAstate....)
             "matplotlib==3.5.3",  # As of 12/07/2023, omfit_classes fails for higher versions
             "omas",
             "fortranformat",
