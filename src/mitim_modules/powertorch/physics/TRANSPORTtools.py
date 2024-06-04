@@ -12,6 +12,11 @@ from IPython import embed
 class power_transport:
     '''
     Default class for power transport models, change "evaluate" method to implement a new model
+
+    Notes:
+        - After evaluation, the self.model_results attribute will contain the results of the model, which can be used for plotting and analysis
+        - model results can have .plot() method that can grab kwargs or be similar to TGYRO plot
+
     '''
     def __init__(self, powerstate, name = "test", folder = "~/scratch/", extra_params = {}):
 
@@ -25,25 +30,118 @@ class power_transport:
 
         self.variables = [f'{i}_tr' for i in self.quantities] + [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
 
-    def produce_profiles(self):
+        self.model_results = None
+
+    def produce_profiles(self,deriveQuantities=True):
 
         if 'MODELparameters' in self.powerstate.TransportOptions["ModelOptions"] and 'applyCorrections' in self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]:
-            applyCorrections = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"]
+            self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"]
         else:
-            applyCorrections = {}
+            self.applyCorrections = {}
 
-        # Write this updated profiles class (with parameterized profiles)
+        # Derive quantities so that 
+        if deriveQuantities:
+            self.powerstate.profiles.deriveQuantities()
+
+        # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
-        self.profiles = self.powerstate.insertProfiles(
+        self.powerstate.profiles = self.powerstate.insertProfiles(
             self.powerstate.profiles,
             writeFile=self.file_profs,
-            applyCorrections=applyCorrections,
+            applyCorrections=self.applyCorrections,
         )
 
         # copy for future modifications
         self.file_profs_mod = f"{self.file_profs}_modified"
         os.system(f"cp {self.file_profs} {self.file_profs_mod}")
 
+    def clean(self):
+
+        # Make sure that the variables are on-repeat
+        for i in self.variables:
+            self.powerstate.keys1D_derived[i] = 1
+
+        # Insert powers again in case they come from TGYRO instead of powerstate previous step
+        if self.powerstate.TargetCalc == "tgyro":
+            self.powerstate.profiles = self.powerstate.insertProfiles(
+                self.powerstate.profiles,
+                writeFile=self.file_profs,
+                applyCorrections=self.applyCorrections,
+                insertPowers=True,      # So that later I can read it fully with the powers, fusion, etc
+            )
+
+
+    def map_portals_to_powerstate(
+            self,
+            provideTurbulentExchange=False,
+            provideTargets=False,
+            percentError=[5, 1, 0.5],
+            index_tuple = (0, ())):
+
+        # Mapper between PORTALS and POWESTATE
+        mapper = {
+            "Pe_tr_turb": "Qe_turb",
+            "Pi_tr_turb": "Qi_turb",
+            "Ce_tr_turb": "Ge_turb",
+            "CZ_tr_turb": "GZ_turb",
+            "Mt_tr_turb": "Mt_turb",
+            "Pe_tr_neo": "Qe_neo",
+            "Pi_tr_neo": "Qi_neo",
+            "Ce_tr_neo": "Ge_neo",
+            "CZ_tr_neo": "GZ_neo",
+            "Mt_tr_neo": "Mt_neo",
+        }
+
+        if provideTurbulentExchange:
+            mapper.update(
+                {"PexchTurb": "PexchTurb"}
+            )  # I need to do this outside of provideTargets because powerstate cannot compute this
+
+        if provideTargets:
+            mapper.update(
+                {
+                    "Pe": "Qe",
+                    "Pi": "Qi",
+                    "Ce": "Ge",
+                    "CZ": "GZ",
+                    "Mt": "Mt",
+                }
+            )
+        else:
+            for ikey in self.quantities:
+                self.powerstate.plasma[ikey] = self.powerstate.plasma[ikey][:, 1:]
+
+            percentErrorTarget = percentError[2] / 100.0
+
+            for ikey in self.quantities:
+                self.powerstate.plasma[ikey+"_stds"] = self.powerstate.plasma[ikey] * percentErrorTarget
+
+        for ikey in mapper:
+            self.powerstate.plasma[ikey] = (
+                torch.from_numpy(
+                    self.portals_variables[mapper[ikey]][index_tuple]
+                )
+                .to(self.powerstate.dfT)
+                .unsqueeze(0)
+            )
+            self.powerstate.plasma[ikey + "_stds"] = (
+                torch.from_numpy(
+                    self.portals_variables[mapper[ikey] + "_stds"][index_tuple]
+                )
+                .to(self.powerstate.dfT)
+                .unsqueeze(0)
+            )
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Sum here turbulence and neoclassical, after modifications
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        for ikey in self.quantities:
+            self.powerstate.plasma[ikey+"_tr"] = self.powerstate.plasma[ikey+"_tr_turb"] + self.powerstate.plasma[ikey+"_tr_neo"]
+
+    # ----------------------------------------------------------------------------------------------------
+    # EVALUATE (custom part)
+    # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
         print("Nothing to evaluate", typeMsg="w")
 
@@ -53,13 +151,13 @@ class power_transport:
         for i in self.quantities:
             self.powerstate.plasma[i] = self.powerstate.plasma[i][:, 1:]
 
-        self.results, self.model_results = None, None
+        portals_variables_names = ['Qe', 'Qi', 'Ge', 'GZ', 'Mt']
+        self.portals_variables = {}
+        for i in portals_variables_names:
+            self.portals_variables[i] = self.powerstate.plasma[i][:, 1:]
 
-    def clean(self):
-
-         # Make sure that the variables are on-repeat
-        for i in self.variables:
-            self.powerstate.keys1D_derived[i] = 1
+        self.results = None
+        self.model_results = None
 
 # ----------------------------------------------------------------------------------------------------
 # FULL TGYRO
@@ -107,7 +205,7 @@ class tgyro_model(power_transport):
         ]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, FolderEvaluation_TGYRO))
-        tgyro.prep(FolderEvaluation_TGYRO, profilesclass_custom=self.profiles)
+        tgyro.prep(FolderEvaluation_TGYRO, profilesclass_custom=self.powerstate.profiles)
 
         if launchMODELviaSlurm:
             print("\t- Launching TGYRO evaluation as a batch job")
@@ -193,7 +291,7 @@ class tgyro_model(power_transport):
 
         TGYROresults = tgyro.results["tglf_neo"]
 
-        portals_variables = TGYROresults.TGYROmodeledVariables(
+        self.portals_variables = TGYROresults.TGYROmodeledVariables(
             useConvectiveFluxes=useConvectiveFluxes,
             includeFast=includeFast,
             impurityPosition=impurityPosition,
@@ -208,7 +306,7 @@ class tgyro_model(power_transport):
         # ------------------------------------------------------------------------------------------------------------------------
 
         if TransportOptions == "cgyro_neo-tgyro":
-            portals_variables_orig = copy.deepcopy(portals_variables)
+            portals_variables_orig = copy.deepcopy(self.portals_variables)
 
             print(
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
@@ -234,7 +332,7 @@ class tgyro_model(power_transport):
                 cgyro_trick(
                     self.powerstate,
                     f"{FolderEvaluation_TGYRO}/cgyro_neo",
-                    portals_variables=portals_variables,
+                    portals_variables=self.portals_variables,
                     profiles_postprocessing_fun=profiles_postprocessing_fun,
                     extra_params=self.extra_params,
                     name=self.name,
@@ -248,7 +346,7 @@ class tgyro_model(power_transport):
             TGYROresults = tgyro.results["cgyro_neo"]
             labels_results.append("cgyro_neo")
 
-            portals_variables = TGYROresults.TGYROmodeledVariables(
+            self.portals_variables = TGYROresults.TGYROmodeledVariables(
                 useConvectiveFluxes=useConvectiveFluxes,
                 includeFast=includeFast,
                 impurityPosition=impurityPosition,
@@ -264,7 +362,7 @@ class tgyro_model(power_transport):
                     f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(portals_variables_orig[r][0][1:],portals_variables_orig[r+'_stds'][0][1:]) ])}"
                 )
                 print(
-                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(portals_variables[r][0][1:],portals_variables[r+'_stds'][0][1:]) ])}"
+                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.portals_variables[r][0][1:],self.portals_variables[r+'_stds'][0][1:]) ])}"
                 )
 
             # **
@@ -283,71 +381,17 @@ class tgyro_model(power_transport):
         # TURBULENCE and NEOCLASSICAL
         # --------------------------------------------------------------------------------------------------------------------------------
 
-        iteration = 0
         tuple_rho_indeces = ()
         for rho in tgyro.rhosToSimulate:
-            tuple_rho_indeces += (np.argmin(np.abs(rho - TGYROresults.rho)),)
+            tuple_rho_indeces += (np.argmin(np.abs(rho - self.powerstate.plasma['rho'].numpy())),)
 
-        mapper = {
-            "Pe_tr_turb": "Qe_turb",
-            "Pi_tr_turb": "Qi_turb",
-            "Ce_tr_turb": "Ge_turb",
-            "CZ_tr_turb": "GZ_turb",
-            "Mt_tr_turb": "Mt_turb",
-            "Pe_tr_neo": "Qe_neo",
-            "Pi_tr_neo": "Qi_neo",
-            "Ce_tr_neo": "Ge_neo",
-            "CZ_tr_neo": "GZ_neo",
-            "Mt_tr_neo": "Mt_neo",
-        }
+        self.map_portals_to_powerstate(
+            provideTurbulentExchange=provideTurbulentExchange,
+            provideTargets=provideTargets,
+            percentError=percentError,
+            index_tuple=(0, tuple_rho_indeces)
+        )
 
-        if provideTurbulentExchange:
-            mapper.update(
-                {"PexchTurb": "PexchTurb"}
-            )  # I need to do this outside of provideTargets because powerstate cannot compute this
-
-        if provideTargets:
-            mapper.update(
-                {
-                    "Pe": "Qe",
-                    "Pi": "Qi",
-                    "Ce": "Ge",
-                    "CZ": "GZ",
-                    "Mt": "Mt",
-                }
-            )
-        else:
-            for ikey in self.quantities:
-                self.powerstate.plasma[ikey] = self.powerstate.plasma[ikey][:, 1:]
-
-            percentErrorTarget = percentError[2] / 100.0
-
-            for ikey in self.quantities:
-                self.powerstate.plasma[ikey+"_stds"] = self.powerstate.plasma[ikey] * percentErrorTarget
-
-        for ikey in mapper:
-            self.powerstate.plasma[ikey] = (
-                torch.from_numpy(
-                    portals_variables[mapper[ikey]][iteration, tuple_rho_indeces]
-                )
-                .to(dfT)
-                .unsqueeze(0)
-            )
-            self.powerstate.plasma[ikey + "_stds"] = (
-                torch.from_numpy(
-                    portals_variables[mapper[ikey] + "_stds"][iteration, tuple_rho_indeces]
-                )
-                .to(dfT)
-                .unsqueeze(0)
-            )
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Sum here turbulence and neoclassical, after modifications
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        for ikey in self.quantities:
-            self.powerstate.plasma[ikey+"_tr"] = self.powerstate.plasma[ikey+"_tr_turb"] + self.powerstate.plasma[ikey+"_tr_neo"]
-            
         # ------------------------------------------------------------------------------------------------------------------------
         # Results
         # ------------------------------------------------------------------------------------------------------------------------

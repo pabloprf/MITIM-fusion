@@ -212,20 +212,28 @@ def TGYROmodeledVariables(
     # *********** Particle Fluxes
     # **********************************
 
-    if not useConvectiveFluxes:
-        portals_variables["Ge_turb"] = TGYROresults.Ge_sim_turb[:, :]
-        portals_variables["Ge_neo"] = TGYROresults.Ge_sim_neo[:, :]
-        portals_variables["Ge"] = TGYROresults.Ge_tar[:, :]
+    # Store raw fluxes for better plotting later
+    portals_variables["Ge_turb_raw"] = TGYROresults.Ge_sim_turb[:, :]
+    portals_variables["Ge_neo_raw"] = TGYROresults.Ge_sim_neo[:, :]
+    portals_variables["Ge_raw"] = TGYROresults.Ge_tar[:, :]
 
-        portals_variables["Ge_turb_stds"] = (
-            TGYROresults.Ge_sim_turb_stds if TGYROresults.tgyro_stds else None
-        )
-        portals_variables["Ge_neo_stds"] = (
-            TGYROresults.Ge_sim_neo_stds if TGYROresults.tgyro_stds else None
-        )
-        portals_variables["Ge_stds"] = (
-            TGYROresults.Ge_tar_stds[:, :] if TGYROresults.tgyro_stds else None
-        )
+    portals_variables["Ge_turb_raw_stds"] = (
+        TGYROresults.Ge_sim_turb_stds if TGYROresults.tgyro_stds else None
+    )
+    portals_variables["Ge_neo_raw_stds"] = (
+        TGYROresults.Ge_sim_neo_stds if TGYROresults.tgyro_stds else None
+    )
+    portals_variables["Ge_raw_stds"] = (
+        TGYROresults.Ge_tar_stds[:, :] if TGYROresults.tgyro_stds else None
+    )
+
+    if not useConvectiveFluxes:
+        portals_variables["Ge_turb"] = portals_variables["Ge_turb_raw"]
+        portals_variables["Ge_neo"] = portals_variables["Ge_neo_raw"]
+        portals_variables["Ge"] = portals_variables["Ge_raw"]
+        portals_variables["Ge_turb_stds"] = portals_variables["Ge_turb_raw_stds"]
+        portals_variables["Ge_neo_stds"] = portals_variables["Ge_neo_raw_stds"]
+        portals_variables["Ge_stds"] = portals_variables["Ge_raw_stds"]
 
     else:
         portals_variables["Ge_turb"] = TGYROresults.Ce_sim_turb[:, :]
@@ -246,30 +254,38 @@ def TGYROmodeledVariables(
     # *********** Impurity Fluxes
     # **********************************
 
-    if not useConvectiveFluxes:
-        portals_variables["GZ_turb"] = (
-            TGYROresults.Gi_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ_neo"] = (
-            TGYROresults.Gi_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
-        )
-        portals_variables["GZ"] = TGYROresults.Gi_tar[impurityPosition - 1, :, :] / OriginalFimp
+    portals_variables["GZ_turb_raw"] = (
+        TGYROresults.Gi_sim_turb[impurityPosition - 1, :, :] / OriginalFimp
+    )
+    portals_variables["GZ_neo_raw"] = (
+        TGYROresults.Gi_sim_neo[impurityPosition - 1, :, :] / OriginalFimp
+    )
+    portals_variables["GZ_raw"] = TGYROresults.Gi_tar[impurityPosition - 1, :, :] / OriginalFimp
 
-        portals_variables["GZ_turb_stds"] = (
-            TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if TGYROresults.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_neo_stds"] = (
-            TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if TGYROresults.tgyro_stds
-            else None
-        )
-        portals_variables["GZ_stds"] = (
-            TGYROresults.Gi_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
-            if TGYROresults.tgyro_stds
-            else None
-        )
+    portals_variables["GZ_turb_raw_stds"] = (
+        TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :, :] / OriginalFimp
+        if TGYROresults.tgyro_stds
+        else None
+    )
+    portals_variables["GZ_neo_raw_stds"] = (
+        TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :, :] / OriginalFimp
+        if TGYROresults.tgyro_stds
+        else None
+    )
+    portals_variables["GZ_raw_stds"] = (
+        TGYROresults.Gi_tar_stds[impurityPosition - 1, :, :] / OriginalFimp
+        if TGYROresults.tgyro_stds
+        else None
+    )
+
+
+    if not useConvectiveFluxes:
+        portals_variables["GZ_turb"] = portals_variables["GZ_turb_raw"]
+        portals_variables["GZ_neo"] = portals_variables["GZ_neo_raw"]
+        portals_variables["GZ"] = portals_variables["GZ_raw"]
+        portals_variables["GZ_turb_stds"] = portals_variables["GZ_turb_raw_stds"]
+        portals_variables["GZ_neo_stds"] = portals_variables["GZ_neo_raw_stds"]
+        portals_variables["GZ_stds"] = portals_variables["GZ_raw_stds"]
 
     else:
         portals_variables["GZ_neo"] = (

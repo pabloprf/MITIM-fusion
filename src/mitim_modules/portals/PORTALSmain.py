@@ -549,6 +549,7 @@ def runModelEvaluator(
     extra_params_model={},
     dictOFs=None,
 ):
+    # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
 
     # ---------------------------------------------------------------------------------------------------
@@ -582,12 +583,14 @@ def runModelEvaluator(
     # Run model through powerstate
     # ---------------------------------------------------------------------------------------------------
 
+    # Initialize with original profile
     powerstate.profiles = PROFILEStools.PROFILES_GACODE(
         readFile, calculateDerived=False
     )
 
     powerstate.TransportOptions["ModelOptions"]["restart"] = restart
 
+    # Evaluate X (DVs) through powerstate.calculate. This will populate .plasma with the results
     powerstate.calculate(
         X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
     )

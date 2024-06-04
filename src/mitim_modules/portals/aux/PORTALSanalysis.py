@@ -168,8 +168,7 @@ class PORTALSanalyzer:
 
         self.powerstates = []
         for i in range(self.ilast + 1):
-            power = self.mitim_runs[i]["powerstate"]
-            self.powerstates.append(power)
+            self.powerstates.append(self.mitim_runs[i]["powerstate"])
 
         if len(self.powerstates) <= self.ibest:
             print(
@@ -213,52 +212,27 @@ class PORTALSanalyzer:
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 
-            t = power.model_results
-            p = t.profiles_final
-
             self.evaluations.append(i)
-            self.FusionGain.append(p.derived["Q"])
-            self.FusionPower.append(p.derived["Pfus"])
-            self.tauE.append(p.derived["tauE"])
+            self.FusionGain.append(power.profiles.derived["Q"])
+            self.FusionPower.append(power.profiles.derived["Pfus"])
+            self.tauE.append(power.profiles.derived["tauE"])
 
             # ------------------------------------------------
             # Residual definitions
             # ------------------------------------------------
 
-            powerstate = self.opt_fun.prfs_model.mainFunction.powerstate
-
-            try:
-                OriginalFimp = powerstate.TransportOptions["ModelOptions"][
-                    "OriginalFimp"
-                ]
-            except:
-                OriginalFimp = 1.0
-
-            impurityPosition = (
-                self.runWithImpurity + 1 if self.runWithImpurity is not None else 1
-            )
-
-            portals_variables = t.TGYROmodeledVariables(
-                useConvectiveFluxes=self.useConvectiveFluxes,
-                includeFast=self.includeFast,
-                impurityPosition=impurityPosition,
-                UseFineGridTargets=self.PORTALSparameters["fineTargetsResolution"],
-                OriginalFimp=OriginalFimp,
-                forceZeroParticleFlux=self.PORTALSparameters["forceZeroParticleFlux"],
-            )
-
             if (
-                len(powerstate.plasma["volp"].shape) > 1
-                and powerstate.plasma["volp"].shape[1] > 1
+                len(power.plasma["volp"].shape) > 1
+                and power.plasma["volp"].shape[1] > 1
             ):
-                powerstate.unrepeat(do_fine=False)
-                powerstate.repeat(do_fine=False)
+                power.unrepeat(do_fine=False)
+                power.repeat(do_fine=False)
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
-                portals_variables["var_dict"],
+                power.portals_variables["var_dict"],
                 self.PORTALSparameters,
                 self.MODELparameters,
-                powerstate,
+                power,
             )
 
             # Make sense of tensor "source" which are defining the entire predictive set in
@@ -301,10 +275,10 @@ class PORTALSanalyzer:
                         y1_std,
                         y2_std,
                     ) = PORTALSinteraction.calculatePseudos_distributions(
-                        portals_variables["var_dict"],
+                        power.portals_variables["var_dict"],
                         self.PORTALSparameters,
                         self.MODELparameters,
-                        powerstate,
+                        power,
                     )
 
                     QR, chiR = PLASMAtools.RicciMetric(
@@ -331,7 +305,7 @@ class PORTALSanalyzer:
                     calculateRicci = None
                     self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
-        self.labelsFluxes = portals_variables["labels"]
+        self.labelsFluxes = power.portals_variables["labels"]
 
         self.FusionGain = np.array(self.FusionGain)
         self.FusionPower = np.array(self.FusionPower)
@@ -441,42 +415,27 @@ class PORTALSanalyzer:
                 )
             UseTGLFfull_x = label
 
-        return PORTALSplot.PORTALSanalyzer_plotModelComparison(
-            self, UseTGLFfull_x=UseTGLFfull_x, **kwargs
-        )
+        if self.mitim_runs[0]["powerstate"].model_results is not None:
+            return PORTALSplot.PORTALSanalyzer_plotModelComparison(
+                self, UseTGLFfull_x=UseTGLFfull_x, **kwargs
+            )
+        else:
+            print("- No model results available to plot model comparisons", typeMsg="w")
+            return None, None
 
     # ****************************************************************************
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
-    def extractProfiles(self, evaluation=None, correct_targets=True):
+    def extractProfiles(self, evaluation=None):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 =  self.mitim_runs[evaluation]["powerstate"].model_results.profiles
+        p0 =  self.mitim_runs[evaluation]["powerstate"].profiles
 
         p = copy.deepcopy(p0)
-
-        if correct_targets:
-            print(
-                "\t- Replacing powers from input.gacode to have the same as input.gacode.new",
-                typeMsg="i",
-            )
-
-            p1 =  self.mitim_runs[evaluation]["powerstate"].model_results.profiles_final
-
-            for ikey in [
-                "qei(MW/m^3)",
-                "qbrem(MW/m^3)",
-                "qsync(MW/m^3)",
-                "qline(MW/m^3)",
-                "qfuse(MW/m^3)",
-                "qfusi(MW/m^3)",
-            ]:
-                if ikey in p.profiles:
-                    p.profiles[ikey] = p1.profiles[ikey]
 
         return p
 

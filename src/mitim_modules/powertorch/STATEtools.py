@@ -270,19 +270,16 @@ class powerstate:
         Provide what's needed for flux-matching
         """
 
-        # 1. Modify gradients
+        # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
         self.modify(X)
 
-        # 2. Plasma parameters
+        # 2. Plasma parameters (te,ti,ne,nZ,w0 -> Qgb,Ggb,Pgb,Sgb,nuei,rho_s,c_s,tite,fZ,beta_e,w0_n,aLw0_n)
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks
-        if self.TargetCalc == "powerstate":
-            self.calculateTargets()  # Calculate targets based on powerstate functions
-        else:
-            pass  # Use what it is going to be calculated in the next step
+        self.calculateTargets()  # Calculate targets based on powerstate functions
 
-        # 4. Turbulent and neoclassical transport
+        # 4. Turbulent and neoclassical transport (populates Q,G,P,S)
         self.calculateTransport(
             nameRun=nameRun,
             folder=folder,
@@ -902,7 +899,8 @@ class powerstate:
         self, nameRun="test", folder="~/scratch/", extra_params={}
     ):
         """
-        Update the transport of the current state
+        Update the transport of the current state.
+        By default, this is when powerstate interacts with input.gacode (produces it even if it's not used in the calculation)
         """
 
         # ******* Nothing
@@ -929,6 +927,7 @@ class powerstate:
 
         # Pass the results as part of the powerstate class
         self.model_results = transport.model_results
+        self.portals_variables = transport.portals_variables
 
     def metric(self):
         """
@@ -1022,6 +1021,8 @@ class powerstate:
             self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
         )[:, -1]
 
+        self.profiles.deriveQuantities()
+        
         self.insertProfiles(
             self.profiles,
             writeFile=f"{folder}/input.gacode.new.powerstate",
