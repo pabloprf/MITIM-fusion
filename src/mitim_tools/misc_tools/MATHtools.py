@@ -622,7 +622,8 @@ def drawContours(Rold, Yold, Zold, resol=5e3, psiN_boundary=0.99999):
 
     [Rg, Yg] = np.meshgrid(R, Y)
 
-    cs = plt.contour(Rg, Yg, Z, resol, levels=[psiN_boundary])
+    fig, ax = plt.subplots()
+    cs = ax.contour(Rg, Yg, Z, resol, levels=[psiN_boundary])
 
     Rpsi, Ypsi = [], []
     for k in range(len(cs.allsegs[0])):
@@ -633,6 +634,8 @@ def drawContours(Rold, Yold, Zold, resol=5e3, psiN_boundary=0.99999):
             Yb.append(i[1])
         Rpsi.append(np.array(Rb))
         Ypsi.append(np.array(Yb))
+
+    plt.close(fig)
 
     return Rpsi, Ypsi
 

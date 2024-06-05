@@ -377,6 +377,9 @@ class PROFILES_GACODE:
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_miller" not in self.derived):
+
+            self.produce_shape_lists()
+
             (
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
@@ -400,6 +403,7 @@ class PROFILES_GACODE:
                     self.profiles["zeta(-)"],
                     self.shape_cos,
                     self.shape_sin,
+                    debugPlot=False
                 )
             except:
                 self.derived["R_surface"] = self.derived["Z_surface"] = None
@@ -407,7 +411,6 @@ class PROFILES_GACODE:
                     "\t- Cannot calculate flux surface geometry out of the MXH3 moments",
                     typeMsg="w",
                 )
-
             self.derived["R_LF"] = self.derived["R_surface"].max(
                 axis=1
             )  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
