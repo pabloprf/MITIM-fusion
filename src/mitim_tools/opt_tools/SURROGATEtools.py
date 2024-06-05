@@ -1,8 +1,10 @@
+import os
 import torch
 import gpytorch
 import botorch
 import copy
 import contextlib
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import dill as pickle_dill
@@ -204,7 +206,10 @@ class surrogate_model:
         # Write file with surrogate if there are transformations
         # -------------------------------------------------------------------------------------
 
-        self.writeFileTraining(input_transform_physics, outcome_transform_physics)
+        if (self.fileTraining is not None) and (
+            self.train_X.shape[0] + self.train_X_added.shape[0] > 0
+        ):
+            self.writeFileTraining(input_transform_physics, outcome_transform_physics)
 
         # -------------------------------------------------------------------------------------
         # Input and Outcome transform (NORMALIZATIONS)
@@ -453,77 +458,86 @@ class surrogate_model:
         --------------------------------------------------------------------
         """
 
-        if (self.fileTraining is not None) and (
-            self.train_X.shape[0] + self.train_X_added.shape[0] > 0
-        ):
-            # ------------------------------------------------------------------------------------------------------------------------
-            # Transform the points without the added from file
-            # ------------------------------------------------------------------------------------------------------------------------
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Transform the points without the added from file
+        # ------------------------------------------------------------------------------------------------------------------------
 
-            # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
-            train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-                self.train_X,
-                self.output,
-                self.surrogate_parameters,
-                self.surrogate_parameters["physicsInformedParamsComplete"],
+        # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
+        train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+            self.train_X,
+            self.output,
+            self.surrogate_parameters,
+            self.surrogate_parameters["physicsInformedParamsComplete"],
+        )
+
+        train_Y, train_Yvar = outcome_transform_physics(
+            self.train_X, self.train_Y, self.train_Yvar
+        )
+
+        dv_names_Complete = (
+            self.surrogate_parameters["physicsInformedParamsComplete"][self.output]
+            if (
+                "physicsInformedParamsComplete" in self.surrogate_parameters
+                and self.surrogate_parameters["physicsInformedParamsComplete"]
+                is not None
             )
+            else [i for i in self.bounds]
+        )
 
-            train_Y, train_Yvar = outcome_transform_physics(
-                self.train_X, self.train_Y, self.train_Yvar
+
+        if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
+            print(
+                "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
+                typeMsg="w",
             )
-
-            dv_names_Complete = (
-                self.surrogate_parameters["physicsInformedParamsComplete"][self.output]
-                if (
-                    "physicsInformedParamsComplete" in self.surrogate_parameters
-                    and self.surrogate_parameters["physicsInformedParamsComplete"]
-                    is not None
-                )
-                else [i for i in self.bounds]
-            )
-
-            with open(self.fileTraining, "rb") as f:
-                data_dict = pickle_dill.load(f)
-
-            if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
-                    typeMsg="w",
-                )
-                self.train_X_added_full = torch.cat(
-                    (
-                        self.train_X_added_full,
-                        torch.full(
-                            (
-                                self.train_X_added_full.shape[0],
-                                train_X_Complete.shape[-1]
-                                - self.train_X_added_full.shape[-1],
-                            ),
-                            torch.nan,
+            self.train_X_added_full = torch.cat(
+                (
+                    self.train_X_added_full,
+                    torch.full(
+                        (
+                            self.train_X_added_full.shape[0],
+                            train_X_Complete.shape[-1]
+                            - self.train_X_added_full.shape[-1],
                         ),
+                        torch.nan,
                     ),
-                    axis=-1,
-                )
-            elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
-                    typeMsg="w",
-                )
-                self.train_X_added_full = self.train_X_added_full[
-                    :, : train_X_Complete.shape[-1]
-                ]
+                ),
+                axis=-1,
+            )
+        elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
+            print(
+                "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
+                typeMsg="w",
+            )
+            self.train_X_added_full = self.train_X_added_full[
+                :, : train_X_Complete.shape[-1]
+            ]
 
-            x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
-            y = torch.cat((self.train_Y_added, train_Y), axis=0)
-            yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
+        x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
+        y = torch.cat((self.train_Y_added, train_Y), axis=0)
+        yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
 
-            data_dict[self.output]["Xnames"] = dv_names_Complete
-            data_dict[self.output]["X"] = x
-            data_dict[self.output]["Y"] = y
-            data_dict[self.output]["Yvar"] = yvar
 
-            with open(self.fileTraining, "wb") as handle:
-                pickle_dill.dump(data_dict, handle)
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Merged data with existing data frame and write
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        new_df = create_df_portals(x,y,yvar,dv_names_Complete,self.output)
+
+        if os.path.exists(self.fileTraining):
+
+            # Load the existing DataFrame from the HDF5 file
+            existing_df = pd.read_csv(self.fileTraining)
+
+            # Concatenate the existing DataFrame with the new DataFrame
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        else:
+
+            combined_df = new_df
+
+        # Save the combined DataFrame back to the file
+        combined_df.to_csv(self.fileTraining, index=False)
 
     # --------------------------
     # PLOTTING AND POST-ANALYSIS
@@ -892,48 +906,24 @@ def extendPoints(file, output):
 
     return x, y, yvar
 
+def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 
-def writeTabulars(
-    file,
-    TabularData,
-    TabularDataStds,
-    outputs,
-    IncludeVariablesContain=[],
-    avoidPositions=[],
-    startingPosition=0,
-):
-    with open(file, "rb") as handle:
-        data_dict = pickle_dill.load(handle)
+    new_data = []
+    for i in range(max_x):
+        if i >= x.shape[0]:
+            break
+        data_point = {
+            'Model': output,
+            'y': y[i,:].item(),
+            'yvar': yvar[i,:].item(),
+            'x_names': x_names,
+        }
+        for j in range(x.shape[1]):
+            data_point[f'x{j}'] = x[i,j].item()
+        new_data.append(data_point)
 
-    iC = copy.deepcopy(startingPosition)
-    for output in data_dict:
-        addHere = False
-        for tt in IncludeVariablesContain:
-            if tt in output:
-                addHere = True
+    # Create a DataFrame for the new data
+    new_df = pd.DataFrame(new_data)
 
-        if addHere:
-            X, Y, Yvar = (
-                data_dict[output]["X"].cpu().numpy(),
-                data_dict[output]["Y"].cpu().numpy(),
-                data_dict[output]["Yvar"].cpu().numpy(),
-            )
+    return new_df
 
-            for i in range(X.shape[0]):
-                if i not in avoidPositions:
-                    TabularData.data[iC], TabularDataStds.data[iC] = {}, {}
-                    for j in range(20):
-                        TabularData.data[iC][f"x_{j}"] = TabularDataStds.data[iC][
-                            f"x_{j}"
-                        ] = np.nan
-                    for j in range(X.shape[1]):
-                        TabularData.data[iC][f"x_{j}"] = TabularDataStds.data[iC][
-                            f"x_{j}"
-                        ] = round(X[i, j], 16)
-                    TabularData.data[iC]["y"] = round(Y[i, 0], 16)
-                    TabularDataStds.data[iC]["y"] = round(Yvar[i, 0] ** 0.5, 16)
-
-                    iC += 1
-                    outputs.append(output)
-
-    return iC - 1, TabularData, TabularDataStds, outputs

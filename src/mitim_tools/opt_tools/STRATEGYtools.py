@@ -148,9 +148,6 @@ class opt_evaluator:
         # Variables in the class not to save (e.g. COMSOL model)
         self.doNotSaveVariables = []
 
-        # Variables to store in separate files
-        self.storeDataSurrogates = [[""]]
-
     def read(self, paramsfile, resultsfile):
         # Read stuff
         (
@@ -596,7 +593,6 @@ class PRF_BO:
                 "name_objectives": self.mainFunction.name_objectives,
                 "name_transformed_ofs": self.mainFunction.name_transformed_ofs,
                 "outputs": self.outputs,
-                "storeDataSurrogates": self.mainFunction.storeDataSurrogates,
             }
 
             self.ResultsOptimization = BOgraphics.ResultsOptimization(file=res_file)

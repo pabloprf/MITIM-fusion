@@ -1,4 +1,5 @@
 import copy
+import os
 import datetime
 import torch
 import botorch
@@ -167,28 +168,14 @@ class OPTstep:
 
         """
 		*********************************************************************************************************************
-			Prepare file with training data
-		*********************************************************************************************************************
-		"""
-
-        fileTraining = f"{self.stepSettings['folderOutputs']}/DataTraining.pkl"
-        data_dict = OrderedDict()
-        for output in self.outputs:
-            data_dict[output] = {
-                "X": torch.tensor([]),
-                "Y": torch.tensor([]),
-                "Yvar": torch.tensor([]),
-            }
-        with open(fileTraining, "wb") as handle:
-            pickle_dill.dump(data_dict, handle)
-
-        """
-		*********************************************************************************************************************
 			Performing Fit
 		*********************************************************************************************************************
 		"""
 
         self.GP = {"individual_models": [None] * self.y.shape[-1]}
+        fileTraining = f"{self.stepSettings['folderOutputs']}/surrogate_models.csv"
+        if os.path.exists(fileTraining):
+            os.system(f'mv {fileTraining} {fileTraining}.bak')
 
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
@@ -292,6 +279,9 @@ class OPTstep:
 
             self.GP["individual_models"][i] = GP
 
+        if os.path.exists(fileTraining+".bak"):
+            os.remove(fileTraining+".bak")
+
         # ------------------------------------------------------------------------------------------------------
         # Combine them in a ModelListGP (create one single with MV but do not fit)
         # ------------------------------------------------------------------------------------------------------
@@ -315,45 +305,6 @@ class OPTstep:
         self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
 
         print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
-
-        """
-		*********************************************************************************************************************
-			Write info (tables out of modified DataTraining pickle)
-		*********************************************************************************************************************
-		"""
-
-        max_num_variables = 20
-
-        # Convert to tables
-        for IncludeVariablesContain in self.stepSettings["storeDataSurrogates"]:
-            name_file = "".join(IncludeVariablesContain)
-
-            fileTabularData = f"{self.stepSettings['folderOutputs']}/DataTraining_{name_file}_table.dat"
-            fileTabularDataError = f"{self.stepSettings['folderOutputs']}/DataTraining_{name_file}_tableErrors.dat"
-            TabularData = BOgraphics.TabularData(
-                [f"x_{i}" for i in range(max_num_variables)],
-                ["y"],
-                file=fileTabularData,
-            )
-            TabularDataStds = BOgraphics.TabularData(
-                [f"x_{i}" for i in range(max_num_variables)],
-                ["y"],
-                file=fileTabularDataError,
-            )
-            (
-                pointsAdded,
-                TabularData,
-                TabularDataStds,
-                outputs,
-            ) = SURROGATEtools.writeTabulars(
-                fileTraining,
-                TabularData,
-                TabularDataStds,
-                [],
-                IncludeVariablesContain=IncludeVariablesContain,
-            )
-            TabularData.updateFile(source_interface=outputs)
-            TabularDataStds.updateFile(source_interface=outputs)
 
         """
 		*********************************************************************************************************************

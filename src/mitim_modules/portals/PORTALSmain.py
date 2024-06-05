@@ -215,8 +215,6 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": None,  # If not None, calculate targets with this radial resolution
         }
 
-        self.storeDataSurrogates = [["Turb", "Neo"], ["Tar"]]
-
     def prep(
         self,
         fileGACODE,
