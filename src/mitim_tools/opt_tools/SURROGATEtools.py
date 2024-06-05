@@ -4,6 +4,7 @@ import gpytorch
 import botorch
 import copy
 import contextlib
+import ast
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -136,27 +137,37 @@ class surrogate_model:
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
-        if (
-            ("extrapointsFile" in self.surrogateOptions)
-            and (self.surrogateOptions["extrapointsFile"] is not None)
-            and (self.output is not None)
-        ):
+        if (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
+
             print(
                 f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
             )
-            x, y, yvar = extendPoints(
-                self.surrogateOptions["extrapointsFile"], self.output
-            )
 
-            self.train_X_added_full = x  # Full transformed dimensions
+            df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
+            df_model = df[df['Model'] == self.output]
 
-            # Careful, this assumes that the same surrogate trained variables were used, in the same order
+            # Check 1: Do the points for this output share the same x_names?
+            if df_model['x_names'].nunique() > 1:
+                print("Different x_names for points in the file, prone to errors", typeMsg='q')
+
+            # Check 2: Is it consistent with the x_names of this run?
+            x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
+            x_names_check = self.surrogate_parameters['physicsInformedParamsComplete'][self.output]
+            if x_names != x_names_check:
+                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
+
+
+            self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
+            self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
+    
+            x = []
+            for i in range(len(x_names)):
+                x.append(df_model[f'x{i}'].to_numpy())
+            self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
+
             self.train_X_added = (
-                x[:, :dimTransformedDV_x] if x.shape[-1] > dimTransformedDV_x else x
+                self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
             )
-            self.train_Y_added = y
-
-            self.train_Yvar_added = yvar
 
         else:
             if self.fileTraining is not None:
@@ -174,6 +185,7 @@ class surrogate_model:
             self.train_X_added = torch.empty((0, dimTransformedDV_x))
             self.train_Y_added = torch.empty((0, dimTransformedDV_y))
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
+            
 
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
@@ -839,72 +851,6 @@ class fundamental_model_context(object):
     def __exit__(self, *args):
         self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = True
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
-
-
-# ----------------------------------------------------------------------------------------------------
-# Extend points outside of workflow
-# ----------------------------------------------------------------------------------------------------
-
-
-def extendPoints(file, output):
-    fileErrors = (
-        IOtools.reducePathLevel(file)[0]
-        + IOtools.reducePathLevel(file)[1].split(".")[0]
-        + "Errors.dat"
-    )
-
-    data = BOgraphics.TabularData(
-        [f"x_{i}" for i in range(20)],
-        ["y"],
-        file=file,
-        interface=output,
-        uniqueNumbering=True,
-    ).data
-    dataE = BOgraphics.TabularData(
-        [f"x_{i}" for i in range(20)],
-        ["y"],
-        file=fileErrors,
-        interface=output,
-        uniqueNumbering=True,
-    ).data
-
-    print(
-        f"\t\t- {len(data)} extra data points available for output {output}",
-        typeMsg="i",
-    )
-
-    if len(data) == 0:
-        return torch.Tensor(), torch.Tensor(), torch.Tensor()
-
-    # --------------------------------------------------------------------------------------
-    # Grab new points
-    # --------------------------------------------------------------------------------------
-
-    x = torch.Tensor()
-    y = torch.Tensor()
-    yvar = torch.Tensor()
-    for i in data:
-        list_values = list(data[i].items())
-
-        x_new = torch.Tensor()
-        for j in range(len(list_values)):
-            if np.isnan(list_values[j][1]):
-                break
-            x_new = torch.cat((x_new, torch.from_numpy(np.array([list_values[j][1]]))))
-
-        x = torch.cat((x, x_new.unsqueeze(0)), dim=0)
-
-        # ***** Add to y
-        y_new = torch.from_numpy(np.array([data[i]["y"]])).to(y)
-        y = torch.cat((y, y_new.unsqueeze(0)), dim=0)
-
-        # ***** Add to yvar
-        yvar_new = torch.from_numpy(np.array([dataE[i]["y"]])).to(y) ** 2
-        yvar = torch.cat((yvar, yvar_new.unsqueeze(0)), dim=0)
-
-    print(f"\t\t\t- Dimensions of points found in file: {x.shape}")
-
-    return x, y, yvar
 
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 
