@@ -21,7 +21,8 @@ PORTALS_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.8
 PORTALS_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
 # Codes to use
-PORTALS_fun.PORTALSparameters["model_used"] = "tglf_neo-tgyro"
+from mitim_modules.powertorch.physics import TRANSPORTtools
+PORTALS_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.tgyro_model
 
 # TGLF specifications
 PORTALS_fun.TGLFparameters[

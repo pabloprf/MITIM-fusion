@@ -1,10 +1,10 @@
-import datetime, torch, copy, os
-from IPython import embed
-from mitim_tools.misc_tools import IOtools
+import torch
+import copy
+import os
 from mitim_tools.opt_tools.optimizers import optim
-
+from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def fluxMatchRoot(self, extra_params={}):
     # ---- Function that provides fluxes
@@ -111,9 +111,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}{cont}"
         folder = f"{MainFolder}/{nameRun}/"
-        if (not os.path.exists(folder)) and (
-            "tgyro" in self.TransportOptions["TypeTransport"]
-        ):
+        if (not os.path.exists(folder)) and (self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model):
             os.system(f"mkdir {folder}")
             os.system(f"mkdir {folder}/model_complete/")
 
@@ -131,7 +129,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
         )
 
         # Save state so that I can check initializations
-        if "tgyro" in self.TransportOptions["TypeTransport"]:
+        if self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model:
             self.save(f"{folder}/powerstate.pkl")
             os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
 

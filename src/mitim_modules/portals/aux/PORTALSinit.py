@@ -142,7 +142,7 @@ def initializeProblem(
                 "TargetType"
             ],
             "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
-        },  #'tgyro' if 'tgyro' in portals_fun.PORTALSparameters['model_used'] else 'powerstate'},
+        },
         useConvectiveFluxes=portals_fun.PORTALSparameters["useConvectiveFluxes"],
         impurityPosition=portals_fun.PORTALSparameters["ImpurityOfInterest"],
         fineTargetsResolution=portals_fun.PORTALSparameters["fineTargetsResolution"],
@@ -173,8 +173,8 @@ def initializeProblem(
     portals_fun.powerstate.calculateTargets()
 
     # Prepare powerstate for evaluations
-    portals_fun.powerstate.TransportOptions["TypeTransport"] = (
-        portals_fun.PORTALSparameters["model_used"]
+    portals_fun.powerstate.TransportOptions["transport_evaluator"] = (
+        portals_fun.PORTALSparameters["transport_evaluator"]
     )
     if ModelOptions is not None:
         portals_fun.powerstate.TransportOptions["ModelOptions"] = ModelOptions

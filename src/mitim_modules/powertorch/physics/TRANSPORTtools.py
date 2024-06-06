@@ -254,7 +254,7 @@ class tgyro_model(power_transport):
         # 4. cgyro_neo: Trick to fake a tgyro output to reflect CGYRO
         # ------------------------------------------------------------------------------------------------------------------------
 
-        if self.powerstate.TransportOptions['TypeTransport'] == "cgyro_neo-tgyro":
+        if MODELparameters['transport_model']['turbulence'] == 'CGYRO':
 
             print(
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."

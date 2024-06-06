@@ -30,7 +30,7 @@ class powerstate:
         input_gacode_orig,
         rho_vec,
         ProfilesPredicted=["te", "ti", "ne"],
-        TransportOptions={"TypeTransport": "chis", "ModelOptions": {}},
+        TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
         TargetOptions={"TypeTarget": 3, "TargetCalc": "powerstate"},
         useConvectiveFluxes=True,
         impurityPosition=1,
@@ -887,24 +887,11 @@ class powerstate:
         By default, this is when powerstate interacts with input.gacode (produces it even if it's not used in the calculation)
         """
 
-        # ******* Nothing
-        if self.TransportOptions["TypeTransport"] is None:
-            from mitim_modules.powertorch.physics.TRANSPORTtools import power_transport as transport
-        # ******* TGLF+NEO
-        elif "tgyro" in self.TransportOptions["TypeTransport"]:
-            from mitim_modules.powertorch.physics.TRANSPORTtools import tgyro_model as transport
-        # ******* Transport coefficients
-        elif self.TransportOptions["TypeTransport"] == "chis":
-            from mitim_modules.powertorch.physics.TRANSPORTtools import diffusion_model as transport
-        # ******* Surrogate Model
-        elif self.TransportOptions["TypeTransport"] == "surrogate":
-            from mitim_modules.powertorch.physics.TRANSPORTtools import surrogate_model as transport
-
         # *******************************************************************************************
         # ******* Process
         # *******************************************************************************************
 
-        transport = transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, extra_params=extra_params )
         transport.produce_profiles()
         transport.evaluate()
         transport.clean()

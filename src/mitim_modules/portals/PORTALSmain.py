@@ -14,6 +14,7 @@ from mitim_modules.portals.aux import (
     PORTALSoptimization,
     PORTALSanalysis,
 )
+from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -164,7 +165,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
                 "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
             },
-            "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}}
+            "transport_model": {"turbulence":'TGLF',"TGLFsettings": 5, "extraOptionsTGLF": {}}
         }
 
         """
@@ -182,13 +183,16 @@ class portals(STRATEGYtools.opt_evaluator):
 		-----------------------
 		"""
 
+        # Selection of model
+        transport_evaluator = TRANSPORTtools.tgyro_model
+
         self.PORTALSparameters = {
             "percentError": [
                 10,
                 10,
                 1,
             ],  # (%) Error (std, in percent) of model evaluation [TGLF, NEO, TARGET]
-            "model_used": "tglf_neo-tgyro",  # Options: 'tglf_neo-tgyro', 'cgyro_neo-tgyro'
+            "transport_evaluator": transport_evaluator,
             "TargetCalc": "tgyro",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
             "useConvectiveFluxes": True,  # If True, then convective flux for final metric (not fitting). If False, particle flux
@@ -258,13 +262,12 @@ class portals(STRATEGYtools.opt_evaluator):
                 )
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
-        if 'tgyro' not in self.PORTALSparameters["model_used"]:
-            if self.PORTALSparameters["TargetCalc"] == "tgyro":
-                print(
-                    "\t- Requested TGYRO targets, but model_used is not tgyro, so changing to powerstate",
-                    typeMsg="w",
-                )
-                self.PORTALSparameters["TargetCalc"] = "powerstate"
+        if (self.PORTALSparameters["transport_evaluator"] != TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
+            print(
+                "\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",
+                typeMsg="w",
+            )
+            self.PORTALSparameters["TargetCalc"] = "powerstate"
 
         if (
             "InputType" not in self.MODELparameters["Physics_options"]
@@ -510,14 +513,12 @@ class portals(STRATEGYtools.opt_evaluator):
 
                 self_copy = copy.deepcopy(self)
                 if reevaluateTargets == 1:
-                    self_copy.powerstate.TransportOptions["TypeTransport"] = None
+                    self_copy.powerstate.TransportOptions["transport_evaluator"] = None
                     self_copy.powerstate.TransportOptions["TypeTarget"] = (
                         self_copy.powerstate.TargetCalc
                     ) = "powerstate"
                 else:
-                    self_copy.powerstate.TransportOptions["TypeTransport"] = (
-                        "tglf_neo_tgyro"
-                    )
+                    self_copy.powerstate.TransportOptions["transport_evaluator"] = TRANSPORTtools.tgyro_model
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,

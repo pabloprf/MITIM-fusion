@@ -11,7 +11,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals.aux import PORTALSinit
-
+from mitim_modules.powertorch.physics import TRANSPORTtools
 
 def calculator(
     input_gacode,
@@ -34,7 +34,7 @@ def calculator(
             rho_vec,
             TargetOptions={"TypeTarget": 3, "TargetCalc": "tgyro"},
             TransportOptions={
-                "TypeTransport": "tglf_neo-tgyro",
+                "transport_evaluator": TRANSPORTtools.tgyro_model,
                 "ModelOptions": {
                     "restart": restart,
                     "launchSlurm": True,
@@ -67,7 +67,7 @@ def calculator(
             profiles,
             rho_vec,
             TargetOptions={"TypeTarget": 3, "TargetCalc": "powerstate"},
-            TransportOptions={"TypeTransport": None, "ModelOptions": {}},
+            TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
         )
 
     p.profiles = p.insertProfiles(
