@@ -173,7 +173,7 @@ class OPTstep:
 		"""
 
         self.GP = {"individual_models": [None] * self.y.shape[-1]}
-        fileTraining = f"{self.stepSettings['folderOutputs']}/surrogate_models.csv"
+        fileTraining = f"{self.stepSettings['folderOutputs']}/surrogate_data.csv"
         if os.path.exists(fileTraining):
             os.system(f'mv {fileTraining} {fileTraining}.bak')
 

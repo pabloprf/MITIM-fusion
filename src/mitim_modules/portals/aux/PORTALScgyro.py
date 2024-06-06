@@ -66,8 +66,8 @@ def evaluateCGYRO(
         "\t- Suggested command to send files (not .new) for CGYRO evaluation:",
         typeMsg="i",
     )
-    lapfile = f"{IOtools.expandPath(folder,ensurePathValid=True)}/Outputs/ProfilesEvaluated/input.gacode.{numPORTALS}"
-    mfefol = f"{IOtools.expandPath(folder,ensurePathValid=True).replace('/Users/pablorf/PRF/','/home/pablorf/PROJECTS/')}/ProfilesEvaluated/"
+    lapfile = f"{IOtools.expandPath(folder,ensurePathValid=True)}/Outputs/portals_profiles/input.gacode.{numPORTALS}"
+    mfefol = f"{IOtools.expandPath(folder,ensurePathValid=True).replace('/Users/pablorf/PRF/','/home/pablorf/PROJECTS/')}/portals_profiles/"
     print(f"\t\tscp -P 9224 {lapfile} mferws01.psfc.mit.edu:{mfefol}/.")
 
     cgyroing_file = (

@@ -531,7 +531,7 @@ def curateTGYROfiles(
 def profilesToShare(self):
     if "folder" in self.extra_params:
         whereFolder = IOtools.expandPath(
-            self.extra_params["folder"] + "/Outputs/ProfilesEvaluated/"
+            self.extra_params["folder"] + "/Outputs/portals_profiles/"
         )
         if not os.path.exists(whereFolder):
             IOtools.askNewFolder(whereFolder)

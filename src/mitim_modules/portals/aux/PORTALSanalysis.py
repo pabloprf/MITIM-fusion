@@ -850,7 +850,7 @@ class PORTALSinitializer:
         for i in range(100):
             try:
                 prof = PROFILEStools.PROFILES_GACODE(
-                    f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}"
+                    f"{self.folder}/Outputs/portals_profiles/input.gacode.{i}"
                 )
             except FileNotFoundError:
                 break
