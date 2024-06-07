@@ -46,7 +46,7 @@ class PORTALSanalyzer:
         ]
 
         # Read dictionaries
-        with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
+        with open(self.opt_fun.prfs_model.mainFunction.optimization_extra, "rb") as f:
             self.mitim_runs = pickle_dill.load(f)
 
         self.prep_metrics()

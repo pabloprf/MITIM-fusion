@@ -225,8 +225,8 @@ class opt_evaluator:
             self.prfs_model.folderOutputs = self.prfs_model.folderOutputs.replace(
                 self.prfs_model.folderExecution, self.folder
             )
-            self.prfs_model.MITIMextra = self.prfs_model.mainFunction.MITIMextra = (
-                self.prfs_model.MITIMextra.replace(
+            self.prfs_model.optimization_extra = self.prfs_model.mainFunction.optimization_extra = (
+                self.prfs_model.optimization_extra.replace(
                     self.prfs_model.folderExecution, self.folder
                 )
             )
@@ -274,11 +274,11 @@ class opt_evaluator:
         time1 = datetime.datetime.now()
 
         if analysis_level < 0:
-            print("\t- Only read ResultsOptimization.out")
+            print("\t- Only read optimization_results.out")
         if analysis_level == 0:
-            print("\t- Only plot ResultsOptimization.out")
+            print("\t- Only plot optimization_results.out")
         if analysis_level == 1:
-            print("\t- Read ResultsOptimization.out and pickle")
+            print("\t- Read optimization_results.out and pickle")
         if analysis_level == 2:
             print("\t- Perform full analysis")
         if analysis_level > 2:
@@ -400,11 +400,11 @@ class PRF_BO:
 			Do not carry out this dictionary through the workflow, just read and write
 			"""
 
-            self.MITIMextra = f"{self.folderOutputs}/MITIMextra.pkl"
+            self.optimization_extra = f"{self.folderOutputs}/optimization_extra.pkl"
 
             # Read if exists
-            if os.path.exists(self.MITIMextra):
-                with open(self.MITIMextra, "rb") as handle:
+            if os.path.exists(self.optimization_extra):
+                with open(self.optimization_extra, "rb") as handle:
                     dictStore = pickle_dill.load(handle)
             # nans if not
             else:
@@ -413,11 +413,11 @@ class PRF_BO:
                     dictStore[i] = np.nan
 
             # Write
-            with open(self.MITIMextra, "wb") as handle:
+            with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle)
 
             # Write the class into the mainFunction
-            mainFunction.MITIMextra = self.MITIMextra
+            mainFunction.optimization_extra = self.optimization_extra
 
         # Function to execute
         self.surrogate_parameters = self.mainFunction.surrogate_parameters
@@ -439,7 +439,7 @@ class PRF_BO:
 			"""
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs + "MITIM.log")
+            self.logFile = BOgraphics.LogFile(self.folderOutputs + "optimization_log.txt")
             self.logFile.activate()
 
             # Meta
@@ -566,7 +566,7 @@ class PRF_BO:
                 forceNew=forceNewTabulars,
             )
 
-            res_file = self.folderOutputs + "/ResultsOptimization.out"
+            res_file = self.folderOutputs + "/optimization_results.out"
 
             """
 			------------------------------------------------------------------------------
@@ -586,9 +586,9 @@ class PRF_BO:
                 "outputs": self.outputs,
             }
 
-            self.ResultsOptimization = BOgraphics.ResultsOptimization(file=res_file)
+            self.optimization_results = BOgraphics.optimization_results(file=res_file)
 
-            self.ResultsOptimization.initialize(self)
+            self.optimization_results.initialize(self)
 
     def run(self):
         """
@@ -826,10 +826,10 @@ class PRF_BO:
         """
 
         # -------------------------------------------------------------------------------------------------
-        # To avoid circularity when restarting, do not store the class in the ResultsOptimization sub-class
+        # To avoid circularity when restarting, do not store the class in the optimization_results sub-class
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.ResultsOptimization.PRF_BO
+        del copyClass.optimization_results.PRF_BO
 
         # -------------------------------------------------------------------------------------------------
         # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TO REMOVE]
@@ -856,7 +856,7 @@ class PRF_BO:
         Repair the downselection
         """
 
-        copyClass.ResultsOptimization.PRF_BO = copy.deepcopy(self)
+        copyClass.optimization_results.PRF_BO = copy.deepcopy(self)
 
         copyClass.lambdaSingleObjective = copyClass.mainFunction.scalarized_objective
 
@@ -865,7 +865,7 @@ class PRF_BO:
 
         return copyClass
 
-    def save(self, name="MITIMstate.pkl"):
+    def save(self, name="optimization_object.pkl"):
         print("* Proceeding to save new MITIM state pickle file")
         stateFile = f"{self.folderOutputs}/{name}"
         stateFile_tmp = f"{self.folderOutputs}/{name}_tmp"
@@ -899,11 +899,11 @@ class PRF_BO:
         )
 
     def read(
-        self, name="MITIMstate.pkl", iteration=None, file=None, provideFullClass=False
+        self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False
     ):
         iteration = iteration or self.currentIteration
 
-        print("- Reading pickle file with MITIMstate class")
+        print("- Reading pickle file with optimization_object class")
         stateFile = file if (file is not None) else f"{self.folderOutputs}/{name}"
 
         try:
@@ -959,9 +959,9 @@ class PRF_BO:
         # Update optimization_data with nans
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
 
-        # Update ResultsOptimization only as "predicted"
+        # Update optimization_results only as "predicted"
         if not isThisCorrected:
-            self.ResultsOptimization.addPoints(
+            self.optimization_results.addPoints(
                 includePoints=[
                     len(self.train_X) - len(self.x_next),
                     len(self.train_X) - len(self.x_next) + 1,
@@ -970,7 +970,7 @@ class PRF_BO:
                 predicted=True,
                 Best=True,
             )
-            self.ResultsOptimization.addPoints(
+            self.optimization_results.addPoints(
                 includePoints=[len(self.train_X) - len(self.x_next), len(self.train_X)],
                 executed=False,
                 predicted=True,
@@ -1014,14 +1014,14 @@ class PRF_BO:
         # Update Tabular data with the actual evaluations
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
 
-        # Update ResultsOptimization with the actual evaluations
+        # Update optimization_results with the actual evaluations
         if not isThisCorrected:
             txt = f"Evaluating points from iteration {self.currentIteration}, comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = True, True, True
         else:
             txt = f"Evaluating further points after trust region operation... batch comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = False, False, False
-        self.ResultsOptimization.addPoints(
+        self.optimization_results.addPoints(
             includePoints=[len(self.train_X) - len(self.x_next), len(self.train_X)],
             executed=True,
             predicted=predicted,
@@ -1346,8 +1346,8 @@ class PRF_BO:
         # Write initialization in Tabular
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
 
-        # Write ResultsOptimization
-        self.ResultsOptimization.addPoints(
+        # Write optimization_results
+        self.optimization_results.addPoints(
             includePoints=[0, self.OriginalInitialPoints],
             executed=False,
             predicted=False,
@@ -1390,7 +1390,7 @@ class PRF_BO:
         # ------------------
 
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
-        self.ResultsOptimization.addPoints(
+        self.optimization_results.addPoints(
             includePoints=[0, self.OriginalInitialPoints],
             executed=True,
             predicted=False,
@@ -1440,7 +1440,7 @@ class PRF_BO:
     def plot(
         self,
         fn=None,
-        plotResultsOptimization=True,
+        plotoptimization_results=True,
         doNotShow=False,
         number_of_models_per_tab=5,
         stds=2,
@@ -1639,15 +1639,15 @@ class PRF_BO:
         except:
             print("\t- Problem plotting trust region", typeMsg="w")
 
-        # ---- ResultsOptimization ---------------------------------------------------
-        if plotResultsOptimization:
-            # Most current state of the ResultsOptimization.out
-            self.ResultsOptimization.read()
+        # ---- optimization_results ---------------------------------------------------
+        if plotoptimization_results:
+            # Most current state of the optimization_results.out
+            self.optimization_results.read()
             if "logFile" in self.__dict__.keys():
                 logFile = self.logFile
             else:
                 logFile = None
-            self.ResultsOptimization.plot(
+            self.optimization_results.plot(
                 fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
             )
 
@@ -1899,7 +1899,7 @@ def avoidClassInitialization(folderWork):
 
     try:
         with open(
-            f"{IOtools.expandPath(folderWork)}/Outputs/MITIMstate.pkl", "rb"
+            f"{IOtools.expandPath(folderWork)}/Outputs/optimization_object.pkl", "rb"
         ) as handle:
             aux = pickle_dill.load(handle)
         opt_fun = aux.mainFunction

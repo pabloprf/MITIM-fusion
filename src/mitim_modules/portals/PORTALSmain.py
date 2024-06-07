@@ -29,15 +29,15 @@ Reading analysis for PORTALS has more options than standard:
 	Standard:
 	**************************************
 	  -1:  Only improvement
-		0:  Only ResultsOptimization
+		0:  Only optimization_results
 		1:  0 + Pickle
 		2:  1 + Final redone in this machine
 		
 	PORTALS-specific:
 	**************************************
-		3:  1 + PORTALSplot metrics  (only works if MITIMextra is provided or Execution exists)
-		4:  3 + PORTALSplot expected (only works if MITIMextra is provided or Execution exists)
-		5:  2 + 4                  (only works if MITIMextra is provided or Execution exists)
+		3:  1 + PORTALSplot metrics  (only works if optimization_extra is provided or Execution exists)
+		4:  3 + PORTALSplot expected (only works if optimization_extra is provided or Execution exists)
+		5:  2 + 4                  (only works if optimization_extra is provided or Execution exists)
 
 		>2 will also plot profiles & gradients comparison (original, initial, best)
 """
@@ -237,7 +237,7 @@ class portals(STRATEGYtools.opt_evaluator):
         ModelOptions=None,
     ):
         """
-        grabFrom is a folder from which to grab optimization_data and MITIMextra
+        grabFrom is a folder from which to grab optimization_data and optimization_extra
                 (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
 
         ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
@@ -381,8 +381,8 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Extra operations: Store data that will be useful to store and interpret in a machine were this was not run
 
-        if self.MITIMextra is not None:
-            with open(self.MITIMextra, "rb") as handle:
+        if self.optimization_extra is not None:
+            with open(self.optimization_extra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
@@ -391,7 +391,7 @@ class portals(STRATEGYtools.opt_evaluator):
             dictStore["profiles_original_un"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original_originalResol_uncorrected"
             )
-            with open(self.MITIMextra, "wb") as handle:
+            with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle)
 
     def scalarized_objective(self, Y):
@@ -457,7 +457,7 @@ class portals(STRATEGYtools.opt_evaluator):
             os.system(f"mkdir {folderNew}/Outputs")
 
         os.system(f"cp {folderRead}/Outputs/optimization_data.csv {folderNew}/Outputs/.")
-        os.system(f"cp {folderRead}/Outputs/MITIMextra.pkl {folderNew}/Outputs/.")
+        os.system(f"cp {folderRead}/Outputs/optimization_extra.pkl {folderNew}/Outputs/.")
 
         optimization_data = BOgraphics.optimization_data(
             self.Optim["dvs"],

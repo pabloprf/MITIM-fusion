@@ -849,22 +849,22 @@ def retrieveResults(
     # Viewing workflow
     # ----------------------------------------------------------------------------------------------------------------
 
-    print("\t\t--> Opening MITIMstate.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/MITIMstate.pkl")
+    print("\t\t--> Opening optimization_object.pkl")
+    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
 
     if "timeStamp" in prfs_model.__dict__:
-        print(f"\t\t\t- Time stamp of MITIMstate.pkl: {prfs_model.timeStamp}")
+        print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
     else:
-        print("\t\t\t- Time stamp of MITIMstate.pkl not found")
+        print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
-    # ---------------- Read ResultsOptimization
-    fileOutputs = folderWork + "/Outputs/ResultsOptimization.out"
-    res = ResultsOptimization(file=fileOutputs)
+    # ---------------- Read optimization_results
+    fileOutputs = folderWork + "/Outputs/optimization_results.out"
+    res = optimization_results(file=fileOutputs)
     res.readClass(prfs_model)
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork + "/Outputs/MITIM.log")
+    log = LogFile(folderWork + "/Outputs/optimization_log.txt")
     try:
         log.interpret()
     except:
@@ -882,14 +882,14 @@ def retrieveResults(
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork}/Outputs/MITIMextra.pkl", "rb") as handle:
+            with open(f"{folderWork}/Outputs/optimization_extra.pkl", "rb") as handle:
                 prfs_model.dictStore = pickle_dill.load(handle)
         except:
-            print("Could not load MITIMextra", typeMsg="w")
+            print("Could not load optimization_extra", typeMsg="w")
             prfs_model.dictStore = None
         # -------------------
 
-        prfs_model.ResultsOptimization = res
+        prfs_model.optimization_results = res
         prfs_model.logFile = log
         if plotYN:
             fn = prfs_model.plot(
@@ -897,7 +897,7 @@ def retrieveResults(
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
 
-    # If no pickle, plot only the contents of ResultsOptimization
+    # If no pickle, plot only the contents of optimization_results
     else:
         if plotYN:
             fn = res.plot(doNotShow=doNotShow, log=log)
@@ -1272,8 +1272,8 @@ class optimization_data:
         self.data.to_csv(self.file, index=False)
 
 
-class ResultsOptimization:
-    def __init__(self, file="Outputs/ResultsOptimization.out"):
+class optimization_results:
+    def __init__(self, file="Outputs/optimization_results.out"):
         self.file = file
         self.predictedSofar = 0
 
@@ -1288,7 +1288,7 @@ class ResultsOptimization:
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* ResultsOptimization updated", verbose=verbose_level)
+        print("\t* optimization_results updated", verbose=verbose_level)
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")
@@ -1495,7 +1495,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 	""".format(
             txtIn,
             txtOut,
-            self.PRF_BO.ResultsOptimization.file,
+            self.PRF_BO.optimization_results.file,
             len(self.PRF_BO.bounds),
             len(self.PRF_BO.outputs),
             STR_base,
@@ -2249,7 +2249,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         ms = 3
 
-        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the ResultsOptimization points
+        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the optimization_results points
 
         ax = axs[2, 0]
         ax.plot(x, yT.mean(axis=1), "-s", label="mean", c="r", markersize=ms)
