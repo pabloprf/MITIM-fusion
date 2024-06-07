@@ -71,7 +71,7 @@ class PORTALSanalyzer:
                     "\t- Could not read optimization results due to error:", typeMsg="w"
                 )
                 print(e)
-                print("\t- Trying to read PORTALS initialization...", typeMsg="w")
+                print("\t- Trying to read PORTALS initialization...", typeMsg="i")
                 return PORTALSinitializer(folder)
         else:
             print(
