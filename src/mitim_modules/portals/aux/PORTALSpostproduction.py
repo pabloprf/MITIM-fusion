@@ -192,17 +192,13 @@ def externalFluxMatch(
         inputs = []
         for i in prf_bo.bounds:
             inputs.append(i)
-        TabularData = BOgraphics.TabularData(
+        optimization_data = BOgraphics.optimization_data(
             inputs,
             prf_bo.outputs,
-            file=writeNextPoint + "TabularData.dat",
+            file=writeNextPoint + "optimization_data.csv",
             forceNew=True,
         )
 
-        TabularData.updatePoints(X)
-
-        os.system(
-            f"cp {writeNextPoint}/TabularData.dat {writeNextPoint}/TabularDataStds.dat"
-        )
+        optimization_data.update_points(X)
 
     return X, step, abs(y_opt_residual.item())

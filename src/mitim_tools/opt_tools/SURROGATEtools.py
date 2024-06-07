@@ -2,14 +2,12 @@ import os
 import torch
 import gpytorch
 import botorch
-import copy
 import contextlib
 import ast
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import dill as pickle_dill
-from mitim_tools.misc_tools import GRAPHICStools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.opt_tools import BOTORCHtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print

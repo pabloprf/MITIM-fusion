@@ -237,7 +237,7 @@ class portals(STRATEGYtools.opt_evaluator):
         ModelOptions=None,
     ):
         """
-        grabFrom is a folder from which to grab TabularData and MITIMextra
+        grabFrom is a folder from which to grab optimization_data and MITIMextra
                 (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
 
         ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
@@ -456,21 +456,16 @@ class portals(STRATEGYtools.opt_evaluator):
         if not os.path.exists(f"{folderNew}/Outputs"):
             os.system(f"mkdir {folderNew}/Outputs")
 
-        os.system(f"cp {folderRead}/Outputs/TabularData* {folderNew}/Outputs/.")
+        os.system(f"cp {folderRead}/Outputs/optimization_data.csv {folderNew}/Outputs/.")
         os.system(f"cp {folderRead}/Outputs/MITIMextra.pkl {folderNew}/Outputs/.")
 
-        Tabular_Read = BOgraphics.TabularData(
+        optimization_data = BOgraphics.optimization_data(
             self.Optim["dvs"],
             self.Optim["ofs"],
-            file=f"{folderNew}/Outputs/TabularData.dat",
-        )
-        TabularErrors_Read = BOgraphics.TabularData(
-            self.Optim["dvs"],
-            self.Optim["ofs"],
-            file=f"{folderNew}/Outputs/TabularDataStds.dat",
+            file=f"{folderNew}/Outputs/optimization_data.csv",
         )
 
-        self.Optim["initialPoints"] = len(Tabular_Read.data)
+        self.Optim["initialPoints"] = len(optimization_data.data)
         self.Optim["readInitialTabular"] = True
         self.Optim["initializationFun"] = None
 
@@ -484,6 +479,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
             os.system(f"mkdir {folderNew}/TargetsRecalculate/")
 
+            embed()
             for numPORTALS in Tabular_Read.data:
                 FolderEvaluation = (
                     f"{folderNew}/TargetsRecalculate/Evaluation.{numPORTALS}"
@@ -530,7 +526,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 )
 
                 # ------------------------------------------------------------------------------------
-                # From the TabularData, change ONLY the targets, since I still want CGYRO!
+                # From the optimization_data, change ONLY the targets, since I still want CGYRO!
                 # ------------------------------------------------------------------------------------
 
                 for i in dictOFs:
