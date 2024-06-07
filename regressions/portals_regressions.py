@@ -1,6 +1,7 @@
 import argparse
 import torch
 import os
+import dill as pickle_dill
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
@@ -46,7 +47,7 @@ for test in tests:
 
     if test == 1:
 
-        print("\n>>>>> Running PORTALS test 1: Standard quick run with constant diffusivities")
+        print("\n>>>>> Running PORTALS test 1: Standard run with constant diffusivities")
         
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
@@ -73,7 +74,7 @@ for test in tests:
 
     if test == 2:
 
-        print("\n>>>>> Running PORTALS test 2: Standard quick run with TGLF")
+        print("\n>>>>> Running PORTALS test 2: Standard run with TGLF")
         
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
@@ -93,4 +94,34 @@ for test in tests:
         conditions_regressions([
             [prf_bo.optimization_data.data['QeTurb_1'][2],0.01802725581511],
             [prf_bo.optimization_data.data['GeTurb_3'][2],0.0004633298635944]
+        ])
+
+    if test == 3:
+
+        print("\n>>>>> Running PORTALS test 3: Run with TGLF multi-channel")
+        
+        os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
+        with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
+
+            portals_fun = PORTALSmain.portals(folderWork)
+            portals_fun.Optim["BOiterations"] = 2
+            portals_fun.Optim["initialPoints"] = 3
+            portals_fun.INITparameters["removeFast"] = True
+
+            portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']
+
+            portals_fun.PORTALSparameters["ImpurityOfInterest"] = 3
+            portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
+
+            portals_fun.prep(inputgacode, folderWork)
+            prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=False, askQuestions=False)
+            prf_bo.run()
+
+            with open(prf_bo.mainFunction.optimization_extra, "rb") as f:
+                mitim_runs = pickle_dill.load(f)
+
+        # Checks
+        conditions_regressions([
+            [prf_bo.optimization_data.data['QeTurb_1'][5],0.0713711320661],
+            [mitim_runs[5]['powerstate'].plasma['PexchTurb'][0,3].item(),-0.0009466626542564001]
         ])
