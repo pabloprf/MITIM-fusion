@@ -470,7 +470,7 @@ class portals(STRATEGYtools.opt_evaluator):
         self.Optim["initializationFun"] = None
 
         print(
-            f'- Reusing the training set ({self.Optim["initialPoints"]} points )from {folderRead}',
+            f'- Reusing the training set ({self.Optim["initialPoints"]} points) from optimization_data in {folderRead}',
             typeMsg="i",
         )
 
@@ -479,8 +479,8 @@ class portals(STRATEGYtools.opt_evaluator):
 
             os.system(f"mkdir {folderNew}/TargetsRecalculate/")
 
-            embed()
-            for numPORTALS in Tabular_Read.data:
+            for numPORTALS in range(len(optimization_data.data)):
+
                 FolderEvaluation = (
                     f"{folderNew}/TargetsRecalculate/Evaluation.{numPORTALS}"
                 )
@@ -498,7 +498,7 @@ class portals(STRATEGYtools.opt_evaluator):
                     dictOFs[i] = {"value": np.nan, "error": np.nan}
 
                 for i in dictDVs:
-                    dictDVs[i]["value"] = Tabular_Read.data[numPORTALS][i]
+                    dictDVs[i]["value"] = optimization_data.data[i].to_numpy()[numPORTALS]
 
                 # ------------------------------------------------------------------------------------
                 # Run to evaluate new targets
@@ -532,23 +532,15 @@ class portals(STRATEGYtools.opt_evaluator):
                 for i in dictOFs:
                     if "Tar" in i:
                         print(f"Changing {i} in file")
-                        Tabular_Read.data[numPORTALS][i] = (
-                            dictOFs[i]["value"].cpu().numpy().item()
-                        )
-                        try:
-                            TabularErrors_Read.data[numPORTALS][i] = (
-                                dictOFs[i]["error"].cpu().numpy().item()
-                            )
-                        except:
-                            TabularErrors_Read.data[numPORTALS][i] = dictOFs[i]["error"]
+
+                        optimization_data.data[i].iloc[numPORTALS] = dictOFs[i]["value"].cpu().numpy().item()
+                        optimization_data.data[i + "_std"].iloc[numPORTALS] = dictOFs[i]["error"].cpu().numpy().item()
 
             # ------------------------------------------------------------------------------------
             # Update new Tabulars
             # ------------------------------------------------------------------------------------
 
-            Tabular_Read.updateFile()
-            TabularErrors_Read.updateFile()
-
+            optimization_data.data.to_csv(optimization_data.file, index=False)
 
 def runModelEvaluator(
     self,

@@ -26,7 +26,7 @@ portals_fun.Optim["initialPoints"] = 3
 portals_fun.INITparameters["removeFast"] = True
 
 # Prepare run
-portals_fun.prep(inputgacode, folderWork)
+portals_fun.prep(inputgacode, folderWork, grabFrom='/Users/pablorf/MITIM-fusion/tests/scratch/portals_test2/',reevaluateTargets=1)
 
 # --------------------------------------------------------------------------------------------
 # Run

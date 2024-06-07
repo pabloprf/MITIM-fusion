@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
 from mitim_modules.powertorch.iteration import ITtools
-from mitim_modules.powertorch.physics import TARGETStools, CALCtools
+from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -890,8 +890,11 @@ class powerstate:
         # *******************************************************************************************
         # ******* Process
         # *******************************************************************************************
-
-        transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, extra_params=extra_params )
+        
+        if self.TransportOptions["transport_evaluator"] is None:
+            transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+        else:
+            transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, extra_params=extra_params )
         transport.produce_profiles()
         transport.evaluate()
         transport.clean()
