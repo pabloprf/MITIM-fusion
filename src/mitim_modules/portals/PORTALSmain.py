@@ -193,7 +193,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 1,
             ],  # (%) Error (std, in percent) of model evaluation [TGLF, NEO, TARGET]
             "transport_evaluator": transport_evaluator,
-            "TargetCalc": "tgyro",  # Method to calculate targets (tgyro or powerstate)
+            "TargetCalc": "powerstate",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
             "useConvectiveFluxes": True,  # If True, then convective flux for final metric (not fitting). If False, particle flux
             "includeFastInQi": False,  # If True, and fast ions have been included, in seprateNEO, sum fast
@@ -216,7 +216,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
-            "fineTargetsResolution": None,  # If not None, calculate targets with this radial resolution
+            "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
         }
 
     def prep(
