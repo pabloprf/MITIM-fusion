@@ -140,18 +140,20 @@ def fromPowerToGacode(
         profiles.profiles["w0(rad/s)"] = factor_mult * y_interpolated
 
     # ------------------------------------------------------------------------------------------
-    # Insert Powers
-    # ------------------------------------------------------------------------------------------
-
-    if insertPowers:
-        insertPowersNew(profiles, state=self)
-
-    # ------------------------------------------------------------------------------------------
     # Rotation
     # ------------------------------------------------------------------------------------------
 
     if (ensureMachNumber is not None) and ("w0" not in ProfilesPredicted):
         profiles.introduceRotationProfile(Mach_LF=ensureMachNumber)
+
+    # ------------------------------------------------------------------------------------------
+    # Insert Powers
+    # ------------------------------------------------------------------------------------------
+
+    if insertPowers:
+        profiles.deriveQuantities(rederiveGeometry=False)
+        rederive = False
+        insertPowersNew(profiles, state=self)
 
     # ------------------------------------------------------------------------------------------
     # Recalculate

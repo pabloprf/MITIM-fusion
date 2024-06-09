@@ -77,16 +77,14 @@ class power_transport:
         else:
             self.applyCorrections = {}
 
-        # Derive quantities so that it's ready for analysis and plotting later
-        if deriveQuantities:
-            self.powerstate.profiles.deriveQuantities()
-
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
         self.powerstate.profiles = self.powerstate.insertProfiles(
             self.powerstate.profiles,
             writeFile=self.file_profs,
             applyCorrections=self.applyCorrections,
+            rederive_profiles = deriveQuantities,    # Derive quantities so that it's ready for analysis and plotting later
+            insertPowers = deriveQuantities,         # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
     def clean(self):
