@@ -906,7 +906,22 @@ class PORTALSinitializer:
 
         colors = GRAPHICStools.listColors()
 
+        axsGrads_extra = [
+            axs[0],
+            axs[5],
+            axs[1],
+            axs[6],
+            axs[2],
+            axs[7],
+            axs[3],
+            axs[8],
+            axs[4],
+            axs[9],
+        ]
+
+        # ---------------------------------------------------------------------------------
         # POWERPLOT
+        # ---------------------------------------------------------------------------------
 
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
@@ -917,6 +932,32 @@ class PORTALSinitializer:
             axs[0].legend(prop={"size": 8})
 
             axsRes.set_xlim([0, i])
+
+            # Add profiles too
+            self.powerstates[i].profiles.plotGradients(
+                axsGrads_extra,
+                color=colors[i],
+                plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
+                plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                ls='-',
+                lw=0.5,
+                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                label='next',
+            )
+
+
+        # Add next profile
+        if len(self.profiles) > len(self.powerstates):
+            self.profiles[-1].plotGradients(
+                axsGrads_extra,
+                color=colors[i+1],
+                plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
+                plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                ls='-',
+                lw=1.0,
+                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                label='next',
+            )
 
         # GRADIENTS
         if len(self.powerstates) > 0:
@@ -929,33 +970,22 @@ class PORTALSinitializer:
                 p.profiles.plotGradients(
                     axsGrads,
                     color=colors[i],
-                    plotImpurity=3,
-                    plotRotation=True,
+                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                    plotRotation='w0' in p.ProfilesPredicted,
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                    label=f"profile #{i}",
                 )
 
-            axsGrads_extra = [
-                axs[0],
-                axs[5],
-                axs[1],
-                axs[6],
-                axs[2],
-                axs[7],
-                axs[3],
-                axs[8],
-                axs[4],
-                axs[9],
-            ]
-            for i, p in enumerate(self.powerstates):
-                p.profiles.plotGradients(
-                    axsGrads_extra,
-                    color=colors[i],
-                    plotImpurity=3,
-                    plotRotation=True,
-                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                    lw=0.5,
-                    ms=0,
-                    label=f"profile #{i}" if i == 0 else '',
+
+            if len(self.profiles) > len(self.powerstates):
+                prof = self.profiles[-1]
+                prof.plotGradients(
+                    axsGrads,
+                    color=colors[i+1],
+                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                    plotRotation='w0' in p.ProfilesPredicted,
+                    lastRho=p.plasma["rho"][-1, -1].item(),
+                    label="next",
                 )
 
             axs[0].legend(prop={"size": 8})
