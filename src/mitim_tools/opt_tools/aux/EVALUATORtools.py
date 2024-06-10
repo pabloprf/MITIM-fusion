@@ -133,11 +133,9 @@ def mitimRun(
         print("--> Reading Table files...", verbose=verbose_level)
         y, yE, _ = optimization_data.grab_data_point(x)
 
-        if pd.Series(y).isna().all() or pd.Series(yE).isna().all():
+        if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
             print(
-                "--> Reading Tabular file failed or not evaluated yet for element {0}".format(
-                    numEval
-                ),
+                f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",
                 typeMsg="w",
             )
             restartYN = True
