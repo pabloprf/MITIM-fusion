@@ -341,11 +341,10 @@ class portals(STRATEGYtools.opt_evaluator):
         }
 
         # If the option of reading from a file, for standard portals ignore the targets
-        if self.Optim['surrogateOptions']['extrapointsFile'] is not None:
-            self.Optim['surrogateOptions']['extrapointsModels'] = []
-            for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
-                if 'Tar' not in key:
-                    self.Optim['surrogateOptions']['extrapointsModels'].append(key)
+        self.Optim['surrogateOptions']['extrapointsModels'] = []
+        for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
+            if 'Tar' not in key:
+                self.Optim['surrogateOptions']['extrapointsModels'].append(key)
 
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends
