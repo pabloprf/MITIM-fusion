@@ -1227,7 +1227,7 @@ class optimization_data:
             # Update file
             self.data.to_csv(self.file, index=False)
 
-    def update_points(self, X, Y=[], Ystd=[]):
+    def update_points(self, X, Y=np.array([]), Ystd=np.array([])):
 
         data_new = copy.deepcopy(self.data)
 
@@ -1246,13 +1246,13 @@ class optimization_data:
 
                 # If the y has been provided for this x
                 if i < Y.shape[0]:
-                    for j in range(Y.shape[1]):
+                    for j in range(len(self.outputs)):
                         data_point[self.outputs[j]] = Y[i,j]
                         data_point[self.outputs[j] + "_std"] = Ystd[i,j]
 
                 # We may be in a situation where the y is not provided for this x
                 else:
-                    for j in range(Y.shape[1]):
+                    for j in range(len(self.outputs)):
                         data_point[self.outputs[j]] = np.nan
                         data_point[self.outputs[j] + "_std"] = np.nan
 
