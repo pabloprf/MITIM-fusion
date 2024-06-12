@@ -9,14 +9,13 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata
 from collections import OrderedDict
-from IPython import embed
-
+from mitim_tools import __version__ as mitim_version
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, MATHtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import TESTtools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -914,6 +913,9 @@ class LogFile:
         sys.stdout = IOtools.Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
+
+        branch, commit_hash = IOtools.get_git_info(IOtools.expandPath('$MITIM_PATH'))
+        print(f"Log file from MITIM version {mitim_version} from {branch} branch and commit hash {commit_hash}")
 
     def interpret(self):
         with open(self.file, "r") as f:
