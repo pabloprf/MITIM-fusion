@@ -853,9 +853,7 @@ class fundamental_model_context(object):
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 
     new_data = []
-    for i in range(max_x):
-        if i >= x.shape[0]:
-            break
+    for i in range(x.shape[0]):
         data_point = {
             'Model': output,
             'y': y[i,:].item(),
