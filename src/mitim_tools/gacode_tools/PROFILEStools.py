@@ -3589,7 +3589,7 @@ class PROFILES_GACODE:
         PROFILEStoMODELS.profiles_to_tglf(self, rhos=rhos, TGLFsettings=TGLFsettings)
 
     def plotPeaking(
-        self, ax, c="b", marker="*", label="SPARC PRD", debugPlot=False, printVals=False
+        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
     ):
         nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
         ne_peaking = self.derived["ne_peaking0.2"]
