@@ -58,6 +58,7 @@ class powerstate:
         self.useConvectiveFluxes = useConvectiveFluxes
         self.impurityPosition = impurityPosition
         self.TransportOptions = TransportOptions
+        self.fineTargetsResolution = fineTargetsResolution
 
         # -------------------------------------------------------------------------------------
         # Populate plama with radial grid
@@ -118,7 +119,7 @@ class powerstate:
 		------------------------------------------------------------------------------------------------------------------------------
 		"""
 
-        if fineTargetsResolution is None:
+        if self.fineTargetsResolution is None:
             self.plasma_fine, self.positions_targets = None, None
         else:
             # Copy coarse plasma to insert back later
@@ -128,7 +129,7 @@ class powerstate:
             # High resolution rho
             # *******************
             rho_new = torch.linspace(
-                self.plasma["rho"][0], self.plasma["rho"][-1], fineTargetsResolution
+                self.plasma["rho"][0], self.plasma["rho"][-1], self.fineTargetsResolution
             ).to(self.plasma["rho"])
             for i in self.plasma["rho"]:
                 if not torch.isclose(
@@ -383,14 +384,14 @@ class powerstate:
             DoThisPlasma = self.plasma
 
         for key in self.keys0D:
-            DoThisPlasma[key] = DoThisPlasma[key].detach()
+            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
         for key in self.keys1D:
-            DoThisPlasma[key] = DoThisPlasma[key].detach()
+            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
         if includeDerived:
             for key in self.keys1D_derived:
-                DoThisPlasma[key] = DoThisPlasma[key].detach()
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
         for key in self.keys2D:
-            DoThisPlasma[key] = DoThisPlasma[key].detach()
+            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
 
         if do_fine and (self.plasma_fine is not None):
             self.detach_tensors(
@@ -398,6 +399,11 @@ class powerstate:
                 DoThisPlasma=self.plasma_fine,
                 do_fine=False,
             )
+
+        if 'Xcurrent' in self.__dict__ and self.Xcurrent is not None:
+            self.Xcurrent = self.Xcurrent.detach()
+        if 'FluxMatch_Yopt' in self.__dict__ and self.FluxMatch_Yopt is not None:
+            self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
     def repeat(
         self, batch_size=1, pos=0, includeDerived=True, DoThisPlasma=None, do_fine=True
@@ -413,26 +419,26 @@ class powerstate:
 
         if len(DoThisPlasma["rho"].shape) == 1:
             for key in self.keys0D:
-                DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size)
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size)
             for key in self.keys1D:
-                DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
             for key in self.keys2D:
-                DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1, 1)
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1, 1)
             if includeDerived:
                 for key in self.keys1D_derived:
-                    DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
+                    if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
         else:
             for key in self.keys0D:
-                DoThisPlasma[key] = DoThisPlasma[key][pos].repeat(batch_size)
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos].repeat(batch_size)
             for key in self.keys1D:
-                DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
             for key in self.keys2D:
-                DoThisPlasma[key] = DoThisPlasma[key][pos, :, :].repeat(
+                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :, :].repeat(
                     batch_size, 1, 1
                 )
             if includeDerived:
                 for key in self.keys1D_derived:
-                    DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
+                    if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
 
         if do_fine and (self.plasma_fine is not None):
             self.repeat(
@@ -651,7 +657,7 @@ class powerstate:
 		------------------------------------------
 		"""
 
-        quantities = ['Qgb', 'Ggb', 'Pgb', 'Sgb', 'nuei', 'rho_s', 'c_s', 'tite', 'fZ', 'beta_e']
+        quantities = ['Qgb', 'Qgb_convection', 'Ggb', 'Pgb', 'Sgb', 'nuei', 'rho_s', 'c_s', 'tite', 'fZ', 'beta_e']
         for ikey in quantities:
             self.keys1D_derived[ikey] = 1
 
@@ -824,10 +830,9 @@ class powerstate:
             self.plasma["Ce"] = self.plasma["Ce_raw"]
             self.plasma["CZ"] = self.plasma["CZ_raw"]
 
-        if (
-            "forceZeroParticleFlux" in self.TransportOptions["ModelOptions"]
-        ) and self.TransportOptions["ModelOptions"]["forceZeroParticleFlux"]:
+        if self.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False):
             self.plasma["Ce"] = self.plasma["Ce"] * 0
+            self.plasma["Ce_raw"] = self.plasma["Ce_raw"] * 0
 
         '''
         **************************************************************************************************
@@ -952,7 +957,7 @@ class powerstate:
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
         self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1)
 
-        self.keys1D_derived["P"] = self.keys1D_derived["P_tr"] = 1
+        self.keys1D_derived["S"] = self.keys1D_derived["P"] = self.keys1D_derived["P_tr"] = 1
         self.keys0D["residual"] = 1
 
     def volume_integrate(self, var, dim=1):

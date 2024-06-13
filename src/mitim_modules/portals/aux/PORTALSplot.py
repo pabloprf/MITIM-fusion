@@ -2952,7 +2952,7 @@ def plotFluxComparison(
 
     Qe_tar = power.plasma['Pe'].numpy()[0][ixF:]
     Qi_tar = power.plasma['Pi'].numpy()[0][ixF:]
-    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:]
+    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
     GZ_tar = power.plasma['CZ_raw'].numpy()[0][ixF:]
     Mt_tar = power.plasma['Mt'].numpy()[0][ixF:]
 
@@ -3050,6 +3050,10 @@ def plotFluxComparison(
                     y = tBest.profiles["rho(-)"] * 0.0
                 else:
                     y = tBest.derived[var] * mult
+
+                if var == "ge_10E20m2":
+                    y *= 1 - int(forceZeroParticleFlux)
+
                 ax.plot(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,

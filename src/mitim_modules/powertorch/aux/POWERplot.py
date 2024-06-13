@@ -241,14 +241,6 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
         ax = axs[12]
         ax.plot(
             plasma["rho"][0,1:],
-            plasma["Ce_tr_turb"][0,1:] / Ggb,
-            "-o",
-            color=color,
-            markersize=4,
-            lw=1.0,
-        )
-        ax.plot(
-            plasma["rho"][0,1:],
             plasma["Ce_tr"][0,1:] / Ggb,
             "-o",
             color=color,
@@ -270,14 +262,6 @@ def plotPlasma(powerstate, plasma, axs, color="b", label=""):
 
     if "nZ" in powerstate.ProfilesPredicted:
         ax = axs[13]
-        ax.plot(
-            plasma["rho"][0,1:],
-            plasma["CZ_tr_turb"][0,1:] / Ggb,
-            "-o",
-            color=color,
-            markersize=4,
-            lw=1.0,
-        )
         ax.plot(
             plasma["rho"][0,1:],
             plasma["CZ_tr"][0,1:] / Ggb,

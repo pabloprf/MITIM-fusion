@@ -1,10 +1,14 @@
 import torch
 import copy
 import numpy as np
+from functools import partial
 from collections import OrderedDict
+from mitim_tools.opt_tools.aux import BOgraphics
+from mitim_tools.gacode_tools import PROFILEStools
+from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
-
 
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
@@ -405,5 +409,103 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
             if recalculateTargets:
                 powerstate.TargetCalc = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
+
+    return powerstate
+
+
+def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=None,
+    algorithm = {'simple_relax':{'storeValues':True,'tol':1e-4}}):
+    '''
+    Technique to reutilize flux surrogates to predict new conditions
+    ----------------------------------------------------------------
+    Usage:
+        - Requires "step" to be a MITIM step with the proper surrogate parameters, the surrogates fitted and residual function defined
+        - Requires "profiles_new" to be an object with the new profiles to be predicted (e.g. can have different BC)
+
+    Notes:
+        * So far only works if Te,Ti,ne
+
+    '''
+
+    # ----------------------------------------------------
+    # Create powerstate with new profiles
+    # ----------------------------------------------------
+
+    TransportOptions = copy.deepcopy(step.surrogate_parameters["powerstate"].TransportOptions)
+
+    # Define transport calculation function as a surrogate model
+    TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
+    TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
+
+    # Create powerstate with the same options as the original portals but with the new profiles
+    powerstate = STATEtools.powerstate(
+        profiles_new,
+        step.surrogate_parameters["powerstate"].plasma["rho"][0,:],
+        ProfilesPredicted=step.surrogate_parameters["powerstate"].ProfilesPredicted,
+        TransportOptions=TransportOptions,
+        TargetOptions={
+            'TypeTarget':step.surrogate_parameters["powerstate"].TargetType,
+            'TargetCalc':step.surrogate_parameters["powerstate"].TargetCalc},
+        useConvectiveFluxes=step.surrogate_parameters["powerstate"].useConvectiveFluxes,
+        impurityPosition=step.surrogate_parameters["powerstate"].impurityPosition,
+        fineTargetsResolution=20, #step.surrogate_parameters["powerstate"].fineTargetsResolution,    # TO REMOVE
+    )
+
+    # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles
+    step.surrogate_parameters['powerstate'] = powerstate
+
+    # ----------------------------------------------------
+    # Flux match
+    # ----------------------------------------------------
+    
+    powerstate_orig = copy.deepcopy(powerstate)
+    powerstate_orig.calculate(None)
+
+    powerstate.findFluxMatchProfiles(
+        algorithm=list(algorithm.keys())[0],
+        algorithmOptions=algorithm[list(algorithm.keys())[0]])
+
+    # ----------------------------------------------------
+    # Plot
+    # ----------------------------------------------------
+
+    if plot_results:
+
+        from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+        fn = FigureNotebook("PowerState", geometry="1800x900")
+
+        figMain = fn.add_figure(label="PowerState")
+        figs = PROFILEStools.add_figures(fn)
+        axs, axsRes = STATEtools.add_axes_fig1(figMain)
+
+        powerstate_orig.detach_tensors(do_fine=False)
+        powerstate_orig.plot(c='b',axs=axs,axsRes=axsRes,figs=figs)
+
+        powerstate.detach_tensors(do_fine=False)
+        powerstate.plot(c='r',axs=axs,axsRes=axsRes,figs=figs)
+
+        fn.show()
+
+    # ----------------------------------------------------
+    # Write In Table
+    # ----------------------------------------------------
+
+    X = powerstate.Xcurrent[-1,:].unsqueeze(0).numpy()
+
+    if file_write_csv is not None:
+        inputs = []
+        for i in step.bounds:
+            inputs.append(i)
+        optimization_data = BOgraphics.optimization_data(
+            inputs,
+            step.outputs,
+            file=file_write_csv,
+            forceNew=True,
+        )
+
+        optimization_data.update_points(X)
+
+        print(f'> File {file_write_csv} written with optimum point')
 
     return powerstate

@@ -87,26 +87,16 @@ def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
 
 
 def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}):
-    tol = algorithmOptions["tol"] if "tol" in algorithmOptions else 1e-3
-    max_it = algorithmOptions["max_it"] if "max_it" in algorithmOptions else 1e5
-    relax = algorithmOptions["relax"] if "relax" in algorithmOptions else 0.001
-    dx_max = algorithmOptions["dx_max"] if "dx_max" in algorithmOptions else 0.05
-    print_each = (
-        algorithmOptions["print_each"] if "print_each" in algorithmOptions else 1e2
-    )
-    MainFolder = (
-        algorithmOptions["MainFolder"]
-        if "MainFolder" in algorithmOptions
-        else "~/scratch/"
-    )
-    storeValues = (
-        algorithmOptions["storeValues"] if "storeValues" in algorithmOptions else False
-    )
-    namingConvention = (
-        algorithmOptions["namingConvention"]
-        if "namingConvention" in algorithmOptions
-        else "powerstate_sr_ev"
-    )
+    
+    # Default options
+    tol = algorithmOptions.get("tol", 1e-3)
+    max_it = algorithmOptions.get("max_it", 1e5)
+    relax = algorithmOptions.get("relax", 0.001)
+    dx_max = algorithmOptions.get("dx_max", 0.05)
+    print_each = algorithmOptions.get("print_each", 1e2)
+    MainFolder = algorithmOptions.get("MainFolder", "~/scratch/")
+    storeValues = algorithmOptions.get("storeValues", False)
+    namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
 
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}{cont}"
@@ -162,37 +152,6 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
     )
 
     return Xopt, Yopt
-
-
-def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
-    """
-    I should figure out what to do with the cases with too much transport that never converge
-    """
-
-    # ---- Function that provides source term
-    def evaluator(X):
-        _, _, S, _ = self.calculate(X, extra_params=extra_params)
-        return S
-
-    # Concatenate the input gradients
-    x0 = torch.Tensor().to(self.plasma["aLte"])
-    for c, i in enumerate(self.ProfilesPredicted):
-        x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
-
-    # Make sure is properly batched
-    x0 = x0.view(
-        (
-            self.plasma["rho"].shape[0],
-            (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-        )
-    )
-
-    # Optimize
-    Xopt = optim.picard(evaluator, x0, tol=tol, max_it=max_it)
-
-    # Evaluate state with the optimum gradients
-    _ = self.calculate(Xopt)
-
 
 def fluxMatchPRFseq(self, algorithmOptions={}, bounds=None, extra_params={}):
     tol = algorithmOptions["tol"] if "tol" in algorithmOptions else 1e-3

@@ -3,13 +3,10 @@ import os
 import datetime
 import torch
 import botorch
-import dill as pickle_dill
 import numpy as np
-from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools import SURROGATEtools, OPTtools, BOTORCHtools
 from mitim_tools.opt_tools.aux import TESTtools
-from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 

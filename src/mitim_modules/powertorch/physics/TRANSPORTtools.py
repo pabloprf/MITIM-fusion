@@ -1,7 +1,6 @@
 import copy
 import os
 import torch
-import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.aux import PORTALScgyro
@@ -11,7 +10,7 @@ from IPython import embed
 
 class power_transport:
     '''
-    Default class for power transport models, change "evaluate" method to implement a new model
+    Default class for power transport models, change "evaluate" method to implement a new model and produce_profiles if the model requires written input.gacode written
 
     Notes:
         - After evaluation, the self.model_results attribute will contain the results of the model, which can be used for plotting and analysis
@@ -70,12 +69,13 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
-    def produce_profiles(self,deriveQuantities=True):
+    def _produce_profiles(self,deriveQuantities=True):
 
-        if 'MODELparameters' in self.powerstate.TransportOptions["ModelOptions"] and 'applyCorrections' in self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]:
-            self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"]
-        else:
-            self.applyCorrections = {}
+        self.applyCorrections = (
+            self.powerstate.TransportOptions["ModelOptions"]
+            .get("MODELparameters", {})
+            .get("applyCorrections", {})
+        )
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
@@ -116,6 +116,9 @@ class power_transport:
 class tgyro_model(power_transport):
     def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
         super().__init__(powerstate, name, folder, extra_params)
+
+    def produce_profiles(self):
+        self._produce_profiles()
 
     def evaluate(self):
 
@@ -339,6 +342,9 @@ class diffusion_model(power_transport):
     def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
         super().__init__(powerstate, name, folder, extra_params)
 
+    def produce_profiles(self):
+        pass
+
     def evaluate(self):
 
         Pe_tr = PLASMAtools.conduction(
@@ -373,40 +379,37 @@ class surrogate_model(power_transport):
     def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
         super().__init__(powerstate, name, folder, extra_params)
 
+    def produce_profiles(self):
+        pass
+
     def evaluate(self):
 
         """
         flux_fun as given in ModelOptions must produce Q and Qtargets in order of te,ti,ne
         """
 
-        Q, QT = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](self.Xcurrent[0])
+        X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
+
+        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X) #self.Xcurrent[0])
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 
+        quantities = {
+            "te": "Pe",
+            "ti": "Pi",
+            "ne": "Ce",
+            "nZ": "CZ",
+            "w0": "Mt",
+        }
+
         for c, i in enumerate(self.powerstate.ProfilesPredicted):
-            if i == "te":
-                self.powerstate.plasma["Pe_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "ti":
-                self.powerstate.plasma["Pi_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "ne":
-                self.powerstate.plasma["Ce_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "nZ":
-                self.powerstate.plasma["CZ_tr"] = Q[:, numeach * c : numeach * (c + 1)]
+            self.powerstate.plasma[f"{quantities[i]}_tr"] = torch.cat((torch.tensor([[0.0]]),Q[:, numeach * c : numeach * (c + 1)]),dim=1)
 
-        for c2, i in enumerate(self.powerstate.ProfilesPredicted):
-            if i == "te":
-                self.powerstate.plasma["Pe"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "ti":
-                self.powerstate.plasma["Pi"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "ne":
-                self.powerstate.plasma["Ce"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "nZ":
-                self.powerstate.plasma["CZ"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
+# **************************************************************************************************
+# Functions
+# **************************************************************************************************
 
-
-def curateTGYROfiles(
-    tgyro, folder, percentError, impurityPosition=1, includeFast=False
-):
+def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFast=False):
     # TGLF ---------------------------------------------------------------------------------------------------------
 
     Qe = tgyro.Qe_sim_turb[0, 1:]
