@@ -323,9 +323,10 @@ class powerstate:
         timeBeginning = datetime.datetime.now()
 
         if algorithm == "root":
-            ITtools.fluxMatchRoot(self, extra_params=extra_params)
-        if algorithm == "picard":
-            ITtools.fluxMatchPicard(self, extra_params=extra_params)
+            self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchRoot(
+                self,
+                algorithmOptions=algorithmOptions,
+                extra_params=extra_params)
         if algorithm == "simple_relax":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchSimpleRelax(
                 self,
@@ -333,7 +334,10 @@ class powerstate:
                 bounds=bounds,
                 extra_params=extra_params,
             )
-            
+        if algorithm == "picard":
+            ITtools.fluxMatchPicard(self, extra_params=extra_params)
+
+
         print(
             "**********************************************************************************************"
         )

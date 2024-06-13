@@ -413,7 +413,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
 
 def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=None,
-    algorithm = {'simple_relax':{'storeValues':True,'tol':1e-4}}):
+    algorithm = {'root':{'storeValues':True}}):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------

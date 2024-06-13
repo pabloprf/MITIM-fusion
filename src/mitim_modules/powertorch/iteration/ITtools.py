@@ -6,85 +6,68 @@ from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-def fluxMatchRoot(self, extra_params={}):
-    # ---- Function that provides fluxes
-    def evaluator(X):
-        # If no batch dimension add it
-        X = X.unsqueeze(0) if X.dim() == 1 else X
+def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
+    
+    dimX = (self.plasma["rho"].shape[-1]-1)*len(self.ProfilesPredicted)
 
-        # Make sure that the shape is correct. This is useful when running flux matching in batches
-        X = X.view(
-            (
-                self.plasma["rho"].shape[0],
-                (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-            )
-        )
+    Xopt, Yopt = [], []
 
-        s = copy.deepcopy(self)
+    if algorithmOptions.get('storeValues',False):
+        def evaluator(x):
+            """
+            Notes:
+                - x comes extended, batch*dim
+                - y must be returned extended as well, batch*dim
+            """
 
-        P_tr, P, _, r = s.calculate(X, extra_params=extra_params)
+            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
 
-        if P.shape[0] > 1:
-            P, P_tr = P.view(-1).unsqueeze(0), P_tr.view(-1).unsqueeze(0)
+            # Evaluate source term
+            _, _, y, _ = self.calculate(X, extra_params=extra_params)
 
-        return P, P_tr
+            # Compress again  [batch,dim]->[batch*dim]
+            y = y.view(x.shape)
+
+            # Store values
+            Xopt.append(X.clone().detach()[0,...])
+            Yopt.append(y.abs().clone().detach())
+
+            return y
+    else:
+        def evaluator(x):
+            """
+            Notes:
+                - x comes extended, batch*dim
+                - y must be returned extended as well, batch*dim
+            """
+
+            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+            # Evaluate source term
+            _, _, y, _ = self.calculate(X, extra_params=extra_params)
+
+            # Compress again  [batch,dim]->[batch*dim]
+            y = y.view(x.shape)
+
+            return y
 
     # ---- Initial guess
 
-    x0 = torch.Tensor().to(self.plasma["aLte"])
+    x0 = torch.Tensor().to(self.dfT)
     for c, i in enumerate(self.ProfilesPredicted):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
-    x0 = x0.view(
-        (
-            self.plasma["rho"].shape[0],
-            (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-        )
-    )
+    # **** Optimize ****
+    _ = optim.powell(evaluator, x0, None, algorithmOptions=algorithmOptions)
+    # ******************
 
-    # ---- Optimize
-    Xopt = optim.powell(evaluator, x0, None)
+    if algorithmOptions.get('storeValues',False):
+        Xopt = torch.stack(Xopt)
+        Yopt = torch.stack(Yopt)
+    else:
+        Xopt, Yopt = torch.Tensor(), torch.Tensor()
 
-    Xopt = Xopt.view(
-        (
-            self.plasma["rho"].shape[0],
-            (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-        )
-    )
-
-    # ---- Evaluate state with the optimum gradients for flux matching
-    _ = self.calculate(Xopt)
-
-
-def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
-    """
-    I should figure out what to do with the cases with too much transport that never converge
-    """
-
-    # ---- Function that provides source term
-    def evaluator(X):
-        _, _, S, _ = self.calculate(X, extra_params=extra_params)
-        return S
-
-    # Concatenate the input gradients
-    x0 = torch.Tensor().to(self.plasma["aLte"])
-    for c, i in enumerate(self.ProfilesPredicted):
-        x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
-
-    # Make sure is properly batched
-    x0 = x0.view(
-        (
-            self.plasma["rho"].shape[0],
-            (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-        )
-    )
-
-    # Optimize
-    Xopt = optim.picard(evaluator, x0, tol=tol, max_it=max_it)
-
-    # Evaluate state with the optimum gradients
-    _ = self.calculate(Xopt)
-
+    return Xopt, Yopt
 
 def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}):
     
@@ -152,47 +135,39 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
 
     return Xopt, Yopt
 
-def fluxMatchPRFseq(self, algorithmOptions={}, bounds=None, extra_params={}):
-    tol = algorithmOptions["tol"] if "tol" in algorithmOptions else 1e-3
-    max_it = algorithmOptions["max_it"] if "max_it" in algorithmOptions else 1e5
-    relax = algorithmOptions["relax"] if "relax" in algorithmOptions else 0.001
-    dx_max = algorithmOptions["dx_max"] if "dx_max" in algorithmOptions else 0.05
-    print_each = (
-        algorithmOptions["print_each"] if "print_each" in algorithmOptions else 1e2
-    )
-    storeValues = (
-        algorithmOptions["storeValues"] if "storeValues" in algorithmOptions else False
-    )
 
-    info_case = {"rho": self.plasma["rho"][0, 1:], "profs": self.ProfilesPredicted}
+def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
+    """
+    I should figure out what to do with the cases with too much transport that never converge
+    """
 
-    def evaluator(X, cont=0):
-        QTransport, QTarget, _, _ = self.calculate(X, extra_params=extra_params)
-        return QTransport, QTarget
+    Xopt, Yopt = [], []
+    def evaluator(x):
+        """
+        Notes:
+            - x comes [batch,dim] already
+            - y must be returned [batch,dim] as well
+        """
+
+        # Evaluate source term
+        _, _, y, _ = self.calculate(x, extra_params=extra_params)
+
+        # Store values
+        Xopt.append(x.clone().detach()[0,...])
+        Yopt.append(y.abs().clone().detach())
+
+        return y
 
     # Concatenate the input gradients
     x0 = torch.Tensor().to(self.plasma["aLte"])
     for c, i in enumerate(self.ProfilesPredicted):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
-    # Make sure is properly batched
-    x0 = x0.view(
-        (
-            self.plasma["rho"].shape[0],
-            (self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),
-        )
-    )
+    # **** Optimize ****
+    _ = optim.picard(evaluator, x0, tol=tol, max_it=max_it)
+    # ******************
+    
+    Xopt = torch.stack(Xopt)
+    Yopt = torch.stack(Yopt)
 
-    # Optimize
-    optim.prfseq(
-        evaluator,
-        x0,
-        tol=tol,
-        max_it=max_it,
-        relax=relax,
-        dx_max=dx_max,
-        bounds=bounds,
-        print_each=print_each,
-        info_case=info_case,
-        storeValues=storeValues,
-    )
+    return Xopt, Yopt
