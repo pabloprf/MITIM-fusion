@@ -471,21 +471,9 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
 
     if plot_results:
 
-        from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        fn = FigureNotebook("PowerState", geometry="1800x900")
-
-        figMain = fn.add_figure(label="PowerState")
-        figs = PROFILEStools.add_figures(fn)
-        axs, axsRes = STATEtools.add_axes_fig1(figMain)
-
-        powerstate_orig.detach_tensors(do_fine=False)
-        powerstate_orig.plot(c='b',axs=axs,axsRes=axsRes,figs=figs)
-
         powerstate.detach_tensors(do_fine=False)
-        powerstate.plot(c='r',axs=axs,axsRes=axsRes,figs=figs)
-
-        fn.show()
+        powerstate_orig.detach_tensors(do_fine=False)
+        powerstate.plot(label='optimized',c='r',compare_to_orig=powerstate_orig, c_orig = 'b')
 
     # ----------------------------------------------------
     # Write In Table

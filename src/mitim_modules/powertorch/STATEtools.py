@@ -352,7 +352,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label=""):
+    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="", batch_num=0, compare_to_orig=None, c_orig = 'b'):
         if axs is None:
             axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -362,13 +362,13 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState")
             figs = PROFILEStools.add_figures(fn)
 
-            axs, axsRes = add_axes_fig1(figMain)
+            axs, axsRes = add_axes_fig1(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
             fn = None
 
-        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label)
+        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_orig=compare_to_orig, c_orig = c_orig)
 
         if axsNotGiven:
             fn.show()
@@ -1036,35 +1036,18 @@ class powerstate:
 
         print(f"Prad = {self.plasma['Prad'].item():.2f}MW")
 
+def add_axes_fig1(figMain, num_kp=3):
 
+    grid = plt.GridSpec(4, 1+num_kp, hspace=0.5, wspace=0.5)
 
-def add_axes_fig1(figMain):
+    axs = []
+    for i in range(num_kp):
+        for j in range(4):
+            axs.append(figMain.add_subplot(grid[j, 1+i]))
 
-    grid = plt.GridSpec(4, 6, hspace=0.5, wspace=0.5)
-
-    axs = [
-        figMain.add_subplot(grid[0, 1]),
-        figMain.add_subplot(grid[0, 2]),
-        figMain.add_subplot(grid[0, 3]),
-        figMain.add_subplot(grid[0, 4]),
-        figMain.add_subplot(grid[0, 5]),
-        figMain.add_subplot(grid[1, 1]),
-        figMain.add_subplot(grid[1, 2]),
-        figMain.add_subplot(grid[1, 3]),
-        figMain.add_subplot(grid[1, 4]),
-        figMain.add_subplot(grid[1, 5]),
-        figMain.add_subplot(grid[2, 1]),
-        figMain.add_subplot(grid[2, 2]),
-        figMain.add_subplot(grid[2, 3]),
-        figMain.add_subplot(grid[2, 4]),
-        figMain.add_subplot(grid[2, 5]),
-        figMain.add_subplot(grid[3, 1]),
-        figMain.add_subplot(grid[3, 2]),
-        figMain.add_subplot(grid[3, 3]),
-        figMain.add_subplot(grid[3, 4]),
-        figMain.add_subplot(grid[3, 5]),
+    axsRes = [
+        figMain.add_subplot(grid[:2, 0]),
+        figMain.add_subplot(grid[2:, 0])
     ]
-
-    axsRes = figMain.add_subplot(grid[:, 0])
 
     return axs, axsRes
