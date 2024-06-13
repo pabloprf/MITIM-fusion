@@ -12,7 +12,7 @@ def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
 
     Xopt, Yopt = [], []
 
-    if algorithmOptions.get('storeValues',False):
+    if algorithmOptions.get('storeValues',True):
         def evaluator(x):
             """
             Notes:
@@ -61,7 +61,7 @@ def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
     _ = optim.powell(evaluator, x0, None, algorithmOptions=algorithmOptions)
     # ******************
 
-    if algorithmOptions.get('storeValues',False):
+    if algorithmOptions.get('storeValues',True):
         Xopt = torch.stack(Xopt)
         Yopt = torch.stack(Yopt)
     else:
@@ -78,7 +78,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
     dx_max = algorithmOptions.get("dx_max", 0.05)
     print_each = algorithmOptions.get("print_each", 1e2)
     MainFolder = algorithmOptions.get("MainFolder", "~/scratch/")
-    storeValues = algorithmOptions.get("storeValues", False)
+    storeValues = algorithmOptions.get("storeValues", True)
     namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
 
     def evaluator(X, cont=0):
