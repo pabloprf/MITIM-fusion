@@ -333,14 +333,7 @@ class powerstate:
                 bounds=bounds,
                 extra_params=extra_params,
             )
-        if algorithm == "prfseq":
-            self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchPRFseq(
-                self,
-                algorithmOptions=algorithmOptions,
-                bounds=bounds,
-                extra_params=extra_params,
-            )
-
+            
         print(
             "**********************************************************************************************"
         )

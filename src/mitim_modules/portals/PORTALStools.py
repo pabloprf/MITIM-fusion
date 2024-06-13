@@ -4,7 +4,6 @@ import numpy as np
 from functools import partial
 from collections import OrderedDict
 from mitim_tools.opt_tools.aux import BOgraphics
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
