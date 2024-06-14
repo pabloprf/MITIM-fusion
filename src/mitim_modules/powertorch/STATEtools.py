@@ -463,9 +463,7 @@ class powerstate:
                 do_fine=False,
             )
 
-    def update_var(
-        self, name, var=None, printMessages=True, specific_deparametrizer=None
-    ):
+    def update_var(self, name, var=None, printMessages=True, specific_deparametrizer=None):
         """
         This inserts gradients and updates coarse profiles
 
@@ -475,126 +473,60 @@ class powerstate:
                 - This keeps the thermal ion concentrations constant to the original case
         """
 
+        # -------------------------------------------------------------------------------------
+        # General function to update a variable
+        # -------------------------------------------------------------------------------------
+
         deparametrizers_choice = (
             self.deparametrizers_coarse
             if specific_deparametrizer is None
             else specific_deparametrizer
         )
 
-        if name in ["te"]:
+        def _update_plasma_var(var_key, clamp_min=0, clamp_max=200, factor_mult=1):
             if var is not None:
-                self.plasma["aLte"][: var.shape[0], :] = var[:, :]
-            aLT_withZero = self.plasma["aLte"]
-            _, varN = deparametrizers_choice["te"](
+                self.plasma[f"aL{var_key}"][: var.shape[0], :] = var[:, :]
+            aLT_withZero = self.plasma[f"aL{var_key}"]
+            _, varN = deparametrizers_choice[var_key](
                 self.plasma["roa"], aLT_withZero, printMessages=printMessages
             )
-
-            # To avoid crazy values that could lead to nans or infs
-            self.plasma["te"] = varN.clamp(min=0, max=200)
-
-            # Complete full aLT
-            self.plasma["aLte"] = torch.cat(
+            self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) * factor_mult
+            self.plasma[f"aL{var_key}"] = torch.cat(
                 (
-                    self.plasma["aLte"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma["aLte"][:, 1:],
+                    self.plasma[f"aL{var_key}"][:, : -self.plasma["rho"].shape[1] + 1],
+                    self.plasma[f"aL{var_key}"][:, 1:],
                 ),
                 axis=1,
             )
+            return aLT_withZero
 
-        elif name in ["ti"]:
-            if var is not None:
-                self.plasma["aLti"][: var.shape[0], :] = var[:, :]
-            aLT_withZero = self.plasma["aLti"]
-            _, varN = deparametrizers_choice["ti"](
-                self.plasma["roa"], aLT_withZero, printMessages=printMessages
-            )
+        # -------------------------------------------------------------------------------------
+        # Update variables
+        # -------------------------------------------------------------------------------------
 
-            # To avoid crazy values that could lead to nans or infs
-            self.plasma["ti"] = varN.clamp(min=0, max=200)
+        # Prepare variables (some require special treatment)
 
-            # Complete full aLT
-            self.plasma["aLti"] = torch.cat(
-                (
-                    self.plasma["aLti"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma["aLti"][:, 1:],
-                ),
-                axis=1,
-            )
-
-        elif name in ["ne"]:
-            if var is not None:
-                self.plasma["aLne"][: var.shape[0], :] = var[:, :]
-            aLT_withZero = self.plasma["aLne"]
-            _, varN = deparametrizers_choice["ne"](
-                self.plasma["roa"], aLT_withZero, printMessages=printMessages
-            )
-
-            # If it's density, be careful about the rest of ions
+        factor_mult = 1
+        if name == "w0":
+            factor_mult = 1 / TRANSFORMtools.factorMult_w0(self)
+        if name == "ne":
             ne_0orig, ni_0orig = self.plasma["ne"].clone(), self.plasma["ni"].clone()
 
-            # To avoid crazy values that could lead to nans or infs
-            self.plasma["ne"] = varN.clamp(min=0, max=200)
+        # **************************************************************
+        # UPDATE *******************************************************
+        # **************************************************************
+        aLT_withZero = _update_plasma_var(name, factor_mult=factor_mult)
+        # **************************************************************
 
-            # Complete full aLT
-            self.plasma["aLne"] = torch.cat(
-                (
-                    self.plasma["aLne"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma["aLne"][:, 1:],
-                ),
-                axis=1,
-            )
-
-            # Modify ni accordingly
+        # Postprocessing (some require special treatment)
+        if name == "ne":
             self.plasma["ni"] = ni_0orig.clone()
             for i in range(self.plasma["ni"].shape[2]):
                 self.plasma["ni"][:, :, i] = self.plasma["ne"] * (
                     ni_0orig[:, :, i] / ne_0orig
                 )
-
-        elif name in ["nZ"]:
-            if var is not None:
-                self.plasma["aLnZ"][: var.shape[0], :] = var[:, :]
-            aLT_withZero = self.plasma["aLnZ"]
-            _, varN = deparametrizers_choice["nZ"](
-                self.plasma["roa"], aLT_withZero, printMessages=printMessages
-            )
-
-            # To avoid crazy values that could lead to nans or infs
-            self.plasma["nZ"] = varN.clamp(min=0, max=200)
-
-            # Complete full aLT
-            self.plasma["aLnZ"] = torch.cat(
-                (
-                    self.plasma["aLnZ"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma["aLnZ"][:, 1:],
-                ),
-                axis=1,
-            )
-
-            # Insert into ni
-            self.plasma["ni"] = self.plasma["ni"].clone()
+        elif name == "nZ":
             self.plasma["ni"][:, :, self.impurityPosition - 1] = self.plasma["nZ"]
-
-        elif name in ["w0"]:
-            factor_mult = 1 / TRANSFORMtools.factorMult_w0(self)
-
-            if var is not None:
-                self.plasma["aLw0"][: var.shape[0], :] = var[:, :]
-            aLT_withZero = self.plasma["aLw0"]
-            _, varN = deparametrizers_choice["w0"](
-                self.plasma["roa"], aLT_withZero, printMessages=printMessages
-            )
-
-            # Complete full aLT
-            self.plasma["aLw0"] = torch.cat(
-                (
-                    self.plasma["aLw0"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma["aLw0"][:, 1:],
-                ),
-                axis=1,
-            )
-
-            self.plasma["w0"] = varN * factor_mult
 
         return aLT_withZero
 
