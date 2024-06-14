@@ -440,6 +440,10 @@ class MITIMpopcon:
         except:
             raise ValueError("No results have been calculated yet. Run evaluate() first.")
 
+        print("POPCON Results:")
+
+        print(f"Operational point: <ne>={point['average_electron_density'].data.magnitude}, <Te>={point['average_electron_temp'].data.magnitude}")
+
         if compare_to_gacode:
             if profiles_gacode is None:
                 raise ValueError("No GACODE profiles passed to compare to.")
