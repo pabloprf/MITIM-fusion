@@ -387,7 +387,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
             powerstate.repeat(
                 batch_size=X.shape[0], pos=0, includeDerived=False
             )  # This is an expensive step (to unrepeat), but can't do anything else...
-            powerstate.detach_tensors(includeDerived=False)
+            powerstate.detach_tensors()
 
             num_x = powerstate.plasma["rho"].shape[-1] - 1
 
@@ -470,8 +470,8 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
 
     if plot_results:
 
-        powerstate.detach_tensors(do_fine=False)
-        powerstate_orig.detach_tensors(do_fine=False)
+        powerstate.detach_tensors()
+        powerstate_orig.detach_tensors()
         powerstate.plot(label='optimized',c='r',compare_to_orig=powerstate_orig, c_orig = 'b')
 
     # ----------------------------------------------------

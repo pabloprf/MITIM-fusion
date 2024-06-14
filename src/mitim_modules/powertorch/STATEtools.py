@@ -14,12 +14,6 @@ from IPython import embed
 
 UseCUDAifAvailable = True
 
-def read_saved_state(file):
-    print(f"\t- Reading state file {IOtools.clipstr(file)}")
-    with open(file, "rb") as handle:
-        state = pickle.load(handle)
-    return state
-
 # ------------------------------------------------------------------
 # POWERSTATE Class
 # ------------------------------------------------------------------
@@ -36,17 +30,6 @@ class powerstate:
         impurityPosition=1,
         fineTargetsResolution=None,
     ):
-        self.dfT = torch.randn(
-            (2, 2),
-            dtype=torch.double,
-            device=torch.device(
-                "cpu"
-                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                else "cuda"
-            ),
-        )
-
-        self.plasma = {}
 
         # -------------------------------------------------------------------------------------
         # Inputs
@@ -60,15 +43,24 @@ class powerstate:
         self.TransportOptions = TransportOptions
         self.fineTargetsResolution = fineTargetsResolution
 
+        # Default type and device tensor
+        self.dfT = torch.randn(
+            (2, 2),
+            dtype=torch.double,
+            device=torch.device(
+                "cpu"
+                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
+                else "cuda"
+            ),
+        )
+
         # -------------------------------------------------------------------------------------
         # Populate plama with radial grid
         # -------------------------------------------------------------------------------------
 
-        # If it's given as an array, convert to double tensor (it may be slow to use double precision)
-        self.plasma["rho"] = (
-            rho_vec if (type(rho_vec) == torch.Tensor) else torch.from_numpy(rho_vec)
-        )
-        self.plasma["rho"] = self.plasma["rho"].to(self.dfT)
+        self.plasma = {
+            'rho' : (rho_vec if (type(rho_vec) == torch.Tensor) else torch.from_numpy(rho_vec)).to(self.dfT)
+        }
 
         # -------------------------------------------------------------------------------------
         # Define how the plasma dictionary will be populated, to repeat/unrepeat/detach
@@ -359,7 +351,7 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState")
             figs = PROFILEStools.add_figures(fn)
 
-            axs, axsRes = add_axes_fig1(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, axsRes = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -376,30 +368,29 @@ class powerstate:
     # Main tools
     # ------------------------------------------------------------------
 
-    def detach_tensors(self, includeDerived=True, DoThisPlasma=None, do_fine=True):
-        if DoThisPlasma is None:
-            DoThisPlasma = self.plasma
+    def detach_tensors(self):
+        
+        # -------------------------------------------------------------------------------------
+        # Detach plasma tensors
+        # -------------------------------------------------------------------------------------
 
-        for key in self.keys0D:
-            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
-        for key in self.keys1D:
-            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
-        if includeDerived:
-            for key in self.keys1D_derived:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
-        for key in self.keys2D:
-            if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].detach()
+        self.plasma = {key: tensor.detach() if isinstance(tensor, torch.Tensor) and tensor.requires_grad else tensor for key, tensor in self.plasma.items()}
 
-        if do_fine and (self.plasma_fine is not None):
-            self.detach_tensors(
-                includeDerived=includeDerived,
-                DoThisPlasma=self.plasma_fine,
-                do_fine=False,
-            )
+        # -------------------------------------------------------------------------------------
+        # Detach plasma_fine tensors
+        # -------------------------------------------------------------------------------------
 
-        if 'Xcurrent' in self.__dict__ and self.Xcurrent is not None:
+        if self.plasma_fine is not None:
+            self.plasma_fine = {key: tensor.detach() if isinstance(tensor, torch.Tensor) and tensor.requires_grad else tensor for key, tensor in self.plasma_fine.items()}
+
+        # -------------------------------------------------------------------------------------
+        # Detach optimization tensors
+        # -------------------------------------------------------------------------------------
+
+        if hasattr(self, 'Xcurrent') and self.Xcurrent is not None and self.Xcurrent.requires_grad:
             self.Xcurrent = self.Xcurrent.detach()
-        if 'FluxMatch_Yopt' in self.__dict__ and self.FluxMatch_Yopt is not None:
+
+        if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and self.FluxMatch_Yopt.requires_grad:
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
     def repeat(
@@ -882,8 +873,7 @@ class powerstate:
             self.keys1D_derived[i] = 1
 
     def calculateTransport(
-        self, nameRun="test", folder="~/scratch/", extra_params={}
-    ):
+        self, nameRun="test", folder="~/scratch/", extra_params={}):
         """
         Update the transport of the current state.
         By default, this is when powerstate interacts with input.gacode (produces it even if it's not used in the calculation)
@@ -966,10 +956,6 @@ class powerstate:
             self.plasma["rmin"].repeat(dim, 1), var * self.plasma["volp"].repeat(dim, 1)
         ) / self.plasma["volp"].repeat(dim, 1)
 
-    # ------------------------------------------------------------------
-    # Toolset for post-processsing
-    # ------------------------------------------------------------------
-
     def determinePerformance(self, nameRun="test", folder="~/scratch/"):
         '''
         At this moment, this recalculates fusion and radiation, etc
@@ -1033,7 +1019,7 @@ class powerstate:
 
         print(f"Prad = {self.plasma['Prad'].item():.2f}MW")
 
-def add_axes_fig1(figMain, num_kp=3):
+def add_axes_powerstate_plot(figMain, num_kp=3):
 
     grid = plt.GridSpec(4, 1+num_kp, hspace=0.5, wspace=0.5)
 
@@ -1048,3 +1034,9 @@ def add_axes_fig1(figMain, num_kp=3):
     ]
 
     return axs, axsRes
+
+def read_saved_state(file):
+    print(f"\t- Reading state file {IOtools.clipstr(file)}")
+    with open(file, "rb") as handle:
+        state = pickle.load(handle)
+    return state
