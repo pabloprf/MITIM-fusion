@@ -29,19 +29,17 @@ bg, er = 34.3827, 1.124656e6
 
 
 def exchange(self):
-    mi, Zi, _, _, _ = self.plasma["ions_set"]
     self.plasma["qie"] = PLASMAtools.energy_exchange(
         self.plasma["te"],
         self.plasma["ti"],
         self.plasma["ne"] * 1e-1,
         self.plasma["ni"] * 1e-1,
-        mi,
-        Zi,
+        self.plasma["ions_set_mi"],
+        self.plasma["ions_set_Zi"],
     )
 
 
 def radiation(self):
-    _, Zi, _, _, c_rad = self.plasma["ions_set"]
     (
         self.plasma["qrad_sync"],
         self.plasma["qrad_bremms"],
@@ -53,8 +51,8 @@ def radiation(self):
         self.plasma["eps"],
         self.plasma["a"],
         self.plasma["ni"] * 1e-1,
-        c_rad,
-        Zi,
+        self.plasma["ions_set_c_rad"],
+        self.plasma["ions_set_Zi"],
     )
 
     self.plasma["qrad"] = (
@@ -68,7 +66,10 @@ def alpha(self):
         self.plasma["te"],
         self.plasma["ne"],
         self.plasma["ni"],
-        self.plasma["ions_set"],
+        self.plasma["ions_set_mi"],
+        self.plasma["ions_set_Zi"],
+        self.plasma["ions_set_Dion"],
+        self.plasma["ions_set_Tion"]
     )
 
 
@@ -434,7 +435,7 @@ def get_chebyshev_coeffs(name):
     return c
 
 
-def alpha_heating(ti, te, ne, ni, ions_set):
+def alpha_heating(ti, te, ne, ni, mi, Zi, Dion, Tion):
     """
     This script calculates the power density profile (W/cm^3) that goes to ions and to electrons from
     fusion alphas, using kinetic profiles as inputs.
@@ -449,8 +450,7 @@ def alpha_heating(ti, te, ne, ni, ions_set):
     # otherwise there is no alpha power and zeros are returned
     # -----------------------------------------------------------
 
-    mi, Zi, Dion, Tion, _ = ions_set
-    if (Dion is not None) and (Tion is not None):
+    if (not Dion.isnan()) and (not Tion.isnan()):
         n_d, n_t = ni[:, :, Dion] * 1e19, ni[:, :, Tion] * 1e19  # m^-3
     else:
         return ni[:, :, 0] * 0.0, ni[:, :, 0] * 0.0

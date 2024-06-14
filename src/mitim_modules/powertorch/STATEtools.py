@@ -374,14 +374,14 @@ class powerstate:
         # Detach plasma tensors
         # -------------------------------------------------------------------------------------
 
-        self.plasma = {key: tensor.detach() if isinstance(tensor, torch.Tensor) and tensor.requires_grad else tensor for key, tensor in self.plasma.items()}
+        self.plasma = {key: tensor.detach() if tensor.requires_grad else tensor for key, tensor in self.plasma.items()}
 
         # -------------------------------------------------------------------------------------
         # Detach plasma_fine tensors
         # -------------------------------------------------------------------------------------
 
         if self.plasma_fine is not None:
-            self.plasma_fine = {key: tensor.detach() if isinstance(tensor, torch.Tensor) and tensor.requires_grad else tensor for key, tensor in self.plasma_fine.items()}
+            self.plasma_fine = {key: tensor.detach() if tensor.requires_grad else tensor for key, tensor in self.plasma_fine.items()}
 
         # -------------------------------------------------------------------------------------
         # Detach optimization tensors
@@ -505,16 +505,13 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Prepare variables (some require special treatment)
-
         factor_mult = 1
         if name == "w0":
             factor_mult = 1 / TRANSFORMtools.factorMult_w0(self)
         if name == "ne":
             ne_0orig, ni_0orig = self.plasma["ne"].clone(), self.plasma["ni"].clone()
 
-        # **************************************************************
         # UPDATE *******************************************************
-        # **************************************************************
         aLT_withZero = _update_plasma_var(name, factor_mult=factor_mult)
         # **************************************************************
 

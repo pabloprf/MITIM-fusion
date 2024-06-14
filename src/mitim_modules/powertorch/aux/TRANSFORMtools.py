@@ -291,9 +291,9 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
     self.plasma["B_unit"] = torch.from_numpy(
         interpFunction(rho_vec, rho_use, input_gacode.derived["B_unit"])
     ).to(dfT)
-    self.plasma["mi_u"] = input_gacode.mi_first
-    self.plasma["a"] = input_gacode.derived["a"]
-    self.plasma["eps"] = input_gacode.derived["eps"]
+    self.plasma["mi_u"] = torch.tensor(input_gacode.mi_first)
+    self.plasma["a"] = torch.tensor(input_gacode.derived["a"])
+    self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"])
     self.plasma["B_ref"] = torch.from_numpy(
         interpFunction(rho_vec, rho_use, input_gacode.derived["B_ref"])
     ).to(dfT)
@@ -417,11 +417,15 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     c_rad = torch.from_numpy(np.array(c_rad)).to(dfT)
 
     # ** Positions of DT ions in the ions array, which will be used to calculate alpha power
-    Dion, Tion = input_gacode.Dion, input_gacode.Tion
+    Dion = torch.tensor(input_gacode.Dion) if input_gacode.Dion is not None else torch.tensor(np.nan)
+    Tion = torch.tensor(input_gacode.Tion) if input_gacode.Tion is not None else torch.tensor(np.nan)
 
     # Only store as part of ions_set those IMMUTABLE parameters (NOTE: ni MAY change so that's why it's not here)
-    self.plasma["ions_set"] = [mi, Zi, Dion, Tion, c_rad]
-
+    self.plasma["ions_set_mi"] = mi
+    self.plasma["ions_set_Zi"] = Zi
+    self.plasma["ions_set_Dion"] = Dion
+    self.plasma["ions_set_Tion"] = Tion
+    self.plasma["ions_set_c_rad"] = c_rad
 
 def defineMovingGradients(self, profiles):
     (
@@ -497,7 +501,7 @@ def defineMovingGradients(self, profiles):
         self.deparametrizers_coarse_middle["w0"],
     ) = PARAMtools.performCurveRegression(
         profiles.derived["roa"],
-        profiles.profiles["w0(rad/s)"] * factor_mult,
+        profiles.profiles["w0(rad/s)"] * factor_mult.item(),
         self.plasma["roa"],
         aLT=aLT_use,
     )
