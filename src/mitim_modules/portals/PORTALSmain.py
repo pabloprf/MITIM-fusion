@@ -149,7 +149,7 @@ class portals(STRATEGYtools.opt_evaluator):
 		"""
 
         self.MODELparameters = {
-            "RhoLocations": [0.25, 0.45, 0.65, 0.85],
+            "RhoLocations": [0.3, 0.45, 0.6, 0.75, 0.9],
             "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
             "Physics_options": {
                 "TargetType": 3,
