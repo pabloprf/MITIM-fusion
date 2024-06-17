@@ -37,23 +37,28 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
     if "te" in self.ProfilesPredicted:
         set_plots.append(
             [   'te', 'aLte', 'Pe_tr', 'Pe',
-                'Electron Temperature','$T_e$ (keV)','$a/LT_e$','$Q_e$ (GB)','$Q_e$ ($MW/m^2$)'])
+                'Electron Temperature','$T_e$ (keV)','$a/LT_e$','$Q_e$ (GB)','$Q_e$ ($MW/m^2$)',
+                1.0])
     if "ti" in self.ProfilesPredicted:
         set_plots.append(
             [   'ti', 'aLti', 'Pi_tr', 'Pi',
-                'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)'])
+                'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)',
+                1.0])
     if "ne" in self.ProfilesPredicted:
         set_plots.append(
             [   'ne', 'aLne', 'Ce_tr', 'Ce',
-                'Electron Density','$n_e$ ($10^{19}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)'])
+                'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
+                1E-1])
     if "nZ" in self.ProfilesPredicted:
         set_plots.append(
             [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$Q_{conv,Z}$ (GB)','$Q_{conv,Z}$ ($MW/m^2$)'])
+                'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$Q_{conv,Z}$ (GB)','$Q_{conv,Z}$ ($MW/m^2$)',
+                1E-1])
     if "w0" in self.ProfilesPredicted:
         set_plots.append(
             [   'w0', 'aLw0', 'Mt_tr', 'Mt',
-                'Rotation','$\omega_0$ ($krad/s$)','$-d\omega_0/dr$ ($krad/s/cm$)','$\Pi$ (GB)','$\Pi$ ($J/m^2$)'])
+                'Rotation','$\omega_0$ ($krad/s$)','$-d\omega_0/dr$ ($krad/s/cm$)','$\Pi$ (GB)','$\Pi$ ($J/m^2$)',
+                1.0])
 
     cont = 0
     for set_plot in set_plots:
@@ -76,12 +81,12 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
 
             cont += 4
 
-def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, c, label, batch_num=0):
+def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile, c, label, batch_num=0):
 
     ax.set_title(title)
     ax.plot(
         plasma["rho"][batch_num,:],
-        plasma[key][batch_num,:],
+        plasma[key][batch_num,:]*multiplier_profile,
         "-o",
         color=c,
         label=label,
