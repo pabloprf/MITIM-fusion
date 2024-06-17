@@ -6,12 +6,12 @@ calculateTargets.py input.gacode 1
 
 import sys
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals.aux import PORTALSinit
 from mitim_modules.powertorch.physics import TRANSPORTtools
+from IPython import embed
 
 def calculator(
     input_gacode,
@@ -71,8 +71,7 @@ def calculator(
         )
 
     p.profiles = p.insertProfiles(
-        profiles, insertPowers=True, rederive_profiles=True, reRead=True
-    )
+        profiles, insertPowers=True, rederive_profiles=True)
     p.determinePerformance(nameRun="test", folder=IOtools.expandPath(folder))
 
     return p

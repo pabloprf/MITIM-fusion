@@ -1,10 +1,8 @@
 import torch
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import MATHtools
-from mitim_tools.gacode_tools.aux import GACODErun
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
+from IPython import embed
 
 def integrateQuadPoly(r, s, p=None):
     """
@@ -25,20 +23,20 @@ def integrateQuadPoly(r, s, p=None):
 
     # First point
 
-    x1, x2, x3 = r[:, 0], r[:, 1], r[:, 2]
-    f1, f2, f3 = s[:, 0], s[:, 1], s[:, 2]
+    x1, x2, x3 = r[..., 0], r[..., 1], r[..., 2]
+    f1, f2, f3 = s[..., 0], s[..., 1], s[..., 2]
 
-    p[:, 1] = (x2 - x1) * (
+    p[..., 1] = (x2 - x1) * (
         (3 * x3 - x2 - 2 * x1) * f1 / 6 / (x3 - x1)
         + (3 * x3 - 2 * x2 - x1) * f2 / 6 / (x3 - x2)
         - (x2 - x1) ** 2 * f3 / 6 / (x3 - x1) / (x3 - x2)
     )
 
     # Next points
-    x1, x2, x3 = r[:, :-2], r[:, 1:-1], r[:, 2:]
-    f1, f2, f3 = s[:, :-2], s[:, 1:-1], s[:, 2:]
+    x1, x2, x3 = r[..., :-2], r[..., 1:-1], r[..., 2:]
+    f1, f2, f3 = s[..., :-2], s[..., 1:-1], s[..., 2:]
 
-    p[:, 2:] = (
+    p[..., 2:] = (
         (x3 - x2)
         / (x3 - x1)
         / 6
@@ -82,7 +80,7 @@ def integrateGradient(x, z, z0_bound):
     """
 
     # Calculate profile
-    b = torch.exp(0.5 * (z[:, :-1] + z[:, 1:]) * (x[:, 1:] - x[:, :-1]))
+    b = torch.exp(0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1]))
     f1 = b / torch.cumprod(b, 1) * torch.prod(b, 1, keepdims=True)
 
     # Add the extra point of bounday condition
@@ -142,7 +140,7 @@ def integrateGradient_lin(x, z, z0_bound):
     """
 
     # Calculate profile
-    b = 0.5 * (z[:, :-1] + z[:, 1:]) * (x[:, 1:] - x[:, :-1])
+    b = 0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1])
     f1 = b - torch.cumsum(b, 1) + torch.sum(b, 1, keepdims=True)
 
     # Add the extra point of bounday condition

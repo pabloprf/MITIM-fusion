@@ -228,8 +228,8 @@ class PORTALSanalyzer:
                 len(power.plasma["volp"].shape) > 1
                 and power.plasma["volp"].shape[1] > 1
             ):
-                power.unrepeat(do_fine=False)
-                power.repeat(do_fine=False)
+                power.unrepeat()
+                power.repeat()
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
                 power,

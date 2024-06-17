@@ -62,37 +62,11 @@ class powerstate:
             'rho' : (rho_vec if (type(rho_vec) == torch.Tensor) else torch.from_numpy(rho_vec)).to(self.dfT)
         }
 
-        # -------------------------------------------------------------------------------------
-        # Define how the plasma dictionary will be populated, to repeat/unrepeat/detach
-        # -------------------------------------------------------------------------------------
-
-        self.keys1D = {
-            "roa": 1,
-            "rho": 1,
-            "rmin": 1,
-            "volp": 1,
-            "B_unit": 1,
-            "B_ref": 1,
-            "te": 1,
-            "ti": 1,
-            "ne": 1,
-            "nZ": 1,
-            "w0": 1,
-            "Paux_e": 1,
-            "Paux_i": 1,
-            "Gaux_e": 1,
-            "Gaux_Z": 1,
-            "Maux": 1,
-        }
-        self.keys2D = {"ni": 1}
-        self.keys0D = {}
-        self.keys1D_derived = (
-            {}
-        )  # Here I will store variables later. Only repeat if requested
-
-        self.keys1D["aLte"] = self.keys1D["aLti"] = self.keys1D["aLne"] = self.keys1D[
-            "aLnZ"
-        ] = self.keys1D["aLw0"] = 1
+        # Have the posibility of storing profiles in the class
+        self.profiles_stored = []
+        self.FluxMatch_Xopt, self.FluxMatch_Yopt = torch.Tensor().to(
+            self.dfT
+        ), torch.Tensor().to(self.dfT)
 
         # -------------------------------------------------------------------------------------
         # input.gacode
@@ -152,18 +126,8 @@ class powerstate:
 
         TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
 
-        # -------------------------------------------------------------------------------------
-        # Postprocessing operations
-        # -------------------------------------------------------------------------------------
-
         # Convert into a batch so that always the quantities are (batch,dimX)
         self.repeat(batch_size=1)
-
-        # Have the posibility of storing profiles in the class
-        self.profiles_stored = []
-        self.FluxMatch_Xopt, self.FluxMatch_Yopt = torch.Tensor().to(
-            self.dfT
-        ), torch.Tensor().to(self.dfT)
 
     def insertProfiles(
         self,
@@ -203,13 +167,7 @@ class powerstate:
             )
 
             # Repeat, that's how it's done earlier
-            self.plasma["ni"] = self.plasma["ni"].repeat(
-                self.plasma["rho"].shape[0], 1, 1
-            )
-            if self.plasma_fine is not None:
-                self.plasma_fine["ni"] = self.plasma_fine["ni"].repeat(
-                    self.plasma["rho"].shape[0], 1, 1
-                )
+            self.repeat(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"])
 
         return profiles
 
@@ -227,15 +185,7 @@ class powerstate:
         self.profiles_stored_set = self.profiles_stored
 
         for state in states:
-            for key in self.keys0D:
-                self.plasma[key] = torch.cat((self.plasma[key], state[key])).to(
-                    self.plasma[key]
-                )
-            for key in self.keys1D:
-                self.plasma[key] = torch.cat((self.plasma[key], state[key])).to(
-                    self.plasma[key]
-                )
-            for key in self.keys2D:
+            for key in self.plasma:
                 self.plasma[key] = torch.cat((self.plasma[key], state[key])).to(
                     self.plasma[key]
                 )
@@ -393,75 +343,67 @@ class powerstate:
         if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and self.FluxMatch_Yopt.requires_grad:
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
-    def repeat(
-        self, batch_size=1, pos=0, includeDerived=True, DoThisPlasma=None, do_fine=True
-    ):
+    def repeat(self, batch_size=1, specific_keys=None):
         """
         Repeat 1D profiles (radii) to (batch_size,radii) so that the mitim calcs are fine
-
-        includeDerived = False will make things faster if I'm recalculating things later anyway
         """
 
-        if DoThisPlasma is None:
-            DoThisPlasma = self.plasma
+        # -------------------------------------------------------------------------------------
+        # Repeat plasma tensors
+        # -------------------------------------------------------------------------------------
 
-        if len(DoThisPlasma["rho"].shape) == 1:
-            for key in self.keys0D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size)
-            for key in self.keys1D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
-            for key in self.keys2D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1, 1)
-            if includeDerived:
-                for key in self.keys1D_derived:
-                    if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key].repeat(batch_size, 1)
-        else:
-            for key in self.keys0D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos].repeat(batch_size)
-            for key in self.keys1D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
-            for key in self.keys2D:
-                if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :, :].repeat(
-                    batch_size, 1, 1
-                )
-            if includeDerived:
-                for key in self.keys1D_derived:
-                    if key in DoThisPlasma: DoThisPlasma[key] = DoThisPlasma[key][pos, :].repeat(batch_size, 1)
-
-        if do_fine and (self.plasma_fine is not None):
-            self.repeat(
-                batch_size=batch_size,
-                pos=pos,
-                includeDerived=includeDerived,
-                DoThisPlasma=self.plasma_fine,
-                do_fine=False,
+        plasma = {
+            key: (
+                self.plasma[key].repeat(batch_size) if self.plasma[key].dim() == 0 else
+                self.plasma[key].repeat(batch_size, 1) if self.plasma[key].dim() == 1 else
+                self.plasma[key].repeat(batch_size, 1, 1) if self.plasma[key].dim() == 2 else self.plasma[key]
             )
+            for key in (self.plasma.keys() if specific_keys is None else specific_keys)
+        }
 
-    def unrepeat(self, pos=0, includeDerived=True, DoThisPlasma=None, do_fine=True):
+        self.plasma.update(plasma)
+
+        # -------------------------------------------------------------------------------------
+        # Repeat plasma_fine tensors
+        # -------------------------------------------------------------------------------------
+
+        if self.plasma_fine is not None:
+            plasma_fine = {
+                key: (
+                    self.plasma_fine[key].repeat(batch_size) if self.plasma_fine[key].dim() == 0 else
+                    self.plasma_fine[key].repeat(batch_size, 1) if self.plasma_fine[key].dim() == 1 else
+                    self.plasma_fine[key].repeat(batch_size, 1, 1) if self.plasma_fine[key].dim() == 2 else self.plasma_fine[key]
+                )
+                for key in (self.plasma_fine.keys() if specific_keys is None else specific_keys)
+            }
+
+            self.plasma_fine.update(plasma_fine)
+
+
+    def unrepeat(self, pos=0):
         """
         Opposite to repeat(), to extract just one profile of the batch
         """
 
-        if DoThisPlasma is None:
-            DoThisPlasma = self.plasma
+        # -------------------------------------------------------------------------------------
+        # Unrepeat plasma tensors
+        # -------------------------------------------------------------------------------------
 
-        for key in self.keys0D:
-            DoThisPlasma[key] = DoThisPlasma[key][pos]
-        for key in self.keys1D:
-            self.plasma[key] = DoThisPlasma[key][pos, :]
-        for key in self.keys2D:
-            DoThisPlasma[key] = DoThisPlasma[key][pos, :, :]
-        if includeDerived:
-            for key in self.keys1D_derived:
-                DoThisPlasma[key] = DoThisPlasma[key] = DoThisPlasma[key][pos, :]
+        self.plasma = {key: tensor[pos] if tensor.dim() == 1 else
+                            tensor[pos, :] if tensor.dim() == 2 else
+                            tensor[pos, :, :] if tensor.dim() == 3 else tensor
+                            for key, tensor in self.plasma.items()}
 
-        if do_fine and (self.plasma_fine is not None):
-            self.unrepeat(
-                pos=pos,
-                includeDerived=includeDerived,
-                DoThisPlasma=self.plasma_fine,
-                do_fine=False,
-            )
+        # -------------------------------------------------------------------------------------
+        # Unrepeat plasma_fine tensors
+        # -------------------------------------------------------------------------------------
+
+        if self.plasma_fine is not None:
+            self.plasma_fine = {key:    tensor[pos] if tensor.dim() == 1 else
+                                        tensor[pos, :] if tensor.dim() == 2 else
+                                        tensor[pos, :, :] if tensor.dim() == 3 else tensor
+                                for key, tensor in self.plasma_fine.items()}
+
 
     def update_var(self, name, var=None, printMessages=True, specific_deparametrizer=None):
         """
@@ -548,12 +490,12 @@ class powerstate:
             self.plasma["ne"] * 1e-1,
             mref_u,
             self.plasma["B_unit"],
-            self.plasma["a"],
+            self.plasma["a"].unsqueeze(-1),
         )
 
         # Collisionality
         self.plasma["nuei"] = PLASMAtools.xnue(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"], mref_u
+            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref_u
         )
 
         # Gyro-radius
@@ -570,15 +512,6 @@ class powerstate:
         )
 
         """
-		Make sure that the variables are on-repeat
-		------------------------------------------
-		"""
-
-        quantities = ['Qgb', 'Qgb_convection', 'Ggb', 'Pgb', 'Sgb', 'nuei', 'rho_s', 'c_s', 'tite', 'fZ', 'beta_e']
-        for ikey in quantities:
-            self.keys1D_derived[ikey] = 1
-
-        """
 		Rotation stuff
 		--------------
 			Reason why I not always calculate this is because here I'm combining quantities derived (w0,cs)
@@ -590,8 +523,6 @@ class powerstate:
             self.plasma["aLw0_n"] = (
                 self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"]
             )  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
-            self.keys1D_derived["w0_n"] = 1
-            self.keys1D_derived["aLw0_n"] = 1
 
     def calculateTargets(self, assumedPercentError=1.0):
         """
@@ -695,7 +626,7 @@ class powerstate:
         qe = self.plasma["qfuse"] - self.plasma["qie"] - self.plasma["qrad"]
         qi = self.plasma["qfusi"] + self.plasma["qie"]
         q = torch.cat((qe, qi)).to(qe)
-        P = self.volume_integrate(q, dim=2)
+        P = self.volume_integrate(q, force_dim=q.shape[0])
 
         # **************************************************************************************************
         # Come back to original grid for targets?
@@ -777,29 +708,6 @@ class powerstate:
             self.plasma["CZGB"] = self.plasma["CZ"] / self.plasma["Ggb"]
         self.plasma["MtGB"] = self.plasma["Mt"] / self.plasma["Pgb"]
 
-        # **************************************************************************************************
-        # Make sure that the variables are on-repeat
-        # **************************************************************************************************
-        for i in [
-            "Pe",
-            "Pi",
-            "Ce",
-            "CZ",
-            "Mt",
-            "qfuse",
-            "qfusi",
-            "qie",
-            "qrad",
-            "qrad_sync",
-            "qrad_line",
-            "qrad_bremms",
-            "PeGB",
-            "PiGB",
-            "CeGB",
-            "CZGB",
-            "MtGB",
-        ]:
-            self.keys1D_derived[i] = 1
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", extra_params={}):
@@ -873,17 +781,20 @@ class powerstate:
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
         self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1)
 
-        self.keys1D_derived["S"] = self.keys1D_derived["P"] = self.keys1D_derived["P_tr"] = 1
-        self.keys0D["residual"] = 1
-
-    def volume_integrate(self, var, dim=1):
+    def volume_integrate(self, var, force_dim=None):
         """
         If var in MW/m^3, this gives as output the MW/m^2 profile
         """
 
-        return CALCtools.integrateQuadPoly(
-            self.plasma["rmin"].repeat(dim, 1), var * self.plasma["volp"].repeat(dim, 1)
-        ) / self.plasma["volp"].repeat(dim, 1)
+        if force_dim is None:
+            return CALCtools.integrateQuadPoly(
+                self.plasma["rmin"], var * self.plasma["volp"]
+            ) / self.plasma["volp"]
+        else:
+            return CALCtools.integrateQuadPoly(
+                self.plasma["rmin"][0,:].repeat(force_dim,1), var * self.plasma["volp"][0,:].repeat(force_dim,1),
+            ) / self.plasma["volp"][0,:].repeat(force_dim,1)
+
 
     def determinePerformance(self, nameRun="test", folder="~/scratch/"):
         '''
@@ -934,8 +845,6 @@ class powerstate:
         )[:, -1]
         self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
 
-        for i in ["Pfus", "Pin", "Q", "Prad"]:
-            self.keys0D[i] = 1
         self.unrepeat()
 
         # ************************************

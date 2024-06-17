@@ -1,11 +1,7 @@
 import torch
-import numpy as np
-from IPython import embed
-from mitim_tools.misc_tools import MATHtools, PLASMAtools
-from mitim_tools.gacode_tools.aux import GACODErun
-from mitim_modules.powertorch.physics import CALCtools
-
+from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 # ------------------------------------------------------------------
 # Global physical constants
@@ -95,17 +91,15 @@ def radiated_power(Te_keV, ne20, b_ref, aspect_rat, r_min, ni20, c_rad, Zi):
     # ----------------------------------------------------
 
     # Calling chevychev polys only once for all the species at the same time, for speed
-    Adas = adas_aurora(
-        Te_keV.expand(c_rad.shape[0], Te_keV.shape[0], Te_keV.shape[1]), c_rad
-    )
-    Pcool = ne20 * (Adas * ni20.transpose(2, 0).transpose(1, 2)).sum(dim=0)
+    Adas = adas_aurora(Te_keV, c_rad)
+    Pcool = ne20 * (Adas * ni20.permute(2, 0, 1)).sum(dim=0) # Sum over species
 
     # ----------------------------------------------------
     # Bremsstrahlung
     # ----------------------------------------------------
 
     f = 0.005344  # 1.69e-32*(1E20*1E-6)**2*(1E3)**0.5
-    Pbremss = f * ne20 * (ni20 * Zi**2).sum(dim=-1) * Te_keV**0.5
+    Pbremss = f * ne20 * (ni20 * Zi.unsqueeze(1)**2).sum(dim=-1) * Te_keV**0.5
 
     # ----------------------------------------------------
     # Line
@@ -117,7 +111,7 @@ def radiated_power(Te_keV, ne20, b_ref, aspect_rat, r_min, ni20, c_rad, Zi):
     # ----------------------------------------------------
     # Synchrotron
     # ----------------------------------------------------
-    Psync = PLASMAtools.synchrotron(Te_keV, ne20, b_ref, aspect_rat, r_min)
+    Psync = PLASMAtools.synchrotron(Te_keV, ne20, b_ref, aspect_rat.unsqueeze(-1), r_min.unsqueeze(-1))
 
     return Psync, Pbremss, Pline
 
@@ -127,8 +121,11 @@ def adas_aurora(Te, c):
     - This script calculates the cooling reate from ADAS data of impurity ions (erg cm^3/s), using Te (keV).
     - It follows the methodology in TGYRO [Candy et al. PoP 2009]. All the credits are due to the authors of TGYRO
     - Improvements have been made to make it faster, by taking into account array operations within pytorch rather than loops
-    """
 
+    - Input comes as Te[batch,nR] and c[batch,nZ,nR]
+    - Output comes as lz[nZ,batch,nR]
+    """
+    
     # Define Chebyshev grid
     precomputed_factor = 0.28953  # 2/torch.log(t1_adas/t0_adas), 50.0/0.05
     x = (-1.0 + precomputed_factor * torch.log(Te / 0.05)).clip(min=-1, max=1)
@@ -140,7 +137,7 @@ def adas_aurora(Te, c):
     lz = torch.exp(
         precomputed_factor
         + (
-            c.transpose(0, 1)[:, :, None, None]
+            c.permute(2, 1, 0)[...,None]
             * torch.cos(iCoeff[:, None, None, None] * torch.acos(x))
         ).sum(dim=0)
     )
@@ -450,10 +447,10 @@ def alpha_heating(ti, te, ne, ni, mi, Zi, Dion, Tion):
     # otherwise there is no alpha power and zeros are returned
     # -----------------------------------------------------------
 
-    if (not Dion.isnan()) and (not Tion.isnan()):
-        n_d, n_t = ni[:, :, Dion] * 1e19, ni[:, :, Tion] * 1e19  # m^-3
+    if (not Dion[0].isnan()) and (not Tion[0].isnan()):
+        n_d, n_t = ni[..., Dion[0]] * 1e19, ni[..., Tion[0]] * 1e19  # m^-3
     else:
-        return ni[:, :, 0] * 0.0, ni[:, :, 0] * 0.0
+        return ni[..., 0] * 0.0, ni[..., 0] * 0.0
 
     # -----------------------------------------------------------
     # Alpha energy birth rate
@@ -470,7 +467,7 @@ def alpha_heating(ti, te, ne, ni, mi, Zi, Dion, Tion):
 
     c_a = te * 0.0
     for i in range(ni.shape[2]):
-        c_a += (ni[:, :, i] / ne) * Zi[i] ** 2 * (Aalpha / mi[i])
+        c_a += (ni[..., i] / ne) * Zi[:,i].unsqueeze(-1) ** 2 * (Aalpha / mi[:,i].unsqueeze(-1))
 
     W_crit = (te * 1e3) * (4 * (Ae / Aalpha) ** 0.5 / (3 * pi**0.5 * c_a)) ** (
         -2.0 / 3.0

@@ -111,7 +111,6 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
-
     powerstate = constructEvaluationProfiles(X, surrogate_parameters)
 
     """
@@ -215,7 +214,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
         (torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1
     )
 
-    PexchTurb_integrated = powerstate.volume_integrate(qExch, dim=qExch.shape[0])[:, 1:]
+    PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
     """
 	3. Go back to the original batching system
@@ -384,9 +383,8 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
         powerstate = surrogate_parameters["powerstate"]
 
         if X.shape[0] > 0:
-            powerstate.repeat(
-                batch_size=X.shape[0], pos=0, includeDerived=False
-            )  # This is an expensive step (to unrepeat), but can't do anything else...
+            powerstate.unrepeat()
+            powerstate.repeat(batch_size=X.shape[0])  # This is an expensive step (to unrepeat), but can't do anything else...
             powerstate.detach_tensors()
 
             num_x = powerstate.plasma["rho"].shape[-1] - 1

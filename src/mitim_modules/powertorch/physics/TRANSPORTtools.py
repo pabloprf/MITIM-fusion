@@ -89,10 +89,6 @@ class power_transport:
 
     def clean(self):
 
-        # Make sure that the variables are on-repeat
-        for i in self.variables:
-            self.powerstate.keys1D_derived[i] = 1
-
         # Insert powers again in case they come from TGYRO instead of powerstate previous step
         if self.powerstate.TargetCalc == "tgyro":
             self.powerstate.profiles = self.powerstate.insertProfiles(
