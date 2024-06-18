@@ -384,6 +384,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
         if X.shape[0] > 0:
 
+            embed()
             powerstate.repeat_tensors(batch_size=X.shape[0])  # This is an expensive step (to unrepeat and repeat), but can't do anything else...
             powerstate.detach_tensors()
 

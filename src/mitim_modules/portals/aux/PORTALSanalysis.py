@@ -224,9 +224,6 @@ class PORTALSanalyzer:
             # Residual definitions
             # ------------------------------------------------
 
-            if power.batch_size > 1:
-                power.repeat_tensors()
-
             _, _, source, res = PORTALSinteraction.calculatePseudos(
                 power,
                 self.PORTALSparameters,
