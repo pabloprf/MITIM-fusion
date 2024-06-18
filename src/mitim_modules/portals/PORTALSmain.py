@@ -128,10 +128,10 @@ class portals(STRATEGYtools.opt_evaluator):
 
         self.INITparameters = {
             "recompute_ptot": True,  # Recompute PTOT to match kinetic profiles (after removals)
-            "quasineutrality": True,  # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
+            "quasineutrality": False,  # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
             "removeIons": [],  # Remove this ion from the input.gacode (if D,T,Z, eliminate T with [2])
             "removeFast": False,  # Automatically detect which are fast ions and remove them
-            "FastIsThermal": True,  # Do not remove fast, keep their diluiton effect but make them thermal
+            "FastIsThermal": False,  # Do not remove fast, keep their diluiton effect but make them thermal
             "sameDensityGradients": False,  # Make all ion density gradients equal to electrons
             "groupQIONE": False,
             "ensurePostiveGamma": False,
