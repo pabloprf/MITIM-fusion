@@ -24,6 +24,8 @@ portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.Optim["BOiterations"] = 2
 portals_fun.Optim["initialPoints"] = 3
 portals_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["quasineutrality"] = True
+portals_fun.INITparameters["sameDensityGradients"] = True
 portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2 # Run with TGLF SAT 0 
 
 # Prepare run
