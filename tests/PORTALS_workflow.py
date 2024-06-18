@@ -23,6 +23,7 @@ if restart and os.path.exists(folderWork):
 portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.Optim["BOiterations"] = 2
 portals_fun.Optim["initialPoints"] = 3
+portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.INITparameters["removeFast"] = True
 portals_fun.INITparameters["quasineutrality"] = True
 portals_fun.INITparameters["sameDensityGradients"] = True
