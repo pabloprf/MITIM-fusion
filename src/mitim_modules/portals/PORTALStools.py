@@ -366,12 +366,12 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
     Prepare powerstate for another evaluation with batches
     ------------------------------------------------------
 
-    Note: Copying this object will be very expensive (~30% increase in foward pass)...
-              So, method that is better is to detach what pythorch has done in other backward evals.
-              So I'm avoiding doing copy.deepcopy(surrogate_parameters['powerstate'])
-
-    Note: Only calculate it once per ModelList, so make sure it's not in parameters_combined before
-              computing it, since it is common for all.
+    Notes:
+        - Only calculate it once per ModelList, so make sure it's not in parameters_combined before
+            computing it, since it is common for all.
+        - Copying this object will be very expensive (~30% increase in foward pass)...
+            So, method that is better is to detach what pythorch has done in other backward evals.
+            So I'm avoiding doing copy.deepcopy(surrogate_parameters['powerstate'])
     """
 
     if ("parameters_combined" in surrogate_parameters) and (
@@ -384,15 +384,14 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
         if X.shape[0] > 0:
 
-            embed()
+            # Prepare powerstate for evaluation, by making it batched with as many as X as detach what was done in previous evaluations
             powerstate.repeat_tensors(batch_size=X.shape[0])  # This is an expensive step (to unrepeat and repeat), but can't do anything else...
             powerstate.detach_tensors()
 
             num_x = powerstate.plasma["rho"].shape[-1] - 1
 
-            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
-
             # Obtain modified profiles
+            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
             for iprof, var in enumerate(powerstate.ProfilesPredicted):
                 # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
                 CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
