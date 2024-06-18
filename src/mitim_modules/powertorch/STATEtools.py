@@ -412,8 +412,8 @@ class powerstate:
             self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) * factor_mult
             self.plasma[f"aL{var_key}"] = torch.cat(
                 (
-                    self.plasma[f"aL{var_key}"][:, : -self.plasma["rho"].shape[1] + 1],
-                    self.plasma[f"aL{var_key}"][:, 1:],
+                    self.plasma[f"aL{var_key}"][..., : -self.plasma["rho"].shape[1] + 1],
+                    self.plasma[f"aL{var_key}"][..., 1:],
                 ),
                 axis=1,
             )
@@ -438,11 +438,11 @@ class powerstate:
         if name == "ne":
             self.plasma["ni"] = ni_0orig.clone()
             for i in range(self.plasma["ni"].shape[2]):
-                self.plasma["ni"][:, :, i] = self.plasma["ne"] * (
-                    ni_0orig[:, :, i] / ne_0orig
+                self.plasma["ni"][..., i] = self.plasma["ne"] * (
+                    ni_0orig[..., i] / ne_0orig
                 )
         elif name == "nZ":
-            self.plasma["ni"][:, :, self.impurityPosition - 1] = self.plasma["nZ"]
+            self.plasma["ni"][..., self.impurityPosition - 1] = self.plasma["nZ"]
 
         return aLT_withZero
 
