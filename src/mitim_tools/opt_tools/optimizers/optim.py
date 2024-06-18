@@ -1,6 +1,6 @@
-import torch, copy
+import torch
+import copy
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import root
 from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print

@@ -427,16 +427,16 @@ def energy_exchange(Te_keV, Ti_keV, ne_20, ni_20, mi_u, Zi):
 
     nu_exch = (
         ni_20[..., 0]
-        * Zi[:,0].unsqueeze(1) ** 2
-        * mime[:,0].unsqueeze(1) ** 0.5
-        / (Ti_keV + mime[:,0].unsqueeze(1) * Te_keV) ** 1.5
+        * Zi[...,0].unsqueeze(1) ** 2
+        * mime[...,0].unsqueeze(1) ** 0.5
+        / (Ti_keV + mime[...,0].unsqueeze(1) * Te_keV) ** 1.5
     )
     for i in range(ni_20.shape[2] - 1):
         nu_exch += (
             ni_20[..., i + 1]
-            * Zi[:,i + 1].unsqueeze(1) ** 2
-            * mime[:,i + 1].unsqueeze(1) ** 0.5
-            / (Ti_keV + mime[:,i + 1].unsqueeze(1) * Te_keV) ** 1.5
+            * Zi[...,i + 1].unsqueeze(1) ** 2
+            * mime[...,i + 1].unsqueeze(1) ** 0.5
+            / (Ti_keV + mime[...,i + 1].unsqueeze(1) * Te_keV) ** 1.5
         )
 
     s_exch = c_exch_20 * nu_exch * (Te_keV - Ti_keV) * ne_20 * loglam(Te_keV, ne_20)
