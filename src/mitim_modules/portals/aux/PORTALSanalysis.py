@@ -224,12 +224,8 @@ class PORTALSanalyzer:
             # Residual definitions
             # ------------------------------------------------
 
-            if (
-                len(power.plasma["volp"].shape) > 1
-                and power.plasma["volp"].shape[1] > 1
-            ):
-                power.unrepeat()
-                power.repeat()
+            if power.batch_size > 1:
+                power.repeat_tensors()
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
                 power,

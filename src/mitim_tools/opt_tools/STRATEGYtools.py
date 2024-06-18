@@ -1250,7 +1250,7 @@ class PRF_BO:
 
             except:
                 flagger = print(
-                    "Error reading Tabular. Do you want to continue without restart and do LHS instead?",
+                    "Error reading Tabular. Do you want to continue without restart and do standard initialization instead?",
                     typeMsg="q",
                 )
 

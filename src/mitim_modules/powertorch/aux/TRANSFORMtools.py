@@ -153,7 +153,7 @@ def fromPowerToGacode(
     if insertPowers:
         profiles.deriveQuantities(rederiveGeometry=False)
         rederive = False
-        insertPowersNew(profiles, state=self)
+        insertPowersNew(profiles, state=self, PositionInBatch = PositionInBatch)
 
     # ------------------------------------------------------------------------------------------
     # Recalculate
@@ -171,7 +171,7 @@ def fromPowerToGacode(
     return profiles
 
 
-def insertPowersNew(profiles, state=None):
+def insertPowersNew(profiles, state=None, PositionInBatch=0):
     if state is None:
         from mitim_modules.powertorch.STATEtools import powerstate
 
@@ -197,7 +197,6 @@ def insertPowersNew(profiles, state=None):
     state_temp.calculateProfileFunctions()
     state_temp.TargetCalc = "powerstate"
     state_temp.calculateTargets()
-    state_temp.unrepeat()
     conversions = {
         "qie": "qei(MW/m^3)",
         "qrad_bremms": "qbrem(MW/m^3)",
@@ -209,14 +208,14 @@ def insertPowersNew(profiles, state=None):
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
             profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey].cpu().numpy()
+                state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
             )
         else:
             profiles.profiles[conversions[ikey]] = np.zeros(
                 len(profiles.profiles["qei(MW/m^3)"])
             )
             profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey].cpu().numpy()
+                state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
             )
 
 

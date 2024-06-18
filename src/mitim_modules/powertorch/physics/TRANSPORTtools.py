@@ -338,24 +338,36 @@ class diffusion_model(power_transport):
     def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
         super().__init__(powerstate, name, folder, extra_params)
 
+        # Ensure that the provided diffusivities include the zero location
+        self.chi_e = self.powerstate.TransportOptions["ModelOptions"]["chi_e"]
+        self.chi_i = self.powerstate.TransportOptions["ModelOptions"]["chi_i"]
+
+        if self.chi_e.shape[0] < self.powerstate.plasma['rho'].shape[-1]:
+            self.chi_e = torch.cat((torch.zeros(1), self.chi_e))
+
+        if self.chi_i.shape[0] < self.powerstate.plasma['rho'].shape[-1]:
+            self.chi_i = torch.cat((torch.zeros(1), self.chi_i))
+
     def produce_profiles(self):
         pass
 
     def evaluate(self):
 
+        # Make sure the chis are applied to all the points in the batch
+        
         Pe_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ne"],
             self.powerstate.plasma["te"],
-            self.powerstate.TransportOptions["ModelOptions"]["chi_e"],
+            self.chi_e.repeat(self.powerstate.plasma['rho'].shape[0],1),
             self.powerstate.plasma["aLte"],
-            self.powerstate.plasma["a"],
+            self.powerstate.plasma["a"].unsqueeze(-1),
         )
         Pi_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ni"].sum(axis=-1),
             self.powerstate.plasma["ti"],
-            self.powerstate.TransportOptions["ModelOptions"]["chi_i"],
+            self.chi_i.repeat(self.powerstate.plasma['rho'].shape[0],1),
             self.powerstate.plasma["aLti"],
-            self.powerstate.plasma["a"],
+            self.powerstate.plasma["a"].unsqueeze(-1),
         )
 
         self.powerstate.plasma["Pe_tr_turb"] = Pe_tr * 2 / 3

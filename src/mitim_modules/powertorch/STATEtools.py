@@ -54,6 +54,8 @@ class powerstate:
             ),
         )
 
+        self.batch_size = 0
+
         # -------------------------------------------------------------------------------------
         # Populate plama with radial grid
         # -------------------------------------------------------------------------------------
@@ -127,7 +129,7 @@ class powerstate:
         TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
 
         # Convert into a batch so that always the quantities are (batch,dimX)
-        self.repeat(batch_size=1)
+        self.repeat_tensors(batch_size=1)
 
     def insertProfiles(
         self,
@@ -167,7 +169,7 @@ class powerstate:
             )
 
             # Repeat, that's how it's done earlier
-            self.repeat(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"])
+            self.repeat_tensors(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"], positionToUnrepeat=None)
 
         return profiles
 
@@ -307,6 +309,11 @@ class powerstate:
             axsNotGiven = False
             fn = None
 
+        # Make sure tensors are detached
+        self.detach_tensors()
+        if compare_to_orig is not None:
+            compare_to_orig.detach_tensors()
+
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_orig=compare_to_orig, c_orig = c_orig)
 
         if axsNotGiven:
@@ -343,67 +350,37 @@ class powerstate:
         if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and self.FluxMatch_Yopt.requires_grad:
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
-    def repeat(self, batch_size=1, specific_keys=None):
+    def repeat_tensors(self, batch_size=1, specific_keys=None, positionToUnrepeat=0):
         """
-        Repeat 1D profiles (radii) to (batch_size,radii) so that the mitim calcs are fine
+        Repeat 1D profiles [...] or [positionToUnrepeat,...] (unrepeat first) to [batch_size,...] so that the MITIM calculations are fine
+        Notes:
+            - The reason for repeat and working in batches is so that calculations can occur in parallel for different plasmas / data points
         """
 
-        # -------------------------------------------------------------------------------------
-        # Repeat plasma tensors
-        # -------------------------------------------------------------------------------------
+        def _handle_repeating(tensor, batch_size, positionToUnrepeat):
+            if tensor.dim() == 0:
+                return tensor.repeat(batch_size)
+            elif tensor.dim() == 1:
+                return tensor.repeat(batch_size, 1)
+            elif tensor.dim() == 2:
+                return tensor.repeat(batch_size, 1, 1)
+            else:
+                return tensor
 
-        plasma = {
-            key: (
-                self.plasma[key].repeat(batch_size) if self.plasma[key].dim() == 0 else
-                self.plasma[key].repeat(batch_size, 1) if self.plasma[key].dim() == 1 else
-                self.plasma[key].repeat(batch_size, 1, 1) if self.plasma[key].dim() == 2 else self.plasma[key]
-            )
-            for key in (self.plasma.keys() if specific_keys is None else specific_keys)
-        }
-
-        self.plasma.update(plasma)
-
-        # -------------------------------------------------------------------------------------
-        # Repeat plasma_fine tensors
-        # -------------------------------------------------------------------------------------
-
+        tensor_dictionaries = [self.plasma]
         if self.plasma_fine is not None:
-            plasma_fine = {
-                key: (
-                    self.plasma_fine[key].repeat(batch_size) if self.plasma_fine[key].dim() == 0 else
-                    self.plasma_fine[key].repeat(batch_size, 1) if self.plasma_fine[key].dim() == 1 else
-                    self.plasma_fine[key].repeat(batch_size, 1, 1) if self.plasma_fine[key].dim() == 2 else self.plasma_fine[key]
-                )
-                for key in (self.plasma_fine.keys() if specific_keys is None else specific_keys)
+            tensor_dictionaries.append(self.plasma_fine)
+
+        for plasma_dict in tensor_dictionaries:
+            plasma = {
+                key: _handle_repeating( plasma_dict[key][positionToUnrepeat, ...] if (self.batch_size > 0 and positionToUnrepeat is not None) else plasma_dict[key], batch_size, positionToUnrepeat)
+                for key in (plasma_dict.keys() if specific_keys is None else specific_keys)
             }
 
-            self.plasma_fine.update(plasma_fine)
+            plasma_dict.update(plasma)
 
-
-    def unrepeat(self, pos=0):
-        """
-        Opposite to repeat(), to extract just one profile of the batch
-        """
-
-        # -------------------------------------------------------------------------------------
-        # Unrepeat plasma tensors
-        # -------------------------------------------------------------------------------------
-
-        self.plasma = {key: tensor[pos] if tensor.dim() == 1 else
-                            tensor[pos, :] if tensor.dim() == 2 else
-                            tensor[pos, :, :] if tensor.dim() == 3 else tensor
-                            for key, tensor in self.plasma.items()}
-
-        # -------------------------------------------------------------------------------------
-        # Unrepeat plasma_fine tensors
-        # -------------------------------------------------------------------------------------
-
-        if self.plasma_fine is not None:
-            self.plasma_fine = {key:    tensor[pos] if tensor.dim() == 1 else
-                                        tensor[pos, :] if tensor.dim() == 2 else
-                                        tensor[pos, :, :] if tensor.dim() == 3 else tensor
-                                for key, tensor in self.plasma_fine.items()}
-
+        # New batch size
+        self.batch_size = batch_size
 
     def update_var(self, name, var=None, printMessages=True, specific_deparametrizer=None):
         """
@@ -779,7 +756,7 @@ class powerstate:
                 ).to(self.plasma["P"])
 
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
-        self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1)
+        self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1, keepdim=True)
 
     def volume_integrate(self, var, force_dim=None):
         """
@@ -844,8 +821,6 @@ class powerstate:
             (self.plasma["Paux_e"] + self.plasma["Paux_i"]) * self.plasma["volp"]
         )[:, -1]
         self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
-
-        self.unrepeat()
 
         # ************************************
         # Print Info
