@@ -6,8 +6,7 @@ import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot
-from mitim_modules.powertorch.iteration import ITtools
+from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot, ITtools
 from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -30,6 +29,10 @@ class powerstate:
         impurityPosition=1,
         fineTargetsResolution=None,
     ):
+        '''
+        Notes:
+            - rho_vec does not contain zero, it will be added here
+        '''
 
         # -------------------------------------------------------------------------------------
         # Inputs
@@ -60,8 +63,9 @@ class powerstate:
         # Populate plama with radial grid
         # -------------------------------------------------------------------------------------
 
+        # Add a zero on the beginning
         self.plasma = {
-            'rho' : (rho_vec if (type(rho_vec) == torch.Tensor) else torch.from_numpy(rho_vec)).to(self.dfT)
+            'rho' : torch.cat((torch.zeros(1, device=self.dfT.device, dtype=self.dfT.dtype), (rho_vec if isinstance(rho_vec, torch.Tensor) else torch.from_numpy(rho_vec)).to(self.dfT)))
         }
 
         # Have the posibility of storing profiles in the class
@@ -69,6 +73,18 @@ class powerstate:
         self.FluxMatch_Xopt, self.FluxMatch_Yopt = torch.Tensor().to(
             self.dfT
         ), torch.Tensor().to(self.dfT)
+
+        self.profile_map = {
+            "te": ("Pe", "Pe_tr"),
+            "ti": ("Pi", "Pi_tr"),
+            "ne": ("Ce", "Ce_tr"),
+            "nZ": ("CZ", "CZ_tr"),
+            "w0": ("Mt", "Mt_tr")
+        }
+
+        self.labelsFM = []
+        for profile in self.ProfilesPredicted:
+            self.labelsFM.append([f'aL{profile}', list(self.profile_map[profile])[0], list(self.profile_map[profile])[1]])
 
         # -------------------------------------------------------------------------------------
         # input.gacode
@@ -204,6 +220,18 @@ class powerstate:
                         )
                     ).to(self.TransportOptions["ModelOptions"][key])
 
+    def copy_state(self):
+
+        # ~~~ Perform copy of the state but without the unpickled fn
+        state_shallow_copy = copy.copy(self)
+        if hasattr(state_shallow_copy, 'fn'):
+            del state_shallow_copy.fn
+        if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
+            del state_shallow_copy.model_results.fn
+        state_temp = copy.deepcopy(state_shallow_copy)
+
+        return state_temp
+
     # ------------------------------------------------------------------
     # Flux-matching and iteration tools
     # ------------------------------------------------------------------
@@ -300,10 +328,21 @@ class powerstate:
 
             fn = FigureNotebook("PowerState", geometry="1800x900")
 
-            figMain = fn.add_figure(label="PowerState")
-            figs = PROFILEStools.add_figures(fn)
+            # Powerstate
+            figMain = fn.add_figure(label="PowerState", tab_color='r')
+            # Optimization
+            figOpt = fn.add_figure(label="Optimization", tab_color='r')
+            grid = plt.GridSpec(3, 1+len(self.ProfilesPredicted), hspace=0.5, wspace=0.5)
 
-            axs, axsRes = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axsRes = [figOpt.add_subplot(grid[:, 0])]
+            for i in range(len(self.ProfilesPredicted)):
+                for j in range(3):
+                    axsRes.append(figOpt.add_subplot(grid[j, i+1]))
+
+            # Profiles
+            figs = PROFILEStools.add_figures(fn, tab_color='b')
+
+            axs = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -715,46 +754,15 @@ class powerstate:
         """
 
         # All fluxes in a single vector
-        self.plasma["P"], self.plasma["P_tr"] = torch.Tensor().to(
-            self.plasma["Pe"]
-        ), torch.Tensor().to(self.plasma["Pe"])
-        for c, i in enumerate(self.ProfilesPredicted):
-            if i == "te":
-                self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pe"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-                self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pe_tr"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-            if i == "ti":
-                self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Pi"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-                self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Pi_tr"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-            if i == "ne":
-                self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Ce"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-                self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Ce_tr"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-            if i == "nZ":
-                self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["CZ"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-                self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["CZ_tr"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-            if i == "w0":
-                self.plasma["P"] = torch.cat(
-                    (self.plasma["P"], self.plasma["Mt"][:,1:]), dim=1
-                ).to(self.plasma["P"])
-                self.plasma["P_tr"] = torch.cat(
-                    (self.plasma["P_tr"], self.plasma["Mt_tr"][:,1:]), dim=1
-                ).to(self.plasma["P"])
+        def _concatenate_flux(plasma, profile_key, flux_key):
+            plasma["P"] = torch.cat((plasma["P"], plasma[profile_key][:, 1:]), dim=1).to(plasma["P"].device)
+            plasma["P_tr"] = torch.cat((plasma["P_tr"], plasma[flux_key][:, 1:]), dim=1).to(plasma["P"].device)
 
+        self.plasma["P"], self.plasma["P_tr"] = torch.Tensor().to(self.plasma["Pe"]), torch.Tensor().to(self.plasma["Pe"])
+
+        for profile in self.ProfilesPredicted:
+            _concatenate_flux(self.plasma, *self.profile_map[profile])
+            
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
         self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1, keepdim=True)
 
@@ -834,19 +842,14 @@ class powerstate:
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 
-    grid = plt.GridSpec(4, 1+num_kp, hspace=0.5, wspace=0.5)
+    grid = plt.GridSpec(4, num_kp, hspace=0.5, wspace=0.5)
 
     axs = []
     for i in range(num_kp):
         for j in range(4):
-            axs.append(figMain.add_subplot(grid[j, 1+i]))
+            axs.append(figMain.add_subplot(grid[j, i]))
 
-    axsRes = [
-        figMain.add_subplot(grid[:2, 0]),
-        figMain.add_subplot(grid[2:, 0])
-    ]
-
-    return axs, axsRes
+    return axs
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")

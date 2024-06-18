@@ -126,11 +126,7 @@ def initializeProblem(
 	***************************************************************************************************
 	"""
 
-    xCPs = torch.from_numpy(
-        np.append([0], np.array(portals_fun.MODELparameters["RhoLocations"]))
-    ).to(
-        dfT
-    )  # Added zero
+    xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
 
     # Define powerstate with the de-parameterization functions
     portals_fun.powerstate = STATEtools.powerstate(

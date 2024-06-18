@@ -354,7 +354,6 @@ class diffusion_model(power_transport):
     def evaluate(self):
 
         # Make sure the chis are applied to all the points in the batch
-        
         Pe_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ne"],
             self.powerstate.plasma["te"],

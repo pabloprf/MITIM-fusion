@@ -153,7 +153,40 @@ def fromPowerToGacode(
     if insertPowers:
         profiles.deriveQuantities(rederiveGeometry=False)
         rederive = False
-        insertPowersNew(profiles, state=self, PositionInBatch = PositionInBatch)
+
+        print("\t- Insering powers")
+
+        # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
+        extra_points = 2  # If I don't allow this, it will fail
+
+        state_temp = self.copy_state()
+        rhoy = profiles.profiles["rho(-)"][1:-extra_points]
+        with IOtools.HiddenPrints():
+            state_temp.__init__(profiles, rhoy)
+
+        state_temp.calculateProfileFunctions()
+        state_temp.TargetCalc = "powerstate"
+        state_temp.calculateTargets()
+        conversions = {
+            "qie": "qei(MW/m^3)",
+            "qrad_bremms": "qbrem(MW/m^3)",
+            "qrad_sync": "qsync(MW/m^3)",
+            "qrad_line": "qline(MW/m^3)",
+            "qfuse": "qfuse(MW/m^3)",
+            "qfusi": "qfusi(MW/m^3)",
+        }
+        for ikey in conversions:
+            if conversions[ikey] in profiles.profiles:
+                profiles.profiles[conversions[ikey]][:-extra_points] = (
+                    state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
+                )
+            else:
+                profiles.profiles[conversions[ikey]] = np.zeros(
+                    len(profiles.profiles["qei(MW/m^3)"])
+                )
+                profiles.profiles[conversions[ikey]][:-extra_points] = (
+                    state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
+                )
 
     # ------------------------------------------------------------------------------------------
     # Recalculate
@@ -169,55 +202,6 @@ def fromPowerToGacode(
         profiles.selfconsistentPTOT()
 
     return profiles
-
-
-def insertPowersNew(profiles, state=None, PositionInBatch=0):
-    if state is None:
-        from mitim_modules.powertorch.STATEtools import powerstate
-
-        state = powerstate(profiles, np.array([0.5, 0.8]))
-
-    print("\t- Insering powers")
-
-    # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
-    extra_points = 2  # If I don't allow this, it will fail
-
-    # ~~~ Perform copy of the state but without the unpickled fn
-    state_shallow_copy = copy.copy(state)
-    if hasattr(state_shallow_copy, 'fn'):
-        del state_shallow_copy.fn
-    if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
-        del state_shallow_copy.model_results.fn
-    state_temp = copy.deepcopy(state_shallow_copy)
-    # ~~~
-
-    rhoy = profiles.profiles["rho(-)"][:-extra_points]
-    with IOtools.HiddenPrints():
-        state_temp.__init__(profiles, rhoy)
-    state_temp.calculateProfileFunctions()
-    state_temp.TargetCalc = "powerstate"
-    state_temp.calculateTargets()
-    conversions = {
-        "qie": "qei(MW/m^3)",
-        "qrad_bremms": "qbrem(MW/m^3)",
-        "qrad_sync": "qsync(MW/m^3)",
-        "qrad_line": "qline(MW/m^3)",
-        "qfuse": "qfuse(MW/m^3)",
-        "qfusi": "qfusi(MW/m^3)",
-    }
-    for ikey in conversions:
-        if conversions[ikey] in profiles.profiles:
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
-            )
-        else:
-            profiles.profiles[conversions[ikey]] = np.zeros(
-                len(profiles.profiles["qei(MW/m^3)"])
-            )
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
-            )
-
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 

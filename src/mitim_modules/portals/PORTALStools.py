@@ -437,7 +437,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
         profiles_new,
-        step.surrogate_parameters["powerstate"].plasma["rho"][0,:],
+        step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
         ProfilesPredicted=step.surrogate_parameters["powerstate"].ProfilesPredicted,
         TransportOptions=TransportOptions,
         TargetOptions={

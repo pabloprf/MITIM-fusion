@@ -4027,15 +4027,15 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     return p
 
-def add_figures(fn, fnlab='', fnlab_pre=''):
+def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
-    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab)
-    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab)
-    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab)
-    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab)
-    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab)
-    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab)
-    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab)
+    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab, tab_color=tab_color)
+    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab, tab_color=tab_color)
+    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab, tab_color=tab_color)
+    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab, tab_color=tab_color)
+    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab, tab_color=tab_color)
+    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab, tab_color=tab_color)
+    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab, tab_color=tab_color)
     figs = [figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7]
 
     return figs

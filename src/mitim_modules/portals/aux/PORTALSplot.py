@@ -1871,11 +1871,11 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs, axsRes = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
-            self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
+            self.powerstates[indeces].plot(axs, label=f"({indeces})", c=c)
 
     axs[0].legend(loc="best")
 

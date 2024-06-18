@@ -870,7 +870,7 @@ class PORTALSinitializer:
         figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
         figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
 
-        axs, axsRes = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
+        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
@@ -887,7 +887,7 @@ class PORTALSinitializer:
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
                 self.powerstates[i].plot(
-                    axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}"
+                    axs=axs, c=colors[i], label=f"#{i}"
                 )
 
                 # Add profiles too
@@ -903,9 +903,6 @@ class PORTALSinitializer:
                 )
 
             axs[0].legend(prop={"size": 8})
-
-            for ax in axsRes:
-                ax.set_xlim([0, i])
 
         # Add next profile
         if len(self.profiles) > len(self.powerstates):

@@ -8,26 +8,6 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
     if figs is not None:
         _ = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
 
-    # ---- Plot flux matching
-    
-    if self.FluxMatch_Yopt.shape[0] > 0:
-        ax = axsRes[0]
-        ax.plot(self.FluxMatch_Yopt.mean(axis=1),"-o",color=c,markersize=2)
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("Mean residual")
-        ax.set_xlim(left=0)
-        ax.set_yscale("log")
-
-        ax = axsRes[1]
-        ax.plot(self.FluxMatch_Yopt, "-", color=c, lw=0.2)
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("Residual (channel)")
-        ax.set_xlim(left=0)
-        ax.set_yscale("log")
-
-    for ax in axsRes:
-        GRAPHICStools.addDenseAxis(ax)
-
     # ---------------------------------------------------
     # ---- Plot plasma state
     # ---------------------------------------------------
@@ -57,7 +37,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
     if "w0" in self.ProfilesPredicted:
         set_plots.append(
             [   'w0', 'aLw0', 'Mt_tr', 'Mt',
-                'Rotation','$\omega_0$ ($krad/s$)','$-d\omega_0/dr$ ($krad/s/cm$)','$\Pi$ (GB)','$\Pi$ ($J/m^2$)',
+                'Rotation','$\\omega_0$ ($krad/s$)','$-d\\omega_0/dr$ ($krad/s/cm$)','$\\Pi$ (GB)','$\\Pi$ ($J/m^2$)',
                 1.0])
 
     cont = 0
@@ -80,6 +60,45 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
                 axs[cont].legend()
 
             cont += 4
+
+    # ---------------------------------------------------
+    # ---- Plot flux matching
+    # ---------------------------------------------------
+
+    if self.FluxMatch_Yopt.shape[0] > 0:
+        ax = axsRes[0]
+        ax.plot(self.FluxMatch_Yopt.mean(axis=1),"-o",color=c,markersize=2)
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Mean residual")
+        ax.set_xlim(left=0)
+        ax.set_yscale("log")
+
+        colors = GRAPHICStools.listColors()
+
+        cont = 0
+        for i in range(len(self.ProfilesPredicted)):
+
+            # Plot gradient evolution
+            ax = axsRes[1+cont]
+            for j in range(self.plasma['rho'].shape[-1]-1):    
+                ax.plot(self.FluxMatch_Xopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=2)
+            ax.set_ylabel(self.labelsFM[i][0])
+            
+            # Plot residual evolution
+            ax = axsRes[1+cont+2]
+            for j in range(self.plasma['rho'].shape[-1]-1):    
+                ax.plot(self.FluxMatch_Yopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0,markersize=2)
+            ax.set_ylabel(f'{self.labelsFM[i][1]} residual')
+            ax.set_yscale("log")
+
+            cont += 3
+
+        for ax in axsRes:
+            ax.set_xlabel("Iteration")
+            ax.set_xlim(left=0)
+            GRAPHICStools.addDenseAxis(ax)
+        
+        axsRes[1].legend(loc='best',prop={'size': 6})
 
 def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile, c, label, batch_num=0):
 

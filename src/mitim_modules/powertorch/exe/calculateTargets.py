@@ -18,7 +18,7 @@ def calculator(
     typeCalculation=2,
     folder="~/scratch/",
     restart=True,
-    rho_vec=np.linspace(0, 0.9, 10),
+    rho_vec=np.linspace(0.1, 0.9, 9),
     profProvided=False,
 ):
     profiles = (
@@ -47,7 +47,7 @@ def calculator(
                             "InputType": 1,
                         },
                         "ProfilesPredicted": ["te", "ti", "ne"],
-                        "RhoLocations": rho_vec[1:],
+                        "RhoLocations": rho_vec,
                         "applyCorrections": {
                             "Tfast_ratio": False,
                             "Ti_thermals": True,

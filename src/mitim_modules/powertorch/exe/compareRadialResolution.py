@@ -10,7 +10,7 @@ from mitim_tools.powertorch import STATEtools
 """
 This code is useful to get an idea of how well POWERSTATE is calculating the targets, compared to the standard of TGYRO.
 To run:
-		compareRadialResolution.py --file input.gacode --rhos 0.0 0.30771427 0.48583669 0.67665776 0.75750399 0.84737053
+		compareRadialResolution.py --file input.gacode --rhos 0.30771427 0.48583669 0.67665776 0.75750399 0.84737053
 """
 
 parser = argparse.ArgumentParser()
