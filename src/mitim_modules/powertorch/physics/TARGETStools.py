@@ -11,10 +11,14 @@ class power_targets:
     '''
     Default class for power target models, change "evaluate" method to implement a new model
     '''
+
+    def evaluate(self):
+        print("No model implemented for power targets", typeMsg="w")
+
     def __init__(self,powerstate):
         self.powerstate = powerstate
 
-        # Start by making sub-targets equal to zero
+        # Make sub-targets equal to zero
         for i in [
             "qfuse",
             "qfusi",
@@ -26,8 +30,173 @@ class power_targets:
         ]:
             self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
 
-    def evaluate(self):
-        print("No model implemented for power targets", typeMsg="w")
+        # ----------------------------------------------------
+        # Fixed Targets (targets without a model)
+        # ----------------------------------------------------
+
+        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 1:
+            self.PextraE, self.PextraI = (
+                self.powerstate.plasma["PextraE_Target1"],
+                self.powerstate.plasma["PextraI_Target1"],
+            )  # Original integrated from input.gacode
+        elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 2:
+            self.PextraE, self.PextraI = (
+                self.powerstate.plasma["PextraE_Target2"],
+                self.powerstate.plasma["PextraI_Target2"],
+            )
+        elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
+            self.PextraE, self.PextraI = self.powerstate.plasma["te"] * 0.0, self.powerstate.plasma["te"] * 0.0
+
+        # For the moment, I don't have a model for these, so I just grab the original from input.gacode
+        self.CextraE = self.powerstate.plasma["Gaux_e"]     # 1E20/s/m^2
+        self.CextraZ = self.powerstate.plasma["Gaux_Z"]     # 1E20/s/m^2
+        self.Mextra = self.powerstate.plasma["Maux"]        # J/m^2
+
+    def fine_grid(self):
+
+        """
+        Make all quantities needed on the fine resolution
+        -------------------------------------------------
+            In the powerstate creation, the plasma variables are stored in two different resolutions, one for the coarse grid and one for the fine grid,
+            if the option is activated.
+
+            Here, at calculation stage I use some precalculated quantities in the fine grid and then integrate the gradients into that resolution
+
+            Note that the set ['te','ti','ne','nZ','w0','ni'] will automatically be substituted during the update_var() that comes next, so
+            it's ok that I lose the torch leaf here. However, I must do this copy here because if any of those variables are not updated in
+            update_var() then it would fail. But first store them for later use.
+        """
+
+        self.plasma_original = {}
+        for variable in [
+            "B_unit",
+            "B_ref",
+            "volp",
+            "rmin",
+            "roa",
+            "rho",
+            "ni",
+        ]:
+            self.plasma_original[variable] = self.powerstate.plasma[variable].clone()
+            self.powerstate.plasma[variable] = self.powerstate.plasma_fine[variable]
+
+        # Store also the gradients that are part of the torch trees, so that the derivative is not lost
+        for variable in self.powerstate.profile_map.keys():
+
+            # Store the variables
+            self.plasma_original[variable] = self.powerstate.plasma[variable].clone()
+            self.powerstate.plasma[variable] = self.powerstate.plasma_fine[variable]
+
+            # Store also the gradients that are part of the torch trees, so that the derivative is not lost
+            self.plasma_original[f'aL{variable}'] = self.powerstate.plasma[f'aL{variable}'].clone()
+
+        """
+        Integrate through fine de-parameterization
+        """
+        for i in self.powerstate.ProfilesPredicted:
+            _ = self.powerstate.update_var(
+                i,
+                printMessages=False,
+                specific_deparametrizer=self.powerstate.deparametrizers_coarse_middle,
+            )
+
+    def flux_integrate(self):
+        """
+		**************************************************************************************************
+		Calculate integral of all targets, and then sum aux.
+		Reason why I do it this convoluted way is to make it faster in mitim, not to run integrateQuadPoly all the time.
+		Run once for all the batch and also for electrons and ions
+		(in MW/m^2)
+		**************************************************************************************************
+		"""
+
+        qe = self.powerstate.plasma["qfuse"] - self.powerstate.plasma["qie"] - self.powerstate.plasma["qrad"]
+        qi = self.powerstate.plasma["qfusi"] + self.powerstate.plasma["qie"]
+        q = torch.cat((qe, qi)).to(qe)
+        self.P = self.powerstate.volume_integrate(q, force_dim=q.shape[0])
+
+    def coarse_grid(self):
+
+        # **************************************************************************************************
+        # Come back to original grid for targets
+        # **************************************************************************************************
+
+        # Interpolate results from fine to coarse (i.e. whole point is that it is better than integrate interpolated values)
+        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] >= 2:
+            for i in ["qie"]:
+                self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
+        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
+            for i in [
+                "qfuse",
+                "qfusi",
+                "qrad",
+                "qrad_bremms",
+                "qrad_line",
+                "qrad_sync",
+            ]:
+                self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
+        self.P = self.P[:, self.powerstate.positions_targets]
+
+        # Recover variables calculated prior to the fine-targets method
+        for i in self.plasma_original:
+            self.powerstate.plasma[i] = self.plasma_original[i]
+
+    def postprocessing(self, useConvectiveFluxes=False, forceZeroParticleFlux=False, assumedPercentError=1.0):
+
+        # **************************************************************************************************
+        # Plug-in Targets
+        # **************************************************************************************************
+
+        self.powerstate.plasma["Pe"] = (
+            self.powerstate.plasma["Paux_e"] + self.P[: self.P.shape[0]//2, :] + self.PextraE
+        )  # MW/m^2
+        self.powerstate.plasma["Pi"] = (
+            self.powerstate.plasma["Paux_i"] + self.P[self.P.shape[0]//2 :, :] + self.PextraI
+        )  # MW/m^2
+        self.powerstate.plasma["Ce_raw"] = self.CextraE
+        self.powerstate.plasma["CZ_raw"] = self.CextraZ
+        self.powerstate.plasma["Mt"] = self.Mextra
+
+        # Merge convective fluxes
+
+        if useConvectiveFluxes:
+            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(
+                self.powerstate.plasma["te"], self.powerstate.plasma["Ce_raw"]
+            )  # MW/m^2
+            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(
+                self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"]
+            )  # MW/m^2
+        else:
+            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce_raw"]
+            self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
+
+        if forceZeroParticleFlux:
+            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce"] * 0
+            self.powerstate.plasma["Ce_raw"] = self.powerstate.plasma["Ce_raw"] * 0
+
+        # **************************************************************************************************
+        # Error
+        # **************************************************************************************************
+
+        for i in ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]:
+            self.powerstate.plasma[i + "_stds"] = self.powerstate.plasma[i] * assumedPercentError / 100 
+
+        """
+		**************************************************************************************************
+		GB Normalized
+		**************************************************************************************************
+			Note: This is useful for mitim surrogate variables of targets
+		"""
+
+        self.powerstate.plasma["PeGB"] = self.powerstate.plasma["Pe"] / self.powerstate.plasma["Qgb"]
+        self.powerstate.plasma["PiGB"] = self.powerstate.plasma["Pi"] / self.powerstate.plasma["Qgb"]
+        if useConvectiveFluxes:
+            self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb"]
+            self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb"]
+        else:
+            self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Ggb"]
+            self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Ggb"]
+        self.powerstate.plasma["MtGB"] = self.powerstate.plasma["Mt"] / self.powerstate.plasma["Pgb"]
 
 # ----------------------------------------------------------------------------------------------------
 # Full analytical models taken from TGYRO
