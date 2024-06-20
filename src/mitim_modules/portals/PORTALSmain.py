@@ -14,7 +14,7 @@ from mitim_modules.portals.aux import (
     PORTALSoptimization,
     PORTALSanalysis,
 )
-from mitim_modules.powertorch.physics import TRANSPORTtools
+from mitim_modules.powertorch.physics import TRANSPORTtools, TARGETStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -152,7 +152,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "RhoLocations": [0.3, 0.45, 0.6, 0.75, 0.9],
             "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
             "Physics_options": {
-                "TargetType": 3,
+                "TypeTarget": 3,
                 "TurbulentExchange": 0,  # In PORTALS TGYRO evaluations, let's always calculate turbulent exchange, but NOT include it in targets!
                 "PtotType": 1,  # In PORTALS TGYRO evaluations, let's always use the PTOT column (so control of that comes from the ap)
                 "GradientsType": 0,  # In PORTALS TGYRO evaluations, we need to not recompute gradients
@@ -185,6 +185,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Selection of model
         transport_evaluator = TRANSPORTtools.tgyro_model
+        targets_evaluator = TARGETStools.analytical_model
 
         self.PORTALSparameters = {
             "percentError": [
@@ -193,6 +194,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 1,
             ],  # (%) Error (std, in percent) of model evaluation [TGLF, NEO, TARGET]
             "transport_evaluator": transport_evaluator,
+            "targets_evaluator": targets_evaluator,
             "TargetCalc": "powerstate",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
             "useConvectiveFluxes": True,  # If True, then convective flux for final metric (not fitting). If False, particle flux
@@ -500,9 +502,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 self_copy = copy.deepcopy(self)
                 if reevaluateTargets == 1:
                     self_copy.powerstate.TransportOptions["transport_evaluator"] = None
-                    self_copy.powerstate.TransportOptions["TypeTarget"] = (
-                        self_copy.powerstate.TargetCalc
-                    ) = "powerstate"
+                    self_copy.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] = "powerstate"
                 else:
                     self_copy.powerstate.TransportOptions["transport_evaluator"] = TRANSPORTtools.tgyro_model
 

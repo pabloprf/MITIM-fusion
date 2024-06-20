@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals.aux import PORTALSinit
-from mitim_modules.powertorch.physics import TRANSPORTtools
+from mitim_modules.powertorch.physics import TRANSPORTtools,TARGETStools
 from IPython import embed
 
 def calculator(
@@ -31,8 +31,15 @@ def calculator(
     if typeCalculation == 1:
         p = STATEtools.powerstate(
             profiles,
-            rho_vec,
-            TargetOptions={"TypeTarget": 3, "TargetCalc": "tgyro"},
+            MiscOptions={
+                "rhoPredicted": rho_vec,
+            },
+            TargetOptions={
+                "targets_evaluator": TARGETStools.analytical_model,
+                "ModelOptions": {
+                    "TypeTarget": 3,
+                    "TargetCalc":  "tgyro"},
+            },
             TransportOptions={
                 "transport_evaluator": TRANSPORTtools.tgyro_model,
                 "ModelOptions": {
@@ -40,7 +47,7 @@ def calculator(
                     "launchSlurm": True,
                     "MODELparameters": {
                         "Physics_options": {
-                            "TargetType": 3,
+                            "TypeTarget": 3,
                             "TurbulentExchange": 0,
                             "PtotType": 1,
                             "GradientsType": 0,
@@ -65,8 +72,15 @@ def calculator(
     elif typeCalculation == 2:
         p = STATEtools.powerstate(
             profiles,
-            rho_vec,
-            TargetOptions={"TypeTarget": 3, "TargetCalc": "powerstate"},
+            MiscOptions={
+                "rhoPredicted": rho_vec,
+            },
+            TargetOptions={
+                "targets_evaluator": TARGETStools.analytical_model,
+                "ModelOptions": {
+                    "TypeTarget": 3,
+                    "TargetCalc":  "powerstate"},
+            },
             TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
         )
 

@@ -1,8 +1,9 @@
-import copy, torch, os
-import numpy as np
-from IPython import embed
+import copy
+import torch
+import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 """
 *********************************************************************************************************************

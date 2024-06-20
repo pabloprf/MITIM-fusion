@@ -404,7 +404,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
             # Targets only if needed (for speed, GB doesn't need it)
             if recalculateTargets:
-                powerstate.TargetCalc = "powerstate"  # For surrogate evaluation, always powerstate, logically.
+                powerstate.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
 
     return powerstate
@@ -434,18 +434,19 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
     TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
 
+
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
         profiles_new,
-        step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
-        ProfilesPredicted=step.surrogate_parameters["powerstate"].ProfilesPredicted,
+        MiscOptions={
+            "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
+            "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
+            "useConvectiveFluxes": step.surrogate_parameters["powerstate"].useConvectiveFluxes,
+            "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
+            "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
+        },
         TransportOptions=TransportOptions,
-        TargetOptions={
-            'TypeTarget':step.surrogate_parameters["powerstate"].TargetType,
-            'TargetCalc':step.surrogate_parameters["powerstate"].TargetCalc},
-        useConvectiveFluxes=step.surrogate_parameters["powerstate"].useConvectiveFluxes,
-        impurityPosition=step.surrogate_parameters["powerstate"].impurityPosition,
-        fineTargetsResolution=20, #step.surrogate_parameters["powerstate"].fineTargetsResolution,    # TO REMOVE
+        TargetOptions=step.surrogate_parameters["powerstate"].TargetOptions,
     )
 
     # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles

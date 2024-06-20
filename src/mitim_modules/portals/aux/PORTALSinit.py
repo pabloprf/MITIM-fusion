@@ -106,7 +106,7 @@ def initializeProblem(
 
     # Check if I will be able to calculate radiation
     if checkForSpecies and (
-        portals_fun.MODELparameters["Physics_options"]["TargetType"] == 3
+        portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
@@ -153,6 +153,7 @@ def initializeProblem(
             "folder": portals_fun.folder,
         }
 
+
     """
     ***************************************************************************************************
                                 powerstate object
@@ -161,21 +162,23 @@ def initializeProblem(
 
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
-        xCPs,
-        ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
+        MiscOptions={
+            "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+            "rhoPredicted": xCPs,
+            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
+            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
+        },
         TransportOptions={
                "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
                "ModelOptions": ModelOptions,
         },
         TargetOptions={
-            "TypeTarget": portals_fun.MODELparameters["Physics_options"][
-                "TargetType"
-            ],
-            "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
+            "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
+            "ModelOptions": {
+                "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
+                "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
         },
-        useConvectiveFluxes=portals_fun.PORTALSparameters["useConvectiveFluxes"],
-        impurityPosition=portals_fun.PORTALSparameters["ImpurityOfInterest"],
-        fineTargetsResolution=portals_fun.PORTALSparameters["fineTargetsResolution"],
     )
 
     # ***************************************************************************************************
@@ -214,15 +217,19 @@ def initializeProblem(
     ):  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
             profileForBase,
-            xCPs,
-            ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
-            TargetOptions={
-                "TypeTarget": portals_fun.MODELparameters["Physics_options"][
-                    "TargetType"
-                ],
-                "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
+            MiscOptions={
+                "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+                "rhoPredicted": xCPs,
+                "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
+                "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+                "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
-            useConvectiveFluxes=portals_fun.PORTALSparameters["useConvectiveFluxes"],
+            TargetOptions={
+                "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
+                "ModelOptions": {
+                    "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
+                    "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
+            },
         )
 
         dictCPs_base_extra = {}

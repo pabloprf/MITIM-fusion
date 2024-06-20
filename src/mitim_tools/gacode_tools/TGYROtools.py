@@ -463,14 +463,14 @@ class TGYRO:
 			------------------------------------------------------------------------------------------------------------------------
 				Make modifications to output
 				****************************
-				This is because regardless of the TargetType used, TGYRO will replace
+				This is because regardless of the TypeTarget used, TGYRO will replace
 				all quantities always. If I'm not doing radiation calculation, I don't
 				want it be changed!
 			------------------------------------------------------------------------------------------------------------------------
 			"""
             if modify_inputgacodenew:
                 print(
-                    "\t- It was requested that input.gacode.new is modified according to what TargetType was",
+                    "\t- It was requested that input.gacode.new is modified according to what TypeTarget was",
                     typeMsg="i",
                 )
 
@@ -478,7 +478,7 @@ class TGYRO:
                     self.FolderTGYRO_tmp + "input.gacode.new"
                 )
 
-                if TGYRO_physics_options["TargetType"] < 3:
+                if TGYRO_physics_options["TypeTarget"] < 3:
                     for ikey in [
                         "qbrem(MW/m^3)",
                         "qsync(MW/m^3)",
@@ -498,7 +498,7 @@ class TGYRO:
                                 inputgacode_new.profiles["rho(-)"] * 0.0
                             )
 
-                if TGYRO_physics_options["TargetType"] < 2:
+                if TGYRO_physics_options["TypeTarget"] < 2:
                     for ikey in ["qei(MW/m^3)"]:
                         print(
                             f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode"
@@ -735,7 +735,7 @@ class TGYRO:
         # ---- Set up to only generate files without no much calcs
         TGLFsettings = 0
         TGYRO_physics_options = {
-            "TargetType": 1,  # Do not do anything with targets
+            "TypeTarget": 1,  # Do not do anything with targets
             "TurbulentExchange": 0,  # Do not calculate turbulent exchange
             "InputType": 1,  # Use exact profiles
             "GradientsType": 0,  # Do not recompute the gradients

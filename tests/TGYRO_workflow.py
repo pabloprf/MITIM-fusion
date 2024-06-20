@@ -31,7 +31,7 @@ solver = {
     "tgyro_method": 6,
     "relax_param": 0.1,
 }
-physics_options = {"TargetType": 2}
+physics_options = {"TypeTarget": 2}
 
 tgyro.run(
     subFolderTGYRO="run1/",

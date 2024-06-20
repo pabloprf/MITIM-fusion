@@ -4,8 +4,100 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 # ------------------------------------------------------------------
-# Global physical constants
+# Main classes
 # ------------------------------------------------------------------
+
+class power_targets:
+    '''
+    Default class for power target models, change "evaluate" method to implement a new model
+    '''
+    def __init__(self,powerstate):
+        self.powerstate = powerstate
+
+        # Start by making sub-targets equal to zero
+        for i in [
+            "qfuse",
+            "qfusi",
+            "qie",
+            "qrad",
+            "qrad_bremms",
+            "qrad_line",
+            "qrad_sync",
+        ]:
+            self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
+
+    def evaluate(self):
+        print("No model implemented for power targets", typeMsg="w")
+
+# ----------------------------------------------------------------------------------------------------
+# Full analytical models taken from TGYRO
+# ----------------------------------------------------------------------------------------------------
+class analytical_model(power_targets):
+    def __init__(self,powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
+
+    def evaluate(self):
+
+        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] >= 2:
+
+            # ----------------------------------------------------
+            # Classical energy exchange
+            # ----------------------------------------------------
+
+            self.powerstate.plasma["qie"] = PLASMAtools.energy_exchange(
+                self.powerstate.plasma["te"],
+                self.powerstate.plasma["ti"],
+                self.powerstate.plasma["ne"] * 1e-1,
+                self.powerstate.plasma["ni"] * 1e-1,
+                self.powerstate.plasma["ions_set_mi"],
+                self.powerstate.plasma["ions_set_Zi"],
+            )
+
+        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] == 3:
+
+            # ----------------------------------------------------
+            # Fusion
+            # ----------------------------------------------------
+
+            self.powerstate.plasma["qfuse"], self.powerstate.plasma["qfusi"] = alpha_heating(
+                self.powerstate.plasma["ti"],
+                self.powerstate.plasma["te"],
+                self.powerstate.plasma["ne"],
+                self.powerstate.plasma["ni"],
+                self.powerstate.plasma["ions_set_mi"],
+                self.powerstate.plasma["ions_set_Zi"],
+                self.powerstate.plasma["ions_set_Dion"],
+                self.powerstate.plasma["ions_set_Tion"]
+            )
+
+            # ----------------------------------------------------
+            # Radiation
+            # ----------------------------------------------------
+            
+            (
+                self.powerstate.plasma["qrad_sync"],
+                self.powerstate.plasma["qrad_bremms"],
+                self.powerstate.plasma["qrad_line"],
+            ) = radiated_power(
+                self.powerstate.plasma["te"],
+                self.powerstate.plasma["ne"] * 1e-1,
+                self.powerstate.plasma["B_ref"],
+                self.powerstate.plasma["eps"],
+                self.powerstate.plasma["a"],
+                self.powerstate.plasma["ni"] * 1e-1,
+                self.powerstate.plasma["ions_set_c_rad"],
+                self.powerstate.plasma["ions_set_Zi"],
+            )
+
+            self.powerstate.plasma["qrad"] = (
+                self.powerstate.plasma["qrad_sync"] + self.powerstate.plasma["qrad_line"] + self.powerstate.plasma["qrad_bremms"]
+            )
+
+# ------------------------------------------------------------------
+# Physics
+# ------------------------------------------------------------------
+
+# Global physical constants
 
 u = 1.66054e-24  # g
 Ae = 9.1094e-28 / u  # Electron mass in atomic units # 9.1094E-28/u
@@ -18,61 +110,6 @@ pi = 3.14159265
 c1, c2, c3 = 1.17302e-9, 1.51361e-2, 7.51886e-2
 c4, c5, c6, c7 = 4.60643e-3, 1.3500e-2, -1.06750e-4, 1.36600e-5
 bg, er = 34.3827, 1.124656e6
-
-# ------------------------------------------------------------------
-# Toolset for targets
-# ------------------------------------------------------------------
-
-
-def exchange(self):
-    self.plasma["qie"] = PLASMAtools.energy_exchange(
-        self.plasma["te"],
-        self.plasma["ti"],
-        self.plasma["ne"] * 1e-1,
-        self.plasma["ni"] * 1e-1,
-        self.plasma["ions_set_mi"],
-        self.plasma["ions_set_Zi"],
-    )
-
-
-def radiation(self):
-    (
-        self.plasma["qrad_sync"],
-        self.plasma["qrad_bremms"],
-        self.plasma["qrad_line"],
-    ) = radiated_power(
-        self.plasma["te"],
-        self.plasma["ne"] * 1e-1,
-        self.plasma["B_ref"],
-        self.plasma["eps"],
-        self.plasma["a"],
-        self.plasma["ni"] * 1e-1,
-        self.plasma["ions_set_c_rad"],
-        self.plasma["ions_set_Zi"],
-    )
-
-    self.plasma["qrad"] = (
-        self.plasma["qrad_sync"] + self.plasma["qrad_line"] + self.plasma["qrad_bremms"]
-    )
-
-
-def alpha(self):
-    self.plasma["qfuse"], self.plasma["qfusi"] = alpha_heating(
-        self.plasma["ti"],
-        self.plasma["te"],
-        self.plasma["ne"],
-        self.plasma["ni"],
-        self.plasma["ions_set_mi"],
-        self.plasma["ions_set_Zi"],
-        self.plasma["ions_set_Dion"],
-        self.plasma["ions_set_Tion"]
-    )
-
-
-# ------------------------------------------------------------------
-# Physics
-# ------------------------------------------------------------------
-
 
 def radiated_power(Te_keV, ne20, b_ref, aspect_rat, r_min, ni20, c_rad, Zi):
     """

@@ -21,37 +21,38 @@ class powerstate:
     def __init__(
         self,
         profiles,
-        rho_vec,
-        ProfilesPredicted=["te", "ti", "ne"],
-        TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
-        TargetOptions={"TypeTarget": 3, "TargetCalc": "powerstate"},
-        useConvectiveFluxes=True,
-        impurityPosition=1,
-        fineTargetsResolution=None,
+        MiscOptions={},
+        TransportOptions={
+            "transport_evaluator": None,
+            "ModelOptions": {}
+            },
+        TargetOptions={
+            "targets_evaluator": None,
+            "ModelOptions": {
+                "TypeTarget": 3,
+                "TargetCalc": "powerstate"
+                },
+        },
     ):
         '''
         Inputs:
             - profiles: PROFILES_GACODE object
-            - rho_vec: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
-            - ProfilesPredicted: list of profiles to predict
+            - MiscOptions:
+                - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
+                - ProfilesPredicted: list of profiles to predict
+                - useConvectiveFluxes: boolean = whether to use convective fluxes instead of particle fluxes for FM
+                - impurityPosition: int = position of the impurity in the ions set
+                - fineTargetsResolution: int = resolution of the fine targets
             - TransportOptions: dictionary with transport_evaluator and ModelOptions
-            - TargetOptions: dictionary with TypeTarget and TargetCalc
-            - useConvectiveFluxes: boolean = whether to use convective fluxes instead of particle fluxes for FM
-            - impurityPosition: int = position of the impurity in the ions set
-            - fineTargetsResolution: int = resolution of the fine targets
+            - TargetOptions: dictionary with targets_evaluator and ModelOptions
         '''
 
-        # -------------------------------------------------------------------------------------
-        # Inputs
-        # -------------------------------------------------------------------------------------
-
-        self.ProfilesPredicted = ProfilesPredicted
-        self.TargetType = TargetOptions["TypeTarget"]
-        self.TargetCalc = TargetOptions["TargetCalc"]
-        self.useConvectiveFluxes = useConvectiveFluxes
-        self.impurityPosition = impurityPosition
-        self.TransportOptions = TransportOptions
-        self.fineTargetsResolution = fineTargetsResolution
+        # Default options
+        self.ProfilesPredicted = MiscOptions.get("ProfilePredicted", ["te", "ti", "ne"])
+        self.useConvectiveFluxes = MiscOptions.get("useConvectiveFluxes", True)
+        self.impurityPosition = MiscOptions.get("impurityPosition", 1)
+        self.fineTargetsResolution = MiscOptions.get("fineTargetsResolution", None)
+        rho_vec = MiscOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         # Default type and device tensor
         self.dfT = torch.randn(
@@ -63,6 +64,9 @@ class powerstate:
                 else "cuda"
             ),
         )
+
+        self.TransportOptions = TransportOptions
+        self.TargetOptions = TargetOptions
 
         self.batch_size = 0
 
@@ -554,17 +558,17 @@ class powerstate:
         """
 
         # Fixed Targets
-        if self.TargetType == 1:
+        if self.TargetOptions['ModelOptions']['TypeTarget'] == 1:
             PextraE, PextraI = (
                 self.plasma["PextraE_Target1"],
                 self.plasma["PextraI_Target1"],
             )  # Original integrated from input.gacode
-        elif self.TargetType == 2:
+        elif self.TargetOptions['ModelOptions']['TypeTarget'] == 2:
             PextraE, PextraI = (
                 self.plasma["PextraE_Target2"],
                 self.plasma["PextraI_Target2"],
             )
-        elif self.TargetType == 3:
+        elif self.TargetOptions['ModelOptions']['TypeTarget'] == 3:
             PextraE, PextraI = self.plasma["te"] * 0.0, self.plasma["te"] * 0.0
 
         # **************************************************************************************************
@@ -617,26 +621,15 @@ class powerstate:
 		Calculate Targets
 		**************************************************************************************************
 		"""
-        # Start by making sub-targets equal to zero
-        for i in [
-            "qfuse",
-            "qfusi",
-            "qie",
-            "qrad",
-            "qrad_bremms",
-            "qrad_line",
-            "qrad_sync",
-        ]:
-            self.plasma[i] = self.plasma["te"] * 0.0
 
         # Compute targets
 
-        if self.TargetType >= 2:
-            TARGETStools.exchange(self)
+        if self.TargetOptions["targets_evaluator"] is None:
+            targets = TARGETStools.power_targets(self)
+        else:
+            targets = self.TargetOptions["targets_evaluator"](self)
 
-        if self.TargetType == 3:
-            TARGETStools.alpha(self)
-            TARGETStools.radiation(self)
+        targets.evaluate()
 
         """
 		**************************************************************************************************
@@ -658,10 +651,10 @@ class powerstate:
 
         if self.plasma_fine is not None:
             # Interpolate results from fine to coarse (i.e. whole point is that it is better than integrate interpolated values)
-            if self.TargetType >= 2:
+            if self.TargetOptions['ModelOptions']['TypeTarget'] >= 2:
                 for i in ["qie"]:
                     self.plasma[i] = self.plasma[i][:, self.positions_targets]
-            if self.TargetType == 3:
+            if self.TargetOptions['ModelOptions']['TypeTarget'] == 3:
                 for i in [
                     "qfuse",
                     "qfusi",

@@ -203,7 +203,7 @@ def addTGYROcontrol(
 	------------------------------------------------------------------------------------------------------------
 	"""
 
-    physics_options.setdefault("TargetType", 3)
+    physics_options.setdefault("TypeTarget", 3)
     physics_options.setdefault("TurbulentExchange", 1)
     physics_options.setdefault("neoclassical", 2)
     physics_options.setdefault("InputType", 1)
@@ -266,7 +266,7 @@ def addTGYROcontrol(
 
     # ----------- Prediction Options
     TGYROoptions["LOC_SCENARIO"] = (
-        f"{physics_options['TargetType']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
+        f"{physics_options['TypeTarget']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
     )
     TGYROoptions["LOC_TI_FEEDBACK_FLAG"] = f"{Tipred}"  # Evolve Ti?
     TGYROoptions["LOC_TE_FEEDBACK_FLAG"] = f"{Tepred}"  # Evolve Te?

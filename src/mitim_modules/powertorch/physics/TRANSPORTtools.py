@@ -90,7 +90,7 @@ class power_transport:
     def clean(self):
 
         # Insert powers again in case they come from TGYRO instead of powerstate previous step
-        if self.powerstate.TargetCalc == "tgyro":
+        if self.powerstate.TargetOptions["ModelOptions"]["TargetCalc"] == "tgyro":
             self.powerstate.profiles = self.powerstate.insertProfiles(
                 self.powerstate.profiles,
                 writeFile=self.file_profs,
@@ -244,7 +244,7 @@ class tgyro_model(power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.TargetCalc == "tgyro",
+            provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
         )
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class tgyro_model(power_transport):
                 OriginalFimp=OriginalFimp,
                 forceZeroParticleFlux=forceZeroParticleFlux,
                 provideTurbulentExchange=provideTurbulentExchange,
-                provideTargets=self.powerstate.TargetCalc == "tgyro",
+                provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
             )
 
             print("\t- Checking model modifications:")

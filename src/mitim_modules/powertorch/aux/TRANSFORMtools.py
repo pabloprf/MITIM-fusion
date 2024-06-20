@@ -162,10 +162,10 @@ def fromPowerToGacode(
         state_temp = self.copy_state()
         rhoy = profiles.profiles["rho(-)"][1:-extra_points]
         with IOtools.HiddenPrints():
-            state_temp.__init__(profiles, rhoy)
+            state_temp.__init__(profiles, MiscOptions={"rhoPredicted": rhoy})
 
         state_temp.calculateProfileFunctions()
-        state_temp.TargetCalc = "powerstate"
+        state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
         state_temp.calculateTargets()
         conversions = {
             "qie": "qei(MW/m^3)",
