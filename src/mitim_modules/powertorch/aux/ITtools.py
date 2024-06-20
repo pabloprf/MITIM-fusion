@@ -6,7 +6,7 @@ from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
+def fluxMatchRoot(self, algorithmOptions={}):
     
     dimX = (self.plasma["rho"].shape[-1]-1)*len(self.ProfilesPredicted)
 
@@ -23,7 +23,7 @@ def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
 
             # Evaluate source term
-            _, _, y, _ = self.calculate(X, extra_params=extra_params)
+            _, _, y, _ = self.calculate(X)
 
             # Compress again  [batch,dim]->[batch*dim]
             y = y.view(x.shape)
@@ -44,7 +44,7 @@ def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
 
             # Evaluate source term
-            _, _, y, _ = self.calculate(X, extra_params=extra_params)
+            _, _, y, _ = self.calculate(X)
 
             # Compress again  [batch,dim]->[batch*dim]
             y = y.view(x.shape)
@@ -69,7 +69,7 @@ def fluxMatchRoot(self, extra_params={}, algorithmOptions={}):
 
     return Xopt, Yopt
 
-def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}):
+def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     
     # Default options
     tol = algorithmOptions.get("tol", 1e-3)
@@ -91,13 +91,10 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
         # Calculate
         # ***************************************************************************************************************
 
-        extra_params_model = copy.deepcopy(extra_params)
-        extra_params_model["numPORTALS"] = f"{cont}"
-
         folderTGYRO = f"{folder}/model_complete/"
 
         QTransport, QTarget, _, _ = self.calculate(
-            X, nameRun=nameRun, folder=folderTGYRO, extra_params=extra_params_model
+            X, nameRun=nameRun, folder=folderTGYRO, evaluation_number=cont
         )
 
         # Save state so that I can check initializations
@@ -136,7 +133,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None, extra_params={}
     return Xopt, Yopt
 
 
-def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
+def fluxMatchPicard(self, tol=1e-6, max_it=1e3):
     """
     I should figure out what to do with the cases with too much transport that never converge
     """
@@ -150,7 +147,7 @@ def fluxMatchPicard(self, tol=1e-6, max_it=1e3, extra_params={}):
         """
 
         # Evaluate source term
-        _, _, y, _ = self.calculate(x, extra_params=extra_params)
+        _, _, y, _ = self.calculate(x)
 
         # Store values
         Xopt.append(x.clone().detach()[0,...])

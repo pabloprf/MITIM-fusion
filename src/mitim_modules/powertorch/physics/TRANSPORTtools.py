@@ -17,11 +17,11 @@ class power_transport:
         - model results can have .plot() method that can grab kwargs or be similar to TGYRO plot
 
     '''
-    def __init__(self, powerstate, name = "test", folder = "~/scratch/", extra_params = {}):
+    def __init__(self, powerstate, name = "test", folder = "~/scratch/", evaluation_number = 0):
 
         self.name = name
         self.folder = IOtools.expandPath(folder)
-        self.extra_params = extra_params
+        self.evaluation_number = evaluation_number
         self.powerstate = powerstate
 
         # Allowed fluxes in powerstate so far
@@ -110,8 +110,8 @@ class power_transport:
 # ----------------------------------------------------------------------------------------------------
 
 class tgyro_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
 
     def produce_profiles(self):
         self._produce_profiles()
@@ -278,7 +278,6 @@ class tgyro_model(power_transport):
                     self,
                     f"{self.folder}/cgyro_neo",
                     profiles_postprocessing_fun=profiles_postprocessing_fun,
-                    extra_params=self.extra_params,
                     name=self.name,
                 )
 
@@ -335,8 +334,8 @@ class tgyro_model(power_transport):
 # ------------------------------------------------------------------
 
 class diffusion_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
 
         # Ensure that the provided diffusivities include the zero location
         self.chi_e = self.powerstate.TransportOptions["ModelOptions"]["chi_e"]
@@ -383,8 +382,8 @@ class diffusion_model(power_transport):
 # ------------------------------------------------------------------
 
 class surrogate_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
 
     def produce_profiles(self):
         pass
@@ -537,14 +536,14 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
 
 
 def profilesToShare(self):
-    if "folder" in self.extra_params:
+    if "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
-            self.extra_params["folder"] + "/Outputs/portals_profiles/"
+            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
         )
         if not os.path.exists(whereFolder):
             IOtools.askNewFolder(whereFolder)
 
-        fil = f"{whereFolder}/input.gacode.{self.extra_params['numPORTALS']}"
+        fil = f"{whereFolder}/input.gacode.{self.evaluation_number}"
         os.system(f"cp {self.file_profs_mod} {fil}")
         os.system(f"cp {self.file_profs} {fil}_unmodified")
         os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
@@ -557,7 +556,6 @@ def cgyro_trick(
     self,
     FolderEvaluation_TGYRO,
     profiles_postprocessing_fun=None,
-    extra_params={},
     name="",
 ):
 
@@ -607,9 +605,9 @@ def cgyro_trick(
     # **************************************************************************************************************************
 
     PORTALScgyro.evaluateCGYRO(
-        extra_params["PORTALSparameters"],
-        extra_params["folder"],
-        extra_params["numPORTALS"],
+        self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["PORTALSparameters"],
+        self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"],
+        self.evaluation_number,
         FolderEvaluation_TGYRO,
         self.file_profs,
         rad=self.powerstate.plasma["rho"].shape[1] - 1,

@@ -20,7 +20,7 @@ UseCUDAifAvailable = True
 class powerstate:
     def __init__(
         self,
-        input_gacode_orig,
+        profiles,
         rho_vec,
         ProfilesPredicted=["te", "ti", "ne"],
         TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
@@ -30,8 +30,15 @@ class powerstate:
         fineTargetsResolution=None,
     ):
         '''
-        Notes:
-            - rho_vec does not contain zero, it will be added here
+        Inputs:
+            - profiles: PROFILES_GACODE object
+            - rho_vec: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
+            - ProfilesPredicted: list of profiles to predict
+            - TransportOptions: dictionary with transport_evaluator and ModelOptions
+            - TargetOptions: dictionary with TypeTarget and TargetCalc
+            - useConvectiveFluxes: boolean = whether to use convective fluxes instead of particle fluxes for FM
+            - impurityPosition: int = position of the impurity in the ions set
+            - fineTargetsResolution: int = resolution of the fine targets
         '''
 
         # -------------------------------------------------------------------------------------
@@ -91,7 +98,7 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-        self.profiles = copy.deepcopy(input_gacode_orig)
+        self.profiles = copy.deepcopy(profiles)
         if "derived" not in self.profiles.__dict__:
             self.profiles.deriveQuantities()
 
@@ -237,10 +244,14 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def calculate(
-        self, X, nameRun="test", folder="~/scratch/", extra_params={}
+        self, X, nameRun="test", folder="~/scratch/", evaluation_number=0
     ):
         """
-        Provide what's needed for flux-matching
+        Inputs:
+            - X: torch tensor with gradients
+            - nameRun: name of the run (to pass to calculation methods in case black-box simulations are used)
+            - folder: folder to save the results, if used by calculation methods (e.g. to write profiles and/or run black-box simulations)
+            - evaluation_number
         """
 
         # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
@@ -257,7 +268,7 @@ class powerstate:
         self.calculateTransport(
             nameRun=nameRun,
             folder=folder,
-            extra_params=extra_params,
+            evaluation_number=evaluation_number,
         )
 
         # 5. Residual powers
@@ -282,7 +293,7 @@ class powerstate:
             self.update_var(i)
 
     def findFluxMatchProfiles(
-        self, algorithm="root", algorithmOptions={}, bounds=None, extra_params={}
+        self, algorithm="root", algorithmOptions={}, bounds=None,
     ):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
 
@@ -297,17 +308,14 @@ class powerstate:
         if algorithm == "root":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchRoot(
                 self,
-                algorithmOptions=algorithmOptions,
-                extra_params=extra_params)
+                algorithmOptions=algorithmOptions)
         if algorithm == "simple_relax":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchSimpleRelax(
                 self,
                 algorithmOptions=algorithmOptions,
-                bounds=bounds,
-                extra_params=extra_params,
-            )
+                bounds=bounds)
         if algorithm == "picard":
-            ITtools.fluxMatchPicard(self, extra_params=extra_params)
+            ITtools.fluxMatchPicard(self)
 
 
         print(
@@ -725,7 +733,7 @@ class powerstate:
         self.plasma["MtGB"] = self.plasma["Mt"] / self.plasma["Pgb"]
 
     def calculateTransport(
-        self, nameRun="test", folder="~/scratch/", extra_params={}):
+        self, nameRun="test", folder="~/scratch/", evaluation_number=0):
         """
         Update the transport of the current state.
         By default, this is when powerstate interacts with input.gacode (produces it even if it's not used in the calculation)
@@ -736,9 +744,9 @@ class powerstate:
         # *******************************************************************************************
         
         if self.TransportOptions["transport_evaluator"] is None:
-            transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, extra_params=extra_params )
+            transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         else:
-            transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, extra_params=extra_params )
+            transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         transport.produce_profiles()
         transport.evaluate()
         transport.clean()

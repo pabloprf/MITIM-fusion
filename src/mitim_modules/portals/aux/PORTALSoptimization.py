@@ -60,7 +60,6 @@ def initialization_simple_relax(self):
     powerstate.findFluxMatchProfiles(
         algorithm="simple_relax",
         algorithmOptions=algorithmOptions,
-        extra_params=self.mainFunction.extra_params,
     )
     Xopt = powerstate.FluxMatch_Xopt
 

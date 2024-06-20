@@ -335,11 +335,6 @@ class portals(STRATEGYtools.opt_evaluator):
                 grabFrom, folderWork, reevaluateTargets=reevaluateTargets
             )
 
-        self.extra_params = {
-            "PORTALSparameters": self.PORTALSparameters,
-            "folder": self.folder,
-        }
-
         # If the option of reading from a file, for standard portals ignore the targets
         self.Optim['surrogateOptions']['extrapointsModels'] = []
         for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
@@ -355,17 +350,13 @@ class portals(STRATEGYtools.opt_evaluator):
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{numPORTALS}"  # e.g. portals_jet37_ev0
 
-        # Specify the number of PORTALS evaluation. Copy in case of parallel run
-        extra_params_model = copy.deepcopy(self.extra_params)
-        extra_params_model["numPORTALS"] = numPORTALS
-
         # Run
         powerstate, dictOFs = runModelEvaluator(
             self,
             FolderEvaluation,
             dictDVs,
             name,
-            extra_params_model=extra_params_model,
+            numPORTALS=numPORTALS,
             dictOFs=dictOFs,
         )
 
@@ -547,7 +538,7 @@ def runModelEvaluator(
     dictDVs,
     name,
     restart=False,
-    extra_params_model={},
+    numPORTALS=0,
     dictOFs=None,
 ):
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
@@ -593,7 +584,7 @@ def runModelEvaluator(
 
     # Evaluate X (DVs) through powerstate.calculate. This will populate .plasma with the results
     powerstate.calculate(
-        X, nameRun=name, folder=FolderEvaluation_model, extra_params=extra_params_model
+        X, nameRun=name, folder=FolderEvaluation_model, evaluation_number=numPORTALS
     )
 
     # ---------------------------------------------------------------------------------------------------

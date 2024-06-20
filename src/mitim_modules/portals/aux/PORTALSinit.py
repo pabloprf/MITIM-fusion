@@ -120,19 +120,53 @@ def initializeProblem(
             )
             if not a:
                 raise ValueError("Species not found")
-    """
-	***************************************************************************************************
-											POWER STATE
-	***************************************************************************************************
-	"""
+    
+    # Prepare and defaults
 
     xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
 
-    # Define powerstate with the de-parameterization functions
+    if ModelOptions is None:
+        ModelOptions = {
+            "restart": False,
+            "launchMODELviaSlurm": portals_fun.PORTALSparameters[
+                "launchEvaluationsAsSlurmJobs"
+            ],
+            "MODELparameters": portals_fun.MODELparameters,
+            "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
+            "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
+            "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
+                "profiles_postprocessing_fun"
+            ],
+            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
+            "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
+            "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
+            "forceZeroParticleFlux": portals_fun.PORTALSparameters[
+                "forceZeroParticleFlux"
+            ],
+            "percentError": portals_fun.PORTALSparameters["percentError"],
+        }
+
+    if "extra_params" not in ModelOptions:
+        ModelOptions["extra_params"] = {
+            "PORTALSparameters": portals_fun.PORTALSparameters,
+            "folder": portals_fun.folder,
+        }
+
+    """
+    ***************************************************************************************************
+                                powerstate object
+    ***************************************************************************************************
+    """
+
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
         xCPs,
         ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
+        TransportOptions={
+               "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
+               "ModelOptions": ModelOptions,
+        },
         TargetOptions={
             "TypeTarget": portals_fun.MODELparameters["Physics_options"][
                 "TargetType"
@@ -143,6 +177,9 @@ def initializeProblem(
         impurityPosition=portals_fun.PORTALSparameters["ImpurityOfInterest"],
         fineTargetsResolution=portals_fun.PORTALSparameters["fineTargetsResolution"],
     )
+
+    # ***************************************************************************************************
+    # ***************************************************************************************************
 
     # Store parameterization in dictCPs_base (to define later the relative variations) and modify profiles class with parameterized profiles
     dictCPs_base = {}
@@ -167,36 +204,6 @@ def initializeProblem(
     # Original complete targets
     portals_fun.powerstate.calculateProfileFunctions()
     portals_fun.powerstate.calculateTargets()
-
-    # Prepare powerstate for evaluations
-    portals_fun.powerstate.TransportOptions["transport_evaluator"] = (
-        portals_fun.PORTALSparameters["transport_evaluator"]
-    )
-    if ModelOptions is not None:
-        portals_fun.powerstate.TransportOptions["ModelOptions"] = ModelOptions
-    else:
-        portals_fun.powerstate.TransportOptions["ModelOptions"] = {
-            "restart": False,
-            "launchMODELviaSlurm": portals_fun.PORTALSparameters[
-                "launchEvaluationsAsSlurmJobs"
-            ],
-            "MODELparameters": portals_fun.MODELparameters,
-            "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
-            "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
-            "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
-                "profiles_postprocessing_fun"
-            ],
-            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
-            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-            "UseFineGridTargets": portals_fun.PORTALSparameters[
-                "fineTargetsResolution"
-            ],
-            "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
-            "forceZeroParticleFlux": portals_fun.PORTALSparameters[
-                "forceZeroParticleFlux"
-            ],
-            "percentError": portals_fun.PORTALSparameters["percentError"],
-        }
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Define input dictionaries (Define ranges of variation)
