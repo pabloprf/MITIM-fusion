@@ -181,7 +181,7 @@ class powerstate:
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
         if reRead:
             TRANSFORMtools.defineIons(
-                self, profiles, self.plasma["rho"][0, :], self.dfT
+                self, profiles, self.plasma["rho"][PositionInBatch, :], self.dfT
             )
 
             # Repeat, that's how it's done earlier
@@ -724,7 +724,6 @@ class powerstate:
             self.plasma["CZGB"] = self.plasma["CZ"] / self.plasma["Ggb"]
         self.plasma["MtGB"] = self.plasma["Mt"] / self.plasma["Pgb"]
 
-
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", extra_params={}):
         """
@@ -779,7 +778,6 @@ class powerstate:
             return CALCtools.integrateQuadPoly(
                 self.plasma["rmin"][0,:].repeat(force_dim,1), var * self.plasma["volp"][0,:].repeat(force_dim,1),
             ) / self.plasma["volp"][0,:].repeat(force_dim,1)
-
 
     def determinePerformance(self, nameRun="test", folder="~/scratch/"):
         '''
