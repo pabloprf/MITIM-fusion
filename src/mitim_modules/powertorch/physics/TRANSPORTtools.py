@@ -87,6 +87,9 @@ class power_transport:
             insertPowers = deriveQuantities,         # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
+    def produce_profiles(self):
+        pass
+
     def clean(self):
 
         # Insert powers again in case they come from TGYRO instead of powerstate previous step
@@ -102,7 +105,7 @@ class power_transport:
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
-        print("Nothing to evaluate", typeMsg="w")
+        print(">> No transport fluxes to evaluate", typeMsg="w")
         pass
 
 # ----------------------------------------------------------------------------------------------------
@@ -186,7 +189,7 @@ class tgyro_model(power_transport):
 
         # Copy original TGYRO folder
         if os.path.exists(f"{self.folder}/tglf_neo/"):
-            os.system(f"{self.folder}/tglf_neo/")
+            os.system(f"rm -r {self.folder}/tglf_neo/")
         os.system(
             f"cp -r {self.folder}/tglf_neo_original {self.folder}/tglf_neo"
         )
@@ -536,7 +539,7 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
 
 
 def profilesToShare(self):
-    if "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
+    if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
             self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
         )

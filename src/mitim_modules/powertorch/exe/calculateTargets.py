@@ -1,7 +1,5 @@
 """
-
 calculateTargets.py input.gacode 1
-
 """
 
 import sys
@@ -16,6 +14,7 @@ from IPython import embed
 def calculator(
     input_gacode,
     typeCalculation=2,
+    TypeTarget=3,
     folder="~/scratch/",
     restart=True,
     rho_vec=np.linspace(0.1, 0.9, 9),
@@ -37,7 +36,7 @@ def calculator(
             TargetOptions={
                 "targets_evaluator": TARGETStools.analytical_model,
                 "ModelOptions": {
-                    "TypeTarget": 3,
+                    "TypeTarget": TypeTarget,
                     "TargetCalc":  "tgyro"},
             },
             TransportOptions={
@@ -61,7 +60,7 @@ def calculator(
                             "ni_thermals": True,
                             "recompute_ptot": False,
                         },
-                        "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
+                        "transport_model": {"turbulence": 'TGLF',"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     },
                     "includeFastInQi": False,
                 },
@@ -78,7 +77,7 @@ def calculator(
             TargetOptions={
                 "targets_evaluator": TARGETStools.analytical_model,
                 "ModelOptions": {
-                    "TypeTarget": 3,
+                    "TypeTarget": TypeTarget,
                     "TargetCalc":  "powerstate"},
             },
             TransportOptions={"transport_evaluator": None, "ModelOptions": {}},

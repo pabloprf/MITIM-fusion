@@ -1,7 +1,7 @@
-import torch, datetime, argparse
-import matplotlib.pyplot as plt
+import torch
+import argparse
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.opt_tools import STRATEGYtools, SURROGATEtools
+from mitim_tools.opt_tools import STRATEGYtools
 
 """
 speed_tester.py --folder run1/ --num 1000 --name test1
@@ -22,16 +22,12 @@ opt_fun = STRATEGYtools.opt_evaluator(folder)
 opt_fun.read_optimization_results(analysis_level=4)
 step = opt_fun.prfs_model.steps[-1]
 
-print("start")
-
 x = torch.rand(cases, step.train_X.shape[-1])
 
-timeBeginning = datetime.datetime.now()
+with IOtools.speeder(f"profiler{name}.prof") as s:
+    with torch.no_grad():
+        mean, upper, lower, _ = step.GP["combined_model"].predict(x)
 
-with IOtools.speeder(f"profiler{name}.prof"), torch.no_grad():
-    mean, upper, lower, _ = step.GP["combined_model"].predict(x)
-
-timeDiff = IOtools.getTimeDifference(timeBeginning, niceText=False, factor=x.shape[0])
 print(
-    f"\nIt took {IOtools.getTimeDifference(timeBeginning)} to run {x.shape[0]:.1e} parallel evaluations (i.e. {timeDiff*1000:.3f}ms/member) of {mean.shape[-1]} GPs with {x.shape[-1]} raw input dimensions"
+    f"\nIt took {s.timeDiff:.3f}s to run {x.shape[0]:.1e} parallel evaluations (i.e. {s.timeDiff*1E6/cases:.3f}micro-s/member) of {mean.shape[-1]} GPs with {x.shape[-1]} raw input dimensions"
 )

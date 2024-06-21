@@ -572,7 +572,8 @@ class powerstate:
         Update the targets of the current state
         """
 
-        if self.TargetOptions["targets_evaluator"] is None:
+        # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
+        if (self.TargetOptions["targets_evaluator"] is None) or (self.TargetOptions["ModelOptions"]["TargetCalc"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
             targets = self.TargetOptions["targets_evaluator"](self)
@@ -674,10 +675,10 @@ class powerstate:
                 (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
             )
             * self.plasma["volp"]
-        )[:, -1]
+        )[..., -1]
         self.plasma["Prad"] = (
             self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
-        )[:, -1]
+        )[..., -1]
 
         self.profiles.deriveQuantities()
         
@@ -699,7 +700,7 @@ class powerstate:
 
         self.plasma["Pin"] = (
             (self.plasma["Paux_e"] + self.plasma["Paux_i"]) * self.plasma["volp"]
-        )[:, -1]
+        )[..., -1]
         self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
 
         # ************************************

@@ -29,10 +29,10 @@ def fromPowerToGacode(
 ):
     """
     Notes:
-            - This function assumes that "profiles" is the PROFILES_GACODE that everything started with.
-            - We assume that what changes is only the kinetic profiles allowed to vary.
-            - This only works for a single profile, in PositionInBatch
-            - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive
+        - This function assumes that "profiles" is the PROFILES_GACODE that everything started with.
+        - We assume that what changes is only the kinetic profiles allowed to vary.
+        - This only works for a single profile, in PositionInBatch
+        - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive
     """
 
     profiles = copy.deepcopy(profiles_evaluate)
@@ -156,17 +156,22 @@ def fromPowerToGacode(
 
         print("\t- Insering powers")
 
+        state_temp = self.copy_state()
+
+        # ------------------------------------------------------------------------------------------
+        # Recalculate powers with powerstate
+        # ------------------------------------------------------------------------------------------
+
         # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
         extra_points = 2  # If I don't allow this, it will fail
-
-        state_temp = self.copy_state()
         rhoy = profiles.profiles["rho(-)"][1:-extra_points]
         with IOtools.HiddenPrints():
             state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
-
         state_temp.calculateProfileFunctions()
         state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
         state_temp.calculateTargets()
+        # ------------------------------------------------------------------------------------------
+
         conversions = {
             "qie": "qei(MW/m^3)",
             "qrad_bremms": "qbrem(MW/m^3)",
