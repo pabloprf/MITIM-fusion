@@ -24,7 +24,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "pip",
-        "numpy",
+        "numpy<2.0", # Some issue happened with 2.0.0
         "matplotlib",
         "argparse",
         "h5py",
