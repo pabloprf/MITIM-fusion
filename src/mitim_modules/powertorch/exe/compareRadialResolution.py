@@ -35,14 +35,14 @@ markersize_fine = 3
 
 ls = "o-"
 
-sC = STATEtools.powerstate(profiles,MiscOptions={"rhoPredicted": rho},)
+sC = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho},)
 sC.calculateProfileFunctions()
 sC.calculateTargets()
 
 # Full state
 rho = np.linspace(rho[0], rho[-1], args.res)
 
-sF = STATEtools.powerstate(profiles,MiscOptions={"rhoPredicted": rho})
+sF = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho})
 sF.calculateProfileFunctions()
 sF.calculateTargets()
 

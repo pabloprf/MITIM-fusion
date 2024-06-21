@@ -162,7 +162,7 @@ def initializeProblem(
 
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
-        MiscOptions={
+        EvolutionOptions={
             "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
             "rhoPredicted": xCPs,
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
@@ -217,7 +217,7 @@ def initializeProblem(
     ):  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
             profileForBase,
-            MiscOptions={
+            EvolutionOptions={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
                 "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],

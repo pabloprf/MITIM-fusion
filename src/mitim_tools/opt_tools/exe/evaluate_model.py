@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--step", type=int, required=False, default=-1)
 parser.add_argument("--output", required=False, type=str, default="QiTurb_1")
-parser.add_argument("--input", required=False, type=str, default="aLti_5")
+parser.add_argument("--input", required=False, type=str, default="aLti_1")
 parser.add_argument(
     "--file", type=str, required=False, default=None
 )  # File to save .eps
@@ -60,12 +60,12 @@ if plotYN:
 # ***************** Speed tester
 
 else:
-    num = 100
+    num = 1000
 
     x = torch.rand(num, gp.train_X.shape[-1]).to(gpA.train_X)
 
-    with IOtools.speeder(f"profiler.prof"), torch.no_grad():
+    with IOtools.speeder("profiler.prof"), torch.no_grad():
         mean, upper, lower, _ = gpA.predict(x)
 
-    with IOtools.speeder(f"profiler_jac.prof"):
+    with IOtools.speeder("profiler_jac.prof"):
         gpA.localBehavior(x, plotYN=False)

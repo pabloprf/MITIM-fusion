@@ -3230,9 +3230,7 @@ def produceInfoRanges(
 
     X = X.transpose(0, 1)
 
-    powerstate = PORTALStools.constructEvaluationProfiles(
-        X, copy.deepcopy(self_complete.surrogate_parameters), recalculateTargets=False
-    )
+    powerstate = PORTALStools.constructEvaluationProfiles(X, copy.deepcopy(self_complete.surrogate_parameters))
 
     GRAPHICStools.fillGraph(
         axsR[0],

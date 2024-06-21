@@ -21,7 +21,7 @@ class powerstate:
     def __init__(
         self,
         profiles,
-        MiscOptions={},
+        EvolutionOptions={},
         TransportOptions={
             "transport_evaluator": None,
             "ModelOptions": {}
@@ -37,7 +37,7 @@ class powerstate:
         '''
         Inputs:
             - profiles: PROFILES_GACODE object
-            - MiscOptions:
+            - EvolutionOptions:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
                 - useConvectiveFluxes: boolean = whether to use convective fluxes instead of particle fluxes for FM
@@ -47,12 +47,15 @@ class powerstate:
             - TargetOptions: dictionary with targets_evaluator and ModelOptions
         '''
 
+        self.TransportOptions = TransportOptions
+        self.TargetOptions = TargetOptions
+
         # Default options
-        self.ProfilesPredicted = MiscOptions.get("ProfilePredicted", ["te", "ti", "ne"])
-        self.useConvectiveFluxes = MiscOptions.get("useConvectiveFluxes", True)
-        self.impurityPosition = MiscOptions.get("impurityPosition", 1)
-        self.fineTargetsResolution = MiscOptions.get("fineTargetsResolution", None)
-        rho_vec = MiscOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
+        self.ProfilesPredicted = EvolutionOptions.get("ProfilePredicted", ["te", "ti", "ne"])
+        self.useConvectiveFluxes = EvolutionOptions.get("useConvectiveFluxes", True)
+        self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
+        self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
+        rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         # Default type and device tensor
         self.dfT = torch.randn(
@@ -64,11 +67,6 @@ class powerstate:
                 else "cuda"
             ),
         )
-
-        self.TransportOptions = TransportOptions
-        self.TargetOptions = TargetOptions
-
-        self.batch_size = 0
 
         '''
         Potential profiles to evolve (aLX) and their corresponding flux matching
@@ -112,7 +110,6 @@ class powerstate:
         if "derived" not in self.profiles.__dict__:
             self.profiles.deriveQuantities()
 
-
         # -------------------------------------------------------------------------------------
         # Fine targets (need to do it here so that it's only once per definition of powerstate)
         # -------------------------------------------------------------------------------------
@@ -129,7 +126,8 @@ class powerstate:
         TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
 
         # Convert into a batch so that always the quantities are (batch,dimX)
-        self.repeat_tensors(batch_size=1)
+        self.batch_size = 0
+        self._repeat_tensors(batch_size=1)
 
     def _high_res_rho(self):
 
@@ -213,7 +211,7 @@ class powerstate:
             )
 
             # Repeat, that's how it's done earlier
-            self.repeat_tensors(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"], positionToUnrepeat=None)
+            self._repeat_tensors(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"], positionToUnrepeat=None)
 
         return profiles
 
@@ -378,9 +376,9 @@ class powerstate:
             fn = None
 
         # Make sure tensors are detached
-        self.detach_tensors()
+        self._detach_tensors()
         if compare_to_orig is not None:
-            compare_to_orig.detach_tensors()
+            compare_to_orig._detach_tensors()
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_orig=compare_to_orig, c_orig = c_orig)
 
@@ -393,7 +391,7 @@ class powerstate:
     # Main tools
     # ------------------------------------------------------------------
 
-    def detach_tensors(self):
+    def _detach_tensors(self):
         
         # -------------------------------------------------------------------------------------
         # Detach plasma tensors
@@ -418,7 +416,7 @@ class powerstate:
         if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and self.FluxMatch_Yopt.requires_grad:
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
-    def repeat_tensors(self, batch_size=1, specific_keys=None, positionToUnrepeat=0):
+    def _repeat_tensors(self, batch_size=1, specific_keys=None, positionToUnrepeat=0):
         """
         Repeat 1D profiles [...] or [positionToUnrepeat,...] (unrepeat first) to [batch_size,...] so that the MITIM calculations are fine
         Notes:
@@ -595,7 +593,7 @@ class powerstate:
 
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
-            assumedPercentError=1.0,
+            assumedPercentError=assumedPercentError,
             useConvectiveFluxes=self.useConvectiveFluxes,
             forceZeroParticleFlux=self.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False))
 

@@ -28,7 +28,7 @@ t.useFineGridTargets()
 
 
 # STATE
-s = STATEtools.powerstate(t.profiles, MiscOptions={"rhoPredicted": t.rho[0,1:]})
+s = STATEtools.powerstate(t.profiles, EvolutionOptions={"rhoPredicted": t.rho[0,1:]})
 s.calculateProfileFunctions()
 # s.TargetOptions['ModelOptions']['TypeTarget'] = 1
 s.calculateTargets()

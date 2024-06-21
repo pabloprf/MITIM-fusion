@@ -31,7 +31,7 @@ def calculator(
     if typeCalculation == 1:
         p = STATEtools.powerstate(
             profiles,
-            MiscOptions={
+            EvolutionOptions={
                 "rhoPredicted": rho_vec,
             },
             TargetOptions={
@@ -72,7 +72,7 @@ def calculator(
     elif typeCalculation == 2:
         p = STATEtools.powerstate(
             profiles,
-            MiscOptions={
+            EvolutionOptions={
                 "rhoPredicted": rho_vec,
             },
             TargetOptions={

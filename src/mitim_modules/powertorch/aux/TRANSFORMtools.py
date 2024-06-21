@@ -162,7 +162,7 @@ def fromPowerToGacode(
         state_temp = self.copy_state()
         rhoy = profiles.profiles["rho(-)"][1:-extra_points]
         with IOtools.HiddenPrints():
-            state_temp.__init__(profiles, MiscOptions={"rhoPredicted": rhoy})
+            state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
 
         state_temp.calculateProfileFunctions()
         state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"

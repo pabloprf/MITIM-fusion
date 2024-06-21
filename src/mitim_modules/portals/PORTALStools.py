@@ -1,11 +1,7 @@
 import torch
 import copy
 import numpy as np
-from functools import partial
 from collections import OrderedDict
-from mitim_tools.opt_tools.aux import BOgraphics
-from mitim_modules.powertorch import STATEtools
-from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -89,8 +85,6 @@ def default_physicsBasedParams():
 
     return physicsBasedParams, physicsBasedParams_trace
 
-
-
 def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
@@ -111,7 +105,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
-    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """
 	3. Local parameters to fit surrogate to
@@ -165,9 +159,7 @@ def transformPORTALS(X, surrogate_parameters, output):
 	"""
 
     # Produce relevant quantities here (in particular, GB will be used)
-    powerstate = constructEvaluationProfiles(
-        X, surrogate_parameters, recalculateTargets=False
-    )
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
     factorGB = GBfromXnorm(X, output, powerstate)
@@ -361,17 +353,15 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
     return v
 
 
-def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True):
+def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=False):
     """
     Prepare powerstate for another evaluation with batches
     ------------------------------------------------------
 
     Notes:
         - Only calculate it once per ModelList, so make sure it's not in parameters_combined before
-            computing it, since it is common for all.
-        - Copying this object will be very expensive (~30% increase in foward pass)...
-            So, method that is better is to detach what pythorch has done in other backward evals.
-            So I'm avoiding doing copy.deepcopy(surrogate_parameters['powerstate'])
+          computing it, since it is common for all.
+
     """
 
     if ("parameters_combined" in surrogate_parameters) and (
@@ -384,10 +374,16 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
         if X.shape[0] > 0:
 
-            # Prepare powerstate for evaluation, by making it batched with as many as X as detach what was done in previous evaluations
-            powerstate.repeat_tensors(batch_size=X.shape[0])  # This is an expensive step (to unrepeat and repeat), but can't do anything else...
-            powerstate.detach_tensors()
-
+            '''
+            ----------------------------------------------------------------------------------------------------------------
+            Copying the powerstate object (to proceed separately) would be very expensive (~30% increase in foward pass)...
+            So, it is better to detach what pythorch has done in other backward evals and repeat with the X shape.
+            '''
+            powerstate._detach_tensors()
+            if powerstate.batch_size != X.shape[0]:
+                powerstate._repeat_tensors(batch_size=X.shape[0])
+            # --------------------------------------------------------------------------------------------------------------
+            
             num_x = powerstate.plasma["rho"].shape[-1] - 1
 
             # Obtain modified profiles
@@ -406,89 +402,5 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
             if recalculateTargets:
                 powerstate.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
-
-    return powerstate
-
-
-def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=None,
-    algorithm = {'root':{'storeValues':True}}):
-    '''
-    Technique to reutilize flux surrogates to predict new conditions
-    ----------------------------------------------------------------
-    Usage:
-        - Requires "step" to be a MITIM step with the proper surrogate parameters, the surrogates fitted and residual function defined
-        - Requires "profiles_new" to be an object with the new profiles to be predicted (e.g. can have different BC)
-
-    Notes:
-        * So far only works if Te,Ti,ne
-
-    '''
-
-    # ----------------------------------------------------
-    # Create powerstate with new profiles
-    # ----------------------------------------------------
-
-    TransportOptions = copy.deepcopy(step.surrogate_parameters["powerstate"].TransportOptions)
-
-    # Define transport calculation function as a surrogate model
-    TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
-    TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
-
-
-    # Create powerstate with the same options as the original portals but with the new profiles
-    powerstate = STATEtools.powerstate(
-        profiles_new,
-        MiscOptions={
-            "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
-            "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
-            "useConvectiveFluxes": step.surrogate_parameters["powerstate"].useConvectiveFluxes,
-            "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
-            "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
-        },
-        TransportOptions=TransportOptions,
-        TargetOptions=step.surrogate_parameters["powerstate"].TargetOptions,
-    )
-
-    # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles
-    step.surrogate_parameters['powerstate'] = powerstate
-
-    # ----------------------------------------------------
-    # Flux match
-    # ----------------------------------------------------
-    
-    powerstate_orig = copy.deepcopy(powerstate)
-    powerstate_orig.calculate(None)
-
-    powerstate.findFluxMatchProfiles(
-        algorithm=list(algorithm.keys())[0],
-        algorithmOptions=algorithm[list(algorithm.keys())[0]])
-
-    # ----------------------------------------------------
-    # Plot
-    # ----------------------------------------------------
-
-    if plot_results:
-        powerstate.plot(label='optimized',c='r',compare_to_orig=powerstate_orig, c_orig = 'b')
-
-    # ----------------------------------------------------
-    # Write In Table
-    # ----------------------------------------------------
-
-    X = powerstate.Xcurrent[-1,:].unsqueeze(0).numpy()
-
-    if file_write_csv is not None:
-        inputs = []
-        for i in step.bounds:
-            inputs.append(i)
-        optimization_data = BOgraphics.optimization_data(
-            inputs,
-            step.outputs,
-            file=file_write_csv,
-            forceNew=True,
-        )
-
-        optimization_data.update_points(X)
-
-        print(f'> File {file_write_csv} written with optimum point')
 
     return powerstate

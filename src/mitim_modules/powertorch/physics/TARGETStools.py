@@ -19,15 +19,8 @@ class power_targets:
         self.powerstate = powerstate
 
         # Make sub-targets equal to zero
-        for i in [
-            "qfuse",
-            "qfusi",
-            "qie",
-            "qrad",
-            "qrad_bremms",
-            "qrad_line",
-            "qrad_sync",
-        ]:
+        variables_to_zero = ["qfuse", "qfusi", "qie", "qrad", "qrad_bremms", "qrad_line", "qrad_sync"]
+        for i in variables_to_zero:
             self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
 
         # ----------------------------------------------------
@@ -68,31 +61,26 @@ class power_targets:
         """
 
         self.plasma_original = {}
-        for variable in [
-            "B_unit",
-            "B_ref",
-            "volp",
-            "rmin",
-            "roa",
-            "rho",
-            "ni",
-        ]:
+
+        # Bring to fine grid
+        variables_to_fine = ["B_unit", "B_ref", "volp", "rmin", "roa", "rho", "ni"]
+        for variable in variables_to_fine:
             self.plasma_original[variable] = self.powerstate.plasma[variable].clone()
             self.powerstate.plasma[variable] = self.powerstate.plasma_fine[variable]
 
-        # Store also the gradients that are part of the torch trees, so that the derivative is not lost
+        # Bring also the gradients and kinetic variables
         for variable in self.powerstate.profile_map.keys():
 
-            # Store the variables
+            # Kinetic variables (te,ti,ne,nZ,w0,ni)
             self.plasma_original[variable] = self.powerstate.plasma[variable].clone()
             self.powerstate.plasma[variable] = self.powerstate.plasma_fine[variable]
 
-            # Store also the gradients that are part of the torch trees, so that the derivative is not lost
+            # Bring also the gradients that are part of the torch trees, so that the derivative is not lost
             self.plasma_original[f'aL{variable}'] = self.powerstate.plasma[f'aL{variable}'].clone()
 
-        """
-        Integrate through fine de-parameterization
-        """
+        # ----------------------------------------------------
+        # Integrate through fine de-parameterization
+        # ----------------------------------------------------
         for i in self.powerstate.ProfilesPredicted:
             _ = self.powerstate.update_var(
                 i,
@@ -178,7 +166,9 @@ class power_targets:
         # Error
         # **************************************************************************************************
 
-        for i in ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]:
+        variables_to_error = ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
+
+        for i in variables_to_error:
             self.powerstate.plasma[i + "_stds"] = self.powerstate.plasma[i] * assumedPercentError / 100 
 
         """
@@ -188,15 +178,16 @@ class power_targets:
 			Note: This is useful for mitim surrogate variables of targets
 		"""
 
-        self.powerstate.plasma["PeGB"] = self.powerstate.plasma["Pe"] / self.powerstate.plasma["Qgb"]
-        self.powerstate.plasma["PiGB"] = self.powerstate.plasma["Pi"] / self.powerstate.plasma["Qgb"]
-        if useConvectiveFluxes:
-            self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb"]
-            self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb"]
-        else:
-            self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Ggb"]
-            self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Ggb"]
-        self.powerstate.plasma["MtGB"] = self.powerstate.plasma["Mt"] / self.powerstate.plasma["Pgb"]
+        gb_mapping = {
+            "Pe": "Qgb",
+            "Pi": "Qgb",
+            "Ce": "Qgb" if useConvectiveFluxes else "Ggb",
+            "CZ": "Qgb" if useConvectiveFluxes else "Ggb",
+            "Mt": "Pgb",
+        }
+
+        for i in gb_mapping.keys():
+            self.powerstate.plasma[f"{i}GB"] = self.powerstate.plasma[i] / self.powerstate.plasma[gb_mapping[i]]
 
 # ----------------------------------------------------------------------------------------------------
 # Full analytical models taken from TGYRO
