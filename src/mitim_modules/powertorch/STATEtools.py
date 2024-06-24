@@ -175,27 +175,28 @@ class powerstate:
 
     def insertProfiles(
         self,
-        profiles,
+        profiles_base,
         writeFile=None,
-        PositionInBatch=0,
+        position_in_powerstate_batch=0,
         applyCorrections={},
-        insertPowers=False,
+        insert_highres_powers=False,
         rederive_profiles=True,
-        reRead=True,
+        reread_ions=True,
     ):
         '''
-        "profies" is a PROFILES_GACODE object to use as basecase
+        Notes:
+            - profiles_base is a PROFILES_GACODE object to use as basecase
+            - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate, not TGYRO)
         '''
         print(">> Inserting powerstate profiles into input.gacode")
 
         profiles = TRANSFORMtools.fromPowerToGacode(
             self,
-            profiles,
-            PositionInBatch=PositionInBatch,
+            profiles_base,
+            position_in_powerstate_batch=position_in_powerstate_batch,
             options=applyCorrections,
-            insertPowers=insertPowers,
+            insert_highres_powers=insert_highres_powers,
             rederive=rederive_profiles,
-            ProfilesPredicted=self.ProfilesPredicted,
         )
 
         if writeFile is not None:
@@ -205,9 +206,9 @@ class powerstate:
             profiles.writeCurrentStatus(file=writeFile)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
-        if reRead:
+        if reread_ions:
             TRANSFORMtools.defineIons(
-                self, profiles, self.plasma["rho"][PositionInBatch, :], self.dfT
+                self, profiles, self.plasma["rho"][position_in_powerstate_batch, :], self.dfT
             )
 
             # Repeat, that's how it's done earlier
@@ -604,19 +605,17 @@ class powerstate:
         Update the transport of the current state.
         """
 
+        # Select transport evaluator
         if self.TransportOptions["transport_evaluator"] is None:
             transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         else:
             transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         
-        # Produce profile object
+        # Produce profile object (for certain transport evaluators, this is necessary)
         transport.produce_profiles()
 
         # Evaluate transport
         transport.evaluate()
-
-        # Clean
-        transport.clean()
 
         # Pass the results as part of the powerstate class
         self.model_results = transport.model_results
@@ -685,7 +684,7 @@ class powerstate:
         self.insertProfiles(
             self.profiles,
             writeFile=f"{folder}/input.gacode.new.powerstate",
-            PositionInBatch=0,
+            position_in_powerstate_batch=0,
             applyCorrections={
                 "Tfast_ratio": False,
                 "Ti_thermals": False,
@@ -693,9 +692,9 @@ class powerstate:
                 "recompute_ptot": False,
                 "ensureMachNumber": None,
             },
-            insertPowers=True,
+            insert_highres_powers=True,
             rederive_profiles=False,
-            reRead=False,
+            reread_ions=False,
         )
 
         self.plasma["Pin"] = (

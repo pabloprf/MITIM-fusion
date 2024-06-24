@@ -20,22 +20,21 @@ FUNCTIONS THAT DEAL WITH THE CONNECTION BETWEEN POWERSTATE AND PROFILES_GACODE (
 
 def fromPowerToGacode(
     self,
-    profiles_evaluate,
-    PositionInBatch=0,
+    profiles_base,
     options={},
-    insertPowers=True,
+    position_in_powerstate_batch=0,
+    insert_highres_powers=True,
     rederive=True,
-    ProfilesPredicted=["te", "ti", "ne"],
 ):
     """
     Notes:
         - This function assumes that "profiles" is the PROFILES_GACODE that everything started with.
         - We assume that what changes is only the kinetic profiles allowed to vary.
-        - This only works for a single profile, in PositionInBatch
+        - This only works for a single profile, in position_in_powerstate_batch
         - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive
     """
 
-    profiles = copy.deepcopy(profiles_evaluate)
+    profiles = copy.deepcopy(profiles_base)
 
     # ------------------------------------------------------------------------------------------
     # Defaults
@@ -52,11 +51,11 @@ def fromPowerToGacode(
 
     roa = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
 
-    if "te" in ProfilesPredicted:
+    if "te" in self.ProfilesPredicted:
         print("\t- Changing Te")
         x, y = self.deparametrizers["te"](
-            self.plasma["roa"][PositionInBatch, :],
-            self.plasma["aLte"][PositionInBatch, :],
+            self.plasma["roa"][position_in_powerstate_batch, :],
+            self.plasma["aLte"][position_in_powerstate_batch, :],
         )
         y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
         te = copy.deepcopy(profiles.profiles["te(keV)"])
@@ -78,11 +77,11 @@ def fromPowerToGacode(
     # Insert Ti
     # ------------------------------------------------------------------------------------------
 
-    if "ti" in ProfilesPredicted:
+    if "ti" in self.ProfilesPredicted:
         print("\t- Changing Ti")
         x, y = self.deparametrizers["ti"](
-            self.plasma["roa"][PositionInBatch, :],
-            self.plasma["aLti"][PositionInBatch, :],
+            self.plasma["roa"][position_in_powerstate_batch, :],
+            self.plasma["aLti"][position_in_powerstate_batch, :],
         )
         y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
         profiles.profiles["ti(keV)"][:, 0] = y_interpolated
@@ -95,11 +94,11 @@ def fromPowerToGacode(
     # Insert ne
     # ------------------------------------------------------------------------------------------
 
-    if "ne" in ProfilesPredicted:
+    if "ne" in self.ProfilesPredicted:
         print("\t- Changing ne")
         x, y = self.deparametrizers["ne"](
-            self.plasma["roa"][PositionInBatch, :],
-            self.plasma["aLne"][PositionInBatch, :],
+            self.plasma["roa"][position_in_powerstate_batch, :],
+            self.plasma["aLne"][position_in_powerstate_batch, :],
         )
         y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
         ne = copy.deepcopy(profiles.profiles["ne(10^19/m^3)"])
@@ -114,11 +113,11 @@ def fromPowerToGacode(
     # Insert nZ (after scaling rest of ni)
     # ------------------------------------------------------------------------------------------
 
-    if "nZ" in ProfilesPredicted:
+    if "nZ" in self.ProfilesPredicted:
         print(f"\t- Changing ni{self.impurityPosition}")
         x, y = self.deparametrizers["nZ"](
-            self.plasma["roa"][PositionInBatch, :],
-            self.plasma["aLnZ"][PositionInBatch, :],
+            self.plasma["roa"][position_in_powerstate_batch, :],
+            self.plasma["aLnZ"][position_in_powerstate_batch, :],
         )
         y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
         profiles.profiles["ni(10^19/m^3)"][
@@ -129,37 +128,34 @@ def fromPowerToGacode(
     # Insert w0
     # ------------------------------------------------------------------------------------------
 
-    if "w0" in ProfilesPredicted:
+    if "w0" in self.ProfilesPredicted:
         print("\t- Changing w0")
         factor_mult = 1 / factorMult_w0(self)
         x, y = self.deparametrizers["w0"](
-            self.plasma["roa"][PositionInBatch, :],
-            self.plasma["aLw0"][PositionInBatch, :],
+            self.plasma["roa"][position_in_powerstate_batch, :],
+            self.plasma["aLw0"][position_in_powerstate_batch, :],
         )
         y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
         profiles.profiles["w0(rad/s)"] = factor_mult * y_interpolated
 
-    # ------------------------------------------------------------------------------------------
-    # Rotation
-    # ------------------------------------------------------------------------------------------
-
-    if (ensureMachNumber is not None) and ("w0" not in ProfilesPredicted):
+    elif ensureMachNumber is not None:
+        
+        # Rotation fixed to ensure Mach number
         profiles.introduceRotationProfile(Mach_LF=ensureMachNumber)
 
     # ------------------------------------------------------------------------------------------
     # Insert Powers
     # ------------------------------------------------------------------------------------------
 
-    if insertPowers:
+    if insert_highres_powers:
         profiles.deriveQuantities(rederiveGeometry=False)
-        rederive = False
 
         print("\t- Insering powers")
 
         state_temp = self.copy_state()
 
         # ------------------------------------------------------------------------------------------
-        # Recalculate powers with powerstate
+        # Recalculate powers with powerstate on the gacode-original fine grid
         # ------------------------------------------------------------------------------------------
 
         # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
@@ -183,14 +179,14 @@ def fromPowerToGacode(
         for ikey in conversions:
             if conversions[ikey] in profiles.profiles:
                 profiles.profiles[conversions[ikey]][:-extra_points] = (
-                    state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
+                    state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
                 )
             else:
                 profiles.profiles[conversions[ikey]] = np.zeros(
                     len(profiles.profiles["qei(MW/m^3)"])
                 )
                 profiles.profiles[conversions[ikey]][:-extra_points] = (
-                    state_temp.plasma[ikey][PositionInBatch,:].cpu().numpy()
+                    state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
                 )
 
     # ------------------------------------------------------------------------------------------

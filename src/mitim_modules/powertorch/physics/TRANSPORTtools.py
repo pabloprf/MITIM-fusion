@@ -83,23 +83,12 @@ class power_transport:
             self.powerstate.profiles,
             writeFile=self.file_profs,
             applyCorrections=self.applyCorrections,
-            rederive_profiles = deriveQuantities,    # Derive quantities so that it's ready for analysis and plotting later
-            insertPowers = deriveQuantities,         # Insert powers so that Q, Pfus and all that it's consistent when read later
+            rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
+            insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
     def produce_profiles(self):
         pass
-
-    def clean(self):
-
-        # Insert powers again in case they come from TGYRO instead of powerstate previous step
-        if self.powerstate.TargetOptions["ModelOptions"]["TargetCalc"] == "tgyro":
-            self.powerstate.profiles = self.powerstate.insertProfiles(
-                self.powerstate.profiles,
-                writeFile=self.file_profs,
-                applyCorrections=self.applyCorrections,
-                insertPowers=True,      # So that later I can read it fully with the powers, fusion, etc
-            )
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)

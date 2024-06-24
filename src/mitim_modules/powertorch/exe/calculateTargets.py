@@ -19,6 +19,7 @@ def calculator(
     restart=True,
     rho_vec=np.linspace(0.1, 0.9, 9),
     profProvided=False,
+    fineTargetsResolution = None,
 ):
     profiles = (
         input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
@@ -32,6 +33,7 @@ def calculator(
             profiles,
             EvolutionOptions={
                 "rhoPredicted": rho_vec,
+                'fineTargetsResolution': fineTargetsResolution,
             },
             TargetOptions={
                 "targets_evaluator": TARGETStools.analytical_model,
@@ -84,7 +86,7 @@ def calculator(
         )
 
     p.profiles = p.insertProfiles(
-        profiles, insertPowers=True, rederive_profiles=True)
+        profiles, insert_highres_powers=True, rederive_profiles=True)
     p.determinePerformance(nameRun="test", folder=IOtools.expandPath(folder))
 
     return p

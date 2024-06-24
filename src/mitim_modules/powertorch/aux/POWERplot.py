@@ -4,13 +4,22 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_orig=None, c_orig = 'b'):
-    profiles_new = self.insertProfiles(self.profiles, insertPowers=True)
+    
+    # -----------------------------------------------------------------------------------------------------------
+    # ---- Plot profiles object
+    # -----------------------------------------------------------------------------------------------------------
+
     if figs is not None:
+
+        # Insert profiles with the latest powerstate
+        profiles_new = self.insertProfiles(self.profiles, insert_highres_powers=True)
+
+        # Plot the inserted profiles together with the original ones
         _ = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
 
-    # ---------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------
     # ---- Plot plasma state
-    # ---------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------
 
     set_plots = [ ]
 
@@ -61,9 +70,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
 
             cont += 4
 
-    # ---------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------
     # ---- Plot flux matching
-    # ---------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------
 
     if self.FluxMatch_Yopt.shape[0] > 0:
         ax = axsRes[0]
