@@ -184,7 +184,6 @@ class surrogate_model:
             self.train_Y_added = torch.empty((0, dimTransformedDV_y))
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
             
-
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
@@ -494,7 +493,6 @@ class surrogate_model:
             else [i for i in self.bounds]
         )
 
-
         if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
             print(
                 "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
@@ -747,7 +745,7 @@ class surrogate_model:
         for i in indecesUnchanged:
             if (
                 (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
-            ).max() < thr:
+            ).abs().max() < thr:
                 HasThisBeenApplied += 1
                 for j in range(self.train_X_added.shape[0]):
                     self.train_X_added[j, i] = x_transform[0, i]
