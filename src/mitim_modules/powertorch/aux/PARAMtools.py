@@ -1,4 +1,5 @@
-import torch, copy
+import torch
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
@@ -362,17 +363,6 @@ def constructCurve(
             label="interpolation",
             markersize=2,
         )
-        try:
-            ax[1].plot(
-                xBS_deriv,
-                yBS1[batch_pos_plot, :],
-                "-om",
-                label="interpolation (no axis)",
-                markersize=2,
-            )
-        except:
-            pass
-
         ax[0].plot(
             xBS,
             yBS[batch_pos_plot, :],

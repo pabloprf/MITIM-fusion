@@ -4,19 +4,12 @@ import numpy as np
 from mitim_modules.powertorch.aux import PARAMtools
 from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpFunction
+from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 verbose_level = read_verbose_level()
-
-"""
---------------------------------------------------------------------------------------------------------------------------------------------
-FUNCTIONS THAT DEAL WITH THE CONNECTION BETWEEN POWERSTATE AND PROFILES_GACODE (READING AND WRITING)
---------------------------------------------------------------------------------------------------------------------------------------------
-"""
-
 
 def fromPowerToGacode(
     self,
@@ -25,7 +18,7 @@ def fromPowerToGacode(
     position_in_powerstate_batch=0,
     insert_highres_powers=True,
     rederive=True,
-):
+    ):
     """
     Notes:
         - This function assumes that "profiles" is the PROFILES_GACODE that everything started with.
@@ -36,9 +29,6 @@ def fromPowerToGacode(
 
     profiles = copy.deepcopy(profiles_base)
 
-    # ------------------------------------------------------------------------------------------
-    # Defaults
-    # ------------------------------------------------------------------------------------------
     Tfast_ratio = options.get("Tfast_ratio", True)
     Ti_thermals = options.get("Ti_thermals", True)
     ni_thermals = options.get("ni_thermals", True)
@@ -46,100 +36,60 @@ def fromPowerToGacode(
     ensureMachNumber = options.get("ensureMachNumber", None)
 
     # ------------------------------------------------------------------------------------------
-    # Insert Te
+    # Insert profiles
     # ------------------------------------------------------------------------------------------
 
     roa = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
 
-    if "te" in self.ProfilesPredicted:
-        print("\t- Changing Te")
-        x, y = self.deparametrizers["te"](
-            self.plasma["roa"][position_in_powerstate_batch, :],
-            self.plasma["aLte"][position_in_powerstate_batch, :],
-        )
-        y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
-        te = copy.deepcopy(profiles.profiles["te(keV)"])
-        profiles.profiles["te(keV)"] = y_interpolated
+    quantities = [
+        ["te", "te(keV)", None],
+        ["ti", "ti(keV)", 0],
+        ["ne", "ne(10^19/m^3)", None],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1],
+        ["w0", "w0(rad/s)", None],
+    ]
 
-        if Tfast_ratio:
-            print(
-                "\t\t* If any fast species, changing Tfast to ensure fixed Tfast/Te ratio",
-                typeMsg="i",
+    for key in quantities:
+        print(f"\t- Changing {key[0]}")
+        if key[0] in self.ProfilesPredicted:
+            x, y = self.deparametrizers[key[0]](
+                self.plasma["roa"][position_in_powerstate_batch, :],
+                self.plasma[f"aL{key[0]}"][position_in_powerstate_batch, :],
             )
-            for sp in range(len(profiles.Species)):
-                if profiles.Species[sp]["S"] == "fast":
-                    print(f"\t\t\t- Changing temperature of species #{sp}")
-                    profiles.profiles["ti(keV)"][:, sp] = profiles.profiles["ti(keV)"][
-                        :, sp
-                    ] * (profiles.profiles["te(keV)"] / te)
+            y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
+            if key[2] is None:
+                Y_copy = copy.deepcopy(profiles.profiles[key[1]])
+                profiles.profiles[key[1]] = y_interpolated
+            else:
+                Y_copy = copy.deepcopy(profiles.profiles[key[1]][:, key[2]])
+                profiles.profiles[key[1]][:, key[2]] = y_interpolated
 
-    # ------------------------------------------------------------------------------------------
-    # Insert Ti
-    # ------------------------------------------------------------------------------------------
+            # ------------------------------------------------------------------------------------------
+            # Special treatments
+            # ------------------------------------------------------------------------------------------
 
-    if "ti" in self.ProfilesPredicted:
-        print("\t- Changing Ti")
-        x, y = self.deparametrizers["ti"](
-            self.plasma["roa"][position_in_powerstate_batch, :],
-            self.plasma["aLti"][position_in_powerstate_batch, :],
-        )
-        y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
-        profiles.profiles["ti(keV)"][:, 0] = y_interpolated
+            if key[0] == "te" and Tfast_ratio:
+                print(
+                    "\t\t* If any fast species, changing Tfast to ensure fixed Tfast/Te ratio",
+                    typeMsg="i",
+                )
+                for sp in range(len(profiles.Species)):
+                    if profiles.Species[sp]["S"] == "fast":
+                        print(f"\t\t\t- Changing temperature of species #{sp}")
+                        profiles.profiles["ti(keV)"][:, sp] = profiles.profiles["ti(keV)"][:, sp] * (
+                            profiles.profiles["te(keV)"] / Y_copy
+                        )
 
-        if Ti_thermals:
-            print("\t\t* Ensuring Ti is equal for all thermal ions", typeMsg="i")
-            profiles.makeAllThermalIonsHaveSameTemp()
+            if key[0] == "ti" and Ti_thermals:
+                print("\t\t* Ensuring Ti is equal for all thermal ions", typeMsg="i")
+                profiles.makeAllThermalIonsHaveSameTemp()
 
-    # ------------------------------------------------------------------------------------------
-    # Insert ne
-    # ------------------------------------------------------------------------------------------
+            if key[0] == "ne" and ni_thermals:
+                scaleFactor = y_interpolated / Y_copy
+                print("\t\t* Adjusting ni of thermal ions", typeMsg="i")
+                profiles.scaleAllThermalDensities(scaleFactor=scaleFactor)
 
-    if "ne" in self.ProfilesPredicted:
-        print("\t- Changing ne")
-        x, y = self.deparametrizers["ne"](
-            self.plasma["roa"][position_in_powerstate_batch, :],
-            self.plasma["aLne"][position_in_powerstate_batch, :],
-        )
-        y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
-        ne = copy.deepcopy(profiles.profiles["ne(10^19/m^3)"])
-        profiles.profiles["ne(10^19/m^3)"] = y_interpolated
-
-        if ni_thermals:
-            scaleFactor = y_interpolated / ne
-            print("\t\t* Adjusting ni of thermal ions", typeMsg="i")
-            profiles.scaleAllThermalDensities(scaleFactor=scaleFactor)
-
-    # ------------------------------------------------------------------------------------------
-    # Insert nZ (after scaling rest of ni)
-    # ------------------------------------------------------------------------------------------
-
-    if "nZ" in self.ProfilesPredicted:
-        print(f"\t- Changing ni{self.impurityPosition}")
-        x, y = self.deparametrizers["nZ"](
-            self.plasma["roa"][position_in_powerstate_batch, :],
-            self.plasma["aLnZ"][position_in_powerstate_batch, :],
-        )
-        y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
-        profiles.profiles["ni(10^19/m^3)"][
-            :, self.impurityPosition - 1
-        ] = y_interpolated
-
-    # ------------------------------------------------------------------------------------------
-    # Insert w0
-    # ------------------------------------------------------------------------------------------
-
-    if "w0" in self.ProfilesPredicted:
-        print("\t- Changing w0")
-        factor_mult = 1 / factorMult_w0(self)
-        x, y = self.deparametrizers["w0"](
-            self.plasma["roa"][position_in_powerstate_batch, :],
-            self.plasma["aLw0"][position_in_powerstate_batch, :],
-        )
-        y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
-        profiles.profiles["w0(rad/s)"] = factor_mult * y_interpolated
-
-    elif ensureMachNumber is not None:
-        
+    if "w0" not in self.ProfilesPredicted and ensureMachNumber is not None:
         # Rotation fixed to ensure Mach number
         profiles.introduceRotationProfile(Mach_LF=ensureMachNumber)
 
@@ -148,220 +98,204 @@ def fromPowerToGacode(
     # ------------------------------------------------------------------------------------------
 
     if insert_highres_powers:
-        profiles.deriveQuantities(rederiveGeometry=False)
-
-        print("\t- Insering powers")
-
-        state_temp = self.copy_state()
-
-        # ------------------------------------------------------------------------------------------
-        # Recalculate powers with powerstate on the gacode-original fine grid
-        # ------------------------------------------------------------------------------------------
-
-        # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
-        extra_points = 2  # If I don't allow this, it will fail
-        rhoy = profiles.profiles["rho(-)"][1:-extra_points]
-        with IOtools.HiddenPrints():
-            state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
-        state_temp.calculateProfileFunctions()
-        state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
-        state_temp.calculateTargets()
-        # ------------------------------------------------------------------------------------------
-
-        conversions = {
-            "qie": "qei(MW/m^3)",
-            "qrad_bremms": "qbrem(MW/m^3)",
-            "qrad_sync": "qsync(MW/m^3)",
-            "qrad_line": "qline(MW/m^3)",
-            "qfuse": "qfuse(MW/m^3)",
-            "qfusi": "qfusi(MW/m^3)",
-        }
-        for ikey in conversions:
-            if conversions[ikey] in profiles.profiles:
-                profiles.profiles[conversions[ikey]][:-extra_points] = (
-                    state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-                )
-            else:
-                profiles.profiles[conversions[ikey]] = np.zeros(
-                    len(profiles.profiles["qei(MW/m^3)"])
-                )
-                profiles.profiles[conversions[ikey]][:-extra_points] = (
-                    state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-                )
+        insert_powers_to_gacode(self, profiles, position_in_powerstate_batch)
 
     # ------------------------------------------------------------------------------------------
-    # Recalculate
+    # Recalculate and change ptot to make it consistent?
     # ------------------------------------------------------------------------------------------
 
     if rederive or recompute_ptot:
         profiles.deriveQuantities(rederiveGeometry=False)
 
-    # ------------------------------------------------------------------------------------------
-    # Change ptot to make it consistent?
-    # ------------------------------------------------------------------------------------------
     if recompute_ptot:
         profiles.selfconsistentPTOT()
 
     return profiles
 
-# --------------------------------------------------------------------------------------------------------------------------------------------
+def insert_powers_to_gacode(self, profiles, position_in_powerstate_batch=0):
 
+    profiles.deriveQuantities(rederiveGeometry=False)
+
+    print("\t- Insering powers")
+
+    state_temp = self.copy_state()
+
+    # ------------------------------------------------------------------------------------------
+    # Recalculate powers with powerstate on the gacode-original fine grid
+    # ------------------------------------------------------------------------------------------
+
+    # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
+    extra_points = 2  # If I don't allow this, it will fail
+    rhoy = profiles.profiles["rho(-)"][1:-extra_points]
+    with IOtools.HiddenPrints():
+        state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
+    state_temp.calculateProfileFunctions()
+    state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
+    state_temp.calculateTargets()
+    # ------------------------------------------------------------------------------------------
+
+    conversions = {
+        "qie": "qei(MW/m^3)",
+        "qrad_bremms": "qbrem(MW/m^3)",
+        "qrad_sync": "qsync(MW/m^3)",
+        "qrad_line": "qline(MW/m^3)",
+        "qfuse": "qfuse(MW/m^3)",
+        "qfusi": "qfusi(MW/m^3)",
+    }
+    for ikey in conversions:
+        if conversions[ikey] in profiles.profiles:
+            profiles.profiles[conversions[ikey]][:-extra_points] = (
+                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            )
+        else:
+            profiles.profiles[conversions[ikey]] = np.zeros(
+                len(profiles.profiles["qei(MW/m^3)"])
+            )
+            profiles.profiles[conversions[ikey]][:-extra_points] = (
+                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            )
 
 def fromGacodeToPower(self, input_gacode, rho_vec):
     """
-    This function is used to convert from the fine input.gacode grid to one that is used to run
-    TGYRO or PowerTorch. In particular, those quantities useful for mitim are used here.
-
-    Goal is to avoid these calculations within the transport solver calculation, so have them only once.
-
-    rho_vec is rho, but I will work from now on with roa for easy intergrations
-
+    This function converts from the fine input.gacode grid to a powertorch object and grid.
+    Notes:
+        - rho_vec is rho, but I will work from now on with roa for easy intergrations
+        - Flows:
+            - They are in the TGYRO definition, with qione summed, giving the intented flows)
+            - Same as in TGYRO: The interpolation of those quantities that do not vary throughout the workflow
+                            needs to happen AFTER integration (otherwise it would be too coarse to calculate auxiliary deposition)
+            - Because TGYRO doesn't care about convective fluxes, I need to convert it AFTER I have the ge_Miller integrated and interpolated, so this happens
+                            at each powerstate evaluation
+            - Momentum flux is J/m^2. Momentum source is given in input.gacode a N/m^2 or J/m^3. Integrated in volume is J or N*m
+        - PextraE_Target2 and so on are to also include radiation, alpha and exchange, in case I want to run powerstate with fixed those
     """
 
-    # What is the radial coordinate of rho_vec?
+    print("\t- Producing powerstate")
+
+    # *********************************************************************************************
+    # Radial grid
+    # *********************************************************************************************
+
     rho_use = input_gacode.profiles["rho(-)"]
 
-    dfT = rho_vec.clone()
-
-    rho_vec = rho_vec.cpu()  # Because of the numpy operations
-
-    # Radial positions ----------------------------------------------------------------------------
-    roa_array = interpFunction(rho_vec, rho_use, input_gacode.derived["roa"])
-    rho_array = interpFunction(rho_vec, rho_use, input_gacode.profiles["rho(-)"])
-    print("\t- Producing powerstate")
+    roa_array = interpFunction(rho_vec.cpu(), rho_use, input_gacode.derived["roa"])
+    rho_array = interpFunction(rho_vec.cpu(), rho_use, input_gacode.profiles["rho(-)"])
+    
     if len(rho_array) < 10:
         print(f"\t\t@ rho = {[round(i,6) for i in rho_array]}")
         print(f"\t\t@ r/a = {[round(i,6) for i in roa_array]}")
     else:
         print(f"\t\t@ {len(rho_array)} rho points")
-    # ---------------------------------------------------------------------------------------------
 
-    self.plasma["roa"] = torch.from_numpy(roa_array).to(dfT)
-    self.plasma["rho"] = torch.from_numpy(rho_array).to(dfT)
-
-    # In case rho_vec is different than rho_vec_evaluate -------------------------------------------------------------------
+    # In case rho_vec is different than rho_vec_evaluate (DEPCRECATED, but I keep it for now)
     self.indexes_simulation = []
-    for rho in self.plasma["rho"]:
-        self.indexes_simulation.append(
-            np.argmin(np.abs(self.plasma["rho"].cpu() - rho.cpu())).item()
-        )
-    # ------------------------------------------------------------------------------------------------------------------
+    for rho in rho_array:   self.indexes_simulation.append(np.argmin(np.abs(rho_array - rho)).item())
 
-    self.plasma["volp"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.derived["volp_miller"])
-    ).to(dfT)
-    self.plasma["rmin"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.profiles["rmin(m)"])
-    ).to(dfT)
-    self.plasma["te"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.profiles["te(keV)"])
-    ).to(dfT)
-    self.plasma["ti"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.profiles["ti(keV)"][:, 0])
-    ).to(dfT)
-    self.plasma["ne"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.profiles["ne(10^19/m^3)"])
-    ).to(dfT)
-    self.plasma["nZ"] = torch.from_numpy(
-        interpFunction(
-            rho_vec,
-            rho_use,
-            input_gacode.profiles["ni(10^19/m^3)"][:, self.impurityPosition - 1],
-        )
-    ).to(dfT)
-    self.plasma["w0"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.profiles["w0(rad/s)"])
-    ).to(dfT)
-    self.plasma["B_unit"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.derived["B_unit"])
-    ).to(dfT)
-    self.plasma["mi_u"] = torch.tensor(input_gacode.mi_first)
-    self.plasma["a"] = torch.tensor(input_gacode.derived["a"])
-    self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"])
-    self.plasma["B_ref"] = torch.from_numpy(
-        interpFunction(rho_vec, rho_use, input_gacode.derived["B_ref"])
-    ).to(dfT)
+    # *********************************************************************************************
+    # Quantities to interpolate and convert
+    # *********************************************************************************************
 
-    """
-	Auxiliary powers that are not varied within TGYRO
-	--------------------------------------------------------------------------------------------------
-	Notes:
-		- This is the TGYRO definition, with qione summed, giving the intented flows)
-		- Same as in TGYRO: The interpolation of those quantities that do not vary throughout the workflow
-							needs to happen AFTER integration (otherwise it would be too coarse to calculate auxiliary deposition)
-		- Because TGYRO doesn't care about convective fluxes, I need to convert it AFTER I have the ge_Miller integrated and interpolated, so this happens
-							at each powerstate evaluation
-	"""
-    self.plasma["Paux_e"] = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qe_aux_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
-    self.plasma["Paux_i"] = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qi_aux_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
-    self.plasma["Gaux_e"] = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["ge_10E20miller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
+    self.plasma["roa"] = torch.from_numpy(roa_array).to(rho_vec)
+    self.plasma["rho"] = torch.from_numpy(rho_array).to(rho_vec)
+    self.plasma["mi_u"] = torch.tensor(input_gacode.mi_first).to(rho_vec)
+    self.plasma["a"] = torch.tensor(input_gacode.derived["a"]).to(rho_vec)
+    self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"]).to(rho_vec)
+
+    quantities_to_interpolate = [
+        ["rho", "rho(-)", None, True, False],
+        ["roa", "roa", None, True, True],
+        ["volp", "volp_miller", None, True, True],
+        ["rmin", "rmin(m)", None, True, False],
+        ["te", "te(keV)", None, True, False],
+        ["ti", "ti(keV)", 0, True, False],
+        ["ne", "ne(10^19/m^3)", None, True, False],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1, True, False],
+        ["w0", "w0(rad/s)", None, True, False],
+        ["B_unit", "B_unit", None, True, True],
+        ["B_ref", "B_ref", None, True, True],
+    ]
+
+    for key in quantities_to_interpolate:
+        quant = input_gacode.derived[key[1]] if key[4] else input_gacode.profiles[key[1]]
+        self.plasma[key[0]] = torch.from_numpy(
+            interpFunction(rho_vec.cpu(), rho_use, quant if key[2] is None else quant[:, key[2]]) if key[3] else quant
+            ).to(rho_vec)
+
+    quantities_to_interpolate_and_volp = [
+        ["Paux_e", "qe_aux_MWmiller"],
+        ["Paux_i", "qi_aux_MWmiller"],
+        ["Gaux_e", "ge_10E20miller"],
+        ["Maux", "mt_Jmiller"],
+    ]
+
+    for key in quantities_to_interpolate_and_volp:
+        self.plasma[key[0]] = torch.from_numpy(
+            interpFunction(rho_vec.cpu(), rho_use, input_gacode.derived[key[1]])
+        ).to(rho_vec) / self.plasma["volp"]
+
     self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
 
-    # Momentum flux is J/m^2. Momentum source is given in input.gacode a N/m^2 or J/m^3. Integrated in volume is J or N*m
-    self.plasma["Maux"] = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["mt_Jmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
+    quantitites = {}
+    quantitites["PextraE_Target2"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
+    quantitites["PextraI_Target2"] = input_gacode.derived["qi_fus_MWmiller"]
+    quantitites["PextraE_Target1"] = quantitites["PextraE_Target2"] - input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["PextraI_Target1"] = quantitites["PextraI_Target2"] + input_gacode.derived["qe_exc_MWmiller"]
 
-    # Also include radiation, alpha and exchange, in case I want to run powerstate with fixed those
-    Prad = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qrad_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
-    PfusE = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qe_fus_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
-    PfusI = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qi_fus_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
-    Pei = (
-        torch.from_numpy(
-            interpFunction(rho_vec, rho_use, input_gacode.derived["qe_exc_MWmiller"])
-        ).to(dfT)
-        / self.plasma["volp"]
-    )
+    for key in quantitites:
+        self.plasma[key] = torch.from_numpy(
+            interpFunction(rho_vec.cpu(), rho_use, quantitites[key])
+        ).to(rho_vec)
 
-    self.plasma["PextraE_Target1"] = PfusE - Prad - Pei
-    self.plasma["PextraI_Target1"] = PfusI + Pei
-    self.plasma["PextraE_Target2"] = PfusE - Prad
-    self.plasma["PextraI_Target2"] = PfusI
+    # *********************************************************************************************
+    # Ion species need special treatment
+    # *********************************************************************************************
 
-    # Ions --------
-    defineIons(self, input_gacode, rho_vec, dfT)
+    defineIons(self, input_gacode, rho_vec, rho_vec)
 
-    """
-	# ------------------------------------------------------------------------------------------------------------------------
+    # *********************************************************************************************
 	# Define deparametrizer functions for the varying profiles and gradients from here
-	# ------------------------------------------------------------------------------------------------------------------------
-	I define the gradients like that to impose a zero at the parameterization stage
-	"""
-    defineMovingGradients(self, input_gacode)
+    # *********************************************************************************************
 
+    (
+        self.deparametrizers,
+        self.deparametrizers_coarse,
+        self.deparametrizers_coarse_middle,
+    ) = ({}, {}, {})
+
+    aLT_use_w0, factor_mult_w0 = False, factorMult_w0(self)
+
+    cases_to_parameterize = [
+        ["te", "te(keV)", None, 1.0, True],
+        ["ti", "ti(keV)", 0, 1.0, True],
+        ["ne", "ne(10^19/m^3)", None, 1.0, True],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1, 1.0, True],
+        ["w0", "w0(rad/s)", None, factor_mult_w0.item(), aLT_use_w0], 
+    ]
+
+    for key in cases_to_parameterize:
+        quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
+        (
+            aLy_coarse,
+            self.deparametrizers[key[0]],
+            self.deparametrizers_coarse[key[0]],
+            self.deparametrizers_coarse_middle[key[0]],
+        ) = PARAMtools.performCurveRegression(
+            input_gacode.derived["roa"],
+            quant * key[3],
+            self.plasma["roa"],
+            aLT=key[4],
+        )
+        self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
+
+        # Check that it's not completely zero
+        if key[0] in self.ProfilesPredicted:
+            if self.plasma[f"aL{key[0]}"].sum() == 0.0:
+                addT = 1e-15
+                print(
+                    f"\t- All values of {key[0]} detected to be zero, to avoid NaNs, inserting {addT} at the edge",
+                    typeMsg="w",
+                )
+                self.plasma[f"aL{key[0]}"][..., -1] += addT
 
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
@@ -410,101 +344,6 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ions_set_Dion"] = Dion
     self.plasma["ions_set_Tion"] = Tion
     self.plasma["ions_set_c_rad"] = c_rad
-
-def defineMovingGradients(self, profiles):
-    (
-        self.deparametrizers,
-        self.deparametrizers_coarse,
-        self.deparametrizers_coarse_middle,
-    ) = ({}, {}, {})
-
-    # ----------------------------------------------------------------------------------------------------
-    # Te
-    # ----------------------------------------------------------------------------------------------------
-    (
-        aLy_coarse,
-        self.deparametrizers["te"],
-        self.deparametrizers_coarse["te"],
-        self.deparametrizers_coarse_middle["te"],
-    ) = PARAMtools.performCurveRegression(
-        profiles.derived["roa"], profiles.profiles["te(keV)"], self.plasma["roa"]
-    )
-    self.plasma["aLte"] = aLy_coarse[:-1, 1]
-
-    # ----------------------------------------------------------------------------------------------------
-    # Ti
-    # ----------------------------------------------------------------------------------------------------
-    (
-        aLy_coarse,
-        self.deparametrizers["ti"],
-        self.deparametrizers_coarse["ti"],
-        self.deparametrizers_coarse_middle["ti"],
-    ) = PARAMtools.performCurveRegression(
-        profiles.derived["roa"], profiles.profiles["ti(keV)"][:, 0], self.plasma["roa"]
-    )
-    self.plasma["aLti"] = aLy_coarse[:-1, 1]
-
-    # ----------------------------------------------------------------------------------------------------
-    # ne
-    # ----------------------------------------------------------------------------------------------------
-    (
-        aLy_coarse,
-        self.deparametrizers["ne"],
-        self.deparametrizers_coarse["ne"],
-        self.deparametrizers_coarse_middle["ne"],
-    ) = PARAMtools.performCurveRegression(
-        profiles.derived["roa"], profiles.profiles["ne(10^19/m^3)"], self.plasma["roa"]
-    )
-    self.plasma["aLne"] = aLy_coarse[:-1, 1]
-
-    # ----------------------------------------------------------------------------------------------------
-    # nZ
-    # ----------------------------------------------------------------------------------------------------
-    (
-        aLy_coarse,
-        self.deparametrizers["nZ"],
-        self.deparametrizers_coarse["nZ"],
-        self.deparametrizers_coarse_middle["nZ"],
-    ) = PARAMtools.performCurveRegression(
-        profiles.derived["roa"],
-        profiles.profiles["ni(10^19/m^3)"][:, self.impurityPosition - 1],
-        self.plasma["roa"],
-    )
-    self.plasma["aLnZ"] = aLy_coarse[:-1, 1]
-
-    # ----------------------------------------------------------------------------------------------------
-    # w0 (SPECIAL, it's not a/Lw0 but -dw0/dr, so some things change here)
-    # ----------------------------------------------------------------------------------------------------
-
-    aLT_use, factor_mult = False, factorMult_w0(self)
-
-    (
-        aLy_coarse,
-        self.deparametrizers["w0"],
-        self.deparametrizers_coarse["w0"],
-        self.deparametrizers_coarse_middle["w0"],
-    ) = PARAMtools.performCurveRegression(
-        profiles.derived["roa"],
-        profiles.profiles["w0(rad/s)"] * factor_mult.item(),
-        self.plasma["roa"],
-        aLT=aLT_use,
-    )
-    self.plasma["aLw0"] = aLy_coarse[:-1, 1]
-
-    # ----------------------------------------------------------------------------------------------------
-    # Check that it's not completely zero
-    # ----------------------------------------------------------------------------------------------------
-
-    for key in ["aLte", "aLti", "aLne", "aLnZ", "aLw0"]:
-        if key[2:] in self.ProfilesPredicted:
-            if self.plasma[key].sum() == 0.0:
-                addT = 1e-15
-                print(
-                    f"\t- All values of {key} detected to be zero, to avoid NaNs, inserting {addT} at the edge",
-                    typeMsg="w",
-                )
-                self.plasma[key][..., -1] += addT
-
 
 def factorMult_w0(self):
     """
