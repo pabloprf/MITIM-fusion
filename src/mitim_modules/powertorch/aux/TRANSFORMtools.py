@@ -5,13 +5,13 @@ from mitim_modules.powertorch.aux import PARAMtools
 from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpFunction
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 verbose_level = read_verbose_level()
 
-def fromPowerToGacode(
+def powerstate_to_gacode(
     self,
     profiles_base,
     options={},
@@ -56,7 +56,7 @@ def fromPowerToGacode(
                 self.plasma["roa"][position_in_powerstate_batch, :],
                 self.plasma[f"aL{key[0]}"][position_in_powerstate_batch, :],
             )
-            y_interpolated = interpFunction(roa, x.cpu(), y[0, :].cpu())
+            y_interpolated = interpolation_function(roa, x.cpu(), y[0, :].cpu())
             if key[2] is None:
                 Y_copy = copy.deepcopy(profiles.profiles[key[1]])
                 profiles.profiles[key[1]] = y_interpolated
@@ -98,7 +98,7 @@ def fromPowerToGacode(
     # ------------------------------------------------------------------------------------------
 
     if insert_highres_powers:
-        insert_powers_to_gacode(self, profiles, position_in_powerstate_batch)
+        powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch)
 
     # ------------------------------------------------------------------------------------------
     # Recalculate and change ptot to make it consistent?
@@ -112,7 +112,7 @@ def fromPowerToGacode(
 
     return profiles
 
-def insert_powers_to_gacode(self, profiles, position_in_powerstate_batch=0):
+def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
 
     profiles.deriveQuantities(rederiveGeometry=False)
 
@@ -155,7 +155,7 @@ def insert_powers_to_gacode(self, profiles, position_in_powerstate_batch=0):
                 state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
             )
 
-def fromGacodeToPower(self, input_gacode, rho_vec):
+def gacode_to_powerstate(self, input_gacode, rho_vec):
     """
     This function converts from the fine input.gacode grid to a powertorch object and grid.
     Notes:
@@ -178,8 +178,8 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
 
     rho_use = input_gacode.profiles["rho(-)"]
 
-    roa_array = interpFunction(rho_vec.cpu(), rho_use, input_gacode.derived["roa"])
-    rho_array = interpFunction(rho_vec.cpu(), rho_use, input_gacode.profiles["rho(-)"])
+    roa_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode.derived["roa"])
+    rho_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode.profiles["rho(-)"])
     
     if len(rho_array) < 10:
         print(f"\t\t@ rho = {[round(i,6) for i in rho_array]}")
@@ -187,7 +187,7 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
     else:
         print(f"\t\t@ {len(rho_array)} rho points")
 
-    # In case rho_vec is different than rho_vec_evaluate (DEPCRECATED, but I keep it for now)
+    # In case rho_vec is different than rho_vec_evaluate
     self.indexes_simulation = []
     for rho in rho_array:   self.indexes_simulation.append(np.argmin(np.abs(rho_array - rho)).item())
 
@@ -218,7 +218,7 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
     for key in quantities_to_interpolate:
         quant = input_gacode.derived[key[1]] if key[4] else input_gacode.profiles[key[1]]
         self.plasma[key[0]] = torch.from_numpy(
-            interpFunction(rho_vec.cpu(), rho_use, quant if key[2] is None else quant[:, key[2]]) if key[3] else quant
+            interpolation_function(rho_vec.cpu(), rho_use, quant if key[2] is None else quant[:, key[2]]) if key[3] else quant
             ).to(rho_vec)
 
     quantities_to_interpolate_and_volp = [
@@ -230,7 +230,7 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
 
     for key in quantities_to_interpolate_and_volp:
         self.plasma[key[0]] = torch.from_numpy(
-            interpFunction(rho_vec.cpu(), rho_use, input_gacode.derived[key[1]])
+            interpolation_function(rho_vec.cpu(), rho_use, input_gacode.derived[key[1]])
         ).to(rho_vec) / self.plasma["volp"]
 
     self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
@@ -243,7 +243,7 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
 
     for key in quantitites:
         self.plasma[key] = torch.from_numpy(
-            interpFunction(rho_vec.cpu(), rho_use, quantitites[key])
+            interpolation_function(rho_vec.cpu(), rho_use, quantitites[key])
         ).to(rho_vec)
 
     # *********************************************************************************************
@@ -279,11 +279,11 @@ def fromGacodeToPower(self, input_gacode, rho_vec):
             self.deparametrizers[key[0]],
             self.deparametrizers_coarse[key[0]],
             self.deparametrizers_coarse_middle[key[0]],
-        ) = PARAMtools.performCurveRegression(
+        ) = PARAMtools.parameterize_curve(
             input_gacode.derived["roa"],
             quant * key[3],
             self.plasma["roa"],
-            aLT=key[4],
+            parameterize_in_aLx=key[4],
         )
         self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
 
@@ -318,7 +318,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     for i in range(len(input_gacode.profiles["mass"])):
         if input_gacode.profiles["type"][i] == "[therm]":
             self.plasma["ni"].append(
-                interpFunction(
+                interpolation_function(
                     rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i]
                 )
             )

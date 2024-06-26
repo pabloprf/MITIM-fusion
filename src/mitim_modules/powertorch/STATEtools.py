@@ -123,7 +123,7 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
-        TRANSFORMtools.fromGacodeToPower(self, self.profiles, self.plasma["rho"])
+        TRANSFORMtools.gacode_to_powerstate(self, self.profiles, self.plasma["rho"])
 
         # Convert into a batch so that always the quantities are (batch,dimX)
         self.batch_size = 0
@@ -167,13 +167,13 @@ class powerstate:
             )
 
         # Recalculate with higher resolution
-        TRANSFORMtools.fromGacodeToPower(self, self.profiles, rho_new)
+        TRANSFORMtools.gacode_to_powerstate(self, self.profiles, rho_new)
         self.plasma_fine = copy.deepcopy(self.plasma)
 
         # Revert plasma back
         self.plasma = plasma_copy
 
-    def insertProfiles(
+    def to_gacode(
         self,
         profiles_base,
         writeFile=None,
@@ -190,7 +190,7 @@ class powerstate:
         '''
         print(">> Inserting powerstate profiles into input.gacode")
 
-        profiles = TRANSFORMtools.fromPowerToGacode(
+        profiles = TRANSFORMtools.powerstate_to_gacode(
             self,
             profiles_base,
             position_in_powerstate_batch=position_in_powerstate_batch,
@@ -681,7 +681,7 @@ class powerstate:
 
         self.profiles.deriveQuantities()
         
-        self.insertProfiles(
+        self.to_gacode(
             self.profiles,
             writeFile=f"{folder}/input.gacode.new.powerstate",
             position_in_powerstate_batch=0,

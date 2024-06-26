@@ -79,7 +79,7 @@ class power_transport:
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
-        self.powerstate.profiles = self.powerstate.insertProfiles(
+        self.powerstate.profiles = self.powerstate.to_gacode(
             self.powerstate.profiles,
             writeFile=self.file_profs,
             applyCorrections=self.applyCorrections,

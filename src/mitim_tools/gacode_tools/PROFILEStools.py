@@ -1338,7 +1338,7 @@ class PROFILES_GACODE:
                     f.write(f"{pos}{valt}\n")
 
     def changeResolution(
-        self, n=100, rho_new=None, interpFunction=MATHtools.extrapolateCubicSpline
+        self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline
     ):
         rho = copy.deepcopy(self.profiles["rho(-)"])
 
@@ -1355,11 +1355,11 @@ class PROFILES_GACODE:
         for i in pro:
             if i not in self.titles_single:
                 if len(pro[i].shape) == 1:
-                    pro[i] = interpFunction(rho_new, rho, pro[i])
+                    pro[i] = interpolation_function(rho_new, rho, pro[i])
                 else:
                     prof = []
                     for j in range(pro[i].shape[1]):
-                        pp = interpFunction(rho_new, rho, pro[i][:, j])
+                        pp = interpolation_function(rho_new, rho, pro[i][:, j])
                         prof.append(pp)
                     prof = np.array(prof)
 
@@ -1370,7 +1370,7 @@ class PROFILES_GACODE:
         self.deriveQuantities(mi_ref=self.derived["mi_ref"])
 
         print(
-            f"\t\t- Resolution of profiles changed to {n} points with function {interpFunction}"
+            f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}"
         )
 
     def DTplasma(self):

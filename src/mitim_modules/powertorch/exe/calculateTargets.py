@@ -87,7 +87,7 @@ def calculator(
             },
         )
 
-    # p.profiles = p.insertProfiles(
+    # p.profiles = p.to_gacode(
     #     profiles, insert_highres_powers=True, rederive_profiles=True)
     p.determinePerformance(nameRun="test", folder=IOtools.expandPath(folder))
 

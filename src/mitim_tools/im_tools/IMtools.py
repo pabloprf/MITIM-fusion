@@ -406,7 +406,7 @@ def smoothUFILE_variable(fileUF, pedPos=0.9, debug=False, checkVariation=False):
     offs = 0
     for i in range(1):
         xCPs = np.linspace(0.0, pedPos - 0.01 - offs, numCPs)
-        aLy_coarse, deparametrizer, _, _ = PARAMtools.performCurveRegression(
+        aLy_coarse, deparametrizer, _, _ = PARAMtools.parameterize_curve(
             x, var, torch.from_numpy(xCPs), preSmoothing=True, PreventNegative=True
         )
         x, var = deparametrizer(aLy_coarse[:, 0], aLy_coarse[:, 1])

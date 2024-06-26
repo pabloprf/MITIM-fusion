@@ -5,23 +5,27 @@ import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpFunction
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
 
-def performCurveRegression(
-    r_coord,
+def parameterize_curve(
+    x_coord,
     y_coord,
-    x_coarse,
+    x_coarse_tensor,
+    parameterize_in_aLx=True,
     preSmoothing=False,
     PreventNegative=False,
-    aLT=True,
-    printDeviations=False,
-):
+    ):
     """
-    Parametrizes in gradient space. Note: x_coarse must be torch
+    Notes:
+        - x_coarse_tensor must be torch
     """
 
-    if aLT:
+    # **********************************************************************************************************
+    # Define the integrator and derivator functions (based on whether I want to parameterize in aLx or in gradX)
+    # **********************************************************************************************************
+
+    if parameterize_in_aLx:
         integrator_function, derivator_function = (
             CALCtools.integrateGradient,
             CALCtools.produceGradient,
@@ -32,133 +36,50 @@ def performCurveRegression(
             CALCtools.produceGradient_lin,
         )
 
-    aLz = derivator_function(
-        torch.from_numpy(r_coord).to(x_coarse), torch.from_numpy(y_coord).to(x_coarse)
-    )
-    dict_param = getPointscontrol(
-        r_coord,
-        aLz,
-        x_coarse[1:].cpu().numpy(),
-        y_coord,
-        preSmoothing=preSmoothing,
-        PreventNegative=PreventNegative,
+    ygrad_coord = derivator_function(
+        torch.from_numpy(x_coord).to(x_coarse_tensor), torch.from_numpy(y_coord).to(x_coarse_tensor)
     )
 
-    def deparametrizer(x, y, printMessages=printDeviations):
-        return constructCurve(
-            x,
-            y,
-            dict_param["y_bc"],
-            dict_param["y_bc_real"],
-            dict_param["x_trail"],
-            dict_param["y_trail"],
-            integrator_function,
-            derivator_function,
-            xBS=dict_param["x_notrail"],
-            xCoord=r_coord,
-            Te=y_coord,
-            extraP=dict_param["aLy_coarse"][-1],
-            printMessages=printMessages,
-        )
+    # **********************************************************************************************************
+    # Get control points
+    # **********************************************************************************************************
 
-    """
-	Construct curve in a coarse grid
-	----------------------------------------------------------------------------------------------------
-	This constructs a curve in any grid, with any batch given in y=yCPs.
-	Useful for surrogate evaluations. Fast in a coarse grid. For HF evaluations,
-	I need to do in a finer grid so that TGYRO doesn't screw things up.
-	x=xCPs, y=yCPs must be (batch, radii),	BC must be (1)
-	"""
-
-    def deparametrizer_coarse(x, y, printMessages=printDeviations):
-        return (
-            x,
-            integrator_function(x, y, dict_param["y_bc_real"]),
-        )
-
-    def deparametrizer_coarse_middle(x, y, printMessages=printDeviations):
-        return deparam_coarse(
-            x,
-            y,
-            dict_param["aLy_coarse"][:, 0][:-1],
-            integrator_function,
-            dict_param,
-            printMessages=printMessages,
-        )
-
-    return (
-        dict_param["aLy_coarse"],
-        deparametrizer,
-        deparametrizer_coarse,
-        deparametrizer_coarse_middle,
-    )
-
-
-def deparam_coarse(
-    x, yOrig, xOrig, integrator_function, dict_param, printMessages=True
-):
-    """
-    Deparamterizes a finer profile based on the values in the coarse
-    x is in the new grid,
-    yOrig is the values evaluated in xOrig
-    Reason why something like this is not used for the full profile is because derivative of this will not be as original,
-            which is needed to match TGYRO
-    """
-
-    yCPs = CALCtools.Interp1d()(xOrig.repeat((yOrig.shape[0], 1)), yOrig, x)
-    return x, integrator_function(x, yCPs, dict_param["y_bc_real"])
-
-
-def getPointscontrol(
-    x_array, aLy_array, x_coarse, y_array, PreventNegative=False, preSmoothing=False
-):
-    # ------------------------------------------------------------
-    # Perform some previous checks
-    # ------------------------------------------------------------
+    x_coarse = x_coarse_tensor[1:].cpu().numpy()
 
     # Clip to zero if I want to prevent negative values
     if PreventNegative:
-        aLy_array = aLy_array.clip(0)
+        ygrad_coord = ygrad_coord.clip(0)
 
     # Perform smoothing to grab from when smoothing option is active
     if preSmoothing:
         from scipy.signal import savgol_filter
 
-        filterlen = int(int(len(x_array) / 20 / 2) * 10) + 1  # 651
-        yV_smth = torch.from_numpy(savgol_filter(aLy_array, filterlen, 2)).to(aLy_array)
+        filterlen = int(int(len(x_coord) / 20 / 2) * 10) + 1  # 651
+        yV_smth = torch.from_numpy(savgol_filter(ygrad_coord, filterlen, 2)).to(ygrad_coord)
         points_untouched = 5
 
-    # ------------------------------------------------------------
-    # Define region to get control points from
-    # ------------------------------------------------------------
-
     """
+    Define region to get control points from
+    ------------------------------------------------------------
 	Trick: Addition of extra point
-	------------------------------
 		This is important because if I don't, when I combine the trailing edge and the new
 		modified profile, there's going to be a discontinuity in the gradient.
 	"""
+    
+    ir_end = np.argmin(np.abs(x_coord - x_coarse[-1]))
 
-    ir_end = np.argmin(np.abs(x_array - x_coarse[-1]))
-
-    if ir_end < len(x_array) - 1:
+    if ir_end < len(x_coord) - 1:
         ir = ir_end + 2  # To prevent that TGYRO does a 2nd order derivative
-        x_coarse = np.append(x_coarse, [x_array[ir]])
+        x_coarse = np.append(x_coarse, [x_coord[ir]])
     else:
         ir = ir_end
 
-    """
-	Definition of trailing edge. Any point after, and including, the extra point
-	"""
+	# Definition of trailing edge. Any point after, and including, the extra point
+    x_trail = torch.from_numpy(x_coord[ir:])
+    y_trail = y_coord[ir:]
+    x_notrail = x_coord[: ir + 1]
 
-    x_trail = x_array[ir:]
-    y_trail = y_array[ir:]
-    x_notrail = x_array[: ir + 1]
-
-    # ------------------------------------------------------------
     # Produce control points, including a zero at the beginning
-    # ------------------------------------------------------------
-
     aLy_coarse = [[0.0, 0.0]]
     for cont, i in enumerate(x_coarse):
         if (
@@ -169,45 +90,84 @@ def getPointscontrol(
             """
             Perform some radial averaging if points are not the last ones or the first
             """
-            yValue = yV_smth[np.argmin(np.abs(x_array - i))]
+            yValue = yV_smth[np.argmin(np.abs(x_coord - i))]
         else:
             """
             Simply grab the values
             """
-            yValue = aLy_array[np.argmin(np.abs(x_array - i))]
+            yValue = ygrad_coord[np.argmin(np.abs(x_coord - i))]
 
         aLy_coarse.append([i, yValue.cpu().item()])
 
-    aLy_coarse = torch.from_numpy(np.array(aLy_coarse)).to(aLy_array)
+    aLy_coarse = torch.from_numpy(np.array(aLy_coarse)).to(ygrad_coord)
 
     # Since the last one is an extra point very close, I'm making it the same
     aLy_coarse[-1, 1] = aLy_coarse[-2, 1]
 
-    # ------------------------------------------------------------
-    # Build dictionaries
-    # ------------------------------------------------------------
-
     # Boundary condition at point moved by gridPointsAllowed
-    y_bc = torch.from_numpy(interpFunction([x_coarse[-1]], x_array, y_array)).to(
-        aLy_array
+    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord)).to(
+        ygrad_coord
     )
 
     # Boundary condition at point (ACTUAL THAT I WANT to keep fixed, i.e. rho=0.8)
-    y_bc_real = torch.from_numpy(interpFunction([x_coarse[-2]], x_array, y_array)).to(
-        aLy_array
+    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord)).to(
+        ygrad_coord
     )
 
-    dict_param = {
-        "aLy_coarse": aLy_coarse,
-        "x_trail": x_trail,
-        "y_trail": y_trail,
-        "y_bc": y_bc,
-        "y_bc_real": y_bc_real,
-        "x_notrail": x_notrail,
-    }
+    # **********************************************************************************************************
+    # Define deparametrizer functions
+    # **********************************************************************************************************
 
-    return dict_param
+    def deparametrizer(x, y, printMessages=False):
+        return constructCurve(
+            x,
+            y,
+            y_bc,
+            y_bc_real,
+            x_trail,
+            y_trail,
+            integrator_function,
+            derivator_function,
+            xBS=x_notrail,
+            xCoord=x_coord,
+            Te=y_coord,
+            extraP=aLy_coarse[-1],
+            printMessages=printMessages,
+        )
 
+    """
+	Construct curve in a coarse grid
+	----------------------------------------------------------------------------------------------------
+	This constructs a curve in any grid, with any batch given in y=yCPs.
+	Useful for surrogate evaluations. Fast in a coarse grid. For HF evaluations,
+	I need to do in a finer grid so that it is consistent with TGYRO.
+	x=xCPs, y=yCPs must be (batch, radii),	BC must be (1)
+	"""
+
+    def deparametrizer_coarse(x, y, **kwargs):
+        return (
+            x,
+            integrator_function(x, y, y_bc_real),
+        )
+
+    def deparametrizer_coarse_middle(x, y, **kwargs):
+        """
+        Deparamterizes a finer profile based on the values in the coarse.
+        Reason why something like this is not used for the full profile is because derivative of this will not be as original,
+                which is needed to match TGYRO
+        Notes:
+            - x is in the new grid,
+            - yOrig is the values evaluated in xOrig
+        """
+        yCPs = CALCtools.Interp1d()( aLy_coarse[:, 0][:-1].repeat(( aLy_coarse[:, 0][:-1].shape[0], 1)), y, x)
+        return x, integrator_function(x, yCPs, y_bc_real)
+
+    return (
+        aLy_coarse,
+        deparametrizer,
+        deparametrizer_coarse,
+        deparametrizer_coarse_middle,
+    )
 
 def constructCurve(
     xCPs,
@@ -224,15 +184,15 @@ def constructCurve(
     Te=None,
     extraP=None,
     printMessages=True,
-):
+    ):
     """
-    xCPs is a 1D array, but yCPs can be a 2D array for a batch of individuals: (batch,x)
-    I am assuming it is 1/LT for parameterization, but gives T
+        - xCPs is a 1D array, but yCPs can be a 2D array for a batch of individuals: (batch,x)
+        - I am assuming it is 1/LT for parameterization, but gives T
     """
 
     yCPs = torch.atleast_2d(yCPs)
 
-    x_trail = torch.from_numpy(x_trail).to(xCPs)
+    #x_trail = torch.from_numpy(x_trail).to(xCPs)
     y_trail = torch.from_numpy(y_trail).to(xCPs)
 
     if xCPs.dim() == 2:
@@ -317,7 +277,7 @@ def constructCurve(
         )
         deriv1 = derivator_function(xBS, yBS[batch_pos_plot, :])
 
-        v0 = interpFunction(xCPs.cpu(), xCoord, deriv0.cpu())
+        v0 = interpolation_function(xCPs.cpu(), xCoord, deriv0.cpu())
         per0 = (v0 - yCPs.cpu().numpy()) / v0
         if per0[0, 1:-1].max() * 100 > 0.1:
             print(
@@ -325,7 +285,7 @@ def constructCurve(
                 typeMsg="w",
             )
 
-        v0 = interpFunction(xCPs.cpu(), xCoord, deriv1.cpu())
+        v0 = interpolation_function(xCPs.cpu(), xCoord, deriv1.cpu())
         per1 = (v0 - yCPs.cpu().numpy()) / v0
         if per1[0, 1:-1].max() * 100 > 0.1:
             print(
@@ -333,8 +293,8 @@ def constructCurve(
                 typeMsg="w",
             )
 
-        v0 = interpFunction(xCPs[-2].cpu(), xCoord, Te)
-        v1 = interpFunction(xCPs[-2].cpu(), xBS.cpu(), yBS[batch_pos_plot].cpu())
+        v0 = interpolation_function(xCPs[-2].cpu(), xCoord, Te)
+        v1 = interpolation_function(xCPs[-2].cpu(), xBS.cpu(), yBS[batch_pos_plot].cpu())
         per2 = (v0 - v1) / v0
         if per2 * 100 > 0.1:
             print(f"\t\t- Error bw BCs: {per2*100:.3f}", typeMsg="w")
