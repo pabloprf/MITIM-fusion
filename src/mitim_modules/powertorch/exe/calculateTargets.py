@@ -25,8 +25,6 @@ def calculator(
         input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
     )
 
-    PORTALSinit.defineNewPORTALSGrid(profiles, rho_vec[1:])
-
     # Calculate using TGYRO
     if typeCalculation == 1:
         p = STATEtools.powerstate(
@@ -75,6 +73,7 @@ def calculator(
             profiles,
             EvolutionOptions={
                 "rhoPredicted": rho_vec,
+                'fineTargetsResolution': fineTargetsResolution,
             },
             TargetOptions={
                 "targets_evaluator": TARGETStools.analytical_model,
@@ -82,11 +81,14 @@ def calculator(
                     "TypeTarget": TypeTarget,
                     "TargetCalc":  "powerstate"},
             },
-            TransportOptions={"transport_evaluator": None, "ModelOptions": {}},
+            TransportOptions={
+                "transport_evaluator": None,
+                "ModelOptions": {}
+            },
         )
 
-    p.profiles = p.insertProfiles(
-        profiles, insert_highres_powers=True, rederive_profiles=True)
+    # p.profiles = p.insertProfiles(
+    #     profiles, insert_highres_powers=True, rederive_profiles=True)
     p.determinePerformance(nameRun="test", folder=IOtools.expandPath(folder))
 
     return p

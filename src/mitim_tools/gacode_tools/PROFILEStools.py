@@ -556,7 +556,7 @@ class PROFILES_GACODE:
         self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
         self.derived["ge_10E20m2"] = self.derived["ge_10E20miller"] / (volp)
 
-        self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
+        self.derived["QiQe"] = self.derived["qi_MWm2"] / np.where(self.derived["qe_MWm2"] == 0, 1e-10, self.derived["qe_MWm2"]) # to avoid division by zero
 
         # "Convective" flux
         self.derived["ce_MWmiller"] = PLASMAtools.convective_flux(
