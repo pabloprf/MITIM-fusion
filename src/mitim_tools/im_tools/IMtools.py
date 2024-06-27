@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools
 from mitim_tools.transp_tools import UFILEStools, CDFtools
-from mitim_modules.powertorch.aux import PARAMtools
+from mitim_modules.powertorch.aux import TRANSFORMtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.im_tools import IMparam
 from mitim_tools.im_tools.modules import PEDmodule, TRANSPmodule, EQmodule
@@ -406,7 +406,7 @@ def smoothUFILE_variable(fileUF, pedPos=0.9, debug=False, checkVariation=False):
     offs = 0
     for i in range(1):
         xCPs = np.linspace(0.0, pedPos - 0.01 - offs, numCPs)
-        aLy_coarse, deparametrizer, _, _ = PARAMtools.parameterize_curve(
+        aLy_coarse, deparametrizer, _, _ = TRANSFORMtools.parameterize_curve(
             x, var, torch.from_numpy(xCPs), preSmoothing=True, PreventNegative=True
         )
         x, var = deparametrizer(aLy_coarse[:, 0], aLy_coarse[:, 1])

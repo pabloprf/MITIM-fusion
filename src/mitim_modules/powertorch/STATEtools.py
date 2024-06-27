@@ -449,7 +449,7 @@ class powerstate:
         # New batch size
         self.batch_size = batch_size
 
-    def update_var(self, name, var=None, printMessages=True, specific_deparametrizer=None):
+    def update_var(self, name, var=None, specific_deparametrizer=None):
         """
         This inserts gradients and updates coarse profiles
 
@@ -468,14 +468,13 @@ class powerstate:
             if specific_deparametrizer is None
             else specific_deparametrizer
         )
-
+        
         def _update_plasma_var(var_key, clamp_min=0, clamp_max=200, factor_mult=1):
             if var is not None:
                 self.plasma[f"aL{var_key}"][: var.shape[0], :] = var[:, :]
             aLT_withZero = self.plasma[f"aL{var_key}"]
             _, varN = deparametrizers_choice[var_key](
-                self.plasma["roa"], aLT_withZero, printMessages=printMessages
-            )
+                self.plasma["roa"], aLT_withZero)
             self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) * factor_mult
             self.plasma[f"aL{var_key}"] = torch.cat(
                 (
@@ -504,7 +503,7 @@ class powerstate:
         # Postprocessing (some require special treatment)
         if name == "ne":
             self.plasma["ni"] = ni_0orig.clone()
-            for i in range(self.plasma["ni"].shape[2]):
+            for i in range(self.plasma["ni"].shape[-1]):
                 self.plasma["ni"][..., i] = self.plasma["ne"] * (
                     ni_0orig[..., i] / ne_0orig
                 )

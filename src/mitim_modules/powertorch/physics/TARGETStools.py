@@ -84,7 +84,6 @@ class power_targets:
         for i in self.powerstate.ProfilesPredicted:
             _ = self.powerstate.update_var(
                 i,
-                printMessages=False,
                 specific_deparametrizer=self.powerstate.deparametrizers_coarse_middle,
             )
 
