@@ -191,70 +191,6 @@ class power_targets:
 # ----------------------------------------------------------------------------------------------------
 # Full analytical models taken from TGYRO
 # ----------------------------------------------------------------------------------------------------
-class analytical_model(power_targets):
-    def __init__(self,powerstate, **kwargs):
-        super().__init__(powerstate, **kwargs)
-
-    def evaluate(self):
-
-        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] >= 2:
-
-            # ----------------------------------------------------
-            # Classical energy exchange
-            # ----------------------------------------------------
-
-            self.powerstate.plasma["qie"] = PLASMAtools.energy_exchange(
-                self.powerstate.plasma["te"],
-                self.powerstate.plasma["ti"],
-                self.powerstate.plasma["ne"] * 1e-1,
-                self.powerstate.plasma["ni"] * 1e-1,
-                self.powerstate.plasma["ions_set_mi"],
-                self.powerstate.plasma["ions_set_Zi"],
-            )
-
-        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] == 3:
-
-            # ----------------------------------------------------
-            # Fusion
-            # ----------------------------------------------------
-
-            self.powerstate.plasma["qfuse"], self.powerstate.plasma["qfusi"] = alpha_heating(
-                self.powerstate.plasma["ti"],
-                self.powerstate.plasma["te"],
-                self.powerstate.plasma["ne"],
-                self.powerstate.plasma["ni"],
-                self.powerstate.plasma["ions_set_mi"],
-                self.powerstate.plasma["ions_set_Zi"],
-                self.powerstate.plasma["ions_set_Dion"],
-                self.powerstate.plasma["ions_set_Tion"]
-            )
-
-            # ----------------------------------------------------
-            # Radiation
-            # ----------------------------------------------------
-            
-            (
-                self.powerstate.plasma["qrad_sync"],
-                self.powerstate.plasma["qrad_bremms"],
-                self.powerstate.plasma["qrad_line"],
-            ) = radiated_power(
-                self.powerstate.plasma["te"],
-                self.powerstate.plasma["ne"] * 1e-1,
-                self.powerstate.plasma["B_ref"],
-                self.powerstate.plasma["eps"],
-                self.powerstate.plasma["a"],
-                self.powerstate.plasma["ni"] * 1e-1,
-                self.powerstate.plasma["ions_set_c_rad"],
-                self.powerstate.plasma["ions_set_Zi"],
-            )
-
-            self.powerstate.plasma["qrad"] = (
-                self.powerstate.plasma["qrad_sync"] + self.powerstate.plasma["qrad_line"] + self.powerstate.plasma["qrad_bremms"]
-            )
-
-# ------------------------------------------------------------------
-# Physics
-# ------------------------------------------------------------------
 
 # Global physical constants
 
@@ -270,47 +206,112 @@ c1, c2, c3 = 1.17302e-9, 1.51361e-2, 7.51886e-2
 c4, c5, c6, c7 = 4.60643e-3, 1.3500e-2, -1.06750e-4, 1.36600e-5
 bg, er = 34.3827, 1.124656e6
 
-def radiated_power(Te_keV, ne20, b_ref, aspect_rat, r_min, ni20, c_rad, Zi):
-    """
-    This script calculates the radiated power density profile (W/cm^3) from synchrotron,
-    Bremsstralung and line radiation.
-    Note that the ADAS data embeded in the Chebyshev polynomial coefficients already includes
-    Bremsstralung and therefore to separate in between the two, it must be estimated somehow else.
+class analytical_model(power_targets):
+    def __init__(self,powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
 
-    It follows the methodology in TGYRO [Candy et al. PoP 2009]. All the credits are due to
-    the authors of TGYRO
+    def evaluate(self):
 
-    """
+        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] >= 2:
+            self._evaluate_energy_exchange()
 
-    # ----------------------------------------------------
-    # Bremsstrahlung + Line
-    # ----------------------------------------------------
+        if self.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] == 3:
+            self._evaluate_alpha_heating()
+            self._evaluate_radiation()
 
-    # Calling chevychev polys only once for all the species at the same time, for speed
-    Adas = adas_aurora(Te_keV, c_rad)
-    Pcool = ne20 * (Adas * ni20.permute(2, 0, 1)).sum(dim=0) # Sum over species
+    def _evaluate_energy_exchange(self):
+        '''
+        ----------------------------------------------------
+        Classical energy exchange
+        ----------------------------------------------------
+        '''
 
-    # ----------------------------------------------------
-    # Bremsstrahlung
-    # ----------------------------------------------------
+        self.powerstate.plasma["qie"] = PLASMAtools.energy_exchange(
+            self.powerstate.plasma["te"],
+            self.powerstate.plasma["ti"],
+            self.powerstate.plasma["ne"] * 1e-1,
+            self.powerstate.plasma["ni"] * 1e-1,
+            self.powerstate.plasma["ions_set_mi"],
+            self.powerstate.plasma["ions_set_Zi"],
+        )
 
-    f = 0.005344  # 1.69e-32*(1E20*1E-6)**2*(1E3)**0.5
-    Pbremss = f * ne20 * (ni20 * Zi.unsqueeze(1)**2).sum(dim=-1) * Te_keV**0.5
+    def _evaluate_alpha_heating(self):
+        '''
+        ----------------------------------------------------
+        Alpha heating
+        ----------------------------------------------------
+        '''
 
-    # ----------------------------------------------------
-    # Line
-    # ----------------------------------------------------
+        self.powerstate.plasma["qfuse"], self.powerstate.plasma["qfusi"] = alpha_heating(
+            self.powerstate.plasma["ti"],
+            self.powerstate.plasma["te"],
+            self.powerstate.plasma["ne"],
+            self.powerstate.plasma["ni"],
+            self.powerstate.plasma["ions_set_mi"],
+            self.powerstate.plasma["ions_set_Zi"],
+            self.powerstate.plasma["ions_set_Dion"],
+            self.powerstate.plasma["ions_set_Tion"],
+        )
 
-    # TGYRO "Trick": Calculate bremmstrahlung separate and substract to Pcool to get the actual line
-    Pline = Pcool - Pbremss
+    def _evaluate_radiation(self):
 
-    # ----------------------------------------------------
-    # Synchrotron
-    # ----------------------------------------------------
-    Psync = PLASMAtools.synchrotron(Te_keV, ne20, b_ref, aspect_rat.unsqueeze(-1), r_min.unsqueeze(-1))
+        """
+        ----------------------------------------------------
+        Radiation
+        ----------------------------------------------------
 
-    return Psync, Pbremss, Pline
+        This script calculates the radiated power density profile (W/cm^3) from synchrotron,
+        Bremsstralung and line radiation.
+        Note that the ADAS data embeded in the Chebyshev polynomial coefficients already includes
+        Bremsstralung and therefore to separate in between the two, it must be estimated somehow else.
 
+        It follows the methodology in TGYRO [Candy et al. PoP 2009]. All the credits are due to
+        the authors of TGYRO
+        """
+
+        Te_keV = self.powerstate.plasma["te"]
+        ne20 = self.powerstate.plasma["ne"] * 1e-1
+        b_ref = self.powerstate.plasma["B_ref"]
+        aspect_rat = self.powerstate.plasma["eps"]
+        r_min = self.powerstate.plasma["a"]
+        ni20 = self.powerstate.plasma["ni"] * 1e-1
+        c_rad = self.powerstate.plasma["ions_set_c_rad"]
+        Zi = self.powerstate.plasma["ions_set_Zi"]
+
+        # ----------------------------------------------------
+        # Bremsstrahlung + Line
+        # ----------------------------------------------------
+
+        # Calling chevychev polys only once for all the species at the same time, for speed
+        Adas = adas_aurora(Te_keV, c_rad)
+        Pcool = ne20 * (Adas * ni20.permute(2, 0, 1)).sum(dim=0) # Sum over species
+
+        # ----------------------------------------------------
+        # Bremsstrahlung
+        # ----------------------------------------------------
+
+        f = 0.005344  # 1.69e-32*(1E20*1E-6)**2*(1E3)**0.5
+        self.powerstate.plasma["qrad_bremms"] = f * ne20 * (ni20 * Zi.unsqueeze(1)**2).sum(dim=-1) * Te_keV**0.5
+
+        # ----------------------------------------------------
+        # Line
+        # ----------------------------------------------------
+
+        # TGYRO "Trick": Calculate bremmstrahlung separate and substract to Pcool to get the actual line
+        self.powerstate.plasma["qrad_line"] = Pcool - self.powerstate.plasma["qrad_bremms"]
+
+        # ----------------------------------------------------
+        # Synchrotron
+        # ----------------------------------------------------
+        self.powerstate.plasma["qrad_sync"] = PLASMAtools.synchrotron(Te_keV, ne20, b_ref, aspect_rat.unsqueeze(-1), r_min.unsqueeze(-1))
+
+        # ----------------------------------------------------
+        # Total radiation
+        # ----------------------------------------------------
+
+        self.powerstate.plasma["qrad"] = (
+            self.powerstate.plasma["qrad_sync"] + self.powerstate.plasma["qrad_line"] + self.powerstate.plasma["qrad_bremms"]
+        )
 
 def adas_aurora(Te, c):
     """

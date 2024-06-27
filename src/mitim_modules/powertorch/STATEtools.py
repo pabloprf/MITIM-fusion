@@ -337,7 +337,6 @@ class powerstate:
         if algorithm == "picard":
             ITtools.fluxMatchPicard(self)
 
-
         print(
             "**********************************************************************************************"
         )
@@ -468,7 +467,7 @@ class powerstate:
             if specific_deparametrizer is None
             else specific_deparametrizer
         )
-        
+
         def _update_plasma_var(var_key, clamp_min=0, clamp_max=200, factor_mult=1):
             if var is not None:
                 self.plasma[f"aL{var_key}"][: var.shape[0], :] = var[:, :]
@@ -516,7 +515,7 @@ class powerstate:
     # Toolset for calculation
     # ------------------------------------------------------------------
 
-    def calculateProfileFunctions(self, calculateRotationStuff=True, mref_u=2.01355):
+    def calculateProfileFunctions(self, calculateRotationQuantities=True, mref_u=2.01355):
         """
         Update the normalizations of the current state
         """
@@ -561,7 +560,7 @@ class powerstate:
 			which can be accessed in a finer grid, with aLw0 which is a primitive one, that works in the coarse
 			grid. Therefore, aLw0_n can only be calculated on the coarse grid.
 		"""
-        if calculateRotationStuff:
+        if calculateRotationQuantities:
             self.plasma["w0_n"] = self.plasma["w0"] / self.plasma["c_s"]
             self.plasma["aLw0_n"] = (
                 self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"]

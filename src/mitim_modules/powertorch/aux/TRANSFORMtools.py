@@ -52,8 +52,8 @@ def powerstate_to_gacode(
     ]
 
     for key in quantities:
-        print(f"\t- Changing {key[0]}")
         if key[0] in self.ProfilesPredicted:
+            print(f"\t- Inserting {key[0]} into gacode profiles")
             x, y = self.deparametrizers_fine[key[0]](
                 self.plasma["roa"][position_in_powerstate_batch, :],
                 self.plasma[f"aL{key[0]}"][position_in_powerstate_batch, :],
@@ -77,7 +77,7 @@ def powerstate_to_gacode(
                 )
                 for sp in range(len(profiles.Species)):
                     if profiles.Species[sp]["S"] == "fast":
-                        print(f"\t\t\t- Changing temperature of species #{sp}")
+                        print(f"\t\t\t- Modifying temperature of species #{sp}")
                         profiles.profiles["ti(keV)"][:, sp] = profiles.profiles["ti(keV)"][:, sp] * (
                             profiles.profiles["te(keV)"] / Y_copy
                         )
