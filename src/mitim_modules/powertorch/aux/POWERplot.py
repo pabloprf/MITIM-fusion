@@ -47,7 +47,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
         set_plots.append(
             [   'w0', 'aLw0', 'Mt_tr', 'Mt',
                 'Rotation','$\\omega_0$ ($krad/s$)','$-d\\omega_0/dr$ ($krad/s/cm$)','$\\Pi$ (GB)','$\\Pi$ ($J/m^2$)',
-                1.0])
+                1E-3])
 
     cont = 0
     for set_plot in set_plots:

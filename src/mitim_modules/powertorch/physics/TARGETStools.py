@@ -240,18 +240,57 @@ class analytical_model(power_targets):
         ----------------------------------------------------
         Alpha heating
         ----------------------------------------------------
+
+        This script calculates the power density profile (W/cm^3) that goes to ions and to electrons from
+        fusion alphas, using kinetic profiles as inputs.
+
+        This method follows the same methodology as in TGYRO [Candy et al. PoP 2009] and all the credits
+        are due to the authors of TGYRO. From the source code, this function follows the same procedures
+        as in tgyro_auxiliary_routines.f90.
+
         '''
 
-        self.powerstate.plasma["qfuse"], self.powerstate.plasma["qfusi"] = alpha_heating(
-            self.powerstate.plasma["ti"],
-            self.powerstate.plasma["te"],
-            self.powerstate.plasma["ne"],
-            self.powerstate.plasma["ni"],
-            self.powerstate.plasma["ions_set_mi"],
-            self.powerstate.plasma["ions_set_Zi"],
-            self.powerstate.plasma["ions_set_Dion"],
-            self.powerstate.plasma["ions_set_Tion"],
-        )
+        # -----------------------------------------------------------
+        # Obtain the Deuterium and Tritium densities,
+        # otherwise there is no alpha power and zeros are returned
+        # -----------------------------------------------------------
+
+        if (not self.powerstate.plasma["ions_set_Dion"][0].isnan()) and (not self.powerstate.plasma["ions_set_Tion"][0].isnan()):
+            n_d = self.powerstate.plasma["ni"][..., self.powerstate.plasma["ions_set_Dion"][0]] * 1e19
+            n_t = self.powerstate.plasma["ni"][..., self.powerstate.plasma["ions_set_Tion"][0]] * 1e19  # m^-3
+        else:
+            self.powerstate.plasma["qfusi"] = self.powerstate.plasma["te"] * 0.0
+            self.powerstate.plasma["qfuse"] = self.powerstate.plasma["te"] * 0.0
+            return
+
+        # -----------------------------------------------------------
+        # Alpha energy birth rate
+        # -----------------------------------------------------------
+
+        sigv = sigv_fun(self.powerstate.plasma["ti"])
+        s_alpha_he = sigv * (n_d * 1e-6) * (n_t * 1e-6)  # Reactions/cm^3/s
+        p_alpha_he = s_alpha_he * Ealpha * e  # W/cm^3
+
+        # -----------------------------------------------------------
+        # Partition between electrons and ions
+        # 	from [Stix, Plasma Phys. 14 (1972) 367], Eqs. 15 and 17
+        # -----------------------------------------------------------
+
+        c_a = self.powerstate.plasma["te"] * 0.0
+        for i in range(self.powerstate.plasma["ni"].shape[2]):
+            c_a += (self.powerstate.plasma["ni"][..., i] / self.powerstate.plasma["ne"]) * self.powerstate.plasma["ions_set_Zi"][:,i].unsqueeze(-1) ** 2 * (Aalpha / self.powerstate.plasma["ions_set_mi"][:,i].unsqueeze(-1))
+
+        W_crit = (self.powerstate.plasma["te"] * 1e3) * (4 * (Ae / Aalpha) ** 0.5 / (3 * pi**0.5 * c_a)) ** (
+            -2.0 / 3.0
+        )  # in eV
+
+        frac_ai = sivukhin(Ealpha / W_crit)  # This solves Eq 17 of Stix
+
+        # -----------------------------------------------------------
+        # Return power density profile
+        # -----------------------------------------------------------
+        self.powerstate.plasma["qfusi"] = p_alpha_he * frac_ai
+        self.powerstate.plasma["qfuse"] = p_alpha_he * (1 - frac_ai)
 
     def _evaluate_radiation(self):
 
@@ -627,59 +666,6 @@ def get_chebyshev_coeffs(name):
         c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     return c
-
-
-def alpha_heating(ti, te, ne, ni, mi, Zi, Dion, Tion):
-    """
-    This script calculates the power density profile (W/cm^3) that goes to ions and to electrons from
-    fusion alphas, using kinetic profiles as inputs.
-
-    This method follows the same methodology as in TGYRO [Candy et al. PoP 2009] and all the credits
-    are due to the authors of TGYRO. From the source code, this function follows the same procedures
-    as in tgyro_auxiliary_routines.f90.
-    """
-
-    # -----------------------------------------------------------
-    # Obtain the Deuterium and Tritium densities,
-    # otherwise there is no alpha power and zeros are returned
-    # -----------------------------------------------------------
-
-    if (not Dion[0].isnan()) and (not Tion[0].isnan()):
-        n_d, n_t = ni[..., Dion[0]] * 1e19, ni[..., Tion[0]] * 1e19  # m^-3
-    else:
-        return ni[..., 0] * 0.0, ni[..., 0] * 0.0
-
-    # -----------------------------------------------------------
-    # Alpha energy birth rate
-    # -----------------------------------------------------------
-
-    sigv = sigv_fun(ti)
-    s_alpha_he = sigv * (n_d * 1e-6) * (n_t * 1e-6)  # Reactions/cm^3/s
-    p_alpha_he = s_alpha_he * Ealpha * e  # W/cm^3
-
-    # -----------------------------------------------------------
-    # Partition between electrons and ions
-    # 	from [Stix, Plasma Phys. 14 (1972) 367], Eqs. 15 and 17
-    # -----------------------------------------------------------
-
-    c_a = te * 0.0
-    for i in range(ni.shape[2]):
-        c_a += (ni[..., i] / ne) * Zi[:,i].unsqueeze(-1) ** 2 * (Aalpha / mi[:,i].unsqueeze(-1))
-
-    W_crit = (te * 1e3) * (4 * (Ae / Aalpha) ** 0.5 / (3 * pi**0.5 * c_a)) ** (
-        -2.0 / 3.0
-    )  # in eV
-
-    frac_ai = sivukhin(Ealpha / W_crit)  # This solves Eq 17 of Stix
-
-    # -----------------------------------------------------------
-    # Return power density profile
-    # -----------------------------------------------------------
-    s_alpha_i = p_alpha_he * frac_ai
-    s_alpha_e = p_alpha_he * (1 - frac_ai)
-
-    return s_alpha_e, s_alpha_i
-
 
 def sigv_fun(ti):
     """

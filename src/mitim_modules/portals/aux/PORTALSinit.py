@@ -238,6 +238,8 @@ def initializeProblem(
 
         dictCPs_base = dictCPs_base_extra
 
+    thr = 1E-5
+
     dictDVs = OrderedDict()
     for cont, var in enumerate(dictCPs_base):
         for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
@@ -253,6 +255,10 @@ def initializeProblem(
             if hardGradientLimits is not None:
                 y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
                 y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
+
+            # Check that makes sense
+            if y2-y1 < thr:
+                print(f"Warning: {var} @ pos={i} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
 
             if (seedInitial is None) or (seedInitial == 0):
                 base_gradient = dictCPs_base[var][i]

@@ -468,13 +468,13 @@ class powerstate:
             else specific_deparametrizer
         )
 
-        def _update_plasma_var(var_key, clamp_min=0, clamp_max=200, factor_mult=1):
+        def _update_plasma_var(var_key, clamp_min=None, clamp_max=None):
             if var is not None:
                 self.plasma[f"aL{var_key}"][: var.shape[0], :] = var[:, :]
             aLT_withZero = self.plasma[f"aL{var_key}"]
             _, varN = deparametrizers_choice[var_key](
                 self.plasma["roa"], aLT_withZero)
-            self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) * factor_mult
+            self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) if ( (clamp_min is not None) or (clamp_max is not None) ) else varN
             self.plasma[f"aL{var_key}"] = torch.cat(
                 (
                     self.plasma[f"aL{var_key}"][..., : -self.plasma["rho"].shape[1] + 1],
@@ -489,14 +489,17 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Prepare variables (some require special treatment)
-        factor_mult = 1
-        if name == "w0":
-            factor_mult = 1 / TRANSFORMtools.factorMult_w0(self)
+        
         if name == "ne":
             ne_0orig, ni_0orig = self.plasma["ne"].clone(), self.plasma["ni"].clone()
+        
+        if name == "w0":
+            clamp_min = clamp_max = None
+        else:
+            clamp_min, clamp_max = 0, 200
 
         # UPDATE *******************************************************
-        aLT_withZero = _update_plasma_var(name, factor_mult=factor_mult)
+        aLT_withZero = _update_plasma_var(name, clamp_min=clamp_min, clamp_max=clamp_max)
         # **************************************************************
 
         # Postprocessing (some require special treatment)

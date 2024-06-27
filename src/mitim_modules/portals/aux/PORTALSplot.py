@@ -29,7 +29,7 @@ def PORTALSanalyzer_plotMetrics(
     includeRicci=True,
     file_save=None,
     **kwargs,  # To allow pass fn that may be used in another plotMetrics method
-):
+    ):
     print("- Plotting PORTALS Metrics")
 
     self.iextra = indeces_extra
@@ -369,7 +369,7 @@ def PORTALSanalyzer_plotMetrics(
             plotFlows=plotFlows and (self.ibest == indexUse),
             addFlowLegend=cont == len(indeces_plot) - 1,
         )
-
+    
     ax = axTe
     GRAPHICStools.addDenseAxis(ax)
     # ax.set_xlabel('$\\rho_N$')
@@ -825,10 +825,6 @@ def PORTALSanalyzer_plotMetrics(
             pass
 
         ax.set_ylabel("$\\Delta$ $a/L_{X}^*$ (%)")
-        # try:
-        #     ax.set_yscale("log")
-        # except:
-        #     pass
 
         (l2,) = axA.plot(
             x0,
@@ -1016,7 +1012,6 @@ def PORTALSanalyzer_plotMetrics(
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
 
-
 def define_extra_iterators(self):
 
     # Always plot initial and best
@@ -1047,10 +1042,9 @@ def define_extra_iterators(self):
 
     return indeces_plot, colors_plot, labels_plot, markers_plot
 
-
 def PORTALSanalyzer_plotExpected(
     self, fig=None, stds=2, max_plot_points=4, plotNext=True
-):
+    ):
     print("- Plotting PORTALS Expected")
 
     if fig is None:
@@ -1756,7 +1750,6 @@ def PORTALSanalyzer_plotExpected(
     except:
         pass
 
-
 def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
@@ -1913,7 +1906,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     )
 
     ms = 0
-
+    
     p = self.mitim_runs[self.i0]["powerstate"].profiles
     p.plotGradients(
         axsR,
@@ -1923,7 +1916,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         lw=1.0,
         label="Initial (#0)",
         ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
-        plotImpurity=self.runWithImpurity,
+        plotImpurity=self.runWithImpurity+1,
         plotRotation=self.runWithRotation,
     )
 
@@ -1939,7 +1932,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
-            plotImpurity=self.runWithImpurity,
+            plotImpurity=self.runWithImpurity+1,
             plotRotation=self.runWithRotation,
         )
 
@@ -1951,12 +1944,11 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
-        plotImpurity=self.runWithImpurity,
+        plotImpurity=self.runWithImpurity+1,
         plotRotation=self.runWithRotation,
     )
 
     axsR[0].legend(loc="best")
-
 
 def PORTALSanalyzer_plotModelComparison(
     self,
@@ -1966,7 +1958,7 @@ def PORTALSanalyzer_plotModelComparison(
     includeErrors=True,
     includeMetric=True,
     includeLegAll=True,
-):
+    ):
     print("- Plotting PORTALS Simulations - Model comparison")
 
     if (fig is None) and (axs is None):
@@ -2183,7 +2175,6 @@ def PORTALSanalyzer_plotModelComparison(
 
     return axs, metrics
 
-
 def plotModelComparison_quantity(
     self,
     ax,
@@ -2197,7 +2188,7 @@ def plotModelComparison_quantity(
     includeErrors=True,
     includeMetric=True,
     includeLeg=True,
-):
+    ):
     resultsX = "tglf_neo"
     quantity_label_resultsX = "(TGLF)"
 
@@ -3198,6 +3189,7 @@ def produceInfoRanges(
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
     )
+    
     for i in range(len(rhos) - 1):
         if f"aLte_{i+1}" in bounds:
             aLTe[i + 1, :] = bounds[f"aLte_{i+1}"]
@@ -3302,8 +3294,8 @@ def produceInfoRanges(
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
-            powerstate.plasma["nZ"][0] * 0.1,
-            y_up=powerstate.plasma["nZ"][1] * 0.1,
+            powerstate.plasma["nZ"][0] * 0.1,       # in 10^20
+            y_up=powerstate.plasma["nZ"][1] * 0.1,  # in 10^20
             alpha=alpha,
             color=color,
             label=label,
@@ -3325,8 +3317,8 @@ def produceInfoRanges(
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
-            powerstate.plasma["w0"][0] * 1e-3,
-            y_up=powerstate.plasma["w0"][1] * 1e-3,
+            powerstate.plasma["w0"][0]*1E-3,        # in krad/s
+            y_up=powerstate.plasma["w0"][1]*1E-3,   # in krad/s
             alpha=alpha,
             color=color,
             label=label,

@@ -255,17 +255,27 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     defineIons(self, input_gacode, rho_vec, rho_vec)
 
     # *********************************************************************************************
+    # Treatment of rotation gradient
+    # *********************************************************************************************
+    """
+    w0 is a variable for which the normalized gradient a/Lw0 is ill defined. Consequently, the variable that is truly used as a free parameter
+    is dw0/dr. However, my routines are good for dealing with normalized x-coordinate, i.e. dw0/d(r/a)=a*dw0/dr.
+    Therefore, right before parametrizing and deparametrizing I divide by a.
+    I also divide by 1E5 because rad/s/m tends to be too high, to krad/s/cm may be closer to unity.
+    """
+
+    self.plasma["kradcm"] = 1e-5 / self.plasma["a"]
+
+    # *********************************************************************************************
 	# Define deparametrizer functions for the varying profiles and gradients from here
     # *********************************************************************************************
-
-    aLT_use_w0, factor_mult_w0 = False, factorMult_w0(self)
 
     cases_to_parameterize = [
         ["te", "te(keV)", None, 1.0, True],
         ["ti", "ti(keV)", 0, 1.0, True],
         ["ne", "ne(10^19/m^3)", None, 1.0, True],
         ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1, 1.0, True],
-        ["w0", "w0(rad/s)", None, factor_mult_w0.item(), aLT_use_w0], 
+        ["w0", "w0(rad/s)", None, self.plasma["kradcm"], False], 
     ]
 
     self.deparametrizers_fine = {}
@@ -280,9 +290,10 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
             self.deparametrizers_coarse_middle[key[0]],
         ) = parameterize_curve(
             input_gacode.derived["roa"],
-            quant * key[3],
+            quant,
             self.plasma["roa"],
             parameterize_in_aLx=key[4],
+            multiplier_quantity=key[3],
         )
         self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
 
@@ -344,21 +355,12 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ions_set_Tion"] = Tion
     self.plasma["ions_set_c_rad"] = c_rad
 
-def factorMult_w0(self):
-    """
-    w0 is a variable for which the normalized gradient a/Lw0 is ill defined. Consequently, the variable that is truly used as a free parameter
-    is dw0/dr. However, my routines are good for dealing with normalized x-coordinate, i.e. dw0/d(r/a)=a*dw0/dr.
-    Therefore, right before parametrizing and deparametrizing I divide by a.
-    I also divide by 1E5 because rad/s/m tends to be too high, to krad/s/cm may be closer to unity.
-    """
-
-    return 1e-5 / self.plasma["a"]
-
 def parameterize_curve(
     x_coord,
-    y_coord,
+    y_coord_raw,
     x_coarse_tensor,
     parameterize_in_aLx=True,
+    multiplier_quantity=1.0,
     preSmoothing=False,
     PreventNegative=False,
     ):
@@ -372,19 +374,23 @@ def parameterize_curve(
     # **********************************************************************************************************
 
     if parameterize_in_aLx:
+        # 1/Lx = -1/X*dX/dr
         integrator_function, derivator_function = (
             CALCtools.integrateGradient,
             CALCtools.produceGradient,
         )
     else:
+        # -dX/dr
         integrator_function, derivator_function = (
             CALCtools.integrateGradient_lin,
             CALCtools.produceGradient_lin,
         )
 
+    y_coord = torch.from_numpy(y_coord_raw).to(x_coarse_tensor) * multiplier_quantity
+
     ygrad_coord = derivator_function(
         torch.from_numpy(x_coord).to(x_coarse_tensor),
-        torch.from_numpy(y_coord).to(x_coarse_tensor)
+        y_coord
     )
 
     # **********************************************************************************************************
@@ -422,7 +428,7 @@ def parameterize_curve(
 
 	# Definition of trailing edge. Any point after, and including, the extra point
     x_trail = torch.from_numpy(x_coord[ir:]).to(x_coarse_tensor)
-    y_trail = torch.from_numpy(y_coord[ir:]).to(x_coarse_tensor)
+    y_trail = y_coord[ir:]
     x_notrail = torch.from_numpy(x_coord[: ir + 1]).to(x_coarse_tensor)
 
     # Produce control points, including a zero at the beginning
@@ -451,12 +457,12 @@ def parameterize_curve(
     aLy_coarse[-1, 1] = aLy_coarse[-2, 1]
 
     # Boundary condition at point moved by gridPointsAllowed
-    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord)).to(
+    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.numpy())).to(
         ygrad_coord
     )
 
     # Boundary condition at point (ACTUAL THAT I WANT to keep fixed, i.e. rho=0.8)
-    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord)).to(
+    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.numpy())).to(
         ygrad_coord
     )
 
@@ -464,7 +470,7 @@ def parameterize_curve(
     # Define deparametrizer functions
     # **********************************************************************************************************
 
-    def deparametrizer_coarse(x, y):
+    def deparametrizer_coarse(x, y, multiplier=multiplier_quantity):
         """
         Construct curve in a coarse grid
         ----------------------------------------------------------------------------------------------------
@@ -475,19 +481,19 @@ def parameterize_curve(
         """
         return (
             x,
-            integrator_function(x, y, y_bc_real),
+            integrator_function(x, y, y_bc_real) / multiplier,
         )
 
-    def deparametrizer_coarse_middle(x, y):
+    def deparametrizer_coarse_middle(x, y, multiplier=multiplier_quantity):
         """
         Deparamterizes a finer profile based on the values in the coarse.
         Reason why something like this is not used for the full profile is because derivative of this will not be as original,
                 which is needed to match TGYRO
         """
         yCPs = CALCtools.Interp1d()(aLy_coarse[:, 0][:-1].repeat((y.shape[0], 1)), y, x)
-        return x, integrator_function(x, yCPs, y_bc_real)
+        return x, integrator_function(x, yCPs, y_bc_real) / multiplier
 
-    def deparametrizer_fine(x, y):
+    def deparametrizer_fine(x, y, multiplier=multiplier_quantity):
         """
         Notes:
             - x is a 1D array, but y can be a 2D array for a batch of individuals: (batch,x)
@@ -543,7 +549,7 @@ def parameterize_curve(
         x_notrail_t = torch.cat((x_notrail[:-1], x_trail), dim=0)
         yBS = torch.cat((yBS[:, :-1], y_trailnew), dim=1)
 
-        return x_notrail_t, yBS
+        return x_notrail_t, yBS / multiplier
 
     # **********************************************************************************************************
 
