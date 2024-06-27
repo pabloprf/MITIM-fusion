@@ -55,6 +55,7 @@ class powerstate:
         self.useConvectiveFluxes = EvolutionOptions.get("useConvectiveFluxes", True)
         self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
+        self.scaleIonDensities = EvolutionOptions.get("scaleIonDensities", True)
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         # Ensure that nZ is always after ne, because of how the scaling of ni rules are imposed
@@ -500,7 +501,6 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Prepare variables (some require special treatment)
-        
         if name == "ne":
             ne_0orig, ni_0orig = self.plasma["ne"].clone(), self.plasma["ni"].clone()
         
@@ -515,12 +515,22 @@ class powerstate:
 
         # Postprocessing (some require special treatment)
         if name == "ne":
-            self.plasma["ni"] = ni_0orig.clone()
-            for i in range(self.plasma["ni"].shape[-1]):
-                self.plasma["ni"][..., i] = self.plasma["ne"] * (
-                    ni_0orig[..., i] / ne_0orig
-                )
-        elif name == "nZ":
+
+            '''
+            If ne is updated, then ni must be updated as well, but keeping the thermal ion concentrations constant
+            '''
+            if self.scaleIonDensities:
+                self.plasma["ni"] = ni_0orig.clone()
+                for i in range(self.plasma["ni"].shape[-1]):
+                    self.plasma["ni"][..., i] = self.plasma["ne"] * (
+                        ni_0orig[..., i] / ne_0orig
+                    )
+
+        if name == "nZ":
+
+            '''
+            If nZ is updated, change its position in the ions set
+            '''
             self.plasma["ni"][..., self.impurityPosition - 1] = self.plasma["nZ"]
 
         return aLT_withZero
