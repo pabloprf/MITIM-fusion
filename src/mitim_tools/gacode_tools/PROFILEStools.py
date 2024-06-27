@@ -2930,7 +2930,7 @@ class PROFILES_GACODE:
         if plotImpurity is not None:
             axs4[6 + cont].plot(
                 xcoord,
-                self.profiles["ni(10^19/m^3)"][:, plotImpurity - 1] * 1e-1,
+                self.profiles["ni(10^19/m^3)"][:, plotImpurity] * 1e-1,
                 ls,
                 c=color,
                 lw=lw,
@@ -2944,7 +2944,7 @@ class PROFILES_GACODE:
             if "derived" in self.__dict__:
                 axs4[7 + cont].plot(
                     xcoord[:ix],
-                    self.derived["aLni"][:ix, plotImpurity - 1],
+                    self.derived["aLni"][:ix, plotImpurity],
                     ls,
                     c=color,
                     lw=lw,

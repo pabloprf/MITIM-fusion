@@ -65,7 +65,7 @@ def PORTALSanalyzer_plotMetrics(
 
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -1144,7 +1144,7 @@ def PORTALSanalyzer_plotExpected(
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1916,7 +1916,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         lw=1.0,
         label="Initial (#0)",
         ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
-        plotImpurity=self.runWithImpurity+1,
+        plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
 
@@ -1932,7 +1932,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
-            plotImpurity=self.runWithImpurity+1,
+            plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
 
@@ -1944,7 +1944,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
-        plotImpurity=self.runWithImpurity+1,
+        plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
 
