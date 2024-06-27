@@ -12,7 +12,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
     if figs is not None:
 
         # Insert profiles with the latest powerstate
-        profiles_new = self.to_gacode(self.profiles, insert_highres_powers=True)
+        profiles_new = self.to_gacode(insert_highres_powers=True)
 
         # Plot the inserted profiles together with the original ones
         _ = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)

@@ -15,7 +15,7 @@ verbose_level = read_verbose_level()
 
 def powerstate_to_gacode(
     self,
-    profiles_base,
+    profiles_base=None,
     options={},
     position_in_powerstate_batch=0,
     insert_highres_powers=True,
@@ -29,8 +29,6 @@ def powerstate_to_gacode(
         - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive
     """
 
-    profiles = copy.deepcopy(profiles_base)
-
     Tfast_ratio = options.get("Tfast_ratio", True)
     Ti_thermals = options.get("Ti_thermals", True)
     ni_thermals = options.get("ni_thermals", True)
@@ -40,6 +38,13 @@ def powerstate_to_gacode(
     # ------------------------------------------------------------------------------------------
     # Insert profiles
     # ------------------------------------------------------------------------------------------
+
+    if profiles_base is None:
+        profiles = copy.deepcopy(self.profiles)
+        sameAsOriginal = True
+    else:
+        profiles = copy.deepcopy(profiles_base)
+        sameAsOriginal = False
 
     roa = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
 
@@ -58,13 +63,15 @@ def powerstate_to_gacode(
                 self.plasma["roa"][position_in_powerstate_batch, :],
                 self.plasma[f"aL{key[0]}"][position_in_powerstate_batch, :],
             )
-            y_interpolated = interpolation_function(roa, x.cpu(), y[0, :].cpu())
+
+            y_new = y[0, :].cpu().numpy() if sameAsOriginal else interpolation_function(roa, x.cpu(), y[0, :].cpu())
+                
             if key[2] is None:
                 Y_copy = copy.deepcopy(profiles.profiles[key[1]])
-                profiles.profiles[key[1]] = y_interpolated
+                profiles.profiles[key[1]] = y_new
             else:
                 Y_copy = copy.deepcopy(profiles.profiles[key[1]][:, key[2]])
-                profiles.profiles[key[1]][:, key[2]] = y_interpolated
+                profiles.profiles[key[1]][:, key[2]] = y_new
 
             # ------------------------------------------------------------------------------------------
             # Special treatments
@@ -87,7 +94,7 @@ def powerstate_to_gacode(
                 profiles.makeAllThermalIonsHaveSameTemp()
 
             if key[0] == "ne" and ni_thermals:
-                scaleFactor = y_interpolated / Y_copy
+                scaleFactor = y_new / Y_copy
                 print("\t\t* Adjusting ni of thermal ions", typeMsg="i")
                 profiles.scaleAllThermalDensities(scaleFactor=scaleFactor)
 

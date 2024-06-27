@@ -57,6 +57,12 @@ class powerstate:
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
+        # Ensure that nZ is always after ne, because of how the scaling of ni rules are imposed
+        def _custom_sort_key(item):
+            return 0 if item == "ne" else 1 if item == "nZ" else 2
+        self.ProfilesPredicted = sorted(self.ProfilesPredicted, key=_custom_sort_key)
+
+
         # Default type and device tensor
         self.dfT = torch.randn(
             (2, 2),
@@ -175,28 +181,28 @@ class powerstate:
 
     def to_gacode(
         self,
-        profiles_base,
         writeFile=None,
         position_in_powerstate_batch=0,
         applyCorrections={},
         insert_highres_powers=False,
         rederive_profiles=True,
         reread_ions=True,
+        profiles_base=None,
     ):
         '''
         Notes:
-            - profiles_base is a PROFILES_GACODE object to use as basecase
+            - profiles_base is a PROFILES_GACODE object to use as basecase. If None, it will use the one stored in the class (original), so no interpolation required
             - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate, not TGYRO)
         '''
         print(">> Inserting powerstate profiles into input.gacode")
 
         profiles = TRANSFORMtools.powerstate_to_gacode(
             self,
-            profiles_base,
             position_in_powerstate_batch=position_in_powerstate_batch,
             options=applyCorrections,
             insert_highres_powers=insert_highres_powers,
             rederive=rederive_profiles,
+            profiles_base=profiles_base,
         )
 
         if writeFile is not None:
@@ -683,7 +689,6 @@ class powerstate:
         self.profiles.deriveQuantities()
         
         self.to_gacode(
-            self.profiles,
             writeFile=f"{folder}/input.gacode.new.powerstate",
             position_in_powerstate_batch=0,
             applyCorrections={
