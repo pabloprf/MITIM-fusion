@@ -58,10 +58,15 @@ class powerstate:
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         # Ensure that nZ is always after ne, because of how the scaling of ni rules are imposed
-        def _custom_sort_key(item):
-            return 0 if item == "ne" else 1 if item == "nZ" else 2
-        self.ProfilesPredicted = sorted(self.ProfilesPredicted, key=_custom_sort_key)
-
+        def _ensure_ne_before_nz(lst):
+            if "ne" in lst and "nZ" in lst:
+                ne_index = lst.index("ne")
+                nz_index = lst.index("nZ")
+                if ne_index > nz_index:
+                    # Swap "ne" and "nZ" positions
+                    lst[ne_index], lst[nz_index] = lst[nz_index], lst[ne_index]
+            return lst
+        self.ProfilesPredicted = _ensure_ne_before_nz(self.ProfilesPredicted)
 
         # Default type and device tensor
         self.dfT = torch.randn(
