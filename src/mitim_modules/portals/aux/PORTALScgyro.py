@@ -36,10 +36,10 @@ def evaluateCGYRO(
         """
         train_sep is the number of initial runs in it#0 results file. Now, it's usually 1
         start_num is the number of the first iteration, usually 0
-        trick_harcoded_f is the name of the file until the iteration number. E.g. '/Users/pablorf/PROJECTS/project_2022_mitimalcc/iter/cgyro3/run3_recover/Outputs/cgyro_results/iter_rmp_75_'
+        trick_harcoded_f is the name of the file until the iteration number. E.g. 'example_run/Outputs/cgyro_results/iter_rmp_75_'
 
         e.g.:
-            includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, '/Users/pablorf/PROJECTS/project_2024_PORTALSdatabase/d3d_iss5chan_arx2023/mitim_run1/Outputs/cgyro_results/d3d_5chan_it_'
+            includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, 'example_run/Outputs/cgyro_results/d3d_5chan_it_'
 
         """
 
@@ -64,14 +64,6 @@ def evaluateCGYRO(
     useConvectiveFluxes = PORTALSparameters["useConvectiveFluxes"]
     impurityPosition = PORTALSparameters["ImpurityOfInterest"]
     OriginalFimp = PORTALSparameters["fImp_orig"]
-
-    print(
-        "\t- Suggested command to send files (not .new) for CGYRO evaluation:",
-        typeMsg="i",
-    )
-    lapfile = f"{IOtools.expandPath(folder,ensurePathValid=True)}/Outputs/portals_profiles/input.gacode.{numPORTALS}"
-    mfefol = f"{IOtools.expandPath(folder,ensurePathValid=True).replace('/Users/pablorf/PRF/','/home/pablorf/PROJECTS/')}/portals_profiles/"
-    print(f"\t\tscp -P 9224 {lapfile} mferws01.psfc.mit.edu:{mfefol}/.")
 
     cgyroing_file = (
         lambda file_cgyro, numPORTALS_this=0, includeMtAndGz=False: cgyroing(
