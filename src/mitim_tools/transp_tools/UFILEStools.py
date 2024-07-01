@@ -209,9 +209,9 @@ class UFILEtransp:
             f.write("".join(self.STR_header))
 
             # Variable labels
-            f.write(self.STR_labelX)
+            f.write(self.STR_labelY)
             if self.dim > 1:
-                f.write(self.STR_labelY)
+                f.write(self.STR_labelX)
             if self.dim == 3:
                 f.write(self.STR_labelQ)
             f.write(self.STR_labelZ)
@@ -220,13 +220,13 @@ class UFILEtransp:
             # Labels with number of points
             f.write(
                 "{0}                    ;-# OF {1} PTS-\n".format(
-                    str(self.numX).rjust(11), self.labelX
+                    str(self.numY).rjust(11), self.labelY
                 )
             )
             if self.dim > 1:
                 f.write(
                     "{0}                    ;-# OF {1} PTS-\n".format(
-                        str(self.numY).rjust(11), self.labelY
+                        str(self.numX).rjust(11), self.labelX
                     )
                 )
             if self.dim == 3:
@@ -240,11 +240,11 @@ class UFILEtransp:
             # Variables
             # ------------------
 
-            # ~~~~~~ Write X variable
-            self.writeVar(f, self.Variables["X"])
+            # ~~~~~~ Write Y variable
+            self.writeVar(f, self.Variables["Y"])
             if self.dim > 1:
-                # ~~~~~~ Write Y variable
-                self.writeVar(f, self.Variables["Y"])
+                # ~~~~~~ Write X variable
+                self.writeVar(f, self.Variables["X"])
                 # ~~~~~~ Prepare Z variable
                 if self.dim == 3:
                     self.writeVar(f, self.Variables["Q"])
