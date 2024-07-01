@@ -1802,8 +1802,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     profile_original = self.mitim_runs[0]["powerstate"].profiles
     profile_best =  self.mitim_runs[self.ibest]["powerstate"].profiles
 
-    profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
-    profile_original_0 = self.mitim_runs["profiles_original"]
+    profile_original_unCorrected = self.mitim_runs["profiles_original"]
+    profile_original_0 = self.mitim_runs["profiles_modified"]
 
     fig4 = fn.add_figure(label="PROFILES Comparison", tab_color=fn_color)
     grid = plt.GridSpec(

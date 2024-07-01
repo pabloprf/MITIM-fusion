@@ -23,20 +23,19 @@ def initializeProblem(
     hardGradientLimits=None,
     restartYN=False,
     dvs_fixed=None,
-    grabFrom=None,
-    profileForBase=None,
+    start_from_folder=None,
+    define_ranges_from_profiles=None,
     dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
     ):
     """
-    Specification of points occur in rho coordinate, although internally the work is r/a
-    restartYN = True if restart from beginning
-
-    I can give ModelOptions directly (e.g. if I want chis or something)
-
-    profileForBase must be PROFILES class
+    Notes:
+        - Specification of points occur in rho coordinate, although internally the work is r/a
+            restartYN = True if restart from beginning
+        - I can give ModelOptions directly (e.g. if I want chis or something)
+        - define_ranges_from_profiles must be PROFILES class
     """
 
     if seedInitial is not None:
@@ -61,7 +60,7 @@ def initializeProblem(
     # ---- Make another copy to preserve the original state
 
     os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original_originalResol_uncorrected"
+        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
     )
 
     # ---- Initialize file to modify and increase resolution
@@ -91,7 +90,7 @@ def initializeProblem(
     defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_original")
+    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
         portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
@@ -190,8 +189,8 @@ def initializeProblem(
         dictCPs_base[name] = portals_fun.powerstate.update_var(name, var=None)[0, :]
 
     # Maybe it was provided from earlier run
-    if grabFrom is not None:
-        dictCPs_base = grabPrevious(grabFrom, dictCPs_base)
+    if start_from_folder is not None:
+        dictCPs_base = grabPrevious(start_from_folder, dictCPs_base)
         for name in portals_fun.MODELparameters["ProfilesPredicted"]:
             _ = portals_fun.powerstate.update_var(
                 name, var=dictCPs_base[name].unsqueeze(0)
@@ -212,10 +211,10 @@ def initializeProblem(
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     if (
-        profileForBase is not None
+        define_ranges_from_profiles is not None
     ):  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
-            profileForBase,
+            define_ranges_from_profiles,
             EvolutionOptions={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
@@ -350,12 +349,6 @@ def initializeProblem(
         ),
         "parameters_combined": {},
     }
-
-    # Pass an text version of the initialization file, so that I can run mitim without having the initializaiton folder
-    # in the same computer
-    with open(initialization_file, "r") as f:
-        portals_fun.file_in_lines_initial_input_gacode = f.readlines()
-
 
 def defineNewPORTALSGrid(profiles, rhoMODEL):
     """

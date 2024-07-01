@@ -45,16 +45,6 @@ def initialization_simple_relax(self):
         "namingConvention": namingConvention,
     }
 
-    # Define input.gacode to do flux-matching with
-
-    readFile = f"{MainFolder}/input.gacode"
-    with open(readFile, "w") as f:
-        f.writelines(self.mainFunction.file_in_lines_initial_input_gacode)
-
-    from mitim_tools.gacode_tools.PROFILEStools import PROFILES_GACODE
-
-    powerstate.profiles = PROFILES_GACODE(readFile, calculateDerived=False)
-
     # Trick to actually start from different gradients than those in the initial_input_gacode
 
     X = torch.from_numpy(self.Optim["BaselineDV"]).to(self.dfT).unsqueeze(0)

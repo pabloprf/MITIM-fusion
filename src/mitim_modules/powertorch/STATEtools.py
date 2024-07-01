@@ -304,7 +304,7 @@ class powerstate:
         )
 
         # 5. Residual powers
-        self.metric()
+        self.calculateMetrics()
 
         return (
             self.plasma["P_tr"],
@@ -642,7 +642,7 @@ class powerstate:
         # Pass the results as part of the powerstate class
         self.model_results = transport.model_results
 
-    def metric(self):
+    def calculateMetrics(self):
         """
         Calculation of residual transport, dP/dt, ignoring the first (a zero)
         Define convergence metric of current state
@@ -674,64 +674,6 @@ class powerstate:
             return CALCtools.integrateQuadPoly(
                 self.plasma["rmin"][0,:].repeat(force_dim,1), var * self.plasma["volp"][0,:].repeat(force_dim,1),
             ) / self.plasma["volp"][0,:].repeat(force_dim,1)
-
-    def determinePerformance(self, nameRun="test", folder="~/scratch/"):
-        '''
-        At this moment, this recalculates fusion and radiation, etc
-        '''
-        folder = IOtools.expandPath(folder)
-
-        # ************************************
-        # Calculate state
-        # ************************************
-
-        self.calculate(None, nameRun=nameRun, folder=folder)
-
-        # ************************************
-        # Postprocessing
-        # ************************************
-
-        self.plasma["Pfus"] = (
-            self.volume_integrate(
-                (self.plasma["qfuse"] + self.plasma["qfusi"]) * 5.0
-            )
-            * self.plasma["volp"]
-        )[..., -1]
-        self.plasma["Prad"] = (
-            self.volume_integrate(self.plasma["qrad"]) * self.plasma["volp"]
-        )[..., -1]
-
-        self.profiles.deriveQuantities()
-        
-        self.to_gacode(
-            writeFile=f"{folder}/input.gacode.new.powerstate",
-            position_in_powerstate_batch=0,
-            applyCorrections={
-                "Tfast_ratio": False,
-                "Ti_thermals": False,
-                "ni_thermals": False,
-                "recompute_ptot": False,
-                "ensureMachNumber": None,
-            },
-            insert_highres_powers=True,
-            rederive_profiles=False,
-            reread_ions=False,
-        )
-
-        self.plasma["Pin"] = (
-            (self.plasma["Paux_e"] + self.plasma["Paux_i"]) * self.plasma["volp"]
-        )[..., -1]
-        self.plasma["Q"] = self.plasma["Pfus"] / self.plasma["Pin"]
-
-        # ************************************
-        # Print Info
-        # ************************************
-
-        print(
-            f"Q = {self.plasma['Q'].item():.2f} (Pfus = {self.plasma['Pfus'].item():.2f}MW, Pin = {self.plasma['Pin'].item():.2f}MW)"
-        )
-
-        print(f"Prad = {self.plasma['Prad'].item():.2f}MW")
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 

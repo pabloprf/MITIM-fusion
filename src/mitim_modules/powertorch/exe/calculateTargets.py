@@ -89,7 +89,62 @@ def calculator(
 
     # p.profiles = p.to_gacode(
     #     profiles, insert_highres_powers=True, rederive_profiles=True)
-    p.determinePerformance(nameRun="test", folder=IOtools.expandPath(folder))
+
+    # Determine performance
+    nameRun="test"
+    folder=IOtools.expandPath(folder)
+
+    # ************************************
+    # Calculate state
+    # ************************************
+
+    p.calculate(None, nameRun=nameRun, folder=folder)
+
+    # ************************************
+    # Postprocessing
+    # ************************************
+
+    p.plasma["Pfus"] = (
+        p.volume_integrate(
+            (p.plasma["qfuse"] + p.plasma["qfusi"]) * 5.0
+        )
+        * p.plasma["volp"]
+    )[..., -1]
+    p.plasma["Prad"] = (
+        p.volume_integrate(p.plasma["qrad"]) * p.plasma["volp"]
+    )[..., -1]
+
+    p.profiles.deriveQuantities()
+    
+    p.to_gacode(
+        writeFile=f"{folder}/input.gacode.new.powerstate",
+        position_in_powerstate_batch=0,
+        applyCorrections={
+            "Tfast_ratio": False,
+            "Ti_thermals": False,
+            "ni_thermals": False,
+            "recompute_ptot": False,
+            "ensureMachNumber": None,
+        },
+        insert_highres_powers=True,
+        rederive_profiles=False,
+        reread_ions=False,
+    )
+
+    p.plasma["Pin"] = (
+        (p.plasma["Paux_e"] + p.plasma["Paux_i"]) * p.plasma["volp"]
+    )[..., -1]
+    p.plasma["Q"] = p.plasma["Pfus"] / p.plasma["Pin"]
+
+    # ************************************
+    # Print Info
+    # ************************************
+
+    print(
+        f"Q = {p.plasma['Q'].item():.2f} (Pfus = {p.plasma['Pfus'].item():.2f}MW, Pin = {p.plasma['Pin'].item():.2f}MW)"
+    )
+
+    print(f"Prad = {p.plasma['Prad'].item():.2f}MW")
 
     return p
 

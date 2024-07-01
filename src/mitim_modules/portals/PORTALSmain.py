@@ -231,15 +231,15 @@ class portals(STRATEGYtools.opt_evaluator):
         dvs_fixed=None,
         limitsAreRelative=True,
         hardGradientLimits=None,
-        profileForBase=None,
-        grabFrom=None,
+        define_ranges_from_profiles=None,
+        start_from_folder=None,
         reevaluateTargets=0,
         seedInitial=None,
         askQuestions=True,
         ModelOptions=None,
     ):
         """
-        grabFrom is a folder from which to grab optimization_data and optimization_extra
+        start_from_folder is a folder from which to grab optimization_data and optimization_extra
                 (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
 
         ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
@@ -315,8 +315,8 @@ class portals(STRATEGYtools.opt_evaluator):
             self.INITparameters,
             ymax_rel,
             ymin_rel,
-            grabFrom=grabFrom,
-            profileForBase=profileForBase,
+            start_from_folder=start_from_folder,
+            define_ranges_from_profiles=define_ranges_from_profiles,
             dvs_fixed=dvs_fixed,
             limitsAreRelative=limitsAreRelative,
             restartYN=restartYN,
@@ -332,9 +332,9 @@ class portals(STRATEGYtools.opt_evaluator):
         # Option to restart
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if grabFrom is not None:
+        if start_from_folder is not None:
             self.reuseTrainingTabular(
-                grabFrom, folderWork, reevaluateTargets=reevaluateTargets
+                start_from_folder, folderWork, reevaluateTargets=reevaluateTargets
             )
 
         # If the option of reading from a file, for standard portals ignore the targets
@@ -377,11 +377,11 @@ class portals(STRATEGYtools.opt_evaluator):
             with open(self.optimization_extra, "rb") as handle:
                 dictStore = pickle_dill.load(handle)
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
+            dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
+                f"{self.folder}/Initialization/input.gacode_modified"
+            )
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_original"
-            )
-            dictStore["profiles_original_un"] = PROFILEStools.PROFILES_GACODE(
-                f"{self.folder}/Initialization/input.gacode_original_originalResol_uncorrected"
             )
             with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle)
@@ -548,14 +548,8 @@ def runModelEvaluator(
     # Prep run
     # ---------------------------------------------------------------------------------------------------
 
-    FolderEvaluation_model = FolderEvaluation + "/model_complete/"
-    os.system(f"mkdir {FolderEvaluation_model}")
-
-    # Better to write/read each time than passing the class in self.portals_parameters, because self.portals_parameters will be used during the surrogate, which can be expensive
-
-    readFile = f"{FolderEvaluation}/input.gacode_copy_initialization"
-    with open(readFile, "w") as f:
-        f.writelines(self.file_in_lines_initial_input_gacode)
+    folder_model = FolderEvaluation + "/model_complete/"
+    os.system(f"mkdir {folder_model}")
 
     # ---------------------------------------------------------------------------------------------------
     # Prepare evaluating vector X
@@ -575,16 +569,12 @@ def runModelEvaluator(
     # Run model through powerstate
     # ---------------------------------------------------------------------------------------------------
 
-    # Initialize with original profile
-    powerstate.profiles = PROFILEStools.PROFILES_GACODE(
-        readFile, calculateDerived=False
-    )
-
+    # In certain cases, I want to restart the model directly from the PORTALS call instead of powerstate
     powerstate.TransportOptions["ModelOptions"]["restart"] = restart
 
-    # Evaluate X (DVs) through powerstate.calculate. This will populate .plasma with the results
+    # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(
-        X, nameRun=name, folder=FolderEvaluation_model, evaluation_number=numPORTALS
+        X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS
     )
 
     # ---------------------------------------------------------------------------------------------------
