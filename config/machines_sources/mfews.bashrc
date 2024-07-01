@@ -9,6 +9,7 @@ alias trfbm_order='python3 /home/pablorf/TRANSPhub/05_Utilities/acsort.py'
 
 # NTCC ******************************************************************************************************
 export NTCC_HOME=/home/sachdev/ntcc/ntcc-23.1.0/
+#export NTCC_HOME=/home/sachdev/ntcc/ntcc-20.3.1/
 
 export NTCC_ROOT=$NTCC_HOME
 export CONFIGDIR=$NTCC_HOME/etc

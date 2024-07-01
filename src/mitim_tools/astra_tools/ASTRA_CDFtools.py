@@ -42,6 +42,7 @@ class CDFreactor:
             del self.nc_file
 
     def getProfiles(self):
+        self.na1 = self.f["NA1"][:]
         self.BTOR = self.f["BTOR"][:]
         self.IPL = self.f["IPL"][:]
         self.Te = self.f["TE"][:]
@@ -71,9 +72,6 @@ class CDFreactor:
         self.Qi = self.f["QI"][:]
         self.Qe = self.f["QE"][:]
         self.Qn = self.f["QN"][:]
-        # self.QNTOT  = self.f['CAR8'][:]
-        # self.QETOT  = self.f['CAR9'][:]
-        # self.QITOT  = self.f['CAR10'][:]
         self.PEECR = self.f["PEECR"][:]
         self.G11 = self.f["G11"][:]
 
@@ -320,6 +318,8 @@ class CDFreactor:
         self.POH = self.f["CAR6"][:]
         self.QDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.QICRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.Cu_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.Cubs_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QE = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QI = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QRAD = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
@@ -328,12 +328,22 @@ class CDFreactor:
         self.ne_avg = np.zeros([len(self.PEICR[:,-1])])
         self.Te_avg = np.zeros([len(self.PEICR[:,-1])])
         self.Ti_avg = np.zeros([len(self.PEICR[:,-1])])
+        self.n_Gr = self.IPL/(np.pi*self.ABC**2)
         self.tau98 = np.zeros([len(self.PEICR[:,-1])])
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
+        self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        for ii in range(0,int(self.na1[-1])):
+             if ii>0:
+                  self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
+             else:
+                  self.area[:,ii] = self.AREAT[:,ii]
+        
         for kk in range(0,len(self.PEDT[:,-1])):
              self.QDT[kk,:] = np.cumsum((self.PEDT[kk,:]+self.PIDT[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QICRH[kk,:] = np.cumsum((self.PIICR[kk,:]+self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
+             self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
+             self.Cubs_tot[kk,:] = np.cumsum(self.Cubs[kk,:]*self.area[kk,:])
              self.QE[kk,:] = np.cumsum(self.PE[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QI[kk,:] = np.cumsum(self.PI[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QRAD[kk,:] = np.cumsum(self.PRAD[kk,:]*self.HRO[kk]*self.VR[kk,:])
@@ -344,6 +354,11 @@ class CDFreactor:
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*(self.ne_avg[kk])**0.41*(self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
 
+        self.f_Gr = self.ne_avg/10/self.n_Gr
+        # self.QNTOT  = self.f['CAR8'][:]
+        self.QETOT  = self.QE
+        self.QITOT  = self.QI
+        self.SNTOT = self.f["SNTOT"][:]
         self.Wtot = 0.0024*self.Wtot   #check formula in ASTRA
         self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)
         self.H98 = self.tauE[:,-1]/self.tau98
@@ -389,6 +404,11 @@ class CDFreactor:
         self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper
         self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])
         self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr
+        self.q95position = int(0.95*len(self.CAR1[-1,:])-1)
+        self.q95 = 1/self.Mu[:,self.q95position]
+        self.delta95 = self.tria[:,self.q95position]
+        self.kappa95 = self.elon[:,self.q95position]
+        self.q_Uckan = 5*self.ABC**2*self.BTOR/(self.RTOR*self.IPL)*(1+self.kappa95**2*(1+2*self.delta95**2-1.2*self.delta95**3))/2
 
         rtor_matrix = np.zeros(self.rho.shape)
         for i in range(rtor_matrix.shape[1]):
@@ -428,7 +448,7 @@ class CDFreactor:
         self.plot_chi_e(time_aims=time_aims)
         self.plot_chi_i(time_aims=time_aims)
         self.plot_heat_fluxes(time_aims=time_aims)
-        # self.plot_flux_matching(time_aims = time_aims)
+        self.plot_flux_matching(time_aims = time_aims)
         self.plot_pulse()
 
         self.fn.show()
@@ -785,14 +805,14 @@ class CDFreactor:
 
         self.axQet = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axQet, self.Qe, rho_tor_aims, linestyle="dashed")
-        # self.make_temporal_plots(self.axQet, self.QETOT, rho_tor_aims)
+        self.make_temporal_plots(self.axQet, self.QETOT, rho_tor_aims)
         self.axQet.set_ylabel("Qe")
         # self.axQet.set_ylim(qe_lim)
         plt.legend(["Qe", "Qetot"], title=r"$\rho_{tor}$ = " + str(rho_tor_aims[0]))
 
         self.axQit = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(self.axQit, self.Qi, rho_tor_aims, linestyle="dashed")
-        # self.make_temporal_plots(self.axQit, self.QITOT, rho_tor_aims)
+        self.make_temporal_plots(self.axQit, self.QITOT, rho_tor_aims)
         self.axQit.set_ylabel("Qi")
         # self.axQit.set_ylim(qi_lim)
         plt.legend(["Qi", "Qitot"], title=r"$\rho_{tor}$ = " + str(rho_tor_aims[0]))
@@ -813,17 +833,17 @@ class CDFreactor:
 
         self.axQer = fig.add_subplot(2, 3, 4)
         self.make_radial_plots(self.axQer, self.Qe, last_time, linestyle="dashed")
-        # self.make_radial_plots(self.axQer, self.QETOT, last_time)
+        self.make_radial_plots(self.axQer, self.QETOT, last_time)
         self.axQer.set_xlim([0, self.boundary])
-        self.axQer.set_ylim(qe_lim)
+        # self.axQer.set_ylim(qe_lim)
         self.axQer.set_ylabel("Qe")
         plt.legend(["Qe", "Qetot"], title="Time = " + str(last_time[0]))
 
         self.axQir = fig.add_subplot(2, 3, 5)
         self.make_radial_plots(self.axQir, self.Qi, last_time, linestyle="dashed")
-        # self.make_radial_plots(self.axQir, self.QITOT, last_time)
+        self.make_radial_plots(self.axQir, self.QITOT, last_time)
         self.axQir.set_xlim([0, self.boundary])
-        self.axQir.set_ylim(qi_lim)
+        # self.axQir.set_ylim(qi_lim)
         self.axQir.set_ylabel("Qi")
         plt.legend(["Qi", "Qitot"], title="Time = " + str(last_time[0]))
 
@@ -831,7 +851,7 @@ class CDFreactor:
         self.make_radial_plots(self.axQnr, self.Qn, last_time, linestyle="dashed")
         # self.make_radial_plots(self.axQnr, self.QNTOT, last_time)
         self.axQnr.set_xlim([0, self.boundary])
-        self.axQnr.set_ylim(qn_lim)
+        # self.axQnr.set_ylim(qn_lim)
         self.axQnr.set_ylabel("Qn")
         plt.legend(["Qn/volume", "Qntot/volume"], title="Time = " + str(last_time[0]))
 
