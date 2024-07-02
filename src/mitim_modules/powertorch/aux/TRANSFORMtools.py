@@ -16,7 +16,7 @@ verbose_level = read_verbose_level()
 def powerstate_to_gacode(
     self,
     profiles_base=None,
-    options={},
+    postprocess_input_gacode={},
     position_in_powerstate_batch=0,
     insert_highres_powers=True,
     rederive=True,
@@ -29,11 +29,13 @@ def powerstate_to_gacode(
         - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive
     """
 
-    Tfast_ratio = options.get("Tfast_ratio", True)
-    Ti_thermals = options.get("Ti_thermals", True)
-    ni_thermals = options.get("ni_thermals", True)
-    recompute_ptot = options.get("recompute_ptot", True)
-    ensureMachNumber = options.get("ensureMachNumber", None)
+    # Default options for postprocessing
+    
+    Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", True)
+    Ti_thermals = postprocess_input_gacode.get("Ti_thermals", True)
+    ni_thermals = postprocess_input_gacode.get("ni_thermals", True)
+    recompute_ptot = postprocess_input_gacode.get("recompute_ptot", True)
+    ensureMachNumber = postprocess_input_gacode.get("ensureMachNumber", None)
 
     # ------------------------------------------------------------------------------------------
     # Insert profiles

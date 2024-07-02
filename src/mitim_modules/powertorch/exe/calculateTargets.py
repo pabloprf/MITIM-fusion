@@ -117,9 +117,9 @@ def calculator(
     p.profiles.deriveQuantities()
     
     p.to_gacode(
-        writeFile=f"{folder}/input.gacode.new.powerstate",
+        write_input_gacode=f"{folder}/input.gacode.new.powerstate",
         position_in_powerstate_batch=0,
-        applyCorrections={
+        postprocess_input_gacode={
             "Tfast_ratio": False,
             "Ti_thermals": False,
             "ni_thermals": False,
@@ -128,7 +128,6 @@ def calculator(
         },
         insert_highres_powers=True,
         rederive_profiles=False,
-        reread_ions=False,
     )
 
     p.plasma["Pin"] = (

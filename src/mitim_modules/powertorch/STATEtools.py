@@ -187,44 +187,43 @@ class powerstate:
 
     def to_gacode(
         self,
-        writeFile=None,
+        write_input_gacode=None,
         position_in_powerstate_batch=0,
-        applyCorrections={},
+        postprocess_input_gacode={},
         insert_highres_powers=False,
         rederive_profiles=True,
-        reread_ions=True,
         profiles_base=None,
     ):
         '''
         Notes:
             - profiles_base is a PROFILES_GACODE object to use as basecase. If None, it will use the one stored in the class (original), so no interpolation required
-            - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate, not TGYRO)
+            - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
         '''
-        print(">> Inserting powerstate profiles into input.gacode")
+        print(">> Inserting powerstate into input.gacode")
 
         profiles = TRANSFORMtools.powerstate_to_gacode(
             self,
             position_in_powerstate_batch=position_in_powerstate_batch,
-            options=applyCorrections,
+            postprocess_input_gacode=postprocess_input_gacode,
             insert_highres_powers=insert_highres_powers,
             rederive=rederive_profiles,
             profiles_base=profiles_base,
         )
 
-        if writeFile is not None:
-            print(f"\t- Writing input.gacode file: {IOtools.clipstr(writeFile)}")
-            if not os.path.exists(os.path.dirname(writeFile)):
-                os.makedirs(os.path.dirname(writeFile))
-            profiles.writeCurrentStatus(file=writeFile)
+        # Write input.gacode
+        if write_input_gacode is not None:
+            print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
+            if not os.path.exists(os.path.dirname(write_input_gacode)):
+                os.makedirs(os.path.dirname(write_input_gacode))
+            profiles.writeCurrentStatus(file=write_input_gacode)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
-        if reread_ions:
-            TRANSFORMtools.defineIons(
-                self, profiles, self.plasma["rho"][position_in_powerstate_batch, :], self.dfT
-            )
-
+        if rederive_profiles:
+            TRANSFORMtools.defineIons(self, profiles, self.plasma["rho"][position_in_powerstate_batch, :], self.dfT)
             # Repeat, that's how it's done earlier
-            self._repeat_tensors(batch_size=self.plasma["rho"].shape[0], specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"], positionToUnrepeat=None)
+            self._repeat_tensors(batch_size=self.plasma["rho"].shape[0],
+                specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"],
+                positionToUnrepeat=None)
 
         return profiles
 

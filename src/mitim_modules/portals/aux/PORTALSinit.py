@@ -198,8 +198,8 @@ def initializeProblem(
 
     # Write this updated profiles class (with parameterized profiles)
     _ = portals_fun.powerstate.to_gacode(
-        writeFile=f"{FolderInitialization}/input.gacode",
-        applyCorrections=portals_fun.MODELparameters["applyCorrections"],
+        write_input_gacode=f"{FolderInitialization}/input.gacode",
+        postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
     )
 
     # Original complete targets
