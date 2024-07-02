@@ -1,9 +1,9 @@
 import os
+from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from IPython import embed
-from time import time
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
@@ -27,8 +27,8 @@ class MITIMgeqdsk:
             with open(filename, "r") as f:
                 lines = f.readlines()
             with open(f"{filename}_noCoils.geqdsk", "w") as f:
-                for line in lines:
-                    if line[:2] == "  ":
+                for cont,line in enumerate(lines):
+                    if cont>0 and line[:2] == "  ":
                         break
                     f.write(line)
             filename = f"{filename}_noCoils.geqdsk"
@@ -48,7 +48,7 @@ class MITIMgeqdsk:
             os.system(f"rm {filename}")
 
     @classmethod
-    def timeslices(cls, filename, fullLCFS=False, removeCoils=True):
+    def timeslices(cls, filename, **kwargs):
         print("\n...Opening GEQ file with several time slices")
 
         with open(filename, "rb") as f:
@@ -79,9 +79,7 @@ class MITIMgeqdsk:
 
             gs.append(
                 cls(
-                    f"{filename}_time{i}.geqdsk",
-                    fullLCFS=fullLCFS,
-                    removeCoils=removeCoils,
+                    f"{filename}_time{i}.geqdsk",**kwargs,
                 )
             )
             os.system(f"rm {filename}_time{i}.geqdsk")
