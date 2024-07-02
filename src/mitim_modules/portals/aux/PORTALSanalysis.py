@@ -97,11 +97,11 @@ class PORTALSanalyzer:
 
         merged_instance = cls(base_instance.opt_fun, folderAnalysis)
         merged_instance.mitim_runs = merged_mitim_runs
-        merged_instance.mitim_runs["profiles_modified"] = base_instance.mitim_runs[
-            "profiles_modified"
-        ]
         merged_instance.mitim_runs["profiles_original"] = base_instance.mitim_runs[
             "profiles_original"
+        ]
+        merged_instance.mitim_runs["profiles_modified"] = base_instance.mitim_runs[
+            "profiles_modified"
         ]
 
         merged_instance.prep_metrics(ilast=cont - 1)

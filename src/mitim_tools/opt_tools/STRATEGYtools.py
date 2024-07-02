@@ -404,10 +404,16 @@ class PRF_BO:
 
             # Read if exists
             if os.path.exists(self.optimization_extra):
-                with open(self.optimization_extra, "rb") as handle:
-                    dictStore = pickle_dill.load(handle)
+                try:
+                    with open(self.optimization_extra, "rb") as handle:
+                        dictStore = pickle_dill.load(handle)
+                    exists = True
+                except (ModuleNotFoundError,EOFError):
+                    exists = False
+                    print('Problem loading "optimization_extra.pkl"',typeMsg="w")
+            
             # nans if not
-            else:
+            if not exists:
                 dictStore = {}
                 for i in range(200):
                     dictStore[i] = np.nan
