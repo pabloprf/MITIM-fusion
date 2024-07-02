@@ -42,6 +42,8 @@ class CDFreactor:
             del self.nc_file
 
     def getProfiles(self):
+        self.R = self.f["r2d"][:]
+        self.Z = self.f["z2d"][:]
         self.na1 = self.f["NA1"][:]
         self.BTOR = self.f["BTOR"][:]
         self.IPL = self.f["IPL"][:]
