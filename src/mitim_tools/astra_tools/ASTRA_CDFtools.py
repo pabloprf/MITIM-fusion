@@ -329,6 +329,7 @@ class transp_output:
         self.SLAT = self.f['SLAT'][:]
         self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
