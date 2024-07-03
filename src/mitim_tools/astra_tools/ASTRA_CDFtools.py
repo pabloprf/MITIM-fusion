@@ -335,6 +335,7 @@ class CDFreactor:
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
         self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
@@ -342,6 +343,7 @@ class CDFreactor:
                   self.area[:,ii] = self.AREAT[:,ii]
         
         for kk in range(0,len(self.PEDT[:,-1])):
+             self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
              self.QDT[kk,:] = np.cumsum((self.PEDT[kk,:]+self.PIDT[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QICRH[kk,:] = np.cumsum((self.PIICR[kk,:]+self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
