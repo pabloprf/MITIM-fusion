@@ -641,7 +641,7 @@ class TGLF:
                     ]["folder"]
 
                     self.ky_single = None
-                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old)
+                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, restartWF = False)
                     self.ky_single = kys
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
@@ -737,6 +737,7 @@ class TGLF:
         folder=None,  # If None, search in the previously run folder
         suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
+        restartWF = True, # If this is a "complete" read, I will assign a None
     ):
         print("> Reading TGLF results")
 
@@ -811,6 +812,10 @@ class TGLF:
                 if f"ky{ky_single0}" not in self.FoldersTGLF_WF:
                     continue
 
+                if folder not in self.FoldersTGLF_WF[f'ky{ky_single0}']:
+                    print(f"\t - Results not found for ky={ky_single0}, likely due to a restart with no wavefunction option", typeMsg="w")
+                    continue
+
                 self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 for ir in self.rhos:
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
@@ -821,6 +826,10 @@ class TGLF:
                             f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
                         )
                     )
+
+        # After read, go back to no waveforms in case I want to read another case without it
+        if restartWF:
+            self.ky_single = None
 
     def plot(
         self,
@@ -856,6 +865,20 @@ class TGLF:
                 and (self.results[label]["profiles"] is not None)
             )
         plotNormalizations = plotNormalizations and plotGACODE
+
+
+        # Grab all possibilities of wavefunctions
+        ky_single_stored = {}
+        ky_single_stored_unique = []
+        for contLab, label in enumerate(labels):
+            if "wavefunction" in self.results[label]:
+                ky_single_stored[label] = [float(k.split('ky')[-1]) for k in self.results[label]["wavefunction"].keys()]
+                ky_single_stored_unique += ky_single_stored[label] 
+            else:
+                ky_single_stored[label] = None
+        ky_single_stored_unique = np.unique(ky_single_stored_unique)
+        # --
+
 
         if labels_legend is None:
             labels_legend = labels
@@ -919,11 +942,10 @@ class TGLF:
         )
 
         figsWF = {}
-        if self.ky_single is not None:
-            for ky_single0 in self.ky_single:
-                figsWF[ky_single0] = self.fn.add_figure(
-                    label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
-                )
+        for ky_single0 in ky_single_stored_unique:
+            figsWF[ky_single0] = self.fn.add_figure(
+                label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
+            )
         fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
         fig7 = self.fn.add_figure(
             label=f"{extratitle}Input Controls", tab_color=fn_color
@@ -1933,15 +1955,18 @@ class TGLF:
                         extralab=label + " ",
                     )
 
+        # --------------------------------
         # Wavefunction?
-        if self.ky_single is not None:
+        # --------------------------------
+
+        if len(ky_single_stored_unique)>0:
             includeSubdominant = False  # True if len(labels)<5 else False
 
             addLegend = True
 
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
 
-            for kycont, ky_single0 in enumerate(self.ky_single):
+            for kycont, ky_single0 in enumerate(ky_single_stored_unique):
                 figWF = figsWF[ky_single0]
 
                 ax00 = figWF.add_subplot(grid[0, 0])
@@ -1955,6 +1980,10 @@ class TGLF:
 
                 cont = 0
                 for contLab, label in enumerate(labels):
+
+                    if ky_single0 not in ky_single_stored[label]:
+                        continue
+
                     labZX = (
                         f"{labels_legend[contLab]} " if len(labels_legend) > 1 else ""
                     )
@@ -2013,14 +2042,14 @@ class TGLF:
                         # Eigenvalue
 
                         ax00.axvline(
-                            x=self.ky_single[kycont],
+                            x=ky_single_stored_unique[kycont],
                             ls="--",
                             lw=0.5,
                             c=colors[cont],
                             label="Requested" if cont == 0 else "",
                         )
                         ax10.axvline(
-                            x=self.ky_single[kycont],
+                            x=ky_single_stored_unique[kycont],
                             ls="--",
                             lw=0.5,
                             c=colors[cont],
@@ -2111,7 +2140,7 @@ class TGLF:
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
+                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -2121,7 +2150,7 @@ class TGLF:
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
+                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2214,7 +2243,7 @@ class TGLF:
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
             self.read(
-                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult]
+                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult], restartWF = False
             )
 
     def _prepare_scan(
