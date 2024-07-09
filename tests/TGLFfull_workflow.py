@@ -22,22 +22,31 @@ tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0
 _ = tglf.prep(folder, restart=restart)
 
 tglf.run(
-    subFolderTGLF="runBase/",
+    subFolderTGLF="run2/",
     TGLFsettings=5,
     runWaveForms=[0.1,0.3],
     restart=restart,
     forceIfRestart=True,
 )
-tglf.read(label="runBase", d_perp_cm={0.6: 0.5, 0.8: 0.5})
+tglf.read(label="run2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
     subFolderTGLF="runSAT0/",
     TGLFsettings=2,
-    runWaveForms=[0.1,0.3],
+    runWaveForms=[0.5],
     restart=restart,
     forceIfRestart=True,
 )
 tglf.read(label="runSAT0", d_perp_cm={0.6: 0.5, 0.8: 0.5})
+
+tglf.run(
+    subFolderTGLF="runSAT3/",
+    TGLFsettings=6,
+    runWaveForms=[0.5],
+    restart=restart,
+    forceIfRestart=True,
+)
+tglf.read(label="runSAT3", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.NormalizationSets["EXP"]["exp_TeFluct_rho"] = [0.6, 0.8]
 tglf.NormalizationSets["EXP"]["exp_TeFluct"] = [1.12, 1.49]
@@ -45,7 +54,7 @@ tglf.NormalizationSets["EXP"]["exp_TeFluct_error"] = 0.2
 tglf.NormalizationSets["EXP"]["exp_Qe_error"] = 0.005
 tglf.NormalizationSets["EXP"]["exp_Qi_error"] = 0.005
 
-tglf.plot(labels=["runBase", "runSAT0"])
+tglf.plot(labels=["runSAT0", "runSAT2", "runSAT3"])
 
 # Required if running in non-interactive mode
 tglf.fn.show()
