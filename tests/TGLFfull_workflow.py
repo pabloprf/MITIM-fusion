@@ -22,13 +22,13 @@ tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0
 _ = tglf.prep(folder, restart=restart)
 
 tglf.run(
-    subFolderTGLF="run2/",
+    subFolderTGLF="runSAT2/",
     TGLFsettings=5,
     runWaveForms=[0.1,0.3],
     restart=restart,
     forceIfRestart=True,
 )
-tglf.read(label="run2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
+tglf.read(label="runSAT2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
     subFolderTGLF="runSAT0/",
