@@ -232,7 +232,7 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
     if NML is None:
         print(
             "\t\t- Creating dummy namelist because it was not found in folder",
-            typeMsg="w",
+            typeMsg="i",
         )
         with open(LocationNML, "w") as f:
             f.write(f"nshot = {nameRunid}")

@@ -403,6 +403,7 @@ class PRF_BO:
             self.optimization_extra = f"{self.folderOutputs}/optimization_extra.pkl"
 
             # Read if exists
+            exists = False
             if os.path.exists(self.optimization_extra):
                 try:
                     with open(self.optimization_extra, "rb") as handle:

@@ -4,6 +4,80 @@ from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+# ********************************************************************************************************************
+# Normalized logaritmic gradient calculations
+# ********************************************************************************************************************
+
+def integrateGradient(x, z, z0_bound):
+    """
+    inputs as 
+    (batch,dim)
+    From tgyro_profile_functions.f90
+    x is r
+    z is 1/LT = =-1/T*dT/dr
+
+    """
+
+    # Calculate profile
+    b = torch.exp(0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1]))
+    f1 = b / torch.cumprod(b, 1) * torch.prod(b, 1, keepdims=True)
+
+    # Add the extra point of bounday condition
+    f = torch.cat((f1, torch.ones(z.shape[0], 1).to(f1)), dim=1) * z0_bound
+
+    return f
+    
+
+def produceGradient(r, p):
+    """
+    Produces -1/p * dp/dr
+    or if r is roa: a/Lp
+    """
+
+    # This is the same as it happens in expro_util.f90, bound_deriv
+    z = MATHtools.deriv(r, -torch.log(p), array=False)
+
+    # # COMMENTED because this should happen at the coarse grid
+    # z = tgyro_math_zfind(r,p,z=z)
+
+    return z  # .nan_to_num(0.0) # Added this so that, when evaluating things like rotation shear, it doesn't blow
+
+# ********************************************************************************************************************
+# Linear gradient calculations
+# ********************************************************************************************************************
+
+
+def integrateGradient_lin(x, z, z0_bound):
+    """
+    (batch,dim)
+    From tgyro_profile_functions.f90
+    x is r
+    z is -dT/dr
+
+    """
+
+    # Calculate profile
+    b = 0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1])
+    f1 = b - torch.cumsum(b, 1) + torch.sum(b, 1, keepdims=True)
+
+    # Add the extra point of bounday condition
+    f = torch.cat((f1, torch.zeros(z.shape[0], 1).to(f1)), dim=1) + z0_bound
+
+    return f
+
+
+def produceGradient_lin(r, p):
+    """
+    Produces -dp/dr
+    """
+
+    # This is the same as it happens in expro_util.f90, bound_deriv
+    z = MATHtools.deriv(r, -p, array=False)
+
+    return z
+
+
+
 def integrateQuadPoly(r, s, p=None):
     """
     (batch,dim)
@@ -68,96 +142,6 @@ def integrateFS(P, r, volp):
     )[0, :]
 
     return I
-
-
-def integrateGradient(x, z, z0_bound):
-    """
-    (batch,dim)
-    From tgyro_profile_functions.f90
-    x is r
-    z is 1/LT = =-1/T*dT/dr
-
-    """
-
-    # Calculate profile
-    b = torch.exp(0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1]))
-    f1 = b / torch.cumprod(b, 1) * torch.prod(b, 1, keepdims=True)
-
-    # Add the extra point of bounday condition
-    f = torch.cat((f1, torch.ones(z.shape[0], 1).to(f1)), dim=1) * z0_bound
-
-    return f
-
-
-# def tgyro_math_zfind(r,p,z=None):
-
-# 	'''
-# 	From tgyro_init_profiles.f90
-
-# 	r is rdlntedr
-# 	p is T
-
-# 	'''
-
-# 	n = len(r)
-
-# 	# Modify axis temperature for smooth profile
-# 	if z is not None:
-# 		z[0] = 0
-# 		p[0] = p[1]*torch.exp(0.5*(z[1]-z[0])*(r[1]-r[0])).to(r)
-# 	else:
-# 		z = torch.zeros(n).to(r)
-
-# 	rat = torch.log(p/p[-1]).to(r)
-# 	for j in range(n-1):    z[j+1] = 2*( rat[j+1]-rat[j] ) / ( r[j+1]-r[j] ) - z[j]
-# 	z = -z
-
-# 	return z
-
-
-def produceGradient(r, p):
-    """
-    Produces -1/p * dp/dr
-    or if r is roa: a/Lp
-    """
-
-    # This is the same as it happens in expro_util.f90, bound_deriv
-    z = MATHtools.deriv(r, -torch.log(p), array=False)
-
-    # # COMMENTED because this should happen at the coarse grid
-    # z = tgyro_math_zfind(r,p,z=z)
-
-    return z  # .nan_to_num(0.0) # Added this so that, when evaluating things like rotation shear, it doesn't blow
-
-
-def integrateGradient_lin(x, z, z0_bound):
-    """
-    (batch,dim)
-    From tgyro_profile_functions.f90
-    x is r
-    z is -dT/dr
-
-    """
-
-    # Calculate profile
-    b = 0.5 * (z[..., :-1] + z[..., 1:]) * (x[..., 1:] - x[..., :-1])
-    f1 = b - torch.cumsum(b, 1) + torch.sum(b, 1, keepdims=True)
-
-    # Add the extra point of bounday condition
-    f = torch.cat((f1, torch.zeros(z.shape[0], 1).to(f1)), dim=1) + z0_bound
-
-    return f
-
-
-def produceGradient_lin(r, p):
-    """
-    Produces -dp/dr
-    """
-
-    # This is the same as it happens in expro_util.f90, bound_deriv
-    z = MATHtools.deriv(r, -p, array=False)
-
-    return z
 
 
 """
