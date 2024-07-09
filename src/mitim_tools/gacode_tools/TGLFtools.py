@@ -697,12 +697,12 @@ class TGLF:
                     else:
                         extraOptions_WF = {}
 
-                    extraOptions_WF = tglf_executor[subFolderTGLF][
+                    extraOptions_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
                         list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["extraOptions"]
-                    multipliers_WF = tglf_executor[subFolderTGLF][
+                    ]["extraOptions"])
+                    multipliers_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
                         list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["multipliers"]
+                    ]["multipliers"])
 
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
