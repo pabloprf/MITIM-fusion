@@ -1008,6 +1008,32 @@ class PROFILES_GACODE:
 
         self.readSpecies()
 
+        # -------------------------------------------------------
+        # q-star
+        # -------------------------------------------------------
+
+        self.derived["qstar"] = PLASMAtools.evaluate_qstar(
+            self.profiles['current(MA)'][0],
+            self.profiles['rcentr(m)'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.profiles['bcentr(T)'],
+            self.derived['eps'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            ITERcorrection=False,
+            includeShaping=True,
+        )
+        self.derived["qstar_ITER"] = PLASMAtools.evaluate_qstar(
+            self.profiles['current(MA)'][0],
+            self.profiles['rcentr(m)'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.profiles['bcentr(T)'],
+            self.derived['eps'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            ITERcorrection=True,
+            includeShaping=True,
+        )
+
+
     def calculateMass(self):
         self.derived["mbg"] = 0.0
         self.derived["fmain"] = 0.0
