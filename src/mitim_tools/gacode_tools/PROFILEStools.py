@@ -347,7 +347,7 @@ class PROFILES_GACODE:
         # self.derived['epsX'] = self.profiles['rmaj(m)'] / self.profiles['rmin(m)']
         # self.derived['eps'] = self.derived['epsX'][-1]
         self.derived["eps"] = (
-            self.profiles["rmaj(m)"][-1] / self.profiles["rmin(m)"][-1]
+            self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
         )
 
         self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
@@ -1835,7 +1835,7 @@ class PROFILES_GACODE:
         Bt = self.profiles["bcentr(T)"][0]
         q95 = self.derived["q95"]
         Bp = (
-            1 / self.derived["eps"] * Bt / q95
+            self.derived["eps"] * Bt / q95
         )  # ----------------------------------- VERY ROUGH APPROXIMATION!!!!
 
         ne_LCFS, Te_LCFS, Lambda_q = PLASMAtools.evaluateLCFS_Lmode(

@@ -97,8 +97,17 @@ class power_targets:
 		**************************************************************************************************
 		"""
 
-        qe = self.powerstate.plasma["qfuse"] - self.powerstate.plasma["qie"] - self.powerstate.plasma["qrad"]
-        qi = self.powerstate.plasma["qfusi"] + self.powerstate.plasma["qie"]
+        qe = self.powerstate.plasma["te"]*0.0
+        qi = self.powerstate.plasma["te"]*0.0
+        
+        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] >= 2:
+            qe += -self.powerstate.plasma["qie"]
+            qi +=  self.powerstate.plasma["qie"]
+        
+        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
+            qe +=  self.powerstate.plasma["qfuse"] - self.powerstate.plasma["qrad"]
+            qi +=  self.powerstate.plasma["qfusi"]
+
         q = torch.cat((qe, qi)).to(qe)
         self.P = self.powerstate.volume_integrate(q, force_dim=q.shape[0])
 
@@ -112,6 +121,7 @@ class power_targets:
         if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] >= 2:
             for i in ["qie"]:
                 self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
+        
         if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
             for i in [
                 "qfuse",
@@ -122,6 +132,7 @@ class power_targets:
                 "qrad_sync",
             ]:
                 self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
+       
         self.P = self.P[:, self.powerstate.positions_targets]
 
         # Recover variables calculated prior to the fine-targets method
@@ -311,7 +322,7 @@ class analytical_model(power_targets):
         Te_keV = self.powerstate.plasma["te"]
         ne20 = self.powerstate.plasma["ne"] * 1e-1
         b_ref = self.powerstate.plasma["B_ref"]
-        aspect_rat = self.powerstate.plasma["eps"]
+        aspect_rat = 1/self.powerstate.plasma["eps"]
         r_min = self.powerstate.plasma["a"]
         ni20 = self.powerstate.plasma["ni"] * 1e-1
         c_rad = self.powerstate.plasma["ions_set_c_rad"]
