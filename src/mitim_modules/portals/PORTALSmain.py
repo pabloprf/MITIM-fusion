@@ -288,6 +288,10 @@ class portals(STRATEGYtools.opt_evaluator):
                 typeMsg="i",
             )
             self.MODELparameters["Physics_options"]["GradientsType"] = 0
+
+        if 'TargetType' in self.MODELparameters["Physics_options"]:
+            raise Exception("\t- TargetType is not used in PORTALS anymore, removing")
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -178,7 +178,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
             - Because TGYRO doesn't care about convective fluxes, I need to convert it AFTER I have the ge_Miller integrated and interpolated, so this happens
                             at each powerstate evaluation
             - Momentum flux is J/m^2. Momentum source is given in input.gacode a N/m^2 or J/m^3. Integrated in volume is J or N*m
-        - PextraE_Target2 and so on are to also include radiation, alpha and exchange, in case I want to run powerstate with fixed those
+        - Pe_orig_fusrad and so on are to also include radiation, alpha and exchange, in case I want to run powerstate with fixed those
     """
 
     print("\t- Producing powerstate")
@@ -247,15 +247,15 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
 
     quantitites = {}
-    quantitites["PextraE_Target2"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
-    quantitites["PextraI_Target2"] = input_gacode.derived["qi_fus_MWmiller"]
-    quantitites["PextraE_Target1"] = quantitites["PextraE_Target2"] - input_gacode.derived["qe_exc_MWmiller"]
-    quantitites["PextraI_Target1"] = quantitites["PextraI_Target2"] + input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["Pe_orig_fusrad"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
+    quantitites["Pi_orig_fusrad"] = input_gacode.derived["qi_fus_MWmiller"]
+    quantitites["Pe_orig_fusradexch"] = quantitites["Pe_orig_fusrad"] - input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["Pi_orig_fusradexch"] = quantitites["Pi_orig_fusrad"] + input_gacode.derived["qe_exc_MWmiller"]
 
     for key in quantitites:
         self.plasma[key] = torch.from_numpy(
             interpolation_function(rho_vec.cpu(), rho_use, quantitites[key])
-        ).to(rho_vec)
+        ).to(rho_vec) / self.plasma["volp"]
 
     # *********************************************************************************************
     # Ion species need special treatment

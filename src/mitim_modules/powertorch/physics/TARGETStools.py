@@ -28,17 +28,17 @@ class power_targets:
         # ----------------------------------------------------
 
         if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 1:
-            self.PextraE, self.PextraI = (
-                self.powerstate.plasma["PextraE_Target1"],
-                self.powerstate.plasma["PextraI_Target1"],
+            self.Pe_orig, self.Pi_orig = (
+                self.powerstate.plasma["Pe_orig_fusradexch"],
+                self.powerstate.plasma["Pi_orig_fusradexch"],
             )  # Original integrated from input.gacode
         elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 2:
-            self.PextraE, self.PextraI = (
-                self.powerstate.plasma["PextraE_Target2"],
-                self.powerstate.plasma["PextraI_Target2"],
+            self.Pe_orig, self.Pi_orig = (
+                self.powerstate.plasma["Pe_orig_fusrad"],
+                self.powerstate.plasma["Pi_orig_fusrad"],
             )
         elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
-            self.PextraE, self.PextraI = self.powerstate.plasma["te"] * 0.0, self.powerstate.plasma["te"] * 0.0
+            self.Pe_orig, self.Pi_orig = self.powerstate.plasma["te"] * 0.0, self.powerstate.plasma["te"] * 0.0
 
         # For the moment, I don't have a model for these, so I just grab the original from input.gacode
         self.CextraE = self.powerstate.plasma["Gaux_e"]     # 1E20/s/m^2
@@ -146,10 +146,10 @@ class power_targets:
         # **************************************************************************************************
 
         self.powerstate.plasma["Pe"] = (
-            self.powerstate.plasma["Paux_e"] + self.P[: self.P.shape[0]//2, :] + self.PextraE
+            self.powerstate.plasma["Paux_e"] + self.P[: self.P.shape[0]//2, :] + self.Pe_orig
         )  # MW/m^2
         self.powerstate.plasma["Pi"] = (
-            self.powerstate.plasma["Paux_i"] + self.P[self.P.shape[0]//2 :, :] + self.PextraI
+            self.powerstate.plasma["Paux_i"] + self.P[self.P.shape[0]//2 :, :] + self.Pi_orig
         )  # MW/m^2
         self.powerstate.plasma["Ce_raw"] = self.CextraE
         self.powerstate.plasma["CZ_raw"] = self.CextraZ
