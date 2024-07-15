@@ -93,6 +93,7 @@ SU_stds_outside_checker 	= 5 	        # (if stds_outside not None) Check stds_ou
 # Extra points
 
 SU_extrapointsFile 			= None 			# (if not None) File with *transformed-space* points to add to training of a given surrogate
+SU_extrapointsModels		= None 			# (if not None) Downselect models to extract from surrogate_models dataframe (e.g. QeTurb_1, ... )
 
 # ***************************************************************
 # Strategy Options

@@ -1,12 +1,11 @@
 import os
 import numpy as np
 from collections import OrderedDict
-from IPython import embed
+import pandas as pd
 from mitim_tools.misc_tools import IOtools, FARMINGtools
-from mitim_tools.opt_tools.aux import BOgraphics
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -23,8 +22,7 @@ def parallel_main(Params, cont):
     folderExecution = Params["folderExecution"]
     bounds = Params["bounds"]
     outputs = Params["outputs"]
-    TabularData = Params["TabularData"]
-    TabularDataStds = Params["TabularDataStds"]
+    optimization_data = Params["optimization_data"]
     restartYN = Params["restartYN"]
     mainFunction = Params["mainFunction"]
 
@@ -37,8 +35,7 @@ def parallel_main(Params, cont):
         folderExecution,
         bounds,
         outputs,
-        TabularData,
-        TabularDataStds,
+        optimization_data,
         restartYN=restartYN,
         lock=lock,
     )
@@ -50,8 +47,7 @@ def fun(
     folderExecution,
     bounds,
     outputs,
-    TabularData,
-    TabularDataStds,
+    optimization_data,
     parallel=1,
     restartYN=True,
     numEval=0,
@@ -85,8 +81,7 @@ def fun(
     Params["folderExecution"] = folderExecution
     Params["bounds"] = bounds
     Params["outputs"] = outputs
-    Params["TabularData"] = TabularData
-    Params["TabularDataStds"] = TabularDataStds
+    Params["optimization_data"] = optimization_data
     Params["restartYN"] = restartYN
     Params["mainFunction"] = mainFunction
     Params["lock"] = None
@@ -123,8 +118,7 @@ def mitimRun(
     folderExecution,
     bounds,
     outputs,
-    TabularData,
-    TabularDataStds,
+    optimization_data,
     restartYN=True,
     lock=None,
 ):
@@ -134,17 +128,14 @@ def mitimRun(
 
     mainFunction.lock = lock
 
-    if (not restartYN) and TabularData is not None:
+    if (not restartYN) and optimization_data is not None:
         # Read result in Tabular Data
         print("--> Reading Table files...", verbose=verbose_level)
-        y, _ = TabularData.grabFromTabular_Specific(x)
-        yE, _ = TabularDataStds.grabFromTabular_Specific(x)
+        y, yE, _ = optimization_data.grab_data_point(x)
 
-        if np.isnan(y).any() or np.isnan(yE).any():
+        if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
             print(
-                "--> Reading Tabular file failed or not evaluated yet for element {0}".format(
-                    numEval
-                ),
+                f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",
                 typeMsg="w",
             )
             restartYN = True
@@ -190,19 +181,10 @@ def mitimRun(
     for i in bounds:
         inputs.append(i)
 
-    if TabularData is not None:
+    if optimization_data is not None:
         if lock is not None:
             lock.acquire()
-        BOgraphics.updateSinglePoint_Tabular(inputs, outputs, TabularData.file, x, y)
-        if lock is not None:
-            lock.release()
-
-    if TabularDataStds is not None:
-        if lock is not None:
-            lock.acquire()
-        BOgraphics.updateSinglePoint_Tabular(
-            inputs, outputs, TabularDataStds.file, x, yE
-        )
+        optimization_data.update_data_point(x,y,yE)
         if lock is not None:
             lock.release()
 

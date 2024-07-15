@@ -13,7 +13,6 @@ from mitim_modules.powertorch import STATEtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-
 class PORTALSanalyzer:
     # ****************************************************************************
     # INITIALIZATION
@@ -46,7 +45,7 @@ class PORTALSanalyzer:
         ]
 
         # Read dictionaries
-        with open(self.opt_fun.prfs_model.mainFunction.MITIMextra, "rb") as f:
+        with open(self.opt_fun.prfs_model.mainFunction.optimization_extra, "rb") as f:
             self.mitim_runs = pickle_dill.load(f)
 
         self.prep_metrics()
@@ -71,7 +70,7 @@ class PORTALSanalyzer:
                     "\t- Could not read optimization results due to error:", typeMsg="w"
                 )
                 print(e)
-                print("\t- Trying to read PORTALS initialization...", typeMsg="w")
+                print("\t- Trying to read PORTALS initialization...", typeMsg="i")
                 return PORTALSinitializer(folder)
         else:
             print(
@@ -101,8 +100,8 @@ class PORTALSanalyzer:
         merged_instance.mitim_runs["profiles_original"] = base_instance.mitim_runs[
             "profiles_original"
         ]
-        merged_instance.mitim_runs["profiles_original_un"] = base_instance.mitim_runs[
-            "profiles_original_un"
+        merged_instance.mitim_runs["profiles_modified"] = base_instance.mitim_runs[
+            "profiles_modified"
         ]
 
         merged_instance.prep_metrics(ilast=cont - 1)
@@ -223,13 +222,6 @@ class PORTALSanalyzer:
             # ------------------------------------------------
             # Residual definitions
             # ------------------------------------------------
-
-            if (
-                len(power.plasma["volp"].shape) > 1
-                and power.plasma["volp"].shape[1] > 1
-            ):
-                power.unrepeat(do_fine=False)
-                power.repeat(do_fine=False)
 
             _, _, source, res = PORTALSinteraction.calculatePseudos(
                 power,
@@ -850,7 +842,7 @@ class PORTALSinitializer:
         for i in range(100):
             try:
                 prof = PROFILEStools.PROFILES_GACODE(
-                    f"{self.folder}/Outputs/ProfilesEvaluated/input.gacode.{i}"
+                    f"{self.folder}/Outputs/portals_profiles/input.gacode.{i}"
                 )
             except FileNotFoundError:
                 break
@@ -878,45 +870,52 @@ class PORTALSinitializer:
         figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
         figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
 
-        grid = plt.GridSpec(4, 6, hspace=0.3, wspace=0.4)
-        axs = [
-            figMain.add_subplot(grid[0, 1]),
-            figMain.add_subplot(grid[0, 2]),
-            figMain.add_subplot(grid[0, 3]),
-            figMain.add_subplot(grid[0, 4]),
-            figMain.add_subplot(grid[0, 5]),
-            figMain.add_subplot(grid[1, 1]),
-            figMain.add_subplot(grid[1, 2]),
-            figMain.add_subplot(grid[1, 3]),
-            figMain.add_subplot(grid[1, 4]),
-            figMain.add_subplot(grid[1, 5]),
-            figMain.add_subplot(grid[2, 1]),
-            figMain.add_subplot(grid[2, 2]),
-            figMain.add_subplot(grid[2, 3]),
-            figMain.add_subplot(grid[2, 4]),
-            figMain.add_subplot(grid[2, 5]),
-            figMain.add_subplot(grid[3, 1]),
-            figMain.add_subplot(grid[3, 2]),
-            figMain.add_subplot(grid[3, 3]),
-            figMain.add_subplot(grid[3, 4]),
-            figMain.add_subplot(grid[3, 5]),
-        ]
-
-        axsRes = figMain.add_subplot(grid[:, 0])
+        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
 
         colors = GRAPHICStools.listColors()
+        axsGrads_extra = []
+        cont = 0
+        for i in range(len(self.powerstates[-1].ProfilesPredicted)):
+            axsGrads_extra.append(axs[cont])
+            axsGrads_extra.append(axs[cont+1])
+            cont += 4
 
+        # ---------------------------------------------------------------------------------
         # POWERPLOT
+        # ---------------------------------------------------------------------------------
 
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
                 self.powerstates[i].plot(
-                    axs=axs, axsRes=axsRes, c=colors[i], label=f"#{i}"
+                    axs=axs, c=colors[i], label=f"#{i}"
+                )
+
+                # Add profiles too
+                self.powerstates[i].profiles.plotGradients(
+                    axsGrads_extra,
+                    color=colors[i],
+                    plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
+                    plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                    ls='-',
+                    lw=0.5,
+                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                    label='',
                 )
 
             axs[0].legend(prop={"size": 8})
 
-            axsRes.set_xlim([0, i])
+        # Add next profile
+        if len(self.profiles) > len(self.powerstates):
+            self.profiles[-1].plotGradients(
+                axsGrads_extra,
+                color=colors[i+1],
+                plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
+                plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                ls='-',
+                lw=1.0,
+                lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                label='next',
+            )
 
         # GRADIENTS
         if len(self.powerstates) > 0:
@@ -929,33 +928,22 @@ class PORTALSinitializer:
                 p.profiles.plotGradients(
                     axsGrads,
                     color=colors[i],
-                    plotImpurity=3,
-                    plotRotation=True,
+                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                    plotRotation='w0' in p.ProfilesPredicted,
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                    label=f"profile #{i}",
                 )
 
-            axsGrads_extra = [
-                axs[0],
-                axs[5],
-                axs[1],
-                axs[6],
-                axs[2],
-                axs[7],
-                axs[3],
-                axs[8],
-                axs[4],
-                axs[9],
-            ]
-            for i, p in enumerate(self.powerstates):
-                p.profiles.plotGradients(
-                    axsGrads_extra,
-                    color=colors[i],
-                    plotImpurity=3,
-                    plotRotation=True,
-                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                    lw=0.5,
-                    ms=0,
-                    label=f"profile #{i}" if i == 0 else '',
+
+            if len(self.profiles) > len(self.powerstates):
+                prof = self.profiles[-1]
+                prof.plotGradients(
+                    axsGrads,
+                    color=colors[i+1],
+                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                    plotRotation='w0' in p.ProfilesPredicted,
+                    lastRho=p.plasma["rho"][-1, -1].item(),
+                    label="next",
                 )
 
             axs[0].legend(prop={"size": 8})

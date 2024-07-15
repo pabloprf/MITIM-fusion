@@ -5,7 +5,6 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     print(
@@ -86,8 +85,6 @@ def default_physicsBasedParams():
 
     return physicsBasedParams, physicsBasedParams_trace
 
-
-
 def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
@@ -108,8 +105,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
-
-    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """
 	3. Local parameters to fit surrogate to
@@ -163,9 +159,7 @@ def transformPORTALS(X, surrogate_parameters, output):
 	"""
 
     # Produce relevant quantities here (in particular, GB will be used)
-    powerstate = constructEvaluationProfiles(
-        X, surrogate_parameters, recalculateTargets=False
-    )
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
     factorGB = GBfromXnorm(X, output, powerstate)
@@ -212,7 +206,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
         (torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1
     )
 
-    PexchTurb_integrated = powerstate.volume_integrate(qExch, dim=qExch.shape[0])[:, 1:]
+    PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
     """
 	3. Go back to the original batching system
@@ -359,17 +353,15 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
     return v
 
 
-def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True):
+def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=False):
     """
     Prepare powerstate for another evaluation with batches
     ------------------------------------------------------
 
-    Note: Copying this object will be very expensive (~30% increase in foward pass)...
-              So, method that is better is to detach what pythorch has done in other backward evals.
-              So I'm avoiding doing copy.deepcopy(surrogate_parameters['powerstate'])
+    Notes:
+        - Only calculate it once per ModelList, so make sure it's not in parameters_combined before
+          computing it, since it is common for all.
 
-    Note: Only calculate it once per ModelList, so make sure it's not in parameters_combined before
-              computing it, since it is common for all.
     """
 
     if ("parameters_combined" in surrogate_parameters) and (
@@ -381,16 +373,21 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
         powerstate = surrogate_parameters["powerstate"]
 
         if X.shape[0] > 0:
-            powerstate.repeat(
-                batch_size=X.shape[0], pos=0, includeDerived=False
-            )  # This is an expensive step (to unrepeat), but can't do anything else...
-            powerstate.detach_tensors(includeDerived=False)
 
+            '''
+            ----------------------------------------------------------------------------------------------------------------
+            Copying the powerstate object (to proceed separately) would be very expensive (~30% increase in foward pass)...
+            So, it is better to detach what pythorch has done in other backward evals and repeat with the X shape.
+            '''
+            powerstate._detach_tensors()
+            if powerstate.batch_size != X.shape[0]:
+                powerstate._repeat_tensors(batch_size=X.shape[0])
+            # --------------------------------------------------------------------------------------------------------------
+            
             num_x = powerstate.plasma["rho"].shape[-1] - 1
 
-            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
-
             # Obtain modified profiles
+            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
             for iprof, var in enumerate(powerstate.ProfilesPredicted):
                 # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
                 CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
@@ -403,7 +400,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
             # Targets only if needed (for speed, GB doesn't need it)
             if recalculateTargets:
-                powerstate.TargetCalc = "powerstate"  # For surrogate evaluation, always powerstate, logically.
+                powerstate.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
 
     return powerstate

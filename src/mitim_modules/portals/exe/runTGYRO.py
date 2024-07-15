@@ -89,7 +89,7 @@ def run_tgyro_parallel(Params, cont):
         TGLFsettings=TGLFsettings,
         extraOptionsTGLF=extraOptionsTGLF,
         Physics_options={
-            "TargetType": 3,
+            "TypeTarget": 3,
             "quasineutrality": [1, 2] if tgyro_here.profiles.DTplasmaBool else [1],
         },
     )

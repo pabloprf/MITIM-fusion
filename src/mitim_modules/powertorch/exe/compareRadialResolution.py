@@ -10,7 +10,7 @@ from mitim_tools.powertorch import STATEtools
 """
 This code is useful to get an idea of how well POWERSTATE is calculating the targets, compared to the standard of TGYRO.
 To run:
-		compareRadialResolution.py --file input.gacode --rhos 0.0 0.30771427 0.48583669 0.67665776 0.75750399 0.84737053
+		compareRadialResolution.py --file input.gacode --rhos 0.30771427 0.48583669 0.67665776 0.75750399 0.84737053
 """
 
 parser = argparse.ArgumentParser()
@@ -35,14 +35,14 @@ markersize_fine = 3
 
 ls = "o-"
 
-sC = STATEtools.powerstate(profiles, rho)
+sC = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho},)
 sC.calculateProfileFunctions()
 sC.calculateTargets()
 
 # Full state
 rho = np.linspace(rho[0], rho[-1], args.res)
 
-sF = STATEtools.powerstate(profiles, rho)
+sF = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho})
 sF.calculateProfileFunctions()
 sF.calculateTargets()
 

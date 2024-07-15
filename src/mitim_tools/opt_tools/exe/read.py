@@ -175,15 +175,15 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     resS = []
     logS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
-        res = BOgraphics.ResultsOptimization(
-            f"{folderWork}/Outputs/ResultsOptimization.out"
+        res = BOgraphics.optimization_results(
+            f"{folderWork}/Outputs/optimization_results.out"
         )
         res.readClass(
-            STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/MITIMstate.pkl")
+            STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
         )
         res.read()
 
-        log_class = BOgraphics.LogFile(folderWork + "/Outputs/MITIM.log")
+        log_class = BOgraphics.LogFile(folderWork + "/Outputs/optimization_log.txt")
 
         try:
             log_class.interpret()

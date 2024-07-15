@@ -23,20 +23,19 @@ def initializeProblem(
     hardGradientLimits=None,
     restartYN=False,
     dvs_fixed=None,
-    grabFrom=None,
-    profileForBase=None,
+    start_from_folder=None,
+    define_ranges_from_profiles=None,
     dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
     ):
     """
-    Specification of points occur in rho coordinate, although internally the work is r/a
-    restartYN = True if restart from beginning
-
-    I can give ModelOptions directly (e.g. if I want chis or something)
-
-    profileForBase must be PROFILES class
+    Notes:
+        - Specification of points occur in rho coordinate, although internally the work is r/a
+            restartYN = True if restart from beginning
+        - I can give ModelOptions directly (e.g. if I want chis or something)
+        - define_ranges_from_profiles must be PROFILES class
     """
 
     if seedInitial is not None:
@@ -61,7 +60,7 @@ def initializeProblem(
     # ---- Make another copy to preserve the original state
 
     os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original_originalResol_uncorrected"
+        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
     )
 
     # ---- Initialize file to modify and increase resolution
@@ -91,7 +90,7 @@ def initializeProblem(
     defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_original")
+    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
         portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
@@ -106,7 +105,7 @@ def initializeProblem(
 
     # Check if I will be able to calculate radiation
     if checkForSpecies and (
-        portals_fun.MODELparameters["Physics_options"]["TargetType"] == 3
+        portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
@@ -120,66 +119,13 @@ def initializeProblem(
             )
             if not a:
                 raise ValueError("Species not found")
-    """
-	***************************************************************************************************
-											POWER STATE
-	***************************************************************************************************
-	"""
+    
+    # Prepare and defaults
 
-    xCPs = torch.from_numpy(
-        np.append([0], np.array(portals_fun.MODELparameters["RhoLocations"]))
-    ).to(
-        dfT
-    )  # Added zero
+    xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
 
-    # Define powerstate with the de-parameterization functions
-    portals_fun.powerstate = STATEtools.powerstate(
-        profiles,
-        xCPs,
-        ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
-        TargetOptions={
-            "TypeTarget": portals_fun.MODELparameters["Physics_options"][
-                "TargetType"
-            ],
-            "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
-        },  #'tgyro' if 'tgyro' in portals_fun.PORTALSparameters['model_used'] else 'powerstate'},
-        useConvectiveFluxes=portals_fun.PORTALSparameters["useConvectiveFluxes"],
-        impurityPosition=portals_fun.PORTALSparameters["ImpurityOfInterest"],
-        fineTargetsResolution=portals_fun.PORTALSparameters["fineTargetsResolution"],
-    )
-
-    # Store parameterization in dictCPs_base (to define later the relative variations) and modify profiles class with parameterized profiles
-    dictCPs_base = {}
-    for name in portals_fun.MODELparameters["ProfilesPredicted"]:
-        dictCPs_base[name] = portals_fun.powerstate.update_var(name, var=None)[0, :]
-
-    # Maybe it was provided from earlier run
-    if grabFrom is not None:
-        dictCPs_base = grabPrevious(grabFrom, dictCPs_base)
-        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
-            _ = portals_fun.powerstate.update_var(
-                name, var=dictCPs_base[name].unsqueeze(0)
-            )
-
-    # Write this updated profiles class (with parameterized profiles)
-    _ = portals_fun.powerstate.insertProfiles(
-        profiles,
-        writeFile=f"{FolderInitialization}/input.gacode",
-        applyCorrections=portals_fun.MODELparameters["applyCorrections"],
-    )
-
-    # Original complete targets
-    portals_fun.powerstate.calculateProfileFunctions()
-    portals_fun.powerstate.calculateTargets()
-
-    # Prepare powerstate for evaluations
-    portals_fun.powerstate.TransportOptions["TypeTransport"] = (
-        portals_fun.PORTALSparameters["model_used"]
-    )
-    if ModelOptions is not None:
-        portals_fun.powerstate.TransportOptions["ModelOptions"] = ModelOptions
-    else:
-        portals_fun.powerstate.TransportOptions["ModelOptions"] = {
+    if ModelOptions is None:
+        ModelOptions = {
             "restart": False,
             "launchMODELviaSlurm": portals_fun.PORTALSparameters[
                 "launchEvaluationsAsSlurmJobs"
@@ -192,9 +138,7 @@ def initializeProblem(
             ],
             "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-            "UseFineGridTargets": portals_fun.PORTALSparameters[
-                "fineTargetsResolution"
-            ],
+            "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
             "forceZeroParticleFlux": portals_fun.PORTALSparameters[
                 "forceZeroParticleFlux"
@@ -202,24 +146,88 @@ def initializeProblem(
             "percentError": portals_fun.PORTALSparameters["percentError"],
         }
 
+    if "extra_params" not in ModelOptions:
+        ModelOptions["extra_params"] = {
+            "PORTALSparameters": portals_fun.PORTALSparameters,
+            "folder": portals_fun.folder,
+        }
+
+
+    """
+    ***************************************************************************************************
+                                powerstate object
+    ***************************************************************************************************
+    """
+
+    portals_fun.powerstate = STATEtools.powerstate(
+        profiles,
+        EvolutionOptions={
+            "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+            "rhoPredicted": xCPs,
+            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
+            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
+        },
+        TransportOptions={
+               "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
+               "ModelOptions": ModelOptions,
+        },
+        TargetOptions={
+            "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
+            "ModelOptions": {
+                "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
+                "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
+        },
+    )
+
+    # ***************************************************************************************************
+    # ***************************************************************************************************
+
+    # Store parameterization in dictCPs_base (to define later the relative variations) and modify profiles class with parameterized profiles
+    dictCPs_base = {}
+    for name in portals_fun.MODELparameters["ProfilesPredicted"]:
+        dictCPs_base[name] = portals_fun.powerstate.update_var(name, var=None)[0, :]
+
+    # Maybe it was provided from earlier run
+    if start_from_folder is not None:
+        dictCPs_base = grabPrevious(start_from_folder, dictCPs_base)
+        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
+            _ = portals_fun.powerstate.update_var(
+                name, var=dictCPs_base[name].unsqueeze(0)
+            )
+
+    # Write this updated profiles class (with parameterized profiles)
+    _ = portals_fun.powerstate.to_gacode(
+        write_input_gacode=f"{FolderInitialization}/input.gacode",
+        postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
+    )
+
+    # Original complete targets
+    portals_fun.powerstate.calculateProfileFunctions()
+    portals_fun.powerstate.calculateTargets()
+
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Define input dictionaries (Define ranges of variation)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     if (
-        profileForBase is not None
+        define_ranges_from_profiles is not None
     ):  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
-            profileForBase,
-            xCPs,
-            ProfilesPredicted=portals_fun.MODELparameters["ProfilesPredicted"],
-            TargetOptions={
-                "TypeTarget": portals_fun.MODELparameters["Physics_options"][
-                    "TargetType"
-                ],
-                "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"],
+            define_ranges_from_profiles,
+            EvolutionOptions={
+                "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+                "rhoPredicted": xCPs,
+                "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
+                "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+                "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
-            useConvectiveFluxes=portals_fun.PORTALSparameters["useConvectiveFluxes"],
+            TargetOptions={
+                "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
+                "ModelOptions": {
+                    "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
+                    "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
+            },
         )
 
         dictCPs_base_extra = {}
@@ -227,6 +235,8 @@ def initializeProblem(
             dictCPs_base_extra[name] = powerstate_extra.update_var(name, var=None)[0, :]
 
         dictCPs_base = dictCPs_base_extra
+
+    thr = 1E-5
 
     dictDVs = OrderedDict()
     for cont, var in enumerate(dictCPs_base):
@@ -243,6 +253,10 @@ def initializeProblem(
             if hardGradientLimits is not None:
                 y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
                 y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
+
+            # Check that makes sense
+            if y2-y1 < thr:
+                print(f"Warning: {var} @ pos={i} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
 
             if (seedInitial is None) or (seedInitial == 0):
                 base_gradient = dictCPs_base[var][i]
@@ -335,12 +349,6 @@ def initializeProblem(
         ),
         "parameters_combined": {},
     }
-
-    # Pass an text version of the initialization file, so that I can run mitim without having the initializaiton folder
-    # in the same computer
-    with open(initialization_file, "r") as f:
-        portals_fun.file_in_lines_initial_input_gacode = f.readlines()
-
 
 def defineNewPORTALSGrid(profiles, rhoMODEL):
     """

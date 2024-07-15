@@ -2,20 +2,20 @@ import os
 import copy
 import torch
 import sys
+import pandas as pd
 import dill as pickle_dill
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata
 from collections import OrderedDict
-from IPython import embed
-
+from mitim_tools import __version__ as mitim_version
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, MATHtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.aux import TESTtools
-
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -848,22 +848,22 @@ def retrieveResults(
     # Viewing workflow
     # ----------------------------------------------------------------------------------------------------------------
 
-    print("\t\t--> Opening MITIMstate.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/MITIMstate.pkl")
+    print("\t\t--> Opening optimization_object.pkl")
+    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
 
     if "timeStamp" in prfs_model.__dict__:
-        print(f"\t\t\t- Time stamp of MITIMstate.pkl: {prfs_model.timeStamp}")
+        print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
     else:
-        print("\t\t\t- Time stamp of MITIMstate.pkl not found")
+        print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
-    # ---------------- Read ResultsOptimization
-    fileOutputs = folderWork + "/Outputs/ResultsOptimization.out"
-    res = ResultsOptimization(file=fileOutputs)
+    # ---------------- Read optimization_results
+    fileOutputs = folderWork + "/Outputs/optimization_results.out"
+    res = optimization_results(file=fileOutputs)
     res.readClass(prfs_model)
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork + "/Outputs/MITIM.log")
+    log = LogFile(folderWork + "/Outputs/optimization_log.txt")
     try:
         log.interpret()
     except:
@@ -872,24 +872,23 @@ def retrieveResults(
 
     # ---------------- Read Tabular
     if analysis_level >= 0:
-        _, dataTabular = readTabularLines(folderWork + "/Outputs/TabularData.dat")
-        _, dataETabular = readTabularLines(folderWork + "/Outputs/TabularDataStds.dat")
+        data_df = pd.read_csv(folderWork + "/Outputs/optimization_data.csv")
     else:
-        dataETabular = dataTabular = None
+        data_df = None
 
     fn = None
     # If pickle, plot all the strategy info
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork}/Outputs/MITIMextra.pkl", "rb") as handle:
+            with open(f"{folderWork}/Outputs/optimization_extra.pkl", "rb") as handle:
                 prfs_model.dictStore = pickle_dill.load(handle)
         except:
-            print("Could not load MITIMextra", typeMsg="w")
+            print("Could not load optimization_extra", typeMsg="w")
             prfs_model.dictStore = None
         # -------------------
 
-        prfs_model.ResultsOptimization = res
+        prfs_model.optimization_results = res
         prfs_model.logFile = log
         if plotYN:
             fn = prfs_model.plot(
@@ -897,13 +896,13 @@ def retrieveResults(
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
 
-    # If no pickle, plot only the contents of ResultsOptimization
+    # If no pickle, plot only the contents of optimization_results
     else:
         if plotYN:
             fn = res.plot(doNotShow=doNotShow, log=log)
         prfs_model = None
 
-    return fn, res, prfs_model, log, dataTabular, dataETabular
+    return fn, res, prfs_model, log, data_df
 
 
 class LogFile:
@@ -914,6 +913,9 @@ class LogFile:
         sys.stdout = IOtools.Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
+
+        branch, commit_hash = IOtools.get_git_info(IOtools.expandPath('$MITIM_PATH'))
+        print(f"Log file from MITIM version {mitim_version} from {branch} branch and commit hash {commit_hash}")
 
     def interpret(self):
         with open(self.file, "r") as f:
@@ -1135,192 +1137,145 @@ class LogFile:
         ax.set_ylabel(f"Cumulated Time ({label})")
 
 
-class TabularData:
+class optimization_data:
     def __init__(
         self,
         inputs,
         outputs,
-        file="Outputs/TabularData.dat",
+        file="Outputs/optimization_data.dat",
         forceNew=False,
-        interface="HIGH_FIDELITY",
-        uniqueNumbering=False,
     ):
         # If start from scratch, overwrite the tabular, otherwise there's risk of error if not all OFs coincide, that's why forceNew
 
         self.file = file
-        self.nameFile = self.file.split("/")[-1]
         self.inputs = inputs
         self.outputs = outputs
 
-        STR_Tabular = self.produceLine(varsX=None)
+        self.data_point_dictionary = OrderedDict()
+        self.data_point_dictionary['Iteration'] = np.nan
+        for i in self.inputs:
+            self.data_point_dictionary[i] = np.nan
+        for i in self.outputs:
+            self.data_point_dictionary[i] = np.nan
+            self.data_point_dictionary[i + "_std"] = np.nan
 
-        if (not os.path.exists(self.file)) or forceNew:
-            with open(self.file, "w") as f:
-                f.write(STR_Tabular + "\n")
-
-        self.updateFromFile(interface=interface, uniqueNumbering=uniqueNumbering)
-
-    def updateFromFile(self, interface="HIGH_FIDELITY", uniqueNumbering=False):
-        self.OriginalLines, self.data = readTabularLines(
-            self.file, interface=interface, uniqueNumbering=uniqueNumbering
-        )
-
-    def produceLine(self, varsX=None):
-        if varsX is None:
-            varsX0 = ["#", "interface"]
-            for i in self.inputs:
-                varsX0.append(i)
-            for i in self.outputs:
-                varsX0.append(i)
+        if forceNew or not os.path.exists(self.file):
+            # Create empty csv
+            self.data = pd.DataFrame(columns = self.data_point_dictionary.keys())
+            self.data.to_csv(self.file, index=False)
         else:
-            varsX0 = [
-                f"{varsX[i]:.16f}" if IOtools.isfloat(varsX[i]) else str(varsX[i])
-                for i in range(len(varsX))
-            ]
+            self.data = pd.read_csv(self.file)
 
-        str_line = f"{varsX0[0]:>4}"
-        for i in range(len(varsX0) - 1):
-            str_line += f"{varsX0[i+1]:>30s}"
+    def find_point(self, x):
 
-        return str_line + "\n"
+        df_sub = self.data[self.inputs]
+        matches = df_sub.apply(lambda row: np.allclose(row, x), axis=1)
+        df = self.data[matches]
 
-    def grabFromTabular(self, points=[0, 1, 2, 3, 4, 5]):
+        return df, df['Iteration'].item() if len(df) > 0 else None
+
+    def grab_data_point(self, x, printStuff=True):
+
+        df, coincidentPoint = self.find_point(x)
+
+        if len(df) > 0:
+
+            y               = df.iloc[0][self.outputs].to_numpy()
+            ystd            = df.iloc[0][[i + "_std" for i in self.outputs]].to_numpy()
+
+        else:
+
+            y               = np.ones(len(self.outputs)) * np.nan
+            ystd            = np.ones(len(self.outputs)) * np.nan
+
+            if printStuff:
+                print(
+                    f"\t* Element required could not be found in table ({self.file})",
+                    typeMsg="w",
+                )
+            
+        return y, ystd, coincidentPoint
+
+    def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
         print(
-            f"\t* Reading points from tabular file ({self.nameFile})",
+            f"\t* Reading points from file ({self.file})",
             verbose=verbose_level,
         )
 
-        X = np.zeros((len(points), len(self.inputs)))
-        Y = np.zeros((len(points), len(self.outputs)))
-        for i in range(X.shape[0]):
-            aux = []
-            if points[i] in self.data:
-                for j in self.data[points[i]]:
-                    aux.append(self.data[points[i]][j])
-            else:
-                aux = np.ones(100) * np.nan
-            for j in range(X.shape[1]):
-                X[i, j] = aux[j]
-            for k in range(Y.shape[1]):
-                Y[i, k] = aux[j + k + 1]
+        self.data = pd.read_csv(self.file)
 
-        return X, Y
+        data_filter = self.data[self.data['Iteration'].isin(points)]
 
-    def grabFromTabular_Specific(self, x, printStuff=True):
-        coincidentPoint = None
-        for ipoint in self.data:
-            coincident = True
-            for iDV, ikey in enumerate(self.inputs):
-                if self.data[ipoint][ikey] != round(x[iDV], 16):
-                    # print(self.data[ipoint][ikey],x[iDV])
-                    coincident = coincident and False
-            if coincident:
-                coincidentPoint = ipoint
-                if printStuff:
-                    print(
-                        f"\t* Element required coincided with element {coincidentPoint} from table ({self.nameFile})",
-                        verbose=verbose_level,
-                    )
-                break
+        X = data_filter[self.inputs].to_numpy()
+        Y = data_filter[self.outputs].to_numpy()
+        Ystd = data_filter[[i + "_std" for i in self.outputs]].to_numpy()
 
-        if coincidentPoint is None:
-            if printStuff:
-                print(
-                    f"\t* Element required could not be found in table ({self.nameFile})",
-                    typeMsg="w",
-                )
-            y = np.ones(len(self.outputs)) * np.nan
+        return X, Y, Ystd
+
+    def update_data_point(self,x,y,ystd):
+
+        # Read again?
+        self.data = pd.read_csv(self.file)
+
+        # Find x in the table
+        _, point = self.find_point(x)
+
+        if point is None:
+            print("Point not found", typeMsg="q")
         else:
-            y = []
-            for iout in self.outputs:
-                if self.data[ipoint][iout] is not None:
-                    y.append(self.data[ipoint][iout])
+            self.data.loc[point, self.outputs] = y
+            self.data.loc[point, [i + "_std" for i in self.outputs]] = ystd
+
+            # Update file
+            self.data.to_csv(self.file, index=False)
+
+    def update_points(self, X, Y=np.array([]), Ystd=np.array([])):
+
+        data_new = copy.deepcopy(self.data)
+
+        for i in range(X.shape[0]):
+
+            # Does this point exist?
+            _, point = self.find_point(X[i,:])
+            
+            # If it does not exist, create a new one
+            if point is None:
+                data_point = copy.deepcopy(self.data_point_dictionary)
+                data_point['Iteration'] = i
+
+                for j in range(X.shape[1]):
+                    data_point[self.inputs[j]] = X[i,j]
+
+                # If the y has been provided for this x
+                if i < Y.shape[0]:
+                    for j in range(len(self.outputs)):
+                        data_point[self.outputs[j]] = Y[i,j]
+                        data_point[self.outputs[j] + "_std"] = Ystd[i,j]
+
+                # We may be in a situation where the y is not provided for this x
                 else:
-                    y.append(np.nan)
+                    for j in range(len(self.outputs)):
+                        data_point[self.outputs[j]] = np.nan
+                        data_point[self.outputs[j] + "_std"] = np.nan
 
-        return np.array(y), coincidentPoint
+                data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
 
-    def updatePoints(self, X, Y=[]):
-        dataOrig = copy.deepcopy(self.data)
-
-        for ipoint in range(len(X)):
-            self.data[ipoint] = OrderedDict()
-            for iDV in range(len(self.inputs)):
-                self.data[ipoint][self.inputs[iDV]] = round(X[ipoint][iDV], 16)
-            for iout in range(len(self.outputs)):
-                try:
-                    self.data[ipoint][self.outputs[iout]] = round(Y[ipoint][iout], 16)
-                except:
-                    # If there is a point there evaluated, do not change it
-                    try:
-                        self.data[ipoint][self.outputs[iout]] = dataOrig[ipoint][
-                            self.outputs[iout]
-                        ]
-                    except:
-                        self.data[ipoint][self.outputs[iout]] = np.nan
-
-        self.updateFile()
-
-    def updateFile(self, source_interface=None):
-        if source_interface is None:
-            source_interface = ["HIGH_FIDELITY"] * len(self.data)
-
-        str_header = self.produceLine(varsX=None)
-
-        str_points = ""
-        for ipoint, source_interface0 in zip(self.data, source_interface):
-            xy = [ipoint, source_interface0]
-            for iDV in self.inputs:
-                xy.append(self.data[ipoint][iDV])
-            for iout in self.outputs:
-                xy.append(self.data[ipoint][iout])
-            str_p = self.produceLine(xy)
-            str_points += str_p
-
-        # I need to check it has not been opened
-        with open(self.file, "w") as f:
-            f.write(str_header + str_points)
-        print(f"\t* Table file updated ({self.nameFile})", verbose=verbose_level)
+        self.data = data_new
+        self.data.to_csv(self.file, index=False)
 
     def removePointsAfter(self, fromPoint):
-        dataOrig = copy.deepcopy(self.data)
-        for ipoint in dataOrig:
-            if int(ipoint) > fromPoint:
-                del self.data[ipoint]
 
-        self.updateFile()
+        # Read again?
+        self.data = pd.read_csv(self.file)
 
+        self.data = self.data[self.data['Iteration'] <= fromPoint]
 
-def modTabulars(inputs, outputs, folder, folder_new, new_dv_with_old_value):
-    for fi in ["TabularData.dat", "TabularDataStds.dat"]:
-        fileTabular = IOtools.expandPath(f"{folder}/{fi}")
-        newFile = IOtools.expandPath(f"{folder_new}/{fi}")
-
-        # -------------------------------------------------------------------------------------
-        # Read Old
-        # -------------------------------------------------------------------------------------
-
-        TabularData_d = TabularData(inputs, outputs, file=fileTabular)
-
-        # -------------------------------------------------------------------------------------
-        # Modify
-        # -------------------------------------------------------------------------------------
-
-        new_inputs = copy.deepcopy(inputs)
-        new_inputs.append(new_dv_with_old_value[0])
-
-        TabularData_d.inputs = new_inputs
-
-        for i in TabularData_d.data:
-            TabularData_d.data[i][new_dv_with_old_value[0]] = new_dv_with_old_value[1]
-
-        TabularData_d.file = newFile
-
-        TabularData_d.updateFile()
+        # Update file
+        self.data.to_csv(self.file, index=False)
 
 
-class ResultsOptimization:
-    def __init__(self, file="Outputs/ResultsOptimization.out"):
+class optimization_results:
+    def __init__(self, file="Outputs/optimization_results.out"):
         self.file = file
         self.predictedSofar = 0
 
@@ -1335,7 +1290,7 @@ class ResultsOptimization:
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* ResultsOptimization updated", verbose=verbose_level)
+        print("\t* optimization_results updated", verbose=verbose_level)
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")
@@ -1499,7 +1454,7 @@ class ResultsOptimization:
 
     def createHeaders(self):
         if self.PRF_BO.restartYN:
-            txtR = "\n* Restarting capability requested, looking into previous TabularData.dat"
+            txtR = "\n* Restarting capability requested, looking into previous optimization_data.dat"
         else:
             txtR = ""
 
@@ -1542,7 +1497,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 	""".format(
             txtIn,
             txtOut,
-            self.PRF_BO.ResultsOptimization.file,
+            self.PRF_BO.optimization_results.file,
             len(self.PRF_BO.bounds),
             len(self.PRF_BO.outputs),
             STR_base,
@@ -2296,7 +2251,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         ms = 3
 
-        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the ResultsOptimization points
+        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the optimization_results points
 
         ax = axs[2, 0]
         ax.plot(x, yT.mean(axis=1), "-s", label="mean", c="r", markersize=ms)
@@ -2767,21 +2722,6 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         return xe, yPlotMean
 
-
-def updateSinglePoint_Tabular(inputs, outputs, file, x, y, folderScratch="~/scratch/"):
-    TabularData1 = TabularData(inputs, outputs, file=file)
-
-    _, coincidentPoint = TabularData1.grabFromTabular_Specific(x, printStuff=False)
-    for iDV in range(len(TabularData1.inputs)):
-        try:
-            TabularData1.data[coincidentPoint][TabularData1.inputs[iDV]] = x[iDV]
-        except:
-            embed()
-    for iout in range(len(TabularData1.outputs)):
-        TabularData1.data[coincidentPoint][TabularData1.outputs[iout]] = y[iout]
-    TabularData1.updateFile()
-
-
 def gatherEv(lines, var=" Evaluation "):
     evaluations = []
     for i in range(len(lines)):
@@ -2818,48 +2758,6 @@ def gatherEv(lines, var=" Evaluation "):
             evaluations.append(results)
 
     return evaluations
-
-
-def readTabularLines(fileTabular, interface="HIGH_FIDELITY", uniqueNumbering=False):
-    """
-    if uniqueNumbering: ignore the numbering on the TabularData, extract from 0
-    """
-
-    if uniqueNumbering:
-        print(
-            "\t\t- Careful: I am ignoring the numbering in the tabular file"
-        )  # ,typeMsg='w')
-
-    with open(fileTabular, "r") as f:
-        aux = f.readlines()
-
-    lines = {}
-    number_added = -1
-    for i in aux:
-        if len(i) > 1:
-            if "#" in i:
-                header = i
-            else:
-                if i.split()[1] == interface:
-                    if uniqueNumbering:
-                        number_added += 1
-                        num = number_added
-                    else:
-                        num = int(i.split()[0])
-                    lines[num] = i
-
-    # Organize in dictionary
-    DataMITIM = {}
-    for i in lines:
-        DataMITIM[i] = OrderedDict()
-        for cont, j in enumerate(header.split()[2:]):
-            try:
-                DataMITIM[i][j] = float(lines[i].split()[2 + cont])
-            except:
-                DataMITIM[i][j] = None
-
-    return lines, DataMITIM
-
 
 def plot1D(
     ax,

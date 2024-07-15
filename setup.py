@@ -24,12 +24,13 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "pip",
-        "numpy",
+        "numpy<2.0", # Some issue happened with 2.0.0
         "matplotlib",
         "argparse",
         "h5py",
         "netCDF4",
         "xarray==2022.6.0", # This is a compromise between the requirements of omfit_classes (fails for high versions) and the PLASMAstate xr reader (importlib_metadata issues)
+        "pandas",
         "xlsxwriter",
         "statsmodels",
         "dill",

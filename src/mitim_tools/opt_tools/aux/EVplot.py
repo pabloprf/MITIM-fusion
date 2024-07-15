@@ -22,8 +22,8 @@ def grabBestSpecificParams(
 
     cont = 0
     for ff, ev in zip(subfolders, evaluations):
-        res = BOgraphics.ResultsOptimization(
-            f"{superfolder}/{ff}/Outputs/ResultsOptimization.out"
+        res = BOgraphics.optimization_results(
+            f"{superfolder}/{ff}/Outputs/optimization_results.out"
         )
         res.read()
         useDict_class = res.__dict__[useDict]

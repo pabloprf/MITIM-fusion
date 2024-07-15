@@ -1,6 +1,7 @@
-import torch, pyDOE
+import torch
+import pyDOE
 import numpy as np
-from mitim_tools.opt_tools.aux import BOgraphics
+import pandas as pd
 from IPython import embed
 
 
@@ -22,12 +23,7 @@ def LHS(samples, bounds, seed=0):
 
 
 def readInitializationFile(file, initialPoints, labs):
-    train_X = []
-    _, datTab = BOgraphics.readTabularLines(file)
-    for i in range(initialPoints):
-        xi = []
-        for lb in labs:
-            xi.append(datTab[i][lb])
-        train_X.append(xi)
 
-    return np.array(train_X)
+    data = pd.read_csv(file)
+
+    return data[labs].to_numpy()[:initialPoints]
