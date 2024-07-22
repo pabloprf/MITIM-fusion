@@ -233,12 +233,11 @@ class MITIMpopcon:
                          * point['ratio_of_P_SOL_to_P_LH'].data.magnitude) 
                          - profiles_gacode.derived['Psol'])
 
-        Pin_derived = (profiles_gacode.derived['qOhm_MWmiller'][-1]
-                       +profiles_gacode.derived['qi_aux_MWmiller'][-1]
+        Pin_derived = (profiles_gacode.derived['qi_aux_MWmiller'][-1]
                        +profiles_gacode.derived['qe_aux_MWmiller'][-1]
-                       +profiles_gacode.derived['Pfus']*0.2)
+                       )
         
-        Pin_residual = point['P_in'].data.magnitude - Pin_derived
+        Pin_residual = point['P_auxillary'].data.magnitude - Pin_derived
 
         self.parameter_history.append(x)
 
@@ -453,7 +452,7 @@ class MITIMpopcon:
             print(f"TauE:  ", f"POPCON: {point['energy_confinement_time'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['tauE']:.2f}", "(s)")
             print(f"Beta_N:", f"POPCON: {point['normalized_beta'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['BetaN']:.2f}")
             print(f"P_sol: ", f"POPCON: {(point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude):.2f}",
-                f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)")
+                f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)", f"({point['P_LH_thresh'].data.magnitude:.2f} of LH threshold)")
             print(f"P_aux: ", f"POPCON: {point['P_auxillary'].data.magnitude:.2f}",
                 f"GACODE: {(profiles_gacode.derived['qi_aux_MWmiller'][-1]+profiles_gacode.derived['qe_aux_MWmiller'][-1]):.2f}",
                 "(MW)")
