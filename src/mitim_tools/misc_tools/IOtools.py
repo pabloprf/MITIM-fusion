@@ -12,6 +12,7 @@ import termios
 import tty
 import h5py
 import subprocess
+import json
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -327,39 +328,20 @@ def getsizeObject(obj, seen=None):
         size += sum([getsizeObject(i, seen) for i in obj])
     return size
 
+def read_mitim_nml(json_file):
+    with open(json_file, 'r') as file:
+        data = json.load(file)
 
-def readOptim_Complete(fileNML):
-    Optim = readOptim(fileNML, prefix_param="OPT_", caseInsensitive=False)
-    Optim["StrategyOptions"] = readOptim(
-        fileNML, prefix_param="SO_", caseInsensitive=False
-    )
-    Optim["surrogateOptions"] = readOptim(
-        fileNML, prefix_param="SU_", caseInsensitive=False
-    )
+    Optim = data["optimization"]
+    Optim["StrategyOptions"] =  data["StrategyOptions"]
+    Optim["surrogateOptions"] = data["surrogateOptions"]
 
     return Optim
-
-
-def readOptim(file, prefix_param="", caseInsensitive=True):
-    NMLparameters = generateMITIMNamelist(file, caseInsensitive=caseInsensitive)
-
-    if caseInsensitive:
-        Optim = CaseInsensitiveDict()
-    else:
-        Optim = OrderedDict()
-
-    for i in NMLparameters:
-        if len(prefix_param) == 0 or prefix_param in i:
-            Optim[i[len(prefix_param) :]] = NMLparameters[i]
-
-    return Optim
-
 
 def getpythonversion():
     return [
         int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".")
     ]
-
 
 def zipFiles(files, outputFolder, name="info"):
     os.system(f"mkdir {outputFolder}/{name}")

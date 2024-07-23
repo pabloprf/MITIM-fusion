@@ -7,7 +7,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, IMnamelist):
         # Store folder, namelist. Read namelist
         super().__init__(
-            folder, namelist=IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
+            folder, namelist=IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
         )
         # ----------------------------------------
 

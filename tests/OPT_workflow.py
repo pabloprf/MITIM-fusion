@@ -62,7 +62,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
+namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
 folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/opt_test/")
 
 if restart and os.path.exists(folderWork):
@@ -75,7 +75,7 @@ if restart and os.path.exists(folderWork):
 # Initialize class
 opt_fun1D = opt_class(folderWork, namelist)
 
-# Changes to namelist in MITIM_PATH/templates/main.namelist
+# Changes to namelist in MITIM_PATH/templates/main.namelist.json
 opt_fun1D.Optim["initialPoints"] = 2
 
 # Initialize BO framework

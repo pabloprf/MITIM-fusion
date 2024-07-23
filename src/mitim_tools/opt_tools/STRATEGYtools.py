@@ -97,7 +97,7 @@ class opt_evaluator:
         if namelist is not None:
             print(f"\t- Namelist provided: {namelist}", typeMsg="i")
 
-            self.Optim = IOtools.readOptim_Complete(namelist)
+            self.Optim = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
             print(
@@ -105,8 +105,8 @@ class opt_evaluator:
                 typeMsg="i",
             )
 
-            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
-            self.Optim = IOtools.readOptim_Complete(namelist)
+            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            self.Optim = IOtools.read_mitim_nml(namelist)
 
             self.Optim = default_namelist_function(self.Optim)
 
@@ -356,7 +356,7 @@ class PRF_BO:
         """
         Inputs:
                 - mainFunction   :  Function that is executed,
-                        with .Optim in it (Dictionary with optimization parameters (must be obtained using namelist and readOptim_Complete))
+                        with .Optim in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_nml))
                         and .folder (Where the function runs)
                         and surrogate_parameters: Parameters to pass to surrogate (e.g. for transformed function), It can be different from function_parameters because of making evaluations fast.
                 - restartYN 	 :  If False, try to find the values from Outputs/optimization_data.csv
