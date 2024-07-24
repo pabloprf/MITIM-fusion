@@ -1,7 +1,7 @@
 import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.gacode_tools.aux import GACODErun
+from mitim_tools.gacode_tools.utils import GACODErun
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 

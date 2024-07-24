@@ -65,7 +65,7 @@ def PRF_rosen(x, y, a=1, b=100):
 
 def rosenGrid(x=np.linspace(-2, 2, 1000), ax=None):
     # HERE, otherwise it will require that it will require that I have botorch even for small MITIM use
-    from mitim_tools.opt_tools.aux import BOgraphics
+    from mitim_tools.opt_tools.utils import BOgraphics
 
     y = x
     x0, y0 = np.meshgrid(x, y)

@@ -7,16 +7,16 @@ from functools import partial
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.gacode_tools.aux import PORTALSinteraction
+from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals import PORTALStools
-from mitim_modules.portals.aux import (
+from mitim_modules.portals.utils import (
     PORTALSinit,
     PORTALSoptimization,
     PORTALSanalysis,
 )
 from mitim_modules.powertorch.physics import TRANSPORTtools, TARGETStools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.opt_tools.aux import BOgraphics
+from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed

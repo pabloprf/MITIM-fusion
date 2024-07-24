@@ -9,7 +9,7 @@ from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtool
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
-from mitim_tools.gacode_tools.aux import TRANSPinteraction, PROFILEStoMODELS
+from mitim_tools.gacode_tools.utils import TRANSPinteraction, PROFILEStoMODELS
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.im_tools.modules import PEDmodule
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -19,7 +19,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 verbose_level = read_verbose_level()
 
 try:
-    from mitim_tools.gacode_tools.aux import PORTALSinteraction
+    from mitim_tools.gacode_tools.utils import PORTALSinteraction
 except ImportError:
     print(
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",

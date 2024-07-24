@@ -4,7 +4,7 @@ from IPython import embed
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import optim
-from mitim_tools.opt_tools.aux import TESTtools
+from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
 verbose_level = read_verbose_level()

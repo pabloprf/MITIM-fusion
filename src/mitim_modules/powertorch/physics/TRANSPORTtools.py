@@ -3,7 +3,7 @@ import os
 import torch
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
-from mitim_modules.portals.aux import PORTALScgyro
+from mitim_modules.portals.utils import PORTALScgyro
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 

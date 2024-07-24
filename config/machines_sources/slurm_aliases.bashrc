@@ -4,7 +4,7 @@
 # Submission
 # --------------------------------------------------------------------------------
 
-alias sl='python3 $MITIM_PATH/mitim_opt/opt_tools/exe/slurm.py $1 --partition $MITIM_PARTITION $2'
+alias sl='python3 $MITIM_PATH/mitim_opt/opt_tools/scripts/slurm.py $1 --partition $MITIM_PARTITION $2'
 
 # --------------------------------------------------------------------------------
 # Information

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools
 from mitim_tools.transp_tools import UFILEStools, CDFtools
-from mitim_modules.powertorch.aux import TRANSFORMtools
+from mitim_modules.powertorch.utils import TRANSFORMtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.im_tools import IMparam
 from mitim_tools.im_tools.modules import PEDmodule, TRANSPmodule, EQmodule

@@ -60,7 +60,7 @@ then
 
 	# GPU
 	alias nvi='nvidia-smi pmon -i 0'
-	alias slgpu='python3 $MITIM_PATH/mitim_opt/opt_tools/exe/slurm.py $1 --partition sched_mit_psfc_gpu_r8 $2'
+	alias slgpu='python3 $MITIM_PATH/mitim_opt/opt_tools/scripts/slurm.py $1 --partition sched_mit_psfc_gpu_r8 $2'
 	alias sagpu='salloc --partition sched_mit_psfc_gpu_r8 --nodes=1 --exclusive --time=8:00:00'
 
 	# --------------------------------------------------------------------------------

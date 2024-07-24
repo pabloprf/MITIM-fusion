@@ -3,7 +3,7 @@ import random, time, pdb, datetime, os, sys, copy
 from IPython import embed
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools
-from mitim_tools.im_tools.aux import LUTtools
+from mitim_tools.im_tools.utils import LUTtools
 from mitim_tools.transp_tools.tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 

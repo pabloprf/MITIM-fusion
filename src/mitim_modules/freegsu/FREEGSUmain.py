@@ -4,10 +4,10 @@ import torch
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gs_tools import FREEGStools
-from mitim_tools.gs_tools.aux import GSplotting
+from mitim_tools.gs_tools.utils import GSplotting
 from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.opt_tools.aux import EVplot
+from mitim_tools.opt_tools.utils import EVplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed

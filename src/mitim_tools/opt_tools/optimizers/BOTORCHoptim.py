@@ -2,7 +2,7 @@ import torch, copy, datetime, botorch, random, socket
 import numpy as np
 from IPython import embed
 from mitim_tools.opt_tools import BOTORCHtools, OPTtools
-from mitim_tools.opt_tools.aux import SAMPLINGtools
+from mitim_tools.opt_tools.utils import SAMPLINGtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level

@@ -954,7 +954,7 @@ def compareMDSandCDF(runidMDS, CDFclass):
 def getZeff_neo(
     shotNumber,
     folder=IOtools.expandPath("~/"),
-    routine=IOtools.expandPath("$MITIM_PATH/routines/zeff_neo"),
+    routine=IOtools.expandPath("$MITIM_PATH/scripts/zeff_neo"),
 ):
     with open(folder + "/idl_in", "w") as f:
         f.write(f".r {routine}\n\n")

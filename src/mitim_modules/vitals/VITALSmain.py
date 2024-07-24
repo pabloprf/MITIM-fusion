@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.gacode_tools import TGLFtools
-from mitim_tools.opt_tools.aux import BOgraphics, EVplot
+from mitim_tools.opt_tools.utils import BOgraphics, EVplot
 from mitim_tools.opt_tools import STRATEGYtools
 
 from IPython import embed

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, FARMINGtools
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.im_tools import IMparam
-from mitim_tools.im_tools.aux import LUTtools
+from mitim_tools.im_tools.utils import LUTtools
 
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print

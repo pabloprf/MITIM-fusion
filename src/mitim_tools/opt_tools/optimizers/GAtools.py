@@ -8,7 +8,7 @@ import dill as pickle
 import multiprocessing_on_dill as multiprocessing
 from IPython import embed
 from mitim_tools.misc_tools import IOtools, MATHtools
-from mitim_tools.opt_tools.aux import BOgraphics
+from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.opt_tools.OPTtools import pointsOperation_bounds, summarizeSituation
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level

@@ -5,7 +5,7 @@ from collections import OrderedDict
 from scipy.interpolate import interp1d
 from IPython import embed
 
-from mitim_tools.gs_tools.aux import FREEGSparams, GSplotting
+from mitim_tools.gs_tools.utils import FREEGSparams, GSplotting
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level

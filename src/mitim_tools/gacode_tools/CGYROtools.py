@@ -4,9 +4,9 @@ import datetime
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.gacode_tools.aux import GACODEdefaults, GACODErun
+from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
-from mitim_tools.gacode_tools.aux import GACODEplotting
+from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs

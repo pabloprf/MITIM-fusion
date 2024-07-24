@@ -7,7 +7,7 @@ from IPython import embed
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools
 from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.gacode_tools.aux import GACODEplotting, GACODErun, TRANSPgacode
+from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
 from mitim_tools.transp_tools.tools import (
     FBMtools,
     TORICtools,

@@ -58,6 +58,6 @@ To plot while it's still in the simple relaxation phase:
 	mitim_plot_portalsSR portals_tut
 
 Debug what's going on with TGLF
-	run ~/PORTALS/portals_opt/PORTALS_tools/exe/runTGLFdrivesfromPORTALS.py --folder portals_tut/ --ev 27 --pos 0 2
+	run ~/PORTALS/portals_opt/PORTALS_tools/scripts/runTGLFdrivesfromPORTALS.py --folder portals_tut/ --ev 27 --pos 0 2
 
 """

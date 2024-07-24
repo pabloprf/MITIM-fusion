@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_modules.powertorch.aux import TRANSFORMtools, POWERplot, ITtools
+from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot, ITtools
 from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed

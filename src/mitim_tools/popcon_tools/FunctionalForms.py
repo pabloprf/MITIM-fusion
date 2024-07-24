@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
-from mitim_tools.popcon_tools.aux import PRFfunctionals, FUNCTIONALScalc
+from mitim_tools.popcon_tools.utils import PRFfunctionals, FUNCTIONALScalc
 from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 

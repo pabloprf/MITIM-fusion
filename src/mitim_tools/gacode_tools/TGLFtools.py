@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
     GUItools,
 )
-from mitim_tools.gacode_tools.aux import (
+from mitim_tools.gacode_tools.utils import (
     NORMtools,
     GACODEinterpret,
     GACODEdefaults,

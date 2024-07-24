@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import OPTtools, STEPtools
-from mitim_tools.opt_tools.aux import (
+from mitim_tools.opt_tools.utils import (
     BOgraphics,
     SBOcorrections,
     TESTtools,

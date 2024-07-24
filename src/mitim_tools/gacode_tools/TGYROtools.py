@@ -8,12 +8,12 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
 )
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
-from mitim_tools.gacode_tools.aux import GACODEinterpret, GACODEdefaults, GACODErun
+from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 try:
-    from mitim_tools.gacode_tools.aux import PORTALSinteraction
+    from mitim_tools.gacode_tools.utils import PORTALSinteraction
 except:
     print(
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
