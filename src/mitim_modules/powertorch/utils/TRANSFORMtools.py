@@ -1,6 +1,7 @@
 import copy
 import torch
 import numpy as np
+import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
@@ -344,7 +345,17 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             mi.append(input_gacode.profiles["mass"][i])
             Zi.append(input_gacode.profiles["z"][i])
 
-            c = TARGETStools.get_chebyshev_coeffs(input_gacode.profiles["name"][i])
+            # Grab chebyshev coefficients from file
+            data_df = pd.read_csv(IOtools.expandPath("$MITIM_PATH/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv"))
+            
+            try:
+                c = data_df[data_df['Ion']==input_gacode.profiles["name"][i]].to_numpy()[0,1:].astype(float)
+            except IndexError:
+                print(
+                    f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',
+                    typeMsg="w",
+                )
+                c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
             c_rad.append(c)
 

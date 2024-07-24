@@ -2,8 +2,8 @@ import os
 import torch
 import copy
 import numpy as np
+import pandas as pd
 from collections import OrderedDict
-from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
@@ -109,8 +109,8 @@ def initializeProblem(
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
-            c = TARGETStools.get_chebyshev_coeffs(profiles.Species[i]["N"])
-            if c[0] <= -1e10:
+            data_df = pd.read_csv(IOtools.expandPath("$MITIM_PATH/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv"))
+            if not (data_df['Ion']==profiles.Species[i]["N"]).any():
                 speciesNotFound.append(profiles.Species[i]["N"])
         if len(speciesNotFound) > 0:
             a = print(
