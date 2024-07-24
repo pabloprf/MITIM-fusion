@@ -1158,6 +1158,7 @@ class optimization_data:
         for i in self.outputs:
             self.data_point_dictionary[i] = np.nan
             self.data_point_dictionary[i + "_std"] = np.nan
+        self.data_point_dictionary['maximization_objective'] = np.nan
 
         if forceNew or not os.path.exists(self.file):
             # Create empty csv
@@ -1212,7 +1213,7 @@ class optimization_data:
 
         return X, Y, Ystd
 
-    def update_data_point(self,x,y,ystd):
+    def update_data_point(self,x,y,ystd,objective=np.nan):
 
         # Read again?
         self.data = pd.read_csv(self.file)
@@ -1226,10 +1227,12 @@ class optimization_data:
             self.data.loc[point, self.outputs] = y
             self.data.loc[point, [i + "_std" for i in self.outputs]] = ystd
 
+            self.data.loc[point, "maximization_objective"] = objective
+
             # Update file
             self.data.to_csv(self.file, index=False)
 
-    def update_points(self, X, Y=np.array([]), Ystd=np.array([])):
+    def update_points(self, X, Y=np.array([]), Ystd=np.array([]),objective=None):
 
         data_new = copy.deepcopy(self.data)
 
@@ -1257,6 +1260,11 @@ class optimization_data:
                     for j in range(len(self.outputs)):
                         data_point[self.outputs[j]] = np.nan
                         data_point[self.outputs[j] + "_std"] = np.nan
+
+                if (objective is not None) and (i < len(objective)):
+                    data_point['maximization_objective'] = objective[i]
+                else:
+                    data_point['maximization_objective'] = np.nan
 
                 data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
 

@@ -3,7 +3,8 @@ This example runs the complete MITIM optimization algorithm on a simple test fun
 To run: python3  $MITIM_PATH/tests/MITIM_workflow.py
 """
 
-import os, torch
+import os
+import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools

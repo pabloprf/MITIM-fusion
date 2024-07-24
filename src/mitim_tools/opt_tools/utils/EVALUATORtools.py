@@ -1,4 +1,5 @@
 import os
+import torch
 import numpy as np
 from collections import OrderedDict
 import pandas as pd
@@ -184,7 +185,8 @@ def mitimRun(
     if optimization_data is not None:
         if lock is not None:
             lock.acquire()
-        optimization_data.update_data_point(x,y,yE)
+        _,_,objective = mainFunction.scalarized_objective(torch.from_numpy(y))
+        optimization_data.update_data_point(x,y,yE,objective=objective.numpy())
         if lock is not None:
             lock.release()
 

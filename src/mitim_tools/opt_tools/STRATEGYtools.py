@@ -964,7 +964,8 @@ class PRF_BO:
         self.train_X = np.append(self.train_X, self.x_next.cpu(), axis=0)
 
         # Update optimization_data with nans
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
+        _,_,objective = self.mainFunction.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
         # Update optimization_results only as "predicted"
         if not isThisCorrected:
@@ -1019,7 +1020,8 @@ class PRF_BO:
         # ---------------------------------------------------------------------------------------------------------------------
 
         # Update Tabular data with the actual evaluations
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
+        _,_,objective = self.mainFunction.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
         # Update optimization_results with the actual evaluations
         if not isThisCorrected:
@@ -1351,7 +1353,8 @@ class PRF_BO:
         # -----------------------------------------------------------------
 
         # Write initialization in Tabular
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
+        _,_,objective = self.mainFunction.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
         # Write optimization_results
         self.optimization_results.addPoints(
@@ -1395,8 +1398,8 @@ class PRF_BO:
                 f"\t- Points {self.avoidPoints_failed} are avoided b/c at least one of the OFs could not be computed"
             )
         # ------------------
-
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd)
+        _,_,objective = self.mainFunction.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
         self.optimization_results.addPoints(
             includePoints=[0, self.OriginalInitialPoints],
             executed=True,
