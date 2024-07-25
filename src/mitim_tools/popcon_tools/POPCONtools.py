@@ -90,7 +90,7 @@ class MITIMpopcon:
                         / profiles_gacode.profiles["rmin(m)"][-1] 
                         / profiles_gacode.profiles['bcentr(T)'][-1])
         
-        nu_n_scaling = cfspopcon.formulas.calc_density_peaking(profiles_gacode.derived["nu_eff"],
+        nu_n_scaling = cfspopcon.formulas.plasma_profiles.calc_density_peaking(profiles_gacode.derived["nu_eff"],
                                                                 beta_percent*1e-2,
                                                                   nu_noffset=0.0)
 
@@ -394,7 +394,8 @@ class MITIMpopcon:
             # updates 0D parameters and transport with the results of the optimization
             for key in popcon_2D.keys():
                 if key not in ["average_electron_density", "average_electron_temp"]:
-                    popcon_2D[key] = self.results[key]
+                    print(f"Updating {key}")
+                    popcon_2D[key] = self.dataset[key]
 
         popcon_2D = self.algorithm.update_dataset(popcon_2D)
 
