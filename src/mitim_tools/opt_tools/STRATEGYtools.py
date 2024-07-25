@@ -430,6 +430,17 @@ class PRF_BO:
         self.surrogate_parameters = self.mainFunction.surrogate_parameters
         self.Optim = self.mainFunction.Optim
 
+        # Check if the variables are expected
+        namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+        Optim_potential = IOtools.read_mitim_nml(namelist)
+        for ikey in self.Optim:
+            if ikey not in Optim_potential:
+                print(
+                    f"\t- Optim['{ikey}'] is an unexpected variable, prone to errors or misinterpretation",
+                    typeMsg="q",
+                )
+        # -----------------------------------
+
         if not onlyInitialize:
             print(
                 "\n-----------------------------------------------------------------------------------------"

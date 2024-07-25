@@ -117,6 +117,8 @@ class portals(STRATEGYtools.opt_evaluator):
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        self.potential_flags = {}
+
         """
 		Parameters to initialize files
 		------------------------------
@@ -137,6 +139,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "ensurePostiveGamma": False,
             "ensureMachNumber": None,
         }
+
+        self.potential_flags['INITparameters'] = ['recompute_ptot','quasineutrality','removeIons','removeFast','FastIsThermal','sameDensityGradients','groupQIONE','ensurePostiveGamma','ensureMachNumber']
 
         """
 		Parameters to run the model
@@ -167,6 +171,8 @@ class portals(STRATEGYtools.opt_evaluator):
             },
             "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {}}
         }
+
+        self.potential_flags['MODELparameters'] = ['RhoLocations','ProfilesPredicted','Physics_options','applyCorrections','transport_model']
 
         """
 		Physics-informed parameters to fit surrogates
@@ -221,6 +227,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
         }
 
+        self.potential_flags['PORTALSparameters'] = ['percentError','transport_evaluator','targets_evaluator','TargetCalc','launchEvaluationsAsSlurmJobs','useConvectiveFluxes','includeFastInQi','useDiffusivities','useFluxRatios','physicsBasedParams','physicsBasedParams_trace','Qi_criterion_stable','percentError_stable','forceZeroParticleFlux','surrogateForTurbExch','profiles_postprocessing_fun','Pseudo_multipliers','ImpurityOfInterest','applyImpurityGammaTrick','UseOriginalImpurityConcentrationAsWeight','fineTargetsResolution']
+
     def prep(
         self,
         fileGACODE,
@@ -255,6 +263,17 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         print(">> PORTALS flags pre-check")
+
+        # Check that I haven't added a deprecated variable that I expect some behavior from
+        for key in self.potential_flags.keys():
+            for flag in self.__dict__[key]:
+                if flag not in self.potential_flags[key]:
+                    print(
+                        f"\t- {key}['{flag}'] is an unexpected variable, prone to errors or misinterpretation",
+                        typeMsg="q",
+                    )
+        # ----------------------------------------------------------------------------------
+
 
         if self.PORTALSparameters["fineTargetsResolution"] is not None:
             if self.PORTALSparameters["TargetCalc"] != "powerstate":
