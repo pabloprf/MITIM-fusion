@@ -29,7 +29,7 @@ def PORTALSanalyzer_plotMetrics(
     includeRicci=True,
     file_save=None,
     **kwargs,  # To allow pass fn that may be used in another plotMetrics method
-):
+    ):
     print("- Plotting PORTALS Metrics")
 
     self.iextra = indeces_extra
@@ -65,7 +65,7 @@ def PORTALSanalyzer_plotMetrics(
 
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[:4, 2 + cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
@@ -369,7 +369,7 @@ def PORTALSanalyzer_plotMetrics(
             plotFlows=plotFlows and (self.ibest == indexUse),
             addFlowLegend=cont == len(indeces_plot) - 1,
         )
-
+    
     ax = axTe
     GRAPHICStools.addDenseAxis(ax)
     # ax.set_xlabel('$\\rho_N$')
@@ -825,10 +825,6 @@ def PORTALSanalyzer_plotMetrics(
             pass
 
         ax.set_ylabel("$\\Delta$ $a/L_{X}^*$ (%)")
-        # try:
-        #     ax.set_yscale("log")
-        # except:
-        #     pass
 
         (l2,) = axA.plot(
             x0,
@@ -1016,7 +1012,6 @@ def PORTALSanalyzer_plotMetrics(
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
 
-
 def define_extra_iterators(self):
 
     # Always plot initial and best
@@ -1047,10 +1042,9 @@ def define_extra_iterators(self):
 
     return indeces_plot, colors_plot, labels_plot, markers_plot
 
-
 def PORTALSanalyzer_plotExpected(
     self, fig=None, stds=2, max_plot_points=4, plotNext=True
-):
+    ):
     print("- Plotting PORTALS Expected")
 
     if fig is None:
@@ -1150,7 +1144,7 @@ def PORTALSanalyzer_plotExpected(
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion {self.runWithImpurity+1} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
         axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
@@ -1756,7 +1750,6 @@ def PORTALSanalyzer_plotExpected(
     except:
         pass
 
-
 def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
@@ -1809,8 +1802,8 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     profile_original = self.mitim_runs[0]["powerstate"].profiles
     profile_best =  self.mitim_runs[self.ibest]["powerstate"].profiles
 
-    profile_original_unCorrected = self.mitim_runs["profiles_original_un"]
-    profile_original_0 = self.mitim_runs["profiles_original"]
+    profile_original_unCorrected = self.mitim_runs["profiles_original"]
+    profile_original_0 = self.mitim_runs["profiles_modified"]
 
     fig4 = fn.add_figure(label="PROFILES Comparison", tab_color=fn_color)
     grid = plt.GridSpec(
@@ -1871,11 +1864,11 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs, axsRes = STATEtools.add_axes_fig1(fig)
+    axs = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
-            self.powerstates[indeces].plot(axs, axsRes, label=f"({indeces})", c=c)
+            self.powerstates[indeces].plot(axs, label=f"({indeces})", c=c)
 
     axs[0].legend(loc="best")
 
@@ -1913,7 +1906,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     )
 
     ms = 0
-
+    
     p = self.mitim_runs[self.i0]["powerstate"].profiles
     p.plotGradients(
         axsR,
@@ -1957,7 +1950,6 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
 
     axsR[0].legend(loc="best")
 
-
 def PORTALSanalyzer_plotModelComparison(
     self,
     fig=None,
@@ -1966,7 +1958,7 @@ def PORTALSanalyzer_plotModelComparison(
     includeErrors=True,
     includeMetric=True,
     includeLegAll=True,
-):
+    ):
     print("- Plotting PORTALS Simulations - Model comparison")
 
     if (fig is None) and (axs is None):
@@ -2183,7 +2175,6 @@ def PORTALSanalyzer_plotModelComparison(
 
     return axs, metrics
 
-
 def plotModelComparison_quantity(
     self,
     ax,
@@ -2197,7 +2188,7 @@ def plotModelComparison_quantity(
     includeErrors=True,
     includeMetric=True,
     includeLeg=True,
-):
+    ):
     resultsX = "tglf_neo"
     quantity_label_resultsX = "(TGLF)"
 
@@ -2952,7 +2943,7 @@ def plotFluxComparison(
 
     Qe_tar = power.plasma['Pe'].numpy()[0][ixF:]
     Qi_tar = power.plasma['Pi'].numpy()[0][ixF:]
-    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:]
+    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
     GZ_tar = power.plasma['CZ_raw'].numpy()[0][ixF:]
     Mt_tar = power.plasma['Mt'].numpy()[0][ixF:]
 
@@ -3050,6 +3041,10 @@ def plotFluxComparison(
                     y = tBest.profiles["rho(-)"] * 0.0
                 else:
                     y = tBest.derived[var] * mult
+
+                if var == "ge_10E20m2":
+                    y *= 1 - int(forceZeroParticleFlux)
+
                 ax.plot(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,
@@ -3194,6 +3189,7 @@ def produceInfoRanges(
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
     )
+    
     for i in range(len(rhos) - 1):
         if f"aLte_{i+1}" in bounds:
             aLTe[i + 1, :] = bounds[f"aLte_{i+1}"]
@@ -3226,9 +3222,7 @@ def produceInfoRanges(
 
     X = X.transpose(0, 1)
 
-    powerstate = PORTALStools.constructEvaluationProfiles(
-        X, copy.deepcopy(self_complete.surrogate_parameters), recalculateTargets=False
-    )
+    powerstate = PORTALStools.constructEvaluationProfiles(X, copy.deepcopy(self_complete.surrogate_parameters))
 
     GRAPHICStools.fillGraph(
         axsR[0],
@@ -3300,8 +3294,8 @@ def produceInfoRanges(
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
-            powerstate.plasma["nZ"][0] * 0.1,
-            y_up=powerstate.plasma["nZ"][1] * 0.1,
+            powerstate.plasma["nZ"][0] * 0.1,       # in 10^20
+            y_up=powerstate.plasma["nZ"][1] * 0.1,  # in 10^20
             alpha=alpha,
             color=color,
             label=label,
@@ -3323,8 +3317,8 @@ def produceInfoRanges(
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
-            powerstate.plasma["w0"][0] * 1e-3,
-            y_up=powerstate.plasma["w0"][1] * 1e-3,
+            powerstate.plasma["w0"][0]*1E-3,        # in krad/s
+            y_up=powerstate.plasma["w0"][1]*1E-3,   # in krad/s
             alpha=alpha,
             color=color,
             label=label,

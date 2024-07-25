@@ -347,7 +347,7 @@ class PROFILES_GACODE:
         # self.derived['epsX'] = self.profiles['rmaj(m)'] / self.profiles['rmin(m)']
         # self.derived['eps'] = self.derived['epsX'][-1]
         self.derived["eps"] = (
-            self.profiles["rmaj(m)"][-1] / self.profiles["rmin(m)"][-1]
+            self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
         )
 
         self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
@@ -556,7 +556,7 @@ class PROFILES_GACODE:
         self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
         self.derived["ge_10E20m2"] = self.derived["ge_10E20miller"] / (volp)
 
-        self.derived["QiQe"] = self.derived["qi_MWm2"] / self.derived["qe_MWm2"]
+        self.derived["QiQe"] = self.derived["qi_MWm2"] / np.where(self.derived["qe_MWm2"] == 0, 1e-10, self.derived["qe_MWm2"]) # to avoid division by zero
 
         # "Convective" flux
         self.derived["ce_MWmiller"] = PLASMAtools.convective_flux(
@@ -1008,6 +1008,32 @@ class PROFILES_GACODE:
 
         self.readSpecies()
 
+        # -------------------------------------------------------
+        # q-star
+        # -------------------------------------------------------
+
+        self.derived["qstar"] = PLASMAtools.evaluate_qstar(
+            self.profiles['current(MA)'][0],
+            self.profiles['rcentr(m)'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.profiles['bcentr(T)'],
+            self.derived['eps'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            ITERcorrection=False,
+            includeShaping=True,
+        )
+        self.derived["qstar_ITER"] = PLASMAtools.evaluate_qstar(
+            self.profiles['current(MA)'][0],
+            self.profiles['rcentr(m)'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.profiles['bcentr(T)'],
+            self.derived['eps'],
+            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            ITERcorrection=True,
+            includeShaping=True,
+        )
+
+
     def calculateMass(self):
         self.derived["mbg"] = 0.0
         self.derived["fmain"] = 0.0
@@ -1338,7 +1364,7 @@ class PROFILES_GACODE:
                     f.write(f"{pos}{valt}\n")
 
     def changeResolution(
-        self, n=100, rho_new=None, interpFunction=MATHtools.extrapolateCubicSpline
+        self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline
     ):
         rho = copy.deepcopy(self.profiles["rho(-)"])
 
@@ -1355,11 +1381,11 @@ class PROFILES_GACODE:
         for i in pro:
             if i not in self.titles_single:
                 if len(pro[i].shape) == 1:
-                    pro[i] = interpFunction(rho_new, rho, pro[i])
+                    pro[i] = interpolation_function(rho_new, rho, pro[i])
                 else:
                     prof = []
                     for j in range(pro[i].shape[1]):
-                        pp = interpFunction(rho_new, rho, pro[i][:, j])
+                        pp = interpolation_function(rho_new, rho, pro[i][:, j])
                         prof.append(pp)
                     prof = np.array(prof)
 
@@ -1370,7 +1396,7 @@ class PROFILES_GACODE:
         self.deriveQuantities(mi_ref=self.derived["mi_ref"])
 
         print(
-            f"\t\t- Resolution of profiles changed to {n} points with function {interpFunction}"
+            f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}"
         )
 
     def DTplasma(self):
@@ -1525,45 +1551,74 @@ class PROFILES_GACODE:
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
         )
 
-    def changeZeff(self, Zeff, ion_pos=2, enforceSameGradients=False):
+    def changeZeff(self, Zeff, ion_pos=2, quasineutral_ions=None, enforceSameGradients=False):
         """
         if (D,Z1,Z2), pos 1 -> change Z1
         """
 
+        if quasineutral_ions is None:
+            if self.DTplasmaBool:
+                quasineutral_ions = [self.Dion, self.Tion]
+            else:
+                quasineutral_ions = [self.Mion]
+
         print(
-            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} ({self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]})',
+            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',
             typeMsg="i",
         )
+
+        # Plasma needs to be in quasineutrality to start with
+        self.enforceQuasineutrality()
+
+        # ------------------------------------------------------
+        # Contributions to equations
+        # ------------------------------------------------------
+        Zq = np.zeros(self.derived["fi"].shape[0])
+        Zq2 = np.zeros(self.derived["fi"].shape[0])
+        fZj = np.zeros(self.derived["fi"].shape[0])
+        fZj2 = np.zeros(self.derived["fi"].shape[0])
+        for i in range(len(self.Species)):
+            if i in quasineutral_ions:
+                Zq += self.Species[i]["Z"] 
+                Zq2 += self.Species[i]["Z"] ** 2 
+            elif i != ion_pos:
+                fZj += self.Species[i]["Z"] * self.derived["fi"][:, i]
+                fZj2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
+            else:
+                Zk = self.Species[i]["Z"]
+
+        # ------------------------------------------------------
+        # Find free parameters (fk and fq)
+        # ------------------------------------------------------
+
+        fk = ( Zeff - (1-fZj)*Zq2/Zq - fZj2 ) / ( Zk**2 - Zk*Zq2/Zq)
+        fq = ( 1 - fZj - fk*Zk ) / Zq
+
+        if (fq<0).any():
+            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
+
+        # ------------------------------------------------------
+        # Insert
+        # ------------------------------------------------------
 
         fi_orig = self.derived["fi"][:, ion_pos]
 
-        # Contributions to Zeff
-        fZ2 = np.zeros(self.derived["fi"].shape[0])
-        for i in range(len(self.Species)):
-            if i != ion_pos:
-                fZ2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
-
-        contribution_to_Zeff = Zeff - fZ2
-
-        if contribution_to_Zeff.mean() < 0:
-            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
-        else:
-            fi = contribution_to_Zeff / self.Species[ion_pos]["Z"] ** 2
-
-        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fi * self.profiles["ne(10^19/m^3)"]
+        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
+        for i in quasineutral_ions:
+            self.profiles["ni(10^19/m^3)"][:, i] = fq * self.profiles["ne(10^19/m^3)"]
 
         self.readSpecies()
 
-        if enforceSameGradients:
-            self.scaleAllThermalDensities()
         self.deriveQuantities()
 
-        fi_new = self.derived["fi"][:, ion_pos]
+        if enforceSameGradients:
+            self.scaleAllThermalDensities()
+            self.deriveQuantities()
 
         print(
-            f'\t\t\t- Dilution changed from {fi_orig.mean():.2e} (vol avg) to {fi_new.mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f}',
-            typeMsg="i",
+            f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]',
         )
+
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
@@ -1786,9 +1841,7 @@ class PROFILES_GACODE:
             new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Dion])
         else:
             print(
-                "\t\t\t* Enforcing quasineutrality by modifying main ion (position #{0})".format(
-                    self.Mion
-                )
+                f"\t\t\t* Enforcing quasineutrality by modifying main ion (position #{self.Mion})"
             )
             prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Mion])
             self.profiles["ni(10^19/m^3)"][:, self.Mion] += ne_missing
@@ -1808,7 +1861,7 @@ class PROFILES_GACODE:
         Bt = self.profiles["bcentr(T)"][0]
         q95 = self.derived["q95"]
         Bp = (
-            1 / self.derived["eps"] * Bt / q95
+            self.derived["eps"] * Bt / q95
         )  # ----------------------------------- VERY ROUGH APPROXIMATION!!!!
 
         ne_LCFS, Te_LCFS, Lambda_q = PLASMAtools.evaluateLCFS_Lmode(
@@ -2930,7 +2983,7 @@ class PROFILES_GACODE:
         if plotImpurity is not None:
             axs4[6 + cont].plot(
                 xcoord,
-                self.profiles["ni(10^19/m^3)"][:, plotImpurity - 1] * 1e-1,
+                self.profiles["ni(10^19/m^3)"][:, plotImpurity] * 1e-1,
                 ls,
                 c=color,
                 lw=lw,
@@ -2944,7 +2997,7 @@ class PROFILES_GACODE:
             if "derived" in self.__dict__:
                 axs4[7 + cont].plot(
                     xcoord[:ix],
-                    self.derived["aLni"][:ix, plotImpurity - 1],
+                    self.derived["aLni"][:ix, plotImpurity],
                     ls,
                     c=color,
                     lw=lw,
@@ -3589,7 +3642,7 @@ class PROFILES_GACODE:
         PROFILEStoMODELS.profiles_to_tglf(self, rhos=rhos, TGLFsettings=TGLFsettings)
 
     def plotPeaking(
-        self, ax, c="b", marker="*", label="SPARC PRD", debugPlot=False, printVals=False
+        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
     ):
         nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
         ne_peaking = self.derived["ne_peaking0.2"]
@@ -4027,15 +4080,15 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     return p
 
-def add_figures(fn, fnlab='', fnlab_pre=''):
+def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
-    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab)
-    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab)
-    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab)
-    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab)
-    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab)
-    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab)
-    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab)
+    figProf_1 = fn.add_figure(label= fnlab_pre + "Profiles" + fnlab, tab_color=tab_color)
+    figProf_2 = fn.add_figure(label= fnlab_pre + "Powers" + fnlab, tab_color=tab_color)
+    figProf_3 = fn.add_figure(label= fnlab_pre + "Geometry" + fnlab, tab_color=tab_color)
+    figProf_4 = fn.add_figure(label= fnlab_pre + "Gradients" + fnlab, tab_color=tab_color)
+    figFlows = fn.add_figure(label= fnlab_pre + "Flows" + fnlab, tab_color=tab_color)
+    figProf_6 = fn.add_figure(label= fnlab_pre + "Other" + fnlab, tab_color=tab_color)
+    fig7 = fn.add_figure(label= fnlab_pre + "Impurities" + fnlab, tab_color=tab_color)
     figs = [figProf_1, figProf_2, figProf_3, figProf_4, figFlows, figProf_6, fig7]
 
     return figs

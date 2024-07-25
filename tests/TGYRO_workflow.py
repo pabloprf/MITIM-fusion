@@ -31,7 +31,7 @@ solver = {
     "tgyro_method": 6,
     "relax_param": 0.1,
 }
-physics_options = {"TargetType": 2}
+physics_options = {"TypeTarget": 2}
 
 tgyro.run(
     subFolderTGYRO="run1/",
@@ -42,7 +42,7 @@ tgyro.run(
     PredictionSet=[1, 1, 0],
     TGLFsettings=1,
     TGYRO_solver_options=solver,
-    Physics_options=physics_options,
+    TGYRO_physics_options=physics_options,
 )
 tgyro.read(label="run1")
 tgyro.plot(labels=["run1"])

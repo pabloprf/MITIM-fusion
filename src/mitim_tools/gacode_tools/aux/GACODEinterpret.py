@@ -135,6 +135,7 @@ def readGeneral(file, numcols=3, maskfun=None):
     for k in range(numcols):
         vecT[k] = []
 
+    vec = {}
     i = 0
     while i < num:
         if "r/a" in aux[i]:

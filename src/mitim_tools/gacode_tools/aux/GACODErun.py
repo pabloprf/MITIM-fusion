@@ -1,5 +1,4 @@
 import os
-import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -7,9 +6,7 @@ from mitim_tools.transp_tools.tools import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
 from IPython import embed
-
 verbose_level = read_verbose_level()
 
 
@@ -232,7 +229,7 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
     if NML is None:
         print(
             "\t\t- Creating dummy namelist because it was not found in folder",
-            typeMsg="w",
+            typeMsg="i",
         )
         with open(LocationNML, "w") as f:
             f.write(f"nshot = {nameRunid}")

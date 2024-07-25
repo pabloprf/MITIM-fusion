@@ -11,7 +11,6 @@ from IPython import embed
 
 verbose_level = read_verbose_level()
 
-
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, StrategyOptions):
         self.stepSettings = stepSettings
@@ -356,7 +355,7 @@ def pointSelection(
         print(
             f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... "
         )
-        best_now = -y_res[0].item()
+        best_now = y_res[0].item()
         if best_now > enoughPerformance:
             print(
                 f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer..."

@@ -482,7 +482,7 @@ def initializeGSgrab(subfolders, evaluations, superfolder="./"):
     # Initialize the currents (in case they have different DVs)
     coils = []
     for ff, ev in zip(subfolders, evaluations):
-        pklf = f"{superfolder}/{ff}/Outputs/MITIMstate.pkl"
+        pklf = f"{superfolder}/{ff}/Outputs/optimization_object.pkl"
 
         mitim = pickle.load(open(pklf, "rb"))
 

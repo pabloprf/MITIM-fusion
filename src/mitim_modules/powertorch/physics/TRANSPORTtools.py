@@ -1,7 +1,6 @@
 import copy
 import os
 import torch
-import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.aux import PORTALScgyro
@@ -11,18 +10,18 @@ from IPython import embed
 
 class power_transport:
     '''
-    Default class for power transport models, change "evaluate" method to implement a new model
+    Default class for power transport models, change "evaluate" method to implement a new model and produce_profiles if the model requires written input.gacode written
 
     Notes:
         - After evaluation, the self.model_results attribute will contain the results of the model, which can be used for plotting and analysis
         - model results can have .plot() method that can grab kwargs or be similar to TGYRO plot
 
     '''
-    def __init__(self, powerstate, name = "test", folder = "~/scratch/", extra_params = {}):
+    def __init__(self, powerstate, name = "test", folder = "~/scratch/", evaluation_number = 0):
 
         self.name = name
         self.folder = IOtools.expandPath(folder)
-        self.extra_params = extra_params
+        self.evaluation_number = evaluation_number
         self.powerstate = powerstate
 
         # Allowed fluxes in powerstate so far
@@ -70,45 +69,31 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
-    def produce_profiles(self,deriveQuantities=True):
+    def _produce_profiles(self,deriveQuantities=True):
 
-        if 'MODELparameters' in self.powerstate.TransportOptions["ModelOptions"] and 'applyCorrections' in self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]:
-            self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"]["MODELparameters"]["applyCorrections"]
-        else:
-            self.applyCorrections = {}
-
-        # Derive quantities so that it's ready for analysis and plotting later
-        if deriveQuantities:
-            self.powerstate.profiles.deriveQuantities()
+        self.applyCorrections = (
+            self.powerstate.TransportOptions["ModelOptions"]
+            .get("MODELparameters", {})
+            .get("applyCorrections", {})
+        )
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
-        self.powerstate.profiles = self.powerstate.insertProfiles(
-            self.powerstate.profiles,
-            writeFile=self.file_profs,
-            applyCorrections=self.applyCorrections,
+        self.powerstate.profiles = self.powerstate.to_gacode(
+            write_input_gacode=self.file_profs,
+            postprocess_input_gacode=self.applyCorrections,
+            rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
+            insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
-    def clean(self):
-
-        # Make sure that the variables are on-repeat
-        for i in self.variables:
-            self.powerstate.keys1D_derived[i] = 1
-
-        # Insert powers again in case they come from TGYRO instead of powerstate previous step
-        if self.powerstate.TargetCalc == "tgyro":
-            self.powerstate.profiles = self.powerstate.insertProfiles(
-                self.powerstate.profiles,
-                writeFile=self.file_profs,
-                applyCorrections=self.applyCorrections,
-                insertPowers=True,      # So that later I can read it fully with the powers, fusion, etc
-            )
+    def produce_profiles(self):
+        pass
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
-        print("Nothing to evaluate", typeMsg="w")
+        print(">> No transport fluxes to evaluate", typeMsg="w")
         pass
 
 # ----------------------------------------------------------------------------------------------------
@@ -116,8 +101,11 @@ class power_transport:
 # ----------------------------------------------------------------------------------------------------
 
 class tgyro_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
+
+    def produce_profiles(self):
+        self._produce_profiles()
 
     def evaluate(self):
 
@@ -189,7 +177,7 @@ class tgyro_model(power_transport):
 
         # Copy original TGYRO folder
         if os.path.exists(f"{self.folder}/tglf_neo/"):
-            os.system(f"{self.folder}/tglf_neo/")
+            os.system(f"rm -r {self.folder}/tglf_neo/")
         os.system(
             f"cp -r {self.folder}/tglf_neo_original {self.folder}/tglf_neo"
         )
@@ -247,14 +235,14 @@ class tgyro_model(power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.TargetCalc == "tgyro",
+            provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
         )
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 4. cgyro_neo: Trick to fake a tgyro output to reflect CGYRO
         # ------------------------------------------------------------------------------------------------------------------------
 
-        if self.powerstate.TransportOptions['TypeTransport'] == "cgyro_neo-tgyro":
+        if MODELparameters['transport_model']['turbulence'] == 'CGYRO':
 
             print(
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
@@ -281,7 +269,6 @@ class tgyro_model(power_transport):
                     self,
                     f"{self.folder}/cgyro_neo",
                     profiles_postprocessing_fun=profiles_postprocessing_fun,
-                    extra_params=self.extra_params,
                     name=self.name,
                 )
 
@@ -300,7 +287,7 @@ class tgyro_model(power_transport):
                 OriginalFimp=OriginalFimp,
                 forceZeroParticleFlux=forceZeroParticleFlux,
                 provideTurbulentExchange=provideTurbulentExchange,
-                provideTargets=self.powerstate.TargetCalc == "tgyro",
+                provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
             )
 
             print("\t- Checking model modifications:")
@@ -338,24 +325,38 @@ class tgyro_model(power_transport):
 # ------------------------------------------------------------------
 
 class diffusion_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
+
+        # Ensure that the provided diffusivities include the zero location
+        self.chi_e = self.powerstate.TransportOptions["ModelOptions"]["chi_e"]
+        self.chi_i = self.powerstate.TransportOptions["ModelOptions"]["chi_i"]
+
+        if self.chi_e.shape[0] < self.powerstate.plasma['rho'].shape[-1]:
+            self.chi_e = torch.cat((torch.zeros(1), self.chi_e))
+
+        if self.chi_i.shape[0] < self.powerstate.plasma['rho'].shape[-1]:
+            self.chi_i = torch.cat((torch.zeros(1), self.chi_i))
+
+    def produce_profiles(self):
+        pass
 
     def evaluate(self):
 
+        # Make sure the chis are applied to all the points in the batch
         Pe_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ne"],
             self.powerstate.plasma["te"],
-            self.powerstate.TransportOptions["ModelOptions"]["chi_e"],
+            self.chi_e.repeat(self.powerstate.plasma['rho'].shape[0],1),
             self.powerstate.plasma["aLte"],
-            self.powerstate.plasma["a"],
+            self.powerstate.plasma["a"].unsqueeze(-1),
         )
         Pi_tr = PLASMAtools.conduction(
             self.powerstate.plasma["ni"].sum(axis=-1),
             self.powerstate.plasma["ti"],
-            self.powerstate.TransportOptions["ModelOptions"]["chi_i"],
+            self.chi_i.repeat(self.powerstate.plasma['rho'].shape[0],1),
             self.powerstate.plasma["aLti"],
-            self.powerstate.plasma["a"],
+            self.powerstate.plasma["a"].unsqueeze(-1),
         )
 
         self.powerstate.plasma["Pe_tr_turb"] = Pe_tr * 2 / 3
@@ -372,8 +373,11 @@ class diffusion_model(power_transport):
 # ------------------------------------------------------------------
 
 class surrogate_model(power_transport):
-    def __init__(self, powerstate, name="test", folder="~/scratch/", extra_params={}):
-        super().__init__(powerstate, name, folder, extra_params)
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
+
+    def produce_profiles(self):
+        pass
 
     def evaluate(self):
 
@@ -381,34 +385,28 @@ class surrogate_model(power_transport):
         flux_fun as given in ModelOptions must produce Q and Qtargets in order of te,ti,ne
         """
 
-        Q, QT = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](self.Xcurrent[0])
+        X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
+
+        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X) #self.Xcurrent[0])
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 
+        quantities = {
+            "te": "Pe",
+            "ti": "Pi",
+            "ne": "Ce",
+            "nZ": "CZ",
+            "w0": "Mt",
+        }
+
         for c, i in enumerate(self.powerstate.ProfilesPredicted):
-            if i == "te":
-                self.powerstate.plasma["Pe_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "ti":
-                self.powerstate.plasma["Pi_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "ne":
-                self.powerstate.plasma["Ce_tr"] = Q[:, numeach * c : numeach * (c + 1)]
-            if i == "nZ":
-                self.powerstate.plasma["CZ_tr"] = Q[:, numeach * c : numeach * (c + 1)]
+            self.powerstate.plasma[f"{quantities[i]}_tr"] = torch.cat((torch.tensor([[0.0]]),Q[:, numeach * c : numeach * (c + 1)]),dim=1)
 
-        for c2, i in enumerate(self.powerstate.ProfilesPredicted):
-            if i == "te":
-                self.powerstate.plasma["Pe"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "ti":
-                self.powerstate.plasma["Pi"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "ne":
-                self.powerstate.plasma["Ce"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
-            if i == "nZ":
-                self.powerstate.plasma["CZ"] = QT[:, numeach * c2 : numeach * (c2 + 1)]
+# **************************************************************************************************
+# Functions
+# **************************************************************************************************
 
-
-def curateTGYROfiles(
-    tgyro, folder, percentError, impurityPosition=1, includeFast=False
-):
+def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFast=False):
     # TGLF ---------------------------------------------------------------------------------------------------------
 
     Qe = tgyro.Qe_sim_turb[0, 1:]
@@ -529,14 +527,14 @@ def curateTGYROfiles(
 
 
 def profilesToShare(self):
-    if "folder" in self.extra_params:
+    if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
-            self.extra_params["folder"] + "/Outputs/ProfilesEvaluated/"
+            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
         )
         if not os.path.exists(whereFolder):
             IOtools.askNewFolder(whereFolder)
 
-        fil = f"{whereFolder}/input.gacode.{self.extra_params['numPORTALS']}"
+        fil = f"{whereFolder}/input.gacode.{self.evaluation_number}"
         os.system(f"cp {self.file_profs_mod} {fil}")
         os.system(f"cp {self.file_profs} {fil}_unmodified")
         os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
@@ -549,7 +547,6 @@ def cgyro_trick(
     self,
     FolderEvaluation_TGYRO,
     profiles_postprocessing_fun=None,
-    extra_params={},
     name="",
 ):
 
@@ -599,9 +596,9 @@ def cgyro_trick(
     # **************************************************************************************************************************
 
     PORTALScgyro.evaluateCGYRO(
-        extra_params["PORTALSparameters"],
-        extra_params["folder"],
-        extra_params["numPORTALS"],
+        self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["PORTALSparameters"],
+        self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"],
+        self.evaluation_number,
         FolderEvaluation_TGYRO,
         self.file_profs,
         rad=self.powerstate.plasma["rho"].shape[1] - 1,

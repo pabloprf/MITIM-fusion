@@ -345,9 +345,9 @@ def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
         }
 
         for ikey in mapper:
-            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][..., 1:]
             if mapper[ikey] + "_stds" in powerstate.plasma:
-                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][..., 1:]
             else:
                 var_dict[ikey + "_stds"] = None
 
