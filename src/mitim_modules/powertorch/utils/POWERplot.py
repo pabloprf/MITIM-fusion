@@ -155,6 +155,7 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
         lw=1.0,
     )
     ax_Fgb.set_xlim([0, 1])
+    ax_Fgb.set_xlabel('$\\rho$')
     ax_Fgb.set_ylabel(ylabel_Fgb)
     ax_Fgb.set_yscale("log")
     
@@ -170,6 +171,7 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
         plasma["rho"][batch_num,1:], plasma[key_Ftar][batch_num,1:], "--*", color=c, markersize=3, lw=1.0
     )
     ax_F.set_xlim([0, 1])
+    ax_F.set_xlabel('$\\rho$')
     ax_F.set_ylabel(ylabel_F)
     # ax_F.set_ylim(bottom=0)
 

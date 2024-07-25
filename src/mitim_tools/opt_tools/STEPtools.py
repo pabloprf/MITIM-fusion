@@ -94,8 +94,8 @@ class OPTstep:
 
         # **** Step settings
         self.surrogateOptions = self.stepSettings["Optim"]["surrogateOptions"]
-        self.acquisitionType = self.stepSettings["Optim"]["acquisitionType"]
-        self.favorProximityType = self.stepSettings["Optim"]["favorProximityType"]
+        self.acquisition_type = self.stepSettings["Optim"]["acquisition_type"]
+        self.favor_proximity_type = self.stepSettings["Optim"]["favor_proximity_type"]
         self.optimizers = self.stepSettings["Optim"]["optimizers"]
         self.outputs = self.stepSettings["outputs"]
         self.dfT = self.stepSettings["dfT"]
@@ -356,12 +356,12 @@ class OPTstep:
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
 
-        if self.acquisitionType == "posterior_mean":
+        if self.acquisition_type == "posterior_mean":
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 
-        elif self.acquisitionType == "ei_mc":
+        elif self.acquisition_type == "ei_mc":
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -370,7 +370,7 @@ class OPTstep:
                 )
             )
 
-        elif self.acquisitionType == "logei_mc":
+        elif self.acquisition_type == "logei_mc":
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -379,7 +379,7 @@ class OPTstep:
                 )
             )
 
-        elif self.acquisitionType == "logei":
+        elif self.acquisition_type == "logei":
             print("* Chosen an analytic acquisition, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
@@ -411,7 +411,7 @@ class OPTstep:
             res,
             self.train_X[self.BOmetrics["overall"]["indBest"]],
             self.BOmetrics["overall"]["Residual"][self.BOmetrics["overall"]["indBest"]],
-            self.favorProximityType,
+            self.favor_proximity_type,
         )
 
     def optimize(
@@ -447,7 +447,7 @@ class OPTstep:
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
         print(
-            f'\n~~ Maximization of "{self.acquisitionType}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n'
+            f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n'
         )
 
         self.x_next, self.InfoOptimization = OPTtools.optAcq(
@@ -524,7 +524,7 @@ def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[])
     return avoidPoints
 
 
-def correctResidualForProximity(x, res, xBest, resBest, favorProximityType):
+def correctResidualForProximity(x, res, xBest, resBest, favor_proximity_type):
     what_is_already_good_improvement = (
         1e-2  # Improvement of 100x is already good enough
     )
@@ -532,11 +532,11 @@ def correctResidualForProximity(x, res, xBest, resBest, favorProximityType):
     indeces_raw = torch.argsort(res, dim=0, descending=True)
 
     # Raw organized
-    if favorProximityType == 0:
+    if favor_proximity_type == 0:
         indeces = indeces_raw
 
     # Special treatment
-    if favorProximityType == 1:
+    if favor_proximity_type == 1:
         # Improvement in residual
         resn = res / resBest
 

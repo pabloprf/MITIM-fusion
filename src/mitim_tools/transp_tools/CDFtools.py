@@ -3,7 +3,6 @@ import pickle
 import copy
 import datetime
 import netCDF4
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -4635,6 +4634,7 @@ class CDFreactor:
         if fig is None:
             fig = plt.figure(figsize=(22, 9))
 
+        time_s = self.t[self.ind_saw]
         # if self.coincidentTime[1] is None: 	time_s = self.t[self.ind_saw]
         # else:								time_s = self.coincidentTime[1]
 

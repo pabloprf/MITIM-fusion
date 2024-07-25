@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools.tools import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -98,6 +99,12 @@ def modifyInputs(
     addControlFunction=None,
     **kwargs_to_function,
 ):
+
+    # Check that those are valid flags
+    GACODEdefaults.review_controls(extraOptions)
+    GACODEdefaults.review_controls(multipliers)
+    # -------------------------------------------
+
     if Settings is not None:
         _, CodeOptions, label = addControlFunction(Settings, **kwargs_to_function)
 

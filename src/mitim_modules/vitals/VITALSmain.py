@@ -14,10 +14,10 @@ def default_namelist(Optim):
     This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
     """
 
-    Optim["initialPoints"] = 8
-    Optim["BOiterations"] = 20
+    Optim["initial_training"] = 8
+    Optim["BO_iterations"] = 20
     Optim["newPoints"] = 4
-    Optim["parallelCalls"] = (
+    Optim["parallel_evaluations"] = (
         4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )
     Optim["surrogateOptions"]["TypeMean"] = 2
@@ -28,7 +28,7 @@ def default_namelist(Optim):
 
     # Acquisition
     Optim["optimizers"] = "root_5-botorch-ga"
-    Optim["acquisitionType"] = "posterior_mean"
+    Optim["acquisition_type"] = "posterior_mean"
 
     return Optim
 
@@ -151,9 +151,9 @@ class vitals(STRATEGYtools.opt_evaluator):
         self.Optim["dvs_max"] = dvs_max
 
         if dvs_base is None:
-            self.Optim["BaselineDV"] = [1.0 for i in dvs]
+            self.Optim["dvs_base"] = [1.0 for i in dvs]
         else:
-            self.Optim["BaselineDV"] = dvs_base
+            self.Optim["dvs_base"] = dvs_base
 
         # ----------------------------------------------------------------------------
         #

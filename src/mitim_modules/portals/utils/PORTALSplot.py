@@ -574,7 +574,7 @@ def PORTALSanalyzer_plotMetrics(
     # Plot las point as check
     ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
-    separator = self.opt_fun.prfs_model.Optim["initialPoints"] + 0.5 - 1
+    separator = self.opt_fun.prfs_model.Optim["initial_training"] + 0.5 - 1
 
     if self.evaluations[-1] < separator:
         separator = None

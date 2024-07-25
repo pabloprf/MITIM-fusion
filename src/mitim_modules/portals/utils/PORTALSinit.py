@@ -311,20 +311,19 @@ def initializeProblem(
     portals_fun.name_transformed_ofs = name_transformed_ofs
     portals_fun.Optim["ofs"] = ofs
     portals_fun.Optim["dvs"] = [*dictDVs]
-    portals_fun.Optim["cvs"] = []
     portals_fun.Optim["dvs_min"] = []
     for i in dictDVs:
         portals_fun.Optim["dvs_min"].append(dictDVs[i][0].cpu().numpy())
-    portals_fun.Optim["BaselineDV"] = []
+    portals_fun.Optim["dvs_base"] = []
     for i in dictDVs:
-        portals_fun.Optim["BaselineDV"].append(dictDVs[i][1].cpu().numpy())
+        portals_fun.Optim["dvs_base"].append(dictDVs[i][1].cpu().numpy())
     portals_fun.Optim["dvs_max"] = []
     for i in dictDVs:
         portals_fun.Optim["dvs_max"].append(dictDVs[i][2].cpu().numpy())
 
     portals_fun.Optim["dvs_min"] = np.array(portals_fun.Optim["dvs_min"])
     portals_fun.Optim["dvs_max"] = np.array(portals_fun.Optim["dvs_max"])
-    portals_fun.Optim["BaselineDV"] = np.array(portals_fun.Optim["BaselineDV"])
+    portals_fun.Optim["dvs_base"] = np.array(portals_fun.Optim["dvs_base"])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # For surrogate

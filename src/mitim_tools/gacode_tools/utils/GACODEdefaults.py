@@ -418,3 +418,13 @@ def convolution_CECE(d_perp_dict, dRdx=1.0):
     factorTot_to_Perp = 1.3
 
     return fun, factorTot_to_Perp
+
+def review_controls(TGLFoptions):
+
+    TGLFoptions_check = IOtools.generateMITIMNamelist(
+        "$MITIM_PATH/templates/input.tglf.controls", caseInsensitive=False
+    )
+
+    for option in TGLFoptions:
+        if option not in TGLFoptions_check:
+            print(f"\t- TGLF option {option} not in input.tglf.controls, prone to errors", typeMsg="q")

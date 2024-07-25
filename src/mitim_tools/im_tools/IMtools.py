@@ -1,15 +1,19 @@
-import sys, os, time, glob, re, copy, ast, pdb, netCDF4, traceback, pickle, torch, datetime
+import os
+import copy
+import traceback
+import pickle
+import torch
+import datetime
 import numpy as np
-from IPython import embed
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools
 from mitim_tools.transp_tools import UFILEStools, CDFtools
 from mitim_modules.powertorch.utils import TRANSFORMtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.im_tools import IMparam
 from mitim_tools.im_tools.modules import PEDmodule, TRANSPmodule, EQmodule
-
+from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 
@@ -832,7 +836,7 @@ def createRotation(mitimNML):
     )
 
     UFILEStools.quickUFILE(
-        x,
+        cdf.x,
         Vtor,
         f"{mitimNML.FolderTRANSP}/PRF{mitimNML.nameBaseShot}.VP2",
         typeuf=fileu.lower(),

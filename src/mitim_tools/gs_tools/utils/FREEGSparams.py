@@ -55,7 +55,7 @@ def createProblemParameters(
             maxVar_I[i] = maxVar_I[i] * sparc_coils.turns_real[i + "u"] * 1e-3
             minVar_I[i] = minVar_I[i] * sparc_coils.turns_real[i + "u"] * 1e-3
 
-    BaselineDV, dvs_min, dvs_max = [], [], []
+    dvs_base, dvs_min, dvs_max = [], [], []
     for cont, i in enumerate(dvs):
         base = InitialCurrents[i]
 
@@ -75,7 +75,7 @@ def createProblemParameters(
             print(i, " baseline is out of bounds")
             base = np.mean([dvs_min[cont], dvs_max[cont]])
 
-        BaselineDV.append(base)
+        dvs_base.append(base)
 
     # ------------------------------------------------------------
     # In the case of second one
@@ -89,19 +89,19 @@ def createProblemParameters(
         for i in dvs:
             dvs_2.append(i + "_delta")
 
-        BaselineDV2, dvs_min2, dvs_max2 = [], [], []
+        dvs_base2, dvs_min2, dvs_max2 = [], [], []
         for cont, i in enumerate(dvs):
             base = 0.0
 
             dvs_min2.append(base - maxVariation2["".join(i)])
-            BaselineDV2.append(base)
+            dvs_base2.append(base)
             dvs_max2.append(base + maxVariation2["".join(i)])
 
             embed()
             # missing requirements part
 
         dvs.extend(dvs_2)
-        BaselineDV.extend(BaselineDV2)
+        dvs_base.extend(dvs_base2)
         dvs_min.extend(dvs_min2)
         dvs_max.extend(dvs_max2)
 
@@ -109,7 +109,7 @@ def createProblemParameters(
     else:
         transformation = None
 
-    return transformation, dvs, ofs, calofs, wofs, BaselineDV, dvs_min, dvs_max
+    return transformation, dvs, ofs, calofs, wofs, dvs_base, dvs_min, dvs_max
 
 
 def updateCoils(

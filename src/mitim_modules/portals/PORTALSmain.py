@@ -49,19 +49,19 @@ def default_namelist(Optim, CGYROrun=False):
     """
 
     # Initialization
-    Optim["initialPoints"] = 5
-    Optim["initializationFun"] = PORTALSoptimization.initialization_simple_relax
+    Optim["initial_training"] = 5
+    Optim["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
 
     # Strategy
-    Optim["BOiterations"] = 50
-    Optim["parallelCalls"] = 1
-    Optim["minimumDVvariation"] = [
+    Optim["BO_iterations"] = 50
+    Optim["parallel_evaluations"] = 1
+    Optim["minimum_dvs_variation"] = [
         10,
         3,
         1e-1,
     ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
-    Optim["maximumValueIsRel"]  = True
-    Optim["maximumValue"]       = 5e-3  # Reducing residual by 200x is enough
+    Optim["maximum_value_is_rel"]  = True
+    Optim["maximum_value"]       = 5e-3  # Reducing residual by 200x is enough
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
@@ -79,13 +79,13 @@ def default_namelist(Optim, CGYROrun=False):
     )
     # Optim['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
-    Optim["surrogateOptions"]["ensureTrainingBounds"] = True
+    Optim["surrogateOptions"]["ensure_within_bounds"] = True
 
     # Acquisition
     Optim["optimizers"] = (
         "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
     )
-    Optim["acquisitionType"] = "posterior_mean"
+    Optim["acquisition_type"] = "posterior_mean"
 
     return Optim
 
@@ -461,12 +461,12 @@ class portals(STRATEGYtools.opt_evaluator):
             file=f"{folderNew}/Outputs/optimization_data.csv",
         )
 
-        self.Optim["initialPoints"] = len(optimization_data.data)
-        self.Optim["readInitialTabular"] = True
-        self.Optim["initializationFun"] = None
+        self.Optim["initial_training"] = len(optimization_data.data)
+        self.Optim["read_initial_training_from_csv"] = True
+        self.Optim["initialization_fun"] = None
 
         print(
-            f'- Reusing the training set ({self.Optim["initialPoints"]} points) from optimization_data in {folderRead}',
+            f'- Reusing the training set ({self.Optim["initial_training"]} points) from optimization_data in {folderRead}',
             typeMsg="i",
         )
 

@@ -144,7 +144,7 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=self.stepSettings["Optim"]["maximumValue"],
+                enoughPerformance=self.stepSettings["Optim"]["maximum_value"],
             )
 
         else:
@@ -272,7 +272,7 @@ def optAcq(
             x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
 
             if (x_opt_test.shape[1] == 0) or (
-                stepSettings["Optim"]["ensureNewPoints"]
+                stepSettings["Optim"]["ensure_new_points"]
                 and (x_opt_test.shape[0] < best_points)
             ):
                 print(
@@ -613,7 +613,7 @@ def pointsOperation_random(
         ib = 0  # Around the best, which is the first one since I have ordered them
 
         if (x_optRandom.shape[0] < best_points) and stepSettings["Optim"][
-            "ensureNewPoints"
+            "ensure_new_points"
         ]:
             print(
                 f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point"

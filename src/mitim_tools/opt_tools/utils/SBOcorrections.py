@@ -96,7 +96,7 @@ def modifyTrustRegion(
 
     # If I have eliminated points, add points randomly now
     if pointsToAdd > 0 and addYN:
-        eliminated0 = np.min([pointsToAdd, self.initialPoints])
+        eliminated0 = np.min([pointsToAdd, self.initial_training])
         print(
             f"\t\t--> Removal of {eliminated} points, filling region with {eliminated0} new points"
         )
@@ -577,7 +577,7 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
 
     if (
         len(self.BOmetrics["overall"]["ResidualModeledLast"])
-        == self.OriginalInitialPoints
+        == self.Originalinitial_training
     ):
         ratio, metric = np.inf, 0.0
         label = "\t(Initial batch only)"

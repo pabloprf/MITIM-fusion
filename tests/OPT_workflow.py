@@ -77,7 +77,7 @@ if restart and os.path.exists(folderWork):
 opt_fun1D = opt_class(folderWork, namelist)
 
 # Changes to namelist in MITIM_PATH/templates/main.namelist.json
-opt_fun1D.Optim["initialPoints"] = 2
+opt_fun1D.Optim["initial_training"] = 2
 
 # Initialize BO framework
 PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)

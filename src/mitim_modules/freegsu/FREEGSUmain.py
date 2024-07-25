@@ -28,10 +28,10 @@ def default_namelist(Optim):
     This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
     """
 
-    Optim["initialPoints"] = 32
-    Optim["BOiterations"] = 100
-    Optim["parallelCalls"] = 16
-    Optim["maximumValue"] = -1e-2  # This is 0.1mm, enough accuracy
+    Optim["initial_training"] = 32
+    Optim["BO_iterations"] = 100
+    Optim["parallel_evaluations"] = 16
+    Optim["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
     Optim["relativePerformanceSurrogate"] = 1e3  # x1000 improvement
     Optim["newPoints"] = 16  # I found this better
     Optim["surrogateOptions"]["FixedNoise"] = False
@@ -39,7 +39,7 @@ def default_namelist(Optim):
 
     # Acquisition
     Optim["optimizers"] = "root_5-botorch-ga"
-    Optim["acquisitionType"] = "posterior_mean"
+    Optim["acquisition_type"] = "posterior_mean"
 
     return Optim
 
@@ -137,13 +137,13 @@ class freegsu(STRATEGYtools.opt_evaluator):
 
         (
             self.Optim["dvs"],
-            self.Optim["BaselineDV"],
+            self.Optim["dvs_base"],
             self.Optim["dvs_min"],
             self.Optim["dvs_max"],
         ) = ([], [], [], [])
         for i in setCoils:
             self.Optim["dvs"].append(i)
-            self.Optim["BaselineDV"].append(self.function_parameters["CoilCurrents"][i])
+            self.Optim["dvs_base"].append(self.function_parameters["CoilCurrents"][i])
             self.Optim["dvs_min"].append(coilLimits[i][0])
             self.Optim["dvs_max"].append(coilLimits[i][1])
 
@@ -152,14 +152,14 @@ class freegsu(STRATEGYtools.opt_evaluator):
                 setCoils_lower = setCoils
             for i in setCoils_lower:
                 self.Optim["dvs"].append(i + "_l")
-                self.Optim["BaselineDV"].append(
+                self.Optim["dvs_base"].append(
                     self.function_parameters["CoilCurrents_lower"][i]
                 )
                 self.Optim["dvs_min"].append(coilLimits[i][0])
                 self.Optim["dvs_max"].append(coilLimits[i][1])
 
         if dvs_base is not None:
-            self.Optim["BaselineDV"] = dvs_base
+            self.Optim["dvs_base"] = dvs_base
 
         self.Optim["ofs"] = []
         self.name_objectives = []

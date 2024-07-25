@@ -53,8 +53,8 @@ for test in tests:
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.Optim["BOiterations"] = 2
-            portals_fun.Optim["initialPoints"] = 3
+            portals_fun.Optim["BO_iterations"] = 2
+            portals_fun.Optim["initial_training"] = 3
             portals_fun.INITparameters["removeFast"] = True
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti"]
@@ -91,8 +91,8 @@ for test in tests:
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.Optim["BOiterations"] = 1
-            portals_fun.Optim["initialPoints"] = 3
+            portals_fun.Optim["BO_iterations"] = 1
+            portals_fun.Optim["initial_training"] = 3
             portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
             portals_fun.INITparameters["removeFast"] = True
             portals_fun.INITparameters["quasineutrality"] = True
@@ -132,8 +132,8 @@ for test in tests:
         # with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
         #     portals_fun = PORTALSmain.portals(folderWork)
-        #     portals_fun.Optim["BOiterations"] = 2
-        #     portals_fun.Optim["initialPoints"] = 3
+        #     portals_fun.Optim["BO_iterations"] = 2
+        #     portals_fun.Optim["initial_training"] = 3
         #     portals_fun.INITparameters["removeFast"] = True
 
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']

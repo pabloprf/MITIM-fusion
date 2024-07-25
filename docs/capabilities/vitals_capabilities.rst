@@ -115,7 +115,7 @@ Then, as it the case for all optimization problems in MITIM, you must create a f
 
 	# Option 2: Use a curated VITALS namelist and only modify some requested values
 	vitals_fun = VITALSmain.vitals( folder )
-	vitals_fun.Optim['BOiterations'] = 5
+	vitals_fun.Optim['BO_iterations'] = 5
 
 Once the VITALS object has been created, parameters such as the TGLF control inputs can be chosen:
 

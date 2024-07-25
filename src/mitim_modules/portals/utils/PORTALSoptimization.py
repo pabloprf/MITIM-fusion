@@ -36,7 +36,7 @@ def initialization_simple_relax(self):
 
     algorithmOptions = {
         "tol": 1e-6,
-        "max_it": self.OriginalInitialPoints,
+        "max_it": self.Originalinitial_training,
         "relax": 0.2,
         "dx_max": 0.2,
         "print_each": 1,
@@ -47,7 +47,7 @@ def initialization_simple_relax(self):
 
     # Trick to actually start from different gradients than those in the initial_input_gacode
 
-    X = torch.from_numpy(self.Optim["BaselineDV"]).to(self.dfT).unsqueeze(0)
+    X = torch.from_numpy(self.Optim["dvs_base"]).to(self.dfT).unsqueeze(0)
     powerstate.modify(X)
 
     # Flux matching process
@@ -65,7 +65,7 @@ def initialization_simple_relax(self):
     if not os.path.exists(f"{self.folderExecution}/Execution/"):
         os.mkdir(f"{self.folderExecution}/Execution/")
 
-    for i in range(self.OriginalInitialPoints):
+    for i in range(self.Originalinitial_training):
         ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
         if not os.path.exists(ff):
             os.mkdir(ff)

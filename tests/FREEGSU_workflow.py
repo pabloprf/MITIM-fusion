@@ -74,7 +74,7 @@ freegsu_opt = FREEGSUmain.freegsu(
     },
 )
 
-freegsu_opt.Optim["BOiterations"] = 2
+freegsu_opt.Optim["BO_iterations"] = 2
 
 freegsu_opt.prep(ofs_dict, setCoils, rangeVar=rangeVar)
 

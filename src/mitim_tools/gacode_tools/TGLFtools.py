@@ -531,8 +531,8 @@ class TGLF:
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-        **kwargs,
-    ):
+        **kwargs):
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare for run
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

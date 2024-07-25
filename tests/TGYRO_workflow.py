@@ -41,6 +41,7 @@ tgyro.run(
     special_radii=rhos,
     PredictionSet=[1, 1, 0],
     TGLFsettings=1,
+    extraOptionsTGLF={"USE_BPER": True},
     TGYRO_solver_options=solver,
     TGYRO_physics_options=physics_options,
 )

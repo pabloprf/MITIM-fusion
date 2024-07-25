@@ -769,7 +769,7 @@ def calcLinearizedModel(
 
     istep, aLTn_est, aLTn_base = 0, [], []
     for i in range(trainx.shape[0]):
-        if i >= prfs_model.Optim["initialPoints"]:
+        if i >= prfs_model.Optim["initial_training"]:
             istep += 1
 
         # Jacobian

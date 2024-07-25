@@ -22,8 +22,8 @@ def LHS(samples, bounds, seed=0):
     return lhs
 
 
-def readInitializationFile(file, initialPoints, labs):
+def readInitializationFile(file, initial_training, labs):
 
     data = pd.read_csv(file)
 
-    return data[labs].to_numpy()[:initialPoints]
+    return data[labs].to_numpy()[:initial_training]
