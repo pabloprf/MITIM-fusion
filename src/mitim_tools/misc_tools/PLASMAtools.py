@@ -244,7 +244,7 @@ def betae(Te_keV, ne_20, B_T):
     """
 
     precomputed_factor = (
-        4.026717  # 100* (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
+        4.026717E-2  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
     )
 
     beta_e = precomputed_factor * ne_20 * Te_keV / B_T**2
