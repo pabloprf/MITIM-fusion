@@ -19,8 +19,8 @@ The CGYRO file must use particle flux. Convective transformation occurs later
 
 
 def evaluateCGYRO(
-    PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, rad=4
-):
+    PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii
+    ):
     print(
         "\n ** CGYRO evaluation of fluxes has been requested before passing information to the STRATEGY module **",
         typeMsg="i",
@@ -74,9 +74,9 @@ def evaluateCGYRO(
             Qi_criterion_stable,
             useConvectiveFluxes,
             percentNeo,
+            radii,
             OriginalFimp=OriginalFimp,
             evaluationsInFile=f"{numPORTALS_this}",
-            rad=rad,
             impurityPosition=impurityPosition,
             file=file_cgyro,
             includeMtAndGz=includeMtAndGz,
@@ -119,8 +119,8 @@ def cgyroing(
     Qi_criterion_stable,
     useConvectiveFluxes,
     percentNeo,
+    radii,
     OriginalFimp=1.0,
-    rad=4,
     file=None,
     evaluationsInFile=0,
     impurityPosition=3,
@@ -152,7 +152,7 @@ def cgyroing(
         PexchE,
         _,
         _,
-    ) = readCGYROresults(file, rad=rad, includeMtAndGz=includeMtAndGz)
+    ) = readCGYROresults(file, radii, includeMtAndGz=includeMtAndGz)
 
     cont = 0
     for i in evaluations:
@@ -315,6 +315,7 @@ def readlineNTH(line, full_file=False, unnormalize=True):
             PexchReal_std = Pexch_std
 
         return (
+            roa,
             aLTe,
             aLTi,
             aLne,
@@ -336,6 +337,7 @@ def readlineNTH(line, full_file=False, unnormalize=True):
         )
     else:
         return (
+            roa,
             aLTe,
             aLTi,
             aLne,
@@ -357,7 +359,7 @@ def readlineNTH(line, full_file=False, unnormalize=True):
         )
 
 
-def readCGYROresults(file, rad=4, includeMtAndGz=False, unnormalize=True):
+def readCGYROresults(file, radii, includeMtAndGz=False, unnormalize=True):
     """
     Arrays are in (batch,radii)
     MW/m^2 and 1E20
@@ -366,8 +368,10 @@ def readCGYROresults(file, rad=4, includeMtAndGz=False, unnormalize=True):
     with open(file, "r") as f:
         lines = f.readlines()
 
-    num = int(len(lines) / rad)
+    rad = len(radii)
+    num = len(lines) // rad
 
+    roa = np.zeros((num, rad))
     aLTe = np.zeros((num, rad))
     aLTi = np.zeros((num, rad))
     aLne = np.zeros((num, rad))
@@ -392,32 +396,95 @@ def readCGYROresults(file, rad=4, includeMtAndGz=False, unnormalize=True):
     tstart = np.zeros((num, rad))
     tend = np.zeros((num, rad))
 
-    p, r = 0, 0
+    p = {}
+    for r in range(len(radii)):
+        p[r] = 0
     for i in range(len(lines)):
+
+        # --------------------------------------------------------
+        # Line not empty
+        # --------------------------------------------------------
+        if len(lines[i].split()) < 10:
+            continue
+
+        # --------------------------------------------------------
+        # Read line
+        # --------------------------------------------------------
         (
-            aLTe[p, r],
-            aLTi[p, r],
-            aLne[p, r],
-            Q_gb[p, r],
-            Qe[p, r],
-            Qi[p, r],
-            Ge[p, r],
-            GZ[p, r],
-            Mt[p, r],
-            Pexch[p, r],
-            Qe_std[p, r],
-            Qi_std[p, r],
-            Ge_std[p, r],
-            GZ_std[p, r],
-            Mt_std[p, r],
-            Pexch_std[p, r],
-            tstart[p, r],
-            tend[p, r],
+            roa_read,
+            aLTe_read,
+            aLTi_read,
+            aLne_read,
+            Q_gb_read,
+            Qe_read,
+            Qi_read,
+            Ge_read,
+            GZ_read,
+            Mt_read,
+            Pexch_read,
+            Qe_std_read,
+            Qi_std_read,
+            Ge_std_read,
+            GZ_std_read,
+            Mt_std_read,
+            Pexch_std_read,
+            tstart_read,
+            tend_read,
         ) = readlineNTH(lines[i], full_file=includeMtAndGz, unnormalize=unnormalize)
-        p += 1
-        if p >= num:
-            r += 1
-            p = 0
+        
+        # --------------------------------------------------------
+        # Radial location position
+        # --------------------------------------------------------
+        threshold_radii = 1E-4
+        r = np.where(np.abs(radii-roa_read)<threshold_radii)[0][0]
+
+        # --------------------------------------------------------
+        # Assign to that radial location
+        # --------------------------------------------------------
+
+        (
+            roa[p[r], r],
+            aLTe[p[r], r],
+            aLTi[p[r], r],
+            aLne[p[r], r],
+            Q_gb[p[r], r],
+            Qe[p[r], r],
+            Qi[p[r], r],
+            Ge[p[r], r],
+            GZ[p[r], r],
+            Mt[p[r], r],
+            Pexch[p[r], r],
+            Qe_std[p[r], r],
+            Qi_std[p[r], r],
+            Ge_std[p[r], r],
+            GZ_std[p[r], r],
+            Mt_std[p[r], r],
+            Pexch_std[p[r], r],
+            tstart[p[r], r],
+            tend[p[r], r],
+        ) = (
+            roa_read,
+            aLTe_read,
+            aLTi_read,
+            aLne_read,
+            Q_gb_read,
+            Qe_read,
+            Qi_read,
+            Ge_read,
+            GZ_read,
+            Mt_read,
+            Pexch_read,
+            Qe_std_read,
+            Qi_std_read,
+            Ge_std_read,
+            GZ_std_read,
+            Mt_std_read,
+            Pexch_std_read,
+            tstart_read,
+            tend_read,
+        )
+
+        p[r] += 1
 
     return (
         aLTe,

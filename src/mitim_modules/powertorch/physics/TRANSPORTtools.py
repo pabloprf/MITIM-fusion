@@ -601,7 +601,7 @@ def cgyro_trick(
         self.evaluation_number,
         FolderEvaluation_TGYRO,
         self.file_profs,
-        rad=self.powerstate.plasma["rho"].shape[1] - 1,
+        self.powerstate.plasma["roa"][0,1:],
     )
 
     # **************************************************************************************************************************

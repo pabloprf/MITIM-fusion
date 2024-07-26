@@ -574,7 +574,7 @@ def PORTALSanalyzer_plotMetrics(
     # Plot las point as check
     ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
-    separator = self.opt_fun.prfs_model.Optim["initial_training"] + 0.5 - 1
+    separator = self.opt_fun.prfs_model.optimization_options["initial_training"] + 0.5 - 1
 
     if self.evaluations[-1] < separator:
         separator = None
@@ -1887,7 +1887,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         axsR.append(fig.add_subplot(grid[1, i]))
 
     produceInfoRanges(
-        self.opt_fun.prfs_model.mainFunction,
+        self.opt_fun.prfs_model.optimization_object,
         self.opt_fun.prfs_model.bounds_orig,
         axsR=axsR,
         color="k",
@@ -1896,7 +1896,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         label="original",
     )
     produceInfoRanges(
-        self.opt_fun.prfs_model.mainFunction,
+        self.opt_fun.prfs_model.optimization_object,
         self.opt_fun.prfs_model.bounds,
         axsR=axsR,
         color="c",
@@ -2346,15 +2346,15 @@ def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
 
 def varToReal(y, prfs_model):
 
-    of, cal, res = prfs_model.mainFunction.scalarized_objective(
-        torch.Tensor(y).to(prfs_model.mainFunction.dfT).unsqueeze(0)
+    of, cal, res = prfs_model.optimization_object.scalarized_objective(
+        torch.Tensor(y).to(prfs_model.optimization_object.dfT).unsqueeze(0)
     )
 
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in prfs_model.mainFunction.MODELparameters["ProfilesPredicted"]:
-        for rad in prfs_model.mainFunction.MODELparameters["RhoLocations"]:
+    for prof in prfs_model.optimization_object.MODELparameters["ProfilesPredicted"]:
+        for rad in prfs_model.optimization_object.MODELparameters["RhoLocations"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2423,11 +2423,11 @@ def plotVars(
         contP += 1
 
         x_var = (
-            prfs_model.mainFunction.surrogate_parameters["powerstate"]
+            prfs_model.optimization_object.surrogate_parameters["powerstate"]
             .plasma["roa"][0, 1:]
             .cpu()
             .numpy()
-        )  # prfs_model.mainFunction.MODELparameters['RhoLocations']
+        )  # prfs_model.optimization_object.MODELparameters['RhoLocations']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(

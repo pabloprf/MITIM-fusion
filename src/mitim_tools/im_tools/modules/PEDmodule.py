@@ -1,15 +1,12 @@
+import pdb
+import netCDF4
 import numpy as np
-import math, pdb, netCDF4
 import matplotlib.pyplot as plt
-
-from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.im_tools import IMparam
 from mitim_tools.im_tools.utils import LUTtools
-
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
 from IPython import embed
 
 
@@ -1055,12 +1052,9 @@ def addPedestalToProfile(
 
     # ~~~~~~~~~~~~~~~~~~ Join to original times
 
-    tN, cont = (
-        np.sort(np.append(t0, [TransitionTime - TimeWidthTransition, TransitionTime])),
-        0,
-    )
+    tN = np.sort(np.append(t0, [TransitionTime - TimeWidthTransition, TransitionTime]))
 
-    tN, zN, already = [], [], False
+    tN, zN = [], []
     for it in range(len(t0)):
         if t0[it] > TransitionTime:
             tN.append(TransitionTime - TimeWidthTransition)

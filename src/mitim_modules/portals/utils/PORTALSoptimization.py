@@ -21,7 +21,7 @@ def initialization_simple_relax(self):
     # Perform flux matched using powerstate
     # ------------------------------------------------------------------------------------
 
-    powerstate = copy.deepcopy(self.mainFunction.powerstate)
+    powerstate = copy.deepcopy(self.optimization_object.powerstate)
 
     folderExecution = IOtools.expandPath(self.folderExecution, ensurePathValid=True)
 
@@ -47,7 +47,7 @@ def initialization_simple_relax(self):
 
     # Trick to actually start from different gradients than those in the initial_input_gacode
 
-    X = torch.from_numpy(self.Optim["dvs_base"]).to(self.dfT).unsqueeze(0)
+    X = torch.from_numpy(self.optimization_options["dvs_base"]).to(self.dfT).unsqueeze(0)
     powerstate.modify(X)
 
     # Flux matching process

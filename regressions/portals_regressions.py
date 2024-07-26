@@ -53,12 +53,12 @@ for test in tests:
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.Optim["BO_iterations"] = 2
-            portals_fun.Optim["initial_training"] = 3
+            portals_fun.optimization_options["BO_iterations"] = 2
+            portals_fun.optimization_options["initial_training"] = 3
             portals_fun.INITparameters["removeFast"] = True
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti"]
-            portals_fun.Optim["optimizers"] = "botorch"
+            portals_fun.optimization_options["optimizers"] = "botorch"
 
             portals_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.diffusion_model
             ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
@@ -91,8 +91,8 @@ for test in tests:
         with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.Optim["BO_iterations"] = 1
-            portals_fun.Optim["initial_training"] = 3
+            portals_fun.optimization_options["BO_iterations"] = 1
+            portals_fun.optimization_options["initial_training"] = 3
             portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
             portals_fun.INITparameters["removeFast"] = True
             portals_fun.INITparameters["quasineutrality"] = True
@@ -132,8 +132,8 @@ for test in tests:
         # with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
         #     portals_fun = PORTALSmain.portals(folderWork)
-        #     portals_fun.Optim["BO_iterations"] = 2
-        #     portals_fun.Optim["initial_training"] = 3
+        #     portals_fun.optimization_options["BO_iterations"] = 2
+        #     portals_fun.optimization_options["initial_training"] = 3
         #     portals_fun.INITparameters["removeFast"] = True
 
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']
@@ -145,7 +145,7 @@ for test in tests:
         #     prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=False, askQuestions=False)
         #     prf_bo.run()
 
-        #     with open(prf_bo.mainFunction.optimization_extra, "rb") as f:
+        #     with open(prf_bo.optimization_object.optimization_extra, "rb") as f:
         #         mitim_runs = pickle_dill.load(f)
 
         # # Checks

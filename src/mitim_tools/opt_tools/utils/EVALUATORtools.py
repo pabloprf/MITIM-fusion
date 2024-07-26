@@ -25,12 +25,12 @@ def parallel_main(Params, cont):
     outputs = Params["outputs"]
     optimization_data = Params["optimization_data"]
     restartYN = Params["restartYN"]
-    mainFunction = Params["mainFunction"]
+    optimization_object = Params["optimization_object"]
 
     lock = Params["lock"]
 
     return mitimRun(
-        mainFunction,
+        optimization_object,
         x,
         numEval + cont,
         folderExecution,
@@ -43,7 +43,7 @@ def parallel_main(Params, cont):
 
 
 def fun(
-    mainFunction,
+    optimization_object,
     x,
     folderExecution,
     bounds,
@@ -58,7 +58,7 @@ def fun(
     parallel        = >1:         Run in parallel batches of X evaluations
     parallel        = -1:         Run the entire batch in parallel
 
-    mainFunction is a class with the method .run(paramsfile,resultsfile)
+    optimization_object is a class with the method .run(paramsfile,resultsfile)
 
     restartYN: False if trying to find values first
 
@@ -84,7 +84,7 @@ def fun(
     Params["outputs"] = outputs
     Params["optimization_data"] = optimization_data
     Params["restartYN"] = restartYN
-    Params["mainFunction"] = mainFunction
+    Params["optimization_object"] = optimization_object
     Params["lock"] = None
 
     if parallel == 1:
@@ -113,7 +113,7 @@ def fun(
 
 
 def mitimRun(
-    mainFunction,
+    optimization_object,
     x,
     numEval,
     folderExecution,
@@ -127,7 +127,7 @@ def mitimRun(
     paramsfile = f"{folderEvaluation}/params.in.{numEval}"
     resultsfile = f"{folderEvaluation}/results.out.{numEval}"
 
-    mainFunction.lock = lock
+    optimization_object.lock = lock
 
     if (not restartYN) and optimization_data is not None:
         # Read result in Tabular Data
@@ -159,7 +159,7 @@ def mitimRun(
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         print(f"\n>> Running evaluation #{numEval}")
-        mainFunction.run(paramsfile, resultsfile)
+        optimization_object.run(paramsfile, resultsfile)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -185,7 +185,7 @@ def mitimRun(
     if optimization_data is not None:
         if lock is not None:
             lock.acquire()
-        _,_,objective = mainFunction.scalarized_objective(torch.from_numpy(y))
+        _,_,objective = optimization_object.scalarized_objective(torch.from_numpy(y))
         optimization_data.update_data_point(x,y,yE,objective=objective.numpy())
         if lock is not None:
             lock.release()

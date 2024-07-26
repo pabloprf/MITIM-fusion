@@ -43,51 +43,51 @@ Reading analysis for PORTALS has more options than standard:
 """
 
 
-def default_namelist(Optim, CGYROrun=False):
+def default_namelist(optimization_options, CGYROrun=False):
     """
-    This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
+    This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
     """
 
     # Initialization
-    Optim["initial_training"] = 5
-    Optim["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
+    optimization_options["initial_training"] = 5
+    optimization_options["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
 
     # Strategy
-    Optim["BO_iterations"] = 50
-    Optim["parallel_evaluations"] = 1
-    Optim["minimum_dvs_variation"] = [
+    optimization_options["BO_iterations"] = 50
+    optimization_options["parallel_evaluations"] = 1
+    optimization_options["minimum_dvs_variation"] = [
         10,
         3,
         1e-1,
     ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
-    Optim["maximum_value_is_rel"]  = True
-    Optim["maximum_value"]       = 5e-3  # Reducing residual by 200x is enough
+    optimization_options["maximum_value_is_rel"]  = True
+    optimization_options["maximum_value"]       = 5e-3  # Reducing residual by 200x is enough
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
-        Optim["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
+        optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
     else:
         # Allow excursions for TGLF
-        Optim["StrategyOptions"]["AllowedExcursions"] = [
+        optimization_options["StrategyOptions"]["AllowedExcursions"] = [
             0.05,
             0.05,
         ]  # This would be 10% if [-100,100]
 
     # Surrogate
-    Optim["surrogateOptions"]["selectSurrogate"] = partial(
+    optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
         PORTALStools.selectSurrogate, CGYROrun=CGYROrun
     )
-    # Optim['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
+    # optimization_options['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
-    Optim["surrogateOptions"]["ensure_within_bounds"] = True
+    optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
     # Acquisition
-    Optim["optimizers"] = (
+    optimization_options["optimizers"] = (
         "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
     )
-    Optim["acquisition_type"] = "posterior_mean"
+    optimization_options["acquisition_type"] = "posterior_mean"
 
-    return Optim
+    return optimization_options
 
 
 class portals(STRATEGYtools.opt_evaluator):
@@ -154,6 +154,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         self.MODELparameters = {
             "RhoLocations": [0.3, 0.45, 0.6, 0.75, 0.9],
+            "RoaLocations": None,
             "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
             "Physics_options": {
                 "TypeTarget": 3,
@@ -172,7 +173,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {}}
         }
 
-        self.potential_flags['MODELparameters'] = ['RhoLocations','ProfilesPredicted','Physics_options','applyCorrections','transport_model']
+        self.potential_flags['MODELparameters'] = ['RhoLocations','RoaLocations','ProfilesPredicted','Physics_options','applyCorrections','transport_model']
 
         """
 		Physics-informed parameters to fit surrogates
@@ -316,7 +317,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         keycheck = (
-            "RoaLocations" if "RoaLocations" in self.MODELparameters else "RhoLocations"
+            "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
         )
         if IOtools.isfloat(ymax_rel):
             ymax_rel = np.array(
@@ -361,10 +362,10 @@ class portals(STRATEGYtools.opt_evaluator):
             )
 
         # If the option of reading from a file, for standard portals ignore the targets
-        self.Optim['surrogateOptions']['extrapointsModels'] = []
+        self.optimization_options['surrogateOptions']['extrapointsModels'] = []
         for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
             if 'Tar' not in key:
-                self.Optim['surrogateOptions']['extrapointsModels'].append(key)
+                self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
 
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends
@@ -417,7 +418,7 @@ class portals(STRATEGYtools.opt_evaluator):
                   about number of dimensions
         """
 
-        ofs_ordered_names = np.array(self.Optim["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         """
 		-------------------------------------------------------------------------
@@ -475,17 +476,17 @@ class portals(STRATEGYtools.opt_evaluator):
         os.system(f"cp {folderRead}/Outputs/optimization_extra.pkl {folderNew}/Outputs/.")
 
         optimization_data = BOgraphics.optimization_data(
-            self.Optim["dvs"],
-            self.Optim["ofs"],
+            self.optimization_options["dvs"],
+            self.optimization_options["ofs"],
             file=f"{folderNew}/Outputs/optimization_data.csv",
         )
 
-        self.Optim["initial_training"] = len(optimization_data.data)
-        self.Optim["read_initial_training_from_csv"] = True
-        self.Optim["initialization_fun"] = None
+        self.optimization_options["initial_training"] = len(optimization_data.data)
+        self.optimization_options["read_initial_training_from_csv"] = True
+        self.optimization_options["initialization_fun"] = None
 
         print(
-            f'- Reusing the training set ({self.Optim["initial_training"]} points) from optimization_data in {folderRead}',
+            f'- Reusing the training set ({self.optimization_options["initial_training"]} points) from optimization_data in {folderRead}',
             typeMsg="i",
         )
 
@@ -506,10 +507,10 @@ class portals(STRATEGYtools.opt_evaluator):
                 # Produce design variables
                 # ------------------------------------------------------------------------------------
                 dictDVs = OrderedDict()
-                for i in self.Optim["dvs"]:
+                for i in self.optimization_options["dvs"]:
                     dictDVs[i] = {"value": np.nan}
                 dictOFs = OrderedDict()
-                for i in self.Optim["ofs"]:
+                for i in self.optimization_options["ofs"]:
                     dictOFs[i] = {"value": np.nan, "error": np.nan}
 
                 for i in dictDVs:
@@ -703,4 +704,4 @@ def analyze_results(
     if analysis_level in [2, 5]:
         portals_full.runCases(onlyBest=onlyBest, restart=restart, fn=fn)
 
-    return portals_full.opt_fun.prfs_model.mainFunction
+    return portals_full.opt_fun.prfs_model.optimization_object

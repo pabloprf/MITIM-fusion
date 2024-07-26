@@ -41,7 +41,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
         TO DO
         """
 
-        # ofs_ordered_names = np.array(self.Optim['ofs'])
+        # ofs_ordered_names = np.array(self.optimization_options['ofs'])
 
         # of 	= Y[:,ofs_ordered_names == 'z'].unsqueeze(1)
         # cal = Y[:,ofs_ordered_names == 'zval'].unsqueeze(1)

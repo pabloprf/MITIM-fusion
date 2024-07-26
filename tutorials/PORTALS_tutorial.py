@@ -14,7 +14,7 @@ folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/portals_tut/")
 # Initialize PORTALS class
 PORTALS_fun = PORTALSmain.portals(folder)
 
-# Radial locations (RhoLocations or RoaLocations)
+# Radial locations (RhoLocations or RoaLocations [last one preceeds])
 PORTALS_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
@@ -34,11 +34,11 @@ PORTALS_fun.TGLFparameters["extraOptionsTGLF"] = {"BPER_USE": False}  # Turn off
 PORTALS_fun.INITparameters["removeFast"] = True
 
 # Stopping criterion 1: 200x improvement in residual
-PORTALS_fun.Optim["maximum_value"] = 200.0
-PORTALS_fun.Optim["maximum_value_is_rel"] = True
+PORTALS_fun.optimization_options["maximum_value"] = 200.0
+PORTALS_fun.optimization_options["maximum_value_is_rel"] = True
 
 # Stopping criterion 2: inputs vary less than 0.1% for 3 consecutive iterations after 10 evaluations
-PORTALS_fun.Optim["minimum_dvs_variation"] = [10, 3, 1e-1]
+PORTALS_fun.optimization_options["minimum_dvs_variation"] = [10, 3, 1e-1]
 
 # Prepare run: search +-100% the original gradients
 PORTALS_fun.prep(inputgacode, folder, ymax_rel=1.0, ymin_rel=1.0)

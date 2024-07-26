@@ -40,12 +40,12 @@ class PORTALSanalyzer:
         self.step = self.opt_fun.prfs_model.steps[-1]
         self.gp = self.step.GP["combined_model"]
 
-        self.powerstate = self.opt_fun.prfs_model.mainFunction.surrogate_parameters[
+        self.powerstate = self.opt_fun.prfs_model.optimization_object.surrogate_parameters[
             "powerstate"
         ]
 
         # Read dictionaries
-        with open(self.opt_fun.prfs_model.mainFunction.optimization_extra, "rb") as f:
+        with open(self.opt_fun.prfs_model.optimization_object.optimization_extra, "rb") as f:
             self.mitim_runs = pickle_dill.load(f)
 
         self.prep_metrics()
@@ -145,8 +145,8 @@ class PORTALSanalyzer:
         self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].numpy()
         self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].numpy()
 
-        self.PORTALSparameters = self.opt_fun.prfs_model.mainFunction.PORTALSparameters
-        self.MODELparameters = self.opt_fun.prfs_model.mainFunction.MODELparameters
+        self.PORTALSparameters = self.opt_fun.prfs_model.optimization_object.PORTALSparameters
+        self.MODELparameters = self.opt_fun.prfs_model.optimization_object.MODELparameters
 
         # Useful flags
         self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
@@ -478,7 +478,7 @@ class PORTALSanalyzer:
             os.system(f"mkdir {folder}")
 
         # Original class
-        portals_fun_original = self.opt_fun.prfs_model.mainFunction
+        portals_fun_original = self.opt_fun.prfs_model.optimization_object
 
         # Start from the profiles of that step
         fileGACODE = f"{folder}/input.gacode_transferred"
@@ -500,7 +500,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.Optim
+                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.optimization_options
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
@@ -668,7 +668,7 @@ class PORTALSanalyzer:
             name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
 
             tgyroO, powerstateO, _ = runModelEvaluator(
-                self.opt_fun.prfs_model.mainFunction,
+                self.opt_fun.prfs_model.optimization_object,
                 FolderEvaluation,
                 dictDVs,
                 name0,
@@ -688,7 +688,7 @@ class PORTALSanalyzer:
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{self.res.best_absolute_index}"  # e.g. portals_jet37_ev0
         tgyroB, powerstateB, _ = runModelEvaluator(
-            self.opt_fun.prfs_model.mainFunction,
+            self.opt_fun.prfs_model.optimization_object,
             FolderEvaluation,
             dictDVs,
             name,
@@ -769,7 +769,7 @@ def calcLinearizedModel(
 
     istep, aLTn_est, aLTn_base = 0, [], []
     for i in range(trainx.shape[0]):
-        if i >= prfs_model.Optim["initial_training"]:
+        if i >= prfs_model.optimization_options["initial_training"]:
             istep += 1
 
         # Jacobian

@@ -23,25 +23,25 @@ except ImportError as e:
     )
 
 
-def default_namelist(Optim):
+def default_namelist(optimization_options):
     """
-    This is to be used after reading the namelist, so self.Optim should be completed with main defaults.
+    This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
     """
 
-    Optim["initial_training"] = 32
-    Optim["BO_iterations"] = 100
-    Optim["parallel_evaluations"] = 16
-    Optim["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
-    Optim["relativePerformanceSurrogate"] = 1e3  # x1000 improvement
-    Optim["newPoints"] = 16  # I found this better
-    Optim["surrogateOptions"]["FixedNoise"] = False
-    Optim["StrategyOptions"]["TURBO"] = True
+    optimization_options["initial_training"] = 32
+    optimization_options["BO_iterations"] = 100
+    optimization_options["parallel_evaluations"] = 16
+    optimization_options["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
+    optimization_options["relativePerformanceSurrogate"] = 1e3  # x1000 improvement
+    optimization_options["newPoints"] = 16  # I found this better
+    optimization_options["surrogateOptions"]["FixedNoise"] = False
+    optimization_options["StrategyOptions"]["TURBO"] = True
 
     # Acquisition
-    Optim["optimizers"] = "root_5-botorch-ga"
-    Optim["acquisition_type"] = "posterior_mean"
+    optimization_options["optimizers"] = "root_5-botorch-ga"
+    optimization_options["acquisition_type"] = "posterior_mean"
 
-    return Optim
+    return optimization_options
 
 
 class freegsu(STRATEGYtools.opt_evaluator):
@@ -136,36 +136,36 @@ class freegsu(STRATEGYtools.opt_evaluator):
         # ------------------------------------------------------------------------------------------------------------------
 
         (
-            self.Optim["dvs"],
-            self.Optim["dvs_base"],
-            self.Optim["dvs_min"],
-            self.Optim["dvs_max"],
+            self.optimization_options["dvs"],
+            self.optimization_options["dvs_base"],
+            self.optimization_options["dvs_min"],
+            self.optimization_options["dvs_max"],
         ) = ([], [], [], [])
         for i in setCoils:
-            self.Optim["dvs"].append(i)
-            self.Optim["dvs_base"].append(self.function_parameters["CoilCurrents"][i])
-            self.Optim["dvs_min"].append(coilLimits[i][0])
-            self.Optim["dvs_max"].append(coilLimits[i][1])
+            self.optimization_options["dvs"].append(i)
+            self.optimization_options["dvs_base"].append(self.function_parameters["CoilCurrents"][i])
+            self.optimization_options["dvs_min"].append(coilLimits[i][0])
+            self.optimization_options["dvs_max"].append(coilLimits[i][1])
 
         if self.function_parameters["CoilCurrents_lower"] is not None:
             if setCoils_lower is None:
                 setCoils_lower = setCoils
             for i in setCoils_lower:
-                self.Optim["dvs"].append(i + "_l")
-                self.Optim["dvs_base"].append(
+                self.optimization_options["dvs"].append(i + "_l")
+                self.optimization_options["dvs_base"].append(
                     self.function_parameters["CoilCurrents_lower"][i]
                 )
-                self.Optim["dvs_min"].append(coilLimits[i][0])
-                self.Optim["dvs_max"].append(coilLimits[i][1])
+                self.optimization_options["dvs_min"].append(coilLimits[i][0])
+                self.optimization_options["dvs_max"].append(coilLimits[i][1])
 
         if dvs_base is not None:
-            self.Optim["dvs_base"] = dvs_base
+            self.optimization_options["dvs_base"] = dvs_base
 
-        self.Optim["ofs"] = []
+        self.optimization_options["ofs"] = []
         self.name_objectives = []
         for i in self.ofs_dict:
-            self.Optim["ofs"].append(i)
-            self.Optim["ofs"].append(i + "_goal")
+            self.optimization_options["ofs"].append(i)
+            self.optimization_options["ofs"].append(i + "_goal")
 
             self.name_objectives.append(i + "_dev")
 
@@ -201,7 +201,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
         Metric is the max deviation in standard deviations
         """
 
-        ofs_ordered_names = np.array(self.Optim["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of, cal, res = torch.Tensor().to(Y), torch.Tensor().to(Y), torch.Tensor().to(Y)
         for iquant in ofs_ordered_names:
@@ -486,7 +486,7 @@ def initializeGSgrab(subfolders, evaluations, superfolder="./"):
 
         mitim = pickle.load(open(pklf, "rb"))
 
-        coils0 = mitim.mainFunction.function_parameters["CoilCurrents"]
+        coils0 = mitim.optimization_object.function_parameters["CoilCurrents"]
 
         for ikey in coils0:
             if type(coils0[ikey]) == float or coils0[ikey] is None:

@@ -69,7 +69,7 @@ def initializeProblem(
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
 
     # About radial locations
-    if "RoaLocations" in portals_fun.MODELparameters:
+    if portals_fun.MODELparameters["RoaLocations"] is not None:
         roa = portals_fun.MODELparameters["RoaLocations"]
         rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
@@ -309,21 +309,21 @@ def initializeProblem(
 
     portals_fun.name_objectives = name_objectives
     portals_fun.name_transformed_ofs = name_transformed_ofs
-    portals_fun.Optim["ofs"] = ofs
-    portals_fun.Optim["dvs"] = [*dictDVs]
-    portals_fun.Optim["dvs_min"] = []
+    portals_fun.optimization_options["ofs"] = ofs
+    portals_fun.optimization_options["dvs"] = [*dictDVs]
+    portals_fun.optimization_options["dvs_min"] = []
     for i in dictDVs:
-        portals_fun.Optim["dvs_min"].append(dictDVs[i][0].cpu().numpy())
-    portals_fun.Optim["dvs_base"] = []
+        portals_fun.optimization_options["dvs_min"].append(dictDVs[i][0].cpu().numpy())
+    portals_fun.optimization_options["dvs_base"] = []
     for i in dictDVs:
-        portals_fun.Optim["dvs_base"].append(dictDVs[i][1].cpu().numpy())
-    portals_fun.Optim["dvs_max"] = []
+        portals_fun.optimization_options["dvs_base"].append(dictDVs[i][1].cpu().numpy())
+    portals_fun.optimization_options["dvs_max"] = []
     for i in dictDVs:
-        portals_fun.Optim["dvs_max"].append(dictDVs[i][2].cpu().numpy())
+        portals_fun.optimization_options["dvs_max"].append(dictDVs[i][2].cpu().numpy())
 
-    portals_fun.Optim["dvs_min"] = np.array(portals_fun.Optim["dvs_min"])
-    portals_fun.Optim["dvs_max"] = np.array(portals_fun.Optim["dvs_max"])
-    portals_fun.Optim["dvs_base"] = np.array(portals_fun.Optim["dvs_base"])
+    portals_fun.optimization_options["dvs_min"] = np.array(portals_fun.optimization_options["dvs_min"])
+    portals_fun.optimization_options["dvs_max"] = np.array(portals_fun.optimization_options["dvs_max"])
+    portals_fun.optimization_options["dvs_base"] = np.array(portals_fun.optimization_options["dvs_base"])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # For surrogate
@@ -401,7 +401,7 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
 
 
 def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
-    allOuts = portals_fun.Optim["ofs"]
+    allOuts = portals_fun.optimization_options["ofs"]
     physicsBasedParams = portals_fun.PORTALSparameters["physicsBasedParams"][ikey]
     physicsBasedParams_trace = portals_fun.PORTALSparameters[
         "physicsBasedParams_trace"
@@ -520,7 +520,7 @@ def grabPrevious(foldermitim, dictCPs_base):
     opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(plotYN=False, analysis_level=1)
     x = opt_fun.prfs_model.BOmetrics["overall"]["xBest"].cpu().numpy()
-    dvs = opt_fun.prfs_model.Optim["dvs"]
+    dvs = opt_fun.prfs_model.optimization_options["dvs"]
     dvs_dict = {}
     for j in range(len(dvs)):
         dvs_dict[dvs[j]] = x[j]

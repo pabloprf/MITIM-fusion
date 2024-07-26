@@ -69,7 +69,7 @@ file = folderWork + "tglf.pkl"
 tglf.save_pkl(file)
 
 vitals_fun = VITALSmain.vitals(folderWork)
-vitals_fun.Optim["BO_iterations"] = 2
+vitals_fun.optimization_options["BO_iterations"] = 2
 vitals_fun.TGLFparameters["TGLFsettings"] = TGLFsettings
 
 vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)

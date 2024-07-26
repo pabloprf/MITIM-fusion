@@ -26,11 +26,11 @@ class opt_class(STRATEGYtools.opt_evaluator):
         # ----------------------------------------
 
         # Problem description (rest of problem parameters are taken from namelist)
-        self.Optim["dvs"] = ["x"]
-        self.Optim["dvs_min"] = [0.0]
-        self.Optim["dvs_max"] = [20.0]
+        self.optimization_options["dvs"] = ["x"]
+        self.optimization_options["dvs_min"] = [0.0]
+        self.optimization_options["dvs_max"] = [20.0]
 
-        self.Optim["ofs"] = ["z", "zval"]
+        self.optimization_options["ofs"] = ["z", "zval"]
         self.name_objectives = ["zval_match"]
 
     def run(self, paramsfile, resultsfile):
@@ -48,7 +48,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
         self.write(dictOFs, resultsfile)
 
     def scalarized_objective(self, Y):
-        ofs_ordered_names = np.array(self.Optim["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of = Y[..., ofs_ordered_names == "z"]
         cal = Y[..., ofs_ordered_names == "zval"]
@@ -77,7 +77,7 @@ if restart and os.path.exists(folderWork):
 opt_fun1D = opt_class(folderWork, namelist)
 
 # Changes to namelist in MITIM_PATH/templates/main.namelist.json
-opt_fun1D.Optim["initial_training"] = 2
+opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework
 PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)

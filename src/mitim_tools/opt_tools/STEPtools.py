@@ -93,10 +93,10 @@ class OPTstep:
         self.StrategyOptions = StrategyOptions
 
         # **** Step settings
-        self.surrogateOptions = self.stepSettings["Optim"]["surrogateOptions"]
-        self.acquisition_type = self.stepSettings["Optim"]["acquisition_type"]
-        self.favor_proximity_type = self.stepSettings["Optim"]["favor_proximity_type"]
-        self.optimizers = self.stepSettings["Optim"]["optimizers"]
+        self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
+        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_type"]
+        self.favor_proximity_type = self.stepSettings["optimization_options"]["favor_proximity_type"]
+        self.optimizers = self.stepSettings["optimization_options"]["optimizers"]
         self.outputs = self.stepSettings["outputs"]
         self.dfT = self.stepSettings["dfT"]
         self.best_points_sequence = self.stepSettings["best_points_sequence"]

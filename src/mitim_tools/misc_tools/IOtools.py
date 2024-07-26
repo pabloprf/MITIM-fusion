@@ -332,11 +332,11 @@ def read_mitim_nml(json_file):
     with open(json_file, 'r') as file:
         data = json.load(file)
 
-    Optim = data["optimization"]
-    Optim["StrategyOptions"] =  data["StrategyOptions"]
-    Optim["surrogateOptions"] = data["surrogateOptions"]
+    optimization_options = data["optimization"]
+    optimization_options["StrategyOptions"] =  data["StrategyOptions"]
+    optimization_options["surrogateOptions"] = data["surrogateOptions"]
 
-    return Optim
+    return optimization_options
 
 def getpythonversion():
     return [

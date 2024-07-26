@@ -1480,12 +1480,12 @@ MITIM version 0.2 (P. Rodriguez-Fernandez, 2020)
 Workflow start time: {IOtools.getStringFromTime()} 
 \t"""
 
-        if self.PRF_BO.Optim["dvs_base"] is None:
+        if self.PRF_BO.optimization_options["dvs_base"] is None:
             STR_base = ""
         else:
             txtBase = ""
             for cont, i in enumerate(self.PRF_BO.bounds):
-                txtBase += f"\t{i} = {self.PRF_BO.Optim['dvs_base'][cont]:.5f}\n"
+                txtBase += f"\t{i} = {self.PRF_BO.optimization_options['dvs_base'][cont]:.5f}\n"
             STR_base = f"""
 * Baseline point (added as Evaluation.0 to initial batch)
 {txtBase}
