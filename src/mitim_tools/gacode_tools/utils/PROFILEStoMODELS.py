@@ -1,7 +1,7 @@
 import torch
+import numpy as np
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from IPython import embed
-
 
 def profiles_to_tglf(self, rho, TGLFsettings=5):
 
@@ -11,14 +11,14 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
 
     TGLFinput, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(TGLFsettings)
 
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     # Controls come from options
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     controls = TGLFoptions
 
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     # Species come from profiles
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
 
     mass_ref = 2.01355 #self.Species[0]['A']
     mass_e = 0.000272445
@@ -50,9 +50,9 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
             'VNS_SHEAR': 0.0,
             'VTS_SHEAR': 0.0}
 
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     # Plasma comes from profiles
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
 
     plasma = {
         'NS': len(species)+1,
@@ -66,32 +66,41 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
         'DEBYE': interpolation_function(rho, self.profiles['rho(-)'],self.derived['debye']).item(),
         }
 
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     # Geometry comes from profiles
-    # -------------------------------------------------
-    geom = {
-            'RMIN_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.derived['roa']).item(),
-            'RMAJ_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.derived['Rmajoa']).item(),
-            'ZMAJ_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.derived["Zmagoa"]).item(),
-            'DRMINDX_LOC': interpolation_function(rho, self.profiles['rho(-)'],deriv_function(self.profiles["rmin(m)"], self.profiles["rmin(m)"])).item(),
-            'DRMAJDX_LOC': interpolation_function(rho, self.profiles['rho(-)'],deriv_function(self.profiles["rmin(m)"], self.profiles["rmaj(m)"])).item(),
-            'DZMAJDX_LOC': interpolation_function(rho, self.profiles['rho(-)'],deriv_function(self.profiles["rmin(m)"], self.profiles["zmag(m)"])).item(),
-            'Q_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.profiles["q(-)"]).item(),
-            'KAPPA_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.profiles["kappa(-)"]).item(),
-            'S_KAPPA_LOC': interpolation_function(rho, self.profiles['rho(-)'], torch.from_numpy(self.profiles["rmin(m)"]/self.profiles["kappa(-)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["kappa(-)"])).item(),
-            'DELTA_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.profiles["delta(-)"]).item(),
-            'S_DELTA_LOC': interpolation_function(rho, self.profiles['rho(-)'], torch.from_numpy(self.profiles["rmin(m)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["delta(-)"])).item(),
-            'ZETA_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.profiles["zeta(-)"]).item(),
-            'S_ZETA_LOC':  interpolation_function(rho, self.profiles['rho(-)'], torch.from_numpy(self.profiles["rmin(m)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["zeta(-)"])).item(),
-            'P_PRIME_LOC': interpolation_function(rho, self.profiles['rho(-)'],self.derived['pprime']).item() * 1E-7,
-            'Q_PRIME_LOC': interpolation_function(rho, self.profiles['rho(-)'],deriv_function(self.profiles["rmin(m)"], self.profiles["q(-)"])).item(),
-            'BETA_LOC': 0.0,
-            'KX0_LOC': 0.0
-                }
+    # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    # -------------------------------------------------
+    s = torch.from_numpy(self.profiles["rmin(m)"]/ self.profiles["q(-)"])*deriv_function(self.profiles["rmin(m)"], self.profiles["q(-)"])
+
+    parameters = {
+        'RMIN_LOC':     self.derived['roa'],
+        'RMAJ_LOC':     self.derived['Rmajoa'],
+        'ZMAJ_LOC':     self.derived["Zmagoa"],
+        'DRMINDX_LOC': deriv_function(self.profiles["rmin(m)"], self.profiles["rmin(m)"]), 
+        'DRMAJDX_LOC': deriv_function(self.profiles["rmin(m)"], self.profiles["rmaj(m)"]),
+        'DZMAJDX_LOC': deriv_function(self.profiles["rmin(m)"], self.profiles["zmag(m)"]),
+        'Q_LOC':        self.profiles["q(-)"],
+        'KAPPA_LOC':    self.profiles["kappa(-)"],
+        'S_KAPPA_LOC':  torch.from_numpy(self.profiles["rmin(m)"]/self.profiles["kappa(-)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["kappa(-)"]),
+        'DELTA_LOC':    self.profiles["delta(-)"],
+        'S_DELTA_LOC':  torch.from_numpy(self.profiles["rmin(m)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["delta(-)"]),
+        'ZETA_LOC':     self.profiles["zeta(-)"],
+        'S_ZETA_LOC':   torch.from_numpy(self.profiles["rmin(m)"]) * deriv_function(self.profiles["rmin(m)"], self.profiles["zeta(-)"]),
+        'P_PRIME_LOC':  self.derived['pprime'] * 1E-7,
+        'Q_PRIME_LOC':  torch.from_numpy(self.profiles["q(-)"]/self.derived['roa'])**2*s,
+    }
+
+    geom = {}
+    for k in parameters:
+        par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
+        geom[k] = interpolation_function(rho, self.profiles['rho(-)'],par).item()
+
+    geom['BETA_LOC'] = 0.0
+    geom['KX0_LOC'] = 0.0
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------
     # Merging
-    # -------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------------------------------
 
     input_dict = {**controls, **plasma, **geom}
 

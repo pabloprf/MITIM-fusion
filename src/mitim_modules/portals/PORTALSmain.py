@@ -226,9 +226,10 @@ class portals(STRATEGYtools.opt_evaluator):
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
+            "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
         }
 
-        self.potential_flags['PORTALSparameters'] = ['percentError','transport_evaluator','targets_evaluator','TargetCalc','launchEvaluationsAsSlurmJobs','useConvectiveFluxes','includeFastInQi','useDiffusivities','useFluxRatios','physicsBasedParams','physicsBasedParams_trace','Qi_criterion_stable','percentError_stable','forceZeroParticleFlux','surrogateForTurbExch','profiles_postprocessing_fun','Pseudo_multipliers','ImpurityOfInterest','applyImpurityGammaTrick','UseOriginalImpurityConcentrationAsWeight','fineTargetsResolution']
+        self.potential_flags['PORTALSparameters'] = ['percentError','transport_evaluator','targets_evaluator','TargetCalc','launchEvaluationsAsSlurmJobs','useConvectiveFluxes','includeFastInQi','useDiffusivities','useFluxRatios','physicsBasedParams','physicsBasedParams_trace','Qi_criterion_stable','percentError_stable','forceZeroParticleFlux','surrogateForTurbExch','profiles_postprocessing_fun','Pseudo_multipliers','ImpurityOfInterest','applyImpurityGammaTrick','UseOriginalImpurityConcentrationAsWeight','fineTargetsResolution','hardCodedCGYRO']
 
     def prep(
         self,

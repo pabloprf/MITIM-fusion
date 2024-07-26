@@ -32,7 +32,7 @@ def evaluateCGYRO(
     # ------------------------------------------------------------------------------------------------
     # Harcoded
     # ------------------------------------------------------------------------------------------------
-    if "hardCodedCGYRO" in PORTALSparameters:
+    if PORTALSparameters['hardCodedCGYRO'] is not None:
         """
         train_sep is the number of initial runs in it#0 results file. Now, it's usually 1
         start_num is the number of the first iteration, usually 0
