@@ -234,7 +234,7 @@ def rho_s(Te_keV, mi_u, B_T):
 
     rho_s = precomputed_factor * (mi_u * Te_keV) ** (0.5) / B_T
 
-    return rho_s  # m/s?
+    return rho_s  # m
 
 
 def betae(Te_keV, ne_20, B_T):
@@ -417,6 +417,16 @@ def xnue(Te_keV, ne_20, a_m, mref_u):
 
     return xnu
 
+def debye(Te_keV, ne_20, mi_u, B_T):
+    # From tgyro_tglf_map.f90:
+    #       tglf_debye_in = 7.43e2*sqrt(te(i_r)/(ne(i_r)))/abs(rho_s(i_r))
+    #       debye length/rhos   te in ev, rho_s in cm ne in 10^13/cm^3
+    
+    precomputed_factor = 2.34957e-05  # 7.43e2 * (1000/1E14)**0.5/(1E2)
+
+    db = precomputed_factor * (Te_keV/ne_20)**0.5 / rho_s(Te_keV, mi_u, B_T)
+
+    return db
 
 def energy_exchange(Te_keV, Ti_keV, ne_20, ni_20, mi_u, Zi):
     # From tgyro_auxiliary_routines.f90:

@@ -3752,11 +3752,21 @@ class TGLFinput:
         if self.file is not None and os.path.exists(self.file):
             with open(self.file, "r") as f:
                 lines = f.readlines()
-            self.file_txt = "".join(lines)
+            file_txt = "".join(lines)
         else:
-            self.file_txt = ""
+            file_txt = ""
 
-        input_dict = GACODErun.buildDictFromInput(self.file_txt)
+        input_dict = GACODErun.buildDictFromInput(file_txt)
+
+        self.process(input_dict)
+
+    @classmethod
+    def initialize_in_memory(cls, input_dict):
+        instance = cls()
+        instance.process(input_dict)
+        return instance
+
+    def process(self, input_dict):
 
         # Get number of recorded species
         self.num_recorded = 0
@@ -3777,7 +3787,7 @@ class TGLFinput:
             "VNS_SHEAR",
             "VTS_SHEAR",
         ]
-        self.controls_all = copy.deepcopy(input_dict)
+        controls_all = copy.deepcopy(input_dict)
 
         for i in range(self.num_recorded):
             specie = {}
@@ -3785,12 +3795,12 @@ class TGLFinput:
                 varod = f"{var}_{i+1}"
                 if varod in input_dict:
                     specie[var] = input_dict[varod]
-                    del self.controls_all[varod]
+                    del controls_all[varod]
                 else:
                     specie[var] = 0.0
             self.species[i + 1] = specie
 
-        self.controls, self.plasma, self.geom = reduceToControls(self.controls_all)
+        self.controls, self.plasma, self.geom = reduceToControls(controls_all)
         self.processSpecies()
 
     def processSpecies(self, MinMultiplierToBeFast=2.0):
@@ -3930,7 +3940,7 @@ class TGLFinput:
 
     def addTraceSpecie(
         self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2
-    ):
+        ):
         """
         Here provide ZS and MASS already normalized
         """

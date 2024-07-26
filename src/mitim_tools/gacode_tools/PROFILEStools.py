@@ -118,7 +118,7 @@ class PROFILES_GACODE:
         includeAll=False,
         write_new_file=None,
         restart=False,
-    ):
+        ):
         profiles = copy.deepcopy(self)
 
         # Resolution?
@@ -351,6 +351,8 @@ class PROFILES_GACODE:
         )
 
         self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
+        self.derived["Rmajoa"] = self.profiles["rmaj(m)"] / self.derived["a"]
+        self.derived["Zmagoa"] = self.profiles["zmag(m)"] / self.derived["a"]
 
         self.derived["torflux"] = (
             float(self.profiles["torfluxa(Wb/radian)"][0])
@@ -1033,6 +1035,33 @@ class PROFILES_GACODE:
             includeShaping=True,
         )
 
+        # -------------------------------------------------------
+        # TGLF-relevant quantities
+        # -------------------------------------------------------
+
+        self.tglf_plasma()
+
+    def tglf_plasma(self, mref_u=2.01355):
+
+        self.derived['betae'] = PLASMAtools.betae(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            self.derived["B_unit"])
+
+        self.derived['xnue'] = PLASMAtools.xnue(
+            torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
+            torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
+            self.derived["a"],
+            mref_u=mref_u)
+
+        self.derived['debye'] = PLASMAtools.debye(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            mref_u,
+            self.derived["B_unit"])
+
+        self.derived['pprime'] = self.profiles["q(-)"]*self.derived['a']**2/self.profiles["rmin(m)"]/self.derived["B_unit"]**2*grad(self.profiles["rmin(m)"], self.profiles["ptot(Pa)"]).numpy()
+        self.derived['pprime'][0] = 0.0
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -1365,7 +1394,7 @@ class PROFILES_GACODE:
 
     def changeResolution(
         self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline
-    ):
+        ):
         rho = copy.deepcopy(self.profiles["rho(-)"])
 
         if rho_new is None:
@@ -1465,7 +1494,7 @@ class PROFILES_GACODE:
 
     def lumpSpecies(
         self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False,
-    ):
+        ):
         """
         if (D,Z1,Z2), lumping Z1 and Z2 requires ions_list = [2,3]
 
@@ -1618,7 +1647,6 @@ class PROFILES_GACODE:
         print(
             f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]',
         )
-
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
@@ -1892,7 +1920,7 @@ class PROFILES_GACODE:
 
     def introducePedestalProfile(
         self, rho_loc_top=0.95, folderWork="~/scratch/", p1_over_ptot=0.79, debug=False
-    ):
+        ):
         folderWork = IOtools.expandPath(folderWork)
 
         plasmastate = folderWork + "state.cdf"
@@ -1979,7 +2007,7 @@ class PROFILES_GACODE:
         legFlows=True,
         showtexts=True,
         lastRhoGradients=0.89,
-    ):
+        ):
         if axs1 is None:
             if fn is None:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -2859,7 +2887,7 @@ class PROFILES_GACODE:
         plotImpurity=None,
         plotRotation=False,
         autoscale=True,
-    ):
+        ):
         if axs4 is None:
             plt.ion()
             fig, axs = plt.subplots(
@@ -3639,11 +3667,16 @@ class PROFILES_GACODE:
             plt.show()
 
     def to_TGLF(self, rhos=[0.5], TGLFsettings=5):
-        PROFILEStoMODELS.profiles_to_tglf(self, rhos=rhos, TGLFsettings=TGLFsettings)
+
+        inputsTGLF = {}
+        for rho in rhos:
+            inputsTGLF[rho] = PROFILEStoMODELS.profiles_to_tglf(self, rho, TGLFsettings=TGLFsettings)
+
+        return inputsTGLF
 
     def plotPeaking(
         self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
-    ):
+        ):
         nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
         ne_peaking = self.derived["ne_peaking0.2"]
         ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
@@ -3707,7 +3740,6 @@ class PROFILES_GACODE:
         # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
 
         return nu_effCGYRO, ne_peaking
-
 
 class DataTable:
     def __init__(self, variables=None):
