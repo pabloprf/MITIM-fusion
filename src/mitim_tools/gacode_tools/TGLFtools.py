@@ -213,7 +213,7 @@ class TGLF:
         with open(file, "wb") as handle:
             pickle.dump(tglf_copy, handle)
 
-    def prep(
+    def prep_from_tgyro(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
@@ -224,7 +224,7 @@ class TGLF:
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
         forceIfRestart=False,  # Extra flag
-    ):
+        ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
                 If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
@@ -355,6 +355,102 @@ class TGLF:
         )
 
         return cdf
+
+    def prep(
+        self,
+        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
+        restart=False,  # If True, do not use what it potentially inside the folder, run again
+        onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
+        recalculatePTOT=True, # Recalculate PTOT in TGYRO
+        cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
+        inputgacode=None,  # *NOTE BELOW*
+        specificInputs=None,  # *NOTE BELOW*
+        tgyro_results=None,  # *NOTE BELOW*
+        forceIfRestart=False,  # Extra flag
+        ):
+        """
+        * Note on inputgacode, specificInputs and tgyro_results:
+                If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
+                Optionally, I can give tgyro_results for further info in such a case
+        """
+
+        print("> Preparation of TGLF run")
+
+        # PROFILES class.
+
+        self.profiles = (
+            PROFILEStools.PROFILES_GACODE(inputgacode)
+            if inputgacode is not None
+            else None
+        )
+
+        self.profiles.deriveQuantities(mi_ref=mi_D)
+
+        self.profiles.correct(options={'recompute_ptot':recalculatePTOT,'removeFast':onlyThermal_TGYRO})
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Initialize by preparing a tgyro class and running for -1 iterations
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        if specificInputs is None:
+
+            self.inputsTGLF = self.profiles.to_TGLF(rhos=self.rhos)
+
+            for rho in self.inputsTGLF:
+                self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Initialize by taking directly the inputs
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        else:
+            self.inputsTGLF = specificInputs
+        
+        self.tgyro_results  = tgyro_results
+
+        self.FolderGACODE = FolderGACODE
+        
+        if restart or not os.path.exists(self.FolderGACODE):
+            IOtools.askNewFolder(self.FolderGACODE, force=forceIfRestart)
+
+        for rho in self.inputsTGLF:
+            self.inputsTGLF[rho].file = f'{self.FolderGACODE}/input.tglf_{rho:.4f}'
+            self.inputsTGLF[rho].writeCurrentStatus()
+
+        """
+		~~~~~ Create Normalizations ~~~~~
+			- Only input.gacode needed
+			- I can also give TRANSP CDF for complement. It is used in prep anyway, so good to store here
+				and have the values for plotting the experimental fluxes.
+			- I can also give TGYRO class for complement. It is used in prep anyway, so good to store here
+				for plotting and check grid conversions.
+
+		Note about the TGLF normalization:
+			What matters is what's the mass used to normalized the MASS_X.
+			If TGYRO was used to generate the input.tglf file, then the normalization mass is deuterium and all
+			must be normalized to deuterium
+		"""
+
+        print("> Setting up normalizations")
+
+        print(
+            "\t- Using mass of deuterium to normalize things (not necesarily the first ion)",
+            typeMsg="w",
+        )
+        self.profiles.deriveQuantities(mi_ref=mi_D)
+
+        self.NormalizationSets, cdf = NORMtools.normalizations(
+            self.profiles,
+            LocationCDF=self.LocationCDF,
+            time=self.time,
+            avTime=self.avTime,
+            cdf_open=cdf_open,
+            tgyro=self.tgyro_results,
+        )
+
+        return cdf
+
+
 
     def prep_from_tglf(
         self,

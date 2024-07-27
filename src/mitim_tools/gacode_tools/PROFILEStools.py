@@ -77,7 +77,7 @@ class PROFILES_GACODE:
             )
         else:
             self.derived["mi_ref"] = self.mi_first
-            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) from first ion",typeMsg="i")
+            print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
 
         # Useful to have gradients in the basic ----------------------------------------------------------
         self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
