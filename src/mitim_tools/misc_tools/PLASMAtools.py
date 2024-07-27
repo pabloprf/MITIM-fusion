@@ -44,7 +44,6 @@ me_u = 5.4488741e-04  # as in input.gacode
 
 factor_convection = 3 / 2  # IMPORTANT
 
-
 def magneticshear(q, rmin, R0):
     """
     [Rice PRL 2013]
@@ -243,9 +242,7 @@ def betae(Te_keV, ne_20, B_T):
             beta_e = 100 * ( 4. * np.pi * 1E-7 * ( 2. * self.ne*1E20 * self.Te*self.e_J*1E3 ) / self.TGLF_Bunit**2. )
     """
 
-    precomputed_factor = (
-        4.026717E-2  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
-    )
+    precomputed_factor = 4.026717E-2  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
 
     beta_e = precomputed_factor * ne_20 * Te_keV / B_T**2
 

@@ -66,18 +66,20 @@ class PROFILES_GACODE:
 				  However, in some ocasions (like when running TGLF), the normalization that must be used
 				  for those quantities is a fixed one (e.g. Deuterium)
 		"""
-        self.mi_ref = mi_ref
-        if mi_ref is not None:
-            print(
-                "\t* Reference mass ({0:.2f}) to use was forced by class initialization".format(
-                    mi_ref
-                ),
-                typeMsg="w",
-            )
-
-        # Useful to have gradients in the basic ----------------------------------------------------------
         if "derived" not in self.__dict__:
             self.derived = {}
+
+        if mi_ref is not None:
+            self.derived["mi_ref"] = mi_ref
+            print(
+                f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",
+                typeMsg="w",
+            )
+        else:
+            self.derived["mi_ref"] = self.mi_first
+            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) from first ion",typeMsg="i")
+
+        # Useful to have gradients in the basic ----------------------------------------------------------
         self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
         self.derived["aLne"] = aLT(
             self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"]
@@ -422,15 +424,14 @@ class PROFILES_GACODE:
                 self.derived["B_unit"] * self.derived["geo_bt"]
             )
 
+        # --------------------------------------------------------------------------
+        # Reference mass
+        # --------------------------------------------------------------------------
+
         # Forcing mass from this specific deriveQuantities call
         if mi_ref is not None:
             self.derived["mi_ref"] = mi_ref
-        # Using mass that was used at class initialization if it was provided
-        elif self.mi_ref is not None:
-            self.derived["mi_ref"] = self.mi_ref
-        # If nothing else provided, using the mass of the first ion
-        else:
-            self.derived["mi_ref"] = self.mi_first
+            print(f'\t- Using mi_ref={self.derived["mi_ref"]} provided in this particular deriveQuantities method, subtituting initialization one',typeMsg='i')
 
         # ---------------------------------------------------------------------------------------------------------------------
         # --------- Important for scaling laws
@@ -1041,7 +1042,12 @@ class PROFILES_GACODE:
 
         self.tglf_plasma()
 
-    def tglf_plasma(self, mref_u=2.01355):
+    def tglf_plasma(self):
+
+        def deriv_gacode(y):
+            return grad(self.profiles["rmin(m)"],y).numpy()
+
+        self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
 
         self.derived['betae'] = PLASMAtools.betae(
             self.profiles['te(keV)'],
@@ -1052,16 +1058,45 @@ class PROFILES_GACODE:
             torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
             torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
             self.derived["a"],
-            mref_u=mref_u)
+            mref_u=self.derived["mi_ref"]).numpy()
 
         self.derived['debye'] = PLASMAtools.debye(
             self.profiles['te(keV)'],
             self.profiles['ne(10^19/m^3)']*0.1,
-            mref_u,
+            self.derived["mi_ref"],
             self.derived["B_unit"])
 
-        self.derived['pprime'] = self.profiles["q(-)"]*self.derived['a']**2/self.profiles["rmin(m)"]/self.derived["B_unit"]**2*grad(self.profiles["rmin(m)"], self.profiles["ptot(Pa)"]).numpy()
+        self.derived['pprime'] = 1E-7 * self.profiles["q(-)"]*self.derived['a']**2/self.profiles["rmin(m)"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
         self.derived['pprime'][0] = 0.0
+
+        self.derived['drmin/dr'] = deriv_gacode(self.profiles["rmin(m)"])
+        self.derived['dRmaj/dr'] = deriv_gacode(self.profiles["rmaj(m)"])
+        self.derived['dZmaj/dr'] = deriv_gacode(self.profiles["zmag(m)"])
+
+        self.derived['s_kappa']  = self.profiles["rmin(m)"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
+        self.derived['s_delta']  = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["delta(-)"])
+        self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
+        
+        s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
+        self.derived['s_q'] =  (self.profiles["q(-)"]/self.derived['roa'])**2 * s
+
+        '''
+        Rotations
+        --------------------------------------------------------
+            From TGYRO/TGLF definitions
+                  w0p = expro_w0p(:)/100.0
+                  f_rot(:) = w0p(:)/w0_norm
+                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
+                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
+        '''
+
+        w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
+        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
+        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.profiles["rmin(m)"]/self.profiles["q(-)"] 
+
+        self.derived['vexb_shear']  = gamma_eb0 * self.derived["a"]/self.derived['c_s']
+        self.derived['vpar_shear']  = gamma_p0  * self.derived["a"]/self.derived['c_s']
+        self.derived['vpar']        = self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -1422,7 +1457,7 @@ class PROFILES_GACODE:
 
         self.produce_shape_lists()
 
-        self.deriveQuantities(mi_ref=self.derived["mi_ref"])
+        self.deriveQuantities()
 
         print(
             f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}"
@@ -3666,7 +3701,7 @@ class PROFILES_GACODE:
             ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
             plt.show()
 
-    def to_TGLF(self, rhos=[0.5], TGLFsettings=5):
+    def to_TGLF(self, rhos=[0.5], TGLFsettings=0):
 
         inputsTGLF = {}
         for rho in rhos:
