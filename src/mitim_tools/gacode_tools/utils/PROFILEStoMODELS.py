@@ -47,7 +47,7 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
             'MASS': self.Species[i]['A']/mass_ref,
             'RLNS': interpolator(self.derived['aLni'][:,i]),
             'RLTS': interpolator(self.derived['aLTi'][:,0] if self.Species[i]['S'] == 'therm' else self.derived["aLTi"][:,i]),
-            'TAUS': interpolator(self.derived['tite'] if self.Species[i]['S'] == 'therm' else self.derived["tite_all"][:,i]),
+            'TAUS': interpolator(self.derived["tite_all"][:,i]),
             'AS': interpolator(self.derived['fi'][:,i]),
             'VPAR': interpolator(self.derived['vpar']),
             'VPAR_SHEAR': interpolator(self.derived['vpar_shear']),
