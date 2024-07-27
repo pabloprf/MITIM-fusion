@@ -22,12 +22,15 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
     # Species come from profiles
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    mass_e = 0.000272445 * self.derived["mi_ref"]
+    #mass_ref = self.derived["mi_ref"]
+    mass_ref = 2.0 # It turns out that GACODE calculates quantities with md=2.01355, but the masses are normalized to 2.0 exactly…
+
+    mass_e = 0.000272445 * mass_ref
 
     species = {
         1: {
             'ZS': -1.0,
-            'MASS': mass_e/self.derived["mi_ref"],
+            'MASS': mass_e/mass_ref,
             'RLNS': interpolator(self.derived['aLne']),
             'RLTS': interpolator(self.derived['aLTe']),
             'TAUS': 1.0,
@@ -41,7 +44,7 @@ def profiles_to_tglf(self, rho, TGLFsettings=5):
     for i in range(len(self.Species)):
         species[i+2] = {
             'ZS': self.Species[i]['Z'],
-            'MASS': self.Species[i]['A']/self.derived["mi_ref"],
+            'MASS': self.Species[i]['A']/mass_ref,
             'RLNS': interpolator(self.derived['aLni'][:,i]),
             'RLTS': interpolator(self.derived['aLTi'][:,0] if self.Species[i]['S'] == 'therm' else self.derived["aLTi"][:,i]),
             'TAUS': interpolator(self.derived['tite'] if self.Species[i]['S'] == 'therm' else self.derived["tite_all"][:,i]),
