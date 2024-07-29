@@ -32,5 +32,5 @@ alias runim="python3 $MITIM_PATH/src/mitim_tools/im_tools/scripts/run_im.py ./" 
 alias runmitim="python3 $MITIM_PATH/mitim_opt/scenarios_tools/scripts/runMITIM_BO.py"  # To peform scenario optimization
 
 # Others
-alias compare_nml="python3 $MITIM_PATH/src/mitim_tools/transp_tools/scripts/compareNML.py $1"
+alias compare_nml="python3 $MITIM_PATH/src/mitim_tools/misc_tools/scripts/compare_namelist.py $1"
 alias eff_job="python3 $MITIM_PATH/src/mitim_tools/misc_tools/PARALLELtools.py $1" # Give mitim.out or slurm_output.dat

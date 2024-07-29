@@ -3809,7 +3809,7 @@ def changeANDwrite_TGLF(
             typeMsg="w",
         )
         print(
-            "\t * Reading of TGLF results will fail... consider doing something before launching runs. (c) to continue",
+            "\t * Reading of TGLF results will fail... consider doing something before launching run",
             typeMsg="q",
         )
 
