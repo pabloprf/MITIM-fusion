@@ -538,9 +538,11 @@ class powerstate:
     # Toolset for calculation
     # ------------------------------------------------------------------
 
-    def calculateProfileFunctions(self, calculateRotationQuantities=True, mref_u=2.01355):
+    def calculateProfileFunctions(self, calculateRotationQuantities=True, mref=2.01355):
         """
         Update the normalizations of the current state
+        Notes:
+            - By default, mref is the Deuterium mass, to be consistent with TGYRO always using this regardless of the first ion
         """
 
         # gyro-Bohm
@@ -553,21 +555,21 @@ class powerstate:
         ) = PLASMAtools.gyrobohmUnits(
             self.plasma["te"],
             self.plasma["ne"] * 1e-1,
-            mref_u,
+            mref,
             self.plasma["B_unit"],
             self.plasma["a"].unsqueeze(-1),
         )
 
         # Collisionality
         self.plasma["nuei"] = PLASMAtools.xnue(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref_u
+            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref
         )
 
         # Gyro-radius
         self.plasma["rho_s"] = PLASMAtools.rho_s(
-            self.plasma["te"], mref_u, self.plasma["B_unit"]
+            self.plasma["te"], mref, self.plasma["B_unit"]
         )
-        self.plasma["c_s"] = PLASMAtools.c_s(self.plasma["te"], mref_u)
+        self.plasma["c_s"] = PLASMAtools.c_s(self.plasma["te"], mref)
 
         # Other
         self.plasma["tite"] = self.plasma["ti"] / self.plasma["te"]

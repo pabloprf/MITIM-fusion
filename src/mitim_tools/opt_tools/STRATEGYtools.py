@@ -711,12 +711,10 @@ class PRF_BO:
                         "\t* Because reading pkl step had problems, disabling restarting-from-previous from this point on",
                         typeMsg="w",
                     )
-                    flagger = print(
+                    print(
                         "\t* Are you aware of the consequences of continuing?",
                         typeMsg="q",
                     )
-                    if not flagger:
-                        embed()
 
                     self.restartYN = True
 
@@ -1751,8 +1749,8 @@ class PRF_BO:
         if "InfoOptimization" not in step.__dict__.keys():
             return
 
-        figOPT1 = fn.add_figure(label=f"#{boStep}: optimization_options Perfom.", tab_color=tab_color)
-        figOPT2 = fn.add_figure(label=f"#{boStep}: optimization_options Ranges", tab_color=tab_color)
+        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim. Perfom.", tab_color=tab_color)
+        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim. Ranges", tab_color=tab_color)
         self.plotSurrogateOptimization(fig1=figOPT1, fig2=figOPT2, boStep=boStep)
         # ---------------------------------------------------------------------
 

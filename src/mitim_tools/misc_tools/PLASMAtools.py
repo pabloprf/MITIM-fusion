@@ -216,7 +216,7 @@ def c_s(Te_keV, mref_u):
             cs = SQRT( k*Te / mi )
     """
 
-    precomputed_factor = 310621.12  # (1E3 * e_J / u )**(0.5)
+    precomputed_factor = 310621.1207029942  # (1E3 * e_J / u )**(0.5)
 
     cs = precomputed_factor * (Te_keV / mref_u) ** (0.5)
 
@@ -229,7 +229,7 @@ def rho_s(Te_keV, mi_u, B_T):
             rho_s = SQRT( mi*k*Te ) / ( e*B )
     """
 
-    precomputed_factor = 0.0032194  # ( (u) * 1E3 * e_J  )**(0.5) / ( e_J )
+    precomputed_factor = 0.003219356100888476  # ( (u) * 1E3 * e_J  )**(0.5) / ( e_J )
 
     rho_s = precomputed_factor * (mi_u * Te_keV) ** (0.5) / B_T
 
@@ -242,7 +242,7 @@ def betae(Te_keV, ne_20, B_T):
             beta_e = 100 * ( 4. * np.pi * 1E-7 * ( 2. * self.ne*1E20 * self.Te*self.e_J*1E3 ) / self.TGLF_Bunit**2. )
     """
 
-    precomputed_factor = 4.026717E-2  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
+    precomputed_factor = 0.040267175341827964  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
 
     beta_e = precomputed_factor * ne_20 * Te_keV / B_T**2
 
@@ -390,7 +390,7 @@ def conduction(n19, TkeV, chi, aLT, a):
 
 
 def loglam(Te_keV, ne_20):
-    precomputed_factor = 9.21  # torch.log( (1E20*1E-6)**0.5/1E3 )
+    precomputed_factor = 9.210340371976184  # torch.log( (1E20*1E-6)**0.5/1E3 )
 
     l = 24.0 - torch.log(ne_20**0.5 / Te_keV) - precomputed_factor
 
@@ -400,7 +400,7 @@ def loglam(Te_keV, ne_20):
 def nue(Te_keV, ne_20):
     # From tgyro_profile_functions.f90
 
-    precomputed_factor = 12216.80  # (4*pi*e**4 / (2*2**0.5*me_g**0.5)) / k**1.5 / (1E3)**1.5  * 1E20*1E-6
+    precomputed_factor = 12216.801897044845  # (4*pi*e**4 / (2*2**0.5*me_g**0.5)) / k**1.5 / (1E3)**1.5  * 1E20*1E-6
 
     nu = precomputed_factor * loglam(Te_keV, ne_20) * ne_20 / Te_keV**1.5
 
@@ -419,7 +419,7 @@ def debye(Te_keV, ne_20, mi_u, B_T):
     #       tglf_debye_in = 7.43e2*sqrt(te(i_r)/(ne(i_r)))/abs(rho_s(i_r))
     #       debye length/rhos   te in ev, rho_s in cm ne in 10^13/cm^3
     
-    precomputed_factor = 2.34957e-05  # 7.43e2 * (1000/1E14)**0.5/(1E2)
+    precomputed_factor = 2.349572301505106e-05  # 7.43e2 * (1000/1E14)**0.5/(1E2)
 
     db = precomputed_factor * (Te_keV/ne_20)**0.5 / rho_s(Te_keV, mi_u, B_T)
 
