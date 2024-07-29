@@ -13,7 +13,7 @@ e.g.
 """
 
 
-def compareNML(file1, file2, commentCommand="!", separator="="):
+def compareNML(file1, file2, commentCommand="!", separator="=", precision_of=None):
     d1 = IOtools.generateMITIMNamelist(
         file1, commentCommand=commentCommand, separator=separator
     )
@@ -24,7 +24,7 @@ def compareNML(file1, file2, commentCommand="!", separator="="):
     d1 = separateArrays(d1)
     d2 = separateArrays(d2)
 
-    diff = compareDictionaries(d1, d2)
+    diff = compareDictionaries(d1, d2, precision_of = precision_of)
 
     diffo = cleanDifferences(diff)
 
@@ -77,8 +77,41 @@ def cleanDifferences(d, tol_rel=1e-7):
 
     return d_new
 
+def compare_number(a,b,precision_of=None):
 
-def compareDictionaries(d1, d2):
+    if precision_of is None:
+        a_rounded = a
+        b_rounded = b
+
+    elif precision_of == 1:
+        # Round to the same number of decimal places
+        a_str = str(a)
+        if '.' in a_str:
+            decimal_places = len(a_str.split('.')[1])
+        else:
+            decimal_places = 0
+
+        b_rounded = round(b, decimal_places)
+        a_rounded = a
+
+    elif precision_of == 2:
+
+        # Round to the same number of significant figures
+        b_str = str(b)
+        if '.' in b_str:
+            decimal_places = len(b_str.split('.')[1])
+        else:
+            decimal_places = 0
+
+        b_rounded = b
+        a_rounded = round(a, decimal_places)
+
+    # Compare the two numbers
+    are_equal = (a_rounded == b_rounded)
+
+    return are_equal
+
+def compareDictionaries(d1, d2, precision_of=None):
     different = {}
 
     for key in d1:
@@ -87,7 +120,7 @@ def compareDictionaries(d1, d2):
             different[key] = [d1[key], None]
         # Values are different
         else:
-            if d1[key] != d2[key]:
+            if not compare_number(d1[key],d2[key],precision_of=precision_of):
                 different[key] = [d1[key], d2[key]]
 
     for key in d2:
