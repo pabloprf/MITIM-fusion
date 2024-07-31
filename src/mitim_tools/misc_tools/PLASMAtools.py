@@ -26,7 +26,7 @@ Acknowledgement:
 # CONSTANTS
 # ---------------------------
 
-pi = 3.14152
+pi = 3.141592653589793
 
 # SI
 e_J = 1.60218e-19  # C
@@ -199,7 +199,7 @@ def Greenwald_density(Ip_MA, a_m):
 
 
 def Bunit(phi_wb, rmin, array=True):
-    B = MATHtools.deriv(0.5 * rmin**2, phi_wb / (2 * np.pi), array=array)
+    B = MATHtools.deriv(0.5 * rmin**2, phi_wb / (2 * pi), array=array)
 
     return B
 
@@ -242,7 +242,7 @@ def betae(Te_keV, ne_20, B_T):
             beta_e = 100 * ( 4. * np.pi * 1E-7 * ( 2. * self.ne*1E20 * self.Te*self.e_J*1E3 ) / self.TGLF_Bunit**2. )
     """
 
-    precomputed_factor = 0.040267175341827964  # (4. * np.pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
+    precomputed_factor = 0.040266244108799996  # (4. * pi * 1E-7 * 2 * 1E20 * 1.60218E-19 * 1E3)
 
     beta_e = precomputed_factor * ne_20 * Te_keV / B_T**2
 
