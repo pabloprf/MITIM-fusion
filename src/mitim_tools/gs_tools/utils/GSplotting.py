@@ -511,8 +511,6 @@ def plotResult(
     except:
         pass
 
-    return fn
-
 
 def plotMetricsPRFS(
     axs,
