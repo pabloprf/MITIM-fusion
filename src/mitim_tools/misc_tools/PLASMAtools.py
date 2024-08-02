@@ -231,7 +231,7 @@ def rho_s(Te_keV, mi_u, B_T):
 
     precomputed_factor = 0.003219356100888476  # ( (u) * 1E3 * e_J  )**(0.5) / ( e_J )
 
-    rho_s = precomputed_factor * (mi_u * Te_keV) ** (0.5) / B_T
+    rho_s = precomputed_factor * (mi_u * Te_keV) ** (0.5) / abs(B_T)
 
     return rho_s  # m
 

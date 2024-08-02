@@ -434,5 +434,6 @@ def review_controls(TGLFoptions):
 
         # Do not fail with e.g. RLTS_1
         isSpecie = option.split('_')[-1].isdigit()
+        
         if (not isSpecie) and (option not in TGLFoptions_check):
             print(f"\t- TGLF option {option} not in input.tglf.controls, prone to errors", typeMsg="q")
