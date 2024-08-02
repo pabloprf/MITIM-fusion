@@ -213,7 +213,7 @@ class TGLF:
         with open(file, "wb") as handle:
             pickle.dump(tglf_copy, handle)
 
-    def prep_from_tgyro(
+    def prep(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
@@ -356,7 +356,7 @@ class TGLF:
 
         return cdf
 
-    def prep(
+    def prep_direct_tglf(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
@@ -383,6 +383,24 @@ class TGLF:
             if inputgacode is not None
             else None
         )
+
+        if self.profiles is None:
+            
+            # TGYRO class. It checks existence and creates input.profiles/input.gacode
+
+            self.tgyro = TGYROtools.TGYRO(
+                cdf=self.LocationCDF, time=self.time, avTime=self.avTime
+            )
+            self.tgyro.prep(
+                FolderGACODE,
+                restart=restart,
+                remove_tmp=True,
+                subfolder="tmp_tgyro_prep",
+                profilesclass_custom=self.profiles,
+                forceIfRestart=forceIfRestart,
+            )
+
+            self.profiles = self.tgyro.profiles
 
         self.profiles.deriveQuantities(mi_ref=mi_D)
 
