@@ -1,3 +1,7 @@
+'''
+TO FIX: Right now this needs to run in the "freegs" parent folder
+'''
+
 import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
