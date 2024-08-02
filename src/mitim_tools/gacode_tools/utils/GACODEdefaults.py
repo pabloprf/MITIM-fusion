@@ -425,6 +425,14 @@ def review_controls(TGLFoptions):
         "$MITIM_PATH/templates/input.tglf.controls", caseInsensitive=False
     )
 
+    # Add plasma too
+    potential_flags = ['NS', 'SIGN_BT', 'SIGN_IT', 'VEXB', 'VEXB_SHEAR', 'BETAE', 'XNUE', 'ZEFF', 'DEBYE']
+    for flag in potential_flags:
+        TGLFoptions_check[flag] = None
+
     for option in TGLFoptions:
-        if option not in TGLFoptions_check:
+
+        # Do not fail with e.g. RLTS_1
+        isSpecie = option.split('_')[-1].isdigit()
+        if (not isSpecie) and (option not in TGLFoptions_check):
             print(f"\t- TGLF option {option} not in input.tglf.controls, prone to errors", typeMsg="q")
