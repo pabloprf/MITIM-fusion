@@ -146,9 +146,9 @@ def convert_ASTRA_to_gacode(astra_root,
         print(f"Found gfile: {geometry_file}")
 
     try:
-        g = GEQtools.MITIMgeqdsk(geometry_file)
-    except:
         g = GEQtools.MITIMgeqdsk(geometry_file, removeCoils=False)
+    except:
+        g = GEQtools.MITIMgeqdsk(geometry_file)
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
@@ -175,7 +175,10 @@ def convert_ASTRA_to_gacode(astra_root,
     rcenter = np.array([c.RTOR[ai]])            ; params['rcentr(m)'] = rcenter
     bcentr = np.array([c.BTOR[ai]])             ; params['bcentr(T)'] = bcentr
     current = np.array([c.IPL[ai]])             ; params['current(MA)'] = current
-    rho = interp_to_nexp(c.rho[ai]/c.rho[ai,-1]); params['rho(-)'] = rho
+
+    rho_normalized = (c.rho[-1,]-c.rho[-1,0])/(c.rho[-1,-1]-c.rho[-1,0])
+
+    rho = interp_to_nexp(rho_normalized)        ; params['rho(-)'] = rho
     polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
 
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
@@ -214,7 +217,7 @@ def convert_ASTRA_to_gacode(astra_root,
     te = interp_to_nexp(c.Te[ai,:])             ; params['te(keV)'] = te
     # all ions have same temperature
     ti = interp_to_nexp(c.Ti[ai,:])             ; params['ti(keV)'] = np.tile(ti, (nion, 1)).T 
-    ptot = interp_to_nexp(c.ptot[ai,:])         ; params['ptot(Pa)'] = ptot
+    ptot = interp_to_nexp(c.ptot[ai,:])         ; params['ptot(Pa)'] = ptot * 1602 # convert to Pa
     jbs = interp_to_nexp(c.Cubs[ai,:])          ; params["jbs(MA/m^2)"] = jbs
     z_eff = interp_to_nexp(c.ZEF[ai])           ; params['z_eff(-)'] = z_eff
     vtor = interp_to_nexp(c.VTOR[ai])           ; params['vtor(m/s)'] = vtor
