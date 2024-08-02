@@ -46,3 +46,4 @@ cgyro.read(label="cgyro3")
 
 
 cgyro.plotLS()
+cgyro.fnLS.show()

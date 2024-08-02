@@ -27,6 +27,7 @@ tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 tglf.plotScan(labels=['scan1'])
 tglf.fn.show()
+tglf.fn.close()
 
 tglf.runScanTurbulenceDrives(	
                 subFolderTGLF = 'turb_drives/',
@@ -35,13 +36,4 @@ tglf.runScanTurbulenceDrives(
 
 tglf.plotScanTurbulenceDrives(label='turb_drives')
 tglf.fn.show()
-
-tglf.runAnalysis(
-            subFolderTGLF 	= 'chi_e/',
-            analysisType  	= 'chi_e',
-            TGLFsettings  	= None,
-            restart 		= restart,
-            label 			= 'chi_eu')
-
-tglf.plotAnalysis(labels=['chi_eu'],analysisType='chi_e')
-tglf.fn.show()
+tglf.fn.close()
