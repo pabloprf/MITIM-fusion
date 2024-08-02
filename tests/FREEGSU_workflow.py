@@ -78,7 +78,11 @@ freegsu_opt = FREEGSUmain.freegsu(
     },
 )
 
-freegsu_opt.optimization_options["BO_iterations"] = 2
+# Simple setup for just a test
+freegsu_opt.optimization_options["initial_training"] = 8
+freegsu_opt.optimization_options["newPoints"]        = 8
+freegsu_opt.optimization_options["BO_iterations"]    = 2
+# ----------------------------
 
 freegsu_opt.prep(ofs_dict, setCoils, rangeVar=rangeVar)
 
