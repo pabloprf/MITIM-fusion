@@ -1,14 +1,15 @@
+import os
 import torch
 import gpytorch
 import botorch
-import copy
 import contextlib
+import ast
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import dill as pickle_dill
-from mitim_tools.misc_tools import GRAPHICStools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.opt_tools import BOTORCHtools
-from mitim_tools.opt_tools.aux import BOgraphics
+from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
@@ -134,27 +135,37 @@ class surrogate_model:
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
-        if (
-            ("extrapointsFile" in self.surrogateOptions)
-            and (self.surrogateOptions["extrapointsFile"] is not None)
-            and (self.output is not None)
-        ):
+        if (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
+
             print(
                 f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
             )
-            x, y, yvar = extendPoints(
-                self.surrogateOptions["extrapointsFile"], self.output
-            )
 
-            self.train_X_added_full = x  # Full transformed dimensions
+            df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
+            df_model = df[df['Model'] == self.output]
 
-            # Careful, this assumes that the same surrogate trained variables were used, in the same order
+            # Check 1: Do the points for this output share the same x_names?
+            if df_model['x_names'].nunique() > 1:
+                print("Different x_names for points in the file, prone to errors", typeMsg='q')
+
+            # Check 2: Is it consistent with the x_names of this run?
+            x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
+            x_names_check = self.surrogate_parameters['physicsInformedParamsComplete'][self.output]
+            if x_names != x_names_check:
+                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
+
+
+            self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
+            self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
+    
+            x = []
+            for i in range(len(x_names)):
+                x.append(df_model[f'x{i}'].to_numpy())
+            self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
+
             self.train_X_added = (
-                x[:, :dimTransformedDV_x] if x.shape[-1] > dimTransformedDV_x else x
+                self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
             )
-            self.train_Y_added = y
-
-            self.train_Yvar_added = yvar
 
         else:
             if self.fileTraining is not None:
@@ -172,7 +183,7 @@ class surrogate_model:
             self.train_X_added = torch.empty((0, dimTransformedDV_x))
             self.train_Y_added = torch.empty((0, dimTransformedDV_y))
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
-
+            
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
@@ -204,7 +215,10 @@ class surrogate_model:
         # Write file with surrogate if there are transformations
         # -------------------------------------------------------------------------------------
 
-        self.writeFileTraining(input_transform_physics, outcome_transform_physics)
+        if (self.fileTraining is not None) and (
+            self.train_X.shape[0] + self.train_X_added.shape[0] > 0
+        ):
+            self.writeFileTraining(input_transform_physics, outcome_transform_physics)
 
         # -------------------------------------------------------------------------------------
         # Input and Outcome transform (NORMALIZATIONS)
@@ -453,77 +467,85 @@ class surrogate_model:
         --------------------------------------------------------------------
         """
 
-        if (self.fileTraining is not None) and (
-            self.train_X.shape[0] + self.train_X_added.shape[0] > 0
-        ):
-            # ------------------------------------------------------------------------------------------------------------------------
-            # Transform the points without the added from file
-            # ------------------------------------------------------------------------------------------------------------------------
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Transform the points without the added from file
+        # ------------------------------------------------------------------------------------------------------------------------
 
-            # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
-            train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-                self.train_X,
-                self.output,
-                self.surrogate_parameters,
-                self.surrogate_parameters["physicsInformedParamsComplete"],
+        # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
+        train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+            self.train_X,
+            self.output,
+            self.surrogate_parameters,
+            self.surrogate_parameters["physicsInformedParamsComplete"],
+        )
+
+        train_Y, train_Yvar = outcome_transform_physics(
+            self.train_X, self.train_Y, self.train_Yvar
+        )
+
+        dv_names_Complete = (
+            self.surrogate_parameters["physicsInformedParamsComplete"][self.output]
+            if (
+                "physicsInformedParamsComplete" in self.surrogate_parameters
+                and self.surrogate_parameters["physicsInformedParamsComplete"]
+                is not None
             )
+            else [i for i in self.bounds]
+        )
 
-            train_Y, train_Yvar = outcome_transform_physics(
-                self.train_X, self.train_Y, self.train_Yvar
+        if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
+            print(
+                "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
+                typeMsg="w",
             )
-
-            dv_names_Complete = (
-                self.surrogate_parameters["physicsInformedParamsComplete"][self.output]
-                if (
-                    "physicsInformedParamsComplete" in self.surrogate_parameters
-                    and self.surrogate_parameters["physicsInformedParamsComplete"]
-                    is not None
-                )
-                else [i for i in self.bounds]
-            )
-
-            with open(self.fileTraining, "rb") as f:
-                data_dict = pickle_dill.load(f)
-
-            if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
-                    typeMsg="w",
-                )
-                self.train_X_added_full = torch.cat(
-                    (
-                        self.train_X_added_full,
-                        torch.full(
-                            (
-                                self.train_X_added_full.shape[0],
-                                train_X_Complete.shape[-1]
-                                - self.train_X_added_full.shape[-1],
-                            ),
-                            torch.nan,
+            self.train_X_added_full = torch.cat(
+                (
+                    self.train_X_added_full,
+                    torch.full(
+                        (
+                            self.train_X_added_full.shape[0],
+                            train_X_Complete.shape[-1]
+                            - self.train_X_added_full.shape[-1],
                         ),
+                        torch.nan,
                     ),
-                    axis=-1,
-                )
-            elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
-                    typeMsg="w",
-                )
-                self.train_X_added_full = self.train_X_added_full[
-                    :, : train_X_Complete.shape[-1]
-                ]
+                ),
+                axis=-1,
+            )
+        elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
+            print(
+                "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
+                typeMsg="w",
+            )
+            self.train_X_added_full = self.train_X_added_full[
+                :, : train_X_Complete.shape[-1]
+            ]
 
-            x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
-            y = torch.cat((self.train_Y_added, train_Y), axis=0)
-            yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
+        x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
+        y = torch.cat((self.train_Y_added, train_Y), axis=0)
+        yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
 
-            data_dict[self.output]["Xnames"] = dv_names_Complete
-            data_dict[self.output]["X"] = x
-            data_dict[self.output]["Y"] = y
-            data_dict[self.output]["Yvar"] = yvar
 
-            with open(self.fileTraining, "wb") as handle:
-                pickle_dill.dump(data_dict, handle)
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Merged data with existing data frame and write
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        new_df = create_df_portals(x,y,yvar,dv_names_Complete,self.output)
+
+        if os.path.exists(self.fileTraining):
+
+            # Load the existing DataFrame from the HDF5 file
+            existing_df = pd.read_csv(self.fileTraining)
+
+            # Concatenate the existing DataFrame with the new DataFrame
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        else:
+
+            combined_df = new_df
+
+        # Save the combined DataFrame back to the file
+        combined_df.to_csv(self.fileTraining, index=False)
 
     # --------------------------
     # PLOTTING AND POST-ANALYSIS
@@ -723,7 +745,7 @@ class surrogate_model:
         for i in indecesUnchanged:
             if (
                 (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
-            ).max() < thr:
+            ).abs().max() < thr:
                 HasThisBeenApplied += 1
                 for j in range(self.train_X_added.shape[0]):
                     self.train_X_added[j, i] = x_transform[0, i]
@@ -826,114 +848,22 @@ class fundamental_model_context(object):
         self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = True
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
 
+def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 
-# ----------------------------------------------------------------------------------------------------
-# Extend points outside of workflow
-# ----------------------------------------------------------------------------------------------------
+    new_data = []
+    for i in range(x.shape[0]):
+        data_point = {
+            'Model': output,
+            'y': y[i,:].item(),
+            'yvar': yvar[i,:].item(),
+            'x_names': x_names,
+        }
+        for j in range(x.shape[1]):
+            data_point[f'x{j}'] = x[i,j].item()
+        new_data.append(data_point)
 
+    # Create a DataFrame for the new data
+    new_df = pd.DataFrame(new_data)
 
-def extendPoints(file, output):
-    fileErrors = (
-        IOtools.reducePathLevel(file)[0]
-        + IOtools.reducePathLevel(file)[1].split(".")[0]
-        + "Errors.dat"
-    )
+    return new_df
 
-    data = BOgraphics.TabularData(
-        [f"x_{i}" for i in range(20)],
-        ["y"],
-        file=file,
-        interface=output,
-        uniqueNumbering=True,
-    ).data
-    dataE = BOgraphics.TabularData(
-        [f"x_{i}" for i in range(20)],
-        ["y"],
-        file=fileErrors,
-        interface=output,
-        uniqueNumbering=True,
-    ).data
-
-    print(
-        f"\t\t- {len(data)} extra data points available for output {output}",
-        typeMsg="i",
-    )
-
-    if len(data) == 0:
-        return torch.Tensor(), torch.Tensor(), torch.Tensor()
-
-    # --------------------------------------------------------------------------------------
-    # Grab new points
-    # --------------------------------------------------------------------------------------
-
-    x = torch.Tensor()
-    y = torch.Tensor()
-    yvar = torch.Tensor()
-    for i in data:
-        list_values = list(data[i].items())
-
-        x_new = torch.Tensor()
-        for j in range(len(list_values)):
-            if np.isnan(list_values[j][1]):
-                break
-            x_new = torch.cat((x_new, torch.from_numpy(np.array([list_values[j][1]]))))
-
-        x = torch.cat((x, x_new.unsqueeze(0)), dim=0)
-
-        # ***** Add to y
-        y_new = torch.from_numpy(np.array([data[i]["y"]])).to(y)
-        y = torch.cat((y, y_new.unsqueeze(0)), dim=0)
-
-        # ***** Add to yvar
-        yvar_new = torch.from_numpy(np.array([dataE[i]["y"]])).to(y) ** 2
-        yvar = torch.cat((yvar, yvar_new.unsqueeze(0)), dim=0)
-
-    print(f"\t\t\t- Dimensions of points found in file: {x.shape}")
-
-    return x, y, yvar
-
-
-def writeTabulars(
-    file,
-    TabularData,
-    TabularDataStds,
-    outputs,
-    IncludeVariablesContain=[],
-    avoidPositions=[],
-    startingPosition=0,
-):
-    with open(file, "rb") as handle:
-        data_dict = pickle_dill.load(handle)
-
-    iC = copy.deepcopy(startingPosition)
-    for output in data_dict:
-        addHere = False
-        for tt in IncludeVariablesContain:
-            if tt in output:
-                addHere = True
-
-        if addHere:
-            X, Y, Yvar = (
-                data_dict[output]["X"].cpu().numpy(),
-                data_dict[output]["Y"].cpu().numpy(),
-                data_dict[output]["Yvar"].cpu().numpy(),
-            )
-
-            for i in range(X.shape[0]):
-                if i not in avoidPositions:
-                    TabularData.data[iC], TabularDataStds.data[iC] = {}, {}
-                    for j in range(20):
-                        TabularData.data[iC][f"x_{j}"] = TabularDataStds.data[iC][
-                            f"x_{j}"
-                        ] = np.nan
-                    for j in range(X.shape[1]):
-                        TabularData.data[iC][f"x_{j}"] = TabularDataStds.data[iC][
-                            f"x_{j}"
-                        ] = round(X[i, j], 16)
-                    TabularData.data[iC]["y"] = round(Y[i, 0], 16)
-                    TabularDataStds.data[iC]["y"] = round(Yvar[i, 0] ** 0.5, 16)
-
-                    iC += 1
-                    outputs.append(output)
-
-    return iC - 1, TabularData, TabularDataStds, outputs

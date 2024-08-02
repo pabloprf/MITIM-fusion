@@ -3,14 +3,13 @@ import datetime
 import copy
 import botorch
 import numpy as np
-from mitim_tools.opt_tools.aux import SBOcorrections, TESTtools, SAMPLINGtools
+from mitim_tools.opt_tools.utils import SBOcorrections, TESTtools, SAMPLINGtools
 from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
 verbose_level = read_verbose_level()
-
 
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, StrategyOptions):
@@ -135,35 +134,6 @@ class fun_optimization:
         if previous_solutions is not None:
             x_opt, y_opt_residual, z_opt = previous_solutions
 
-            # ---------------------- What residual to use as stopping criterion? -------------------------------------------------
-            # TO FIX
-
-            # Residual level based on original base case
-            residualTotal = self.stepSettings["Optim"]["minimumResidual"]
-            if residualTotal is not None:
-                residualTotal = -residualTotal
-
-            # Residual level based on previous optimization
-            if (
-                self.stepSettings["Optim"]["relativePerformanceSurrogate"] is not None
-            ) and (best_performance_previous_iteration is not None):
-                residualPrevious = (
-                    self.stepSettings["Optim"]["relativePerformanceSurrogate"]
-                    * best_performance_previous_iteration
-                )
-            else:
-                residualPrevious = None
-
-            # What's lowest?
-            if residualTotal is None:
-                enoughPerformance = residualPrevious
-            elif residualPrevious is None:
-                enoughPerformance = residualTotal
-            else:
-                enoughPerformance = np.min([residualTotal, residualPrevious])
-
-            # -------------------------------------------------------------------------------------------------------------------
-
             x_opt, y_opt_residual, z_opt, hard_finish_surrogate = pointSelection(
                 x_opt2,
                 y_opt_residual2,
@@ -174,7 +144,7 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=enoughPerformance,
+                enoughPerformance=self.stepSettings["optimization_options"]["maximum_value"],
             )
 
         else:
@@ -302,7 +272,7 @@ def optAcq(
             x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
 
             if (x_opt_test.shape[1] == 0) or (
-                stepSettings["Optim"]["ensureNewPoints"]
+                stepSettings["optimization_options"]["ensure_new_points"]
                 and (x_opt_test.shape[0] < best_points)
             ):
                 print(
@@ -642,8 +612,8 @@ def pointsOperation_random(
         )
         ib = 0  # Around the best, which is the first one since I have ordered them
 
-        if (x_optRandom.shape[0] < best_points) and stepSettings["Optim"][
-            "ensureNewPoints"
+        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"][
+            "ensure_new_points"
         ]:
             print(
                 f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point"

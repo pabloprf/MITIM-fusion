@@ -5,11 +5,10 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     print(
-        f'\t- Selecting surrogate options for "{output}" to be run in {"CGYRO" if CGYROrun else "TGLF"}'
+        f'\t- Selecting surrogate options for "{output}" to be run'
     )
 
     if output is not None:
@@ -25,6 +24,66 @@ def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     return surrogateOptions
 
+def default_physicsBasedParams():
+    """
+    Physics-informed parameters to fit surrogates
+    ---------------------------------------------
+        Note: Dict value indicates what variables need to change at this location to add this one (only one of them is needed)
+        Note 2: index key indicates when to transition to next (in terms of number of individuals available for fitting)
+        Things to add:
+                'aLte': ['aLte'],   'aLti': ['aLti'],      'aLne': ['aLne'],
+                'nuei': ['te','ne'],'tite': ['te','ti'],   'c_s': ['te'],      'w0_n': ['w0'],
+                'beta_e':  ['te','ne']
+
+        transition_evaluations is the number of points to be fitted that require a parameter transition.
+            Note that this ignores ExtraData or ExtraPoints.
+                - transition_evaluations[0]: max to only consider gradients
+                - transition_evaluations[1]: no beta_e
+                - transition_evaluations[2]: full
+    """
+
+    transition_evaluations = [10, 30, 100]
+    physicsBasedParams = {
+        transition_evaluations[0]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+            }
+        ),
+        transition_evaluations[1]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+                "nuei": ["te", "ne"],
+                "tite": ["te", "ti"],
+                "w0_n": ["w0"],
+            }
+        ),
+        transition_evaluations[2]: OrderedDict(
+            {
+                "aLte": ["aLte"],
+                "aLti": ["aLti"],
+                "aLne": ["aLne"],
+                "aLw0_n": ["aLw0"],
+                "nuei": ["te", "ne"],
+                "tite": ["te", "ti"],
+                "w0_n": ["w0"],
+                "beta_e": ["te", "ne"],
+            }
+        ),
+    }
+
+    # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
+    physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
+    physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
+    physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
+    physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+
+    return physicsBasedParams, physicsBasedParams_trace
 
 def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
     """
@@ -46,8 +105,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
-
-    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """
 	3. Local parameters to fit surrogate to
@@ -85,9 +143,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
 # ----------------------------------------------------------------------
 
 
-def transformmitim(
-    X, surrogate_parameters, output
-):  # TO REMOVE: call it transformPORTALS
+def transformPORTALS(X, surrogate_parameters, output):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
@@ -103,9 +159,7 @@ def transformmitim(
 	"""
 
     # Produce relevant quantities here (in particular, GB will be used)
-    powerstate = constructEvaluationProfiles(
-        X, surrogate_parameters, recalculateTargets=False
-    )
+    powerstate = constructEvaluationProfiles(X, surrogate_parameters)
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
     factorGB = GBfromXnorm(X, output, powerstate)
@@ -152,7 +206,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
         (torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1
     )
 
-    PexchTurb_integrated = powerstate.volume_integrate(qExch, dim=qExch.shape[0])[:, 1:]
+    PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
     """
 	3. Go back to the original batching system
@@ -164,7 +218,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     return PexchTurb_integrated
 
 
-# def transformmitim(X,Y,Yvar,surrogate_parameters,output):
+# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
 # 	'''
 # 	Transform direct evaluation output to something that the model understands better.
 
@@ -183,14 +237,14 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return Ytr,Ytr_var
 
 
-# def untransformmitim(X, mean, upper, lower, surrogate_parameters, output):
+# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
 # 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformmitim)
+# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
 
 # 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
 # 		- Transforms and produces Y and confidence bounds (batch1,...,)
 
-# 	This untransforms whatever has happened in the transformmitim function
+# 	This untransforms whatever has happened in the transformPORTALS function
 # 	'''
 
 # 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)
@@ -299,17 +353,15 @@ def ratioFactor(X, surrogate_parameters, output, powerstate):
     return v
 
 
-def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True):
+def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=False):
     """
     Prepare powerstate for another evaluation with batches
     ------------------------------------------------------
 
-    Note: Copying this object will be very expensive (~30% increase in foward pass)...
-              So, method that is better is to detach what pythorch has done in other backward evals.
-              So I'm avoiding doing copy.deepcopy(surrogate_parameters['powerstate'])
+    Notes:
+        - Only calculate it once per ModelList, so make sure it's not in parameters_combined before
+          computing it, since it is common for all.
 
-    Note: Only calculate it once per ModelList, so make sure it's not in parameters_combined before
-              computing it, since it is common for all.
     """
 
     if ("parameters_combined" in surrogate_parameters) and (
@@ -321,16 +373,21 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
         powerstate = surrogate_parameters["powerstate"]
 
         if X.shape[0] > 0:
-            powerstate.repeat(
-                batch_size=X.shape[0], pos=0, includeDerived=False
-            )  # This is an expensive step (to unrepeat), but can't do anything else...
-            powerstate.detach_tensors(includeDerived=False)
 
+            '''
+            ----------------------------------------------------------------------------------------------------------------
+            Copying the powerstate object (to proceed separately) would be very expensive (~30% increase in foward pass)...
+            So, it is better to detach what pythorch has done in other backward evals and repeat with the X shape.
+            '''
+            powerstate._detach_tensors()
+            if powerstate.batch_size != X.shape[0]:
+                powerstate._repeat_tensors(batch_size=X.shape[0])
+            # --------------------------------------------------------------------------------------------------------------
+            
             num_x = powerstate.plasma["rho"].shape[-1] - 1
 
-            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
-
             # Obtain modified profiles
+            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
             for iprof, var in enumerate(powerstate.ProfilesPredicted):
                 # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
                 CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
@@ -343,69 +400,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=True
 
             # Targets only if needed (for speed, GB doesn't need it)
             if recalculateTargets:
-                powerstate.TargetCalc = "powerstate"  # For surrogate evaluation, always powerstate, logically.
+                powerstate.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
 
     return powerstate
-
-
-def default_physicsBasedParams():
-    """
-    Physics-informed parameters to fit surrogates
-    ---------------------------------------------
-        Note: Dict value indicates what variables need to change at this location to add this one (only one of them is needed)
-        Note 2: index key indicates when to transition to next (in terms of number of individuals available for fitting)
-        Things to add:
-                'aLte': ['aLte'],   'aLti': ['aLti'],      'aLne': ['aLne'],
-                'nuei': ['te','ne'],'tite': ['te','ti'],   'c_s': ['te'],      'w0_n': ['w0'],
-                'beta_e':  ['te','ne']
-
-        transition_evaluations is the number of points to be fitted that require a parameter transition.
-            Note that this ignores ExtraData or ExtraPoints.
-                - transition_evaluations[0]: max to only consider gradients
-                - transition_evaluations[1]: no beta_e
-                - transition_evaluations[2]: full
-    """
-
-    transition_evaluations = [10, 30, 100]
-    physicsBasedParams = {
-        transition_evaluations[0]: OrderedDict(
-            {
-                "aLte": ["aLte"],
-                "aLti": ["aLti"],
-                "aLne": ["aLne"],
-                "aLw0_n": ["aLw0"],
-            }
-        ),
-        transition_evaluations[1]: OrderedDict(
-            {
-                "aLte": ["aLte"],
-                "aLti": ["aLti"],
-                "aLne": ["aLne"],
-                "aLw0_n": ["aLw0"],
-                "nuei": ["te", "ne"],
-                "tite": ["te", "ti"],
-                "w0_n": ["w0"],
-            }
-        ),
-        transition_evaluations[2]: OrderedDict(
-            {
-                "aLte": ["aLte"],
-                "aLti": ["aLti"],
-                "aLne": ["aLne"],
-                "aLw0_n": ["aLw0"],
-                "nuei": ["te", "ne"],
-                "tite": ["te", "ti"],
-                "w0_n": ["w0"],
-                "beta_e": ["te", "ne"],
-            }
-        ),
-    }
-
-    # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
-    physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
-    physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
-
-    return physicsBasedParams, physicsBasedParams_trace

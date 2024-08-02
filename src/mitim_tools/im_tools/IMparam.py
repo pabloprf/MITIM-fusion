@@ -3,7 +3,7 @@ import random, time, pdb, datetime, os, sys, copy
 from IPython import embed
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools
-from mitim_tools.im_tools.aux import LUTtools
+from mitim_tools.im_tools.utils import LUTtools
 from mitim_tools.transp_tools.tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
@@ -35,7 +35,7 @@ class MITIMnamelist:
             os.system("mv {0} {0}prev".format(self.FolderOutputs[:-1]))
             os.system("mkdir " + self.FolderOutputs)
             os.system(
-                "mv {0}prev/MITIM.log {0}/MITIM.log".format(self.FolderOutputs[:-1])
+                "mv {0}prev/optimization_log.txt {0}/optimization_log.txt".format(self.FolderOutputs[:-1])
             )
             os.system(f"rm -r {self.FolderOutputs[:-1]}prev")
         else:
@@ -43,7 +43,7 @@ class MITIMnamelist:
 
         # ------ Prepare log file
 
-        self.logFile = self.FolderOutputs + "MITIM.log_tmp"
+        self.logFile = self.FolderOutputs + "optimization_log.txt_tmp"
         if activateLogger:
             sys.stdout = IOtools.Logger(
                 logFile=self.logFile, DebugMode=DebugMode, writeAlsoTerminal=IsItSingle

@@ -65,7 +65,7 @@ def PRF_rosen(x, y, a=1, b=100):
 
 def rosenGrid(x=np.linspace(-2, 2, 1000), ax=None):
     # HERE, otherwise it will require that it will require that I have botorch even for small MITIM use
-    from mitim_tools.opt_tools.aux import BOgraphics
+    from mitim_tools.opt_tools.utils import BOgraphics
 
     y = x
     x0, y0 = np.meshgrid(x, y)
@@ -334,8 +334,6 @@ def sigmoid_PRF(xo, xbo, h=1e3):
 
     return s
 
-
-# To remove
 def sigmoidPenalty(x, x_unity=[1, 10], h_transition=0.5):
     # h_transition is the width for 0.5
 
@@ -624,7 +622,8 @@ def drawContours(Rold, Yold, Zold, resol=5e3, psiN_boundary=0.99999):
 
     [Rg, Yg] = np.meshgrid(R, Y)
 
-    cs = plt.contour(Rg, Yg, Z, resol, levels=[psiN_boundary])
+    fig, ax = plt.subplots()
+    cs = ax.contour(Rg, Yg, Z, resol, levels=[psiN_boundary])
 
     Rpsi, Ypsi = [], []
     for k in range(len(cs.allsegs[0])):
@@ -635,6 +634,8 @@ def drawContours(Rold, Yold, Zold, resol=5e3, psiN_boundary=0.99999):
             Yb.append(i[1])
         Rpsi.append(np.array(Rb))
         Ypsi.append(np.array(Yb))
+
+    plt.close(fig)
 
     return Rpsi, Ypsi
 

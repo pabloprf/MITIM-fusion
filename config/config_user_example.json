@@ -1,18 +1,19 @@
 {
     "preferences": {
+        "verbose_level":    "1",
+        "dpi_notebook":     "100",
         "trxpl":            "mfews",
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",
         "tglf":             "engaging",
         "cgyro":            "engaging",
+        "astra":            "engaging",
         "eq":               "mfews",
         "scruncher":        "mfews",
         "ntcc":             "mfews",
         "get_fbm":          "mfews",
         "transp":           "globus", 
-        "idl":              "mfews",
-        "verbose_level":    "1",
-        "dpi_notebook":     "100"
+        "idl":              "mfews"
     },
     "local": {
         "machine":    "local",

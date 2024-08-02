@@ -11,6 +11,8 @@ import cProfile
 import termios
 import tty
 import h5py
+import subprocess
+import json
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,18 +36,29 @@ class speeder(object):
         self.file = file
 
     def __enter__(self):
+        
         self.profiler = cProfile.Profile()
         self.timeBeginning = datetime.datetime.now()
 
+        print(">>> Profiling started")
         self.profiler.enable()
 
+        return self
+
     def __exit__(self, *args):
+
         self.profiler.disable()
-        timeDiff = getTimeDifference(self.timeBeginning, niceText=True)
+        print(">>> Profiling ended")
+
+        self._get_time()
+
+    def _get_time(self):
+
+        self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
         self.profiler.dump_stats(self.file)
 
         print(
-            f'Script took {timeDiff}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
+            f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
 
@@ -150,6 +163,24 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
+def get_git_branch(repo_path):
+    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    else:
+        raise Exception(f"Error: {result.stderr.strip()}")
+
+def get_git_hash(repo_path):
+    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    else:
+        raise Exception(f"Error: {result.stderr.strip()}")
+
+def get_git_info(repo_path):
+    branch = get_git_branch(repo_path)
+    commit_hash = get_git_hash(repo_path)
+    return branch, commit_hash
 
 def createCDF_simple(file, zvals, names):
     """
@@ -297,39 +328,20 @@ def getsizeObject(obj, seen=None):
         size += sum([getsizeObject(i, seen) for i in obj])
     return size
 
+def read_mitim_nml(json_file):
+    with open(json_file, 'r') as file:
+        data = json.load(file)
 
-def readOptim_Complete(fileNML):
-    Optim = readOptim(fileNML, prefix_param="OPT_", caseInsensitive=False)
-    Optim["StrategyOptions"] = readOptim(
-        fileNML, prefix_param="SO_", caseInsensitive=False
-    )
-    Optim["surrogateOptions"] = readOptim(
-        fileNML, prefix_param="SU_", caseInsensitive=False
-    )
+    optimization_options = data["optimization"]
+    optimization_options["StrategyOptions"] =  data["StrategyOptions"]
+    optimization_options["surrogateOptions"] = data["surrogateOptions"]
 
-    return Optim
-
-
-def readOptim(file, prefix_param="", caseInsensitive=True):
-    NMLparameters = generateMITIMNamelist(file, caseInsensitive=caseInsensitive)
-
-    if caseInsensitive:
-        Optim = CaseInsensitiveDict()
-    else:
-        Optim = OrderedDict()
-
-    for i in NMLparameters:
-        if len(prefix_param) == 0 or prefix_param in i:
-            Optim[i[len(prefix_param) :]] = NMLparameters[i]
-
-    return Optim
-
+    return optimization_options
 
 def getpythonversion():
     return [
         int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".")
     ]
-
 
 def zipFiles(files, outputFolder, name="info"):
     os.system(f"mkdir {outputFolder}/{name}")

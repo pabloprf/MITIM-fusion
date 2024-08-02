@@ -1,7 +1,8 @@
 import os
+from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from IPython import embed
 
 """
@@ -26,8 +27,8 @@ class MITIMgeqdsk:
             with open(filename, "r") as f:
                 lines = f.readlines()
             with open(f"{filename}_noCoils.geqdsk", "w") as f:
-                for line in lines:
-                    if line[:2] == "  ":
+                for cont,line in enumerate(lines):
+                    if cont>0 and line[:2] == "  ":
                         break
                     f.write(line)
             filename = f"{filename}_noCoils.geqdsk"
@@ -47,7 +48,7 @@ class MITIMgeqdsk:
             os.system(f"rm {filename}")
 
     @classmethod
-    def timeslices(cls, filename, fullLCFS=False, removeCoils=True):
+    def timeslices(cls, filename, **kwargs):
         print("\n...Opening GEQ file with several time slices")
 
         with open(filename, "rb") as f:
@@ -78,9 +79,7 @@ class MITIMgeqdsk:
 
             gs.append(
                 cls(
-                    f"{filename}_time{i}.geqdsk",
-                    fullLCFS=fullLCFS,
-                    removeCoils=removeCoils,
+                    f"{filename}_time{i}.geqdsk",**kwargs,
                 )
             )
             os.system(f"rm {filename}_time{i}.geqdsk")
@@ -1165,6 +1164,145 @@ class MITIMgeqdsk:
             )
 
         return cs
+    
+    def get_MXH_coeff(self, n, n_coeff=6, plot=False): 
+        """
+        Calculates MXH Coefficients as a function of poloidal flux
+        n: number of grid points to interpolate the flux surfaces
+           NOT the number of radial points returned. This function
+           will return n_coeff sin and cosine coefficients for each
+           flux surface in the geqdsk file. Changing n is only nessary
+           if the last closed flux surface is not well resolved.
+        """
+        from scipy.signal import savgol_filter
+        start=time()
+
+        # Upsample the poloidal flux grid
+        Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
+        R = np.linspace(np.min(Raux),np.max(Raux),n)
+        Z = np.linspace(np.min(Zaux),np.max(Zaux),n)
+        Psi_norm = MATHtools.interp2D(R, Z, Raux, Zaux, self.g["AuxQuantities"]["PSIRZ_NORM"])
+
+        # calculate the LCFS boundary
+        # Select only the R and Z values within the LCFS- I psi_norm outside to 2
+        # this works fine for fixed-boundary equilibria but needs v. high tolerance
+        # for the full equilibrium with x-point.
+        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
+        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
+        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
+        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
+        Psi_norm[:,:R_min_ind] = 2
+        Psi_norm[:,R_max_ind:] = 2
+        Psi_norm[:Z_min_ind,:] = 2
+        Psi_norm[Z_max_ind:,:] = 2
+
+        #psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
+        #psi_reg = self.g["AuxQuantities"]["PSI"]
+        rhos = self.g["AuxQuantities"]["RHO"]
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        
+        cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
+        print(f" \t\t--> Finding g-file flux-surfaces")
+        for i, psi in enumerate(psis):
+            
+            if psi == 0:
+                psi+=0.0001
+
+            # need to construct level contours for each flux surface 
+            Ri, Zi = MATHtools.drawContours(
+                R,
+                Z,
+                Psi_norm,
+                n,
+                psi,
+            )
+            Ri, Zi = Ri[0], Zi[0]
+                
+            # interpolate R,Z contours to have the same dimensions
+            Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
+            Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
+    
+            #calculate Miller Extended Harmionic coefficients
+            #enforce zero at the innermost flux surface
+            
+            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
+            if i == 0:
+                cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
+
+        end=time()
+
+        print(f'\ntotal run time: {end-start} s')
+        if plot:
+            fig, axes = plt.subplots(2,1)
+            for i in np.arange(n_coeff):
+                axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
+                axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
+            axes[0].legend() ; axes[1].legend()
+            axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
+            axes[0].grid() ; axes[1].grid()
+            axes[0].set_title("MXH Coefficients - Cosine")
+            axes[1].set_title("MXH Coefficients - Sine")
+            plt.tight_layout()
+            plt.show()
+        print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
+        return cn, sn, gn, psis
+        
+def get_flux_surface_geometry(R, Z, n_coeff=3):
+    """
+    Calculates MXH Coefficients for a flux surface
+    """
+    Z = np.roll(Z, -np.argmax(R))
+    R = np.roll(R, -np.argmax(R))
+    if Z[1] < Z[0]: # reverses array so that theta increases
+        Z = np.flip(Z)
+        R = np.flip(R)
+
+    # compute bounding box for each flux surface
+    r = 0.5*(np.max(R)-np.min(R))
+    kappa = 0.5*(np.max(Z) - np.min(Z))/r
+    R0 = 0.5*(np.max(R)+np.min(R))
+    Z0 = 0.5*(np.max(Z)+np.min(Z))
+    bbox = [R0, r, Z0, kappa]
+
+    # solve for polar angles
+    # need to use np.clip to avoid floating-point precision errors
+    theta_r = np.arccos(np.clip(((R - R0) / r), -1, 1))
+    theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
+
+    # Find the continuation of theta and theta_r to [0,2pi]
+    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+
+    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+
+    theta_cont[:max_theta] = theta_cont[:max_theta]
+    theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
+    theta_cont[max_theta_r:min_theta] = np.pi-theta[max_theta_r:min_theta]
+    theta_cont[min_theta:] = 2*np.pi+theta[min_theta:]
+
+    theta_r_cont[:max_theta] = theta_r_cont[:max_theta]
+    theta_r_cont[max_theta:max_theta_r] = theta_r[max_theta:max_theta_r]
+    theta_r_cont[max_theta_r:min_theta] = 2*np.pi - theta_r[max_theta_r:min_theta]
+    theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
+
+    theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
+    
+    # fourier decompose to find coefficients
+    c = np.zeros(n_coeff)
+    s = np.zeros(n_coeff)
+    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
+    from scipy.integrate import quad
+    for i in np.arange(n_coeff):
+        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
+        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+
+        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
+        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
+        
+        
+    return c, s, bbox
+
+
 
 
 def plotSurfaces(

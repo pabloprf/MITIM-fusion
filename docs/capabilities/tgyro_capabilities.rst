@@ -68,7 +68,7 @@ Now it is time to set the TGYRO settings, such as the radial range (``vectorRang
                         'tgyro_method':   6,
                         'relax_param':   0.1 } 
 
-    physics_options = { 'TargetType':2 }   # 2: Only evolve exchange, 3: Reactor
+    physics_options = { 'TypeTarget':2 }   # 2: Only evolve exchange, 3: Reactor
     PredictionSet   = [1,1,0]              # Profiles to predict: [Te, Ti, ne]
     iterations      = 5                    # Number of TGYRO iterations
     TGLFsettings    = 5                    # TGLF pre-sets
@@ -83,7 +83,7 @@ Now TGYRO can be run:
                PredictionSet         = PredictionSet,
                TGLFsettings          = TGLFsettings,
                TGYRO_solver_options  = solver,
-               TGYRO_physics_options = physics_options)
+               Physics_options = physics_options)
 
 Read:
 

@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import OPTtools, STEPtools
-from mitim_tools.opt_tools.aux import (
+from mitim_tools.opt_tools.utils import (
     BOgraphics,
     SBOcorrections,
     TESTtools,
@@ -28,7 +28,7 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Define function to optimize
 
-		class mainFunction(FUNmain):
+		class optimization_object(opt_evaluator):
 
 			def __init__(self,folder,namelist=None,function_parameters={}):
 
@@ -53,19 +53,19 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Run Workflow
 
-	PRF_BO = STRATEGYtools.PRF_BO(mainFunction)
+	PRF_BO = STRATEGYtools.PRF_BO(optimization_object)
 	PRF_BO.run()
 
 Notes:
-	- A "nan" in the evaluator output (e.g. written in TabularData) means that it has not been evaluated, so this is prone to be tried again.
+	- A "nan" in the evaluator output (e.g. written in optimization_data) means that it has not been evaluated, so this is prone to be tried again.
 		This is especially useful when I only want to read from a previous optimization workflow the x values, but I want to evaluate.
-	- An "inf" in the evaluator output (e.g. written in TabularData) means that the evaluation failed and won't be re-tried again. That individual
+	- An "inf" in the evaluator output (e.g. written in optimization_data) means that the evaluation failed and won't be re-tried again. That individual
 		will just not be considered during surrogate fitting.
 """
 
 
 # Parent optimization function
-class FUNmain:
+class opt_evaluator:
     def __init__(
         self,
         folder,
@@ -77,7 +77,7 @@ class FUNmain:
         Namelist file can be provided and will be copied to the folder
         """
 
-        print("- Parent FUNmain function initialized")
+        print("- Parent opt_evaluator function initialized")
 
         self.folder = folder
 
@@ -97,7 +97,7 @@ class FUNmain:
         if namelist is not None:
             print(f"\t- Namelist provided: {namelist}", typeMsg="i")
 
-            self.Optim = IOtools.readOptim_Complete(namelist)
+            self.optimization_options = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
             print(
@@ -105,17 +105,17 @@ class FUNmain:
                 typeMsg="i",
             )
 
-            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
-            self.Optim = IOtools.readOptim_Complete(namelist)
+            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            self.optimization_options = IOtools.read_mitim_nml(namelist)
 
-            self.Optim = default_namelist_function(self.Optim)
+            self.optimization_options = default_namelist_function(self.optimization_options)
 
         else:
             print(
                 "\t- No namelist provided (likely b/c for reading/plotting purposes)",
                 typeMsg="i",
             )
-            self.Optim = None
+            self.optimization_options = None
 
         self.surrogate_parameters = {
             "parameters_combined": {},
@@ -147,9 +147,6 @@ class FUNmain:
 
         # Variables in the class not to save (e.g. COMSOL model)
         self.doNotSaveVariables = []
-
-        # Variables to store in separate files
-        self.storeDataSurrogates = [[""]]
 
     def read(self, paramsfile, resultsfile):
         # Read stuff
@@ -214,7 +211,6 @@ class FUNmain:
                 self.prfs_model,
                 self.log,
                 self.data,
-                self.dataE,
             ) = BOgraphics.retrieveResults(
                 self.folder,
                 analysis_level=analysis_level,
@@ -229,12 +225,12 @@ class FUNmain:
             self.prfs_model.folderOutputs = self.prfs_model.folderOutputs.replace(
                 self.prfs_model.folderExecution, self.folder
             )
-            self.prfs_model.MITIMextra = self.prfs_model.mainFunction.MITIMextra = (
-                self.prfs_model.MITIMextra.replace(
+            self.prfs_model.optimization_extra = self.prfs_model.optimization_object.optimization_extra = (
+                self.prfs_model.optimization_extra.replace(
                     self.prfs_model.folderExecution, self.folder
                 )
             )
-            self.prfs_model.folderExecution = self.prfs_model.mainFunction.folder = (
+            self.prfs_model.folderExecution = self.prfs_model.optimization_object.folder = (
                 self.folder
             )
         except:
@@ -259,7 +255,7 @@ class FUNmain:
             print(f"\t\t* {ikey} = {variations_best[ikey]}")
 
         try:
-            self_complete = self.prfs_model.mainFunction
+            self_complete = self.prfs_model.optimization_object
         except:
             self_complete = None
             print("\t- Problem retrieving function", typeMsg="w")
@@ -278,11 +274,11 @@ class FUNmain:
         time1 = datetime.datetime.now()
 
         if analysis_level < 0:
-            print("\t- Only read ResultsOptimization.out")
+            print("\t- Only read optimization_results.out")
         if analysis_level == 0:
-            print("\t- Only plot ResultsOptimization.out")
+            print("\t- Only plot optimization_results.out")
         if analysis_level == 1:
-            print("\t- Read ResultsOptimization.out and pickle")
+            print("\t- Read optimization_results.out and pickle")
         if analysis_level == 2:
             print("\t- Perform full analysis")
         if analysis_level > 2:
@@ -312,17 +308,17 @@ class FUNmain:
 
             else:
                 # What function is it?
-                class_name = str(self.prfs_model.mainFunction).split()[0].split(".")[-1]
+                class_name = str(self.prfs_model.optimization_object).split()[0].split(".")[-1]
                 print(
                     f'\t- Retrieving "analyze_results" method from class "{class_name}"',
                     typeMsg="i",
                 )
 
-                if class_name == "evaluateFREEGSU":
+                if class_name == "freegsu":
                     from mitim_modules.freegsu.FREEGSUmain import analyze_results
-                elif class_name == "evaluateVITALS":
+                elif class_name == "vitals":
                     from mitim_modules.vitals.VITALSmain import analyze_results
-                elif class_name == "evaluatePORTALS":
+                elif class_name == "portals":
                     from mitim_modules.portals.PORTALSmain import analyze_results
                 else:
                     analyze_results = None
@@ -350,7 +346,7 @@ class FUNmain:
 class PRF_BO:
     def __init__(
         self,
-        mainFunction,
+        optimization_object,
         restartYN=False,
         storeClass=True,
         onlyInitialize=False,
@@ -359,20 +355,21 @@ class PRF_BO:
     ):
         """
         Inputs:
-                - mainFunction   :  Function that is executed,
-                        with .Optim in it (Dictionary with optimization parameters (must be obtained using namelist and readOptim_Complete))
+                - optimization_object   :  Function that is executed,
+                        with .optimization_options in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_nml))
                         and .folder (Where the function runs)
                         and surrogate_parameters: Parameters to pass to surrogate (e.g. for transformed function), It can be different from function_parameters because of making evaluations fast.
-                - restartYN 	 :  If False, try to find the values from Outputs/TabularData.dat
+                - restartYN 	 :  If False, try to find the values from Outputs/optimization_data.csv
                 - storeClass 	 :  If True, write a class pickle for well-behaved restarting
                 - askQuestions 	 :  To avoid that a SLURM job gets stop becuase something is asked, set to False
         """
 
-        self.mainFunction = mainFunction
+        self.optimization_object = optimization_object
         self.restartYN = restartYN
         self.storeClass = storeClass
         self.askQuestions = askQuestions
         self.seed = seed
+        self.avoidPoints = []
 
         if (not self.restartYN) and askQuestions:
             if not print(
@@ -381,19 +378,19 @@ class PRF_BO:
             ):
                 raise Exception("[MITIM] - User requested to stop")
 
-        if self.mainFunction.name_objectives is None:
-            self.mainFunction.name_objectives = "y"
+        if self.optimization_object.name_objectives is None:
+            self.optimization_object.name_objectives = "y"
 
         # Folders and Logger
         self.folderExecution = (
-            IOtools.expandPath(self.mainFunction.folder)
-            if (self.mainFunction.folder is not None)
+            IOtools.expandPath(self.optimization_object.folder)
+            if (self.optimization_object.folder is not None)
             else ""
         )
 
         self.folderOutputs = self.folderExecution + "/Outputs/"
 
-        if mainFunction.Optim is not None:
+        if optimization_object.optimization_options is not None:
             if not os.path.exists(self.folderOutputs):
                 IOtools.askNewFolder(self.folderOutputs, force=True)
 
@@ -403,28 +400,47 @@ class PRF_BO:
 			Do not carry out this dictionary through the workflow, just read and write
 			"""
 
-            self.MITIMextra = f"{self.folderOutputs}/MITIMextra.pkl"
+            self.optimization_extra = f"{self.folderOutputs}/optimization_extra.pkl"
 
             # Read if exists
-            if os.path.exists(self.MITIMextra):
-                with open(self.MITIMextra, "rb") as handle:
-                    dictStore = pickle_dill.load(handle)
+            exists = False
+            if os.path.exists(self.optimization_extra):
+                try:
+                    with open(self.optimization_extra, "rb") as handle:
+                        dictStore = pickle_dill.load(handle)
+                    exists = True
+                except (ModuleNotFoundError,EOFError):
+                    exists = False
+                    print('Problem loading "optimization_extra.pkl"',typeMsg="w")
+            
             # nans if not
-            else:
+            if not exists:
                 dictStore = {}
                 for i in range(200):
                     dictStore[i] = np.nan
 
             # Write
-            with open(self.MITIMextra, "wb") as handle:
+            with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle)
 
-            # Write the class into the mainFunction
-            mainFunction.MITIMextra = self.MITIMextra
+            # Write the class into the optimization_object
+            optimization_object.optimization_extra = self.optimization_extra
 
         # Function to execute
-        self.surrogate_parameters = self.mainFunction.surrogate_parameters
-        self.Optim = self.mainFunction.Optim
+        self.surrogate_parameters = self.optimization_object.surrogate_parameters
+        self.optimization_options = self.optimization_object.optimization_options
+
+        # Check if the variables are expected
+        if self.optimization_options is not None:
+            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            Optim_potential = IOtools.read_mitim_nml(namelist)
+            for ikey in self.optimization_options:
+                if ikey not in Optim_potential:
+                    print(
+                        f"\t- optimization_options['{ikey}'] is an unexpected variable, prone to errors or misinterpretation",
+                        typeMsg="q",
+                    )
+        # -----------------------------------
 
         if not onlyInitialize:
             print(
@@ -442,14 +458,14 @@ class PRF_BO:
 			"""
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs + "MITIM.log")
+            self.logFile = BOgraphics.LogFile(self.folderOutputs + "optimization_log.txt")
             self.logFile.activate()
 
             # Meta
-            self.numIterations = self.Optim["BOiterations"]
-            self.StrategyOptions = self.Optim["StrategyOptions"]
-            self.parallelCalls = self.Optim["parallelCalls"]
-            self.dfT = self.mainFunction.dfT
+            self.numIterations = self.optimization_options["BO_iterations"]
+            self.StrategyOptions = self.optimization_options["StrategyOptions"]
+            self.parallel_evaluations = self.optimization_options["parallel_evaluations"]
+            self.dfT = self.optimization_object.dfT
 
             """
 			Notes about the "avoidPoints" variables
@@ -482,7 +498,7 @@ class PRF_BO:
             self.BOmetrics = {"overall": {}}
             for ikey in self.keys_metrics:
                 self.BOmetrics[ikey] = {}
-                for i in range(self.Optim["BOiterations"] + 1):
+                for i in range(self.optimization_options["BO_iterations"] + 1):
                     self.BOmetrics[ikey][i] = np.nan
 
             """
@@ -492,12 +508,12 @@ class PRF_BO:
 			"""
 
             self.bounds, self.boundsInitialization = OrderedDict(), []
-            for cont, i in enumerate(self.Optim["dvs"]):
+            for cont, i in enumerate(self.optimization_options["dvs"]):
                 self.bounds[i] = np.array(
-                    [self.Optim["dvs_min"][cont], self.Optim["dvs_max"][cont]]
+                    [self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]]
                 )
                 self.boundsInitialization.append(
-                    np.array([self.Optim["dvs_min"][cont], self.Optim["dvs_max"][cont]])
+                    np.array([self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]])
                 )
 
             self.boundsInitialization = np.transpose(self.boundsInitialization)
@@ -507,15 +523,15 @@ class PRF_BO:
 
             """
 			----------------------------------------------------------------------------------------------------------------------------
-			Prepare Objective functions (OFs) and Constrain variables (CVs) with minimum and maximum values
+			Prepare Objective functions (OFs) with minimum and maximum values
 			----------------------------------------------------------------------------------------------------------------------------
 			"""
 
             # Objective functions (OFs)
-            self.outputs = self.surrogate_parameters["outputs"] = self.Optim["ofs"]
+            self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["ofs"]
 
             # How many points each iteration will produce?
-            self.best_points_sequence = self.Optim["newPoints"]
+            self.best_points_sequence = self.optimization_options["newPoints"]
             self.best_points = int(np.sum(self.best_points_sequence))
 
             """
@@ -525,7 +541,7 @@ class PRF_BO:
 			"""
 
             if (
-                (self.Optim["typeInitialization"] == 1)
+                (self.optimization_options["type_initialization"] == 1)
                 and (os.path.exists(self.folderExecution + "Execution/Evaluation.1/"))
                 and (self.restartYN)
             ):
@@ -534,8 +550,8 @@ class PRF_BO:
                     typeMsg="q" if self.askQuestions else "qa",
                 )
 
-            self.typeInitialization = self.Optim["typeInitialization"]
-            self.initialPoints = self.Optim["initialPoints"]
+            self.type_initialization = self.optimization_options["type_initialization"]
+            self.initial_training = self.optimization_options["initial_training"]
 
             """
 			------------------------------------------------------------------------------
@@ -543,9 +559,9 @@ class PRF_BO:
 			------------------------------------------------------------------------------
 			"""
 
-            if (self.typeInitialization == 3) and (self.restartYN):
+            if (self.type_initialization == 3) and (self.restartYN):
                 print(
-                    "\t* Initialization based on Tabular, yet restart has been requested. I am NOT removing the previous TabularData",
+                    "\t* Initialization based on Tabular, yet restart has been requested. I am NOT removing the previous optimization_data",
                     typeMsg="w",
                 )
                 if self.askQuestions:
@@ -558,26 +574,18 @@ class PRF_BO:
             else:
                 forceNewTabulars = self.restartYN
 
-            inputs = []
-            for i in self.bounds:
-                inputs.append(i)
+            inputs = [i for i in self.bounds]
 
-            self.lambdaSingleObjective = self.mainFunction.scalarized_objective
+            self.lambdaSingleObjective = self.optimization_object.scalarized_objective
 
-            self.TabularData = BOgraphics.TabularData(
+            self.optimization_data = BOgraphics.optimization_data(
                 inputs,
                 self.outputs,
-                file=self.folderOutputs + "/TabularData.dat",
-                forceNew=forceNewTabulars,
-            )
-            self.TabularDataStds = BOgraphics.TabularData(
-                inputs,
-                self.outputs,
-                file=self.folderOutputs + "/TabularDataStds.dat",
+                file=self.folderOutputs + "/optimization_data.csv",
                 forceNew=forceNewTabulars,
             )
 
-            res_file = self.folderOutputs + "/ResultsOptimization.out"
+            res_file = self.folderOutputs + "/optimization_results.out"
 
             """
 			------------------------------------------------------------------------------
@@ -586,21 +594,20 @@ class PRF_BO:
 			"""
 
             self.stepSettings = {
-                "Optim": self.Optim,
+                "optimization_options": self.optimization_options,
                 "dfT": self.dfT,
                 "bounds_orig": self.bounds_orig,
                 "best_points_sequence": self.best_points_sequence,
                 "folderOutputs": self.folderOutputs,
                 "fileOutputs": res_file,
-                "name_objectives": self.mainFunction.name_objectives,
-                "name_transformed_ofs": self.mainFunction.name_transformed_ofs,
+                "name_objectives": self.optimization_object.name_objectives,
+                "name_transformed_ofs": self.optimization_object.name_transformed_ofs,
                 "outputs": self.outputs,
-                "storeDataSurrogates": self.mainFunction.storeDataSurrogates,
             }
 
-            self.ResultsOptimization = BOgraphics.ResultsOptimization(file=res_file)
+            self.optimization_results = BOgraphics.optimization_results(file=res_file)
 
-            self.ResultsOptimization.initialize(self)
+            self.optimization_results.initialize(self)
 
     def run(self):
         """
@@ -656,7 +663,7 @@ class PRF_BO:
                 # Removing those spaces in the metrics that were not filled up
                 for ikey in self.keys_metrics:
                     for i in range(
-                        self.currentIteration + 1, self.Optim["BOiterations"] + 1
+                        self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1
                     ):
                         del self.BOmetrics[ikey][i]
                 # ------------------------------------------------------------------------------------------
@@ -669,7 +676,7 @@ class PRF_BO:
 
             # Does the tabular file include at least as many rows as requested to be run in this step?
             pointsTabular = len(
-                self.TabularData.data
+                self.optimization_data.data
             )  # Number of points that the Tabular contains
             pointsExpected = len(self.train_X) + self.best_points
             if not self.restartYN:
@@ -704,18 +711,16 @@ class PRF_BO:
                         "\t* Because reading pkl step had problems, disabling restarting-from-previous from this point on",
                         typeMsg="w",
                     )
-                    flagger = print(
+                    print(
                         "\t* Are you aware of the consequences of continuing?",
                         typeMsg="q",
                     )
-                    if not flagger:
-                        embed()
 
                     self.restartYN = True
 
             if not self.restartYN:
                 # Read next from Tabular
-                self.x_next, _ = self.TabularData.grabFromTabular(
+                self.x_next, _, _ = self.optimization_data.extract_points(
                     points=np.arange(
                         len(self.train_X), len(self.train_X) + self.best_points
                     )
@@ -749,8 +754,7 @@ class PRF_BO:
                 self.StrategyOptions_use = self.StrategyOptions
 
                 # Remove from tabular next points in case they were there. Since I'm not restarting, I don't care about what has come next
-                self.TabularData.removePointsAfter(len(self.train_X) - 1)
-                self.TabularDataStds.removePointsAfter(len(self.train_X) - 1)
+                self.optimization_data.removePointsAfter(len(self.train_X) - 1)
 
                 """
 				---------------------------------------------------------------------------------------
@@ -761,8 +765,8 @@ class PRF_BO:
 
                 train_Ystd = (
                     self.train_Ystd
-                    if (self.Optim["train_Ystd"] is None)
-                    else self.Optim["train_Ystd"]
+                    if (self.optimization_options["train_Ystd"] is None)
+                    else self.optimization_options["train_Ystd"]
                 )
 
                 # Making copy because it changes per step ---- ---- ---- ---- ----
@@ -839,10 +843,10 @@ class PRF_BO:
         """
 
         # -------------------------------------------------------------------------------------------------
-        # To avoid circularity when restarting, do not store the class in the ResultsOptimization sub-class
+        # To avoid circularity when restarting, do not store the class in the optimization_results sub-class
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.ResultsOptimization.PRF_BO
+        del copyClass.optimization_results.PRF_BO
 
         # -------------------------------------------------------------------------------------------------
         # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TO REMOVE]
@@ -869,25 +873,25 @@ class PRF_BO:
         Repair the downselection
         """
 
-        copyClass.ResultsOptimization.PRF_BO = copy.deepcopy(self)
+        copyClass.optimization_results.PRF_BO = copy.deepcopy(self)
 
-        copyClass.lambdaSingleObjective = copyClass.mainFunction.scalarized_objective
+        copyClass.lambdaSingleObjective = copyClass.optimization_object.scalarized_objective
 
         for i in range(len(copyClass.steps)):
             copyClass.steps[i].defineFunctions(copyClass.lambdaSingleObjective)
 
         return copyClass
 
-    def save(self, name="MITIMstate.pkl"):
+    def save(self, name="optimization_object.pkl"):
         print("* Proceeding to save new MITIM state pickle file")
         stateFile = f"{self.folderOutputs}/{name}"
         stateFile_tmp = f"{self.folderOutputs}/{name}_tmp"
 
         # Do not store certain variables (that cannot even be copied, that's why I do it here)
         saver = {}
-        for ikey in self.mainFunction.doNotSaveVariables:
-            saver[ikey] = self.mainFunction.__dict__[ikey]
-            del self.mainFunction.__dict__[ikey]
+        for ikey in self.optimization_object.doNotSaveVariables:
+            saver[ikey] = self.optimization_object.__dict__[ikey]
+            del self.optimization_object.__dict__[ikey]
         # -----------------------------------------------------------------------------------
 
         copyClass = self.prepare_for_save_PRFBO(copy.deepcopy(self))
@@ -900,7 +904,7 @@ class PRF_BO:
 
         # Get variables back ----------------------------------------------------------------
         for ikey in saver:
-            self.mainFunction.__dict__[ikey] = saver[ikey]
+            self.optimization_object.__dict__[ikey] = saver[ikey]
         # -----------------------------------------------------------------------------------
 
         os.system(
@@ -912,11 +916,11 @@ class PRF_BO:
         )
 
     def read(
-        self, name="MITIMstate.pkl", iteration=None, file=None, provideFullClass=False
+        self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False
     ):
         iteration = iteration or self.currentIteration
 
-        print("- Reading pickle file with MITIMstate class")
+        print("- Reading pickle file with optimization_object class")
         stateFile = file if (file is not None) else f"{self.folderOutputs}/{name}"
 
         try:
@@ -969,13 +973,13 @@ class PRF_BO:
         # Update the train_X
         self.train_X = np.append(self.train_X, self.x_next.cpu(), axis=0)
 
-        # Update TabularData with nans
-        self.TabularData.updatePoints(self.train_X, Y=self.train_Y)
-        self.TabularDataStds.updatePoints(self.train_X, Y=self.train_Ystd)
+        # Update optimization_data with nans
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
-        # Update ResultsOptimization only as "predicted"
+        # Update optimization_results only as "predicted"
         if not isThisCorrected:
-            self.ResultsOptimization.addPoints(
+            self.optimization_results.addPoints(
                 includePoints=[
                     len(self.train_X) - len(self.x_next),
                     len(self.train_X) - len(self.x_next) + 1,
@@ -984,7 +988,7 @@ class PRF_BO:
                 predicted=True,
                 Best=True,
             )
-            self.ResultsOptimization.addPoints(
+            self.optimization_results.addPoints(
                 includePoints=[len(self.train_X) - len(self.x_next), len(self.train_X)],
                 executed=False,
                 predicted=True,
@@ -994,14 +998,13 @@ class PRF_BO:
         # --- Evaluation
         time1 = datetime.datetime.now()
         y_next, ystd_next, self.numEval = EVALUATORtools.fun(
-            self.mainFunction,
+            self.optimization_object,
             self.x_next,
             self.folderExecution,
             self.bounds,
             self.outputs,
-            self.TabularData,
-            self.TabularDataStds,
-            parallel=self.parallelCalls,
+            self.optimization_data,
+            parallel=self.parallel_evaluations,
             restartYN=self.restartYN,
             numEval=self.numEval,
         )
@@ -1027,17 +1030,17 @@ class PRF_BO:
         # ---------------------------------------------------------------------------------------------------------------------
 
         # Update Tabular data with the actual evaluations
-        self.TabularData.updatePoints(self.train_X, Y=self.train_Y)
-        self.TabularDataStds.updatePoints(self.train_X, Y=self.train_Ystd)
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
-        # Update ResultsOptimization with the actual evaluations
+        # Update optimization_results with the actual evaluations
         if not isThisCorrected:
             txt = f"Evaluating points from iteration {self.currentIteration}, comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = True, True, True
         else:
             txt = f"Evaluating further points after trust region operation... batch comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = False, False, False
-        self.ResultsOptimization.addPoints(
+        self.optimization_results.addPoints(
             includePoints=[len(self.train_X) - len(self.x_next), len(self.train_X)],
             executed=True,
             predicted=predicted,
@@ -1114,41 +1117,43 @@ class PRF_BO:
         # Stopping criterion based on the minimum residual indicated in namelist
         # ~~~~~~~~~~~~~~~~~~
 
-        if self.Optim["minimumResidual"] is not None:
+        if self.optimization_options["maximum_value"] is not None:
             print("- Checking residual...")
-            _, _, residuals = self.lambdaSingleObjective(
+            _, _, maximization_value = self.lambdaSingleObjective(
                 torch.from_numpy(self.train_Y).to(self.dfT)
             )
-            min_residual = np.nanmin(-residuals.cpu().numpy())
+
+            best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
+
             print(
-                f'\t- Minimum residual: {min_residual:.3e} (absolute stopping criterion: {self.Optim["minimumResidual"]:.3e}), based on original: {self.original_minimumResidual:.3e}'
+                f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {self.optimization_options["maximum_value"]:.3e}), based on original: {self.original_maximum_value:.3e}'
             )
 
-            if min_residual < self.Optim["minimumResidual"]:
+            if best_value_so_far > self.optimization_options["maximum_value"]:
                 hard_finish_residual = True
 
         # ~~~~~~~~~~~~~~~~~~
         # Stopping criterion based on the minimum variation indicated in namelist
         # ~~~~~~~~~~~~~~~~~~
 
-        if self.Optim["minimumDVvariation"] is not None:
+        if self.optimization_options["minimum_dvs_variation"] is not None:
             print("- Checking DV variations...")
 
             _, yG_max = TESTtools.DVdistanceMetric(self.train_X)
 
             hard_finish_variation = (
                 self.currentIteration
-                >= self.Optim["minimumDVvariation"][0]
-                + self.Optim["minimumDVvariation"][1]
+                >= self.optimization_options["minimum_dvs_variation"][0]
+                + self.optimization_options["minimum_dvs_variation"][1]
             )
-            for i in range(int(self.Optim["minimumDVvariation"][1])):
+            for i in range(int(self.optimization_options["minimum_dvs_variation"][1])):
                 hard_finish_variation = hard_finish_variation and (
-                    yG_max[-1 - i] < self.Optim["minimumDVvariation"][2]
+                    yG_max[-1 - i] < self.optimization_options["minimum_dvs_variation"][2]
                 )
 
             if hard_finish_variation:
                 print(
-                    f"\t- DVs varied by less than {self.Optim['minimumDVvariation'][2]}% compared to the rest of individuals for the past {int(self.Optim['minimumDVvariation'][1])} iterations"
+                    f"\t- DVs varied by less than {self.optimization_options['minimum_dvs_variation'][2]}% compared to the rest of individuals for the past {int(self.optimization_options['minimum_dvs_variation'][1])} iterations"
                 )
 
         # ~~~~~~~~~~~~~~~~~~
@@ -1177,19 +1182,19 @@ class PRF_BO:
 
         print(f"* Folder: {self.folderExecution}")
         print("* Optimization Settings:")
-        for i in self.Optim:
+        for i in self.optimization_options:
             strs = f"\t\t{i:25}:"
             if i in ["StrategyOptions", "surrogateOptions"]:
                 print(strs)
-                for j in self.Optim[i]:
-                    print(f"\t\t\t{j:25}: {self.Optim[i][j]}")
+                for j in self.optimization_options[i]:
+                    print(f"\t\t\t{j:25}: {self.optimization_options[i][j]}")
             else:
-                print(f"{strs} {self.Optim[i]}")
+                print(f"{strs} {self.optimization_options[i]}")
 
         print("* Main Function Parameters:")
-        par = self.mainFunction.__dict__
+        par = self.optimization_object.__dict__
         for i in par:
-            if i not in ["Optim"]:
+            if i not in ["optimization_options"]:
                 strs = f"\t\t{i:25}:"
                 if "file_in_lines_" not in i:
                     print(f"{strs} {par[i]}")
@@ -1198,29 +1203,26 @@ class PRF_BO:
 
         # --------------------------------------------------------------------------------------------------
 
-        self.OriginalInitialPoints = copy.deepcopy(self.initialPoints)
+        self.Originalinitial_training = copy.deepcopy(self.initial_training)
 
         # -----------------------------------------------------------------
         # Force certain optimizations depending on existence of folders
         # -----------------------------------------------------------------
 
-        if (not self.restartYN) and os.path.exists(
-            f"{self.folderExecution}/Outputs/TabularData.dat"
-        ):
-            self.typeInitialization = 3
+        if (not self.restartYN) and (self.optimization_data is not None):
+            self.type_initialization = 3
             print(
-                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from TabularData)",
+                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
                 typeMsg="i",
             )
 
-        if self.typeInitialization == 3:
+        if self.type_initialization == 3:
             print("--> Initialization by reading tabular data...")
+
             try:
-                with open(f"{self.folderExecution}/Outputs/TabularData.dat", "r") as f:
-                    aux = f.readlines()
-                tabExists = (len(aux) - 1) >= self.initialPoints
+                tabExists = len(self.optimization_data.data) >= self.initial_training
                 print(
-                    f"\t- TabularData file has {len(aux)-1} elements, and initialPoints were {self.initialPoints}"
+                    f"\t- optimization_data file has {len(self.optimization_data.data)} elements, and initial_training were {self.initial_training}"
                 )
             except:
                 tabExists = False
@@ -1229,7 +1231,7 @@ class PRF_BO:
 
             if not tabExists:
                 print(
-                    "--> typeInitialization 3 requires TabularData but something failed. Assigning typeInitialization=1 and restarting from scratch",
+                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and restarting from scratch",
                     typeMsg="i",
                 )
                 if self.askQuestions:
@@ -1237,29 +1239,26 @@ class PRF_BO:
                     if not flagger:
                         embed()
 
-                self.typeInitialization = 1
+                self.type_initialization = 1
                 self.restartYN = True
 
         # -----------------------------------------------------------------
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.restartYN) or self.Optim[
-            "readInitialTabular"
+        readCasesFromTabular = (not self.restartYN) or self.optimization_options[
+            "read_initial_training_from_csv"
         ]  # Read when starting from previous or forced it
 
         # Restarted run from previous. Grab DVs of initial set
         if readCasesFromTabular:
             try:
-                self.train_X, self.train_Y = self.TabularData.grabFromTabular(
-                    points=np.arange(self.initialPoints)
-                )
-                _, self.train_Ystd = self.TabularDataStds.grabFromTabular(
-                    points=np.arange(self.initialPoints)
+                self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(
+                    points=np.arange(self.initial_training)
                 )
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
-                if self.Optim["ensureTrainingBounds"]:
+                if self.optimization_options["ensure_within_bounds"]:
                     for i in range(self.train_X.shape[0]):
                         insideBounds = TESTtools.checkSolutionIsWithinBounds(
                             torch.from_numpy(self.train_X[i, :]).to(self.dfT),
@@ -1270,11 +1269,11 @@ class PRF_BO:
 
             except:
                 flagger = print(
-                    "Error reading Tabular. Do you want to continue without restart and do LHS instead?",
+                    "Error reading Tabular. Do you want to continue without restart and do standard initialization instead?",
                     typeMsg="q",
                 )
 
-                self.typeInitialization = 1
+                self.type_initialization = 1
                 self.restartYN = True
                 readCasesFromTabular = False
 
@@ -1286,17 +1285,17 @@ class PRF_BO:
                 if not flagger:
                     embed()
 
-                self.typeInitialization = 1
+                self.type_initialization = 1
                 self.restartYN = True
                 readCasesFromTabular = False
 
         # Standard - RUN
 
         if not readCasesFromTabular:
-            if self.typeInitialization == 1 and self.Optim["BaselineDV"] is not None:
-                self.initialPoints = self.initialPoints - 1
+            if self.type_initialization == 1 and self.optimization_options["dvs_base"] is not None:
+                self.initial_training = self.initial_training - 1
                 print(
-                    f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initialPoints}",
+                    f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",
                     typeMsg="i",
                 )
 
@@ -1305,64 +1304,58 @@ class PRF_BO:
 			--------------
 			"""
 
-            if self.Optim["initializationFun"] is None:
-                if self.typeInitialization == 1:
-                    if self.initialPoints == 0:
+            if self.optimization_options["initialization_fun"] is None:
+                if self.type_initialization == 1:
+                    if self.initial_training == 0:
                         self.train_X = np.atleast_2d(
-                            [i for i in self.Optim["BaselineDV"]]
+                            [i for i in self.optimization_options["dvs_base"]]
                         )
                     else:
                         self.train_X = SAMPLINGtools.LHS(
-                            self.initialPoints,
+                            self.initial_training,
                             self.boundsInitialization,
                             seed=self.seed,
                         )
                         self.train_X = self.train_X.cpu().numpy().astype("float")
 
-                        # if (self.Optim['BaselineDV'] is not None):
-                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.Optim['BaselineDV']]),self.train_X,axis=0)
+                        # if (self.optimization_options['dvs_base'] is not None):
+                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.optimization_options['dvs_base']]),self.train_X,axis=0)
 
-                elif self.typeInitialization == 2:
+                elif self.type_initialization == 2:
                     raise Exception("Option not implemented yet")
-                elif self.typeInitialization == 3:
+                elif self.type_initialization == 3:
                     self.train_X = SAMPLINGtools.readInitializationFile(
-                        f"{self.folderExecution}/Outputs/TabularData.dat",
-                        self.initialPoints,
-                        self.stepSettings["Optim"]["dvs"],
+                        f"{self.folderExecution}/Outputs/optimization_data.csv",
+                        self.initial_training,
+                        self.stepSettings["optimization_options"]["dvs"],
                     )
-                elif self.typeInitialization == 4:
-                    self.train_X = SAMPLINGtools.readInitializationFile(
-                        f"{self.folderExecution}/Outputs/initialSet.dat",
-                        self.initialPoints,
-                        self.stepSettings["Optim"]["dvs"],
-                    )
-                elif self.typeInitialization == 5:
+                elif self.type_initialization == 4:
                     self.train_X = IOtools.readExecutionParams(
-                        self.folderExecution, nums=[0, self.initialPoints - 1]
+                        self.folderExecution, nums=[0, self.initial_training - 1]
                     )
 
                 if (
-                    (self.typeInitialization == 1)
-                    and (self.Optim["BaselineDV"] is not None)
-                    and (self.initialPoints > 0)
+                    (self.type_initialization == 1)
+                    and (self.optimization_options["dvs_base"] is not None)
+                    and (self.initial_training > 0)
                 ):
                     self.train_X = np.append(
-                        np.atleast_2d([i for i in self.Optim["BaselineDV"]]),
+                        np.atleast_2d([i for i in self.optimization_options["dvs_base"]]),
                         self.train_X,
                         axis=0,
                     )
 
             else:
                 print("- Initialization function has been selected", typeMsg="i")
-                self.train_X = self.Optim["initializationFun"](self)
+                self.train_X = self.optimization_options["initialization_fun"](self)
                 readCasesFromTabular = True
 
             # Initialize train_Y as nan until evaluated
             self.train_Y = (
-                np.ones((self.OriginalInitialPoints, len(self.outputs))) * np.nan
+                np.ones((self.Originalinitial_training, len(self.outputs))) * np.nan
             )
             self.train_Ystd = (
-                np.ones((self.OriginalInitialPoints, len(self.outputs))) * np.nan
+                np.ones((self.Originalinitial_training, len(self.outputs))) * np.nan
             )
 
         # -----------------------------------------------------------------
@@ -1370,15 +1363,15 @@ class PRF_BO:
         # -----------------------------------------------------------------
 
         # Write initialization in Tabular
-        self.TabularData.updatePoints(self.train_X, Y=self.train_Y)
-        self.TabularDataStds.updatePoints(self.train_X, Y=self.train_Ystd)
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
 
-        # Write ResultsOptimization
-        self.ResultsOptimization.addPoints(
-            includePoints=[0, self.OriginalInitialPoints],
+        # Write optimization_results
+        self.optimization_results.addPoints(
+            includePoints=[0, self.Originalinitial_training],
             executed=False,
             predicted=False,
-            Name=f"Initial trust region, comprised of {self.OriginalInitialPoints} points",
+            Name=f"Initial trust region, comprised of {self.Originalinitial_training} points",
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1388,14 +1381,13 @@ class PRF_BO:
         time1 = datetime.datetime.now()
 
         self.train_Y, self.train_Ystd, self.numEval = EVALUATORtools.fun(
-            self.mainFunction,
+            self.optimization_object,
             self.train_X,
             self.folderExecution,
             self.bounds,
             self.outputs,
-            self.TabularData,
-            self.TabularDataStds,
-            parallel=self.parallelCalls,
+            self.optimization_data,
+            parallel=self.parallel_evaluations,
             restartYN=(not readCasesFromTabular),
             numEval=self.numEval,
         )
@@ -1416,20 +1408,19 @@ class PRF_BO:
                 f"\t- Points {self.avoidPoints_failed} are avoided b/c at least one of the OFs could not be computed"
             )
         # ------------------
-
-        self.TabularData.updatePoints(self.train_X, Y=self.train_Y)
-        self.TabularDataStds.updatePoints(self.train_X, Y=self.train_Ystd)
-        self.ResultsOptimization.addPoints(
-            includePoints=[0, self.OriginalInitialPoints],
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_results.addPoints(
+            includePoints=[0, self.Originalinitial_training],
             executed=True,
             predicted=False,
             timingString=txt_time,
-            Name=f"Initial trust region, comprised of {self.OriginalInitialPoints} points",
+            Name=f"Initial trust region, comprised of {self.Originalinitial_training} points",
         )
 
         # Get some metrics about this iteration
         SBOcorrections.updateMetrics(
-            self, evaluatedPoints=self.OriginalInitialPoints, position=0
+            self, evaluatedPoints=self.Originalinitial_training, position=0
         )
 
         # Make sure is 2D
@@ -1439,26 +1430,33 @@ class PRF_BO:
         # ~~~~~~~~ Determine relative residuals
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.original_minimumResidual = copy.deepcopy(self.Optim["minimumResidual"])
+        self.original_maximum_value = copy.deepcopy(self.optimization_options["maximum_value"])
 
-        if (self.Optim["minimumResidual"] is not None) and self.Optim[
-            "minimumResidual"
-        ] < 0:
-            res_base = self.BOmetrics["overall"]["Residual"][0].item()
-            res_new = -self.Optim["minimumResidual"] * res_base
-            print(
-                f'- Minimum residual for MITIM optimization provided as relative value of {-self.Optim["minimumResidual"]} from base {res_base:.3e} --> {res_new:.3e}',
-                typeMsg="i",
-            )
+        if self.optimization_options["maximum_value"] is not None:
 
-            self.stepSettings["Optim"]["minimumResidual"] = self.Optim[
-                "minimumResidual"
-            ] = res_new
+            res_base = -self.BOmetrics["overall"]["Residual"][0].item()
+
+            if self.optimization_options["maximum_value_is_rel"]:
+
+                res_new = self.optimization_options["maximum_value"] * res_base
+                print(
+                    f'\n* Maximum value for MITIM optimization convergence provided as relative value of {self.optimization_options["maximum_value"]} from base {res_base:.3e} --> {res_new:.3e}',
+                    typeMsg="i",
+                )
+
+                self.stepSettings["optimization_options"]["maximum_value"] = self.optimization_options[
+                    "maximum_value"
+                ] = res_new
+            else:
+                print(
+                    f'\n* Maximum value for MITIM optimization convergence: {self.optimization_options["maximum_value"]} (starting case has {res_base:.3e})',
+                    typeMsg="i",
+                )
 
         """
 		Some initialization strategies may create points outside of the original bounds, but I may want to include them!
 		"""
-        if self.Optim["expandBounds"]:
+        if self.optimization_options["expand_bounds"]:
             for i, ikey in enumerate(self.bounds):
                 self.bounds[ikey][0] = np.min(
                     [self.bounds[ikey][0], self.train_X.min(axis=0)[i]]
@@ -1470,7 +1468,7 @@ class PRF_BO:
     def plot(
         self,
         fn=None,
-        plotResultsOptimization=True,
+        plotoptimization_results=True,
         doNotShow=False,
         number_of_models_per_tab=5,
         stds=2,
@@ -1669,15 +1667,15 @@ class PRF_BO:
         except:
             print("\t- Problem plotting trust region", typeMsg="w")
 
-        # ---- ResultsOptimization ---------------------------------------------------
-        if plotResultsOptimization:
-            # Most current state of the ResultsOptimization.out
-            self.ResultsOptimization.read()
+        # ---- optimization_results ---------------------------------------------------
+        if plotoptimization_results:
+            # Most current state of the optimization_results.out
+            self.optimization_results.read()
             if "logFile" in self.__dict__.keys():
                 logFile = self.logFile
             else:
                 logFile = None
-            self.ResultsOptimization.plot(
+            self.optimization_results.plot(
                 fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
             )
 
@@ -1751,8 +1749,8 @@ class PRF_BO:
         if "InfoOptimization" not in step.__dict__.keys():
             return
 
-        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.", tab_color=tab_color)
-        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim Ranges", tab_color=tab_color)
+        figOPT1 = fn.add_figure(label=f"#{boStep}: Optim. Perfom.", tab_color=tab_color)
+        figOPT2 = fn.add_figure(label=f"#{boStep}: Optim. Ranges", tab_color=tab_color)
         self.plotSurrogateOptimization(fig1=figOPT1, fig2=figOPT2, boStep=boStep)
         # ---------------------------------------------------------------------
 
@@ -1779,8 +1777,8 @@ class PRF_BO:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             fn = FigureNotebook("PRF BO Strategy", geometry="1700x1000")
-            fig2 = fn.add_figure(label=f"#{boStep}: Optim Ranges")
-            fig1 = fn.add_figure(label=f"#{boStep}: Optim Perfom.")
+            fig2 = fn.add_figure(label=f"#{boStep}: optimization_options Ranges")
+            fig1 = fn.add_figure(label=f"#{boStep}: optimization_options Perfom.")
 
         grid = plt.GridSpec(nrows=2, ncols=2, hspace=0.2, wspace=0.2)
         ax0_r = fig2.add_subplot(grid[:, 0])
@@ -1834,7 +1832,7 @@ class PRF_BO:
             bounds=bounds,
             boundsThis=boundsThis,
             axislabels_x=axislabels,
-            axislabels_y=self.mainFunction.name_objectives,
+            axislabels_y=self.optimization_object.name_objectives,
             color="k",
             ms=10,
             alpha=0.5,
@@ -1856,7 +1854,7 @@ class PRF_BO:
                 axOFs=axsOFs,
                 axR=axR,
                 axislabels_x=axislabels,
-                axislabels_y=self.mainFunction.name_objectives,
+                axislabels_y=self.optimization_object.name_objectives,
                 color=colors[ipost],
                 ms=8 - ipost * 1.5,
                 alpha=0.5,
@@ -1914,8 +1912,8 @@ def read_from_scratch(file):
     This reads a pickle file for the entire class
     """
 
-    mainFunction = FUNmain(None)
-    prf = PRF_BO(mainFunction, onlyInitialize=True, askQuestions=False)
+    optimization_object = opt_evaluator(None)
+    prf = PRF_BO(optimization_object, onlyInitialize=True, askQuestions=False)
     prf = prf.read(file=file, iteration=-1, provideFullClass=True)
 
     return prf
@@ -1929,10 +1927,10 @@ def avoidClassInitialization(folderWork):
 
     try:
         with open(
-            f"{IOtools.expandPath(folderWork)}/Outputs/MITIMstate.pkl", "rb"
+            f"{IOtools.expandPath(folderWork)}/Outputs/optimization_object.pkl", "rb"
         ) as handle:
             aux = pickle_dill.load(handle)
-        opt_fun = aux.mainFunction
+        opt_fun = aux.optimization_object
         restart = False
         print("\t- Restart was successful", typeMsg="i")
     except:

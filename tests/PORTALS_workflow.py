@@ -20,10 +20,14 @@ if restart and os.path.exists(folderWork):
 # --------------------------------------------------------------------------------------------
 
 # Initialize class
-portals_fun = PORTALSmain.evaluatePORTALS(folderWork)
-portals_fun.Optim["BOiterations"] = 2
-portals_fun.Optim["initialPoints"] = 3
+portals_fun = PORTALSmain.portals(folderWork)
+portals_fun.optimization_options["BO_iterations"] = 2
+portals_fun.optimization_options["initial_training"] = 3
+portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["quasineutrality"] = True
+portals_fun.INITparameters["sameDensityGradients"] = True
+portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2 # Run with TGLF SAT 0 
 
 # Prepare run
 portals_fun.prep(inputgacode, folderWork)

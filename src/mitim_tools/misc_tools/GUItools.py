@@ -122,6 +122,12 @@ class FigureNotebook:
             print(f"\t- Saving figure #{i+1}/{len(self.figure_handles)}")
             GRAPHICStools.output_figure_papers(f"{folder}/figure{i+1}", fig=fig)
 
+    def close(self):
+        """
+        Properly closes the FigureNotebook and its associated resources.
+        """
+        print(f"\n> Closing MITIM Notebook titled: {self.windowtitle}", typeMsg="i")
+        self.MainWindow.close()
 
 class TabWidget(QTabWidget):
     def __init__(self, vertical=False, xextend=1600, *args, **kwargs):

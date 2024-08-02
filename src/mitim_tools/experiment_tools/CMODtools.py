@@ -1,11 +1,13 @@
-import sys, os, socket
+import sys
+import os
+import socket
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStools
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from IPython import embed
 
 """
 ------------------------------------------------------------------------------------------------
@@ -14,7 +16,7 @@ Packages that may fail
 """
 try:
     import MDSplus
-except:
+except ModuleNotFoundError:
     print("Could not load MDSplus", typeMsg="w")
 
 sys.path.insert(0, "/home/sciortino/usr/python3modules/eqtools3")
@@ -70,7 +72,7 @@ class experiment:
         Psurf, self.Vsurf_t = getMDS_timevar(
             self.shot, "analysis", "\efit_aeqdsk:sibdry"
         )
-        self.Vsurf = MATHtools.deriv(Vsurf_t, Psurf * 2 * np.pi)
+        self.Vsurf = MATHtools.deriv(self.Vsurf_t, Psurf * 2 * np.pi)
 
         try:
             self.neut, neut_t = getMDS_timevar(
@@ -954,7 +956,7 @@ def compareMDSandCDF(runidMDS, CDFclass):
 def getZeff_neo(
     shotNumber,
     folder=IOtools.expandPath("~/"),
-    routine=IOtools.expandPath("$MITIM_PATH/routines/zeff_neo"),
+    routine=IOtools.expandPath("$MITIM_PATH/scripts/zeff_neo"),
 ):
     with open(folder + "/idl_in", "w") as f:
         f.write(f".r {routine}\n\n")

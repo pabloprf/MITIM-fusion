@@ -1,15 +1,13 @@
-import torch
-import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.im_tools import IMtools
 
 
-class opt_class(STRATEGYtools.FUNmain):
+class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, IMnamelist):
         # Store folder, namelist. Read namelist
         super().__init__(
-            folder, namelist=IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
+            folder, namelist=IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
         )
         # ----------------------------------------
 
@@ -43,7 +41,7 @@ class opt_class(STRATEGYtools.FUNmain):
         TO DO
         """
 
-        # ofs_ordered_names = np.array(self.Optim['ofs'])
+        # ofs_ordered_names = np.array(self.optimization_options['ofs'])
 
         # of 	= Y[:,ofs_ordered_names == 'z'].unsqueeze(1)
         # cal = Y[:,ofs_ordered_names == 'zval'].unsqueeze(1)

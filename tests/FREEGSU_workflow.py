@@ -1,3 +1,7 @@
+'''
+TO FIX: Right now this needs to run in the "freegs" parent folder
+'''
+
 import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
@@ -63,7 +67,7 @@ if not os.path.exists(RequirementsFile):
         "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
     )
 
-evaluateFREEGSU_opt = FREEGSUmain.evaluateFREEGSU(
+freegsu_opt = FREEGSUmain.freegsu(
     folderWork,
     function_parameters={
         "Constraints": Constraints,
@@ -74,17 +78,21 @@ evaluateFREEGSU_opt = FREEGSUmain.evaluateFREEGSU(
     },
 )
 
-evaluateFREEGSU_opt.Optim["BOiterations"] = 2
+# Simple setup for just a test
+freegsu_opt.optimization_options["initial_training"] = 8
+freegsu_opt.optimization_options["newPoints"]        = 8
+freegsu_opt.optimization_options["BO_iterations"]    = 2
+# ----------------------------
 
-evaluateFREEGSU_opt.prep(ofs_dict, setCoils, rangeVar=rangeVar)
+freegsu_opt.prep(ofs_dict, setCoils, rangeVar=rangeVar)
 
 PRF_BO = STRATEGYtools.PRF_BO(
-    evaluateFREEGSU_opt, restartYN=restart, askQuestions=False
+    freegsu_opt, restartYN=restart, askQuestions=False
 )
 
 PRF_BO.run()
 
-evaluateFREEGSU_opt.plot_optimization_results(analysis_level=2)
+freegsu_opt.plot_optimization_results(analysis_level=2)
 
 # Required if running in non-interactive mode
-evaluateFREEGSU_opt.fn.show()
+freegsu_opt.fn.show()

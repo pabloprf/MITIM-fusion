@@ -1,17 +1,20 @@
-import deap, random, array, math, copy, socket, datetime, sys, datetime, torch
-from deap import base, benchmarks, tools, algorithms, creator, cma
-import deap.benchmarks.tools as bt
+import deap
+import random
+import array
+import copy
+import datetime
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import dill as pickle
 import multiprocessing_on_dill as multiprocessing
-from IPython import embed
+from deap import base, benchmarks, tools, algorithms, creator, cma
+import deap.benchmarks.tools as bt
 from mitim_tools.misc_tools import IOtools, MATHtools
-from mitim_tools.opt_tools.aux import BOgraphics
-from mitim_tools.opt_tools.OPTtools import pointsOperation_bounds, summarizeSituation
+from mitim_tools.opt_tools.OPTtools import summarizeSituation
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from IPython import embed
 
 verbose_level = read_verbose_level()
 
@@ -24,20 +27,20 @@ def findOptima(fun, writeTrajectory=False):
     # Parameters Optimization
 
     numCases = 1  # Different GAs to launch (random selection of GA params)
-    parallelCalls_inner = (
+    parallel_evaluations_inner = (
         -1
     )  # Refers to inside each optimization (-1: Use all CPUs available)
 
     # Prepare run
 
-    txtConstr = "unconstrained "  #'constrained ' if not fun.evaluators['feasibleFunction'] else 'unconstrained '
+    txtConstr = "unconstrained "  #'constrained '
     print(
         f"\t- Initialization of {txtConstr}GA to solve problem with {fun.dimDVs} DVs, {fun.dimOFs} OFs"
     )
 
-    if parallelCalls_inner == -1:
-        parallelCalls_inner = multiprocessing.cpu_count()
-        print(f"\t- Running with {parallelCalls_inner} inner processors")
+    if parallel_evaluations_inner == -1:
+        parallel_evaluations_inner = multiprocessing.cpu_count()
+        print(f"\t- Running with {parallel_evaluations_inner} inner processors")
 
     pop_sizes, max_gens, mut_probs, co_probs = randomizeTrials(
         num=numCases, numOFs=fun.dimOFs, numDVs=fun.dimDVs
@@ -57,7 +60,7 @@ def findOptima(fun, writeTrajectory=False):
         mut_probs=mut_probs,
         co_probs=co_probs,
         xGuesses=xGuesses,
-        parallelCalls_inner=parallelCalls_inner,
+        parallel_evaluations_inner=parallel_evaluations_inner,
         seed=fun.seed,
         stepSettings=fun.stepSettings,
         writeTrajectory=writeTrajectory,
@@ -153,7 +156,7 @@ class PRF_GA:
         mut_probs=[0.2],
         co_probs=[0.7],
         xGuesses=[],
-        parallelCalls_inner=1,
+        parallel_evaluations_inner=1,
         seed=0,
         stepSettings={},
         writeTrajectory=False,
@@ -167,19 +170,7 @@ class PRF_GA:
                 np.ones(numOFs)
             )  # If residual_function gives y to be maximized, then weights must be positive
 
-        feasibleFunction = False  # evaluators['feasibleFunction']
-        if feasibleFunction:
-            feasibleFunction = evaluators["lambdaFeas"]
-            toolbox.decorate(
-                "evaluate",
-                deap.tools.DeltaPenalty(
-                    feasibleFunction, [-1000.0] * numOFs, evaluators=evaluators
-                ),
-            )
-        else:
-            feasibleFunction = None
-
-        self.parallelCalls_inner = parallelCalls_inner
+        self.parallel_evaluations_inner = parallel_evaluations_inner
 
         random.seed(a=seed)
 
@@ -268,11 +259,11 @@ class PRF_GA:
             # ----
             print(f"\t\t- Running GA for trial #{i+1}")
 
-            if self.parallelCalls_inner > 1:
+            if self.parallel_evaluations_inner > 1:
                 print(
-                    f"\t\t\t- Parallelizing internal GA with {self.parallelCalls_inner} tasks"
+                    f"\t\t\t- Parallelizing internal GA with {self.parallel_evaluations_inner} tasks"
                 )
-                pool = multiprocessing.Pool(processes=self.parallelCalls_inner)
+                pool = multiprocessing.Pool(processes=self.parallel_evaluations_inner)
                 toolbox.register("map", pool.map)
 
             time1 = datetime.datetime.now()
@@ -365,29 +356,6 @@ class PRF_GA:
         res = pd.DataFrame(self.result)
         # res.reindex_axis([toolbox.experiment_name for toolbox in self.toolboxes], axis=1)
         self.hypervols = res.applymap(lambda pop: bt.hypervolume(pop, reference))
-
-    def examplePopulation(self, num_samples=50):
-        limits = [
-            np.arange(self.lower, self.upper, (self.upper - self.lower) / num_samples)
-        ] * self.dim
-        sample_x = np.meshgrid(*limits)
-
-        flat = []
-        for i in range(len(sample_x)):
-            x_i = sample_x[i]
-            flat.append(x_i.reshape(num_samples**self.dim))
-
-        example_pop = self.toolbox.population(n=num_samples**self.dim)
-
-        for i, ind in enumerate(example_pop):
-            for j in range(len(flat)):
-                ind[j] = flat[j][i]
-
-        fitnesses = self.toolbox.evaluate(invalid_ind)
-        for i, ind in enumerate(invalid_ind):
-            ind.fitness.values = fitnesses[i]
-
-        return example_pop
 
     def pareto_dominance(self, x, y):
         return tools.emo.isDominated(x.fitness.values, y.fitness.values)

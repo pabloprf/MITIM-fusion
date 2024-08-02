@@ -12,7 +12,7 @@
 export GACODE_PLATFORM=IRIS
 export GACODE_ROOT=/home/$USER/gacode
 . ${GACODE_ROOT}/shared/bin/gacode_setup
-module load ntcc
+module load ntcc-dev
 
 #. ${GACODE_ROOT}/platform/env/env.${GACODE_PLATFORM}   # IMPORTANT to not do this, otherwise it will then point to atom
 

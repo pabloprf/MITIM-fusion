@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
     GUItools,
 )
-from mitim_tools.gacode_tools.aux import (
+from mitim_tools.gacode_tools.utils import (
     NORMtools,
     GACODEinterpret,
     GACODEdefaults,
@@ -218,13 +218,13 @@ class TGLF:
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         restart=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
+        recalculatePTOT=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
         forceIfRestart=False,  # Extra flag
-        remove_tmpTGYRO=False,  # Extra flag
-    ):
+        ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
                 If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
@@ -249,7 +249,7 @@ class TGLF:
         self.tgyro.prep(
             FolderGACODE,
             restart=restart,
-            remove_tmp=remove_tmpTGYRO,
+            remove_tmp=True,
             subfolder="tmp_tgyro_prep",
             profilesclass_custom=profiles,
             forceIfRestart=forceIfRestart,
@@ -298,6 +298,7 @@ class TGLF:
                 rhos=self.rhos,
                 restart=not exists,
                 onlyThermal=onlyThermal_TGYRO,
+                recalculatePTOT=recalculatePTOT,
                 donotrun=donotrun,
             )
 
@@ -354,6 +355,120 @@ class TGLF:
         )
 
         return cdf
+
+    def prep_direct_tglf(
+        self,
+        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
+        restart=False,  # If True, do not use what it potentially inside the folder, run again
+        onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
+        recalculatePTOT=True, # Recalculate PTOT in TGYRO
+        cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
+        inputgacode=None,  # *NOTE BELOW*
+        specificInputs=None,  # *NOTE BELOW*
+        tgyro_results=None,  # *NOTE BELOW*
+        forceIfRestart=False,  # Extra flag
+        ):
+        """
+        * Note on inputgacode, specificInputs and tgyro_results:
+                If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
+                Optionally, I can give tgyro_results for further info in such a case
+        """
+
+        print("> Preparation of TGLF run")
+
+        # PROFILES class.
+
+        self.profiles = (
+            PROFILEStools.PROFILES_GACODE(inputgacode)
+            if inputgacode is not None
+            else None
+        )
+
+        if self.profiles is None:
+            
+            # TGYRO class. It checks existence and creates input.profiles/input.gacode
+
+            self.tgyro = TGYROtools.TGYRO(
+                cdf=self.LocationCDF, time=self.time, avTime=self.avTime
+            )
+            self.tgyro.prep(
+                FolderGACODE,
+                restart=restart,
+                remove_tmp=True,
+                subfolder="tmp_tgyro_prep",
+                profilesclass_custom=self.profiles,
+                forceIfRestart=forceIfRestart,
+            )
+
+            self.profiles = self.tgyro.profiles
+
+        self.profiles.deriveQuantities(mi_ref=mi_D)
+
+        self.profiles.correct(options={'recompute_ptot':recalculatePTOT,'removeFast':onlyThermal_TGYRO})
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Initialize by preparing a tgyro class and running for -1 iterations
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        if specificInputs is None:
+
+            self.inputsTGLF = self.profiles.to_TGLF(rhos=self.rhos)
+
+            for rho in self.inputsTGLF:
+                self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Initialize by taking directly the inputs
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        else:
+            self.inputsTGLF = specificInputs
+        
+        self.tgyro_results  = tgyro_results
+
+        self.FolderGACODE = FolderGACODE
+        
+        if restart or not os.path.exists(self.FolderGACODE):
+            IOtools.askNewFolder(self.FolderGACODE, force=forceIfRestart)
+
+        for rho in self.inputsTGLF:
+            self.inputsTGLF[rho].file = f'{self.FolderGACODE}/input.tglf_{rho:.4f}'
+            self.inputsTGLF[rho].writeCurrentStatus()
+
+        """
+		~~~~~ Create Normalizations ~~~~~
+			- Only input.gacode needed
+			- I can also give TRANSP CDF for complement. It is used in prep anyway, so good to store here
+				and have the values for plotting the experimental fluxes.
+			- I can also give TGYRO class for complement. It is used in prep anyway, so good to store here
+				for plotting and check grid conversions.
+
+		Note about the TGLF normalization:
+			What matters is what's the mass used to normalized the MASS_X.
+			If TGYRO was used to generate the input.tglf file, then the normalization mass is deuterium and all
+			must be normalized to deuterium
+		"""
+
+        print("> Setting up normalizations")
+
+        print(
+            "\t- Using mass of deuterium to normalize things (not necesarily the first ion)",
+            typeMsg="w",
+        )
+        self.profiles.deriveQuantities(mi_ref=mi_D)
+
+        self.NormalizationSets, cdf = NORMtools.normalizations(
+            self.profiles,
+            LocationCDF=self.LocationCDF,
+            time=self.time,
+            avTime=self.avTime,
+            cdf_open=cdf_open,
+            tgyro=self.tgyro_results,
+        )
+
+        return cdf
+
+
 
     def prep_from_tglf(
         self,
@@ -530,8 +645,8 @@ class TGLF:
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-        **kwargs,
-    ):
+        **kwargs):
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare for run
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -640,7 +755,7 @@ class TGLF:
                     ]["folder"]
 
                     self.ky_single = None
-                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old)
+                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, restartWF = False)
                     self.ky_single = kys
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
@@ -696,12 +811,12 @@ class TGLF:
                     else:
                         extraOptions_WF = {}
 
-                    extraOptions_WF = tglf_executor[subFolderTGLF][
+                    extraOptions_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
                         list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["extraOptions"]
-                    multipliers_WF = tglf_executor[subFolderTGLF][
+                    ]["extraOptions"])
+                    multipliers_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
                         list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["multipliers"]
+                    ]["multipliers"])
 
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
@@ -736,6 +851,7 @@ class TGLF:
         folder=None,  # If None, search in the previously run folder
         suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
+        restartWF = True, # If this is a "complete" read, I will assign a None
     ):
         print("> Reading TGLF results")
 
@@ -810,6 +926,10 @@ class TGLF:
                 if f"ky{ky_single0}" not in self.FoldersTGLF_WF:
                     continue
 
+                if folder not in self.FoldersTGLF_WF[f'ky{ky_single0}']:
+                    print(f"\t - Results not found for ky={ky_single0}, likely due to a restart with no wavefunction option", typeMsg="w")
+                    continue
+
                 self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
                 for ir in self.rhos:
                     suffix0 = f"_{ir:.4f}" if suffix is None else suffix
@@ -820,6 +940,10 @@ class TGLF:
                             f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
                         )
                     )
+
+        # After read, go back to no waveforms in case I want to read another case without it
+        if restartWF:
+            self.ky_single = None
 
     def plot(
         self,
@@ -855,6 +979,20 @@ class TGLF:
                 and (self.results[label]["profiles"] is not None)
             )
         plotNormalizations = plotNormalizations and plotGACODE
+
+
+        # Grab all possibilities of wavefunctions
+        ky_single_stored = {}
+        ky_single_stored_unique = []
+        for contLab, label in enumerate(labels):
+            if "wavefunction" in self.results[label]:
+                ky_single_stored[label] = [float(k.split('ky')[-1]) for k in self.results[label]["wavefunction"].keys()]
+                ky_single_stored_unique += ky_single_stored[label] 
+            else:
+                ky_single_stored[label] = None
+        ky_single_stored_unique = np.unique(ky_single_stored_unique)
+        # --
+
 
         if labels_legend is None:
             labels_legend = labels
@@ -918,11 +1056,10 @@ class TGLF:
         )
 
         figsWF = {}
-        if self.ky_single is not None:
-            for ky_single0 in self.ky_single:
-                figsWF[ky_single0] = self.fn.add_figure(
-                    label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
-                )
+        for ky_single0 in ky_single_stored_unique:
+            figsWF[ky_single0] = self.fn.add_figure(
+                label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
+            )
         fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
         fig7 = self.fn.add_figure(
             label=f"{extratitle}Input Controls", tab_color=fn_color
@@ -1932,15 +2069,18 @@ class TGLF:
                         extralab=label + " ",
                     )
 
+        # --------------------------------
         # Wavefunction?
-        if self.ky_single is not None:
+        # --------------------------------
+
+        if len(ky_single_stored_unique)>0:
             includeSubdominant = False  # True if len(labels)<5 else False
 
             addLegend = True
 
             grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
 
-            for kycont, ky_single0 in enumerate(self.ky_single):
+            for kycont, ky_single0 in enumerate(ky_single_stored_unique):
                 figWF = figsWF[ky_single0]
 
                 ax00 = figWF.add_subplot(grid[0, 0])
@@ -1954,6 +2094,10 @@ class TGLF:
 
                 cont = 0
                 for contLab, label in enumerate(labels):
+
+                    if ky_single0 not in ky_single_stored[label]:
+                        continue
+
                     labZX = (
                         f"{labels_legend[contLab]} " if len(labels_legend) > 1 else ""
                     )
@@ -2012,14 +2156,14 @@ class TGLF:
                         # Eigenvalue
 
                         ax00.axvline(
-                            x=self.ky_single[kycont],
+                            x=ky_single_stored_unique[kycont],
                             ls="--",
                             lw=0.5,
                             c=colors[cont],
                             label="Requested" if cont == 0 else "",
                         )
                         ax10.axvline(
-                            x=self.ky_single[kycont],
+                            x=ky_single_stored_unique[kycont],
                             ls="--",
                             lw=0.5,
                             c=colors[cont],
@@ -2110,7 +2254,7 @@ class TGLF:
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
+                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -2120,7 +2264,7 @@ class TGLF:
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim([self.ky_single[kycont] - 2.0, self.ky_single[kycont] + 2])
+                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2213,7 +2357,7 @@ class TGLF:
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
             self.read(
-                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult]
+                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult], restartWF = False
             )
 
     def _prepare_scan(
@@ -3683,7 +3827,7 @@ def changeANDwrite_TGLF(
             typeMsg="w",
         )
         print(
-            "\t * Reading of TGLF results will fail... consider doing something before launching runs. (c) to continue",
+            "\t * Reading of TGLF results will fail... consider doing something before launching run",
             typeMsg="q",
         )
 
@@ -3722,11 +3866,21 @@ class TGLFinput:
         if self.file is not None and os.path.exists(self.file):
             with open(self.file, "r") as f:
                 lines = f.readlines()
-            self.file_txt = "".join(lines)
+            file_txt = "".join(lines)
         else:
-            self.file_txt = ""
+            file_txt = ""
 
-        input_dict = GACODErun.buildDictFromInput(self.file_txt)
+        input_dict = GACODErun.buildDictFromInput(file_txt)
+
+        self.process(input_dict)
+
+    @classmethod
+    def initialize_in_memory(cls, input_dict):
+        instance = cls()
+        instance.process(input_dict)
+        return instance
+
+    def process(self, input_dict):
 
         # Get number of recorded species
         self.num_recorded = 0
@@ -3747,7 +3901,7 @@ class TGLFinput:
             "VNS_SHEAR",
             "VTS_SHEAR",
         ]
-        self.controls_all = copy.deepcopy(input_dict)
+        controls_all = copy.deepcopy(input_dict)
 
         for i in range(self.num_recorded):
             specie = {}
@@ -3755,12 +3909,12 @@ class TGLFinput:
                 varod = f"{var}_{i+1}"
                 if varod in input_dict:
                     specie[var] = input_dict[varod]
-                    del self.controls_all[varod]
+                    del controls_all[varod]
                 else:
                     specie[var] = 0.0
             self.species[i + 1] = specie
 
-        self.controls, self.plasma, self.geom = reduceToControls(self.controls_all)
+        self.controls, self.plasma, self.geom = reduceToControls(controls_all)
         self.processSpecies()
 
     def processSpecies(self, MinMultiplierToBeFast=2.0):
@@ -3900,7 +4054,7 @@ class TGLFinput:
 
     def addTraceSpecie(
         self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2
-    ):
+        ):
         """
         Here provide ZS and MASS already normalized
         """

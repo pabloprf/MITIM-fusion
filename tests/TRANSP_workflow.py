@@ -39,7 +39,7 @@ if restart and os.path.exists(folder):
 
 # Randomize number of regression, not to collide with other people launching the same run, but there's a chance anyway...
 s = CONFIGread.load_settings()
-runid = 'P24'
+runid = 'P25'
 
 # ---- Prepare NML and UFILES
 if os.path.exists(folder):

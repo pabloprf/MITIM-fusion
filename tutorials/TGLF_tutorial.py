@@ -101,7 +101,7 @@ Explore all available MITIM settings for TGLF (with waveforms)
 ***************************************************************************
 '''
 
-for i in[1,2,3,4,5,101]:
+for i in[1,2,3,4,5,6]:
     tglf.run(
         subFolderTGLF = f'settings{i}/',
         runWaveForms  = [0.67],

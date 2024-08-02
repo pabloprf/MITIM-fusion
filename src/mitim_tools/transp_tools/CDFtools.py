@@ -3,7 +3,6 @@ import pickle
 import copy
 import datetime
 import netCDF4
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -17,7 +16,7 @@ from mitim_tools.misc_tools import (
 from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools
-from mitim_tools.gacode_tools.aux import GACODEplotting, GACODErun, TRANSPgacode
+from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
 from mitim_tools.transp_tools.tools import (
     FBMtools,
     TORICtools,
@@ -393,7 +392,7 @@ class CDFreactor:
                 "ne_peaking": self.ne_peaking,
                 "Q_plasma": self.Q,
                 "H98y2": self.H98y2_check,
-                "P_input": self.AuxiliarPower,
+                "P_input": self.utilsiliarPower,
                 "Pich": self.PichT,
                 "Wtherm": self.Wth,
                 "Wtotal": self.Wtot,
@@ -2377,9 +2376,9 @@ class CDFreactor:
         self.PiheatT_cum = volumeIntegral(self.f, "IHEAT") * 1e-6  # in MW
         self.PeheatT_cum = volumeIntegral(self.f, "EHEAT") * 1e-6  # in MW
 
-        self.AuxiliarPower_elec = self.PeichT + self.PohT + self.PechT + self.PnbieT
-        self.AuxiliarPower_ions = self.PiichT + self.PnbiiT
-        self.AuxiliarPower_fast = self.PnbihT
+        self.utilsiliarPower_elec = self.PeichT + self.PohT + self.PechT + self.PnbieT
+        self.utilsiliarPower_ions = self.PiichT + self.PnbiiT
+        self.utilsiliarPower_fast = self.PnbihT
 
         # -------
         self.Pe = (
@@ -2400,16 +2399,16 @@ class CDFreactor:
 
         # Auxiliar heating
 
-        self.AuxiliarPower_elec = (
+        self.utilsiliarPower_elec = (
             self.PeichT + self.PohT + self.PechT + self.PnbieT + self.PlheT
         )
-        self.AuxiliarPower_ions = (
+        self.utilsiliarPower_ions = (
             self.PiichT + self.PnbiiT + self.PlhiT
         )  # should be equal to IHEAT is elf.PiichT+self.PnbiiT
-        self.AuxiliarPower_fast = self.PnbihT
+        self.utilsiliarPower_fast = self.PnbihT
 
-        # self.AuxiliarPower 		= self.AuxiliarPower_elec + self.AuxiliarPower_ions
-        self.AuxiliarPower = (
+        # self.utilsiliarPower 		= self.utilsiliarPower_elec + self.utilsiliarPower_ions
+        self.utilsiliarPower = (
             self.PichT + self.PohT + self.PechT + self.PnbiT + self.PlhT
         )
 
@@ -2419,8 +2418,8 @@ class CDFreactor:
 
         # Total Heating
 
-        self.PowerToElec = self.AuxiliarPower_elec + self.PfuseT
-        self.PowerToIons = self.AuxiliarPower_ions + self.PfusiT
+        self.PowerToElec = self.utilsiliarPower_elec + self.PfuseT
+        self.PowerToIons = self.utilsiliarPower_ions + self.PfusiT
 
         # Total power expressions
         self.Ptot = self.PowerToElec + self.PowerToIons
@@ -2922,12 +2921,12 @@ class CDFreactor:
         )  # MW
 
     def getFusionPerformance(self, eta_ICH=1.0):
-        self.AuxiliarPower_real = self.AuxiliarPower / eta_ICH
+        self.utilsiliarPower_real = self.utilsiliarPower / eta_ICH
         self.getFusionPower()
 
-        self.Q = self.Pout / (self.AuxiliarPower)
-        self.Q_corrected_dWdt = self.Pout / (self.AuxiliarPower - self.GainT)
-        self.Qreal = self.Pout / (self.AuxiliarPower_real)
+        self.Q = self.Pout / (self.utilsiliarPower)
+        self.Q_corrected_dWdt = self.Pout / (self.utilsiliarPower - self.GainT)
+        self.Qreal = self.Pout / (self.utilsiliarPower_real)
 
         self.neutrons = self.f["NEUTT"][:] * 1e-20  # 1E20 / s
 
@@ -4635,6 +4634,7 @@ class CDFreactor:
         if fig is None:
             fig = plt.figure(figsize=(22, 9))
 
+        time_s = self.t[self.ind_saw]
         # if self.coincidentTime[1] is None: 	time_s = self.t[self.ind_saw]
         # else:								time_s = self.coincidentTime[1]
 
@@ -4977,7 +4977,7 @@ class CDFreactor:
 
         ax.plot(self.t, self.Ip, lw=2, label="$I_p$ (MA)")
         ax.plot(self.t, self.Bt, lw=2, label="$B_T$ (T)")
-        ax.plot(self.t, self.AuxiliarPower, lw=2, label="Power In(MW)")
+        ax.plot(self.t, self.utilsiliarPower, lw=2, label="Power In(MW)")
         ax.plot(self.t, self.ne_avol, lw=2, label="$n_e$ vol ($10^{20}m^{-3}$)")
         ax.plot(self.t, self.ne_l, lw=2, label="$n_e$ lin ($10^{20}m^{-3}$)")
         ax.plot(self.t, self.Zeff_avol, lw=2, label="$Z_{eff}$")
@@ -8483,14 +8483,14 @@ class CDFreactor:
         # Ion heating
         ax4.plot(self.t, self.PiheatT, "r", ls="-", lw=2, label="IHEAT")
         ax4.plot(
-            self.t, self.AuxiliarPower_ions, "g", ls="-", lw=1, label="$P_{aux,i}$"
+            self.t, self.utilsiliarPower_ions, "g", ls="-", lw=1, label="$P_{aux,i}$"
         )
         ax4.plot(self.t, self.PcompiT, "k", ls="-", lw=1, label="$P_{compr,i}$")
         ax4.plot(self.t, self.PfusiT, "m", ls="-", lw=1, label="$P_{fus,i}$")
 
         ax4.plot(
             self.t,
-            self.AuxiliarPower_ions + self.PcompiT + self.PfusiT,
+            self.utilsiliarPower_ions + self.PcompiT + self.PfusiT,
             "y",
             ls="--",
             lw=1,
@@ -8507,14 +8507,14 @@ class CDFreactor:
         # Electron heating
         ax5.plot(self.t, self.PeheatT, "r", ls="-", lw=2, label="EHEAT")
         ax5.plot(
-            self.t, self.AuxiliarPower_elec, "g", ls="-", lw=1, label="$P_{aux,e}$"
+            self.t, self.utilsiliarPower_elec, "g", ls="-", lw=1, label="$P_{aux,e}$"
         )
         ax5.plot(self.t, self.PohT, "g", ls="--", lw=1, label="$P_{aux,e,OH}$")
         ax5.plot(self.t, self.PcompeT, "k", ls="-", lw=1, label="$P_{compr,e}$")
         ax5.plot(self.t, self.PfuseT, "m", ls="-", lw=1, label="$P_{fus,e}$")
         ax5.plot(
             self.t,
-            self.AuxiliarPower_elec + self.PcompeT + self.PfuseT,
+            self.utilsiliarPower_elec + self.PcompeT + self.PfuseT,
             "c",
             ls="--",
             lw=1,
@@ -8530,7 +8530,7 @@ class CDFreactor:
         ax6.plot(self.t, self.Ptot, "r", ls="-", lw=2, label="PL2HTOT")
         ax6.plot(
             self.t,
-            self.AuxiliarPower_ions + self.AuxiliarPower_elec,
+            self.utilsiliarPower_ions + self.utilsiliarPower_elec,
             "g",
             ls="-",
             lw=1,
@@ -8542,8 +8542,8 @@ class CDFreactor:
         ax6.plot(self.t, self.PfusT, "m", ls="-", lw=1, label="$P_{fus}$")
         ax6.plot(
             self.t,
-            self.AuxiliarPower_ions
-            + self.AuxiliarPower_elec
+            self.utilsiliarPower_ions
+            + self.utilsiliarPower_elec
             + self.PcompeT
             + self.PcompiT
             + self.PfusT,
@@ -13014,7 +13014,7 @@ class CDFreactor:
                 horizontalalignment="left",
                 verticalalignment="center",
             )  # , transform=ax.transAxes)
-        ax.plot(self.t, self.AuxiliarPower, lw=3, label="$P_{in}$")
+        ax.plot(self.t, self.utilsiliarPower, lw=3, label="$P_{in}$")
         ax.legend(loc="best", prop={"size": self.mainLegendSize})
         ax.set_ylabel("$P$ (MW)")
         ax.set_xlabel("Time (s)")
@@ -13830,7 +13830,6 @@ class CDFreactor:
             folderGACODE,
             restart=restartPreparation,
             onlyThermal_TGYRO=onlyThermal_TGYRO,
-            remove_tmpTGYRO=True,  # Remove intermediate to TGYRO (to avoid space problems with too many CDFs)
             cdf_open=self,
             forceIfRestart=forceIfRestart,
         )

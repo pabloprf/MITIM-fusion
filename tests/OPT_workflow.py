@@ -3,7 +3,8 @@ This example runs the complete MITIM optimization algorithm on a simple test fun
 To run: python3  $MITIM_PATH/tests/MITIM_workflow.py
 """
 
-import os, torch
+import os
+import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
@@ -18,18 +19,18 @@ if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
 # -----------------------------------------------------------------------------------------------------
 
 
-class opt_class(STRATEGYtools.FUNmain):
+class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist):
         # Store folder, namelist. Read namelist
         super().__init__(folder, namelist=namelist)
         # ----------------------------------------
 
         # Problem description (rest of problem parameters are taken from namelist)
-        self.Optim["dvs"] = ["x"]
-        self.Optim["dvs_min"] = [0.0]
-        self.Optim["dvs_max"] = [20.0]
+        self.optimization_options["dvs"] = ["x"]
+        self.optimization_options["dvs_min"] = [0.0]
+        self.optimization_options["dvs_max"] = [20.0]
 
-        self.Optim["ofs"] = ["z", "zval"]
+        self.optimization_options["ofs"] = ["z", "zval"]
         self.name_objectives = ["zval_match"]
 
     def run(self, paramsfile, resultsfile):
@@ -47,7 +48,7 @@ class opt_class(STRATEGYtools.FUNmain):
         self.write(dictOFs, resultsfile)
 
     def scalarized_objective(self, Y):
-        ofs_ordered_names = np.array(self.Optim["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of = Y[..., ofs_ordered_names == "z"]
         cal = Y[..., ofs_ordered_names == "zval"]
@@ -62,7 +63,7 @@ class opt_class(STRATEGYtools.FUNmain):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist")
+namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
 folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/opt_test/")
 
 if restart and os.path.exists(folderWork):
@@ -75,8 +76,8 @@ if restart and os.path.exists(folderWork):
 # Initialize class
 opt_fun1D = opt_class(folderWork, namelist)
 
-# Changes to namelist in MITIM_PATH/templates/main.namelist
-opt_fun1D.Optim["initialPoints"] = 2
+# Changes to namelist in MITIM_PATH/templates/main.namelist.json
+opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework
 PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)

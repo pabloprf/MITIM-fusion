@@ -12,16 +12,17 @@ inputgacode = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
 folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/portals_tut/")
 
 # Initialize PORTALS class
-PORTALS_fun = PORTALSmain.evaluatePORTALS(folder)
+PORTALS_fun = PORTALSmain.portals(folder)
 
-# Radial locations (RhoLocations or RoaLocations)
-PORTALS_fun.TGYROparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
+# Radial locations (RhoLocations or RoaLocations [last one preceeds])
+PORTALS_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
-PORTALS_fun.TGYROparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
+PORTALS_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
 # Codes to use
-PORTALS_fun.PORTALSparameters["model_used"] = "tglf_neo-tgyro"
+from mitim_modules.powertorch.physics import TRANSPORTtools
+PORTALS_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.tgyro_model
 
 # TGLF specifications
 PORTALS_fun.TGLFparameters[
@@ -33,10 +34,11 @@ PORTALS_fun.TGLFparameters["extraOptionsTGLF"] = {"BPER_USE": False}  # Turn off
 PORTALS_fun.INITparameters["removeFast"] = True
 
 # Stopping criterion 1: 200x improvement in residual
-PORTALS_fun.Optim["minimumResidual"] = -5e-3
+PORTALS_fun.optimization_options["maximum_value"] = 200.0
+PORTALS_fun.optimization_options["maximum_value_is_rel"] = True
 
 # Stopping criterion 2: inputs vary less than 0.1% for 3 consecutive iterations after 10 evaluations
-PORTALS_fun.Optim["minimumDVvariation"] = [10, 3, 1e-1]
+PORTALS_fun.optimization_options["minimum_dvs_variation"] = [10, 3, 1e-1]
 
 # Prepare run: search +-100% the original gradients
 PORTALS_fun.prep(inputgacode, folder, ymax_rel=1.0, ymin_rel=1.0)
@@ -56,6 +58,6 @@ To plot while it's still in the simple relaxation phase:
 	mitim_plot_portalsSR portals_tut
 
 Debug what's going on with TGLF
-	run ~/PORTALS/portals_opt/PORTALS_tools/exe/runTGLFdrivesfromPORTALS.py --folder portals_tut/ --ev 27 --pos 0 2
+	run ~/PORTALS/portals_opt/PORTALS_tools/scripts/runTGLFdrivesfromPORTALS.py --folder portals_tut/ --ev 27 --pos 0 2
 
 """

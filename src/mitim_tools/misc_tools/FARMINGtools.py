@@ -424,7 +424,7 @@ class mitim_job:
 
     def send(self):
         print(
-            f'\t* Sending files{" to remove server" if self.ssh is not None else ""}:'
+            f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:'
         )
 
         # Create a tarball of the local directory

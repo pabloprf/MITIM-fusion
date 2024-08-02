@@ -1,4 +1,3 @@
-import profile
 import numpy as np
 from mitim_tools.misc_tools import MATHtools
 from IPython import embed
@@ -43,45 +42,44 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     # 	from f2py/geo/geo.f90 in gacode source we have geo_volume_prime.
     # ----------------------------------------
 
-    geo_volume_prime = np.zeros(len(R))
-    geo_surf = np.zeros(len(R))
-    geo_fluxsurfave_grad_r = np.zeros(len(R))
-    geo_bt0 = np.zeros(len(R))
+    # Prepare cos_sins
+    cos_sin = []
+    cos_sin_s = []
     for j in range(len(R)):
-        i = j - 1
-
-        cos_sin = []
-        cos_sin_s = []
+        cos_sin0 = []
+        cos_sin_s0 = []
         for k in range(len(shape_coeffs)):
             if shape_coeffs[k] is not None:
-                cos_sin.append(shape_coeffs[k][i + 1])
-                cos_sin_s.append(s_shape_coeffs[k][i + 1])
+                cos_sin0.append(shape_coeffs[k][j])
+                cos_sin_s0.append(s_shape_coeffs[k][j])
             else:
-                cos_sin.append(None)
-                cos_sin_s.append(None)
+                cos_sin0.append(None)
+                cos_sin_s0.append(None)
+        cos_sin.append(cos_sin0)
+        cos_sin_s.append(cos_sin_s0)
 
-        (
-            geo_volume_prime[i + 1],
-            geo_surf[i + 1],
-            geo_fluxsurfave_grad_r[i + 1],
-            geo_bt0[i + 1],
-        ) = volp_surf_Miller(
-            R[i + 1],
-            r[i + 1],
-            delta[i + 1],
-            kappa[i + 1],
-            cos_sin,
-            cos_sin_s,
-            zeta[i + 1],
-            zmag[i + 1],
-            s_delta[i + 1],
-            s_kappa[i + 1],
-            s_zeta[i + 1],
-            dzmag[i + 1],
-            dRmag[i + 1],
-            q[i + 1],
-            n_theta=n_theta,
-        )
+    (
+        geo_volume_prime,
+        geo_surf,
+        geo_fluxsurfave_grad_r,
+        geo_bt0,
+    ) = volp_surf_Miller_vectorized(
+        R,
+        r,
+        delta,
+        kappa,
+        cos_sin,
+        cos_sin_s,
+        zeta,
+        zmag,
+        s_delta,
+        s_kappa,
+        s_zeta,
+        dzmag,
+        dRmag,
+        q,
+        n_theta=n_theta,
+    )
 
     """
 	from expro_util.f90 we have:
@@ -94,8 +92,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
 
     return volp, surf, geo_fluxsurfave_grad_r, geo_bt0
 
-
-def volp_surf_Miller(
+def volp_surf_Miller_vectorized(
     geo_rmaj_in,
     geo_rmin_in,
     geo_delta_in,
@@ -110,8 +107,7 @@ def volp_surf_Miller(
     geo_dzmag_in,
     geo_drmaj_in,
     geo_q_in,
-    n_theta=1001,
-):
+    n_theta=1001):
     """
     Completety from f2py/geo/geo.f90
     """
@@ -135,7 +131,7 @@ def volp_surf_Miller(
         geo_shape_sin4_in,
         geo_shape_sin5_in,
         geo_shape_sin6_in,
-    ] = cos_sin
+    ] = np.array(cos_sin).astype(float).T
 
     [
         geo_shape_s_cos0_in,
@@ -152,29 +148,25 @@ def volp_surf_Miller(
         geo_shape_s_sin4_in,
         geo_shape_s_sin5_in,
         geo_shape_s_sin6_in,
-    ] = cos_sin_s
+    ] = np.array(cos_sin_s).astype(float).T
 
     geo_signb_in = 1.0
 
-    from numpy import arcsin as asin
-    from numpy import cos as cos
-    from numpy import sin as sin
-
-    geov_theta = np.zeros(n_theta)
-    geov_bigr = np.zeros(n_theta)
-    geov_bigr_r = np.zeros(n_theta)
-    geov_bigr_t = np.zeros(n_theta)
-    bigz = np.zeros(n_theta)
-    bigz_r = np.zeros(n_theta)
-    bigz_t = np.zeros(n_theta)
-    geov_jac_r = np.zeros(n_theta)
-    geov_grad_r = np.zeros(n_theta)
-    geov_l_t = np.zeros(n_theta)
-    r_c = np.zeros(n_theta)
-    bigz_l = np.zeros(n_theta)
-    bigr_l = np.zeros(n_theta)
-    geov_l_r = np.zeros(n_theta)
-    geov_nsin = np.zeros(n_theta)
+    geov_theta = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_bigr = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_bigr_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_bigr_t = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    bigz = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    bigz_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    bigz_t = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_jac_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_grad_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_l_t = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    r_c = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    bigz_l = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    bigr_l = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_l_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_nsin = np.zeros((n_theta,geo_rmin_in.shape[0]))
 
     pi_2 = 8.0 * np.arctan(1.0)
     d_theta = pi_2 / (n_theta - 1)
@@ -188,7 +180,7 @@ def volp_surf_Miller(
 
         geov_theta[i] = theta
 
-        x = asin(geo_delta_in)
+        x = np.arcsin(geo_delta_in)
 
         #! A
         #! dA/dtheta
@@ -196,77 +188,77 @@ def volp_surf_Miller(
         a = (
             theta
             + geo_shape_cos0_in
-            + geo_shape_cos1_in * cos(theta)
-            + geo_shape_cos2_in * cos(2 * theta)
-            + geo_shape_cos3_in * cos(3 * theta)
-            + geo_shape_cos4_in * cos(4 * theta)
-            + geo_shape_cos5_in * cos(5 * theta)
-            + geo_shape_cos6_in * cos(6 * theta)
-            + geo_shape_sin3_in * sin(3 * theta)
-            + x * sin(theta)
-            - geo_zeta_in * sin(2 * theta)
-            + geo_shape_sin3_in * sin(3 * theta)
-            + geo_shape_sin4_in * sin(4 * theta)
-            + geo_shape_sin5_in * sin(5 * theta)
-            + geo_shape_sin6_in * sin(6 * theta)
+            + geo_shape_cos1_in * np.cos(theta)
+            + geo_shape_cos2_in * np.cos(2 * theta)
+            + geo_shape_cos3_in * np.cos(3 * theta)
+            + geo_shape_cos4_in * np.cos(4 * theta)
+            + geo_shape_cos5_in * np.cos(5 * theta)
+            + geo_shape_cos6_in * np.cos(6 * theta)
+            + geo_shape_sin3_in * np.sin(3 * theta)
+            + x * np.sin(theta)
+            - geo_zeta_in * np.sin(2 * theta)
+            + geo_shape_sin3_in * np.sin(3 * theta)
+            + geo_shape_sin4_in * np.sin(4 * theta)
+            + geo_shape_sin5_in * np.sin(5 * theta)
+            + geo_shape_sin6_in * np.sin(6 * theta)
         )
         a_t = (
             1.0
-            - geo_shape_cos1_in * sin(theta)
-            - 2 * geo_shape_cos2_in * sin(2 * theta)
-            - 3 * geo_shape_cos3_in * sin(3 * theta)
-            - 4 * geo_shape_cos4_in * sin(4 * theta)
-            - 5 * geo_shape_cos5_in * sin(5 * theta)
-            - 6 * geo_shape_cos6_in * sin(6 * theta)
-            + x * cos(theta)
-            - 2 * geo_zeta_in * cos(2 * theta)
-            + 3 * geo_shape_sin3_in * cos(3 * theta)
-            + 4 * geo_shape_sin4_in * cos(4 * theta)
-            + 5 * geo_shape_sin5_in * cos(5 * theta)
-            + 6 * geo_shape_sin6_in * cos(6 * theta)
+            - geo_shape_cos1_in * np.sin(theta)
+            - 2 * geo_shape_cos2_in * np.sin(2 * theta)
+            - 3 * geo_shape_cos3_in * np.sin(3 * theta)
+            - 4 * geo_shape_cos4_in * np.sin(4 * theta)
+            - 5 * geo_shape_cos5_in * np.sin(5 * theta)
+            - 6 * geo_shape_cos6_in * np.sin(6 * theta)
+            + x * np.cos(theta)
+            - 2 * geo_zeta_in * np.cos(2 * theta)
+            + 3 * geo_shape_sin3_in * np.cos(3 * theta)
+            + 4 * geo_shape_sin4_in * np.cos(4 * theta)
+            + 5 * geo_shape_sin5_in * np.cos(5 * theta)
+            + 6 * geo_shape_sin6_in * np.cos(6 * theta)
         )
         a_tt = (
-            -geo_shape_cos1_in * cos(theta)
-            - 4 * geo_shape_cos2_in * cos(2 * theta)
-            - 9 * geo_shape_cos3_in * cos(3 * theta)
-            - 16 * geo_shape_cos4_in * cos(4 * theta)
-            - 25 * geo_shape_cos5_in * cos(5 * theta)
-            - 36 * geo_shape_cos6_in * cos(6 * theta)
-            - x * sin(theta)
-            + 4 * geo_zeta_in * sin(2 * theta)
-            - 9 * geo_shape_sin3_in * sin(3 * theta)
-            - 16 * geo_shape_sin4_in * sin(4 * theta)
-            - 25 * geo_shape_sin5_in * sin(5 * theta)
-            - 36 * geo_shape_sin6_in * sin(6 * theta)
+            -geo_shape_cos1_in * np.cos(theta)
+            - 4 * geo_shape_cos2_in * np.cos(2 * theta)
+            - 9 * geo_shape_cos3_in * np.cos(3 * theta)
+            - 16 * geo_shape_cos4_in * np.cos(4 * theta)
+            - 25 * geo_shape_cos5_in * np.cos(5 * theta)
+            - 36 * geo_shape_cos6_in * np.cos(6 * theta)
+            - x * np.sin(theta)
+            + 4 * geo_zeta_in * np.sin(2 * theta)
+            - 9 * geo_shape_sin3_in * np.sin(3 * theta)
+            - 16 * geo_shape_sin4_in * np.sin(4 * theta)
+            - 25 * geo_shape_sin5_in * np.sin(5 * theta)
+            - 36 * geo_shape_sin6_in * np.sin(6 * theta)
         )
 
         #! R(theta)
         #! dR/dr
         #! dR/dtheta
         #! d^2R/dtheta^2
-        geov_bigr[i] = geo_rmaj_in + geo_rmin_in * cos(a)
+        geov_bigr[i] = geo_rmaj_in + geo_rmin_in * np.cos(a)
         geov_bigr_r[i] = (
             geo_drmaj_in
-            + cos(a)
-            - sin(a)
+            + np.cos(a)
+            - np.sin(a)
             * (
                 geo_shape_s_cos0_in
-                + geo_shape_s_cos1_in * cos(theta)
-                + geo_shape_s_cos2_in * cos(2 * theta)
-                + geo_shape_s_cos3_in * cos(3 * theta)
-                + geo_shape_s_cos4_in * cos(4 * theta)
-                + geo_shape_s_cos5_in * cos(5 * theta)
-                + geo_shape_s_cos6_in * cos(6 * theta)
-                + geo_s_delta_in / cos(x) * sin(theta)
-                - geo_s_zeta_in * sin(2 * theta)
-                + geo_shape_s_sin3_in * sin(3 * theta)
-                + geo_shape_s_sin4_in * sin(4 * theta)
-                + geo_shape_s_sin5_in * sin(5 * theta)
-                + geo_shape_s_sin6_in * sin(6 * theta)
+                + geo_shape_s_cos1_in * np.cos(theta)
+                + geo_shape_s_cos2_in * np.cos(2 * theta)
+                + geo_shape_s_cos3_in * np.cos(3 * theta)
+                + geo_shape_s_cos4_in * np.cos(4 * theta)
+                + geo_shape_s_cos5_in * np.cos(5 * theta)
+                + geo_shape_s_cos6_in * np.cos(6 * theta)
+                + geo_s_delta_in / np.cos(x) * np.sin(theta)
+                - geo_s_zeta_in * np.sin(2 * theta)
+                + geo_shape_s_sin3_in * np.sin(3 * theta)
+                + geo_shape_s_sin4_in * np.sin(4 * theta)
+                + geo_shape_s_sin5_in * np.sin(5 * theta)
+                + geo_shape_s_sin6_in * np.sin(6 * theta)
             )
         )
-        geov_bigr_t[i] = -geo_rmin_in * a_t * sin(a)
-        bigr_tt = -geo_rmin_in * a_t**2 * cos(a) - geo_rmin_in * a_tt * sin(a)
+        geov_bigr_t[i] = -geo_rmin_in * a_t * np.sin(a)
+        bigr_tt = -geo_rmin_in * a_t**2 * np.cos(a) - geo_rmin_in * a_tt * np.sin(a)
 
         #!-----------------------------------------------------------
 
@@ -281,12 +273,12 @@ def volp_surf_Miller(
         #! dZ/dr
         #! dZ/dtheta
         #! d^2Z/dtheta^2
-        bigz[i] = geo_zmag_in + geo_kappa_in * geo_rmin_in * sin(a)
-        bigz_r[i] = geo_dzmag_in + geo_kappa_in * (1.0 + geo_s_kappa_in) * sin(a)
-        bigz_t[i] = geo_kappa_in * geo_rmin_in * cos(a) * a_t
+        bigz[i] = geo_zmag_in + geo_kappa_in * geo_rmin_in * np.sin(a)
+        bigz_r[i] = geo_dzmag_in + geo_kappa_in * (1.0 + geo_s_kappa_in) * np.sin(a)
+        bigz_t[i] = geo_kappa_in * geo_rmin_in * np.cos(a) * a_t
         bigz_tt = (
-            -geo_kappa_in * geo_rmin_in * sin(a) * a_t**2
-            + geo_kappa_in * geo_rmin_in * cos(a) * a_tt
+            -geo_kappa_in * geo_rmin_in * np.sin(a) * a_t**2
+            + geo_kappa_in * geo_rmin_in * np.cos(a) * a_tt
         )
 
         g_tt = geov_bigr_t[i] ** 2 + bigz_t[i] ** 2
@@ -335,9 +327,9 @@ def volp_surf_Miller(
         c = c + geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
     f = geo_rmin_in / (c * d_theta / pi_2)
 
-    geov_b = np.zeros(n_theta)
-    geov_g_theta = np.zeros(n_theta)
-    geov_bt = np.zeros(n_theta)
+    geov_b = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_g_theta = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_bt = np.zeros((n_theta,geo_rmin_in.shape[0]))
     for i in range(n_theta):
         geov_bt[i] = f / geov_bigr[i]
         geov_bp = (geo_rmin_in / geo_q_in) * geov_grad_r[i] / geov_bigr[i]
@@ -351,8 +343,8 @@ def volp_surf_Miller(
         )
 
     theta_0 = 0
-    dx = geov_theta[1] - geov_theta[0]
-    x0 = theta_0 - geov_theta[0]
+    dx = geov_theta[1,0] - geov_theta[0,0]
+    x0 = theta_0 - geov_theta[0,0]
     i1 = int(x0 / dx) + 1
     i2 = i1 + 1
     x1 = (i1 - 1) * dx
@@ -373,3 +365,4 @@ def volp_surf_Miller(
         )
 
     return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_bt0
+
