@@ -779,7 +779,7 @@ def writeBoundary(nameFile, rs_orig, zs_orig):
     f.close()
 
 
-def makeMillerGeom(rmajor, epsilon, kappa, delta, zeta, z0):
+def makeMillerGeom(rmajor, epsilon, kappa, delta, zeta, z0, theta = None):
     # This script generates a flux surface based on Miller geometry.
     #
     # The inputs are a series of arguments which represent shaping and size values for the surface. The output is two arrays of values corresponding to the R and Z coordinates of the flux surface.
@@ -791,15 +791,18 @@ def makeMillerGeom(rmajor, epsilon, kappa, delta, zeta, z0):
 
     a = rmajor * epsilon
 
-    if kappa < 1.1 and delta < 0.1:
-        numtheta = 80
+    if theta is None:
+        if kappa < 1.1 and delta < 0.1:
+            numtheta = 80
+        else:
+            numtheta = 210
+
+        theta = np.zeros(numtheta)
+
+        for i in range(0, numtheta):
+            theta[i] = (i / float(numtheta - 1)) * 2 * math.pi
     else:
-        numtheta = 210
-
-    theta = np.zeros(numtheta)
-
-    for i in range(0, numtheta):
-        theta[i] = (i / float(numtheta - 1)) * 2 * math.pi
+        numtheta = len(theta)
 
     # Calculate the R and Z values
 

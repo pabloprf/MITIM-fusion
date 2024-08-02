@@ -186,7 +186,7 @@ def evaluator(
         # --------------------------------------------------------
 
         if plot and prfs is not None:
-            fn = GSplotting.plotResult(
+            GSplotting.plotResult(
                 prfs,
                 metrics,
                 Constraints,
