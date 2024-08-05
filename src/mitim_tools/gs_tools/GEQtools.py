@@ -1205,8 +1205,7 @@ class MITIMgeqdsk:
         print(f" \t\t--> Finding g-file flux-surfaces")
         for i, psi in enumerate(psis):
             
-            if psi == 0:
-                psi+=0.0001
+            
 
             # need to construct level contours for each flux surface 
             Ri, Zi = MATHtools.drawContours(
@@ -1224,10 +1223,16 @@ class MITIMgeqdsk:
     
             #calculate Miller Extended Harmionic coefficients
             #enforce zero at the innermost flux surface
-            
-            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
             if i == 0:
                 cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
+                gn[:,i] = [self.Rmag, 
+                           self.g["fluxSurfaces"]["geo"]["a"][0], 
+                           self.Zmag, 
+                           self.g["fluxSurfaces"]["geo"]["kap"][0]]
+            else:
+                cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
+            print(cn[:,i], sn[:,i], gn[:,i])
+            
 
         end=time()
 

@@ -152,7 +152,7 @@ def convert_ASTRA_to_gacode(astra_root,
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
-    shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+    shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=3000, n_coeff=6, plot=False)
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -182,9 +182,9 @@ def convert_ASTRA_to_gacode(astra_root,
     polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
 
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
-                                         
+
     # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
-    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)    
+    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)
 
     q = interp_to_nexp(c.q[ai])                ; params['q(-)'] = q
     rmaj = interp_to_rho(bbox[0,:])            ; params['rmaj(m)'] = rmaj
