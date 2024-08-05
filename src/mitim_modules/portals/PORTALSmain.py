@@ -42,7 +42,6 @@ Reading analysis for PORTALS has more options than standard:
 		>2 will also plot profiles & gradients comparison (original, initial, best)
 """
 
-
 def default_namelist(optimization_options, CGYROrun=False):
     """
     This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
@@ -117,7 +116,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.potential_flags = {}
+        self.potential_flags = {'INITparameters': [], 'MODELparameters': [], 'PORTALSparameters': []}
 
         """
 		Parameters to initialize files
@@ -140,7 +139,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "ensureMachNumber": None,
         }
 
-        self.potential_flags['INITparameters'] = ['recompute_ptot','quasineutrality','removeIons','removeFast','FastIsThermal','sameDensityGradients','groupQIONE','ensurePostiveGamma','ensureMachNumber']
+        for key in self.INITparameters.keys():
+            self.potential_flags['INITparameters'].append(key)
 
         """
 		Parameters to run the model
@@ -173,7 +173,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {}}
         }
 
-        self.potential_flags['MODELparameters'] = ['RhoLocations','RoaLocations','ProfilesPredicted','Physics_options','applyCorrections','transport_model']
+        for key in self.MODELparameters.keys():
+            self.potential_flags['MODELparameters'].append(key)
 
         """
 		Physics-informed parameters to fit surrogates
@@ -229,7 +230,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
         }
 
-        self.potential_flags['PORTALSparameters'] = ['percentError','transport_evaluator','targets_evaluator','TargetCalc','launchEvaluationsAsSlurmJobs','useConvectiveFluxes','includeFastInQi','useDiffusivities','useFluxRatios','physicsBasedParams','physicsBasedParams_trace','Qi_criterion_stable','percentError_stable','forceZeroParticleFlux','surrogateForTurbExch','profiles_postprocessing_fun','Pseudo_multipliers','ImpurityOfInterest','applyImpurityGammaTrick','UseOriginalImpurityConcentrationAsWeight','fineTargetsResolution','hardCodedCGYRO']
+        for key in self.PORTALSparameters.keys():
+            self.potential_flags['PORTALSparameters'].append(key)
 
     def prep(
         self,
@@ -264,70 +266,20 @@ class portals(STRATEGYtools.opt_evaluator):
         # Make sure that options that are required by good behavior of PORTALS
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        print(">> PORTALS flags pre-check")
-
-        # Check that I haven't added a deprecated variable that I expect some behavior from
-        for key in self.potential_flags.keys():
-            for flag in self.__dict__[key]:
-                if flag not in self.potential_flags[key]:
-                    print(
-                        f"\t- {key}['{flag}'] is an unexpected variable, prone to errors or misinterpretation",
-                        typeMsg="q",
-                    )
-        # ----------------------------------------------------------------------------------
-
-
-        if self.PORTALSparameters["fineTargetsResolution"] is not None:
-            if self.PORTALSparameters["TargetCalc"] != "powerstate":
-                print(
-                    "\t- Requested fineTargetsResolution, so running powerstate target calculations",
-                    typeMsg="w",
-                )
-                self.PORTALSparameters["TargetCalc"] = "powerstate"
-
-        if (self.PORTALSparameters["transport_evaluator"] != TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
-            print(
-                "\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",
-                typeMsg="w",
-            )
-            self.PORTALSparameters["TargetCalc"] = "powerstate"
-
-        if (
-            "InputType" not in self.MODELparameters["Physics_options"]
-        ) or self.MODELparameters["Physics_options"]["InputType"] != 1:
-            print(
-                "\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",
-                typeMsg="i",
-            )
-            self.MODELparameters["Physics_options"]["InputType"] = 1
-
-        if (
-            "GradientsType" not in self.MODELparameters["Physics_options"]
-        ) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
-            print(
-                "\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",
-                typeMsg="i",
-            )
-            self.MODELparameters["Physics_options"]["GradientsType"] = 0
-
-        if 'TargetType' in self.MODELparameters["Physics_options"]:
-            raise Exception("\t- TargetType is not used in PORTALS anymore, removing")
+        key_rhos = self.check_flags()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        keycheck = (
-            "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
-        )
         if IOtools.isfloat(ymax_rel):
             ymax_rel = np.array(
-                [ymax_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                [ymax_rel * np.ones(len(self.MODELparameters[key_rhos]))]
                 * len(self.MODELparameters["ProfilesPredicted"])
             )
         if IOtools.isfloat(ymin_rel):
             ymin_rel = np.array(
-                [ymin_rel * np.ones(len(self.MODELparameters[keycheck]))]
+                [ymin_rel * np.ones(len(self.MODELparameters[key_rhos]))]
                 * len(self.MODELparameters["ProfilesPredicted"])
             )
 
@@ -362,7 +314,10 @@ class portals(STRATEGYtools.opt_evaluator):
                 start_from_folder, folderWork, reevaluateTargets=reevaluateTargets
             )
 
-        # If the option of reading from a file, for standard portals ignore the targets
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Ignore targets in surrogate_data.csv
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
         self.optimization_options['surrogateOptions']['extrapointsModels'] = []
         for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
             if 'Tar' not in key:
@@ -458,9 +413,65 @@ class portals(STRATEGYtools.opt_evaluator):
             self, plotYN=plotYN, fn=fn, restart=restart, analysis_level=analysis_level
         )
 
+    def check_flags(self):
+
+        print(">> PORTALS flags pre-check")
+
+        # Check that I haven't added a deprecated variable that I expect some behavior from
+        for key in self.potential_flags.keys():
+            for flag in self.__dict__[key]:
+                if flag not in self.potential_flags[key]:
+                    print(
+                        f"\t- {key}['{flag}'] is an unexpected variable, prone to errors or misinterpretation",
+                        typeMsg="q",
+                    )
+        # ----------------------------------------------------------------------------------
+
+        if self.PORTALSparameters["fineTargetsResolution"] is not None:
+            if self.PORTALSparameters["TargetCalc"] != "powerstate":
+                print(
+                    "\t- Requested fineTargetsResolution, so running powerstate target calculations",
+                    typeMsg="w",
+                )
+                self.PORTALSparameters["TargetCalc"] = "powerstate"
+
+        if (self.PORTALSparameters["transport_evaluator"] != TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
+            print(
+                "\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",
+                typeMsg="w",
+            )
+            self.PORTALSparameters["TargetCalc"] = "powerstate"
+
+        if (
+            "InputType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["InputType"] != 1:
+            print(
+                "\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",
+                typeMsg="i",
+            )
+            self.MODELparameters["Physics_options"]["InputType"] = 1
+
+        if (
+            "GradientsType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
+            print(
+                "\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",
+                typeMsg="i",
+            )
+            self.MODELparameters["Physics_options"]["GradientsType"] = 0
+
+        if 'TargetType' in self.MODELparameters["Physics_options"]:
+            raise Exception("\t- TargetType is not used in PORTALS anymore, removing")
+
+
+        key_rhos = (
+            "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
+        )
+
+        return key_rhos
+
     def reuseTrainingTabular(
-        self, folderRead, folderNew, reevaluateTargets=0, restartIfExists=False
-    ):
+        self, folderRead, folderNew, reevaluateTargets=0, restartIfExists=False):
         """
         reevaluateTargets:
                 0: No
@@ -565,7 +576,7 @@ def runModelEvaluator(
     restart=False,
     numPORTALS=0,
     dictOFs=None,
-):
+    ):
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
 
@@ -678,7 +689,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
 
 def analyze_results(
     self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False
-):
+    ):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")
