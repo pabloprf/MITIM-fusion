@@ -1258,11 +1258,12 @@ class PRF_BO:
                 )
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
+                
                 if self.optimization_options["ensure_within_bounds"]:
                     for i in range(self.train_X.shape[0]):
                         insideBounds = TESTtools.checkSolutionIsWithinBounds(
                             torch.from_numpy(self.train_X[i, :]).to(self.dfT),
-                            self.bounds,
+                            torch.from_numpy(np.array(list(self.bounds.values())).T),
                         )
                         if not insideBounds.item():
                             self.avoidPoints_outside.append(i)
