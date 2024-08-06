@@ -401,17 +401,15 @@ class PROFILES_GACODE:
             sn[1] = np.arcsin(self.profiles["delta(-)"])
             sn[2] = -self.profiles["zeta(-)"]
             sn = np.array(sn).T
-
-            (
-                self.derived["R_surface"],
-                self.derived["Z_surface"],
-            ) = GEQtools.mxh3_shape(
+            flux_surfaces = GEQtools.mitim_flux_surfaces()
+            flux_surfaces.reconstruct_from_mxh_moments(
                 self.profiles["rmaj(m)"],
                 self.profiles["rmin(m)"],
                 self.profiles["kappa(-)"],
                 self.profiles["zmag(m)"],
                 cn,
                 sn)
+            self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
             # -----------------------------------------------
 
             self.derived["R_LF"] = self.derived["R_surface"].max(

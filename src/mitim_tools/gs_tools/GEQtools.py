@@ -1405,13 +1405,34 @@ def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="
     ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
     ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
 
-def mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = None):
-    '''
-    sn = [0.0, np.arcsin(delta), -zeta, ...]
-    cn = [...]
+# -----------------------------------------------------------------------------
+# Tools to handle flux surface definitions
+# -----------------------------------------------------------------------------
+class mitim_flux_surfaces:
 
-    You can provide a multi-dim array of (radii, )
-    '''
+    def reconstruct_from_mxh_moments(self,rmajor, a, kappa, z0, cn, sn, thetas = None):
+        '''
+        sn = [0.0, np.arcsin(delta), -zeta, ...]
+        cn = [...]
+
+        You can provide a multi-dim array of (radii, )
+        '''
+
+        self.rmajor = rmajor
+        self.a = a
+        self.kappa = kappa
+        self.z0 = z0
+        self.cn = cn
+        self.sn = sn
+
+        self.R, self.Z = mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = thetas)
+        
+        self.delta = np.arcsin(sn[...,1])
+        self.zeta = -sn[...,2]
+
+
+def mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = None):
+
 
     if thetas is None:
         thetas = np.linspace(0, 2 * np.pi, 100)
