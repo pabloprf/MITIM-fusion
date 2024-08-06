@@ -61,6 +61,24 @@ class speeder(object):
             f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
+class timer(object):
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        self.timeBeginning = datetime.datetime.now()
+        return self
+
+    def __exit__(self, *args):
+        self._get_time()
+
+    def _get_time(self):
+
+        self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
+
+        print(f'\t* Script took {createTimeTXT(self.timeDiff)}')
+
 
 def clipstr(txt, chars=40):
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
