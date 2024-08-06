@@ -1302,9 +1302,6 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
         
     return c, s, bbox
 
-
-
-
 def plotSurfaces(
     R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True
 ):
@@ -1325,16 +1322,11 @@ def plotSurfaces(
 
     return cs, csA
 
-
 def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
+    
     if fn is None:
-        wasProvided = False
-
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
         fn = FigureNotebook("GEQDSK Notebook", geometry="1600x1000")
-    else:
-        wasProvided = True
 
     if labelsGs is None:
         labelsGs = []
@@ -1397,7 +1389,6 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
 
     return ax_plasma, fn
 
-
 def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="k"):
     if ax is None:
         fig, ax = plt.subplots()
@@ -1414,55 +1405,36 @@ def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="
     ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
     ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
 
+def mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = None):
+    '''
+    sn = [0.0, np.arcsin(delta), -zeta, ...]
+    cn = [...]
 
-def create_geo_MXH3(
-    Rmaj, rmin, zmag, kappa, delta, zeta, shape_cos, shape_sin, debugPlot=False
-):
-    """
-    R and Z outputs have (dim_flux_surface,dim_theta)
-    """
+    You can provide a multi-dim array of (radii, )
+    '''
 
-    theta = np.linspace(0, 2 * np.pi, 100)
+    if thetas is None:
+        thetas = np.linspace(0, 2 * np.pi, 100)
 
-    # Organize cos/sin
-    shape_cos0 = shape_cos[0]
-    shape_cos_n = []
-    shape_sin_n = [np.arcsin(delta), -zeta]
-    for i in range(len(shape_cos) - 1):
-        shape_cos_n.append(shape_cos[i + 1])
-        if i > 1:
-            shape_sin_n.append(shape_sin[i + 1])
-    shape_cos_n = np.array(shape_cos_n)
-    shape_sin_n = np.array(shape_sin_n)
+    # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
+    if isinstance(rmajor,float):
+        rmajor = [rmajor]
+        a = [a]
+        kappa = [kappa]
+        z0 = [z0]
+    rmajor = np.array(rmajor)
+    a = np.array(a)
+    kappa = np.array(kappa)
+    z0 = np.array(z0)
+    cn = np.array(cn)
+    sn = np.array(sn)
 
-    R, Z = [], []
-    for ir in range(Rmaj.shape[0]):
-        c_0 = shape_cos0[ir]
-        c_n = shape_cos_n[:, ir]
-        s_n = shape_sin_n[:, ir]
-
-        theta_R = []
-        for i in range(len(theta)):
-            s = theta[i] + c_0
-            for m in range(len(c_n)):
-                s += c_n[m] * np.cos((m + 1) * theta[i]) + s_n[m] * np.sin(
-                    (m + 1) * theta[i]
-                )
-            theta_R.append(s)
-        theta_R = np.array(theta_R)
-
-        R_0 = Rmaj[ir] + rmin[ir] * np.cos(theta_R)
-        Z_0 = zmag[ir] + kappa[ir] * rmin[ir] * np.sin(theta)
-
-        R.append(R_0)
-        Z.append(Z_0)
-
-    R, Z = np.array(R), np.array(Z)
-
-    if debugPlot:
-        fig, ax = plt.subplots()
-        for ir in range(R.shape[0]):
-            ax.plot(R[ir, :], Z[ir, :])
-        plt.show()
+    R = np.zeros((rmajor.shape[0],len(thetas)))
+    Z = np.zeros((rmajor.shape[0],len(thetas)))
+    n = np.arange(1, sn.shape[1])
+    for i,theta in enumerate(thetas):
+        theta_R = theta + cn[:,0] + np.sum( cn[:,1:]*np.cos(n*theta) + sn[:,1:]*np.sin(n*theta), axis=-1 )
+        R[:,i] = rmajor + a*np.cos(theta_R)
+        Z[:,i] = z0 + kappa*a*np.sin(theta)
 
     return R, Z

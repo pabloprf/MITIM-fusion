@@ -279,7 +279,7 @@ class PROFILES_GACODE:
         ]
         self.shape_sin = [
             None,
-            None,  # s1 is triangularity
+            None,  # s1 is arcsin(triangularity)
             None,  # s2 is minus squareness
             self.profiles["shape_sin3(-)"],
             self.profiles["shape_sin4(-)"],
@@ -394,27 +394,26 @@ class PROFILES_GACODE:
                 n_theta=n_theta_geo,
             )
 
-            try:
-                (
-                    self.derived["R_surface"],
-                    self.derived["Z_surface"],
-                ) = GEQtools.create_geo_MXH3(
-                    self.profiles["rmaj(m)"],
-                    self.profiles["rmin(m)"],
-                    self.profiles["zmag(m)"],
-                    self.profiles["kappa(-)"],
-                    self.profiles["delta(-)"],
-                    self.profiles["zeta(-)"],
-                    self.shape_cos,
-                    self.shape_sin,
-                    debugPlot=False
-                )
-            except:
-                self.derived["R_surface"] = self.derived["Z_surface"] = None
-                print(
-                    "\t- Cannot calculate flux surface geometry out of the MXH3 moments",
-                    typeMsg="w",
-                )
+            # Calculate flux surfaces
+            cn = np.array(self.shape_cos).T
+            sn = copy.deepcopy(self.shape_sin)
+            sn[0] = self.profiles["rmaj(m)"]*0.0
+            sn[1] = np.arcsin(self.profiles["delta(-)"])
+            sn[2] = -self.profiles["zeta(-)"]
+            sn = np.array(sn).T
+
+            (
+                self.derived["R_surface"],
+                self.derived["Z_surface"],
+            ) = GEQtools.mxh3_shape(
+                self.profiles["rmaj(m)"],
+                self.profiles["rmin(m)"],
+                self.profiles["kappa(-)"],
+                self.profiles["zmag(m)"],
+                cn,
+                sn)
+            # -----------------------------------------------
+
             self.derived["R_LF"] = self.derived["R_surface"].max(
                 axis=1
             )  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
