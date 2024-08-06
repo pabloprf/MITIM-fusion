@@ -951,6 +951,9 @@ class PRF_BO:
         except FileNotFoundError:
             print(f"\t- State file {stateFile} not found", typeMsg="w")
             step, aux = None, None
+        except IndexError:
+            print(f"\t- State file {stateFile} does not have all iterations required to continue from it", typeMsg="w")
+            step, aux = None, None
 
         return aux if provideFullClass else step
 
