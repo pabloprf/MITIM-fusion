@@ -3,6 +3,7 @@ from time import time
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
+from shapely.geometry import LineString
 from IPython import embed
 
 """
@@ -1410,7 +1411,7 @@ def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="
 # -----------------------------------------------------------------------------
 class mitim_flux_surfaces:
 
-    def reconstruct_from_mxh_moments(self,rmajor, a, kappa, z0, cn, sn, thetas = None):
+    def reconstruct_from_mxh_moments(self,R0, a, kappa, Z0, cn, sn, thetas = None):
         '''
         sn = [0.0, np.arcsin(delta), -zeta, ...]
         cn = [...]
@@ -1418,44 +1419,186 @@ class mitim_flux_surfaces:
         You can provide a multi-dim array of (radii, )
         '''
 
-        self.rmajor = rmajor
+        self.R0 = R0
         self.a = a
         self.kappa = kappa
-        self.z0 = z0
+        self.Z0 = Z0
         self.cn = cn
         self.sn = sn
 
-        self.R, self.Z = mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = thetas)
+        self.delta = np.sin(self.sn[...,1])
+        self.zeta = -self.sn[...,2]
+
+        self._from_mxh(thetas = thetas)
         
-        self.delta = np.arcsin(sn[...,1])
-        self.zeta = -sn[...,2]
+    def reconstruct_from_miller(self,R0, a, kappa, Z0, delta, zeta, thetas = None):
+        '''
+        sn = [0.0, np.arcsin(delta), -zeta, ...]
+        cn = [...]
 
+        You can provide a multi-dim array of (radii, ) or not
+        '''
 
-def mxh3_shape(rmajor, a, kappa, z0, cn, sn, thetas = None):
+        self.R0 = R0
+        self.a = a
+        self.kappa = kappa
+        self.Z0 = Z0
+        self.delta = delta
+        self.zeta = zeta
 
+        self.cn = np.array([0.0,0.0,0.0])
+        self.sn = np.array([0.0,np.arcsin(self.delta),-self.zeta])
+
+        self._from_mxh(thetas = thetas)
+
+    def _from_mxh(self, thetas = None):
+
+        self.R, self.Z = mxh3_shape(self.R0, self.a, self.kappa, self.Z0, self.cn, self.sn, thetas = thetas)
+
+    def reconstruct_from_RZ(self, R, Z):
+
+        self.R = R
+        self.Z = Z
+
+        if len(self.R.shape) == 1:
+            self.R = self.R[np.newaxis,:]
+            self.Z = self.Z[np.newaxis,:]
+
+        self._to_miller()
+
+    def _to_mxh(self, n_coeff=6):
+
+        self.cn = np.zeros((self.R.shape[0],n_coeff))
+        self.sn = np.zeros((self.R.shape[0],n_coeff))
+        self.gn = np.zeros((self.R.shape[0],4))
+        for i in range(self.R.shape[0]):
+            self.cn[i,:], self.sn[i,:], self.gn[i,:] = get_flux_surface_geometry(self.R[i,:], self.Z[i,:], n_coeff=n_coeff)
+
+        [self.R0, self.a, self.Z0, self.kappa] = self.gn.T
+
+    def _to_miller(self):
+
+        self.R0 = np.mean(self.R, axis=-1)
+        self.Z0 = np.mean(self.Z, axis=-1)
+
+        Rmin = np.min(self.R, axis=-1)
+        Rmax = np.max(self.R, axis=-1)
+        Zmax = np.max(self.Z, axis=-1)
+        Zmin = np.min(self.Z, axis=-1)
+
+        self.a = (Rmax - Rmin) / 2
+
+        # Elongations
+
+        self.kappa_u = (Zmax - self.Z0) / self.a
+        self.kappa_l = (self.Z0 - Zmin) / self.a
+        self.kappa = (self.kappa_u + self.kappa_l) / 2
+
+        # Triangularities
+
+        RatZmax = self.R[...,np.argmax(self.Z,axis=-1)[0]]
+        self.delta_u = (self.R0-RatZmax) / self.a
+
+        RatZmin = self.R[...,np.argmin(self.Z,axis=-1)[0]]
+        self.delta_l = (self.R0-RatZmin) / self.a
+
+        self.delta = (self.delta_u + self.delta_l) / 2
+
+        # Squareness (not parallel for the time being)
+        self.zeta = np.zeros(self.R0.shape)
+        for i in range(self.R0.shape[0]):
+            Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+            self.zeta[i] = zeta_uo
+
+    def plot(self, ax = None, color = 'r', label = None, plot_extremes=False):
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        for i in range(self.R.shape[0]):
+            ax.plot(self.R[i,:], self.Z[i,:], color = color, label = label)
+
+            if plot_extremes:
+                ax.plot([self.R[i,self.Z[i,:].argmax()]], [self.Z[i,:].max()], 'o', color=color, markersize=5)
+                ax.plot([self.R[i,self.Z[i,:].argmin()]], [self.Z[i,:].min()], 'o', color=color, markersize=5)
+
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        if label is not None: 
+            ax.legend()
+        GRAPHICStools.addDenseAxis(ax)
+
+def mxh3_shape(R0, a, kappa, Z0, cn, sn, thetas = None):
 
     if thetas is None:
         thetas = np.linspace(0, 2 * np.pi, 100)
 
     # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
-    if isinstance(rmajor,float):
-        rmajor = [rmajor]
+    if isinstance(R0,float):
+        R0 = [R0]
         a = [a]
         kappa = [kappa]
-        z0 = [z0]
-    rmajor = np.array(rmajor)
+        Z0 = [Z0]
+        cn = np.array(cn)[np.newaxis,:]
+        sn = np.array(sn)[np.newaxis,:]
+
+    R0 = np.array(R0)
     a = np.array(a)
     kappa = np.array(kappa)
-    z0 = np.array(z0)
-    cn = np.array(cn)
-    sn = np.array(sn)
+    Z0 = np.array(Z0)
 
-    R = np.zeros((rmajor.shape[0],len(thetas)))
-    Z = np.zeros((rmajor.shape[0],len(thetas)))
+    R = np.zeros((R0.shape[0],len(thetas)))
+    Z = np.zeros((R0.shape[0],len(thetas)))
     n = np.arange(1, sn.shape[1])
     for i,theta in enumerate(thetas):
         theta_R = theta + cn[:,0] + np.sum( cn[:,1:]*np.cos(n*theta) + sn[:,1:]*np.sin(n*theta), axis=-1 )
-        R[:,i] = rmajor + a*np.cos(theta_R)
-        Z[:,i] = z0 + kappa*a*np.sin(theta)
+        R[:,i] = R0 + a*np.cos(theta_R)
+        Z[:,i] = Z0 + kappa*a*np.sin(theta)
 
     return R, Z
+
+def find_squareness_points(R, Z, debug = False):
+
+    # Reference point (A)
+    R_of_maxZ = R[Z.argmax()] 
+    Z_of_maxR = Z[R.argmax()]
+
+    # Upper Outer Squareness point (D)
+    R_of_maxR = R.max()
+    Z_of_maxZ = Z.max()
+    
+    # Find intersection with separatrix (C)
+    Ri_uo, Zi_uo = find_intersection_squareness(R, Z, R_of_maxZ, Z_of_maxR, R_of_maxR, Z_of_maxZ)
+
+    # Find point B
+    Rs_uo = R_of_maxZ + (R_of_maxR-R_of_maxZ)/2
+    Zs_uo = Z_of_maxR + (Z_of_maxZ-Z_of_maxR)/2
+
+    # Squareness is defined as the distance BC divided by the distance AB
+    zeta_uo = np.sqrt((Ri_uo-Rs_uo)**2 + (Zi_uo-Zs_uo)**2) / np.sqrt((R_of_maxZ-R_of_maxR)**2 + (Z_of_maxZ-Z_of_maxR)**2)
+
+    if debug:
+        plt.ion()
+        fig, ax = plt.subplots()
+        ax.plot(R, Z, 'o-')
+        ax.plot([R_of_maxZ], [Z_of_maxR], 'o', color='b', label = 'A')
+        ax.plot([R_of_maxR], [Z_of_maxZ], 'o', color='r', label = 'D')
+        ax.plot([Ri_uo], [Zi_uo], 'o', color='k', label = 'C')
+        ax.plot([Rs_uo], [Zs_uo], 'o', color='g', label = 'B')
+        ax.set_aspect('equal')
+        ax.legend()
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+
+    return Ri_uo, Zi_uo, zeta_uo
+
+def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
+
+    R_line = np.linspace(Ax, Dx, 100)
+    Z_line = np.linspace(Az, Dz, 100)
+    line1 = LineString(zip(R_line, Z_line))
+    line2 = LineString(zip(R, Z))
+    intersection = line1.intersection(line2)
+
+    return intersection.x, intersection.y

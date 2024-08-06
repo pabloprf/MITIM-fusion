@@ -1,21 +1,26 @@
-import copy, datetime, pandas, os, pickle, freegs
+import copy
+import datetime
+import pandas
+import freegs
+from freegs import geqdsk
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from scipy.interpolate import interp1d
-from IPython import embed
-
+from shapely.geometry import LineString
 from mitim_tools.gs_tools.utils import FREEGSparams, GSplotting
-from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
+from mitim_tools.gs_tools import GEQtools
+from mitim_tools.im_tools.modules import EQmodule
+from IPython import embed
 verbose_level = read_verbose_level()
 
 # From SPARC_PATH in PYTHONPATH
 try:
     from FREEGS_SPARC import GSsparc, GSsparc_coils
-except ImportError as e:
+except ImportError:
     raise Exception(
         "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
     )
@@ -59,7 +64,7 @@ def evaluator(
     paramsMods=None,
     figs=None,
     onlyPrepare=False,
-):
+    ):
     """
     outMidplane_matching is dRsep represented as follows:
     [0,x] -> dRsep = -x if the 1st x-point is upper
@@ -697,7 +702,6 @@ def lambda_from_vectors(x, y, kind="cubic", ensure01=True):
 
 
 def profiles_from_geqdsk(file, debug=True):
-    from mitim_tools.gs_tools import GEQtools
 
     g = GEQtools.MITIMgeqdsk(file, runRemote=False)
 
@@ -1096,3 +1100,305 @@ class Machine(freegs.machine.Machine):
                 verbose=verbose_level,
             )
             coil.current += dI.item()
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Fixed boundary stuff
+# --------------------------------------------------------------------------------------------------------------
+
+class freegs_millerized:
+
+    def __init__(self, R, a, kappa_sep, delta_sep, zeta_sep, z0):
+
+        print("> Fixed-boundary equilibrium with FREEGS")
+
+        print("\t- Initializing miller geometry")
+        print(f"\t\t* R={R} m, a={a} m, kappa_sep={kappa_sep}, delta_sep={delta_sep}, zeta_sep={zeta_sep}, z0={z0} m")
+
+        self.R0 = R
+        self.a = a
+        self.kappa_sep = kappa_sep
+        self.delta_sep = delta_sep
+        self.zeta_sep = zeta_sep
+        self.Z0 = z0
+
+        thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+
+        self.mitim_separatrix = GEQtools.mitim_flux_surfaces()
+        self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
+        self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
+
+    def prep(self,  p0_MPa, Ip_MA, B_T, n_coils = 10, resol_eq = 2**9+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
+
+        print("\t- Initializing plasma parameters")
+        print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
+
+        self.p0_MPa = p0_MPa
+        self.Ip_MA = Ip_MA
+        self.B_T = B_T
+
+        print(f"\t- Preparing equilibrium with FREEGS, with a resolution of {resol_eq}x{resol_eq}")
+        self.define_coils(n_coils)
+        self.define_eq(resol = resol_eq)
+        self.define_gs(p0_MPa=self.p0_MPa, Ip_MA=self.Ip_MA, B_T=self.B_T, parameters_profiles=parameters_profiles)
+
+        # Define xpoints
+        print("\t\t* Defining upper and lower x-points")
+        self.xpoints = [
+            (self.R0 - self.a*self.delta_sep, self.Z0+self.a*self.kappa_sep),
+            (self.R0 - self.a*self.delta_sep, self.Z0-self.a*self.kappa_sep),
+        ]
+
+        # Define isoflux
+        print("\t\t* Defining midplane separatrix (isoflux)")
+        self.isoflux = [
+            (self.xpoints[0][0], self.xpoints[0][1], self.R0 + self.a, self.Z0),                 # Upper x-point with outer midplane
+            (self.xpoints[0][0], self.xpoints[0][1], self.R0 - self.a, self.Z0),                 # Upper x-point with inner midplane
+            (self.xpoints[0][0], self.xpoints[0][1], self.xpoints[1][0], self.xpoints[1][1]),   # Between x-points
+        ]
+
+        print("\t\t* Defining squareness isoflux point")
+
+        # Find squareness point
+        Rsq, Zsq, _ = GEQtools.find_squareness_points(self.R_sep, self.Z_sep)
+
+        self.isoflux.append(
+            (self.xpoints[0][0], self.xpoints[0][1], Rsq, Zsq)         # Upper x-point with squareness point
+        )
+        self.isoflux.append(
+            (self.xpoints[0][0], self.xpoints[0][1], Rsq, -Zsq)        # Upper x-point with squareness point
+        )
+
+        # Combine
+        self.constrain = freegs.control.constrain(
+            isoflux=self.isoflux,
+            xpoints=self.xpoints,
+            )
+
+    def define_coils(self, n, rel_distance_coils = 0.5, updown_coils = True):
+
+        print(f"\t- Defining {n} coils{' (up-down symmetric)' if updown_coils else ''} at a distance of {rel_distance_coils}*a from the separatrix")
+
+        self.distance_coils = self.a*rel_distance_coils
+        self.updown_coils = updown_coils
+
+        if self.updown_coils:
+            thetas = np.linspace(0, np.pi, n)
+        else:
+            thetas = np.linspace(0, 2*np.pi, n, endpoint=False)
+
+        self.mitim_coils_surface = GEQtools.mitim_flux_surfaces()
+        self.mitim_coils_surface.reconstruct_from_miller(self.R0, (self.a+self.distance_coils), self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
+        self.Rcoils, self.Zcoils = self.mitim_coils_surface.R[0,:], self.mitim_coils_surface.Z[0,:]
+
+        self.coils = []
+        for num, (R, Z) in enumerate(zip(self.Rcoils, self.Zcoils)):
+
+            if self.updown_coils and Z > 0:
+                coilU = freegs.machine.Coil(
+                    R,
+                    Z
+                    )
+                coilL = freegs.machine.Coil(
+                    R,
+                    -Z
+                    )
+                coil = freegs.machine.Circuit( [ ('U', coilU, 1.0 ), ('L', coilL, 1.0 ) ] )
+            else:
+
+                coil = freegs.machine.Coil(
+                    R,
+                    Z
+                    )
+
+            self.coils.append(
+                (f"coil_{num}", coil)
+                )
+
+    def define_eq(self, resol=2**9+1):
+
+        print("\t- Defining equilibrium")
+        self.tokamak = freegs.machine.Machine(self.coils)
+
+        a = self.a + self.distance_coils
+
+        Rmin = (self.R0-a) - a*0.25
+        Rmax = (self.R0+a) + a*0.25
+
+        b = a*self.kappa_sep
+        Zmin = (self.Z0 - b) - b*0.25
+        Zmax = (self.Z0 + b) + b*0.25
+
+        self.eq = freegs.Equilibrium(tokamak=self.tokamak,
+                                Rmin=Rmin, Rmax=Rmax,
+                                Zmin=Zmin, Zmax=Zmax,
+                                nx=resol, ny=resol,
+                                boundary=freegs.boundary.freeBoundaryHagenow)
+
+    def define_gs(self, p0_MPa = 1.0, Ip_MA = 8.7, B_T = 12.16, parameters_profiles = {'alpha_m':1.0, 'alpha_n':2.0, 'Raxis':1.0}):
+
+        print("\t- Defining Grad-Shafranov equilibrium: pressure, current and R*Bt")
+        self.p0_MPa = p0_MPa
+        self.Ip_MA = Ip_MA
+        self.B_T = B_T 
+        self.parameters_profiles = parameters_profiles
+
+        self.profiles = freegs.jtor.ConstrainPaxisIp(self.eq,
+            p0_MPa*1E6, Ip_MA*1E6, self.R0*self.B_T,
+            alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
+
+    def solve(self, show = False, rtol=1e-6):
+
+        print("\t- Solving equilibrium with FREEGS")
+        with IOtools.timer():
+            self.x,self.y = freegs.solve(self.eq,         # The equilibrium to adjust
+                self.profiles,                 # The toroidal current profile function
+                constrain=self.constrain,      # Constraint function to set coil currents
+                show=show,
+                rtol=rtol,             # Default is 1e-3
+                atol=1e-10,
+                maxits=100,            # Default is 50
+                convergenceInfo=True)  
+            print("\t\t * Done!")
+
+        self.check()
+
+    def check(self, warning_error = 0.01, plotYN = False):
+
+        print("\t- Checking separatrix quality (Miller vs FREEGS)")
+        RZ = self.eq.separatrix()
+
+        self.mitim_separatrix_eq = GEQtools.mitim_flux_surfaces()
+        self.mitim_separatrix_eq.reconstruct_from_RZ(RZ[:,0], RZ[:,1])
+
+        # --------------------------------------------------------------
+        # Check errors
+        # --------------------------------------------------------------
+
+        max_error = 0.0
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
+            miller_value = getattr(self, key)
+            sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
+            error = abs( (miller_value-sep_value)/miller_value )
+            print(f"\t\t* {key}: {miller_value:.3f} vs {sep_value:.3f} ({100*error:.2f}%)")
+
+            max_error = np.max([max_error, error])
+
+        if max_error > warning_error:
+            print(f"\t\t- WARNING: maximum error is {100*max_error:.2f}%", typeMsg='w')
+        else:
+            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='i')
+
+        # --------------------------------------------------------------
+        # Plotting
+        # --------------------------------------------------------------
+
+        if plotYN:
+
+            plt.ion()
+            fig = plt.figure(figsize=(12,8))
+            axs = fig.subplot_mosaic(
+                """
+                AB
+                AB
+                CB
+                """
+            )
+
+            # Plot direct FreeGS output
+
+            ax = axs['A']
+            self.eq.plot(axis=ax,show=False)
+            self.constrain.plot(axis=ax, show=False)
+
+            for coil in self.coils:
+                if isinstance(coil[1],freegs.machine.Circuit):
+                    ax.plot([coil[1]['U'].R], [coil[1]['U'].Z], 's', c='k', markersize=2)
+                    ax.plot([coil[1]['L'].R], [coil[1]['L'].Z], 's', c='k', markersize=2)
+                else:
+                    ax.plot([coil[1].R], [coil[1].Z], 's', c='k', markersize=2)
+
+            GRAPHICStools.addLegendApart(ax,ratio=0.9,size=10)
+
+            ax = axs['C']
+            ax.plot(self.x,'-o', markersize=3, color='b', label = '$\\psi$ max change')
+            ax.set_xlabel('Iteration')
+            ax.set_ylabel('$\\psi$ max change')
+            ax.set_yscale('log')
+            ax.legend(loc='lower left',prop={'size': 10})
+
+            ax = axs['C'].twinx()
+            ax.plot(self.y,'-o', markersize=3, color='r', label = '$\\psi$ max relative change')
+            ax.set_ylabel('$\\psi$ max relative change')
+            ax.set_yscale('log')
+            ax.legend(loc='upper right',prop={'size': 10})
+
+            # Plot comparison of equilibria
+
+            ax = axs['B']
+
+            self.mitim_separatrix.plot(ax=ax, color = 'b', label = 'Miller (original)', plot_extremes=True)
+            self.mitim_separatrix_eq.plot(ax=ax, color = 'r', label = 'Separatrix (freegs)', plot_extremes=True)
+
+            ax.legend(prop={'size': 10})
+
+    def write(self, filename = "mitim_freegs.geqdsk"):
+
+        print(f"\t- Writing equilibrium to {filename}")
+
+        with open(filename, "w") as f:
+            geqdsk.write(self.eq, f)
+
+    def find_surface(self, psi_norm = 0.5, thetas = None):
+
+        if thetas is None:
+            thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+
+        from freegs.critical import find_psisurface, find_critical
+        from scipy import interpolate
+
+        psi = self.eq.psi()
+        opoint, xpoint = find_critical(self.eq.R, self.eq.Z, psi)
+        psinorm = (psi - opoint[0][2]) / (self.eq.psi_bndry - opoint[0][2])
+        psifunc = interpolate.RectBivariateSpline(self.eq.R[:, 0], self.eq.Z[0, :], psinorm)
+        r0, z0 = opoint[0][0:2]
+
+        R = np.zeros(len(thetas))
+        Z = np.zeros(len(thetas))
+        for i,theta in enumerate(thetas):
+            R[i],Z[i] = find_psisurface(
+                self.eq,
+                psifunc,
+                r0,
+                z0,
+                r0 + 10.0 * np.sin(theta),
+                z0 + 10.0 * np.cos(theta),
+                psival=psi_norm,
+                n=1000,
+            )
+        return R,Z
+
+    def plot_flux_surfaces(self, psi = np.linspace(0,1.0,10), ax = None, color = 'b'):
+
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots(figsize=(12,8))
+
+        for psi_norm in psi:
+            if psi_norm == 1.0:
+                RZ = self.eq.separatrix()
+                R, Z = RZ[:,0], RZ[:,1]
+            else:
+                R,Z = self.find_surface(psi_norm)
+
+            if psi_norm == 0.0:
+                ls = '-o'
+            else:
+                ls = '-'
+
+
+            ax.plot(R,Z, ls, label = f'$\\psi$ = {psi_norm:.2f}', color = color, markersize=3)
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        GRAPHICStools.addDenseAxis(ax)
