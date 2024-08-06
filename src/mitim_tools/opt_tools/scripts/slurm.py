@@ -105,8 +105,7 @@ def run_slurm(
             extra=extra,
         )
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("script", type=str)
     parser.add_argument("--folder", type=str, required=False, default="run1/")
@@ -139,3 +138,6 @@ if __name__ == "__main__":
         extra=args.extra,
         seed_specific=args.seed_specific,
     )
+
+if __name__ == "__main__":
+    main()

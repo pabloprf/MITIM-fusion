@@ -1,4 +1,5 @@
 import argparse
+from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
 
@@ -6,18 +7,25 @@ from mitim_tools.gacode_tools import CGYROtools
 e.g.	plot_cgyro.py folder
 """
 
-parser = argparse.ArgumentParser()
-parser.add_argument("folders", type=str, nargs="*")
-args = parser.parse_args()
+def main():
 
-folders = args.folders
+    parser = argparse.ArgumentParser()
+    parser.add_argument("folders", type=str, nargs="*")
+    args = parser.parse_args()
 
-# Read
-c = CGYROtools.CGYRO()
+    folders = args.folders
 
-labels = []
-for i, folder in enumerate(folders):
-    labels.append(f"{IOtools.reducePathLevel(folder)[-1]}")
-    c.read(label=labels[-1], folder=folder)
+    # Read
+    c = CGYROtools.CGYRO()
 
-c.plot(labels=labels)
+    labels = []
+    for i, folder in enumerate(folders):
+        labels.append(f"{IOtools.reducePathLevel(folder)[-1]}")
+        c.read(label=labels[-1], folder=folder)
+
+    c.plot(labels=labels)
+
+    embed()
+
+if __name__ == "__main__":
+    main()

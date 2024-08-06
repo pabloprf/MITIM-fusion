@@ -5,35 +5,44 @@ e.g.
 		run_look.py 152895P01 CMOD --nofull --plot --remove
 """
 
-import sys, argparse
+import sys
+import argparse
+from IPython import embed
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools.misc_tools import IOtools
 
-# User inputs
-parser = argparse.ArgumentParser()
-parser.add_argument("runTot", type=str)
-parser.add_argument("tokamak", type=str)
-parser.add_argument("--nofull", action="store_true")
-parser.add_argument("--plot", action="store_true")
-parser.add_argument("--remove", action="store_true")
-args = parser.parse_args()
+def main():
 
-# Workflow
-t = TRANSPtools.TRANSP(IOtools.expandPath("./"), args.tokamak)
-t.defineRunParameters(args.runTot, args.runTot, ensureMPIcompatibility=False)
+    # User inputs
+    parser = argparse.ArgumentParser()
+    parser.add_argument("runTot", type=str)
+    parser.add_argument("tokamak", type=str)
+    parser.add_argument("--nofull", action="store_true")
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--remove", action="store_true")
+    args = parser.parse_args()
 
-# Determine state
-info, status, infoGrid = t.check()
+    # Workflow
+    t = TRANSPtools.TRANSP(IOtools.expandPath("./"), args.tokamak)
+    t.defineRunParameters(args.runTot, args.runTot, ensureMPIcompatibility=False)
 
-retrieveAC = True
+    # Determine state
+    info, status, infoGrid = t.check()
 
-if status == 1:
-    _ = t.fetch(label="run1", retrieveAC=retrieveAC)
-else:
-    t.get(label="run1", fullRequest=not args.nofull, retrieveAC=retrieveAC)
+    retrieveAC = True
 
-if bool(int(args.remove)):
-    t.delete()
+    if status == 1:
+        _ = t.fetch(label="run1", retrieveAC=retrieveAC)
+    else:
+        t.get(label="run1", fullRequest=not args.nofull, retrieveAC=retrieveAC)
 
-if bool(int(args.plot)):
-    t.plot(label="run1")
+    if bool(int(args.remove)):
+        t.delete()
+
+    if bool(int(args.plot)):
+        t.plot(label="run1")
+
+    embed()
+
+if __name__ == "__main__":
+    main()

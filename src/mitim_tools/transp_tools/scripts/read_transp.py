@@ -1,71 +1,79 @@
 import argparse
+from IPython import embed
 from mitim_tools.transp_tools import CDFtools
 
-parser = argparse.ArgumentParser()
-parser.add_argument("files", type=str, nargs="*")
-parser.add_argument(
-    "--full", "-f", required=False, default=True, action="store_true"  # Full read
-)
-parser.add_argument(
-    "--read", "-r", required=False, default=False, action="store_true"  # Only read
-)
-args = parser.parse_args()
+def main():
 
-expl = args.files
-plotYN = not args.read
-fullYN = args.full
+    parser = argparse.ArgumentParser()
+    parser.add_argument("files", type=str, nargs="*")
+    parser.add_argument(
+        "--full", "-f", required=False, default=True, action="store_true"  # Full read
+    )
+    parser.add_argument(
+        "--read", "-r", required=False, default=False, action="store_true"  # Only read
+    )
+    args = parser.parse_args()
 
-cdfs = []
+    expl = args.files
+    plotYN = not args.read
+    fullYN = args.full
 
-ZerothTime = False
-if fullYN:
-    readFBM = True
-    readTGLF = True
-    readTORIC = True
-    readGFILE = True
-    readStructures = True
-    readGEQDSK = True
-else:
-    readFBM = False
-    readTGLF = False
-    readTORIC = False
-    readGFILE = False
-    readStructures = False
-    readGEQDSK = False
+    cdfs = []
 
-
-for i in expl:
-    if ":" in i:
-        cdfs.append(
-            CDFtools.CDFreactor(
-                i.split(":")[1],
-                ssh=i.split(":")[0],
-                readFBM=readFBM,
-                readTGLF=readTGLF,
-                readTORIC=readTORIC,
-                readGFILE=readGFILE,
-                readStructures=readStructures,
-                readGEQDSK=readGEQDSK,
-                ZerothTime=ZerothTime,
-            )
-        )
+    ZerothTime = False
+    if fullYN:
+        readFBM = True
+        readTGLF = True
+        readTORIC = True
+        readGFILE = True
+        readStructures = True
+        readGEQDSK = True
     else:
-        cdfs.append(
-            CDFtools.CDFreactor(
-                i,
-                readFBM=readFBM,
-                readTGLF=readTGLF,
-                readTORIC=readTORIC,
-                readGFILE=readGFILE,
-                readGEQDSK=readGEQDSK,
-                readStructures=readStructures,
-                ZerothTime=ZerothTime,
+        readFBM = False
+        readTGLF = False
+        readTORIC = False
+        readGFILE = False
+        readStructures = False
+        readGEQDSK = False
+
+
+    for i in expl:
+        if ":" in i:
+            cdfs.append(
+                CDFtools.CDFreactor(
+                    i.split(":")[1],
+                    ssh=i.split(":")[0],
+                    readFBM=readFBM,
+                    readTGLF=readTGLF,
+                    readTORIC=readTORIC,
+                    readGFILE=readGFILE,
+                    readStructures=readStructures,
+                    readGEQDSK=readGEQDSK,
+                    ZerothTime=ZerothTime,
+                )
             )
-        )
+        else:
+            cdfs.append(
+                CDFtools.CDFreactor(
+                    i,
+                    readFBM=readFBM,
+                    readTGLF=readTGLF,
+                    readTORIC=readTORIC,
+                    readGFILE=readGFILE,
+                    readGEQDSK=readGEQDSK,
+                    readStructures=readStructures,
+                    ZerothTime=ZerothTime,
+                )
+            )
 
-if plotYN:
-    from mitim_tools.misc_tools.GUItools import FigureNotebook
+    if plotYN:
+        from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-    fn = FigureNotebook("TRANSP run")
-    for i in range(len(cdfs)):
-        cdfs[i].plot(fn=fn, counter=i)
+        fn = FigureNotebook("TRANSP run")
+        for i in range(len(cdfs)):
+            cdfs[i].plot(fn=fn, counter=i)
+
+    embed()
+
+if __name__ == "__main__":
+    main()

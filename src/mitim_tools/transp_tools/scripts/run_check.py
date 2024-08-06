@@ -9,10 +9,15 @@ from mitim_tools.transp_tools.src import TRANSPglobus
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+def main():
 
-# User inputs
-users = sys.argv[1:]
+    verbose_level = read_verbose_level()
 
-# Workflow
-TRANSPglobus.printUser(users)
+    # User inputs
+    users = sys.argv[1:]
+
+    # Workflow
+    TRANSPglobus.printUser(users)
+
+if __name__ == "__main__":
+    main()
