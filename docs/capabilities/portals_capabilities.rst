@@ -7,7 +7,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 $MITIM_PATH/tests/PORTALS_workflow.py
+   python3 MITIM-fusion/tests/PORTALS_workflow.py
 
 .. warning::
 
@@ -15,9 +15,9 @@ Once setup has been successful, the following regression test should run smoothl
    
    .. code-block:: console
 
-      python3 $MITIM_PATH/tests/OPT_workflow.py
+      python3 MITIM-fusion/tests/OPT_workflow.py
 
-      python3 $MITIM_PATH/tests/TGLF_workflow.py
+      python3 MITIM-fusion/tests/TGLF_workflow.py
 
    If both of those tests work, it is highly likely that the PORTALS workflow will work as well.
 

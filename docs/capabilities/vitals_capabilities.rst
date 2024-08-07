@@ -9,7 +9,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 $MITIM_PATH/tests/VITALS_workflow.py
+   python3 MITIM-fusion/tests/VITALS_workflow.py
 
 .. contents:: Contents
     :local:
@@ -29,13 +29,13 @@ For this tutorial we will need the following modules and the folder to run VITAL
 	from mitim_modules.vitals     import VITALSmain
 	from mitim_tools.opt_tools    import STRATEGYtools
 
-	folder = IOtools.expandPath( '$MITIM_PATH/tests/scratch/vitals_tut/' )
+	folder = 'MITIM-fusion/tests/scratch/vitals_tut/'
 
 As a starting point of VITALS, you need to prepare and run TGLF for the base case (please follow the :ref:`TGLF` tutorial for more details):
 
 .. code-block:: python
 
-	inputgacode_file = IOtools.expandPath( '$MITIM_PATH/tests/data/input.gacode' )
+	inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
 	rho              = 0.5
 	
 	tglf = TGLFtools.TGLF( rhos = [ rho ] )

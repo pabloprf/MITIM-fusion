@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 $MITIM_PATH/tests/FREEGSU_workflow.py
+   python3 MITIM-fusion/tests/FREEGSU_workflow.py
 
 *Under Development*
 

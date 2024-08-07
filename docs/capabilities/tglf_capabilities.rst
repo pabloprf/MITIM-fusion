@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-    python3 $MITIM_PATH/tests/TGLF_workflow.py
+    python3 MITIM-fusion/tests/TGLF_workflow.py
 
 .. contents:: Contents
     :local:
@@ -55,8 +55,8 @@ Select the location of the input.gacode file to start the simulation from. Note 
 
 .. code-block:: python
 
-    inputgacode_file = IOtools.expandPath('$MITIM_PATH/tests/data/input.gacode')
-    folder           = IOtools.expandPath('$MITIM_PATH/tests/scratch/tglf_tut/')
+    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
+    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
 
 The TGLF class can be initialized by providing the radial location (in square root of normalized toroidal flux, ``rho``) to run. Note that the values are given as a list, and several radial locations can be run at once:
 
@@ -127,8 +127,8 @@ If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and wa
     from mitim_tools.gacode_tools import TGLFtools
     from mitim_tools.misc_tools   import IOtools
 
-    cdf_file = IOtools.expandPath('$MITIM_PATH/tests/data/12345.CDF')		
-    folder   = IOtools.expandPath('$MITIM_PATH/tests/scratch/tglf_tut/')
+    cdf_file = 'MITIM-fusion/tests/data/12345.CDF'
+    folder   = 'MITIM-fusion/tests/scratch/tglf_tut/'
 
     tglf     = TGLFtools.TGLF( cdf    = cdf_file,
                                 hos   = [0.5,0.7],
@@ -163,9 +163,9 @@ If you have a input.tglf file already, you can still use this script to run it.
     from mitim_tools.gacode_tools import TGLFtools
     from mitim_tools.misc_tools   import IOtools
 
-    inputgacode_file = IOtools.expandPath('$MITIM_PATH/tests/data/input.gacode')
-    folder           = IOtools.expandPath('$MITIM_PATH/tests/scratch/tglf_tut/')
-    inputtglf_file   = IOtools.expandPath('$MITIM_PATH/tests/data/input.tglf')
+    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
+    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
+    inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
 
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
@@ -186,8 +186,8 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         from mitim_tools.gacode_tools import TGLFtools
         from mitim_tools.misc_tools   import IOtools
 
-        folder           = IOtools.expandPath('$MITIM_PATH/tests/scratch/tglf_tut/yes_em_folder/')
-        inputtglf_file   = IOtools.expandPath('$MITIM_PATH/tests/data/input.tglf')
+        folder           = 'MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder/'
+        inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
 
         tglf = TGLFtools.TGLF()
         tglf.prep_from_tglf( folder, inputtglf_file )

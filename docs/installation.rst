@@ -22,11 +22,6 @@ Clone the `GitHub repository  <https://github.com/pabloprf/MITIM-fusion>`_ (do n
 Source the configuration file (it may be good to add this in your ``.bashrc`` file to load upon login, or with some alias to initialize ``mitim``) by 
 pointing to the folder where you cloned the repository:
 
-.. code-block:: console
-
-   export MITIM_PATH=/path/to/mitim/
-   source $MITIM_PATH/config/mitim.bashrc
-   
 .. hint::
    
    It may be useful, at this point, to create a virtual environment to install required MITIM dependencies. For example, using python's ``venv`` package:
@@ -41,7 +36,7 @@ Use ``pip3`` to install all the required MITIM requirements:
 
 .. code-block:: console
 
-   pip3 install -e $MITIM_PATH[pyqt]
+   pip3 install -e MITIM-fusion[pyqt]
 
 .. note::
    
@@ -53,7 +48,7 @@ Use ``pip3`` to install all the required MITIM requirements:
 
    .. code-block:: console
 
-      pip3 install -e $MITIM_PATH[pyqt,omfit,freegs]
+      pip3 install -e MITIM-fusion[pyqt,omfit,freegs]
 
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
@@ -62,11 +57,11 @@ If you were unsuccessful in the installation, check out our :ref:`Frequently Ask
 User configuration
 ------------------
 
-In ``$MITIM_PATH/config/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are. **If you are planning on using MITIM to run plasma simulation codes**, please create an equivalent file ``config_user.json`` in the same folder, indicating your specific needs.
+In ``MITIM-fusion/config/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are. **If you are planning on using MITIM to run plasma simulation codes**, please create an equivalent file ``config_user.json`` in the same folder, indicating your specific needs.
 
 .. code-block:: console
 
-   cp $MITIM_PATH/config/config_user_example.json $MITIM_PATH/config/config_user.json
+   cp MITIM-fusion/config/config_user_example.json MITIM-fusion/config/config_user.json
 
 Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM.
 For debugging purposes, it is recommended a maximum verbose level of ``5``.
@@ -127,7 +122,7 @@ There are several ways to make sure that the shell understands the command:
    Specifications to run certain codes (e.g. the GACODE suite) could be available there, but the number of machines that are
    automatically available in the public repository is, obviously, limited.
 
-   Please note that this option is only valid if the **MITIM repository and the environment variable $MITIM_PATH are available also in that machine** (not only from the one you are launching the code).
+   Please note that this option is only valid if the **MITIM repository and the environment variable $MITIM_PATH are available also in that machine, pointing to the MITIM-fusion folders** (not only from the one you are launching the code).
    However, if you prefer to use options 2 or 3, the sourcing of a non-existing file will not cause any issues.
 
 .. dropdown:: 2. Source at shell initialization (recommended)

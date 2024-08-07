@@ -22,7 +22,7 @@ Issues during MITIM installation
    
    .. code-block:: console
       
-      pip3 install -e $MITIM_PATH\[pyqt\]
+      pip3 install -e MITIM-fusion\[pyqt\]
 
 .. dropdown:: ``ERROR: Wheel`` error in pip:
 
@@ -30,7 +30,7 @@ Issues during MITIM installation
    
    .. code-block:: console
       
-      pip3 install -e $MITIM_PATH\[pyqt\] --no-cache
+      pip3 install -e MITIM-fusion\[pyqt\] --no-cache
 
 Issues during MITIM tests
 -------------------------

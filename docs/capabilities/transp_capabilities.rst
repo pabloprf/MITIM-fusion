@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-	python3 $MITIM_PATH/tests/TRANSP_workflow.py
+	python3 MITIM-fusion/tests/TRANSP_workflow.py
 
 .. contents:: Contents
     :local:
@@ -30,8 +30,8 @@ For this reason, this workflow assumes that a folder exists with all the plasma 
 
 .. code-block:: python
 
-	folder_original = IOtools.expandPath('$MITIM_PATH/tests/data/FolderTRANSP/')
-	folder 			= IOtools.expandPath("$MITIM_PATH/tests/scratch/transp_tut/")
+	folder_original = 'MITIM-fusion/tests/data/FolderTRANSP/'
+	folder 			= "MITIM-fusion/tests/scratch/transp_tut/"
 	os.system(f'rm -r {folder}')
 	os.system(f'cp -r {folder_original} {folder}')
 
