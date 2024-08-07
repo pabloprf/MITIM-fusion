@@ -1085,10 +1085,6 @@ def create_slurm_execution_files(
     commandSHELL.append("")
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
-    # Evaluate Job performance
-    # commandSHELL.append(
-    #     "python3 $MITIM_PATH/src/mitim_tools/misc_tools/FARMINGtools.py mitim.out"
-    # )
 
     if os.path.exists(fileSHELL):
         os.system(f"rm {fileSHELL}")

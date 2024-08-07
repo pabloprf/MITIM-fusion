@@ -6,13 +6,14 @@ import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.freegsu import FREEGSUmain
+from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
-folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/freegsu_test/")
+folderWork = __mitimroot__ + "/tests/scratch/freegsu_test/"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")

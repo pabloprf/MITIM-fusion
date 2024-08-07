@@ -15,6 +15,8 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools import __mitimroot__
+
 from IPython import embed
 
 verbose_level = read_verbose_level()
@@ -914,7 +916,7 @@ class LogFile:
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 
-        branch, commit_hash = IOtools.get_git_info(IOtools.expandPath('$MITIM_PATH'))
+        branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print(f"Log file from MITIM version {mitim_version} from {branch} branch and commit hash {commit_hash}")
 
     def interpret(self):

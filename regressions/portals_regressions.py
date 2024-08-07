@@ -1,12 +1,12 @@
 import argparse
 import torch
 import os
-import dill as pickle_dill
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 # Get test number
@@ -21,7 +21,7 @@ else:
     tests = [test]
 
 # Set up case
-inputgacode = IOtools.expandPath("$MITIM_PATH/regressions/data/input.gacode")
+inputgacode = __mitimroot__ + "/regressions/data/input.gacode"
 
 # ---------------------------------------------------------------------------------------------
 # TESTS
@@ -44,7 +44,7 @@ def conditions_regressions(variables):
 
 for test in tests:
 
-    folderWork  = IOtools.expandPath(f"$MITIM_PATH/regressions/scratch/portals_regression_{test}/")
+    folderWork  = __mitimroot__ + "/regressions/scratch/portals_regression_{test}/"
 
     if test == 1:
 

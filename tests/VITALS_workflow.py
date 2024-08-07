@@ -1,9 +1,9 @@
 import os
 import numpy as np
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.vitals import VITALSmain
+from mitim_tools import __mitimroot__
 
 restart = True
 
@@ -11,8 +11,8 @@ restart = True
 # Inputs
 # ********************************************************************************
 
-inputgacode = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
-folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/vitals_test/")
+inputgacode = __mitimroot__ + "/tests/data/input.gacode"
+folderWork = __mitimroot__ + "/tests/scratch/vitals_test/"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")

@@ -1,1 +1,1 @@
-from mitim_tools import __version__
+from mitim_tools import __version__, __mitimroot__

@@ -1,19 +1,19 @@
-import sys, os
+import os
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
-from mitim_tools.misc_tools import IOtools
+from mitim_tools import __mitimroot__
 
 """
 Regression test to run and plot TGYRO results from am example input.gacode file
-To run: python3  $MITIM_PATH/tests/TGYRO_workflow.py
+To run: python3  tests/TGYRO_workflow.py
 """
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
-gacode_file = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
-folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/tgyro_test/")
+gacode_file = __mitimroot__ + "/tests/data/input.gacode"
+folder = __mitimroot__ + "/tests/scratch/tgyro_test/"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")

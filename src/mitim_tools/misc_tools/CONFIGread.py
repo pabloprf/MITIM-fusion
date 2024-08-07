@@ -5,16 +5,13 @@ import socket
 import warnings
 import logging
 import getpass
-from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools
+from mitim_tools import __mitimroot__
 from IPython import embed
-
 
 def load_settings(filename=None):
     if filename is None:
-        filename = os.path.expanduser(
-            os.path.expandvars("$MITIM_PATH/config/config_user.json")
-        )
+        filename = __mitimroot__ + "/config/config_user.json"
 
     # Load JSON
     with open(filename, "r") as f:

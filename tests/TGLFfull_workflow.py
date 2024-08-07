@@ -1,19 +1,19 @@
 """
 Regression test to run and plot TGLF results from a TRANSP output file
-To run: python3  $MITIM_PATH/tests/TGLF_workflow.py
+To run: python3  tests/TGLF_workflow.py
 """
 import numpy as np
 import os
 from mitim_tools.gacode_tools import TGLFtools
-from mitim_tools.misc_tools import IOtools
+from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
-cdf_file = IOtools.expandPath("$MITIM_PATH/tests/data/12345.CDF")
-folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/tglf_full_test/")
+cdf_file = __mitimroot__ + "/tests/data/12345.CDF"
+folder = __mitimroot__ + "/tests/scratch/tglf_full_test/"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
