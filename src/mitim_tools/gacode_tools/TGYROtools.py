@@ -397,6 +397,13 @@ class TGYRO:
 
         print(f"\t\t- Using input.profiles from {IOtools.clipstr(self.profiles.file)}")
         fil = "input.gacode"
+
+        if self.profiles.profiles['rho(-)'][0] > 0.0:
+            print(
+                "\t\t- input.gacode had a finite first rho, which is not allowed. Setting it to 0.0", typeMsg="i"
+            )
+            self.profiles.profiles['rho(-)'][0] = 0.0
+
         self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp + fil)
 
         # -----------------------------------
