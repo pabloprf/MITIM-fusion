@@ -19,9 +19,6 @@ Clone the `GitHub repository  <https://github.com/pabloprf/MITIM-fusion>`_ (do n
 
    git clone git@github.com:pabloprf/MITIM-fusion.git
 
-Source the configuration file (it may be good to add this in your ``.bashrc`` file to load upon login, or with some alias to initialize ``mitim``) by 
-pointing to the folder where you cloned the repository:
-
 .. hint::
    
    It may be useful, at this point, to create a virtual environment to install required MITIM dependencies. For example, using python's ``venv`` package:
