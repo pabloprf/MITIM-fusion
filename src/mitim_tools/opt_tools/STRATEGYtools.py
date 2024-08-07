@@ -1250,7 +1250,7 @@ class PRF_BO:
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.restartYN) and self.optimization_options[
+        readCasesFromTabular = (not self.restartYN) or self.optimization_options[
             "read_initial_training_from_csv"
         ]  # Read when starting from previous or forced it
 
