@@ -1,13 +1,12 @@
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.im_tools import IMtools
-
+from mitim_tools import __mitimroot__
 
 class opt_class(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, IMnamelist):
         # Store folder, namelist. Read namelist
         super().__init__(
-            folder, namelist=IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            folder, namelist=__mitimroot__+"/templates/main.namelist.json"
         )
         # ----------------------------------------
 

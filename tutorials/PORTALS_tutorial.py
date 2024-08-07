@@ -1,15 +1,14 @@
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
+from mitim_tools import __mitimroot__
 
 # --------------------------------------------------------------------------------------------
 # Inputs
 # --------------------------------------------------------------------------------------------
 
 # Starting input.gacode file
-inputgacode = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
-
-folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/portals_tut/")
+inputgacode = __mitimroot__ + "/tests/data/input.gacode"
+folder = __mitimroot__ + "/tests/scratch/portals_tut/"
 
 # Initialize PORTALS class
 PORTALS_fun = PORTALSmain.portals(folder)

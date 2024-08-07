@@ -161,7 +161,8 @@ def printTable(diff, warning_percent=1e-1):
         )
 
 
-if __name__ == "__main__":
+def main():
+
     file1 = sys.argv[1]
     file2 = sys.argv[2]
 
@@ -174,3 +175,7 @@ if __name__ == "__main__":
 
     printTable(diff)
     print(f"Differences: {len(diff)}")
+
+
+if __name__ == "__main__":
+    main()

@@ -3,10 +3,10 @@ import torch
 import numpy as np
 import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 # <> Function to interpolate a curve <> 
@@ -346,7 +346,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             Zi.append(input_gacode.profiles["z"][i])
 
             # Grab chebyshev coefficients from file
-            data_df = pd.read_csv(IOtools.expandPath("$MITIM_PATH/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv"))
+            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
             
             try:
                 c = data_df[data_df['Ion']==input_gacode.profiles["name"][i]].to_numpy()[0,1:].astype(float)

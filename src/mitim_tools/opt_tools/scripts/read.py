@@ -11,8 +11,6 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
 from IPython import embed
 
-verbose_level = read_verbose_level()
-
 """
 This script is to read results of a MITIM optimization, and to compare among optimizations.
 
@@ -38,32 +36,6 @@ This script is to read results of a MITIM optimization, and to compare among opt
 	- Save full notebook to --save folder
 
 """
-
-# ----- Inputs
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--type", type=int, required=False, default=-1
-)  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
-parser.add_argument("folders", type=str, nargs="*")
-parser.add_argument("--remote", "-r", type=str, required=False, default=None)
-parser.add_argument("--seeds", type=int, required=False, default=None)
-parser.add_argument("--resolution", type=int, required=False, default=50)
-parser.add_argument("--save", type=str, required=False, default=None)
-parser.add_argument("--conv", type=float, required=False, default=-1e-2)
-
-args = parser.parse_args()
-
-analysis_level = args.type
-folders_reduced = args.folders
-folderRemote_reduced = args.remote
-seeds = args.seeds
-resolution = args.resolution
-save_folder = args.save
-conv = args.conv
-
-# -----------------------------------------
-
 
 def plotCompare(folders, plotMeanMax=[True, False]):
     folderWorks = []
@@ -228,106 +200,140 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     return yCummMeans, xes, resS, logS, fig
 
 
-folders_reduced_original = copy.deepcopy(folders_reduced)
+def main():
 
-if seeds is not None:
-    for i in range(len(folders_reduced)):
-        if folders_reduced[i][-1] == "/":
-            folders_reduced[i] = folders_reduced[i][:-1]
+    verbose_level = read_verbose_level()
 
-        aux = [f"{folders_reduced[i]}_s{k}" for k in range(seeds)]
-        del folders_reduced[i]
-        folders_reduced.extend(aux)
+# ----- Inputs
 
-foldersWork = [
-    IOtools.expandPath(folder_reduced + "/", ensurePathValid=True)
-    for folder_reduced in folders_reduced
-]
-reduced_folders = [
-    IOtools.reducePathLevel(folderWork)[-1] for folderWork in foldersWork
-]
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--type", type=int, required=False, default=-1
+    )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
+    parser.add_argument("folders", type=str, nargs="*")
+    parser.add_argument("--remote", "-r", type=str, required=False, default=None)
+    parser.add_argument("--seeds", type=int, required=False, default=None)
+    parser.add_argument("--resolution", type=int, required=False, default=50)
+    parser.add_argument("--save", type=str, required=False, default=None)
+    parser.add_argument("--conv", type=float, required=False, default=-1e-2)
 
-if len(foldersWork) > 1:
-    retrieval_level = copy.deepcopy(analysis_level)
-    analysis_level = -1
-else:
-    retrieval_level = analysis_level
+    args = parser.parse_args()
 
-txt = "***************************************************************************\n"
-for folderWork in foldersWork:
-    txt += f"* Reading results in {folderWork}\n"
+    analysis_level = args.type
+    folders_reduced = args.folders
+    folderRemote_reduced = args.remote
+    seeds = args.seeds
+    resolution = args.resolution
+    save_folder = args.save
+    conv = args.conv
 
-if folderRemote_reduced is None:
-    foldersRemote = [None] * len(foldersWork)
-else:
-    foldersRemote = [
-        f"{folderRemote_reduced}/{reduced_folder}/"
-        for reduced_folder in reduced_folders
+# -----------------------------------------
+
+    folders_reduced_original = copy.deepcopy(folders_reduced)
+
+    if seeds is not None:
+        for i in range(len(folders_reduced)):
+            if folders_reduced[i][-1] == "/":
+                folders_reduced[i] = folders_reduced[i][:-1]
+
+            aux = [f"{folders_reduced[i]}_s{k}" for k in range(seeds)]
+            del folders_reduced[i]
+            folders_reduced.extend(aux)
+
+    foldersWork = [
+        IOtools.expandPath(folder_reduced + "/", ensurePathValid=True)
+        for folder_reduced in folders_reduced
     ]
-    txt += f"\n\t...From remote folder {folderRemote_reduced}\n"
+    reduced_folders = [
+        IOtools.reducePathLevel(folderWork)[-1] for folderWork in foldersWork
+    ]
 
-print(
-    "\n"
-    + txt
-    + "***************************************************************************"
-)
-print(f"(Analysis level {analysis_level})\n")
-
-if len(foldersWork) == 1:
-    opt_fun = STRATEGYtools.opt_evaluator(foldersWork[0])
-    opt_fun.plot_optimization_results(
-        analysis_level=analysis_level,
-        folderRemote=foldersRemote[0],
-        retrieval_level=retrieval_level,
-        pointsEvaluateEachGPdimension=resolution,
-        save_folder=save_folder,
-    )
-else:
-    opt_funs = []
-    for folderWork, folderRemote in zip(foldersWork, foldersRemote):
-        opt_fun = STRATEGYtools.opt_evaluator(folderWork)
-        try:
-            opt_fun.plot_optimization_results(
-                analysis_level=analysis_level,
-                folderRemote=folderRemote,
-                retrieval_level=retrieval_level,
-                save_folder=save_folder,
-            )
-        except:
-            print(f"Could not retrieve #{folderWork}", typeMsg="w")
-        opt_funs.append(opt_fun)
-
-if analysis_level == -1:
-    yCummMeans, xes, resS, logS, fig = plotCompare(
-        foldersWork, plotMeanMax=[True, len(foldersWork) < 2]
-    )
-
-# ------
-if seeds is not None:
-    grid = plt.GridSpec(3, 2, hspace=0.2, wspace=0.1)
-    ax = fig.add_subplot(grid[2, 1])
-    percent = 1e-2
-
-    xf = []
-    for i in range(len(xes)):
-        try:
-            compared = -yCummMeans[i][0] * conv if conv < 0 else conv
-            xf.append(xes[i][yCummMeans[i] < compared][0])
-        except:
-            pass  # xf.append(np.nan)
-    xf = np.array(xf)
-
-    if xf.shape[0] > 0:
-        print(f"Plotting Violin with {xf.shape[0]} points")
-        GRAPHICStools.plotViolin([xf], labels=["run"], ax=ax, colors=["b"])
-
-        ax.set_xlabel("Number of evaluations to converge")
-        # ax.set_title(f'Residual reduced by x{1/percent:.0f}')
-        ax.set_xlim([0, 50])
-
-        GRAPHICStools.addDenseAxis(ax)
+    if len(foldersWork) > 1:
+        retrieval_level = copy.deepcopy(analysis_level)
+        analysis_level = -1
     else:
-        print(
-            f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
-            typeMsg="w",
+        retrieval_level = analysis_level
+
+    txt = "***************************************************************************\n"
+    for folderWork in foldersWork:
+        txt += f"* Reading results in {folderWork}\n"
+
+    if folderRemote_reduced is None:
+        foldersRemote = [None] * len(foldersWork)
+    else:
+        foldersRemote = [
+            f"{folderRemote_reduced}/{reduced_folder}/"
+            for reduced_folder in reduced_folders
+        ]
+        txt += f"\n\t...From remote folder {folderRemote_reduced}\n"
+
+    print(
+        "\n"
+        + txt
+        + "***************************************************************************"
+    )
+    print(f"(Analysis level {analysis_level})\n")
+
+    if len(foldersWork) == 1:
+        opt_fun = STRATEGYtools.opt_evaluator(foldersWork[0])
+        opt_fun.plot_optimization_results(
+            analysis_level=analysis_level,
+            folderRemote=foldersRemote[0],
+            retrieval_level=retrieval_level,
+            pointsEvaluateEachGPdimension=resolution,
+            save_folder=save_folder,
         )
+    else:
+        opt_funs = []
+        for folderWork, folderRemote in zip(foldersWork, foldersRemote):
+            opt_fun = STRATEGYtools.opt_evaluator(folderWork)
+            try:
+                opt_fun.plot_optimization_results(
+                    analysis_level=analysis_level,
+                    folderRemote=folderRemote,
+                    retrieval_level=retrieval_level,
+                    save_folder=save_folder,
+                )
+            except:
+                print(f"Could not retrieve #{folderWork}", typeMsg="w")
+            opt_funs.append(opt_fun)
+
+    if analysis_level == -1:
+        yCummMeans, xes, resS, logS, fig = plotCompare(
+            foldersWork, plotMeanMax=[True, len(foldersWork) < 2]
+        )
+
+    # ------
+    if seeds is not None:
+        grid = plt.GridSpec(3, 2, hspace=0.2, wspace=0.1)
+        ax = fig.add_subplot(grid[2, 1])
+        percent = 1e-2
+
+        xf = []
+        for i in range(len(xes)):
+            try:
+                compared = -yCummMeans[i][0] * conv if conv < 0 else conv
+                xf.append(xes[i][yCummMeans[i] < compared][0])
+            except:
+                pass  # xf.append(np.nan)
+        xf = np.array(xf)
+
+        if xf.shape[0] > 0:
+            print(f"Plotting Violin with {xf.shape[0]} points")
+            GRAPHICStools.plotViolin([xf], labels=["run"], ax=ax, colors=["b"])
+
+            ax.set_xlabel("Number of evaluations to converge")
+            # ax.set_title(f'Residual reduced by x{1/percent:.0f}')
+            ax.set_xlim([0, 50])
+
+            GRAPHICStools.addDenseAxis(ax)
+        else:
+            print(
+                f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
+                typeMsg="w",
+            )
+
+    embed()
+
+if __name__ == "__main__":
+    main()

@@ -10,22 +10,26 @@ import numpy as np
 from mitim_tools.misc_tools import CONFIGread, IOtools
 from mitim_tools.transp_tools import TRANSPtools
 
-# User inputs
-parser = argparse.ArgumentParser()
-parser.add_argument("runid_str", type=str)
-parser.add_argument("tokamak", type=str)
-parser.add_argument("--numbers", type=str, required=False, default="1")  # 1,2,3,5
-parser.add_argument("--to", type=int, required=False, default=None)
-args = parser.parse_args()
+def main():
 
-if args.to is None:
-    arr = [int(i) for i in args.numbers.split(",")]
-else:
-    arr = np.arange(int(args.numbers), int(args.to) + 1, 1)
+    # User inputs
+    parser = argparse.ArgumentParser()
+    parser.add_argument("runid_str", type=str)
+    parser.add_argument("tokamak", type=str)
+    parser.add_argument("--numbers", type=str, required=False, default="1")  # 1,2,3,5
+    parser.add_argument("--to", type=int, required=False, default=None)
+    args = parser.parse_args()
 
-s = CONFIGread.load_settings()
-user = s[s["preferences"]["ntcc"]]["username"]
+    if args.to is None:
+        arr = [int(i) for i in args.numbers.split(",")]
+    else:
+        arr = np.arange(int(args.numbers), int(args.to) + 1, 1)
 
+    s = CONFIGread.load_settings()
+    user = s[s["preferences"]["ntcc"]]["username"]
+
+    for i in range(len(arr)):
+        cancelRun(args.runid_str + str(arr[i]).zfill(2))
 
 def cancelRun(namerun):
     t = TRANSPtools.TRANSP(IOtools.expandPath(s["local"]["scratch"]), args.tokamak)
@@ -46,5 +50,5 @@ def cancelAll(ParamsAll, cont):
     cancelRun(ParamsAll["name"] + str(arr[cont]).zfill(2))
 
 
-for i in range(len(arr)):
-    cancelRun(args.runid_str + str(arr[i]).zfill(2))
+if __name__ == "__main__":
+    main()

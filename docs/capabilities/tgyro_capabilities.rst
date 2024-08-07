@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-	python3 $MITIM_PATH/tests/TGYRO_workflow.py
+	python3 MITIM-fusion/tests/TGYRO_workflow.py
 
 .. contents:: Contents
     :local:
@@ -28,8 +28,8 @@ Select the location of the input.gacode file to start the simulation from. Note 
 
 .. code-block:: python
 
-	gacode_file = IOtools.expandPath('$MITIM_PATH/tests/data/input.gacode' )
-	folder      = IOtools.expandPath('$MITIM_PATH/tests/scratch/tgyro_tut/')
+	gacode_file = 'MITIM-fusion/tests/data/input.gacode'
+	folder      = 'MITIM-fusion/tests/scratch/tgyro_tut/'
 
 Create a PROFILES class from the input.gacode file:
 
@@ -117,8 +117,8 @@ Create a profiles class with the `input.gacode` file that TGYRO used to run and 
 	from mitim_tools.gacode_tools import TGYROtools,PROFILEStools
 	from mitim_tools.misc_tools   import IOtools
 
-	gacode_file = IOtools.expandPath('$MITIM_PATH/tests/data/input.gacode')
-	folder      = IOtools.expandPath('$MITIM_PATH/tests/scratch/tgyro_tut/run1/')
+	gacode_file = 'MITIM-fusion/tests/data/input.gacode'
+	folder      = 'MITIM-fusion/tests/scratch/tgyro_tut/run1/'
 
 	profiles    = PROFILEStools.PROFILES_GACODE(gacode_file)
 	tgyro_out   = TGYROtools.TGYROoutput(folder,profiles=profiles)

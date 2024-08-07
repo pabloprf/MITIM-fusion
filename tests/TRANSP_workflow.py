@@ -1,7 +1,7 @@
 """
 Regression test to run and plot TRANSP results from an example set of input files (CMOD 88664)
 
-To run: python3  $MITIM_PATH/tests/TRANSP_workflow.py 
+To run: python3  /tests/TRANSP_workflow.py 
 
 Notes:
 - This regression test will get TORIC and NUBEAM (DD products) files
@@ -13,26 +13,26 @@ In engaging, with 32 cores, should take ~1h20min
 """
 
 import os
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools.misc_tools import CONFIGread
+from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
 # ------------------------------------------------------------------------------------
 # 	Input data
 # ------------------------------------------------------------------------------------
 
-folderInput = IOtools.expandPath("$MITIM_PATH/tests/data/FolderTRANSP/")
+folderInput = __mitimroot__ + "/tests/data/FolderTRANSP/"
 
 # ------------------------------------------------------------------------------------
 # 	Workflow
 # ------------------------------------------------------------------------------------
 
-folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/transp_test/")
+folder = __mitimroot__ + "/tests/scratch/transp_test/"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")

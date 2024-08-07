@@ -20,6 +20,7 @@ from mitim_tools.opt_tools.utils import (
 )
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __mitimroot__
 
 UseCUDAifAvailable = True
 
@@ -105,7 +106,7 @@ class opt_evaluator:
                 typeMsg="i",
             )
 
-            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            namelist = __mitimroot__ +"/templates/main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
             self.optimization_options = default_namelist_function(self.optimization_options)
@@ -432,7 +433,7 @@ class PRF_BO:
 
         # Check if the variables are expected
         if self.optimization_options is not None:
-            namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
+            namelist = __mitimroot__ +"/templates/main.namelist.json"
             Optim_potential = IOtools.read_mitim_nml(namelist)
             for ikey in self.optimization_options:
                 if ikey not in Optim_potential:

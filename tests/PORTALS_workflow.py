@@ -1,16 +1,16 @@
 import os
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
+from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
 # Inputs
-inputgacode = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
-folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/portals_test/")
+inputgacode = __mitimroot__ + "/tests/data/input.gacode"
+folderWork = __mitimroot__ + "/tests/scratch/portals_test/"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")

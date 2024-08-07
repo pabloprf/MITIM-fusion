@@ -1,13 +1,11 @@
 import numpy as np
 import xarray as xr
-from pathlib import Path
 import cfspopcon
 from cfspopcon.unit_handling import ureg
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.astra_tools import ASTRA_CDFtools
-from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import IOtools
+from mitim_tools import __mitimroot__
 
 import matplotlib.pyplot as plt
 
@@ -415,7 +413,7 @@ class MITIMpopcon:
 
         # Read template plot options
         if plot_template is None:
-            plot_template = IOtools.expandPath("$MITIM_PATH/templates/plot_popcon.yaml")
+            plot_template = __mitimroot__ + "/templates/plot_popcon.yaml"
             plot_style = cfspopcon.read_plot_style(plot_template)
 
         # Update plot options

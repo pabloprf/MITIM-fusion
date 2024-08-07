@@ -1,11 +1,11 @@
 import os
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
+from mitim_tools import __mitimroot__
 
 restart = True
 
-gacode_file = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
-folder = IOtools.expandPath("$MITIM_PATH/tests/scratch/cgyro_test/")
+gacode_file = __mitimroot__ + "/tests/data/input.gacode"
+folder = __mitimroot__ + "/tests/scratch/cgyro_test/"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")

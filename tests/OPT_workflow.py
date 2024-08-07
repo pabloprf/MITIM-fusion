@@ -1,18 +1,18 @@
 """
 This example runs the complete MITIM optimization algorithm on a simple test function, and plot results
-To run: python3  $MITIM_PATH/tests/MITIM_workflow.py
+To run: python3  tests/MITIM_workflow.py
 """
 
 import os
 import torch
 import numpy as np
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
+from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(IOtools.expandPath("$MITIM_PATH/tests/scratch/")):
-    os.system("mkdir " + IOtools.expandPath("$MITIM_PATH/tests/scratch/"))
+if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
+    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
 
 # -----------------------------------------------------------------------------------------------------
 # ----- Inputs (function to optimize)
@@ -63,8 +63,8 @@ class opt_class(STRATEGYtools.opt_evaluator):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = IOtools.expandPath("$MITIM_PATH/templates/main.namelist.json")
-folderWork = IOtools.expandPath("$MITIM_PATH/tests/scratch/opt_test/")
+namelist = __mitimroot__ + "/templates/main.namelist.json"
+folderWork = __mitimroot__ + "/tests/scratch/opt_test/"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
@@ -76,7 +76,7 @@ if restart and os.path.exists(folderWork):
 # Initialize class
 opt_fun1D = opt_class(folderWork, namelist)
 
-# Changes to namelist in MITIM_PATH/templates/main.namelist.json
+# Changes to namelist in templates/main.namelist.json
 opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework

@@ -7,6 +7,7 @@ from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStoo
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 """
@@ -956,7 +957,7 @@ def compareMDSandCDF(runidMDS, CDFclass):
 def getZeff_neo(
     shotNumber,
     folder=IOtools.expandPath("~/"),
-    routine=IOtools.expandPath("$MITIM_PATH/scripts/zeff_neo"),
+    routine=__mitimroot__ + "/scripts/zeff_neo",
 ):
     with open(folder + "/idl_in", "w") as f:
         f.write(f".r {routine}\n\n")

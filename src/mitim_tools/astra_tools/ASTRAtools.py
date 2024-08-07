@@ -5,6 +5,7 @@ from mitim_tools.misc_tools import IOtools,FARMINGtools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 class ASTRA():
@@ -13,7 +14,7 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = __mitimroot__ + '/templates/ASTRA8_REPO.tar.gz'): 
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -113,7 +114,7 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
-    template_path = IOtools.expandPath("$MITIM_PATH/tests/data/input.gacode")
+    template_path = __mitimroot__ + "/tests/data/input.gacode"
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 

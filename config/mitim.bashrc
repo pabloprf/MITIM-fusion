@@ -49,12 +49,4 @@ else
 	! [ -z "$PS1" ] && echo "     - No specific environment file loaded"
 fi
 
-# -------------------------------------------------------------------------------------------------------
-# Aliases for quick tools (plotting, reading)
-# -------------------------------------------------------------------------------------------------------
-
-! [ -z "$PS1" ] && echo "  2. Defining useful aliases for MITIM utilities"
-
-source $MITIM_PATH/config/machines_sources/aliases.bashrc
-
 ! [ -z "$PS1" ] && echo -e "\033[32m>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\033[0m"

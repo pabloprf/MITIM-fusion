@@ -9,6 +9,7 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 
@@ -109,7 +110,7 @@ def initializeProblem(
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(IOtools.expandPath("$MITIM_PATH/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv"))
+            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
             if not (data_df['Ion']==profiles.Species[i]["N"]).any():
                 speciesNotFound.append(profiles.Species[i]["N"])
         if len(speciesNotFound) > 0:
