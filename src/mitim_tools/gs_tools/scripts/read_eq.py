@@ -14,10 +14,9 @@ def main():
     for file in files:
         gs.extend(GEQtools.MITIMgeqdsk.timeslices(file))
 
-    if len(gs) == 1:
-        gs[0].plot()
-    else:
-        axs, fn = GEQtools.compareGeqdsk(gs)
+    axs, fn = GEQtools.compareGeqdsk(gs)
+    fn.show()
+    embed()
 
 if __name__ == "__main__":
     main()

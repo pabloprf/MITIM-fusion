@@ -73,6 +73,8 @@ def main():
         for i in range(len(cdfs)):
             cdfs[i].plot(fn=fn, counter=i)
 
+        fn.show()
+
     embed()
 
 if __name__ == "__main__":

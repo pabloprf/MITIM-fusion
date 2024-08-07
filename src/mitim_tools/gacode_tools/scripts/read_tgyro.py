@@ -25,8 +25,9 @@ def main():
         tgyros.append(p)
 
     # ------ Plot
-    TGYROtools.plotAll(tgyros, labels=None, fn=None)
+    fn = TGYROtools.plotAll(tgyros, labels=None, fn=None)
 
+    fn.show()
     embed()
 
 if __name__ == "__main__":

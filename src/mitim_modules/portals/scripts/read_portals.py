@@ -92,7 +92,6 @@ def main():
             elif requiresFN:
                 fig = fn.add_figure(label=lab)
             else:
-                plt.ion()
                 fig = plt.figure(figsize=(15, 8))
 
             portals_total[i].plotMetrics(
@@ -108,6 +107,10 @@ def main():
         else:
             portals_total[i].plotPORTALS()
 
+    if fn is not None:
+        fn.show()
+    else:
+        plt.show()
     embed()
 
 if __name__ == "__main__":

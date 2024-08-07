@@ -31,5 +31,11 @@ def main():
 
     fn = PROFILEStools.plotAll(profs, lastRhoGradients=rho)
 
+    fn.show()
+
+    # Import IPython and embed an interactive session
+    from IPython import embed
+    embed()
+
 if __name__ == "__main__":
     main()

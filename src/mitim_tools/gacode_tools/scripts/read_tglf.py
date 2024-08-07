@@ -39,6 +39,7 @@ def main():
 
     tglf.plot(labels=[f"run{i}" for i in range(len(folders))])
 
+    tglf.fn.show()
     embed()
 
 if __name__ == "__main__":

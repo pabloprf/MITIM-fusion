@@ -48,6 +48,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
         self.write(dictOFs, resultsfile)
 
     def scalarized_objective(self, Y):
+        import numpy as np
         ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of = Y[..., ofs_ordered_names == "z"]

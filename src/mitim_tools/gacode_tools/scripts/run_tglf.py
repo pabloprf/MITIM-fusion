@@ -1,7 +1,7 @@
 """
 This example runs TGLF from an already existing file (no normalizations if no input_gacode file provided)
 
-	run_tglf.py --folder run0/ --tglf input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives] [--restart]
+	run_tglf.py run0/ input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives] [--restart]
 
 Sequence:
 	- If drives: do drives analysis
@@ -73,6 +73,7 @@ def main():
         tglf.read(label="run1")
         tglf.plot(labels=["run1"])
 
+    tglf.fn.show()
     embed()
 
 if __name__ == "__main__":

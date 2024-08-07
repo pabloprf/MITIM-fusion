@@ -208,7 +208,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--type", type=int, required=False, default=-1
+        "--type", type=int, required=False, default=4
     )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--remote", "-r", type=str, required=False, default=None)
@@ -332,6 +332,7 @@ def main():
                 f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
                 typeMsg="w",
             )
+    opt_fun.fn.show()
 
     embed()
 

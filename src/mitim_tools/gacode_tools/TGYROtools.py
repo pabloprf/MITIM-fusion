@@ -4572,6 +4572,8 @@ def plotAll(TGYROoutputs, labels=None, fn=None):
     for i, TGYROoutput in enumerate(TGYROoutputs):
         TGYROoutput.plot(fn=fn, label=labels[i])
 
+    return fn
+
 
 class TGYROinput:
     def __init__(self, input_profiles, file=None, onlyThermal=False, limitSpecies=100):

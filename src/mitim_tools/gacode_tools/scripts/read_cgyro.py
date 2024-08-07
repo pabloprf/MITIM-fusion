@@ -25,6 +25,7 @@ def main():
 
     c.plot(labels=labels)
 
+    c.fn.show()
     embed()
 
 if __name__ == "__main__":
