@@ -7,7 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from scipy.interpolate import interp1d
-from shapely.geometry import LineString
 from mitim_tools.gs_tools.utils import FREEGSparams, GSplotting
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -1351,13 +1350,6 @@ class freegs_millerized:
 
             ax.legend(prop={'size': 10})
 
-    def write(self, filename = "mitim_freegs.geqdsk"):
-
-        print(f"\t- Writing equilibrium to {filename}")
-
-        with open(filename, "w") as f:
-            geqdsk.write(self.eq, f)
-
     def derive(self, psi_surfaces = np.linspace(0,1.0,10), psi_profiles = np.linspace(0,1.0,100)):
 
         # Grab surfaces
@@ -1395,7 +1387,7 @@ class freegs_millerized:
             psi_norm = 1E-6
 
         if psi_norm == 1.0:
-            RZ = self.eq.separatrix(npoints= 1000)
+            RZ = self.eq.separatrix(npoints= 1000 if thetas is None else len(thetas))
             R, Z = RZ[:,0], RZ[:,1]
         else:
             if thetas is None:
@@ -1509,4 +1501,104 @@ class freegs_millerized:
         ax.set_xlim([0,1])
         GRAPHICStools.addDenseAxis(ax)
 
+
+    # --------------------------------------------------------------
+    # Writing
+    # --------------------------------------------------------------
+
+    def write(self, filename = "mitim_freegs.geqdsk"):
+
+        print(f"\t- Writing equilibrium to {filename}")
+
+        with open(filename, "w") as f:
+            geqdsk.write(self.eq, f)
+
+    def to_transp(self, folder = '~/scratch/', ne0_20 = 1.0):
+
+        folder = IOtools.expandPath(folder)
+
+        print(f"\t- Writing equilibrium to TRANSP UFILES in {folder}")
+
+        # --------------------------------------------------------------
+        # MRY
+        # --------------------------------------------------------------
+
+        print(f"\t\t* Writing boundary to MRY")
+        RZ = self.eq.separatrix(npoints= 100)
+        R, Z = RZ[:,0], RZ[:,1]
+
+        #R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
+
+        EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_00000.DAT', R, Z)
+        EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_10000.DAT', R, Z)
+
+        EQmodule.generateMRY(
+            folder,
+            ['00000','10000'],
+            folder,
+            12345)
+
+        # --------------------------------------------------------------
+        # q-profile
+        # --------------------------------------------------------------
+
+        from mitim_tools.transp_tools import UFILEStools
+
+        print(f"\t\t* Writing q-profile to TRANSP UFILE")
+
+        uf = UFILEStools.UFILEtransp(scratch='qpr')
+
+        psi = np.linspace(self.eq.psi_axis, self.eq.psi_bndry, 101, endpoint=True)
+        psi_norm = (psi - self.eq.psi_axis) / (self.eq.psi_bndry - self.eq.psi_axis)
+
+        rhotor = self.eq.rhotor(psi)
+        q = self.eq.q(psinorm = psi_norm)
+
+        uf.Variables['Y'] = [0.0,10.0]
+        uf.Variables['X'] = rhotor
+        uf.Variables['Z'] = q
+
+        uf.repeatProfile()
+
+        uf.writeUFILE(f'{folder}/PRF12345.QPR')
+
+        # --------------------------------------------------------------
+        # pressure - temperature and density
+        # --------------------------------------------------------------
+        '''
+        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+
+        if T=Te=Ti and ne=ni
+        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+
+        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+
+        '''
+
+        print(f"\t\t* Writing temperature and density profiles to TRANSP UFILES assuming ne0={ne0_20}e20 m^-3")
+
+
+        pressure = self.eq.pressure(psinorm =psi_norm) # Pa
+
+        ne_20 = pressure / pressure[0] * ne0_20
+
+        T_eV = pressure / (2 * 1.60217662e-19 * ne_20 * 1e20)
+        ne_cm = ne_20   * 1E20 * 1E-6
+
+        uf = UFILEStools.UFILEtransp(scratch='ter')
+        uf.Variables['Y'] = [0.0,10.0]
+        uf.Variables['X'] = rhotor
+        uf.Variables['Z'] = T_eV
+        uf.repeatProfile()
+        uf.writeUFILE(f'{folder}/PRF12345.TEL')
+        uf.writeUFILE(f'{folder}/PRF12345.TIO')
+
+        uf = UFILEStools.UFILEtransp(scratch='ner')
+        uf.Variables['Y'] = [0.0,10.0]
+        uf.Variables['X'] = rhotor
+        uf.Variables['Z'] = ne_cm
+        uf.repeatProfile()
+        uf.writeUFILE(f'{folder}/PRF12345.NEL')
+
+        
 

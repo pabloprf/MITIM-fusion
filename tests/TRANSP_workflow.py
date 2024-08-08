@@ -37,8 +37,6 @@ folder = __mitimroot__ + "/tests/scratch/transp_test/"
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-# Randomize number of regression, not to collide with other people launching the same run, but there's a chance anyway...
-s = CONFIGread.load_settings()
 runid = 'P25'
 
 # ---- Prepare NML and UFILES
