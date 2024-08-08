@@ -1429,6 +1429,21 @@ class freegs_millerized:
     # Plotting
     # --------------------------------------------------------------
 
+    def plot(self, axs = None, color = 'b', label = ''):
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(16,7))
+            axs = fig.subplot_mosaic(
+                """
+                A12
+                A34
+                """)
+            axs = [axs['A'], axs['1'], axs['2'], axs['3'], axs['4']]
+
+        self.plot_flux_surfaces(ax = axs[0], color = color)
+        self.plot_profiles(axs = axs[1:], color = color, label = label)
+
     def plot_flux_surfaces(self, ax = None, color = 'b'):
 
         if ax is None:
