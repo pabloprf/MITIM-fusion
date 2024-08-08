@@ -21,12 +21,12 @@ classifiers = [
 
 dependencies = [
   "pip",
-  "numpy<2.0", # Some issue happened with 2.0.0
+  "numpy",
   "matplotlib",
   "argparse",
   "h5py",
   "netCDF4",
-  "xarray==2022.6.0", # This is a compromise between the requirements of omfit_classes (fails for high versions) and the PLASMAstate xr reader (importlib_metadata issues)
+  "xarray",
   "pandas",
   "xlsxwriter",
   "statsmodels",
@@ -37,8 +37,9 @@ dependencies = [
   "deap",
   "paramiko",
   "tqdm",
-  "botorch==0.9.4",  # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
-  "scikit-image",  # Stricly not for MITIM, but good to have for pygacode
+  "shapely",
+  "botorch==0.9.4",   # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
+  "scikit-image",     # Stricly not for MITIM, but good to have for pygacode
 ]
 
 [project.optional-dependencies]
@@ -47,7 +48,8 @@ pyqt = [
 ]
 omfit = [
   "omfit_classes",
-  "matplotlib==3.5.3",  # As of 12/07/2023, omfit_classes fails for higher versions
+  "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
+  "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
   "omas",
   "fortranformat",
   "openpyxl",
