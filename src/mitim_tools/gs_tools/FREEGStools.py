@@ -1387,6 +1387,7 @@ class freegs_millerized:
         self.profile_Li2 = self.eq.internalInductance2()
         self.profile_pave = self.eq.pressure_ave()
         self.profile_beta_pol =  self.eq.poloidalBeta()
+        self.profile_Ashaf = self.eq.shafranovShift
 
     def find_surface(self, psi_norm = 0.5, thetas = None):
 
@@ -1423,6 +1424,10 @@ class freegs_millerized:
                     n=1000,
                 )
         return R,Z
+
+    # --------------------------------------------------------------
+    # Plotting
+    # --------------------------------------------------------------
 
     def plot_flux_surfaces(self, ax = None, color = 'b'):
 
