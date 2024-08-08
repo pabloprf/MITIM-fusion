@@ -1496,19 +1496,19 @@ class mitim_flux_surfaces:
 
         # Triangularities
 
-        RatZmax = self.R[...,np.argmax(self.Z,axis=-1)[0]]
+        RatZmax = self.R[np.arange(self.R.shape[0]),np.argmax(self.Z,axis=-1)]
         self.delta_u = (self.R0-RatZmax) / self.a
 
-        RatZmin = self.R[...,np.argmin(self.Z,axis=-1)[0]]
+        RatZmin = self.R[np.arange(self.R.shape[0]),np.argmin(self.Z,axis=-1)]
         self.delta_l = (self.R0-RatZmin) / self.a
 
         self.delta = (self.delta_u + self.delta_l) / 2
 
         # Squareness (not parallel for the time being)
         self.zeta = np.zeros(self.R0.shape)
-        for i in range(self.R0.shape[0]):
-            Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
-            self.zeta[i] = zeta_uo
+        # for i in range(self.R0.shape[0]):
+        #     Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+        #     self.zeta[i] = zeta_uo
 
     def plot(self, ax = None, color = 'r', label = None, plot_extremes=False):
 

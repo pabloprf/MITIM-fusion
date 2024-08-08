@@ -1128,19 +1128,24 @@ class freegs_millerized:
         self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
         self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
 
-    def prep(self,  p0_MPa, Ip_MA, B_T, n_coils = 10, resol_eq = 2**9+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
+    def prep(self,  p0_MPa, Ip_MA, B_T, beta_pol = None, n_coils = 10, resol_eq = 2**9+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
 
         print("\t- Initializing plasma parameters")
-        print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
+        if beta_pol is not None:
+            print(f"\t\t* beta_pol={beta_pol}, Ip={Ip_MA} MA, B={B_T} T")
+        else:
+            print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
 
         self.p0_MPa = p0_MPa
         self.Ip_MA = Ip_MA
         self.B_T = B_T
+        self.beta_pol = beta_pol
+        self.parameters_profiles = parameters_profiles
 
         print(f"\t- Preparing equilibrium with FREEGS, with a resolution of {resol_eq}x{resol_eq}")
-        self.define_coils(n_coils)
-        self.define_eq(resol = resol_eq)
-        self.define_gs(p0_MPa=self.p0_MPa, Ip_MA=self.Ip_MA, B_T=self.B_T, parameters_profiles=parameters_profiles)
+        self._define_coils(n_coils)
+        self._define_eq(resol = resol_eq)
+        self._define_gs()
 
         # Define xpoints
         print("\t\t* Defining upper and lower x-points")
@@ -1175,7 +1180,7 @@ class freegs_millerized:
             xpoints=self.xpoints,
             )
 
-    def define_coils(self, n, rel_distance_coils = 0.5, updown_coils = True):
+    def _define_coils(self, n, rel_distance_coils = 0.5, updown_coils = True):
 
         print(f"\t- Defining {n} coils{' (up-down symmetric)' if updown_coils else ''} at a distance of {rel_distance_coils}*a from the separatrix")
 
@@ -1215,7 +1220,7 @@ class freegs_millerized:
                 (f"coil_{num}", coil)
                 )
 
-    def define_eq(self, resol=2**9+1):
+    def _define_eq(self, resol=2**9+1):
 
         print("\t- Defining equilibrium")
         self.tokamak = freegs.machine.Machine(self.coils)
@@ -1235,17 +1240,21 @@ class freegs_millerized:
                                 nx=resol, ny=resol,
                                 boundary=freegs.boundary.freeBoundaryHagenow)
 
-    def define_gs(self, p0_MPa = 1.0, Ip_MA = 8.7, B_T = 12.16, parameters_profiles = {'alpha_m':1.0, 'alpha_n':2.0, 'Raxis':1.0}):
+    def _define_gs(self):
 
-        print("\t- Defining Grad-Shafranov equilibrium: pressure, current and R*Bt")
-        self.p0_MPa = p0_MPa
-        self.Ip_MA = Ip_MA
-        self.B_T = B_T 
-        self.parameters_profiles = parameters_profiles
+        if self.beta_pol is None:
+            print("\t- Defining Grad-Shafranov equilibrium: p0, Ip and vaccum R*Bt")
 
-        self.profiles = freegs.jtor.ConstrainPaxisIp(self.eq,
-            p0_MPa*1E6, Ip_MA*1E6, self.R0*self.B_T,
-            alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
+            self.profiles = freegs.jtor.ConstrainPaxisIp(self.eq,
+                self.p0_MPa*1E6, self.Ip_MA*1E6, self.R0*self.B_T,
+                alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
+
+        else:
+            print("\t- Defining Grad-Shafranov equilibrium: beta_pol, Ip and vaccum R*Bt")
+
+            self.profiles = freegs.jtor.ConstrainBetapIp(self.eq,
+                self.beta_pol, self.Ip_MA*1E6, self.R0*self.B_T,
+                alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
 
     def solve(self, show = False, rtol=1e-6):
 
@@ -1349,81 +1358,102 @@ class freegs_millerized:
         with open(filename, "w") as f:
             geqdsk.write(self.eq, f)
 
+    def derive(self, psi_surfaces = np.linspace(0,1.0,10), psi_profiles = np.linspace(0,1.0,100)):
+
+        # Grab surfaces
+        Rs, Zs = [], []
+        for psi_norm in psi_surfaces:
+            R, Z = self.find_surface(psi_norm)
+            Rs.append(R)
+            Zs.append(Z)
+        Rs = np.array(Rs)
+        Zs = np.array(Zs)
+            
+        # Calculate surface stuff in parallel
+        self.surfaces = GEQtools.mitim_flux_surfaces()
+        self.surfaces.reconstruct_from_RZ(Rs, Zs)
+        self.surfaces.psi = psi_surfaces
+
+        # Grab profiles
+        self.profile_psi_norm = psi_profiles
+        self.profile_pressure = self.eq.pressure(psinorm =psi_profiles)*1E-6
+        self.profile_q = self.eq.q(psinorm = psi_profiles)
+        self.profile_RB = self.eq.fpol(psinorm = psi_profiles)
+
+        # Grab quantities
+        self.profile_q95 = self.eq.q(psinorm = 0.95)
+        self.profile_q0 = self.eq.q(psinorm = 0.0)
+        self.profile_betaN = self.eq.betaN()
+        self.profile_Li2 = self.eq.internalInductance2()
+        self.profile_pave = self.eq.pressure_ave()
+        self.profile_beta_pol =  self.eq.poloidalBeta()
+
     def find_surface(self, psi_norm = 0.5, thetas = None):
 
-        if thetas is None:
-            thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+        if psi_norm == 0.0:
+            psi_norm = 1E-6
 
-        from freegs.critical import find_psisurface, find_critical
-        from scipy import interpolate
+        if psi_norm == 1.0:
+            RZ = self.eq.separatrix(npoints= 1000)
+            R, Z = RZ[:,0], RZ[:,1]
+        else:
+            if thetas is None:
+                thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
 
-        psi = self.eq.psi()
-        opoint, xpoint = find_critical(self.eq.R, self.eq.Z, psi)
-        psinorm = (psi - opoint[0][2]) / (self.eq.psi_bndry - opoint[0][2])
-        psifunc = interpolate.RectBivariateSpline(self.eq.R[:, 0], self.eq.Z[0, :], psinorm)
-        r0, z0 = opoint[0][0:2]
+            from freegs.critical import find_psisurface, find_critical
+            from scipy import interpolate
 
-        R = np.zeros(len(thetas))
-        Z = np.zeros(len(thetas))
-        for i,theta in enumerate(thetas):
-            R[i],Z[i] = find_psisurface(
-                self.eq,
-                psifunc,
-                r0,
-                z0,
-                r0 + 10.0 * np.sin(theta),
-                z0 + 10.0 * np.cos(theta),
-                psival=psi_norm,
-                n=1000,
-            )
+            psi = self.eq.psi()
+            opoint, xpoint = find_critical(self.eq.R, self.eq.Z, psi)
+            psinorm = (psi - opoint[0][2]) / (self.eq.psi_bndry - opoint[0][2])
+            psifunc = interpolate.RectBivariateSpline(self.eq.R[:, 0], self.eq.Z[0, :], psinorm)
+            r0, z0 = opoint[0][0:2]
+
+            R = np.zeros(len(thetas))
+            Z = np.zeros(len(thetas))
+            for i,theta in enumerate(thetas):
+                R[i],Z[i] = find_psisurface(
+                    self.eq,
+                    psifunc,
+                    r0,
+                    z0,
+                    r0 + 10.0 * np.sin(theta),
+                    z0 + 10.0 * np.cos(theta),
+                    psival=psi_norm,
+                    n=1000,
+                )
         return R,Z
 
-    def plot_flux_surfaces(self, psi = np.linspace(0,1.0,10), ax = None, color = 'b'):
+    def plot_flux_surfaces(self, ax = None, color = 'b'):
 
         if ax is None:
             plt.ion()
             fig, ax = plt.subplots(figsize=(12,8))
 
-        for psi_norm in psi:
-            if psi_norm == 1.0:
-                RZ = self.eq.separatrix()
-                R, Z = RZ[:,0], RZ[:,1]
-            else:
-                R,Z = self.find_surface(psi_norm)
+        for i in range(self.surfaces.R.shape[0]):
+            ax.plot(self.surfaces.R[i],self.surfaces.Z[i], '-', label = f'$\\psi$ = {self.surfaces.psi[i]:.2f}', color = color, markersize=3)
 
-            if psi_norm == 0.0:
-                ls = '-o'
-            else:
-                ls = '-'
-
-
-            ax.plot(R,Z, ls, label = f'$\\psi$ = {psi_norm:.2f}', color = color, markersize=3)
         ax.set_aspect('equal')
         ax.set_xlabel('R [m]')
         ax.set_ylabel('Z [m]')
         GRAPHICStools.addDenseAxis(ax)
 
-    def plot_profiles(self, psi = np.linspace(0,1.0,100), axs = None, color = 'b', label = ''):
+    def plot_profiles(self, axs = None, color = 'b', label = ''):
 
         if axs is None:
             plt.ion()
             fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(8,8))
             axs = axs.flatten()
 
-        self.profile_pressure = self.eq.pressure(psinorm =psi)*1E-6
-        self.profile_q = self.eq.q(psinorm = psi)
-        self.profile_RB = self.eq.fpol(psinorm = psi)
-
-
         ax = axs[0]
-        ax.plot(psi,self.profile_pressure,'-',color=color, label = label)
+        ax.plot(self.profile_psi_norm,self.profile_pressure,'-',color=color, label = label)
         ax.set_xlabel('$\\psi$')
         ax.set_xlim([0,1])
         ax.set_ylabel('Pressure (MPa)')
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
-        ax.plot(psi,self.profile_q,'-',color=color)
+        ax.plot(self.profile_psi_norm,self.profile_q,'-',color=color)
         ax.axhline(y=1, color='k', ls='--', lw=0.5)
         ax.set_xlabel('$\\psi$')
         ax.set_ylabel('q')
@@ -1431,16 +1461,32 @@ class freegs_millerized:
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2]
-        ax.plot(psi,self.profile_RB,'-',color=color)
+        ax.plot(self.profile_psi_norm,self.profile_RB,'-',color=color)
         ax.axhline(y=self.R0*self.B_T, color=color, ls='--', lw=0.5)
         ax.set_xlabel('$\\psi$')
         ax.set_ylabel('$R\\cdot B_t$ ($T\\cdot m$)')
         ax.set_xlim([0,1])
         GRAPHICStools.addDenseAxis(ax)
 
-    def grab_global_quantities(self):
+    def plot_flux_surfaces_characteristics(self, axs = None, color = 'b', label = ''):
 
-        self.profile_q95 = self.eq.q(psinorm = 0.95)
-        self.profile_betaN = self.eq.betaN()
-        self.profile_Li2 = self.eq.internalInductance2()
+        if axs is None:
+            plt.ion()
+            fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(8,8))
+            axs = axs.flatten()
+
+        ax = axs[0]
+        ax.plot(self.surfaces.psi, self.surfaces.kappa, '-o', color=color, label = label, markersize=3)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$\\kappa$')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.plot(self.surfaces.psi, self.surfaces.delta, '-o', color=color, label = label, markersize=3)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$\\delta$')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
 
