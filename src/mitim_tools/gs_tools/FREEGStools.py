@@ -1402,3 +1402,45 @@ class freegs_millerized:
         ax.set_xlabel('R [m]')
         ax.set_ylabel('Z [m]')
         GRAPHICStools.addDenseAxis(ax)
+
+    def plot_profiles(self, psi = np.linspace(0,1.0,100), axs = None, color = 'b', label = ''):
+
+        if axs is None:
+            plt.ion()
+            fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(8,8))
+            axs = axs.flatten()
+
+        self.profile_pressure = self.eq.pressure(psinorm =psi)*1E-6
+        self.profile_q = self.eq.q(psinorm = psi)
+        self.profile_RB = self.eq.fpol(psinorm = psi)
+
+
+        ax = axs[0]
+        ax.plot(psi,self.profile_pressure,'-',color=color, label = label)
+        ax.set_xlabel('$\\psi$')
+        ax.set_xlim([0,1])
+        ax.set_ylabel('Pressure (MPa)')
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.plot(psi,self.profile_q,'-',color=color)
+        ax.axhline(y=1, color='k', ls='--', lw=0.5)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('q')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[2]
+        ax.plot(psi,self.profile_RB,'-',color=color)
+        ax.axhline(y=self.R0*self.B_T, color=color, ls='--', lw=0.5)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$R\\cdot B_t$ ($T\\cdot m$)')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+    def grab_global_quantities(self):
+
+        self.profile_q95 = self.eq.q(psinorm = 0.95)
+        self.profile_betaN = self.eq.betaN()
+        self.profile_Li2 = self.eq.internalInductance2()
+
