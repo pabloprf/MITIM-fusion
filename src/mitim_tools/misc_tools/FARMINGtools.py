@@ -640,7 +640,7 @@ class mitim_job:
         else:
             txt_look = f"-n {self.slurm_settings['name']}"
 
-        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
+        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
 
         if "output_files" in self.__dict__:
             output_files_backup = copy.deepcopy(self.output_files)

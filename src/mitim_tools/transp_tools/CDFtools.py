@@ -13215,7 +13215,7 @@ class CDFreactor:
         try:
             self.plotAroundSawtoothQuantities(fig=fig)
         except:
-            print("Could not plot plotAroundSawtoothQuantities", typeMsg="w")
+            print("\t* Could not plot plotAroundSawtoothQuantities", typeMsg="w")
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Mixing")
         self.plotSawtoothMixing(fig=fig)
@@ -13292,7 +13292,10 @@ class CDFreactor:
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Transport)")
-            self.plotFastTransport(fig=fig, time=time)
+            try:
+                self.plotFastTransport(fig=fig, time=time)
+            except IndexError:
+                print('\t* Could not plot Fast Transport', typeMsg='w')
 
         # Neutrals
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrals")
