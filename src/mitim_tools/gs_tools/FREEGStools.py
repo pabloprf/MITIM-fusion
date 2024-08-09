@@ -13,6 +13,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.im_tools.modules import EQmodule
+from mitim_tools.transp_tools import UFILEStools
 from IPython import embed
 verbose_level = read_verbose_level()
 
@@ -1127,7 +1128,7 @@ class freegs_millerized:
         self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
         self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
 
-    def prep(self,  p0_MPa, Ip_MA, B_T, beta_pol = None, n_coils = 10, resol_eq = 2**9+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
+    def prep(self,  p0_MPa, Ip_MA, B_T, beta_pol = None, n_coils = 10, resol_eq = 2**8+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
 
         print("\t- Initializing plasma parameters")
         if beta_pol is not None:
@@ -1515,90 +1516,312 @@ class freegs_millerized:
 
     def to_transp(self, folder = '~/scratch/', ne0_20 = 1.0):
 
-        folder = IOtools.expandPath(folder)
+        from_freegs_to_transp(self, folder = folder, ne0_20 = ne0_20)
 
-        print(f"\t- Writing equilibrium to TRANSP UFILES in {folder}")
+def from_freegs_to_transp(
+    f1,
+    f2=None,
+    folder = '~/scratch/',
+    ne0_20 = 1.0,
+    times = [0.0,10.0],
+    VVfrom = 0,
+    t3_quantities = None,
+    plotYN = False):
+    '''
+    For two freegs_millerized objects, write the equilibrium to TRANSP UFILES.
+    I can optionally also provide a 3rd time with actual profiles
+    '''
 
-        # --------------------------------------------------------------
-        # MRY
-        # --------------------------------------------------------------
+    folder = IOtools.expandPath(folder)
 
-        print(f"\t\t* Writing boundary to MRY")
-        RZ = self.eq.separatrix(npoints= 100)
-        R, Z = RZ[:,0], RZ[:,1]
+    print(f"\t- Writing equilibrium to TRANSP UFILES in {folder}")
 
-        #R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
+    # --------------------------------------------------------------
+    # MRY
+    # --------------------------------------------------------------
 
-        EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_00000.DAT', R, Z)
-        EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_10000.DAT', R, Z)
+    print("\t\t* Writing boundary to MRY")
 
-        EQmodule.generateMRY(
-            folder,
-            ['00000','10000'],
-            folder,
-            12345)
+    RZ = f1.eq.separatrix(npoints= 100)
+    R1, Z1 = RZ[:,0], RZ[:,1]
 
-        # --------------------------------------------------------------
-        # q-profile
-        # --------------------------------------------------------------
+    if f2 is not None:
+        RZ = f2.eq.separatrix(npoints= 100)
+        R2, Z2 = RZ[:,0], RZ[:,1]
+    else:
+        R2, Z2 = R1, Z1
 
-        from mitim_tools.transp_tools import UFILEStools
+    t1 = str(int(times[0]*1E3)).zfill(5)
+    t2 = str(int(times[1]*1E3)).zfill(5)
 
-        print(f"\t\t* Writing q-profile to TRANSP UFILE")
+    EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_{t1}.DAT', R1, Z1)
+    EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_{t2}.DAT', R2, Z2)
 
-        uf = UFILEStools.UFILEtransp(scratch='qpr')
+    if t3_quantities is not None:
+        R3, Z3 = t3_quantities[0], t3_quantities[1]
+        t3 = str(int(times[2]*1E3)).zfill(5)
+        EQmodule.writeBoundary(f'{folder}/BOUNDARY_123456_{t3}.DAT', R3, Z3)
+        tt = [t1,t2,t3]
+    else:
+        tt = [t1,t2]
 
-        psi = np.linspace(self.eq.psi_axis, self.eq.psi_bndry, 101, endpoint=True)
-        psi_norm = (psi - self.eq.psi_axis) / (self.eq.psi_bndry - self.eq.psi_axis)
+    EQmodule.generateMRY(
+        folder,
+        tt,
+        folder,
+        12345)
 
-        rhotor = self.eq.rhotor(psi)
-        q = self.eq.q(psinorm = psi_norm)
+    # --------------------------------------------------------------
+    # VV and LIM
+    # --------------------------------------------------------------
 
-        uf.Variables['Y'] = [0.0,10.0]
-        uf.Variables['X'] = rhotor
-        uf.Variables['Z'] = q
+    print("\t\t* Writing limiters and VV")
 
-        uf.repeatProfile()
+    if VVfrom ==0:
+        f = f1
+    else:
+        f = f2
 
-        uf.writeUFILE(f'{folder}/PRF12345.QPR')
+    # Huge VV (a=R0*0.9)
+    vv = GEQtools.mitim_flux_surfaces()
+    thetas = np.linspace(0, 2*np.pi, 100, endpoint=False)
+    vv.reconstruct_from_miller(f.R0, f.R0*0.9, f.kappa_sep, f.Z0, f.delta_sep, f.zeta_sep, thetas = thetas)
+    rvv , zvv= vv.R[0,:], vv.Z[0,:]
 
-        # --------------------------------------------------------------
-        # pressure - temperature and density
-        # --------------------------------------------------------------
-        '''
-        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+    VVRmom, VVZmom, rvv_fit, zvv_fit = EQmodule.decomposeMoments(rvv* 100.0 , zvv* 100.0 )
+    print('VVRmom',VVRmom)
+    print('VVZmom',VVZmom)
 
-        if T=Te=Ti and ne=ni
-        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+    # --------------------------------------------------------------
+    EQmodule.addLimiters_UF(f'{folder}/PRF12345.LIM', rvv, zvv, ax=None, numLim=100)
 
-        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+    # --------------------------------------------------------------
+    # q-profile
+    # --------------------------------------------------------------
 
-        '''
+    print("\t\t* Writing q-profile to TRANSP UFILE")
 
-        print(f"\t\t* Writing temperature and density profiles to TRANSP UFILES assuming ne0={ne0_20}e20 m^-3")
+    uf = UFILEStools.UFILEtransp(scratch='qpr')
+
+    psi = np.linspace(f1.eq.psi_axis, f1.eq.psi_bndry, 101, endpoint=True)
+    psi_norm = (psi - f1.eq.psi_axis) / (f1.eq.psi_bndry - f1.eq.psi_axis)
+
+    rhotor = f1.eq.rhotor(psi)
+    q1 = f1.eq.q(psinorm = psi_norm)
+
+    if f2 is not None:
+        psi = np.linspace(f2.eq.psi_axis, f2.eq.psi_bndry, 101, endpoint=True)
+        psi_norm = (psi - f2.eq.psi_axis) / (f2.eq.psi_bndry - f2.eq.psi_axis)
+
+        rhotor2 =f2.eq.rhotor(psi)
+
+        psi_norm2 = np.interp(rhotor2, rhotor, psi_norm) 
+
+        q2 = f2.eq.q(psinorm = psi_norm2)
+    
+    else:
+        q2 = q1
+
+    if t3_quantities is not None:
+        q3 = np.interp(rhotor, t3_quantities[2], t3_quantities[3])
+        qs = np.array([q1,q2,q3]).T
+    else:
+        qs = np.array([q1,q2]).T
+
+    uf.Variables['Y'] = times
+    uf.Variables['X'] = rhotor
+    uf.Variables['Z'] = qs
+
+    uf.writeUFILE(f'{folder}/PRF12345.QPR')
+
+    # --------------------------------------------------------------
+    # pressure - temperature and density
+    # --------------------------------------------------------------
+    '''
+    p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+
+    if T=Te=Ti and ne=ni
+    p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+
+    T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+
+    '''
+
+    print(f"\t\t* Writing temperature and density profiles to TRANSP UFILES assuming ne0={ne0_20}e20 m^-3")
+
+    pressure1 = f1.eq.pressure(psinorm =psi_norm) # Pa
+
+    _, ne_20 = PLASMAtools.parabolicProfile(
+        Tbar=ne0_20/1.25,
+        nu=1.25,
+        rho=rhotor,
+        Tedge=ne0_20/5,
+    )
+
+    T_eV1 = pressure1 / (2 * 1.60217662e-19 * ne_20 * 1e20)
+    ne_cm = ne_20   * 1E20 * 1E-6
+
+    if f2 is not None:
+        pressure2 = f2.eq.pressure(psinorm =psi_norm2)
+    else:
+        pressure2 = pressure1
+    
+    T_eV2 = pressure2 / (2 * 1.60217662e-19 * ne_20 * 1e20)
+    
+    if t3_quantities is not None:
+        Te_eV3 = np.interp(rhotor, t3_quantities[2], t3_quantities[4]) * 1E3
+        Tes = np.array([T_eV1,T_eV2,Te_eV3]).T
+        Ti_eV3 = np.interp(rhotor, t3_quantities[2], t3_quantities[5]) * 1E3
+        Tis = np.array([T_eV1,T_eV2,Ti_eV3]).T
+    else:
+        Tes = np.array([T_eV1,T_eV2]).T
+        Tis = Tes
 
 
-        pressure = self.eq.pressure(psinorm =psi_norm) # Pa
+    uf = UFILEStools.UFILEtransp(scratch='ter')
+    uf.Variables['Y'] = times
+    uf.Variables['X'] = rhotor
+    uf.Variables['Z'] = Tes
+    uf.writeUFILE(f'{folder}/PRF12345.TEL')
 
-        ne_20 = pressure / pressure[0] * ne0_20
+    uf.Variables['Z'] = Tis
+    uf.writeUFILE(f'{folder}/PRF12345.TIO')
 
-        T_eV = pressure / (2 * 1.60217662e-19 * ne_20 * 1e20)
-        ne_cm = ne_20   * 1E20 * 1E-6
+    if t3_quantities is not None:
+        ne3_cm = np.interp(rhotor, t3_quantities[2], t3_quantities[6]) * 1E20 * 1E-6
+        nes = np.array([ne_cm,ne_cm,ne3_cm]).T
+    else:
+        nes = np.array([ne_cm,ne_cm]).T
 
-        uf = UFILEStools.UFILEtransp(scratch='ter')
-        uf.Variables['Y'] = [0.0,10.0]
-        uf.Variables['X'] = rhotor
-        uf.Variables['Z'] = T_eV
-        uf.repeatProfile()
-        uf.writeUFILE(f'{folder}/PRF12345.TEL')
-        uf.writeUFILE(f'{folder}/PRF12345.TIO')
+    uf = UFILEStools.UFILEtransp(scratch='ner')
+    uf.Variables['Y'] = times
+    uf.Variables['X'] = rhotor
+    uf.Variables['Z'] = nes
+    uf.writeUFILE(f'{folder}/PRF12345.NEL')
 
-        uf = UFILEStools.UFILEtransp(scratch='ner')
-        uf.Variables['Y'] = [0.0,10.0]
-        uf.Variables['X'] = rhotor
-        uf.Variables['Z'] = ne_cm
-        uf.repeatProfile()
-        uf.writeUFILE(f'{folder}/PRF12345.NEL')
+    # --------------------------------------------------------------
+    # Write current and RB
+    # --------------------------------------------------------------
+    
+    print("\t\t* Writing current and RB time traces to TRANSP UFILES")
 
+    ip1 = f1.Ip_MA * 1E6
+    rb1 = f1.R0 * f1.B_T * 1E2
+
+    if f2 is not None:
+        ip2 = f2.Ip_MA * 1E6
+        rb2 = f2.R0 * f2.B_T * 1E2
+    else:
+        ip2 = ip1
+        rb2 = rb1
+
+    if t3_quantities is not None:
+        ip3 = t3_quantities[7]*1E6
+        ips = np.array([ip1,ip2, ip3])
+        rb3 = t3_quantities[8]*1E2
+        rbs = np.array([rb1,rb2, rb3])
+    else:
+        ips = np.array([ip1,ip2])
+        rbs = np.array([rb1,rb2])
+
+    uf = UFILEStools.UFILEtransp(scratch='cur')
+    uf.Variables['X'] = times
+    uf.Variables['Z'] = ips
+    uf.writeUFILE(f'{folder}/PRF12345.CUR')
+    
+    uf = UFILEStools.UFILEtransp(scratch='rbz')
+    uf.Variables['X'] = times
+    uf.Variables['Z'] = rbs
+    uf.writeUFILE(f'{folder}/PRF12345.RBZ')
+
+    # --------------------------------------------------------------
+    # Plotting
+    # --------------------------------------------------------------
+
+    if plotYN:
+        plt.ion()
+        fig = plt.figure(figsize=(12,8))
+        axs = fig.subplot_mosaic(
+            """
+            ABCD
+            AEFF
+            """
+        )
+
+        ax = axs['A']
+        ax.plot(rvv,zvv, '-', color='k', label = 'VV', markersize=3)
+        ax.plot(R1, Z1, '-', color='b', label = f't={times[0]}ms')
+        ax.plot(R2, Z2, '-', color='r', label = f't={times[1]}ms')
+
+        if t3_quantities is not None:
+            ax.plot(R3, Z3, '-', color='m', label = f't={times[2]}ms')
+
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(prop={'size': 8})
+
+        ax = axs['B']
+        ax.plot(rhotor, q1, '-', color='b')
+        ax.plot(rhotor, q2, '-', color='r')
+        if t3_quantities is not None:
+            ax.plot(rhotor, q3, '-', color='m')
+
+        ax.set_xlabel('$\\rho_{tor}$')
+        ax.set_ylabel('q')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
+        ax.axhline(y=1, color='k', ls='--', lw=0.5)
+
+        ax = axs['C']
+        ax.plot(rhotor, T_eV1*1E-3, '-', color='b')
+        ax.plot(rhotor, T_eV2*1E-3, '-', color='r')
+
+        if t3_quantities is not None:
+            ax.plot(rhotor, Te_eV3*1E-3, '-', color='m')
+            ax.plot(rhotor, Ti_eV3*1E-3, '--', color='m')
+
+        ax.set_xlabel('$\\rho_{tor}$')
+        ax.set_ylabel('T [keV]')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
+
+        ax = axs['D']
+        ax.plot(rhotor, ne_20, '-', color='b')
+
+        if t3_quantities is not None:
+            ax.plot(rhotor, ne3_cm*1E6*1E-20, '-', color='m')
+
+        ax.set_xlabel('$\\rho_{tor}$')
+        ax.set_ylabel('ne [$10^{20}m^-3$]')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
+
+        ax = axs['E']
+        ax.plot(rhotor, pressure1*1E-6, '-', color='b')
+        ax.plot(rhotor, pressure2*1E-6, '-', color='r')
+        ax.set_xlabel('$\\rho_{tor}$')
+        ax.set_ylabel('Pressure [MPa]')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
         
+        ax = axs['F']
+
+        ips = [ip1*1E-6,ip2*1E-6]
+        rbs = [rb1*1E-2,rb2*1E-2]
+
+        if t3_quantities is not None:
+            ips.append(ip3*1E-6)
+            rbs.append(rb3*1E-2)
+
+        ax.plot(times, ips, '-', color='b', label = 'Ip')
+        ax.plot(times, rbs, '-', color='r', label = 'R*B')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Ip [MA], RB [m*T]')
+        ax.legend(prop={'size': 8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
+
+        plt.tight_layout()
 

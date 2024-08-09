@@ -494,7 +494,7 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
     transp_job.define_machine(
         "transp",
         job_name,
-        launchSlurm=False,
+        launchSlurm=True,
     )
 
     # ---------------
@@ -541,7 +541,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
     transp_job.define_machine(
         "transp",
         job_name,
-        launchSlurm=False,
+        launchSlurm=True,
     )
 
     # ---------------
@@ -557,8 +557,9 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
     else:
         txt_bind = ""
 
+    # Avoid copying the bash and executable!
     TRANSPcommand = f"""
-cp -r {folderTRANSP}/* . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+    rsync -a --exclude='mitim*' {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------

@@ -243,15 +243,16 @@ class TRANSPgeneric:
                 print("\t- Run is stopped, getting out of the loop", typeMsg="w")
                 break
 
+            print(">> Grabbing intermediate files?")
             if time_passed >= 60.0 * grabIntermediateEachMin:
                 print(
-                    ">> Grabbing intermediate files because {0}min passed (even though run has not finished yet)".format(
-                        time_passed / 60.0
-                    )
+                    f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)"
                 )
                 self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
                 time_passed = 0.0
-
+            else:
+                print(f"\t- No, because not enough time has passed, {time_passed / 60.0}min < {grabIntermediateEachMin}min")
+            
             first = False
 
         c = self.fetch(label=label, retrieveAC=retrieveAC)
