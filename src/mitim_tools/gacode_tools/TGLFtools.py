@@ -526,6 +526,7 @@ class TGLF:
         restart=False,
         forceIfRestart=False,
         extra_name="exe",
+        anticipate_problems=True,
         slurm_setup={
             "cores": 4,
             "minutes": 5,
@@ -552,6 +553,7 @@ class TGLF:
             forceIfRestart=forceIfRestart,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
+            anticipate_problems=anticipate_problems,
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -640,6 +642,7 @@ class TGLF:
         launchSlurm=True,
         restart=False,
         forceIfRestart=False,
+        anticipate_problems=True,
         extra_name="exe",
         slurm_setup={
             "cores": 4,
@@ -714,9 +717,10 @@ class TGLF:
         # Stop if I expect problems
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        anticipate_problems(
-            latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
-        )
+        if anticipate_problems:
+            anticipate_problems_func(
+                latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
+            )
 
         return tglf_executor, tglf_executor_full, FolderTGLF
 
@@ -6219,7 +6223,7 @@ def restart_checker(
     return rhosEvaluate
 
 
-def anticipate_problems(
+def anticipate_problems_func(
     latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
 ):
 
