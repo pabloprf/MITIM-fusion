@@ -104,13 +104,12 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         else:
             self.statusStop = 0
 
-    def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kwargs):
+    def fetch(self, label="run1", retrieveAC=False, **kwargs):
         runSINGULARITY_finish(
             self.FolderTRANSP,
             self.runid,
             self.tok,
             self.job_name,
-            minutes=minutesAllocation,
         )
 
         # Get reactor to call for ACs as well
@@ -488,13 +487,14 @@ def pringLogTail(log_file, howmanylines=50):
     print(txt, typeMsg="w")
 
 
-def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
+def runSINGULARITY_finish(folderWork, runid, tok, job_name):
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
         "transp",
         job_name,
         launchSlurm=True,
+        slurm_settings={"name": job_name+"_finish", "minutes": 20},
     )
 
     # ---------------
@@ -534,7 +534,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
 
 
-def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
+def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 
@@ -542,6 +542,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
         "transp",
         job_name,
         launchSlurm=True,
+        slurm_settings={"name": job_name+"_look", "minutes": 20},
     )
 
     # ---------------
@@ -557,9 +558,11 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
     else:
         txt_bind = ""
 
-    # Avoid copying the bash and executable!
+    # Avoid copying the bash and executable, and the FI cdf files that sometimes vanish. Try to minimize copying window and not crashing after errors
+    extra_commands = " --delay-updates --ignore-errors --exclude='*_state.cdf' --exclude='*.tmp' --exclude='mitim*'"
+
     TRANSPcommand = f"""
-    rsync -a --exclude='mitim*' {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -573,9 +576,18 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
     transp_job.prep(
         TRANSPcommand,
         output_files=outputFiles,
+        label_log_files="_look",
     )
 
-    transp_job.run()
+    # Not sure why but the look sometimes just rabndomly (?) fails, so we need to try a few times, outside of the logic of the mitim_job checker
+    for i in range(times_retry_look):
+        transp_job.run(check_if_files_received=False)
+        if os.path.exists(f"{folderWork}/{runid}.CDF"):
+            break
+        else:
+            print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
+    if not os.path.exists(f"{folderWork}/{runid}.CDF"):
+        print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
 
 
 def organizeACfiles(

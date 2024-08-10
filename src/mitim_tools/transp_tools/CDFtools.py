@@ -32,6 +32,9 @@ from IPython import embed
 verbose_level = read_verbose_level()
 
 def read_cdf_transp(cdf_file):
+    '''
+    With the support of chatGPT 4o (08/10/2024)
+    '''
 
     src = netCDF4.Dataset(cdf_file)
 
@@ -13344,7 +13347,7 @@ class CDFreactor:
             try:
                 self.plotFastTransport(fig=fig, time=time)
             except IndexError:
-                print('\t* Could not plot Fast Transport', typeMsg='w')
+                print('\t* Could not plot fast transport', typeMsg='w')
 
         # Neutrals
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrals")

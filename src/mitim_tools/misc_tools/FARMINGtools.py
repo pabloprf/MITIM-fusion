@@ -154,7 +154,7 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True):
+    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
         if not waitYN:
             removeScratchFolders = False
 
@@ -202,17 +202,20 @@ class mitim_job:
             comm,
             removeScratchFolders=removeScratchFolders,
             timeoutSecs=timeoutSecs,
-            check_if_files_received=waitYN,
+            check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
         )
 
         # Get jobid
         if self.launchSlurm:
-            with open(self.folder_local + "/mitim.out", "r") as f:
-                aux = f.readlines()
-            for line in aux:
-                if "Submitted batch job " in line:
-                    self.jobid = line.split()[-1]
+            try:
+                with open(self.folder_local + "/mitim.out", "r") as f:
+                    aux = f.readlines()
+                for line in aux:
+                    if "Submitted batch job " in line:
+                        self.jobid = line.split()[-1]
+            except FileNotFoundError:
+                self.jobid = None
         else:
             self.jobid = None
 
@@ -969,9 +972,9 @@ def create_slurm_execution_files(
         command = [command]
 
     folderExecution = IOtools.expandPath(folder_remote)
-    fileSBTACH = f"{folder_local}/mitim_bash.src"
-    fileSHELL = f"{folder_local}/mitim_shell_executor.sh"
-    fileSBTACH_remote = f"{folder_remote}/mitim_bash.src"
+    fileSBTACH = f"{folder_local}/mitim_bash{label_log_files}.src"
+    fileSHELL = f"{folder_local}/mitim_shell_executor{label_log_files}.sh"
+    fileSBTACH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
 
     minutes = int(minutes)
 
@@ -1097,7 +1100,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && bash mitim_shell_executor.sh > mitim.out"
+    comm = f"cd {folder_remote} && bash mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBTACH, fileSHELL
 

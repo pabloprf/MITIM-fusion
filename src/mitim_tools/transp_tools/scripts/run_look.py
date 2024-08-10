@@ -41,6 +41,7 @@ def main():
 
     if bool(int(args.plot)):
         t.plot(label="run1")
+        t.fn.show()
 
     embed()
 
