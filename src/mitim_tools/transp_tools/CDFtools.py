@@ -31,6 +31,55 @@ from IPython import embed
 
 verbose_level = read_verbose_level()
 
+def read_cdf_transp(cdf_file):
+
+    src = netCDF4.Dataset(cdf_file)
+
+    if src['TIME'].shape[0] > src['TIME3'].shape[0]:
+        print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
+
+        # Create a dataset object to store the modified data
+        dst = netCDF4.Dataset(f'{cdf_file}_mod', 'w', memory=None)
+        
+        # Copy global attributes
+        dst.setncatts({attr: src.getncattr(attr) for attr in src.ncattrs()})
+
+        # Copy dimensions, adjust TIME dimension
+        for name, dimension in src.dimensions.items():
+            if name == 'TIME':
+                # Adjust TIME dimension size based on TIME3
+                new_time_size = src['TIME3'].shape[0]
+                dst.createDimension(name, new_time_size)
+            else:
+                dst.createDimension(name, len(dimension) if not dimension.isunlimited() else None)
+
+        # Copy variables, adjust TIME variable
+        for name, variable in src.variables.items():
+            # Copy variable attributes
+            var_attrs = {attr: variable.getncattr(attr) for attr in variable.ncattrs()}
+            
+            # Adjust the TIME variable
+            if name == 'TIME':
+                new_var = dst.createVariable(name, variable.datatype, variable.dimensions)
+                new_var.setncatts(var_attrs)
+                new_var[:] = src['TIME'][:src['TIME3'].shape[0]]  # Adjust TIME variable data
+            else:
+                new_var = dst.createVariable(name, variable.datatype, variable.dimensions)
+                new_var.setncatts(var_attrs)
+                
+                # Adjust variables that depend on TIME
+                if 'TIME' in variable.dimensions:
+                    time_index = variable.dimensions.index('TIME')
+                    slicing = [slice(None)] * variable.ndim
+                    slicing[time_index] = slice(0, src['TIME3'].shape[0])
+                    new_var[:] = variable[tuple(slicing)]
+                else:
+                    new_var[:] = variable[:]
+
+    else:
+        dst = src
+
+    return dst.variables
 
 class CDFreactor:
     def __init__(
@@ -78,7 +127,7 @@ class CDFreactor:
             netCDFfile = f"{folderScratch}state.cdf"
 
         self.LocationCDF = netCDFfile
-        self.f = netCDF4.Dataset(self.LocationCDF).variables
+        self.f = read_cdf_transp(self.LocationCDF) 
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
@@ -1330,7 +1379,7 @@ class CDFreactor:
             self.nfusHe3_avol = (
                 volumeAverage(self.f, "FDENS_3") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusHe3 = self.nD * 0.0 + self.eps00
             self.nfusHe3_avol = self.nD_avol * 0.0 + self.eps00
 
@@ -1339,7 +1388,7 @@ class CDFreactor:
             self.nfusT_avol = (
                 volumeAverage(self.f, "FDENS_T") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusT = self.nD * 0.0 + self.eps00
             self.nfusT_avol = self.nD_avol * 0.0 + self.eps00
 
@@ -1348,7 +1397,7 @@ class CDFreactor:
             self.nfusH_avol = (
                 volumeAverage(self.f, "FDENS_P") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusH = self.nD * 0.0 + self.eps00
             self.nfusH_avol = self.nD_avol * 0.0 + self.eps00
 
