@@ -2,6 +2,7 @@ import os
 from mitim_tools.gs_tools import FREEGStools
 from mitim_tools import __mitimroot__
 
+
 # Geometry 
 R = 1.85
 a = 0.57
@@ -30,3 +31,6 @@ f.plot()
 if not os.path.exists(__mitimroot__ + "/tests/scratch/freegs_test/"):
     os.system("mkdir -p " + __mitimroot__ + "/tests/scratch/freegs_test/")
 f.write(__mitimroot__ + "/tests/scratch/freegs_test/mitim_freegs.geqdsk")
+
+# Write inputs to run TRANSP
+f.to_transp(folder = __mitimroot__ + "/tests/scratch/freegs_test/transp_input/")
