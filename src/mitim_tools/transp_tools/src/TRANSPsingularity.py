@@ -10,7 +10,7 @@ from mitim_tools.transp_tools.tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-
+MINUTES_ALLOWED_JOB_GET = 30
 class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
@@ -486,7 +486,6 @@ def pringLogTail(log_file, howmanylines=50):
         txt += f"\t\t{log_file[-howmanylines+i]}"
     print(txt, typeMsg="w")
 
-
 def runSINGULARITY_finish(folderWork, runid, tok, job_name):
     transp_job = FARMINGtools.mitim_job(folderWork)
 
@@ -494,7 +493,7 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name):
         "transp",
         job_name,
         launchSlurm=True,
-        slurm_settings={"name": job_name+"_finish", "minutes": 20},
+        slurm_settings={"name": job_name+"_finish", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
     # ---------------
@@ -524,6 +523,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     transp_job.prep(
         TRANSPcommand,
         output_folders=["results/"],
+        output_files=[f"{runid}tr.log"],
         label_log_files="_finish",
     )
 
@@ -533,7 +533,6 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
 
     os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
 
-
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
@@ -542,7 +541,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
         "transp",
         job_name,
         launchSlurm=True,
-        slurm_settings={"name": job_name+"_look", "minutes": 20},
+        slurm_settings={"name": job_name+"_look", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
     # ---------------
@@ -571,7 +570,7 @@ rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app 
 
     print('* Submitting a "look" request to the cluster', typeMsg="i")
 
-    outputFiles = [f"{runid}.CDF"]
+    outputFiles = [f"{runid}.CDF",f"{runid}tr.log"]
 
     transp_job.prep(
         TRANSPcommand,

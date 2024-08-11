@@ -5860,7 +5860,7 @@ class CDFreactor:
         ax4 = fig.add_subplot(grid[1, 1])
 
         ax5 = fig.add_subplot(grid[0, 2])
-        # ax6 = fig.add_subplot(grid[1,2])
+        ax6 = fig.add_subplot(grid[1,2])
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Variation of electromagnetic quantities
@@ -6022,6 +6022,19 @@ class CDFreactor:
         ax.set_ylabel("Time (s)")
 
         GRAPHICStools.addDenseAxis(ax)
+
+        ax = ax6
+        rhos = [0.2, 0.4, 0.6, 0.8, 0.95]
+        for i in rhos:
+            ix = np.argmin(np.abs(self.x_lw - i))
+            ax.plot(self.t, self.q[:, ix], lw=1, label=f"$\\rho_N={i:.2f}$")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("q")
+        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        ax.axhline(y=1.0, c="k", ls="--", lw=1)
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+
 
     def plotElectricField(self, fig=None, time=None):
         if time is None:

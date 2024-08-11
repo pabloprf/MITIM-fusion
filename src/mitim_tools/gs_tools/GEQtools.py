@@ -2,7 +2,7 @@ import os
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
 from shapely.geometry import LineString
 from IPython import embed
 
@@ -1535,7 +1535,7 @@ def mxh3_shape(R0, a, kappa, Z0, cn, sn, thetas = None):
         thetas = np.linspace(0, 2 * np.pi, 100)
 
     # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
-    if isinstance(R0,float):
+    if IOtools.isfloat(R0):
         R0 = [R0]
         a = [a]
         kappa = [kappa]

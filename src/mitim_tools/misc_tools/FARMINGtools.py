@@ -12,7 +12,6 @@ import signal
 import datetime
 import torch
 import copy
-import paramiko
 import tarfile
 import numpy as np
 from contextlib import contextmanager
@@ -29,6 +28,13 @@ else:
     quiet_tag = "-q "
 
 UseCUDAifAvailable = True
+
+# Paramiko shows some deprecation warnings that are not relevant
+# https://github.com/paramiko/paramiko/issues/2419
+import warnings
+warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+
+import paramiko
 
 """
 New handling of jobs in remote or local clusters. Example use:

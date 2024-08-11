@@ -286,7 +286,7 @@ def generateMRY(
     scruncher_job.run()
 
     fileUF = f"{FolderMRY}/PRF{nameBaseShot}.MRY"
-    os.system(f"cp {FolderEquilibrium}/M123456.MRY {fileUF}")
+    os.system(f"mv {FolderEquilibrium}/M123456.MRY {fileUF}")
 
     # Check if MRY file has the number of times expected
     UF = UFILEStools.UFILEtransp()
@@ -819,12 +819,12 @@ def makeMillerGeom(rmajor, epsilon, kappa, delta, zeta, z0, theta = None):
     return rs, zs
 
 
-def decomposeMoments(R, Z, nfour=5):
+def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -3.0], verbose_level=0):
     nth = len(R)
 
     # Initial Guess for R and Z array
-    r = [180, 70, 3.0]  # [rmajor,anew,3.0,0,0]
-    z = [0.0, 140, -3.0]  # [0.0,anew*kappa,-3.0,0.0,0.0]
+    r = r_ini #[180, 70, 3.0]  # [rmajor,anew,3.0,0,0]
+    z = z_ini #[0.0, 140, -3.0]  # [0.0,anew*kappa,-3.0,0.0,0.0]
 
     for i in range(nfour - 3):
         r.append(0)

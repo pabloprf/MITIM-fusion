@@ -1584,7 +1584,7 @@ def from_freegs_to_transp(
 
     # Huge VV (a=R0*0.9)
     vv = GEQtools.mitim_flux_surfaces()
-    thetas = np.linspace(0, 2*np.pi, 100, endpoint=False)
+    thetas = np.linspace(0, 2*np.pi, 100, endpoint=True)
     vv.reconstruct_from_miller(f.R0, f.R0*0.9, f.kappa_sep, f.Z0, f.delta_sep, f.zeta_sep, thetas = thetas)
     rvv , zvv= vv.R[0,:], vv.Z[0,:]
 
@@ -1593,7 +1593,7 @@ def from_freegs_to_transp(
     print('VVZmom',VVZmom)
 
     # --------------------------------------------------------------
-    EQmodule.addLimiters_UF(f'{folder}/PRF12345.LIM', rvv, zvv, ax=None, numLim=100)
+    EQmodule.addLimiters_UF(f'{folder}/PRF12345.LIM', rvv, zvv, ax=None, numLim=len(thetas))
 
     # --------------------------------------------------------------
     # q-profile
