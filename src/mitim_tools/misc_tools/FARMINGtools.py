@@ -118,6 +118,7 @@ class mitim_job:
         self.slurm_settings.setdefault("ntasks", 1)
         self.slurm_settings.setdefault("nodes", None)
         self.slurm_settings.setdefault("job_array", None)
+        self.slurm_settings.setdefault("mem", None)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.machineSettings = CONFIGread.machineSettings(
@@ -182,6 +183,7 @@ class mitim_job:
             ntasks=self.slurm_settings["ntasks"],
             cpuspertask=self.slurm_settings["cpuspertask"],
             slurm=self.machineSettings["slurm"],
+            memory_req_by_job=self.slurm_settings["mem"],
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
@@ -437,7 +439,7 @@ class mitim_job:
         )
 
         # Create a tarball of the local directory
-        print("\t\t- Tarballing")
+        print("\t\t- Tarballing (locally)")
         with tarfile.open(
             os.path.join(self.folder_local, "mitim_send.tar.gz"), "w:gz"
         ) as tar:
@@ -546,7 +548,7 @@ class mitim_job:
                 os.system(f"rm -rf {os.path.join(self.folder_local, folder)}")
 
         # Create a tarball of the output files & folders on the remote machine
-        print("\t\t- Tarballing")
+        print("\t\t- Tarballing (remotely)")
         self.execute(
             "tar -czf "
             + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
@@ -967,6 +969,7 @@ def create_slurm_execution_files(
     minutes=5,
     ntasks=1,
     cpuspertask=4,
+    memory_req_by_job=None,
     job_array=None,
     nodes=None,
     label_log_files="",
@@ -989,7 +992,14 @@ def create_slurm_execution_files(
     exclude = slurm.setdefault("exclude", None)
     account = slurm.setdefault("account", None)
     constraint = slurm.setdefault("constraint", None)
-    memory_req = slurm.setdefault("mem", None)
+    memory_req_by_config = slurm.setdefault("mem", None)
+
+
+    if memory_req_by_job == 0 :
+        print("\t- All memory in node requested by job, overwriting memory requested by config file", typeMsg="w")
+        memory_req = memory_req_by_job
+    else:
+       memory_req =  memory_req_by_config
 
     """
 	********************************************************************************************

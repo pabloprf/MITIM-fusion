@@ -6874,7 +6874,7 @@ class CDFreactor:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(4, 2, hspace=0.4, wspace=0.4)
+        grid = plt.GridSpec(4, 2, hspace=0.6, wspace=0.4)
         ax1 = fig.add_subplot(grid[:2, 0])
         ax3 = fig.add_subplot(grid[2, 0], sharex=ax1)
         ax2 = fig.add_subplot(grid[3, 0], sharex=ax1)
@@ -7021,22 +7021,22 @@ class CDFreactor:
         ax2.set_xlabel("Time (s)")
 
         # q profile trace
-        rhos = [0.9, 0.99]
-        for i in rhos:
-            irho = np.argmin(np.abs(self.x_lw - i))
+        
+        for irho in range(10):
             ax3e.plot(
                 self.t,
                 self.q[:, irho],
                 ls="-",
                 lw=2,
-                label=f"q @ $\\rho_N$={i}",
+                label=f"q @ $\\rho_N$={self.xb_lw[irho]:.3f}",
             )
-        ax3e.plot(self.t, self.q95, ls="-", lw=3, label="$q_{95}$")
 
         ax3e.legend(loc="best", prop={"size": self.mainLegendSize})
         ax3e.set_ylabel("q")
+        ax3e.set_title("First 10 radii of q-profile")
+        ax3e.axhline(y=1.0, ls="--", c="k", lw=0.5)
 
-        GRAPHICStools.addLegendApart(ax3e, ratio=0.7)
+        GRAPHICStools.addLegendApart(ax3e, ratio=0.7, size=6)
 
         GRAPHICStools.addDenseAxis(ax3e)
 
@@ -12154,7 +12154,7 @@ class CDFreactor:
         ax.plot(x0, y2, c="g", lw=2, label="$M_c * (R\\cdot B_\\phi)_v$")
 
         ax.set_title(
-            f"F funciton , $R\\cdot B_\\phi$ (t={self.t[it2]:.3f}-{self.t[it]:.3f})"
+            f"F function , $R\\cdot B_\\phi$ (t={self.t[it2]:.3f}-{self.t[it]:.3f})"
         )
         ax.set_ylabel("")
         ax.set_xlabel("$\\psi_n$")

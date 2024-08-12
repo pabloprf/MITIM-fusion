@@ -54,6 +54,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,
                 "name": self.job_name,
+                "mem": 0,                       # All memory available, since TRANSP manages a lot of memory
             },
         )
 

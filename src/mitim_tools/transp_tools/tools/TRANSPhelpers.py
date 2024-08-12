@@ -185,7 +185,7 @@ class transp_run:
             IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
 
             for var in ['outtim','fi_outtim','fe_outtim']:
-                IOtools.changeValue(self.nml, var, f"{writeAC:.3f},", None, "=", MaintainComments=True)
+                IOtools.changeValue(self.nml, var, f"{writeAC:.3f}", None, "=", MaintainComments=True)
 
             IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
         
@@ -216,7 +216,13 @@ class transp_run:
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
 
-    def icrf_on_time(self, time, power_MW):
+    def icrf_on_time(self, time, power_MW, ramp_time = 1E-3):
+
+        for t in self.variables.keys():
+            if t>time:
+                self.add_variable_time(t, None, power_MW*1E6, variable='RFP')
+        
+        self.add_variable_time(time-ramp_time, None, 0.0, variable='RFP')
         self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
         self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
 

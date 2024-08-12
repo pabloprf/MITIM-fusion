@@ -272,6 +272,8 @@ class TRANSPgeneric:
             self.nml_file, "fi_outtim", "=", raiseException=False, avoidIfStartsWith="!"
         )
 
+        if isinstance(fi_outtim, str):  fi_outtim = float(fi_outtim.split(',')[0])
+
         TORIC = (
             (nlicrf is not None)
             and (bool(nlicrf))
@@ -297,6 +299,8 @@ class TRANSPgeneric:
         fe_outtim = IOtools.findValue(
             self.nml_file, "fe_outtim", "=", raiseException=False, avoidIfStartsWith="!"
         )
+
+        if isinstance(fe_outtim, str):  fe_outtim = float(fe_outtim.split(',')[0])
 
         TORBEAM = (nltorbeam == "'TORBEAM'") and (
             bool(nltorbeam) and fe_outtim is not None
@@ -324,6 +328,8 @@ class TRANSPgeneric:
         outtim = IOtools.findValue(
             self.nml_file, "outtim", "=", raiseException=False, avoidIfStartsWith="!"
         )
+
+        if isinstance(outtim, str):  outtim = float(outtim.split(',')[0])
 
         if (nlbeam is not None) and bool(nlbeam):
             BEAMS = True
