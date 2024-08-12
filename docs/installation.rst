@@ -45,7 +45,7 @@ Use ``pip3`` to install all the required MITIM requirements:
 
    .. code-block:: console
 
-      pip3 install -e MITIM-fusion[pyqt,omfit,freegs]
+      pip3 install -e MITIM-fusion[pyqt,omfit]
 
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
@@ -54,11 +54,19 @@ If you were unsuccessful in the installation, check out our :ref:`Frequently Ask
 User configuration
 ------------------
 
-In ``MITIM-fusion/config/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are. **If you are planning on using MITIM to run plasma simulation codes**, please create an equivalent file ``config_user.json`` in the same folder, indicating your specific needs.
+In ``MITIM-fusion/config/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are.
+There are also options to specify the default verbose level and the default DPI for the figures in notebooks.
+Users need to specify their own configurations in a file that follows the same structure.
+There are different options to handle this config file.
 
-.. code-block:: console
+1. Create a new file named ``config_user.json`` **in the same folder** ``MITIM-fusion/config/``. MITIM will automatically look for this file when running the code.
+2. Create a new file anywhere in your machine. Then, **set the environment variable** ``MITIM_CONFIG`` to the path of this file. MITIM will automatically look for this file when running the code.
+3. Create a new file anywhere in your machine. **Do this at the beginning of your script**:
 
-   cp MITIM-fusion/config/config_user_example.json MITIM-fusion/config/config_user.json
+   .. code-block:: python
+
+      from mitim_tools import config_manager
+      config_manager.set(file_location)
 
 Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM.
 For debugging purposes, it is recommended a maximum verbose level of ``5``.

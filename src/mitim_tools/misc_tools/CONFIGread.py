@@ -25,17 +25,18 @@ class ConfigManager:
             cls._instance = super(ConfigManager, cls).__new__(cls)
         return cls._instance
 
-    def set_config_file(self, path: str):
+    def set(self, path: str):
         print(f"MITIM > Setting configuration file to: {path}")
         self._config_file_path = path
 
-    def get_config_file(self):
+    def get(self):
         if self._config_file_path is None:
             self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
             if os.path.exists(self._config_file_path):
                 print(f"MITIM > Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
-                self._config_file_path = IOtools.expandPath("~/MITIM-fusion/config/config_user.json")
+                from mitim_tools import __mitimroot__
+                self._config_file_path = __mitimroot__ + "/config/config_user.json"
                 print(f"MITIM > Configuration file path (config_user.json) has not been set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
@@ -45,7 +46,7 @@ config_manager = ConfigManager()
 
 def load_settings():
 
-    _config_file_path = config_manager.get_config_file()
+    _config_file_path = config_manager.get()
 
     # Load JSON
     with open(_config_file_path, "r") as f:
