@@ -42,7 +42,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         FixedNoise = surrogateOptions.get("FixedNoise", False)
         ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
         learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
-
         if read_verbose_level() in [4, 5]:
             print("\t\t* Surrogate model options:")
             print(

@@ -56,8 +56,8 @@ def load_settings():
 
 def read_verbose_level():
     s = load_settings()
-    if "read_verbose_level()" in s["preferences"]:
-        verbose = int(s["preferences"]["read_verbose_level()"])
+    if "verbose_level" in s["preferences"]:
+        verbose = int(s["preferences"]["verbose_level"])
     else:
         verbose = 1
 
