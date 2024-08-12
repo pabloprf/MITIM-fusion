@@ -1,6 +1,9 @@
 import os
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
+from mitim_tools import config_manager
+
+config_manager.set_config_file("/Users/pablorf/Desktop/config_user.json")
 
 restart = True
 

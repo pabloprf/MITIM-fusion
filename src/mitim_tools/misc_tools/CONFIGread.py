@@ -6,19 +6,45 @@ import warnings
 import logging
 import getpass
 from mitim_tools.misc_tools import IOtools
-from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-def load_settings(filename=None):
-    if filename is None:
-        filename = __mitimroot__ + "/config/config_user.json"
+# ---------------------------------------------------------------------------------------------------------------------
+# Configuration file
+# ---------------------------------------------------------------------------------------------------------------------
+
+class ConfigManager:
+    _instance = None
+    _config_file_path = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ConfigManager, cls).__new__(cls)
+        return cls._instance
+
+    def set_config_file(self, path: str):
+        print(f"MITIM > Setting configuration file to: {path}")
+        self._config_file_path = path
+
+    def get_config_file(self):
+        if self._config_file_path is None:
+            self._config_file_path = IOtools.expandPath("~/MITIM-fusion/config/config_user.json")
+            print(f"MITIM > Configuration file path (config_user.json) has not been set, assuming {self._config_file_path}", typeMsg='i')
+        return self._config_file_path
+
+config_manager = ConfigManager()
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+def load_settings():
+
+    _config_file_path = config_manager.get_config_file()
 
     # Load JSON
-    with open(filename, "r") as f:
+    with open(_config_file_path, "r") as f:
         settings = json.load(f)
 
     return settings
-
 
 def read_verbose_level():
     s = load_settings()
