@@ -994,12 +994,11 @@ def create_slurm_execution_files(
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
 
-
     if memory_req_by_job == 0 :
-        print("\t- All memory in node requested by job, overwriting memory requested by config file", typeMsg="w")
+        print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
     else:
-       memory_req =  memory_req_by_config
+        memory_req =  memory_req_by_config
 
     """
 	********************************************************************************************

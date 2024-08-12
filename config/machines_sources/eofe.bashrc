@@ -100,6 +100,7 @@ then
 	#               TRANSP
 	# --------------------------------------------------------------------------------
 	module load singularity
+	export TRANSP_SINGULARITY=/nfs/psfclab001/software/transp/transp_23.1.sif
 
 fi
 
