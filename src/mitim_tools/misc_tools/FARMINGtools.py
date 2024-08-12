@@ -996,7 +996,6 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	Write mitim_bash.src file to execute
 	********************************************************************************************
-		- Contains sourcing of mitim.bashrc, so that it's done at node level
 	"""
 
     if minutes >= 60:
@@ -1084,7 +1083,6 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	Write mitim_shell_executor.sh file that handles the execution of the mitim_bash.src with pre and post commands
 	********************************************************************************************
-		- Contains sourcing of mitim.bashrc, so that it's done at machine level
 	"""
 
     commandSHELL = copy.deepcopy(shellPreCommands)

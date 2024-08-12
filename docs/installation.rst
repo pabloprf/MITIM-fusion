@@ -54,12 +54,12 @@ If you were unsuccessful in the installation, check out our :ref:`Frequently Ask
 User configuration
 ------------------
 
-In ``MITIM-fusion/config/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are.
+In ``MITIM-fusion/templates/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are.
 There are also options to specify the default verbose level and the default DPI for the figures in notebooks.
 Users need to specify their own configurations in a file that follows the same structure.
 There are different options to handle this config file.
 
-1. Create a new file named ``config_user.json`` **in the same folder** ``MITIM-fusion/config/``. MITIM will automatically look for this file when running the code.
+1. Create a new file named ``config_user.json`` **in the same folder** ``MITIM-fusion/templates/``. MITIM will automatically look for this file when running the code.
 2. Create a new file anywhere in your machine. Then, **set the environment variable** ``MITIM_CONFIG`` to the path of this file. MITIM will automatically look for this file when running the code.
 3. Create a new file anywhere in your machine. **Do this at the beginning of your script**:
 
@@ -120,22 +120,12 @@ Please note that MITIM will try to run the codes with standard commands that the
 For example, to run the TGLF code, MITIM will want to execute the command ``tglf`` in the *eofe7.mit.edu* machine as specified in the example above.
 There are several ways to make sure that the shell understands the command:
 
-.. dropdown:: 1. Use MITIM automatic machine configuration (limited)
-
-   First, MITIM will automatically try to source ``$MITIM_PATH/config/mitim.bashrc``. If the machine you are running the code
-   in is listed in ``$MITIM_PATH/config/machine_sources/``, this will also source a machine-specific file.
-   Specifications to run certain codes (e.g. the GACODE suite) could be available there, but the number of machines that are
-   automatically available in the public repository is, obviously, limited.
-
-   Please note that this option is only valid if the **MITIM repository and the environment variable $MITIM_PATH are available also in that machine, pointing to the MITIM-fusion folders** (not only from the one you are launching the code).
-   However, if you prefer to use options 2 or 3, the sourcing of a non-existing file will not cause any issues.
-
-.. dropdown:: 2. Source at shell initialization (recommended)
+.. dropdown:: 1. Source at shell initialization (recommended)
 
    Is the commands are available upon login in that machine (e.g. in your personal ``.bashrc`` file), MITIM will be able to run them.
    Please note that aliases are usually not available in non-interactive shells, and it is recommended to use full paths and to avoid print (echo) statements.
 
-.. dropdown:: 3. Send specific commands per code
+.. dropdown:: 2. Send specific commands per code
 
    Finally, you can populate the ``modules`` option per machine in your ``config_user.json`` file. For example:
 
@@ -147,7 +137,6 @@ There are several ways to make sure that the shell understands the command:
          ...
       }
 
-   MITIM will execute those commands immediately after ``source $MITIM_PATH/config/mitim.bashrc`` and before running any code.
 
    Note that you can the same machine listed several times in your ``config_user.json`` file, with different ``modules`` options per code.
    You just need to give it a different name per code.

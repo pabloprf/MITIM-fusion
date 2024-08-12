@@ -36,7 +36,7 @@ class ConfigManager:
                 print(f"MITIM > Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
-                self._config_file_path = __mitimroot__ + "/config/config_user.json"
+                self._config_file_path = __mitimroot__ + "/templates/config_user.json"
                 print(f"MITIM > Configuration file path (config_user.json) has not been set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
@@ -175,7 +175,7 @@ def machineSettings(
         "tunnel": None,
         "port": None,
         "identity": None,
-        "modules": "source $MITIM_PATH/config/mitim.bashrc",
+        "modules": "",
         "folderWork": scratch,
         "slurm": {},
         "isTunnelSameMachine": (

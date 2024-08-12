@@ -18,13 +18,7 @@ In a nutshell:
      git clone git@github.com:pabloprf/MITIM-fusion.git
     ```
 
-2. Add path to *.bashrc* file and source mitim:
-    ```bash
-    export MITIM_PATH=/path/to/mitim/
-    source $MITIM_PATH/config/mitim.bashrc
-    ```
-   
-3. Install MITIM (``python3.9`` required):
+2. Install MITIM (``python3.9`` required):
     ```bash
     pip install -e $MITIM_PATH[pyqt,omfit]
     ```
