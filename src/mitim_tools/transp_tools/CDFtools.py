@@ -1769,8 +1769,8 @@ class CDFreactor:
 
             self.Gf_loss_cx = self.f["SBCXX"][:] * 1e-20  # in 1E20 particles/s
         except:
-            self.D_f = self.x_lw * 0.0
-            self.V_f = self.x_lw * 0.0
+            self.D_f = self.Te * 0.0
+            self.V_f = self.Te * 0.0
             self.Pf_loss_orbit = self.t * 0.0
             self.Gf_loss_cx = self.t * 0.0
 
@@ -13357,10 +13357,7 @@ class CDFreactor:
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Transport)")
-            try:
-                self.plotFastTransport(fig=fig, time=time)
-            except IndexError:
-                print('\t* Could not plot fast transport', typeMsg='w')
+            self.plotFastTransport(fig=fig, time=time)
 
         # Neutrals
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrals")
@@ -14615,17 +14612,16 @@ class CDFreactor:
     # --------
 
     def getGFILE(self):
+
         print("\t- Looking for equilibrium file in CDF folder...")
-        gf = IOtools.findFileByExtension(self.FolderCDF + "EQ_folder/", ".geq")
-        if gf is not None:
-            print("\t\t- Reference gfile found in folder")
-            try:
-                self.gfile_in = GEQtools.MITIMgeqdsk(
-                    self.FolderCDF + "EQ_folder/" + gf + ".geq"
-                )
-            except:
-                print("\t- Error reagind", typeMsg="w")
-        else:
+        for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
+            for folder in ["EQ_folder/", ""]:
+                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension)
+                if gf is not None:
+                    print("\t\t- Reference gfile found in folder")
+                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
+                    break
+        if gf is None:
             print(
                 "\t\t- Reference g-file associated to this run could not be found",
                 typeMsg="w",
@@ -16160,163 +16156,6 @@ def profilePower(x, volumes, TotalPower, mixRadius, blend=0.05):
     y = y * TotalPower
 
     return y
-
-
-def findPRFfunctional_params(
-    cdf,
-    T_avol,
-    n_avol,
-    nT,
-    nn,
-    maxit=10000,
-    time=None,
-    useROACoordinate=True,
-    verbose=False,
-):
-    """
-    Because plasmas are not circular, aspect ratio is not infinite, the typical
-    functional forms do not give T as vol average and n as peaking.
-    This function returns T and n that should go into that formula in rho-coordinates.
-    """
-
-    from mitim_tools.popcon_tools import FunctionalForms
-
-    if time is None:
-        it = -1
-    else:
-        it = np.argmin(np.abs(time - cdf.t))
-
-    if useROACoordinate:
-        x = cdf.roa[it]
-    else:
-        x = cdf.x[it]
-
-    error, thr, cont, eta = 100.0, 1e-6, 0, 0.01
-    Tav_try, T0 = T_avol, T_avol * nT
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            Tav_try = Tav_try + ((T_avol - Tav) * eta)
-        peaking_try = T0 / Tav_try
-
-        _, T, _ = FunctionalForms.PRFfunctionals_Hmode(
-            Tav_try, n_avol, peaking_try, nn, rho=x
-        )
-        Tav = volumeAverage_var(cdf.f, T)[it]
-        T0Tav = T[0] / Tav
-        error = np.abs(Tav - T_avol) / T_avol
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded", typeMsg="w")
-
-    print(
-        " --> (it={4}) Running PRF profile with T={0:.3f}, nu={1:.3f} gives profile with <T>={2:.3f} and nu_T={3:.3f}".format(
-            Tav_try, peaking_try, Tav, T0Tav, cont
-        )
-    )
-
-    error, thr, cont, eta = 100.0, 1e-6, 0, 0.01
-    nav_try, n0 = n_avol, n_avol * nn
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            nav_try = nav_try + ((n_avol - nav) * eta)
-        peaking_try = n0 / nav_try
-
-        _, _, n = FunctionalForms.PRFfunctionals_Hmode(
-            Tav_try, nav_try, T0 / Tav_try, peaking_try, rho=x
-        )
-        nav = volumeAverage_var(cdf.f, n)[it]
-        n0nav = n[0] / nav
-        error = np.abs(nav - n_avol) / n_avol
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded")
-
-    print(
-        " --> (it={4}) Running PRF profile with n={0:.3f}, nu={1:.3f} gives profile with <n>={2:.3f} and nu_n={3:.3f}".format(
-            nav_try, peaking_try, nav, n0nav, cont
-        )
-    )
-
-
-def findFunctionalRho_params(
-    cdf,
-    volav,
-    peaking,
-    lamb=None,
-    maxit=10000,
-    time=None,
-    useROACoordinate=True,
-    verbose=False,
-):
-    """
-    Because plasmas are not circular, aspect ratio is not infinite, the typical
-    functional forms do not give T as vol average and n as peaking.
-    This function returns T and n that should go into that formula in rho-coordinates.
-    """
-
-    if time is None:
-        it = -1
-    else:
-        it = np.argmin(np.abs(time - cdf.t))
-
-    if useROACoordinate:
-        x = cdf.roa[it]
-    else:
-        x = cdf.x[it]
-
-    error = 100.0
-    thr = 1e-5
-    cont = 0
-    Tav_try = volav
-    T0 = volav * peaking
-    eta = 0.01
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            Tav_try = Tav_try + ((volav - Tav) * eta)
-        peaking_try = T0 / Tav_try
-        if lamb is not None:
-            y, _ = MATHtools.profileMARS_PRF(peaking_try, Tav_try, lamb, rho=x)
-        else:
-            y, _ = MATHtools.profileMARS(peaking_try, Tav_try, rho=x)
-        Tav = volumeAverage_var(cdf.f, y)[it]
-        T0Tav = y[0] / Tav
-        error = np.abs(Tav - volav) / volav
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded")
-
-    print(
-        " --> (it={4}) Running MARS profile with T={0:.3f}, nu={1:.3f} gives profile with <T>={2:.3f} and nu_T={3:.3f}".format(
-            Tav_try, peaking_try, Tav, T0Tav, cont
-        )
-    )
-
-    return x, y
-
 
 def penaltyFunction(x, valuemin=-1e9, valuemax=1e9):
     if valuemax < 1e9:

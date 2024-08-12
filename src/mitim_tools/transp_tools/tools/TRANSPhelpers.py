@@ -8,22 +8,23 @@ from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
+
+
 class transp_run:
     def __init__(self, folder, shot, runid):
 
+        self.shot, self.runid = shot, runid
         self.folder = folder
         if not os.path.exists(self.folder):
             os.system(f"mkdir -p {self.folder}")
 
-        self.shot = shot
-        self.runid = runid
-
-        self.variables = {}
-        self.geometry = {}
+        # Initialize variables
+        self.variables, self.geometry = {}, {}
         self.nml = None
 
-        # Describe the time populator
+        # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
+        # ------------------------------------------
 
         self.quantities = {
             'Ip': ['cur','CUR',None, 1E6],
@@ -45,6 +46,11 @@ class transp_run:
         # Predictive namelists
         os.system(f"cp {folder_original}/*namelist.dat {self.folder}/.")
 
+    def ufiles_from(self, folder_original, ufiles):
+
+        for ufile in ufiles:
+            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
+
     def write_ufiles(self, structures_position = 0, radial_position = 0):
 
         self.times = np.sort(np.array(list(self.variables.keys())))
@@ -59,9 +65,7 @@ class transp_run:
             uf = UFILEStools.UFILEtransp(scratch=self.quantities[quantity][0])
 
             # Grab variables
-            t = []
-            x = []
-            z = []
+            t,x,z = [], [], []
             for time in self.times:
                 if self.quantities[quantity][1] in self.variables[time].keys():
                     x0 = self.variables[time][self.quantities[quantity][1]]['x']
@@ -71,7 +75,7 @@ class transp_run:
                     t.append(time)
 
             if len(x) == 0:
-                print('No data for ',quantity)
+                print('\t No data for ',quantity, typeMsg='w')
                 continue
 
             # If radial, interpolate to radial_position
@@ -114,7 +118,6 @@ class transp_run:
             self.folder,
             self.shot)
 
-
         if structures_position is not None:
 
             # --------------------------------------------------------------------------------------------
@@ -156,7 +159,7 @@ class transp_run:
         else:
             self.geometry_select = None
 
-    def define_timings(self,tinit,ftime,curr_diff=None, sawtooth = None):
+    def define_timings(self,tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None):
 
         if self.nml is None:
             print("Please read namelist first", typeMsg='w')
@@ -168,13 +171,24 @@ class transp_run:
         if sawtooth is None:
             sawtooth = curr_diff
 
-        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s)")
+        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s). Write AC: {writeAC}s")
 
         IOtools.changeValue(self.nml, "tinit", tinit, None, "=", MaintainComments=True)
         IOtools.changeValue(self.nml, "ftime", ftime, None, "=", MaintainComments=True)
         IOtools.changeValue(self.nml, "tqmoda(1)", curr_diff, None, "=", MaintainComments=True)
         IOtools.changeValue(self.nml, "t_sawtooth_on", sawtooth, None, "=", MaintainComments=True)
 
+        if writeAC is not None:
+            IOtools.changeValue(self.nml, "mthdavg", 2, None, "=", MaintainComments=True)
+
+            avgtim = 0.05  # Average before
+            IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
+
+            for var in ['outtim','fi_outtim','fe_outtim']:
+                IOtools.changeValue(self.nml, var, f"{writeAC:.3f},", None, "=", MaintainComments=True)
+
+            IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
+        
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
     # --------------------------------------------------------------------------------------------
@@ -201,6 +215,10 @@ class transp_run:
 
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
+
+    def icrf_on_time(self, time, power_MW):
+        self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
+        self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
 
     # --------------------------------------------------------------------------------------------
 
@@ -383,21 +401,35 @@ class transp_input_time:
             self.c_original.zeta[it],
             )
 
-    def _produce_structures_from_variables(self, R, a_orig, kappa, delta, zeta, z0, vv_relative_a=0.25, antenna_a=0.02):
+    def _produce_structures_from_variables(self, R, a, kappa, delta, zeta, z0, vv_relative_a=0.25, antenna_a=0.02):
 
-        # To fix
-        kappa = 1.0
-        zeta = 0.0
-        delta - 0.0
-    
-        a = a_orig * kappa * (1+vv_relative_a)
-        # -----
+        # --------------------------------------------------------------
+        # Antenna (namelist)
+        # --------------------------------------------------------------
+        print(f"\t- Populating Antenna in namelist, with rmin = {a}+{antenna_a}m")
+        self.antenna_R = R
+        self.antenna_r = a + antenna_a
+        self.antenna_t = 30.0
 
+        self.geometry['antenna_R'] = self.antenna_R
+        self.geometry['antenna_r'] = self.antenna_r
+        self.geometry['antenna_t'] = self.antenna_t
+
+        # --------------------------------------------------------------
+        # Limiters
+        # --------------------------------------------------------------
+
+        # To fix in the future---------------------------------
+        R, a, kappa, delta, zeta, z0 = R, R, 1.0, 0.0, 0.0, 0.0
+        # -----------------------------------------------------
+        
         vv = GEQtools.mitim_flux_surfaces()
-        thetas = np.linspace(0, 2*np.pi, 20, endpoint=True)
-
-        vv.reconstruct_from_miller(R, a, kappa, delta, zeta, z0, thetas = thetas)
+        vv.reconstruct_from_miller(R, a, kappa, delta, zeta, z0)
         rvv , zvv= vv.R[0,:], vv.Z[0,:]
+
+        # --------------------------------------------------------------
+        # VV moments
+        # --------------------------------------------------------------
 
         self.geometry['VVRmom'], self.geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = EQmodule.decomposeMoments(
             rvv*100.0 , zvv*100.0,
@@ -409,17 +441,7 @@ class transp_input_time:
 
         self.geometry['R_lim'], self.geometry['Z_lim'] = rvv, zvv
 
-        # --------------------------------------------------------------
-        # Antenna (namelist)
-        # --------------------------------------------------------------
-        print(f"\t- Populating Antenna in namelist, with rmin = {a_orig}+{antenna_a}m")
-        self.antenna_R = R
-        self.antenna_r = a_orig + antenna_a
-        self.antenna_t = 30.0
 
-        self.geometry['antenna_R'] = self.antenna_R
-        self.geometry['antenna_r'] = self.antenna_r
-        self.geometry['antenna_t'] = self.antenna_t
 
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
