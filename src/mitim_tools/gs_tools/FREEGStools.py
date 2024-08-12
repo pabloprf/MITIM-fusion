@@ -15,7 +15,7 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.transp_tools.tools import TRANSPhelpers
 from IPython import embed
-verbose_level = read_verbose_level()
+
 
 # From SPARC_PATH in PYTHONPATH
 try:
@@ -1097,7 +1097,7 @@ class Machine(freegs.machine.Machine):
                 "Current in {0} changed from {1:.2f}MA-t to {2:.2f}MA-t".format(
                     name, coil.current * 1e-6, coil.current * 1e-6 + dI.item() * 1e-6
                 ),
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
             coil.current += dI.item()
 

@@ -29,7 +29,7 @@ The resulting plasmastate file can then be used by profiles_gen without problems
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 
 class Plasmastate:
@@ -62,7 +62,7 @@ class Plasmastate:
         except:
             print(
                 " --> I could not remove extra fusion ions. Probably because TRANSP was run without fusion reactions",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
         self.removeExtraTHERMALIons(
             self.CDFfile_new + "_3", speciesNames=RemoveTHERMALIons
@@ -71,13 +71,13 @@ class Plasmastate:
         self.addShotNumber(self.CDFfile_new, shotNumber)
 
         print(
-            "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", verbose=verbose_level
+            "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", verbose=read_verbose_level()
         )
         print(
             f"{self.CDFfile} Plasmastate modified successfully",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
-        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", verbose=verbose_level)
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", verbose=read_verbose_level())
 
     # ------------------------------------------------------------------------
     # ------------------------------------------------------------------------
@@ -107,7 +107,7 @@ class Plasmastate:
         for namesDims in DimensionsVariables:
             print(
                 f"\n~~~~~~~~~ Working with dimension {namesDims}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
 
             for impName in impNamesUnique:
@@ -134,7 +134,7 @@ class Plasmastate:
                 else:
                     print(
                         f"Charge States for impurity {impName} could not be found...",
-                        verbose=verbose_level,
+                        verbose=read_verbose_level(),
                     )
 
         # ------------------------------------------------------------------
@@ -168,7 +168,7 @@ class Plasmastate:
         for namesDims in DimensionsVariables:
             print(
                 f"\n\n~~~~~~~~~ Working with dimension {namesDims}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
 
             for fastName in speciesNames:
@@ -193,7 +193,7 @@ class Plasmastate:
                 else:
                     print(
                         f"Fusion ion {fastName} could not be found...",
-                        verbose=verbose_level,
+                        verbose=read_verbose_level(),
                     )
 
         # ------------------------------------------------------------------
@@ -228,7 +228,7 @@ class Plasmastate:
         for namesDims in DimensionsVariables:
             print(
                 f"\n\n~~~~~~~~~ Working with dimension {namesDims}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
 
             for fastName in speciesNames:
@@ -253,7 +253,7 @@ class Plasmastate:
                 else:
                     print(
                         f"Fusion ion {fastName} could not be found...",
-                        verbose=verbose_level,
+                        verbose=read_verbose_level(),
                     )
 
         # ------------------------------------------------------------------
@@ -271,7 +271,7 @@ class Plasmastate:
     def addShotNumber(self, fileNew, num):
         print(
             f"\n\n~~~~~~~~~ Changing shot number specification to {num}",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         # ------------------------------------------------------------------
@@ -378,7 +378,7 @@ def removeSpecies_Dictionary(DataSet_orig, DimensionToChange, index=100, nameVar
         "\nOriginal species dimension: {0}, removing {1} in index {2}".format(
             DataSet_orig.dims[DimensionToChange], nameVar, index
         ),
-        verbose=verbose_level,
+        verbose=read_verbose_level(),
     )
 
     NewData = {}
@@ -396,7 +396,7 @@ def removeSpecies_Dictionary(DataSet_orig, DimensionToChange, index=100, nameVar
 
 
 def change_removeVariable(name, varOrig, index):
-    print(f"Changing \"{varOrig.attrs['long_name']}\"", verbose=verbose_level)
+    print(f"Changing \"{varOrig.attrs['long_name']}\"", verbose=read_verbose_level())
 
     newData = removeVariable(varOrig.data, index)
     NewDims = varOrig.dims
@@ -431,7 +431,7 @@ def lumpImpurities_Dictionary(
         "\nOriginal species dimension: {0}, Lumping from {1} to {2}".format(
             DataSet_orig.dims[DimensionToChange], startLump, endLump
         ),
-        verbose=verbose_level,
+        verbose=read_verbose_level(),
     )
 
     NewData = {}
@@ -463,7 +463,7 @@ def changeVariable_Lump(
         'Changing "{0}" because dimensions {1} for {2}'.format(
             varOrig.attrs["long_name"], varOrig.dims, name
         ),
-        verbose=verbose_level,
+        verbose=read_verbose_level(),
     )
 
     newData = lumpVariable(
@@ -533,7 +533,7 @@ def defineLumpingVectors(d, impName):
         # Calculate volume-average of impurity charge
         Zave = nZ2sum / nZsum
         Zave_mean = np.mean(Zave * volZone) / np.mean(volZone)
-        print(f"Zave = {Zave_mean / 1.6022e-19}", verbose=verbose_level)
+        print(f"Zave = {Zave_mean / 1.6022e-19}", verbose=read_verbose_level())
 
         # Calculate the average impurity density
         nZave = nZsum / Zave_mean

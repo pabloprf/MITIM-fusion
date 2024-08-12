@@ -439,7 +439,7 @@ class transp_input_time:
 
         self.geometry['VVRmom'], self.geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = EQmodule.decomposeMoments(
             rvv*100.0 , zvv*100.0,
-            r_ini = [R*100.0, a*100.0, 3.0], z_ini = [0.0, a*kappa*100.0, -3.0], verbose_level=5)
+            r_ini = [R*100.0, a*100.0, 3.0], z_ini = [0.0, a*kappa*100.0, -3.0], read_verbose_level() =5)
 
         # --------------------------------------------------------------
         # Limiters

@@ -6,7 +6,7 @@ from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 # --------------------------------------------------------------------------------------------------------
 #  Ready to go optimization tool: MV
@@ -55,7 +55,7 @@ def powell(
     f0,_ = func(xGuess0)
     print(
         f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}",
-        verbose=verbose_level,
+        verbose=read_verbose_level(),
     )
 
     sol = root(
@@ -65,11 +65,11 @@ def powell(
     f,_ = func(sol.x)
     print(
         f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}",
-        verbose=verbose_level,
+        verbose=read_verbose_level(),
     )
     # ************
 
-    if verbose_level in [4, 5]:
+    if read_verbose_level() in [4, 5]:
         print("\t- Results from scipy solver:", sol)
 
     x_best = torch.tensor(sol.x).to(xGuess)

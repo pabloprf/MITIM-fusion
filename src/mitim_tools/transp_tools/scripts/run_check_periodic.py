@@ -11,7 +11,7 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
 def main():
 
-    verbose_level = read_verbose_level()
+    
 
     # User inputs
     users = sys.argv[1:]

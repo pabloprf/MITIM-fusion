@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import GRAPHICStools, GUItools
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 """
 run ~/MITIM/mitim/im_tools/outputs/plotALL.py ./ 2 1 2

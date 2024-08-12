@@ -9,7 +9,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, StrategyOptions):
@@ -497,7 +497,7 @@ def pointsOperation_bounds(
         print(
             f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}"
         )
-        if verbose_level in [4, 5]:
+        if read_verbose_level() in [4, 5]:
             IOtools.printPoints(x_removeds, numtabs=2)
     else:
         print(

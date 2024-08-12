@@ -7,7 +7,7 @@ from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 
 def findOptima(fun, writeTrajectory=False):
@@ -128,7 +128,7 @@ def findOptima(fun, writeTrajectory=False):
             print(
                 "\n",
                 f"\t\t- ROOT from guessed point {i+1}/{x0.shape[0]}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
         x_res0 = optim.powell(
             channel_residual_evaluator,
