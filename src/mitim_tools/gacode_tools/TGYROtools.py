@@ -22,7 +22,7 @@ except:
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 """
 Same philosophy as the TGLFtools
@@ -4634,7 +4634,7 @@ class TGYROinput:
             for ikey in spec:
                 f.write(f"{ikey} = {spec[ikey]}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=verbose_level)
+        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=read_verbose_level())
 
 
 def print_options(physics_options, solver_options):

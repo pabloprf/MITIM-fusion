@@ -16,7 +16,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 
 def findOptima(fun, writeTrajectory=False):
@@ -688,7 +688,7 @@ def print_summary(i, ngen, fitness_best, individuals, each=50):
     if i % each == 0:
         print(
             f'\t\t\t\t* Generation {str(i).rjust(3)}/{ngen} ({str(individuals).rjust(4)} individuals), best acquisition = {f"{fitness_best:.2e}".rjust(9)}',
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
 

@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStoo
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
-verbose_level = read_verbose_level()
+
 
 
 def runTGYRO(
@@ -1066,7 +1066,7 @@ def runTGLF(
                     print(
                         f"\t!! file {file} ({original_file}) could not be retrived",
                         typeMsg="w",
-                        verbose=verbose_level,
+                        verbose=read_verbose_level(),
                     )
 
     if fineall:

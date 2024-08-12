@@ -202,7 +202,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
 
 def main():
 
-    verbose_level = read_verbose_level()
+    
 
 # ----- Inputs
 

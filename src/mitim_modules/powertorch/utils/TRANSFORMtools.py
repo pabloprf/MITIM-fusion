@@ -12,7 +12,7 @@ from IPython import embed
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-verbose_level = read_verbose_level()
+
 
 def powerstate_to_gacode(
     self,

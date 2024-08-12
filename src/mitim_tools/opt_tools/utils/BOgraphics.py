@@ -19,7 +19,7 @@ from mitim_tools import __mitimroot__
 
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 
 # ----------------------------------------------------------------------------------------------------
@@ -1202,7 +1202,7 @@ class optimization_data:
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
         print(
             f"\t* Reading points from file ({self.file})",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         self.data = pd.read_csv(self.file)
@@ -1300,7 +1300,7 @@ class optimization_results:
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* optimization_results updated", verbose=verbose_level)
+        print("\t* optimization_results updated", verbose=read_verbose_level())
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")

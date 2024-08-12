@@ -17,15 +17,7 @@ import numpy as np
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
-
-verbose_level = read_verbose_level()
-
-if verbose_level in [4, 5]:
-    quiet_tag = ""
-else:
-    quiet_tag = "-q "
 
 UseCUDAifAvailable = True
 

@@ -16,7 +16,7 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
-verbose_level = read_verbose_level()
+
 
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
@@ -1391,7 +1391,7 @@ class PROFILES_GACODE:
 
         print(
             f"\t\t~ File {IOtools.clipstr(file)} written",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         # Update file

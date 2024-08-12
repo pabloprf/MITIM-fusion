@@ -7,7 +7,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 
 def findOptima(fun, writeTrajectory=False):
@@ -58,7 +58,7 @@ def findOptima(fun, writeTrajectory=False):
     options = {
         "maxiter": iterations,
         "sample_around_best": True,
-        "disp": 50 if verbose_level in [4, 5] else False,
+        "disp": 50 if read_verbose_level() in [4, 5] else False,
         "seed": fun.seed,
     }  # , "nonnegative" : True}
 

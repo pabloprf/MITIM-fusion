@@ -682,10 +682,10 @@ def findFileByExtension(
     else:
         from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-        verbose_level = read_verbose_level()
+        
         printMsg(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
         fileReturn = None
 
@@ -831,7 +831,7 @@ def findValue(
         if raiseException:
             raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
         else:
-            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=verbose_level) #,typeMsg='w')
+            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=read_verbose_level()) #,typeMsg='w')
             return None
 
 

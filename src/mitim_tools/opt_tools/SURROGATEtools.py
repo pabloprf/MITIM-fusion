@@ -14,7 +14,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 UseCUDAifAvailable = True
 
@@ -82,16 +82,16 @@ class surrogate_model:
         if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
             print(
                 f"\t- Noise (variance) has one value only ({Yvaror}), assuming constant for all samples and outputs in absolute terms",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
             Yvaror = Yor * 0.0 + Yvaror
 
         self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
 
         # ---------- Print ----------
-        print("\t- Surrogate options:", verbose=verbose_level)
+        print("\t- Surrogate options:", verbose=read_verbose_level())
         for i in self.surrogateOptions:
-            print(f"\t\t{i:20} = {self.surrogateOptions[i]}", verbose=verbose_level)
+            print(f"\t\t{i:20} = {self.surrogateOptions[i]}", verbose=read_verbose_level())
 
         # --------------------------------------------------------------------
         # Eliminate points if needed (not from the "added" set)
@@ -100,7 +100,7 @@ class surrogate_model:
         if len(self.avoidPoints) > 0:
             print(
                 f"\t- Fitting without considering points: {self.avoidPoints}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
                 typeMsg="w",
             )
 
@@ -267,7 +267,7 @@ class surrogate_model:
 
         print(
             f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         """
@@ -382,7 +382,7 @@ class surrogate_model:
         if approx_mll:
             print(
                 f"\t* Using approximate MLL because x has {len(train_x)} elements",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
         # --------------------------------------------------
 
@@ -403,7 +403,7 @@ class surrogate_model:
             optimizer_kwargs={
                 "method": "L-BFGS-B",
                 "bounds": None,
-                "options": {"disp": verbose_level == 5},
+                "options": {"disp": read_verbose_level() == 5},
                 "callback": callback,
             },
         )
@@ -807,8 +807,8 @@ class surrogate_model:
             "loss_final": track_fval[-1],
         }
 
-        print("\t- Fitting summary:", verbose=verbose_level)
-        if verbose_level in [4, 5]:
+        print("\t- Fitting summary:", verbose=read_verbose_level())
+        if read_verbose_level() in [4, 5]:
             print("\t\t* Model raw parameters:")
             for param_name, param in self.gpmodel.named_parameters():
                 BOgraphics.printParam(param_name, param, extralab="\t\t\t")
