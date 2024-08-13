@@ -1046,6 +1046,9 @@ def create_slurm_execution_files(
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
 
+    commandSBATCH.append("#SBATCH --profile=all")
+    
+
     commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
 
     # ******* Commands
