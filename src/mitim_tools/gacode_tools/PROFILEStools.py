@@ -16,8 +16,6 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
-
-
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
 except ImportError:

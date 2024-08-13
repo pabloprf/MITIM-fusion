@@ -78,7 +78,7 @@ class transp_run:
                     t.append(time)
 
             if len(x) == 0:
-                print('\t No data for ',quantity, typeMsg='w')
+                print(f'\t\t\t- No data for {quantity}, not writing UFILE', typeMsg='w')
                 continue
 
             # If radial, interpolate to radial_position
@@ -140,7 +140,7 @@ class transp_run:
                 IOtools.changeValue(self.nml, "VVRmom", VVRmom_str, None, "=", MaintainComments=True)
                 IOtools.changeValue(self.nml, "VVZmom", VVZmom_str, None, "=", MaintainComments=True)
             else:
-                print("\t- Namelist not read, VV geometry not written", typeMsg='w')
+                print("\t- Namelist not available in this transp instance, VV geometry not written", typeMsg='w')
 
             # --------------------------------------------------------------------------------------------
             # Write Limiters in ufile
@@ -157,7 +157,7 @@ class transp_run:
                 IOtools.changeValue(self.nml, "rmnicha", 100.0*self.geometry_select['antenna_r'], None, "=", MaintainComments=True)
                 IOtools.changeValue(self.nml, "thicha", self.geometry_select['antenna_t'], None, "=", MaintainComments=True)
             else:
-                print("\t- Namelist not read, Antenna geometry not written", typeMsg='w')
+                print("\t- Namelist not available in this transp instance, Antenna geometry not written", typeMsg='w')
 
         else:
             self.geometry_select = None
@@ -245,7 +245,8 @@ class transp_run:
             minutesAllocation = minutesAllocation)
 
         self.t.run()
-        self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin)
+        if checkMin is not None:
+            self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin)
 
     def plot(self, case='run1'):
 
@@ -698,7 +699,7 @@ def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
         ax.plot(x, y, "-o", markersize=0.5, lw=0.5, c="k", label="lims")
 
     print(
-        f">> Limiters UFile created in ...{UFilePath[np.max([-40, -len(UFilePath)]):]}"
+        f"\t- Limiters UFile created in ...{UFilePath[np.max([-40, -len(UFilePath)]):]}"
     )
 
 def writeBoundary(nameFile, rs_orig, zs_orig):
