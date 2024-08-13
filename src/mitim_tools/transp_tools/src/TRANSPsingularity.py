@@ -6,7 +6,8 @@ import numpy as np
 from mitim_tools.transp_tools.src import TRANSPmain
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools.utils import NMLtools
+from mitim_tools.transp_tools.utils import TRANSPhelpers
+from mitim_tools.transp_tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -224,22 +225,22 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
             self.fetch(label="run1", retrieveAC=retrieveAC)
 
-        # If run is for some reason stuck and does not admit looks, repeat process
-        elif self.statusStop == 10:
-            print(
-                f" >>>>>>>>>>> Run {self.runid} does not admit looks, removing and running loop again"
-            )
-            self.delete(howManyCancel=2, MinWaitDeletion=2)
+        # # If run is for some reason stuck and does not admit looks, repeat process
+        # elif self.statusStop == 10:
+        #     print(
+        #         f" >>>>>>>>>>> Run {self.runid} does not admit looks, removing and running loop again"
+        #     )
+        #     self.delete(howManyCancel=2, MinWaitDeletion=2)
 
-            HasItFailed = self.automatic(
-                convCriteria,
-                minWaitLook=minWaitLook,
-                timeStartPrediction=timeStartPrediction,
-                checkForActive=checkForActive,
-                phasetxt=phasetxt,
-                automaticProcess=automaticProcess,
-                retrieveAC=retrieveAC,
-            )
+        #     HasItFailed = self.automatic(
+        #         convCriteria,
+        #         minWaitLook=minWaitLook,
+        #         timeStartPrediction=timeStartPrediction,
+        #         checkForActive=checkForActive,
+        #         phasetxt=phasetxt,
+        #         automaticProcess=automaticProcess,
+        #         retrieveAC=retrieveAC,
+        #     )
 
         # If run has sucessfully run and converged
         else:
@@ -406,7 +407,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         transp_job.launchSlurm = lS  # Back to original
 
         # Interpret
-        NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
+        TRANSPhelpers.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
 
         #
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added

@@ -8,6 +8,10 @@ from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStool
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
+# ----------------------------------------------------------------------------------------------------------
+# TRANSP object utilities
+# ----------------------------------------------------------------------------------------------------------
+
 
 class transp_run:
     def __init__(self, folder, shot, runid):
@@ -577,8 +581,9 @@ class transp_input_time:
         
         self._populate(time)
 
+
 # ----------------------------------------------------------------------------------------------------------
-# Utilities (belonging original to EQmodule.py)
+# Utilities (belonging original to EQmodule.py or namelist)
 # ----------------------------------------------------------------------------------------------------------
 
 def generateMRY(
@@ -877,4 +882,39 @@ def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -
             zsum = np.sum(abs(z_eval - Z))
 
     return rmom, zmom, r_eval, z_eval
+
+def interpret_trdat(file):
+    if not os.path.exists(file):
+        print("TRDAT was not generated. It will likely fail!", typeMsg="q")
+    else:
+        with open(file, "r") as f:
+            aux = f.readlines()
+
+        file_plain = "".join(aux)
+
+        errors = [pos for pos, char in enumerate(file_plain) if char == "?"]
+
+        truly_error = False
+        for cont, i in enumerate(errors):
+            if (i == 0 or errors[cont - 1] < i - 1) and file_plain[
+                i : i + 4
+            ] != "????":  # Because that's an TOK error, it would be fine
+                truly_error = True
+
+        if truly_error:
+            print(
+                '\t- Detected "?" in TRDAT output, printing tr_dat around errors:',
+                typeMsg="w",
+            )
+            print("-------------------------------", typeMsg="w")
+            for i in range(len(aux)):
+                if ("?" in aux[i]) and ("????" not in aux[i]):
+                    print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
+                    print("-------------------------------", typeMsg="w")
+            if not print(
+                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
+            ):
+                embed()
+        else:
+            print("\t- TRDAT output did not show any error", typeMsg="i")
 

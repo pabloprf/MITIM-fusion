@@ -582,7 +582,6 @@ def ICRFantennas(MHz):
         "phicha(1,1) = 0,180   		 ! Phasing of antenna elements (deg)",
         "phicha(1,2) = 0,180",
         "",
-        "!==================================================================",
     ]
 
     return "\n".join(lines)

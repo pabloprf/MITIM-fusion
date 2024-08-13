@@ -1,9 +1,6 @@
-import datetime, time, os
-import matplotlib.pyplot as plt
-import numpy as np
-from IPython import embed
+import os
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.transp_tools.utils import NMLtools
+from mitim_tools.transp_tools import NMLtools
 
 
 def populateFromMDS(self, runidMDS):
@@ -68,10 +65,61 @@ def defaultbasedMDS(self, outtims=[], PRFmodified=False):
             outtims_new.append(i)
 
     # Modify according to TRANSPnamelist_dict
-    NMLtools.changeNamelist(
+    changeNamelist(
         self.nml_file,
         self.shotnumber,
         TRANSPnamelist_dict,
         self.FolderTRANSP,
         outtims=outtims_new,
     )
+
+
+def changeNamelist(
+    namelistPath, nameBaseShot, TRANSPnamelist, FolderTRANSP, outtims=[]
+    ):
+    # Change shot number
+    IOtools.changeValue(
+        namelistPath, "nshot", nameBaseShot, None, "=", MaintainComments=True
+    )
+
+    # TRANSP fixed namelist + those parameters changed
+    for itag in TRANSPnamelist:
+        IOtools.changeValue(
+            namelistPath, itag, TRANSPnamelist[itag], None, "=", MaintainComments=True
+        )
+
+    # Add inputdir to namelist
+    with open(namelistPath, "a") as f:
+        f.write("inputdir='" + os.path.abspath(FolderTRANSP) + "'\n")
+
+    # Change PTR templates
+    IOtools.changeValue(
+        namelistPath,
+        "pt_template",
+        f'"{os.path.abspath(FolderTRANSP)}/ptsolver_namelist.dat"',
+        None,
+        "=",
+        CommentChar=None,
+    )
+    IOtools.changeValue(
+        namelistPath,
+        "tglf_template",
+        f'"{os.path.abspath(FolderTRANSP)}/tglf_namelist.dat"',
+        None,
+        "=",
+        CommentChar=None,
+    )
+    IOtools.changeValue(
+        namelistPath,
+        "glf23_template",
+        f'"{os.path.abspath(FolderTRANSP)}/glf23_namelist.dat"',
+        None,
+        "=",
+        CommentChar=None,
+    )
+
+    # Add outtims
+    if len(outtims) > 0:
+        NMLtools.addOUTtimes(namelistPath, outtims)
+
+

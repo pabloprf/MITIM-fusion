@@ -60,7 +60,6 @@ def ICRFantennas(MHz):
         f"nnphi     = 30        ! Nphi values",
         f"wnphi     = 1.        ! Nphi power weightings",
         f"",
-        f"!==================================================================",
     ]
 
     return "\n".join(lines)

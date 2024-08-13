@@ -6,318 +6,6 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
-
-def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
-    nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
-
-    # Change inputdir
-    IOtools.changeValue(
-        nml_file, "inputdir", f"'{FolderRun}'", [""], "=", CommentChar=None
-    )
-
-    # Change PTR templates, if they are aleady there
-    if (
-        IOtools.findValue(
-            nml_file, "pt_template", SplittingChar="=", raiseException=False
-        )
-        is not None
-    ):
-        IOtools.changeValue(
-            nml_file,
-            "pt_template",
-            f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
-            [""],
-            "=",
-            CommentChar=None,
-        )
-    if (
-        IOtools.findValue(
-            nml_file, "tglf_template", SplittingChar="=", raiseException=False
-        )
-        is not None
-    ):
-        IOtools.changeValue(
-            nml_file,
-            "tglf_template",
-            f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
-            [""],
-            "=",
-            CommentChar=None,
-        )
-    if (
-        IOtools.findValue(
-            nml_file, "glf23_template", SplittingChar="=", raiseException=False
-        )
-        is not None
-    ):
-        IOtools.changeValue(
-            nml_file,
-            "glf23_template",
-            f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
-            [""],
-            "=",
-            CommentChar=None,
-        )
-
-    # Change shot number
-    IOtools.changeValue(nml_file, "nshot", shotnumber, [""], "=", CommentChar=None)
-
-    # Correct namelist just in case
-    IOtools.correctNML(nml_file)
-
-
-def interpret_trdat(file):
-    if not os.path.exists(file):
-        print("TRDAT was not generated. It will likely fail!", typeMsg="q")
-    else:
-        with open(file, "r") as f:
-            aux = f.readlines()
-
-        file_plain = "".join(aux)
-
-        errors = [pos for pos, char in enumerate(file_plain) if char == "?"]
-
-        truly_error = False
-        for cont, i in enumerate(errors):
-            if (i == 0 or errors[cont - 1] < i - 1) and file_plain[
-                i : i + 4
-            ] != "????":  # Because that's an TOK error, it would be fine
-                truly_error = True
-
-        if truly_error:
-            print(
-                '\t- Detected "?" in TRDAT output, printing tr_dat around errors:',
-                typeMsg="w",
-            )
-            print("-------------------------------", typeMsg="w")
-            for i in range(len(aux)):
-                if ("?" in aux[i]) and ("????" not in aux[i]):
-                    print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
-                    print("-------------------------------", typeMsg="w")
-            if not print(
-                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
-            ):
-                embed()
-        else:
-            print("\t- TRDAT output did not show any error", typeMsg="i")
-
-
-"""
-TRANSP nml constructor
-----------------------
-This routine constructs default namelist based on a tokamak.
-Once written, it can be modified with changeValues, which is something that MITIM will do anyway
-"""
-
-
-class default_nml:
-    def __init__(
-        self,
-        shotnum,
-        tok,
-        PlasmaFeatures={
-            "ICH": True,
-            "ECH": False,
-            "NBI": False,
-            "ASH": False,
-            "Fuel": 2.5,
-        },
-        pservers=[1, 1, 0],
-        TGLFsettings=5,
-    ):
-        coeffsSaw = [1.0, 3.0, 1.0, 0.4]
-        useMMX = False
-
-        Pich, Pech, Pnbi, AddHe4ifDT, Fuel = (
-            PlasmaFeatures["ICH"],
-            PlasmaFeatures["ECH"],
-            PlasmaFeatures["NBI"],
-            PlasmaFeatures["ASH"],
-            PlasmaFeatures["Fuel"],
-        )
-
-        DTplasma = Fuel == 2
-
-        Ufiles = {
-            "lim": ["LIM", None],
-            f"qpr": ["QPR", -5],
-            "cur": ["CUR", None],
-            "vsf": ["VSF", None],
-            "rbz": ["RBZ", None],
-            f"ter": ["TEL", -5],
-            "ti2": ["TIO", -5],
-            "ner": ["NEL", -5],
-            "zf2": ["ZF2", -5],
-            f"gfd": ["GFD", None],
-        }
-
-        if useMMX:
-            Ufiles["mmx"] = ["MMX", None]
-        else:
-            Ufiles["mry"] = ["MRY", None]
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~ TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-
-        isolver = False
-
-        grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~ Differences between tokamaks
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-
-        if tok == "SPARC" or tok == "ARC":
-            Ufiles["df4"], Ufiles["vc4"] = ["DHE4", -5], ["VHE4", -5]
-
-            timeStep = 1e-2  # Time step for DTMAXG and the heating modules
-            msOut = 1e0
-            nteq_mode = 2
-            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
-            tokred = "sprc"
-            UFrotation = False
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-        if tok == "AUG":
-            timeStep = 1e-2
-            msOut = 1e-1
-            nteq_mode = 2
-            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
-            tokred = "aug"
-            UFrotation = True
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-        if tok == "CMOD":
-            timeStep = 1e-3
-            msOut = 1.0  # 1E-1
-            nteq_mode = 5
-            taupD, taupZ, taupmin = 30e-3, 20e-3, 1e6
-            tokred = "cmod"
-            UFrotation = True
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-            coeffsSaw[1] = 2.0  # If not, 15 condition triggered too much
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Primary namelist
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        nzones = 100  # multiple of nzones_distfun
-        nzones_energetic = 50  # multiple of nzones_distfun
-        nzones_distfun = 25
-
-        self.nml = transp_nml(shotnum=shotnum)
-        self.nml.populate(
-            tokamak=tok,
-            tok=tokred,
-            nzones=nzones,
-            nzones_energetic=nzones_energetic,
-            nzones_distfun=nzones_distfun,
-            Pich=Pich,
-            Pech=Pech,
-            Pnbi=Pnbi,
-            pservers=pservers,
-            DTplasma=DTplasma,
-            AddHe4ifDT=AddHe4ifDT,
-            Ufiles=Ufiles,
-            UFrotation=UFrotation,
-            msOut=msOut,
-            timeStep=timeStep,
-            nteq_mode=nteq_mode,
-            taupD=taupD,
-            taupZ=taupZ,
-            taupmin=taupmin,
-            isolver=isolver,
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Predictive
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        self.nml = transp_nml_ptsolver(
-            self.nml.contents,
-            TGLFsettings=TGLFsettings,
-            grTGLF=grTGLF,
-            Te_edge=Te_edge,
-            Ti_edge=Ti_edge,
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Heating Namelists
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        # ICRF
-        if Pich:
-            self.nml_ich = transp_nml_heating(
-                Pich=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_ich = ""
-
-        # ECRF
-        if Pech:
-            self.nml_ech = transp_nml_heating(
-                Pech=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_ech = ""
-
-        # NBI
-        if Pnbi:
-            self.nml_nbi = transp_nml_heating(
-                Pnbi=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_nbi = ""
-
-    def write(self, BaseFile="./10000TR.DAT"):
-        self.BaseFile = BaseFile
-
-        with open(self.BaseFile, "w") as f:
-            f.write(self.nml.contents)
-        IOtools.correctNML(self.BaseFile)
-
-        with open(self.BaseFile + "_ICRF", "w") as f:
-            f.write(self.nml_ich)
-        with open(self.BaseFile + "_ECRF", "w") as f:
-            f.write(self.nml_ech)
-        with open(self.BaseFile + "_NBI", "w") as f:
-            f.write(self.nml_nbi)
-        with open(self.BaseFile + "_LH", "w") as f:
-            f.write("")
-
-        a, b = IOtools.reducePathLevel(self.BaseFile)
-        if self.nml.contents_ptr_ptsolver is not None:
-            with open(a + "ptsolver_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_ptsolver)
-        if self.nml.contents_ptr_tglf is not None:
-            with open(a + "tglf_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_tglf)
-        if self.nml.contents_ptr_glf23 is not None:
-            with open(a + "glf23_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_glf23)
-
-    def appendNMLs(self):
-        possibleAppends = ["ICRF", "ECRF", "NBI", "LH"]
-
-        with open(self.BaseFile, "a") as fo:
-            for i in possibleAppends:
-                try:
-                    with open(self.BaseFile + "_" + i, "r") as fi:
-                        fo.write(fi.read())
-                    os.system("rm " + self.BaseFile + "_" + i)
-                except:
-                    print(f"\t- Could not append {i} file")
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# NAMELIST CONSTRUCTORS
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 class transp_nml:
     def __init__(self, inputdir=None, shotnum=175844):
 
@@ -379,9 +67,17 @@ class transp_nml:
             "df4": ["DHE4", -5],
             "vc4": ["VHE4", -5],
         },
+        PTsolver = False,
+        xbounds=[0.95, 0.95, 0.95],
+        xminTrick=0.2,
+        grTGLF=False,
+        Te_edge=80.0,
+        Ti_edge=80.0,
+        TGLFsettings=5
         ):
 
         self.contents = ""
+        self.timeStep = timeStep
 
         self.addHeader(self.shotnum, inputdir=self.inputdir)
         self.addTimings(
@@ -393,7 +89,7 @@ class transp_nml:
             nzones=nzones,
             nzones_energetic=nzones_energetic,
             nzones_distfun=nzones_distfun,
-            timeStep=timeStep,
+            timeStep=self.timeStep,
         )
         self.addPB()
         if not Pich:
@@ -426,6 +122,24 @@ class transp_nml:
         self.addRotation(UFrotation, rotating_impurity)
         self.addVessel(tokamak, LimitersInNML=LimitersInNML)
         self.addUFILES(Ufiles, Pich=Pich, Pech=Pech, Pnbi=Pnbi)
+
+        if Pich:
+            self.addICRF(tokamak)
+        if Pech:
+            self.addECRF(tokamak)
+        if Pnbi:
+            self.addNBI(tokamak)
+
+        if PTsolver:
+            self.addPTSOLVER(     
+                xbounds=xbounds,
+                xminTrick=xminTrick,
+                grTGLF=grTGLF,
+                Te_edge=Te_edge,
+                Ti_edge=Ti_edge,
+                TGLFsettings=TGLFsettings
+                )
+
 
     def addHeader(self, shotnum, inputdir=None):
         lines = [
@@ -1254,33 +968,6 @@ class transp_nml:
                 lines = [f"nri{i}	 = {Ufiles[i][1]}", f"nsy{i}	 = 0", f""]
                 self.contents += "\n".join(lines) + "\n"
 
-    def write(self, runid):
-
-        self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
-
-        with open(self.file, "w") as file:
-            file.write(self.contents)
-
-
-class transp_nml_heating:
-    def __init__(
-        self,
-        contents="",
-        Pich=False,
-        Pech=False,
-        Pnbi=False,
-        tokamak="SPARC",
-        timeStep=0.01,
-        ):
-        self.contents = contents
-
-        if Pich:
-            self.addICRF(tokamak, timeStep=timeStep)
-        if Pech:
-            self.addECRF(tokamak, Pech=Pech)
-        if Pnbi:
-            self.addNBI(tokamak, Pnbi=Pnbi, timeStep=timeStep)
-
     def addICRF(self, tokamak, timeStep=0.001):
         theta_points = int(2**7)  # 128, default: 64
         radial_points = 320  # 320, default: 128
@@ -1435,18 +1122,14 @@ class transp_nml_heating:
         contentlines = NBIbeams()
         self.contents += contentlines + "\n"
 
-class transp_nml_ptsolver:
-    def __init__(
-        self,
-        contents,
+    def addPTSOLVER(self,
         xbounds=[0.95, 0.95, 0.95],
         xminTrick=0.2,
         grTGLF=False,
         Te_edge=80.0,
         Ti_edge=80.0,
-        TGLFsettings=5,
-        ):
-        self.contents = contents
+        TGLFsettings=5):
+
         self.contents_ptr_glf23 = None
         self.contents_ptr_tglf = None
         self.contents_ptr_ptsolver = None
@@ -1679,54 +1362,18 @@ class transp_nml_ptsolver:
         self.contents_ptr_tglf = "\n".join(lines) + "\n"
 
 
-def changeNamelist(
-    namelistPath, nameBaseShot, TRANSPnamelist, FolderTRANSP, outtims=[]
-    ):
-    # Change shot number
-    IOtools.changeValue(
-        namelistPath, "nshot", nameBaseShot, None, "=", MaintainComments=True
-    )
 
-    # TRANSP fixed namelist + those parameters changed
-    for itag in TRANSPnamelist:
-        IOtools.changeValue(
-            namelistPath, itag, TRANSPnamelist[itag], None, "=", MaintainComments=True
-        )
+    def write(self, runid):
 
-    # Add inputdir to namelist
-    with open(namelistPath, "a") as f:
-        f.write("inputdir='" + os.path.abspath(FolderTRANSP) + "'\n")
+        self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
 
-    # Change PTR templates
-    IOtools.changeValue(
-        namelistPath,
-        "pt_template",
-        f'"{os.path.abspath(FolderTRANSP)}/ptsolver_namelist.dat"',
-        None,
-        "=",
-        CommentChar=None,
-    )
-    IOtools.changeValue(
-        namelistPath,
-        "tglf_template",
-        f'"{os.path.abspath(FolderTRANSP)}/tglf_namelist.dat"',
-        None,
-        "=",
-        CommentChar=None,
-    )
-    IOtools.changeValue(
-        namelistPath,
-        "glf23_template",
-        f'"{os.path.abspath(FolderTRANSP)}/glf23_namelist.dat"',
-        None,
-        "=",
-        CommentChar=None,
-    )
+        with open(self.file, "w") as file:
+            file.write(self.contents)
 
-    # Add outtims
-    if len(outtims) > 0:
-        addOUTtimes(namelistPath, outtims)
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# NAMELIST utilities
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def addOUTtimes(namelistPath, outtims, differenceBetween=0.0):
     strNBI, strTOR, strECH = "", "", ""
@@ -1764,7 +1411,6 @@ def addOUTtimes(namelistPath, outtims, differenceBetween=0.0):
     IOtools.changeValue(
         namelistPath, "nldep0_gather", "T", None, "=", MaintainComments=True
     )
-
 
 def appendUpdates(
     namelistPath,
@@ -1945,21 +1591,267 @@ def appendUpdates(
             namelistPath, "user_chi0", chi0_array, None, "=", MaintainComments=True
         )
 
+def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
+    nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
 
-def addParametersBeforeUpdate(file, TRANSPvars):
-    with open(file, "r") as f:
-        lines = f.readlines()
+    # Change inputdir
+    IOtools.changeValue(
+        nml_file, "inputdir", f"'{FolderRun}'", [""], "=", CommentChar=None
+    )
 
-    lines_n = ""
-    done = False
-    for i in lines:
-        if "~update" in i and not done:
-            for ikey in TRANSPvars:
-                lines_n += f"{ikey}={TRANSPvars[ikey]}\n"
-            done = True
-        lines_n += i
+    # Change PTR templates, if they are aleady there
+    if (
+        IOtools.findValue(
+            nml_file, "pt_template", SplittingChar="=", raiseException=False
+        )
+        is not None
+    ):
+        IOtools.changeValue(
+            nml_file,
+            "pt_template",
+            f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
+            [""],
+            "=",
+            CommentChar=None,
+        )
+    if (
+        IOtools.findValue(
+            nml_file, "tglf_template", SplittingChar="=", raiseException=False
+        )
+        is not None
+    ):
+        IOtools.changeValue(
+            nml_file,
+            "tglf_template",
+            f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
+            [""],
+            "=",
+            CommentChar=None,
+        )
+    if (
+        IOtools.findValue(
+            nml_file, "glf23_template", SplittingChar="=", raiseException=False
+        )
+        is not None
+    ):
+        IOtools.changeValue(
+            nml_file,
+            "glf23_template",
+            f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
+            [""],
+            "=",
+            CommentChar=None,
+        )
 
-    with open(file, "w") as f:
-        f.write(lines_n)
+    # Change shot number
+    IOtools.changeValue(nml_file, "nshot", shotnumber, [""], "=", CommentChar=None)
 
-    print(f"--> Modified file {file}")
+    # Correct namelist just in case
+    IOtools.correctNML(nml_file)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Defaults
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class default_nml:
+    def __init__(
+        self,
+        shotnum,
+        tok,
+        PlasmaFeatures={
+            "ICH": True,
+            "ECH": False,
+            "NBI": False,
+            "ASH": False,
+            "Fuel": 2.5,
+        },
+        pservers=[1, 1, 0],
+        TGLFsettings=5,
+    ):
+        coeffsSaw = [1.0, 3.0, 1.0, 0.4]
+        useMMX = False
+
+        Pich, Pech, Pnbi, AddHe4ifDT, Fuel = (
+            PlasmaFeatures["ICH"],
+            PlasmaFeatures["ECH"],
+            PlasmaFeatures["NBI"],
+            PlasmaFeatures["ASH"],
+            PlasmaFeatures["Fuel"],
+        )
+
+        DTplasma = Fuel == 2
+
+        Ufiles = {
+            "lim": ["LIM", None],
+            f"qpr": ["QPR", -5],
+            "cur": ["CUR", None],
+            "vsf": ["VSF", None],
+            "rbz": ["RBZ", None],
+            f"ter": ["TEL", -5],
+            "ti2": ["TIO", -5],
+            "ner": ["NEL", -5],
+            "zf2": ["ZF2", -5],
+            f"gfd": ["GFD", None],
+        }
+
+        if useMMX:
+            Ufiles["mmx"] = ["MMX", None]
+        else:
+            Ufiles["mry"] = ["MRY", None]
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~ TGLF
+        # ~~~~~~~~~~~~~~~~~~~~~~~
+
+        isolver = False
+
+        grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~
+        # ~~~~ Differences between tokamaks
+        # ~~~~~~~~~~~~~~~~~~~~~~~
+
+        if tok == "SPARC" or tok == "ARC":
+            Ufiles["df4"], Ufiles["vc4"] = ["DHE4", -5], ["VHE4", -5]
+
+            timeStep = 1e-2  # Time step for DTMAXG and the heating modules
+            msOut = 1e0
+            nteq_mode = 2
+            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
+            tokred = "sprc"
+            UFrotation = False
+            Te_edge = 80.0
+            Ti_edge = 80.0
+
+        if tok == "AUG":
+            timeStep = 1e-2
+            msOut = 1e-1
+            nteq_mode = 2
+            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
+            tokred = "aug"
+            UFrotation = True
+            Te_edge = 80.0
+            Ti_edge = 80.0
+
+        if tok == "CMOD":
+            timeStep = 1e-3
+            msOut = 1.0  # 1E-1
+            nteq_mode = 5
+            taupD, taupZ, taupmin = 30e-3, 20e-3, 1e6
+            tokred = "cmod"
+            UFrotation = True
+            Te_edge = 80.0
+            Ti_edge = 80.0
+
+            coeffsSaw[1] = 2.0  # If not, 15 condition triggered too much
+
+        # ~~~~~~~~~~~~~~~~~~~~~~
+        # Primary namelist
+        # ~~~~~~~~~~~~~~~~~~~~~~
+
+        nzones = 100  # multiple of nzones_distfun
+        nzones_energetic = 50  # multiple of nzones_distfun
+        nzones_distfun = 25
+
+        self.nml = transp_nml(shotnum=shotnum)
+        self.nml.populate(
+            tokamak=tok,
+            tok=tokred,
+            nzones=nzones,
+            nzones_energetic=nzones_energetic,
+            nzones_distfun=nzones_distfun,
+            Pich=Pich,
+            Pech=Pech,
+            Pnbi=Pnbi,
+            pservers=pservers,
+            DTplasma=DTplasma,
+            AddHe4ifDT=AddHe4ifDT,
+            Ufiles=Ufiles,
+            UFrotation=UFrotation,
+            msOut=msOut,
+            timeStep=timeStep,
+            nteq_mode=nteq_mode,
+            taupD=taupD,
+            taupZ=taupZ,
+            taupmin=taupmin,
+            isolver=isolver,
+        )
+
+        # ~~~~~~~~~~~~~~~~~~~~~~
+        # Predictive
+        # ~~~~~~~~~~~~~~~~~~~~~~
+
+        self.nml.addPTSOLVER(
+            TGLFsettings=TGLFsettings,
+            grTGLF=grTGLF,
+            Te_edge=Te_edge,
+            Ti_edge=Ti_edge,
+        )
+
+        # ~~~~~~~~~~~~~~~~~~~~~~
+        # Heating Namelists
+        # ~~~~~~~~~~~~~~~~~~~~~~
+
+        # ICRF
+        if Pich:
+            self.nml_ich = transp_nml_heating(
+                Pich=True, tokamak=tok, timeStep=timeStep
+            ).contents
+        else:
+            self.nml_ich = ""
+
+        # ECRF
+        if Pech:
+            self.nml_ech = transp_nml_heating(
+                Pech=True, tokamak=tok, timeStep=timeStep
+            ).contents
+        else:
+            self.nml_ech = ""
+
+        # NBI
+        if Pnbi:
+            self.nml_nbi = transp_nml_heating(
+                Pnbi=True, tokamak=tok, timeStep=timeStep
+            ).contents
+        else:
+            self.nml_nbi = ""
+
+    def write(self, BaseFile="./10000TR.DAT"):
+        self.BaseFile = BaseFile
+
+        with open(self.BaseFile, "w") as f:
+            f.write(self.nml.contents)
+        IOtools.correctNML(self.BaseFile)
+
+        with open(self.BaseFile + "_ICRF", "w") as f:
+            f.write(self.nml_ich)
+        with open(self.BaseFile + "_ECRF", "w") as f:
+            f.write(self.nml_ech)
+        with open(self.BaseFile + "_NBI", "w") as f:
+            f.write(self.nml_nbi)
+        with open(self.BaseFile + "_LH", "w") as f:
+            f.write("")
+
+        a, b = IOtools.reducePathLevel(self.BaseFile)
+        if self.nml.contents_ptr_ptsolver is not None:
+            with open(a + "ptsolver_namelist.dat", "w") as f:
+                f.write(self.nml.contents_ptr_ptsolver)
+        if self.nml.contents_ptr_tglf is not None:
+            with open(a + "tglf_namelist.dat", "w") as f:
+                f.write(self.nml.contents_ptr_tglf)
+        if self.nml.contents_ptr_glf23 is not None:
+            with open(a + "glf23_namelist.dat", "w") as f:
+                f.write(self.nml.contents_ptr_glf23)
+
+    def appendNMLs(self):
+        possibleAppends = ["ICRF", "ECRF", "NBI", "LH"]
+
+        with open(self.BaseFile, "a") as fo:
+            for i in possibleAppends:
+                try:
+                    with open(self.BaseFile + "_" + i, "r") as fi:
+                        fo.write(fi.read())
+                    os.system("rm " + self.BaseFile + "_" + i)
+                except:
+                    print(f"\t- Could not append {i} file")
+

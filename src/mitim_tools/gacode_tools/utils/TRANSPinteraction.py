@@ -1,10 +1,8 @@
 import numpy as np
-from IPython import embed
-
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.transp_tools import UFILEStools, TRANSPtools
-from mitim_tools.transp_tools.utils import NMLtools, TRANSPhelpers
-
+from mitim_tools.transp_tools import UFILEStools, TRANSPtools, NMLtools
+from mitim_tools.transp_tools.utils import TRANSPhelpers
+from IPython import embed
 
 def runTRANSPfromGACODE(folderTRANSP, machine="SPARC"):
     t = TRANSPtools.TRANSP(IOtools.expandPath(folderTRANSP), machine)

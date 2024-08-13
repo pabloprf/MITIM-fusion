@@ -106,7 +106,7 @@ class TRANSPgeneric:
 
         """
 		Make sure that the namelists end with \
-		 Note: this means that NMLtools must NOT add that character at the end
+		 Note: this means that NML tools must NOT add that character at the end
 		"""
 
         for file in [self.nml_file_ptsolver, self.nml_file_glf23, self.nml_file_tglf]:
