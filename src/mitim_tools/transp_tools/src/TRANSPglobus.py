@@ -7,10 +7,12 @@ import numpy as np
 from collections import OrderedDict
 from IPython import embed
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools import CDFtools
-from mitim_tools.transp_tools.src import TRANSPmain, TRANSPglobus_ntcc
+from mitim_tools.transp_tools import CDFtools, TRANSPtools
+from mitim_tools.transp_tools.src import TRANSPglobus_ntcc
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+
+
 
 ##################################################
 # TRANSP error avoidance
@@ -35,7 +37,7 @@ TRANSP class to run through globus, inherits main stuff from the parent class, c
 """
 
 
-class TRANSPglobus(TRANSPmain.TRANSPgeneric):
+class TRANSPglobus(TRANSPtools.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
 
@@ -58,7 +60,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
 
     def run(self, version="pshare", **kwargs):
         # Make sure that the MPIs are set up properly
-        self.mpisettings = TRANSPmain.ensureMPIcompatibility(
+        self.mpisettings = TRANSPtools.ensureMPIcompatibility(
             self.nml_file, self.nml_file_ptsolver, self.mpisettings
         )
 
@@ -378,7 +380,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
             print(" ~ Retrieving file from server only, not submitting request again")
             self.grab(self.folderGRID_look, retrieveAC=retrieveAC)
 
-            Reactor = TRANSPmain.storeCDF(
+            Reactor = TRANSPtools.storeCDF(
                 self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
             )
 
@@ -396,7 +398,7 @@ class TRANSPglobus(TRANSPmain.TRANSPgeneric):
         self.grab(self.folderGRID_result, retrieveAC=retrieveAC)
 
         # Read results
-        self.cdfs[label] = TRANSPmain.storeCDF(
+        self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
 

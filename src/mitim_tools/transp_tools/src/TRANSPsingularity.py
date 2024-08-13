@@ -3,16 +3,15 @@ import copy
 import datetime
 import time
 import numpy as np
-from mitim_tools.transp_tools.src import TRANSPmain
+from mitim_tools.transp_tools import TRANSPtools, NMLtools
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.transp_tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 MINUTES_ALLOWED_JOB_GET = 30
-class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
+class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
 
@@ -33,7 +32,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         # Make sure that the MPIs are set up properly
         if ensureMPIcompatibility:
-            self.mpisettings = TRANSPmain.ensureMPIcompatibility(
+            self.mpisettings = TRANSPtools.ensureMPIcompatibility(
                 self.nml_file, self.nml_file_ptsolver, self.mpisettings
             )
 
@@ -94,7 +93,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.job_name + "_look",
         )
 
-        self.cdfs[label] = TRANSPmain.storeCDF(
+        self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
 
@@ -115,7 +114,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         )
 
         # Get reactor to call for ACs as well
-        self.cdfs[label] = TRANSPmain.storeCDF(
+        self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=False
         )
 
@@ -130,7 +129,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             )
 
             # Re-Read again
-            self.cdfs[label] = TRANSPmain.storeCDF(
+            self.cdfs[label] = TRANSPtools.storeCDF(
                 self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
             )
 
