@@ -13,7 +13,7 @@ from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.transp_tools.tools import TRANSPhelpers
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from IPython import embed
 
 

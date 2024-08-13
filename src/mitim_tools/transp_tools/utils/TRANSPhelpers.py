@@ -577,9 +577,9 @@ class transp_input_time:
         
         self._populate(time)
 
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 # Utilities (belonging original to EQmodule.py)
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 
 def generateMRY(
     FolderEquilibrium,
@@ -641,7 +641,6 @@ def generateMRY(
             " There was a problem in scruncher, at least one boundary time not used"
         )
 
-
 def addLimiters_NML(namelistPath, rs, zs, centerP, ax=None):
     numLim = 10
 
@@ -675,7 +674,6 @@ def addLimiters_NML(namelistPath, rs, zs, centerP, ax=None):
         ax.plot(
             x / 100.0, y / 100.0, 100, "-o", markersize=0.5, lw=0.5, c="k", label="lims"
         )
-
 
 def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     # ----- ----- ----- ----- -----

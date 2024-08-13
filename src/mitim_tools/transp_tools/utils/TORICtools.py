@@ -7,7 +7,7 @@ except:
     pass
 from IPython import embed
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
-from mitim_tools.transp_tools.tools import toric_tools_JCW as toric_tools
+from mitim_tools.transp_tools.utils import toric_tools_JCW as toric_tools
 from scipy.interpolate import griddata
 from mitim_tools.misc_tools.IOtools import printMsg as print
 

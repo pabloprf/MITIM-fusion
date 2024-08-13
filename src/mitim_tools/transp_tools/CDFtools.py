@@ -16,7 +16,7 @@ from mitim_tools.misc_tools import (
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools
 from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
-from mitim_tools.transp_tools.tools import (
+from mitim_tools.transp_tools.utils import (
     FBMtools,
     TORICtools,
     PRIMAtools,

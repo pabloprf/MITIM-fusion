@@ -4,7 +4,7 @@ from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools.src import TRANSPglobus, TRANSPmain
-from mitim_tools.transp_tools.tools import NMLtools
+from mitim_tools.transp_tools.utils import NMLtools
 from mitim_tools.misc_tools import CONFIGread
 
 from mitim_tools.misc_tools.IOtools import printMsg as print

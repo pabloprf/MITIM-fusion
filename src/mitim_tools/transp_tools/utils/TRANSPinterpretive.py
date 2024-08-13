@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from IPython import embed
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.transp_tools.tools import NMLtools
+from mitim_tools.transp_tools.utils import NMLtools
 
 
 def populateFromMDS(self, runidMDS):

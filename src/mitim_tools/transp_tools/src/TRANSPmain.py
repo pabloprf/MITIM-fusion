@@ -2,7 +2,7 @@ import time
 import datetime
 import os
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.transp_tools.tools import TRANSPinterpretive
+from mitim_tools.transp_tools.utils import TRANSPinterpretive
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed

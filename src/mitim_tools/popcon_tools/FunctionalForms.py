@@ -284,7 +284,7 @@ def fit_pedestal_mtanh(
         ax.plot(x, ne, "-o", markersize=1, lw=1.0)
         ax.scatter([1 - width_top], [netop])
 
-        from mitim_tools.transp_tools.tools.PLASMASTATEtools import Plasmastate
+        from mitim_tools.transp_tools.utils.PLASMASTATEtools import Plasmastate
 
         p = Plasmastate(plasmastate)
 

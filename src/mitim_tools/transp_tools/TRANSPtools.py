@@ -1,4 +1,3 @@
-from IPython import embed
 from mitim_tools.misc_tools import CONFIGread
 
 """

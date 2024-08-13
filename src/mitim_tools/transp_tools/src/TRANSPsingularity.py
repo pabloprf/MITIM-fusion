@@ -6,7 +6,7 @@ import numpy as np
 from mitim_tools.transp_tools.src import TRANSPmain
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools.tools import NMLtools
+from mitim_tools.transp_tools.utils import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.transp_tools.tools import TRANSPhelpers
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 
 
 def defineTRANSPnmlStructures():

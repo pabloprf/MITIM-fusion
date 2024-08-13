@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStools
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.transp_tools.tools import TRANSPhelpers
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
