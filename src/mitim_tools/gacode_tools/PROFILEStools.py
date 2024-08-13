@@ -3713,7 +3713,8 @@ class PROFILES_GACODE:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             #mass_ref = self.derived["mi_ref"]
-            mass_ref = 2.0 # It turns out that GACODE calculates quantities with md=2.01355, but the masses are normalized to 2.0 exactly…
+            # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
+            mass_ref = 2.0
 
             mass_e = 0.000272445 * mass_ref
 
