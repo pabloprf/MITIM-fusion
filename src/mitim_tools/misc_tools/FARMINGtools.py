@@ -1057,10 +1057,16 @@ def create_slurm_execution_files(
         'echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"'
     )
     commandSBATCH.append(
-        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES nodes were allocated for this job"'
+        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"'
     )
     commandSBATCH.append(
         'echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"'
+    )
+    commandSBATCH.append(
+        'echo "***********************************************************************************************"'
+    )
+    commandSBATCH.append(
+        'echo ""'
     )
     commandSBATCH.append("")
 

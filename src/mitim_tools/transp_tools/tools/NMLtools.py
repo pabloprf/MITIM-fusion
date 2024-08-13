@@ -3,6 +3,7 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __version__
 from IPython import embed
 
 
@@ -205,17 +206,17 @@ class default_nml:
         # Primary namelist
         # ~~~~~~~~~~~~~~~~~~~~~~
 
-        nzones = 100  # multiple of nzones_fast
-        nzones_codes = 50  # multiple of nzones_fast
-        nzones_fast = 25
+        nzones = 100  # multiple of nzones_distfun
+        nzones_energetic = 50  # multiple of nzones_distfun
+        nzones_distfun = 25
 
-        self.nml = TRANSPnml_General(
-            shotnum=shotnum,
+        self.nml = transp_nml(shotnum=shotnum)
+        self.nml.populate(
             tokamak=tok,
             tok=tokred,
             nzones=nzones,
-            nzones_codes=nzones_codes,
-            nzones_fast=nzones_fast,
+            nzones_energetic=nzones_energetic,
+            nzones_distfun=nzones_distfun,
             Pich=Pich,
             Pech=Pech,
             Pnbi=Pnbi,
@@ -237,7 +238,7 @@ class default_nml:
         # Predictive
         # ~~~~~~~~~~~~~~~~~~~~~~
 
-        self.nml = TRANSPnml_Predictive(
+        self.nml = transp_nml_ptsolver(
             self.nml.contents,
             TGLFsettings=TGLFsettings,
             grTGLF=grTGLF,
@@ -251,7 +252,7 @@ class default_nml:
 
         # ICRF
         if Pich:
-            self.nml_ich = TRANSPnml_Heating(
+            self.nml_ich = transp_nml_heating(
                 Pich=True, tokamak=tok, timeStep=timeStep
             ).contents
         else:
@@ -259,7 +260,7 @@ class default_nml:
 
         # ECRF
         if Pech:
-            self.nml_ech = TRANSPnml_Heating(
+            self.nml_ech = transp_nml_heating(
                 Pech=True, tokamak=tok, timeStep=timeStep
             ).contents
         else:
@@ -267,7 +268,7 @@ class default_nml:
 
         # NBI
         if Pnbi:
-            self.nml_nbi = TRANSPnml_Heating(
+            self.nml_nbi = transp_nml_heating(
                 Pnbi=True, tokamak=tok, timeStep=timeStep
             ).contents
         else:
@@ -317,22 +318,26 @@ class default_nml:
 # NAMELIST CONSTRUCTORS
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+class transp_nml:
+    def __init__(self, inputdir=None, shotnum=175844):
 
-class TRANSPnml_General:
-    def __init__(
+        self.inputdir = inputdir
+        self.shotnum = shotnum
+
+        if self.inputdir is not None and not os.path.exists(self.inputdir):
+            os.makedirs(self.inputdir)
+
+    def populate(
         self,
         tokamak="SPARC",
-        contents="",
         LimitersInNML=False,
         timeStep=0.001,
         msOut=1,
         msIn=1,
         nzones=100,
-        nzones_codes=50,
-        nzones_fast=25,
+        nzones_energetic=50,
+        nzones_distfun=25,
         nzones_frantic=20,
-        shotnum=175844,
-        inputdir=None,
         pservers=[1, 1, 0],
         tinit=0.0,
         ftime=100.0,
@@ -349,7 +354,7 @@ class TRANSPnml_General:
         gridsMHD=[151, 127],
         smoothMHD=[-1.5, 0.15],
         UFrotation=False,
-        impurity=[11, 22],
+        rotating_impurity=[11, 22],
         Pich=False,
         Pech=False,
         Pnbi=False,
@@ -361,24 +366,24 @@ class TRANSPnml_General:
         useBootstrapSmooth=None,
         B_ccw=False,
         Ip_ccw=False,
-        tok="SPRC",
         isolver=False,
         Ufiles={
             "qpr": ["QPR", -5],
-            f"mry": ["MRY", None],
-            f"cur": ["CUR", None],
-            f"vsf": ["VSF", None],
-            f"ter": ["TEL", -5],
-            f"ti2": ["TIO", -5],
-            f"ner": ["NEL", -5],
-            f"rbz": ["RBZ", None],
-            f"df4": ["DHE4", -5],
-            f"vc4": ["VHE4", -5],
+            "mry": ["MRY", None],
+            "cur": ["CUR", None],
+            "vsf": ["VSF", None],
+            "ter": ["TEL", -5],
+            "ti2": ["TIO", -5],
+            "ner": ["NEL", -5],
+            "rbz": ["RBZ", None],
+            "df4": ["DHE4", -5],
+            "vc4": ["VHE4", -5],
         },
-    ):
-        self.contents = contents
+        ):
 
-        self.addHeader(shotnum, inputdir=inputdir)
+        self.contents = ""
+
+        self.addHeader(self.shotnum, inputdir=self.inputdir)
         self.addTimings(
             tinit,
             ftime,
@@ -386,8 +391,8 @@ class TRANSPnml_General:
             msOut=msOut,
             msIn=msIn,
             nzones=nzones,
-            nzones_codes=nzones_codes,
-            nzones_fast=nzones_fast,
+            nzones_energetic=nzones_energetic,
+            nzones_distfun=nzones_distfun,
             timeStep=timeStep,
         )
         self.addPB()
@@ -418,19 +423,19 @@ class TRANSPnml_General:
             timeSaw, coeffs=coeffsSaw, ReconnectionFraction=ReconnectionFraction
         )
         self.addFusionProducts(DTplasma, MCparticles=MCparticles)
-        self.addRotation(UFrotation, impurity)
+        self.addRotation(UFrotation, rotating_impurity)
         self.addVessel(tokamak, LimitersInNML=LimitersInNML)
         self.addUFILES(Ufiles, Pich=Pich, Pech=Pech, Pnbi=Pnbi)
 
     def addHeader(self, shotnum, inputdir=None):
         lines = [
-            "! Authors: P. Rodriguez-Fernandez and N.T. Howard, ",
+            f"! TRANSP Namelist generated by MITIM (version {__version__})",
             "",
             f"!==============================================================",
             f"! General settings & Output options",
             f"!==============================================================",
             f"",
-            f"NSHOT={0}".format(shotnum),
+            f"NSHOT={shotnum}",
             f"",
             f"mrstrt = -120     ! Frequency of restart records (-, means x wall clock min)",
             f"",
@@ -450,11 +455,12 @@ class TRANSPnml_General:
         msOut=1,
         msIn=1,
         nzones=100,
-        nzones_codes=20,
-        nzones_fast=10,
+        nzones_energetic=20,
+        nzones_distfun=10,
         timeStep=0.001,
-    ):
+        ):
         lines = [
+            f"",
             "!----- Time and Spatial ranges",
             f"",
             f"tinit = {tinit:.3f} ! Start time",
@@ -469,9 +475,9 @@ class TRANSPnml_General:
             f"!----- Spatial resolution",
             f"",
             f"nzones   = {nzones} ! Number of radial zones in 1D transport equations",
-            f"nzone_nb = {nzones_codes} ! Number of zones in NUBEAM (beams and alphas)",
-            f"nzone_fp = {nzones_codes} ! Number of zones in the FPPMOD (minority ICRF)",
-            f"nzone_fb = {nzones_fast} ! Number of zone rows in fast ion distr function (must be divider of all other)",
+            f"nzone_nb = {nzones_energetic} ! Number of zones in NUBEAM (beams and alphas)",
+            f"nzone_fp = {nzones_energetic} ! Number of zones in the FPPMOD (minority ICRF)",
+            f"nzone_fb = {nzones_distfun} ! Number of zone rows in fast ion distr function (must be divider of all other)",
             f"",
             f"!----- Temporal resolution",
             f"",
@@ -529,7 +535,7 @@ class TRANSPnml_General:
 
     def addSpecies(
         self, zeff, zlump, DTplasma, Minorities, coronal=True, AddHe4ifDT=False
-    ):
+        ):
         lines = [
             "!=============================================================",
             f"! Plasma Species",
@@ -643,7 +649,7 @@ class TRANSPnml_General:
 
     def addParticleBalance(
         self, taupD=5.0, taupZ=0.4, taupmin=3.0, AddHe4=False, nzones_frantic=20
-    ):
+        ):
         if AddHe4:
             strt = "ndefine(3)	  = 1"
         else:
@@ -768,7 +774,7 @@ class TRANSPnml_General:
         grids=[151, 127],
         smooth=[-1.5, 0.15],
         isolver=False,
-    ):
+        ):
         if isolver:
             levgeo = 12
             NLQLIM0 = "False"
@@ -1003,7 +1009,7 @@ class TRANSPnml_General:
 
     def addSawtooth(
         self, time_on, coeffs=[1.0, 3.0, 1.0, 0.4], ReconnectionFraction=0.37
-    ):
+        ):
         islandFract = 1 - ReconnectionFraction
 
         lines = [
@@ -1248,8 +1254,15 @@ class TRANSPnml_General:
                 lines = [f"nri{i}	 = {Ufiles[i][1]}", f"nsy{i}	 = 0", f""]
                 self.contents += "\n".join(lines) + "\n"
 
+    def write(self, runid):
 
-class TRANSPnml_Heating:
+        self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
+
+        with open(self.file, "w") as file:
+            file.write(self.contents)
+
+
+class transp_nml_heating:
     def __init__(
         self,
         contents="",
@@ -1258,7 +1271,7 @@ class TRANSPnml_Heating:
         Pnbi=False,
         tokamak="SPARC",
         timeStep=0.01,
-    ):
+        ):
         self.contents = contents
 
         if Pich:
@@ -1422,8 +1435,7 @@ class TRANSPnml_Heating:
         contentlines = NBIbeams()
         self.contents += contentlines + "\n"
 
-
-class TRANSPnml_Predictive:
+class transp_nml_ptsolver:
     def __init__(
         self,
         contents,
@@ -1433,7 +1445,7 @@ class TRANSPnml_Predictive:
         Te_edge=80.0,
         Ti_edge=80.0,
         TGLFsettings=5,
-    ):
+        ):
         self.contents = contents
         self.contents_ptr_glf23 = None
         self.contents_ptr_tglf = None
@@ -1669,7 +1681,7 @@ class TRANSPnml_Predictive:
 
 def changeNamelist(
     namelistPath, nameBaseShot, TRANSPnamelist, FolderTRANSP, outtims=[]
-):
+    ):
     # Change shot number
     IOtools.changeValue(
         namelistPath, "nshot", nameBaseShot, None, "=", MaintainComments=True
@@ -1766,7 +1778,7 @@ def appendUpdates(
     predictQuantities=["ne", "te", "ti"],
     pedestalPred=False,
     rotationPred=False,
-):
+    ):
     densityTerms = []
     if "ne" in predictQuantities:
         densityTerms = ["ne"]
