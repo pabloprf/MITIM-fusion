@@ -420,11 +420,15 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
     # Particle position
     nameTry = f"{folderWork}/NUBEAM_folder/{nameRunid}_fi_{datanum}_PO.cdf"
     nameTry2 = f"{folderWork}/NUBEAM_folder/{nameRunid}.DATA{datanum}"
+    nameTry3 = f"{folderWork}/NUBEAM_folder/{nameRunid}.DATA{datanum}_original"
 
     if os.path.exists(nameTry):
         ACalreadyConverted, name = True, nameTry
-    elif os.path.exists(nameTry2):
+    elif os.path.exists(nameTry2): 
         ACalreadyConverted, name = False, nameTry2
+    elif os.path.exists(nameTry3):
+        ACalreadyConverted, name = False, nameTry2
+        os.system(f"mv {nameTry3} {nameTry2}")
     else:
         ACalreadyConverted = None
 

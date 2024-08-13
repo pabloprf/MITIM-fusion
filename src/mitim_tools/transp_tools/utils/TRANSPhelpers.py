@@ -919,6 +919,18 @@ def interpret_trdat(file):
         else:
             print("\t- TRDAT output did not show any error", typeMsg="i")
 
+def reconstructAntenna(antrmaj, antrmin, polext):
+    theta = np.linspace(-polext / 2.0, polext / 2.0, 100)
+    R = []
+    Z = []
+    for i in theta:
+        R.append(antrmaj + antrmin * np.cos(i * np.pi / 180.0))
+        Z.append(antrmin * np.sin(i * np.pi / 180.0))
+
+    return np.array(R), np.array(Z)
+
+
+
 # ----------------------------------------------------------------------------------------------------------
 # Utilities to run interpretive TRANSP
 # ----------------------------------------------------------------------------------------------------------

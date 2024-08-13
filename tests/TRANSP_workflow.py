@@ -14,7 +14,6 @@ In engaging, with 32 cores, should take ~1h20min
 
 import os
 from mitim_tools.transp_tools import TRANSPtools
-from mitim_tools.misc_tools import CONFIGread
 from mitim_tools import __mitimroot__
 
 restart = True
@@ -37,7 +36,7 @@ folder = __mitimroot__ + "/tests/scratch/transp_test/"
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-runid = 'P25'
+runid = 'Z99'
 
 # ---- Prepare NML and UFILES
 if os.path.exists(folder):
