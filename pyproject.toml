@@ -92,10 +92,6 @@ mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 
 # To run TRANSP (in folder with required files): transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
 mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
 
-# Run IM
-mitim_run_im = "mitim_tools.im_tools.scripts.run_im:main"                # To run complete IM evaluation:   runim 7 [DebugOption: --debug 0]
-#runmitim = "mitim_opt/scenarios_tools/scripts/runMITIM_BO.py"  # To peform scenario optimization
-
 # Others
 mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
 #eff_job="mitim_tools.misc_tools.PARALLELtools.py $1" # Give mitim.out or slurm_output.dat

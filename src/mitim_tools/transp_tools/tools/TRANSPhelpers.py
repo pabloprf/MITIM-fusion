@@ -3,9 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gs_tools import FREEGStools
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools
-from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -109,10 +108,10 @@ class transp_run:
             if (time in self.geometry) and ('R_sep' in self.geometry[time]):
                 t = str(int(time*1E3)).zfill(5)
                 R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
-                EQmodule.writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
+                writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
                 tt.append(t)
 
-        EQmodule.generateMRY(
+        generateMRY(
             self.folder,
             tt,
             self.folder,
@@ -143,7 +142,7 @@ class transp_run:
             # Write Limiters in ufile
             # --------------------------------------------------------------------------------------------
 
-            EQmodule.addLimiters_UF(f'{self.folder}/PRF12345.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
+            addLimiters_UF(f'{self.folder}/PRF12345.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
 
             # --------------------------------------------------------------------------------------------
             # Write Antenna in namelist
@@ -438,7 +437,7 @@ class transp_input_time:
         # VV moments
         # --------------------------------------------------------------
 
-        self.geometry['VVRmom'], self.geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = EQmodule.decomposeMoments(
+        self.geometry['VVRmom'], self.geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = decomposeMoments(
             rvv*100.0 , zvv*100.0,
             r_ini = [R*100.0, a*100.0, 3.0], z_ini = [0.0, a*kappa*100.0, -3.0], verbose_level =5)
 
@@ -578,4 +577,306 @@ class transp_input_time:
         
         self._populate(time)
 
+# --------------------------------------------------------------------------------------------
+# Utilities (belonging original to EQmodule.py)
+# --------------------------------------------------------------------------------------------
+
+def generateMRY(
+    FolderEquilibrium,
+    times,
+    FolderMRY,
+    nameBaseShot,
+    momentsScruncher=12,
+    BtSign=-1,
+    IpSign=-1,
+    name="",
+    ):
+    filesInput = [FolderEquilibrium + "/scrunch_in", FolderEquilibrium + "/ga.d"]
+
+    if momentsScruncher > 12:
+        print(
+            "\t- SCRUNCHER may fail because the maximum number of moments is 12",
+            typeMsg="w",
+        )
+
+    with open(FolderEquilibrium + "ga.d", "w") as f:
+        for i in times:
+            nam = f"BOUNDARY_123456_{i}.DAT"
+            f.write(nam + "\n")
+            filesInput.append(FolderEquilibrium + "/" + nam)
+
+    # Generate answers to scruncher in file scrunch_in
+    with open(FolderEquilibrium + "scrunch_in", "w") as f:
+        f.write(f"g\nga.d\n{momentsScruncher}\na\nY\nN\nN\nY\nX")
+
+    # Run scruncher
+    print(
+        f">> Running scruncher with {momentsScruncher} moments to create MRY file from boundary files..."
+    )
+
+    scruncher_job = FARMINGtools.mitim_job(FolderEquilibrium)
+
+    scruncher_job.define_machine(
+        "scruncher",
+        f"tmp_scruncher_{name}/",
+        launchSlurm=False,
+    )
+
+    scruncher_job.prep(
+        "scruncher < scrunch_in",
+        output_files=["M123456.MRY"],
+        input_files=filesInput,
+    )
+
+    scruncher_job.run()
+
+    fileUF = f"{FolderMRY}/PRF{nameBaseShot}.MRY"
+    os.system(f"mv {FolderEquilibrium}/M123456.MRY {fileUF}")
+
+    # Check if MRY file has the number of times expected
+    UF = UFILEStools.UFILEtransp()
+    UF.readUFILE(fileUF)
+    if len(UF.Variables["X"]) != len(times):
+        raise Exception(
+            " There was a problem in scruncher, at least one boundary time not used"
+        )
+
+
+def addLimiters_NML(namelistPath, rs, zs, centerP, ax=None):
+    numLim = 10
+
+    x, y = MATHtools.downsampleCurve(rs, zs, nsamp=numLim + 1)
+    x = x[:-1]
+    y = y[:-1]
+
+    t = []
+    for i in range(numLim):
+        t.append(
+            -np.arctan((y[i] - centerP[1]) / (x[i] - centerP[0])) * 180 / np.pi + 90.0
+        )
+
+    alnlmr_str = IOtools.ArrayToString(x)
+    alnlmy_str = IOtools.ArrayToString(y)
+    alnlmt_str = IOtools.ArrayToString(t)
+    IOtools.changeValue(
+        namelistPath, "nlinlm", numLim, None, "=", MaintainComments=True
+    )
+    IOtools.changeValue(
+        namelistPath, "alnlmr", alnlmr_str, None, "=", MaintainComments=True
+    )
+    IOtools.changeValue(
+        namelistPath, "alnlmy", alnlmy_str, None, "=", MaintainComments=True
+    )
+    IOtools.changeValue(
+        namelistPath, "alnlmt", alnlmt_str, None, "=", MaintainComments=True
+    )
+
+    if ax is not None:
+        ax.plot(
+            x / 100.0, y / 100.0, 100, "-o", markersize=0.5, lw=0.5, c="k", label="lims"
+        )
+
+
+def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
+    # ----- ----- ----- ----- -----
+    # Ensure that there are no repeats points
+    rs, zs = IOtools.removeRepeatedPoints_2D(rs, zs)
+    # ----- ----- ----- ----- -----
+
+    x, y = rs, zs  # MATHtools.downsampleCurve(rs,zs,nsamp=numLim)
+
+    # Write Ufile
+    UF = UFILEStools.UFILEtransp(scratch="lim")
+    UF.Variables["X"] = x
+    UF.Variables["Z"] = y
+    UF.writeUFILE(UFilePath)
+
+    if ax is not None:
+        ax.plot(x, y, "-o", markersize=0.5, lw=0.5, c="k", label="lims")
+
+    print(
+        f">> Limiters UFile created in ...{UFilePath[np.max([-40, -len(UFilePath)]):]}"
+    )
+
+def writeBoundary(nameFile, rs_orig, zs_orig):
+    numpoints = len(rs_orig)
+
+    closerInteg = int(numpoints / 10)
+
+    if closerInteg * 10 < numpoints:
+        extraneeded = True
+        rs = np.reshape(rs_orig[: int(closerInteg * 10)], (int(closerInteg), 10))
+        zs = np.reshape(zs_orig[: int(closerInteg * 10)], (int(closerInteg), 10))
+    else:
+        extraneeded = False
+        rs = np.reshape(rs_orig, (int(closerInteg), 10))
+        zs = np.reshape(zs_orig, (int(closerInteg), 10))
+
+    # Write the file for scruncher
+    f = open(nameFile, "w")
+    f.write("Boundary description for timeslice 123456 1000 msec\n")
+    f.write("Shot date: 29AUG-2018\n")
+    f.write("UNITS ARE METERS\n")
+    f.write(f"Number of points: {numpoints}\n")
+    f.write(
+        "Begin R-array ==================================================================\n"
+    )
+    f.close()
+
+    f = open(nameFile, "a")
+    np.savetxt(f, rs, fmt="%7.3f")
+    if extraneeded:
+        rs_extra = np.array([rs_orig[int(closerInteg * 10) :]])
+        np.savetxt(f, rs_extra, fmt="%7.3f")
+    f.write(
+        "Begin z-array ==================================================================\n"
+    )
+    np.savetxt(f, zs, fmt="%7.3f")
+    if extraneeded:
+        zs_extra = np.array([zs_orig[int(closerInteg * 10) :]])
+        np.savetxt(f, zs_extra, fmt="%7.3f")
+    f.write("")
+    f.close()
+
+def readBoundary(RFS, ZFS, time=0.0, rho_index=-1):
+    # Check if MRY file has the number of times expected
+    UF = UFILEStools.UFILEtransp()
+    UF.readUFILE(RFS)
+    t = UF.Variables["X"]
+    theta = UF.Variables["Y"]
+    Rs = UF.Variables["Z"]
+    UF.readUFILE(ZFS)
+    Zs = UF.Variables["Z"]
+
+    it = np.argmin(np.abs(t - time))
+    R, Z = Rs[it, :, rho_index], Zs[it, :, rho_index]
+
+    return R, Z
+
+def reconstructVV(VVr, VVz, nth=1000):
+    nfour = len(VVr)
+
+    x = np.append(VVr, VVz)
+
+    theta = np.zeros(nth)
+    for i in range(0, nth):
+        theta[i] = (i / float(nth - 1)) * 2 * np.pi
+
+    cosvals = np.zeros((nfour, nth))
+    sinvals = np.zeros((nfour, nth))
+    r_eval = np.zeros(nth)
+    z_eval = np.zeros(nth)
+
+    for i in range(0, nfour):
+        thetas = i * theta
+        # print(x[i])
+        for j in range(0, nth):
+            cosvals[i, j] = x[i] * np.cos(thetas[j])
+
+        # Evaluate the z value thetas
+        for i in range(nfour, 2 * nfour):
+            thetas = (i - nfour) * theta
+            for j in range(0, nth):
+                sinvals[i - nfour, j] = x[i] * np.sin(thetas[j])
+
+            for i in range(0, nth):
+                r_eval[i] = np.sum(cosvals[:, i])
+                z_eval[i] = np.sum(sinvals[:, i])
+
+    return r_eval, z_eval
+
+def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -3.0], verbose_level=0):
+    nth = len(R)
+
+    # Initial Guess for R and Z array
+    r = r_ini #[180, 70, 3.0]  # [rmajor,anew,3.0,0,0]
+    z = z_ini #[0.0, 140, -3.0]  # [0.0,anew*kappa,-3.0,0.0,0.0]
+
+    for i in range(nfour - 3):
+        r.append(0)
+        z.append(0)
+
+    x = np.concatenate([r, z])
+
+    theta = np.zeros(nth)
+    for i in range(0, nth):
+        theta[i] = (i / float(nth - 1)) * 2 * np.pi
+
+    def vv_func(x):
+        cosvals = np.zeros((nfour, nth))
+        sinvals = np.zeros((nfour, nth))
+        r_eval = np.zeros(nth)
+        z_eval = np.zeros(nth)
+
+        # Evaluate the r value thetas
+        for i in range(0, nfour):
+            thetas = i * theta
+            for j in range(0, nth):
+                cosvals[i, j] = x[i] * np.cos(thetas[j])
+
+        # Evaluate the z value thetas
+        for i in range(nfour, 2 * nfour):
+            thetas = (i - nfour) * theta
+            for j in range(0, nth):
+                sinvals[i - nfour, j] = x[i] * np.sin(thetas[j])
+
+            for i in range(0, nth):
+                r_eval[i] = np.sum(cosvals[:, i])
+                z_eval[i] = np.sum(sinvals[:, i])
+
+        rsum = np.sum(abs(r_eval - R))
+        zsum = np.sum(abs(z_eval - Z))
+
+        metric = rsum + zsum
+
+        return metric
+
+    # ----------------------------------------------------------------------------------
+    # Perform optimization
+    # ----------------------------------------------------------------------------------
+
+    print(f">> Performing minimization to fit VV moments ({nfour})...")
+
+    from scipy.optimize import minimize
+    res = minimize(
+        vv_func,
+        x,
+        method="nelder-mead",
+        options={"xtol": 1e-4, "disp": verbose_level in [4, 5]},
+    )
+
+    # ----------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------
+
+    x = res.x
+
+    rmom = x[0:nfour]
+    zmom = x[nfour : 2 * nfour]
+
+    # Convert back to see error
+    cosvals = np.zeros((nfour, nth))
+    sinvals = np.zeros((nfour, nth))
+    r_eval = np.zeros(nth)
+    z_eval = np.zeros(nth)
+
+    # Evaluate the r value thetas
+    for i in range(0, nfour):
+        thetas = i * theta
+        for j in range(0, nth):
+            cosvals[i, j] = x[i] * np.cos(thetas[j])
+
+        # Evaluate the z value thetas
+        for i in range(nfour, 2 * nfour):
+            thetas = (i - nfour) * theta
+            for j in range(0, nth):
+                sinvals[i - nfour, j] = x[i] * np.sin(thetas[j])
+
+            for i in range(0, nth):
+                r_eval[i] = np.sum(cosvals[:, i])
+                z_eval[i] = np.sum(sinvals[:, i])
+
+            rsum = np.sum(abs(r_eval - R))
+            zsum = np.sum(abs(z_eval - Z))
+
+    return rmom, zmom, r_eval, z_eval
 

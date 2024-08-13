@@ -1,10 +1,9 @@
 import numpy as np
 from IPython import embed
 
-from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import UFILEStools, TRANSPtools
-from mitim_tools.transp_tools.tools import NMLtools
+from mitim_tools.transp_tools.tools import NMLtools, TRANSPhelpers
 
 
 def runTRANSPfromGACODE(folderTRANSP, machine="SPARC"):
@@ -119,10 +118,10 @@ def prepareTRANSPfromGACODE(self, folderTRANSP, machine="SPARC"):
     # ---- Build Boundary
     # ------------------------------------------------
 
-    EQmodule.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_00001.DAT", Rs, Zs)
-    EQmodule.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_99999.DAT", Rs, Zs)
+    TRANSPhelpers.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_00001.DAT", Rs, Zs)
+    TRANSPhelpers.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_99999.DAT", Rs, Zs)
 
-    EQmodule.generateMRY(
+    TRANSPhelpers.generateMRY(
         folderTRANSP,
         ["00001", "99999"],
         folderTRANSP,
@@ -148,7 +147,7 @@ def prepareTRANSPfromGACODE(self, folderTRANSP, machine="SPARC"):
 
     rlim, zlim = defineFirstWall()
 
-    EQmodule.addLimiters_UF(f"{folderTRANSP}/PRF12345.LIM", rlim, zlim)
+    TRANSPhelpers.addLimiters_UF(f"{folderTRANSP}/PRF12345.LIM", rlim, zlim)
 
     # ------------------------------------------------
     # ---- Namelist

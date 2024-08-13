@@ -13,7 +13,6 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
     GRAPHICStools,
 )
-from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools
 from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
@@ -22,6 +21,7 @@ from mitim_tools.transp_tools.tools import (
     TORICtools,
     PRIMAtools,
     ANALYSIStools,
+    TRANSPhelpers
 )
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -14631,7 +14631,7 @@ class CDFreactor:
 
         # Try to read boundary too
         if os.path.exists(self.FolderCDF + "/PRF12345.RFS"):
-            self.bound_R, self.bound_Z = EQmodule.readBoundary(
+            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
                 self.FolderCDF + "/PRF12345.RFS", self.FolderCDF + "/PRF12345.ZFS"
             )
 
@@ -14732,7 +14732,7 @@ class CDFreactor:
                 r_ant = IOtools.findValue(namelist, "RMNICHA", "=")
                 t_ant = IOtools.findValue(namelist, "THICHA", "=")
 
-                self.R_ant0, self.Z_ant0 = EQmodule.reconstructAntenna(
+                self.R_ant0, self.Z_ant0 = TRANSPhelpers.reconstructAntenna(
                     R_ant, r_ant, t_ant
                 )
 
@@ -14754,7 +14754,7 @@ class CDFreactor:
                 ]
 
                 for icha in range(nicha):
-                    self.R_ant0, self.Z_ant0 = EQmodule.reconstructAntenna(
+                    self.R_ant0, self.Z_ant0 = TRANSPhelpers.reconstructAntenna(
                         R_ant[icha], r_ant[icha], t_ant[icha]
                     )
 
@@ -14817,7 +14817,7 @@ class CDFreactor:
                     except:
                         break
 
-                self.R_vv, self.Z_vv = EQmodule.reconstructVV(VVr, VVz)
+                self.R_vv, self.Z_vv = TRANSPhelpers.reconstructVV(VVr, VVz)
                 self.R_vv = self.R_vv * 1e-2
                 self.Z_vv = self.Z_vv * 1e-2
 

@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStools
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.im_tools.modules import EQmodule
+from mitim_tools.transp_tools.tools import TRANSPhelpers
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
@@ -669,7 +669,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     # ---- Add C-Mod limiter
 
     rlim, zlim = defineFirstWall()
-    EQmodule.addLimiters_UF(f"{folderWork}/PRF{shotnum}.LIM", rlim, zlim)
+    TRANSPhelpers.addLimiters_UF(f"{folderWork}/PRF{shotnum}.LIM", rlim, zlim)
 
     # ---- No gas flow (my way is to give this file)
 

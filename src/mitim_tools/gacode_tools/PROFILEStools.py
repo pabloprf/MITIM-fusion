@@ -11,9 +11,8 @@ from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import TRANSPinteraction, GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.im_tools.modules import PEDmodule
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 
@@ -1962,7 +1961,7 @@ class PROFILES_GACODE:
         ne = self.profiles["ne(10^19/m^3)"] * 1e19
         Te = self.profiles["te(keV)"] * 1e3
         Ti = self.profiles["ti(keV)"][:, 0] * 1e3
-        PEDmodule.create_dummy_plasmastate(
+        FunctionalForms.create_dummy_plasmastate(
             plasmastate, rho, rhob, psipol, ne, Te * 1e-3, Ti * 1e-3
         )
 
@@ -1974,7 +1973,7 @@ class PROFILES_GACODE:
         ptop = tetop * (netop * 1e-20) * 3.2e1 * 1e-6
         p1 = ptop * p1_over_ptot
 
-        x, neP, TeP, TiP = PEDmodule.fit_pedestal_mtanh(
+        x, neP, TeP, TiP = FunctionalForms.fit_pedestal_mtanh(
             width_top_psi,
             netop * 1e-20,
             p1 * 1e6,

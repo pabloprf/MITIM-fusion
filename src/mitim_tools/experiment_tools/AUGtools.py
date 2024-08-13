@@ -1,14 +1,10 @@
-import os, math
+import os
+import math
 import numpy as np
-import matplotlib.pyplot as plt
 
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import UFILEStools
-
-try:
-    from IPython import embed
-except:
-    pass
+from mitim_tools.transp_tools.tools import TRANSPhelpers
 
 
 def defineTRANSPnmlStructures():
@@ -249,7 +245,7 @@ def convertBoundaryToUFILE(allLines, folder):
     os.system(f"cp {name} {folder}/BOUNDARY_123456_10000.DAT")
 
     # MRY
-    EQmodule.generateMRY(folder, ["01000", "10000"], folder, "54321")
+    TRANSPhelpers.generateMRY(folder, ["01000", "10000"], folder, "54321")
 
 
 def writeLines(f, z, perline=10):
