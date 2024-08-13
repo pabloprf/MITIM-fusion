@@ -1,21 +1,7 @@
-import os, copy, pdb, time
-from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import OrderedDict
-
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODEplotting, GACODErun
-from mitim_tools.gacode_tools import TGLFtools
-
-
-try:
-    from IPython import embed
-except:
-    pass
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 def arrangeTGLF(CDFc, varName="GRATE_TGLF"):
     # (slightly modified from OMFIT: modules/TRANSP/PLOTS/rplot.py)

@@ -2,7 +2,7 @@ import time
 import datetime
 import os
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.transp_tools.utils import TRANSPinterpretive
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -365,10 +365,10 @@ class TRANSPgeneric:
 	"""
 
     def populateFromMDS(*args, **kwargs):
-        return TRANSPinterpretive.populateFromMDS(*args, **kwargs)
+        return TRANSPhelpers.populateFromMDS(*args, **kwargs)
 
     def defaultbasedMDS(*args, **kwargs):
-        return TRANSPinterpretive.defaultbasedMDS(*args, **kwargs)
+        return TRANSPhelpers.defaultbasedMDS(*args, **kwargs)
 
 
 def storeCDF(FolderTRANSP, runid, retrieveAC=False):
