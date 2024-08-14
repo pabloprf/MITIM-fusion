@@ -5,13 +5,6 @@ from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.freegsu import FREEGSUmain
 
-try:
-    from FREEGS_SPARC import GSsparc_coils
-except ImportError as e:
-    raise Exception(
-        "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
-    )
-
 
 def createProblemParameters(
     InitialCurrents,
@@ -23,6 +16,16 @@ def createProblemParameters(
     fileRequirements=None,
     coilsVersion="V2new",
 ):
+
+
+    try:
+        from FREEGS_SPARC import GSsparc_coils
+    except ImportError:
+        raise Exception(
+            "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+        )
+
+
     # I have to please change div2equal1 and cs3equal remove from here
     # embed()
 

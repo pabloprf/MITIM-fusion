@@ -17,13 +17,6 @@ from mitim_tools.transp_tools.utils import TRANSPhelpers
 from IPython import embed
 
 
-# From SPARC_PATH in PYTHONPATH
-try:
-    from FREEGS_SPARC import GSsparc, GSsparc_coils
-except ImportError:
-    raise Exception(
-        "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
-    )
 
 
 def evaluator(
@@ -140,6 +133,15 @@ def evaluator(
     # --------------------------------------------------------
     # Create baseline class (it will be updated for each inididual)
     # --------------------------------------------------------
+
+
+    # From SPARC_PATH in PYTHONPATH
+    try:
+        from FREEGS_SPARC import GSsparc
+    except ImportError:
+        raise Exception(
+            "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+        )
 
     # Change params per individual?
 
@@ -988,6 +990,14 @@ def runSingleFreeGS(ParamsAll, cont):
         dv2d,
         vs1,
     )
+
+    # From SPARC_PATH in PYTHONPATH
+    try:
+        from FREEGS_SPARC import GSsparc_coils
+    except ImportError:
+        raise Exception(
+            "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+        )
 
     # Assign to class
     prf1.sparc_coils = GSsparc_coils.SPARCcoils(
