@@ -1074,6 +1074,11 @@ class CDFreactor:
         # 	self.fG_950[it] = np.interp([0.95],self.psin[it],self.fG[it])[0]
 
     def getDilutions(self):
+
+        '''
+        Note that ni in TRANSP seems to not include He3 !!!
+        '''
+
         self.ni = self.f["NI"][:] * 1e6 * 1e-20  # in 10^20m^-3
         self.ni_avol = volumeAverage(self.f, "NI") * 1e6 * 1e-20  # in 10^20m^-3
 
@@ -1084,23 +1089,23 @@ class CDFreactor:
             self.nD_avol = volumeAverage(self.f, "ND") * 1e6 * 1e-20  # in 10^20m^-3
         except:
             print("\t- This plasma had no Deuterium")
-            self.nD = self.ni * 0.0 + self.eps00
-            self.nD_avol = self.ni_avol * 0.0 + self.eps00
+            self.nD = self.ne * 0.0 + self.eps00
+            self.nD_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nH = self.f["NH"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nH_avol = volumeAverage(self.f, "NH") * 1e6 * 1e-20  # in 10^20m^-3
         except:
-            self.nH = self.ni * 0.0 + self.eps00
-            self.nH_avol = self.ni_avol * 0.0 + self.eps00
+            self.nH = self.ne * 0.0 + self.eps00
+            self.nH_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nT = self.f["NT"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nT_avol = volumeAverage(self.f, "NT") * 1e6 * 1e-20  # in 10^20m^-3
         except:
             print("\t- This plasma had no Tritium")
-            self.nT = self.ni * 0.0 + self.eps00
-            self.nT_avol = self.ni_avol * 0.0 + self.eps00
+            self.nT = self.ne * 0.0 + self.eps00
+            self.nT_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nHe4 = self.f["NHE4"][:] * 1e6 * 1e-20  # in 10^20m^-3
@@ -1113,8 +1118,8 @@ class CDFreactor:
                 print(
                     " \t- This plasma, although DT, had no thermal alphas being tracked"
                 )
-            self.nHe4 = self.ni * 0.0 + self.eps00
-            self.nHe4_avol = self.ni_avol * 0.0 + self.eps00
+            self.nHe4 = self.ne * 0.0 + self.eps00
+            self.nHe4_avol = self.ne_avol * 0.0 + self.eps00
 
         self.nT_particles = self.volume * self.nT_avol  # in 10^20 particles
         self.nD_particles = self.volume * self.nD_avol  # in 10^20 particles
