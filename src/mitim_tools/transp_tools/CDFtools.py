@@ -16191,7 +16191,7 @@ def definePenalties(q95, fG, kappa, BetaN, maxKappa=1.8):
 def getBeamTrajectories(namelist):
     try:
         from trgui_fbm import plot_aug
-    except ImportError as e:
+    except ImportError:
         print(
             "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
             typeMsg="w",
@@ -16214,7 +16214,7 @@ def getBeamTrajectories(namelist):
 def getECRHTrajectories(namelist, Theta_gyr, Phi_gyr):
     try:
         from trgui_fbm import los
-    except ImportError as e:
+    except ImportError:
         print(
             "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
             typeMsg="w",
