@@ -13,16 +13,6 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
 
-
-# From SPARC_PATH in PYTHONPATH
-try:
-    from FREEGS_SPARC import GSsparc_coils
-except ImportError as e:
-    raise Exception(
-        "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
-    )
-
-
 def default_namelist(optimization_options):
     """
     This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
@@ -104,6 +94,19 @@ class freegsu(STRATEGYtools.opt_evaluator):
         coilLimits_kA = {}
         for i in setCoils:
             coilLimits_kA[i] = [minVar_I[i], maxVar_I[i]]
+
+
+
+
+
+        # From SPARC_PATH in PYTHONPATH
+        try:
+            from FREEGS_SPARC import GSsparc_coils
+        except ImportError as e:
+            raise Exception(
+                "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+            )
+
 
         sparc_coils = GSsparc_coils.SPARCcoils(
             None, coilsVersion=self.function_parameters["optionsFREEGS"]["coilsVersion"]

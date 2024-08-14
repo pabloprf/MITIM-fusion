@@ -17,8 +17,6 @@ from mitim_tools.transp_tools.utils import TRANSPhelpers
 from IPython import embed
 
 
-
-
 def evaluator(
     dictDVs,
     CoilCurrents={},
@@ -68,7 +66,7 @@ def evaluator(
     separatrixPoint is just used as evaluation of that R value
     """
 
-    folderData = IOtools.expandPath("$SPARC_PATH/FREEGS_SPARC/")
+    folderData = IOtools.expandPath("$MFEIM_PATH/private_code_mitim/FREEGS_SPARC/")
 
     # --------------------------------------------------------
     # Join dictionaries with internal and external options
