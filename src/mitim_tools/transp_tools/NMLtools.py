@@ -15,98 +15,112 @@ class transp_nml:
         if self.inputdir is not None and not os.path.exists(self.inputdir):
             os.makedirs(self.inputdir)
 
-    def populate(
-        self,
-        tokamak="SPARC",
-        LimitersInNML=False,
-        timeStep=0.001,
-        msOut=1,
-        msIn=1,
-        nzones=100,
-        nzones_energetic=50,
-        nzones_distfun=25,
-        nzones_frantic=20,
-        pservers=[1, 1, 0],
-        tinit=0.0,
-        ftime=100.0,
-        taupD=5.0,
-        taupZ=0.4,
-        taupmin=3.0,
-        zeff=2.0,
-        zlump=[[6.0, 12.0, 0.018], [74.0, 183.0, 1.5e-5]],
-        DTplasma=True,
-        AddHe4ifDT=True,
-        Minorities=[2, 3, 0.05],
-        nteq_mode=5,
-        currDiff_phases=[[4, 4.85], [1, 100.0]],
-        gridsMHD=[151, 127],
-        smoothMHD=[-1.5, 0.15],
-        UFrotation=False,
-        rotating_impurity=[11, 22],
-        Pich=False,
-        Pech=False,
-        Pnbi=False,
-        timeSaw=0.1,
-        coeffsSaw=[1.0, 3.0, 1.0, 0.4],
-        ReconnectionFraction=0.37,
-        predictRad=True,
-        MCparticles=1e6,
-        useBootstrapSmooth=None,
-        B_ccw=False,
-        Ip_ccw=False,
-        isolver=False,
-        Ufiles={
-            "qpr": ["QPR", -5],
-            "mry": ["MRY", None],
-            "cur": ["CUR", None],
-            "vsf": ["VSF", None],
-            "ter": ["TEL", -5],
-            "ti2": ["TIO", -5],
-            "ner": ["NEL", -5],
-            "rbz": ["RBZ", None],
-            "df4": ["DHE4", -5],
-            "vc4": ["VHE4", -5],
-        },
-        PTsolver = False,
-        xbounds=[0.95, 0.95, 0.95],
-        xminTrick=0.2,
-        grTGLF=False,
-        Te_edge=80.0,
-        Ti_edge=80.0,
-        TGLFsettings=5
-        ):
+        # Until machine is defined, these are None
+        self.ICRFantennas = None
+        self.ECRFgyrotrons = None
+        self.NBIbeams = None
+        self.defineTRANSPnmlStructures = None
+        self.defineISOLVER = None
+
+    def define_machine(self, tokamak):
+
+        if tokamak == "SPARC" or tokamak == "ARC":
+            from mitim_tools.experiment_tools.SPARCtools import ICRFantennas, defineTRANSPnmlStructures, defineISOLVER
+            ECRFgyrotrons, NBIbeams = None, None
+        elif tokamak == "CMOD":
+            from mitim_tools.experiment_tools.CMODtools import ICRFantennas, defineTRANSPnmlStructures
+            ECRFgyrotrons, NBIbeams, defineISOLVER = None, None, None
+        elif tokamak == "AUG":
+            from mitim_tools.experiment_tools.AUGtools import ECRFgyrotrons, NBIbeams, defineTRANSPnmlStructures
+            ICRFantennas, defineISOLVER = None, None
+        elif tokamak == "D3D":
+            from mitim_tools.experiment_tools.DIIIDtools import ECRFgyrotrons, NBIbeams
+            ICRFantennas, defineTRANSPnmlStructures, defineISOLVER = None, None, None
+
+        self.ICRFantennas = ICRFantennas
+        self.ECRFgyrotrons = ECRFgyrotrons
+        self.NBIbeams = NBIbeams
+        self.defineTRANSPnmlStructures = defineTRANSPnmlStructures
+        self.defineISOLVER = defineISOLVER
+
+    def populate(self,**transp_params):
+
+        # -----------------------------------------------------------------------------------
+        # Default values
+        # -----------------------------------------------------------------------------------
+
+        self.LimitersInNML = transp_params.get("self.LimitersInNML",False)
+        self.timeStep_ms = transp_params.get("timeStep_ms",1.0)
+        self.msOut = transp_params.get("msOut",1)
+        self.msIn = transp_params.get("msIn",1)
+        self.nzones = transp_params.get("nzones",100)
+        self.nzones_energetic = transp_params.get("nzones_energetic",50)
+        self.nzones_distfun = transp_params.get("nzones_distfun",25)
+        self.nzones_frantic = transp_params.get("nzones_frantic",20)
+        self.pservers = transp_params.get("pservers",[1,1,0])
+        self.tinit = transp_params.get("tinit",0.0)
+        self.ftime = transp_params.get("ftime",100.0)
+        self.taupD = transp_params.get("taupD",5.0)
+        self.taupZ = transp_params.get("taupZ",0.4)
+        self.taupmin = transp_params.get("taupmin",3.0)
+        self.zeff = transp_params.get("zeff",2.0)
+        self.zlump = transp_params.get("zlump",[[6.0,12.0,0.018],[74.0,183.0,1.5e-5]])
+        self.coronal = transp_params.get("coronal",True)
+        self.DTplasma = transp_params.get("DTplasma",True)
+        self.AddHe4ifDT = transp_params.get("AddHe4ifDT",True)
+        self.Minorities = transp_params.get("Minorities",[2,3,0.05])
+        self.nteq_mode = transp_params.get("nteq_mode",5)
+        self.currDiff_phases = transp_params.get("currDiff_phases",[[4,4.85],[1,100.0]])
+        self.gridsMHD = transp_params.get("gridsMHD",[151,127])
+        self.smoothMHD = transp_params.get("smoothMHD",[-1.5,0.15])
+        self.UFrotation = transp_params.get("UFrotation",False)
+        self.rotating_impurity = transp_params.get("rotating_impurity",[11,22])
+        self.Pich = transp_params.get("Pich",False)
+        self.Pech = transp_params.get("Pech",False)
+        self.Pnbi = transp_params.get("Pnbi",False)
+        self.timeSaw = transp_params.get("timeSaw",0.1)
+        self.coeffsSaw = transp_params.get("coeffsSaw",[1.0,3.0,1.0,0.4])
+        self.ReconnectionFraction = transp_params.get("ReconnectionFraction",0.37)
+        self.predictRad = transp_params.get("predictRad",True)
+        self.MCparticles = transp_params.get("MCparticles",1e6)
+        self.useBootstrapSmooth = transp_params.get("useBootstrapSmooth",None)
+        self.B_ccw = transp_params.get("B_ccw",False)
+        self.Ip_ccw = transp_params.get("Ip_ccw",False)
+        self.isolver = transp_params.get("isolver",False)
+        self.Ufiles = transp_params.get("Ufiles",{
+            "qpr": ["QPR",-5],
+            "mry": ["MRY",None],
+            "cur": ["CUR",None],
+            "vsf": ["VSF",None],
+            "ter": ["TEL",-5],
+            "ti2": ["TIO",-5],
+            "ner": ["NEL",-5],
+            "rbz": ["RBZ",None],
+            "df4": ["DHE4",-5],
+            "vc4": ["VHE4",-5]
+        })
+        self.PTsolver = transp_params.get("PTsolver",False)
+        self.xbounds = transp_params.get("xbounds",[0.95,0.95,0.95])
+        self.xminTrick = transp_params.get("xminTrick",0.2)
+        self.grTGLF = transp_params.get("grTGLF",False)
+        self.Te_edge = transp_params.get("Te_edge",80.0)
+        self.Ti_edge = transp_params.get("Ti_edge",80.0)
+        self.TGLFsettings = transp_params.get("TGLFsettings",5)
+
+        # -----------------------------------------------------------------------------------
 
         self.contents = ""
-        self.timeStep = timeStep
+        self.timeStep_ms = timeStep_ms
 
-        self.addHeader(self.shotnum, inputdir=self.inputdir)
-        self.addTimings(
-            tinit,
-            ftime,
-            pservers,
-            msOut=msOut,
-            msIn=msIn,
-            nzones=nzones,
-            nzones_energetic=nzones_energetic,
-            nzones_distfun=nzones_distfun,
-            timeStep=self.timeStep,
-        )
+        self.addHeader()
+        self.addTimings()
         self.addPB()
-        if not Pich:
-            Minorities = None
-        self.addSpecies(zeff, zlump, DTplasma, Minorities, AddHe4ifDT=AddHe4ifDT)
-        self.addParticleBalance(
-            taupD=taupD,
-            taupZ=taupZ,
-            taupmin=taupmin,
-            AddHe4=AddHe4ifDT and DTplasma,
-            nzones_frantic=nzones_frantic,
-        )
+        self.addSpecies()
+        self.addParticleBalance()
         self.addRadiation(predictRad=predictRad)
         self.addNCLASS()
         self.addMHDandCurrentDiffusion(
             nteq_mode,
-            tokamak,
             currDiff_phases,
             B_ccw=B_ccw,
             Ip_ccw=Ip_ccw,
@@ -115,20 +129,23 @@ class transp_nml:
             smooth=smoothMHD,
             isolver=isolver,
         )
+        if isolver:
+            self.addISOLVER(defineISOLVER_method=self.defineISOLVER)
         self.addSawtooth(
             timeSaw, coeffs=coeffsSaw, ReconnectionFraction=ReconnectionFraction
         )
         self.addFusionProducts(DTplasma, MCparticles=MCparticles)
         self.addRotation(UFrotation, rotating_impurity)
-        self.addVessel(tokamak, LimitersInNML=LimitersInNML)
+        self.addVessel(defineTRANSPnmlStructures_method=self.defineTRANSPnmlStructures, LimitersInNML=self.LimitersInNML)
         self.addUFILES(Ufiles, Pich=Pich, Pech=Pech, Pnbi=Pnbi)
 
+
         if Pich:
-            self.addICRF(tokamak)
+            self.addICRF(ICRFantennas_method=self.ICRFantennas)
         if Pech:
-            self.addECRF(tokamak)
+            self.addECRF(ECRFgyrotrons_method=self.ECRFgyrotrons)
         if Pnbi:
-            self.addNBI(tokamak)
+            self.addNBI(NBIbeams_method=self.NBIbeams)
 
         if PTsolver:
             self.addPTSOLVER(     
@@ -140,8 +157,11 @@ class transp_nml:
                 TGLFsettings=TGLFsettings
                 )
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Methods to add different sections to the namelist
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def addHeader(self, shotnum, inputdir=None):
+    def addHeader(self):
         lines = [
             f"! TRANSP Namelist generated by MITIM (version {__version__})",
             "",
@@ -149,7 +169,7 @@ class transp_nml:
             f"! General settings & Output options",
             f"!==============================================================",
             f"",
-            f"NSHOT={shotnum}",
+            f"NSHOT={self.shotnum}",
             f"",
             f"mrstrt = -120     ! Frequency of restart records (-, means x wall clock min)",
             f"",
@@ -157,28 +177,17 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if inputdir is not None:
-            lines = [f'inputdir="{inputdir}"']
+        if self.inputdir is not None:
+            lines = [f'inputdir="{self.inputdir}"']
             self.contents += "\n".join(lines) + "\n"
 
-    def addTimings(
-        self,
-        tinit,
-        ftime,
-        pservers,
-        msOut=1,
-        msIn=1,
-        nzones=100,
-        nzones_energetic=20,
-        nzones_distfun=10,
-        timeStep=0.001,
-        ):
+    def addTimings(self):
         lines = [
             f"",
             "!----- Time and Spatial ranges",
             f"",
-            f"tinit = {tinit:.3f} ! Start time",
-            f"ftime = {ftime:.3f} ! End time",
+            f"tinit = {self.tinit:.3f} ! Start time",
+            f"ftime = {self.ftime:.3f} ! End time",
             f"xtend = 0.050 ! Distance beyond LCFS to extend analysis ",
             f"",
             f"!----- Time buffers",
@@ -188,27 +197,27 @@ class transp_nml:
             f"",
             f"!----- Spatial resolution",
             f"",
-            f"nzones   = {nzones} ! Number of radial zones in 1D transport equations",
-            f"nzone_nb = {nzones_energetic} ! Number of zones in NUBEAM (beams and alphas)",
-            f"nzone_fp = {nzones_energetic} ! Number of zones in the FPPMOD (minority ICRF)",
-            f"nzone_fb = {nzones_distfun} ! Number of zone rows in fast ion distr function (must be divider of all other)",
+            f"nzones   = {self.nzones} ! Number of radial zones in 1D transport equations",
+            f"nzone_nb = {self.nzones_energetic} ! Number of zones in NUBEAM (beams and alphas)",
+            f"nzone_fp = {self.nzones_energetic} ! Number of zones in the FPPMOD (minority ICRF)",
+            f"nzone_fb = {self.nzones_distfun} ! Number of zone rows in fast ion distr function (must be divider of all other)",
             f"",
             f"!----- Temporal resolution",
             f"",
-            f"dtmaxg = {timeStep}    ! Max time step for MHD",
+            f"dtmaxg = {self.timeStep_ms*1E-3}    ! Max time step for MHD",
             f"dtinit = 1.0e-6        ! Initial timestep to obtain power balance (default=1e-6)",
             f"",
             f"!----- I/O resolution",
-            f"sedit    = {msOut*1E-3} ! Control of time resolution of scalar output",
-            f"stedit   = {msOut*1E-3} ! Control of time resolution of profile output",
-            f"tgrid1   = {msIn*1E-3}  ! Control of time resolution of 1D input data",
-            f"tgrid2   = {msIn*1E-3}  ! Control of time resolution of 2D input data",
+            f"sedit    = {self.msOut*1E-3} ! Control of time resolution of scalar output",
+            f"stedit   = {self.msOut*1E-3} ! Control of time resolution of profile output",
+            f"tgrid1   = {self.msIn*1E-3}  ! Control of time resolution of 1D input data",
+            f"tgrid2   = {self.msIn*1E-3}  ! Control of time resolution of 2D input data",
             f"",
             f"!----- MPI Settings",
             f"",
-            f"nbi_pserve     = {pservers[0]} ! enable mpi for nubeam, nbi and fusion products",
-            f"ntoric_pserve  = {pservers[1]} ! enable mpi toric, icrf",
-            f"nptr_pserve    = {pservers[2]} ! enable mpi ptransp (tglf only)",
+            f"nbi_pserve     = {self.pservers[0]} ! enable mpi for nubeam, nbi and fusion products",
+            f"ntoric_pserve  = {self.pservers[1]} ! enable mpi toric, icrf",
+            f"nptr_pserve    = {self.pservers[2]} ! enable mpi ptransp (tglf only)",
             f"",
         ]
 
@@ -247,9 +256,7 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-    def addSpecies(
-        self, zeff, zlump, DTplasma, Minorities, coronal=True, AddHe4ifDT=False
-        ):
+    def addSpecies(self):
         lines = [
             "!=============================================================",
             f"! Plasma Species",
@@ -261,8 +268,8 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if DTplasma:
-            if AddHe4ifDT:
+        if self.DTplasma:
+            if self.AddHe4ifDT:
                 lines = [
                     "ng       = 3       ! Number of INITIAL background species   ",
                     f"ngmax   = 3  	    ! Maximum FUTURE background species (Pellets,NBI,recy)",
@@ -302,7 +309,7 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if DTplasma and AddHe4ifDT:
+        if self.DTplasma and self.AddHe4ifDT:
             lines = [
                 "backz(3)   = 2.0 ",
                 f"aplasm(3)   = 4.0 ",
@@ -316,7 +323,7 @@ class transp_nml:
         lines = [
             "!----- Impurities",
             f"",
-            f"!xzeffi   = {zeff} ! Zeff (if assumed constant in r and t)",
+            f"!xzeffi   = {self.zeff} ! Zeff (if assumed constant in r and t)",
             f"nlzfin    = F    ! Use 1D Zeff input",
             f"nlzfi2    = T    ! Use 2D Zeff input",
             f"",
@@ -324,19 +331,19 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        for i in range(len(zlump)):
+        for i in range(len(self.zlump)):
             lines = [
-                f"xzimps({i+1}) = {zlump[i][0]} ! Charge of impurity species",
-                f"aimps({i+1})  = {zlump[i][1]} ! Atomic mass of impurity species",
-                f"densim({i+1}) = {zlump[i][2]} ! Impurity densities (n_imp/n_e)",
+                f"xzimps({i+1}) = {self.zlump[i][0]} ! Charge of impurity species",
+                f"aimps({i+1})  = {self.zlump[i][1]} ! Atomic mass of impurity species",
+                f"densim({i+1}) = {self.zlump[i][2]} ! Impurity densities (n_imp/n_e)",
             ]
 
             self.contents += "\n".join(lines)
 
             # Possibility for densima
-            if len(zlump[i]) > 3:
+            if len(self.zlump[i]) > 3:
                 lines = [
-                    f"densima({i+1}) = {zlump[i][3]} ! Impurity densities (n_imp/n_e)",
+                    f"densima({i+1}) = {self.zlump[i][3]} ! Impurity densities (n_imp/n_e)",
                     f"",
                 ]
             else:
@@ -344,27 +351,25 @@ class transp_nml:
 
             self.contents += "\n".join(lines)
 
-            if coronal:
+            if self.coronal:
                 self.contents += "\n".join([f"nadvsim({i + 1}) = 1"]) + "\n"
 
-        if Minorities is not None:
+        if self.Minorities is not None and self.Pich is not None:
             lines = [
                 "",
                 f"! ----- Minorities",
                 f"",
-                f"xzmini  = {Minorities[0]:.2f} ! Charge of minority species (can be list)",
-                f"amini   = {Minorities[1]:.2f} ! Atomic mass of minority species (can be list)",
-                f"frmini  = {Minorities[2]} ! Minority density (n_min/n_e)",
+                f"xzmini  = {self.Minorities[0]:.2f} ! Charge of minority species (can be list)",
+                f"amini   = {self.Minorities[1]:.2f} ! Atomic mass of minority species (can be list)",
+                f"frmini  = {self.Minorities[2]} ! Minority density (n_min/n_e)",
                 f"rhminm  = 1.0E-12   ! Minimum density of a gas present (fraction of ne)",
                 f"",
             ]
 
             self.contents += "\n".join(lines) + "\n"
 
-    def addParticleBalance(
-        self, taupD=5.0, taupZ=0.4, taupmin=3.0, AddHe4=False, nzones_frantic=20
-        ):
-        if AddHe4:
+    def addParticleBalance(self):
+        if self.AddHe4ifDT and self.DTplasma:
             strt = "ndefine(3)	  = 1"
         else:
             strt = ""
@@ -389,11 +394,11 @@ class transp_nml:
             f"nltaup  = F ! (T) UFile, (F) Namelist tauph taupo",
             f"",
             f"taupmn   = 0.001     ! Minimum allowed confinement time (s)",
-            f"tauph(1) = {taupD}   ! Main (hydrogenic) species particle confinement time",
-            f"tauph(2) = {taupD}",
-            f"tauph(3) = {taupD}",
-            f"taupo    = {taupZ}   ! Impurity particle confinement time",
-            f"taumin   = {taupmin} ! Minority confinement time",
+            f"tauph(1) = {self.taupD}   ! Main (hydrogenic) species particle confinement time",
+            f"tauph(2) = {self.taupD}",
+            f"tauph(3) = {self.taupD}",
+            f"taupo    = {self.taupZ}   ! Impurity particle confinement time",
+            f"taumin   = {self.taupmin} ! Minority confinement time",
             f"",
             f"nlrcyc     = F",
             f"nlrcyx     = F     ! Enforce for impurities same taup as main ions",
@@ -414,7 +419,7 @@ class transp_nml:
             f"",
             f"nsomod          = 1   ! FRANTIC analytic neutral transport model",
             f"!nldbg0          = T   ! More FRANTIC outputs",
-            f"nzones_frantic  = {nzones_frantic} ! Number of radial zones in FRANTIC model",
+            f"nzones_frantic  = {self.nzones_frantic} ! Number of radial zones in FRANTIC model",
             f"mod0ed          = 1   ! 1 = Use time T0 or TIEDGE",
             f"ti0frc          = 0.0333 ! If mod0ed=2, Ti(0) multiplier" f"",
             f"fh0esc          = 0.3 ! Fraction of escaping neutrals to return as warm (rest as cold)",
@@ -479,7 +484,6 @@ class transp_nml:
     def addMHDandCurrentDiffusion(
         self,
         nteq_mode,
-        tokamak,
         currDiff_phases,
         B_ccw=False,
         Ip_ccw=False,
@@ -620,106 +624,105 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if isolver:
-            if tokamak == "SPARC":
-                from mitim_tools.experiment_tools.SPARCtools import defineISOLVER
+    def addISOLVER(self,defineISOLVER_method):
 
-            ISOLVERdiffusion = "T"
 
-            isolver_file, pfcs = defineISOLVER()
+        ISOLVERdiffusion = "T"
 
-            lines = [
-                "!=============================================================",
-                f"! ISOLVER",
-                f"!=============================================================",
-                f"",
-                f"nlpfc_circuit = T 		! PFC currents in UFILES are circuit currents",
-            ]
+        isolver_file, pfcs = defineISOLVER()
 
-            self.contents += "\n".join(lines) + "\n"
+        lines = [
+            "!=============================================================",
+            f"! ISOLVER",
+            f"!=============================================================",
+            f"",
+            f"nlpfc_circuit = T 		! PFC currents in UFILES are circuit currents",
+        ]
 
-            linesISOLVER = []
-            for cont, i in enumerate(pfcs):
-                linesISOLVER.append(f"pfc_names({cont+1}) = {i}\n")
-                linesISOLVER.append(f"pfc_sigma({cont+1}) = {pfcs[i][0]}\n")
-                linesISOLVER.append(f"pfc_cur({cont+1})   = {pfcs[i][1]}\n")
-                linesISOLVER.append("\n")
+        self.contents += "\n".join(lines) + "\n"
 
-            self.contents += "\n".join(lines) + "\n"
+        linesISOLVER = []
+        for cont, i in enumerate(pfcs):
+            linesISOLVER.append(f"pfc_names({cont+1}) = {i}\n")
+            linesISOLVER.append(f"pfc_sigma({cont+1}) = {pfcs[i][0]}\n")
+            linesISOLVER.append(f"pfc_cur({cont+1})   = {pfcs[i][1]}\n")
+            linesISOLVER.append("\n")
 
-            lines = [
-                "",
-                f"! ---- Flux diffusion",
-                f"nlisodif = {ISOLVERdiffusion} 			! Use ISOLVER flux diffusion instead of nlmdif",
-                f"!niso_ndif = 			 ! Number of internal flux diffusion points",
-                f"niso_difaxis = 1		! Distribution of internal flux diffusion points (1=uniform)",
-                f"niso_qlim0 = 0 		! Way to limit on axis q (0=no limit, 2=force, 3=current drive)",
-                f"nisorot = -1 			! Rotation treatment in GS (-1=no rotation)",
-                f"nisorot_maximp = 3     ! Max number charge state for impurity to enter as rotating",
-                f"xisorot_scale = 1.0 	! Rotation scale factor",
-                f"",
-                f"! ---- Machine and equilibrium",
-                f'iso_config = "{isolver_file}"		! Tokamak configuration',
-                f"neq_ilim = 0			! Limiter info (0= try ufile first, then internal)",
-                f'probe_names = "@all"   ! List of probes',
-                f"neq_xguess = 2 		! Guess x-points (2-both x-points)",
-                "!pass_names = '@pass'",
-                f"",
-                f"! ---- Solution Method",
-                f"niso_mode = 102		! Use in solution: 102 (default) - p, q; 101 - p, <J*B>",
-                f"niso_qedge = 2			! How to handle matching q if niso=102 (2=Mod to match Ip)",
-                f"eq_x_weight = 1.0		! Weight for x-point location matching",
-                f"eq_ref_weight = 1.0	! Weight for prescribed boundary matching",
-                f"eq_cur_weight = 1.0	! Weight for experimental currents matching",
-                f"",
-                f"! ---- Convergence and errors",
-                f"niso_maxiter = 250 	! Number of iterations with fixed parameters (then, 8 tries changing stuff)",
-                f"niso_sawtooth_mode = 0 ! In sawtooth, keep continuity of coil/vessel (0) poloidal flux or (1) current",
-                f"xiso_omega = 0.5	    ! Relaxation between iterations (0.5 for q-mode, 0.2 for <J*B>-mode",
-                f"xiso_omega_dif = 0.6   ! Relaxation for flux diffusion boundary condition",
-                f"xiso_error = 1.e-6		! Convergence error criteria",
-                f"xiso_warn_ratio = 50.0	! Accept error relaxed by this factor if struggling",
-                f"xiso_last_ratio = -1	! Ratio applied to last retry",
-                f"xbdychk = 0.05 		! Maximum allowable difference between prescribed and LCFS at midplane",
-                f"!dtfirstg = 			 ! Time step for first flux diffusion (hardest)",
-                f"!niso_njpre = 4		 ! Adds a 4 point interation filter to Jphi",
-                f"",
-                f"! ---- Resolution",
-                f"niso_nrho = 100		! Radial surfaces to use in ISOLVER",
-                f"niso_ntheta = 121 		! Number of poloidal rays to use in ISOLVER",
-                f"niso_axis = 2 			! Distribution of radial surfaces (2: sin(pi/2*uniform))",
-                f"niso_nrzgrid = 129,129 ! Points in R,Z direction",
-                f"!xiso_smooth = 		 ! Smoothing of profiles prior to ISOLVER",
-                f"xiso_pcurq_smooth = -2 ! Smoothing of current in q mode",
-                f"eq_crat = 0.08			! Minimum curvature of boundary derived from psiRZ solution",
-                f"eq_bdyoff = 0.007		! Boundary offset to meet eq_crat requirement",
-                f"",
-                f"! ---- Other",
-                f"xeq_p_edge = 0			 ! 0 = force P_edge=0, 1 = shift down first",
-                f"",
-                f"! ---- Circuit mode",
-                f"!fb_names = 			 ! Feedback controllers (this turns on the CIRCUIT mode)",
-                f"",
-                f"!fb_feedback = 		 ! ",
-                f"!fb_feedomega = 		 ! ",
-                f"!fb_lim_feedback = 		 ! ",
-                f"!tinit_precoil = 		 ! ",
-                f"!xiso_relbal = 		 ! ",
-                f"!xiso_relbal_dt = 		 ! ",
-                f"!neq_redo = 		 ! ",
-                f"!niso0_circ = 		 ! ",
-                f"!niso_jit_psifix = 		 ! ",
-                f"!pfc_jit_voltage = 		 ! ",
-                f"!npfc_jit = 			 ! Way to use just-in-time for next step currents",
-                f"!xiso_jit_relax =",
-                f"!pfc__jit_sigma = ",
-                f"!xiso_def_jit_sigma = ",
-                f"!xiso_jit_sigma_pcur = ",
-                f"!niso_def_drive_type = -2 ! -2: drive with current sources",
-                f"",
-            ]
+        self.contents += "\n".join(lines) + "\n"
 
-            self.contents += "\n".join(lines) + "\n"
+        lines = [
+            "",
+            f"! ---- Flux diffusion",
+            f"nlisodif = {ISOLVERdiffusion} 			! Use ISOLVER flux diffusion instead of nlmdif",
+            f"!niso_ndif = 			 ! Number of internal flux diffusion points",
+            f"niso_difaxis = 1		! Distribution of internal flux diffusion points (1=uniform)",
+            f"niso_qlim0 = 0 		! Way to limit on axis q (0=no limit, 2=force, 3=current drive)",
+            f"nisorot = -1 			! Rotation treatment in GS (-1=no rotation)",
+            f"nisorot_maximp = 3     ! Max number charge state for impurity to enter as rotating",
+            f"xisorot_scale = 1.0 	! Rotation scale factor",
+            f"",
+            f"! ---- Machine and equilibrium",
+            f'iso_config = "{isolver_file}"		! Tokamak configuration',
+            f"neq_ilim = 0			! Limiter info (0= try ufile first, then internal)",
+            f'probe_names = "@all"   ! List of probes',
+            f"neq_xguess = 2 		! Guess x-points (2-both x-points)",
+            "!pass_names = '@pass'",
+            f"",
+            f"! ---- Solution Method",
+            f"niso_mode = 102		! Use in solution: 102 (default) - p, q; 101 - p, <J*B>",
+            f"niso_qedge = 2			! How to handle matching q if niso=102 (2=Mod to match Ip)",
+            f"eq_x_weight = 1.0		! Weight for x-point location matching",
+            f"eq_ref_weight = 1.0	! Weight for prescribed boundary matching",
+            f"eq_cur_weight = 1.0	! Weight for experimental currents matching",
+            f"",
+            f"! ---- Convergence and errors",
+            f"niso_maxiter = 250 	! Number of iterations with fixed parameters (then, 8 tries changing stuff)",
+            f"niso_sawtooth_mode = 0 ! In sawtooth, keep continuity of coil/vessel (0) poloidal flux or (1) current",
+            f"xiso_omega = 0.5	    ! Relaxation between iterations (0.5 for q-mode, 0.2 for <J*B>-mode",
+            f"xiso_omega_dif = 0.6   ! Relaxation for flux diffusion boundary condition",
+            f"xiso_error = 1.e-6		! Convergence error criteria",
+            f"xiso_warn_ratio = 50.0	! Accept error relaxed by this factor if struggling",
+            f"xiso_last_ratio = -1	! Ratio applied to last retry",
+            f"xbdychk = 0.05 		! Maximum allowable difference between prescribed and LCFS at midplane",
+            f"!dtfirstg = 			 ! Time step for first flux diffusion (hardest)",
+            f"!niso_njpre = 4		 ! Adds a 4 point interation filter to Jphi",
+            f"",
+            f"! ---- Resolution",
+            f"niso_nrho = 100		! Radial surfaces to use in ISOLVER",
+            f"niso_ntheta = 121 		! Number of poloidal rays to use in ISOLVER",
+            f"niso_axis = 2 			! Distribution of radial surfaces (2: sin(pi/2*uniform))",
+            f"niso_nrzgrid = 129,129 ! Points in R,Z direction",
+            f"!xiso_smooth = 		 ! Smoothing of profiles prior to ISOLVER",
+            f"xiso_pcurq_smooth = -2 ! Smoothing of current in q mode",
+            f"eq_crat = 0.08			! Minimum curvature of boundary derived from psiRZ solution",
+            f"eq_bdyoff = 0.007		! Boundary offset to meet eq_crat requirement",
+            f"",
+            f"! ---- Other",
+            f"xeq_p_edge = 0			 ! 0 = force P_edge=0, 1 = shift down first",
+            f"",
+            f"! ---- Circuit mode",
+            f"!fb_names = 			 ! Feedback controllers (this turns on the CIRCUIT mode)",
+            f"",
+            f"!fb_feedback = 		 ! ",
+            f"!fb_feedomega = 		 ! ",
+            f"!fb_lim_feedback = 		 ! ",
+            f"!tinit_precoil = 		 ! ",
+            f"!xiso_relbal = 		 ! ",
+            f"!xiso_relbal_dt = 		 ! ",
+            f"!neq_redo = 		 ! ",
+            f"!niso0_circ = 		 ! ",
+            f"!niso_jit_psifix = 		 ! ",
+            f"!pfc_jit_voltage = 		 ! ",
+            f"!npfc_jit = 			 ! Way to use just-in-time for next step currents",
+            f"!xiso_jit_relax =",
+            f"!pfc__jit_sigma = ",
+            f"!xiso_def_jit_sigma = ",
+            f"!xiso_jit_sigma_pcur = ",
+            f"!niso_def_drive_type = -2 ! -2: drive with current sources",
+            f"",
+        ]
+
+        self.contents += "\n".join(lines) + "\n"
 
     def addSawtooth(
         self, time_on, coeffs=[1.0, 3.0, 1.0, 0.4], ReconnectionFraction=0.37
@@ -868,19 +871,11 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-    def addVessel(self, tokamak, LimitersInNML=False):
-        if tokamak == "SPARC" or tokamak == "ARC":
-            from mitim_tools.experiment_tools.SPARCtools import (
-                defineTRANSPnmlStructures,
-            )
-        elif tokamak == "CMOD":
-            from mitim_tools.experiment_tools.CMODtools import defineTRANSPnmlStructures
-        elif tokamak == "AUG":
-            from mitim_tools.experiment_tools.AUGtools import defineTRANSPnmlStructures
+    def addVessel(self, defineTRANSPnmlStructures_method, LimitersInNML=False):
 
-        limiters, VVmoms = defineTRANSPnmlStructures()
+        limiters, VVmoms = defineTRANSPnmlStructures_method()
 
-        if limiters is not None and LimitersInNML:
+        if limiters is not None and self.LimitersInNML:
             alnlmr = str(limiters[0][0])
             alnlmy = str(limiters[0][1])
             alnlmt = str(limiters[0][2])
@@ -968,7 +963,7 @@ class transp_nml:
                 lines = [f"nri{i}	 = {Ufiles[i][1]}", f"nsy{i}	 = 0", f""]
                 self.contents += "\n".join(lines) + "\n"
 
-    def addICRF(self, tokamak, timeStep=0.001):
+    def addICRF(self, timeStep=0.001, ICRFantennas_method=None):
         theta_points = int(2**7)  # 128, default: 64
         radial_points = 320  # 320, default: 128
 
@@ -1005,20 +1000,10 @@ class transp_nml:
         ]
         self.contents += "\n".join(lines) + "\n"
 
-        if tokamak == "SPARC" or tokamak == "ARC":
-            from mitim_tools.experiment_tools.SPARCtools import ICRFantennas
+        if ICRFantennas_method is not None:
+            self.contents += ICRFantennas_method() + "\n"
 
-            MHz = 120.0
-        elif tokamak == "CMOD":
-            from mitim_tools.experiment_tools.CMODtools import ICRFantennas
-
-            MHz = 80.0
-
-        contentlines = ICRFantennas(MHz)
-
-        self.contents += contentlines + "\n"
-
-    def addECRF(self, tokamak, Pech=0.0, TORAY=False):
+    def addECRF(self, ECRFgyrotrons_method=None, Pech=0.0, TORAY=False):
         lines = [
             "!===========================================================",
             f"! Electron Cyclotron Resonance (ECRF)",
@@ -1076,15 +1061,10 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if tokamak == "AUG":
-            from mitim_tools.experiment_tools.AUGtools import ECRFgyrotrons
-        if tokamak == "D3D":
-            from mitim_tools.experiment_tools.DIIIDtools import ECRFgyrotrons
+        if ECRFgyrotrons_method is not None:
+            self.contents += ECRFgyrotrons_method() + "\n"
 
-        contentlines = ECRFgyrotrons()
-        self.contents += contentlines + "\n"
-
-    def addNBI(self, tokamak, Pnbi=0.0, timeStep=0.01):
+    def addNBI(self, NBIbeams_method=None, Pnbi=0.0, timeStep=0.01):
         lines = [
             "!===============================================",
             f"!           NEUTRAL BEAMS                      !",
@@ -1114,13 +1094,8 @@ class transp_nml:
         ]
         self.contents += "\n".join(lines) + "\n"
 
-        if tokamak == "AUG":
-            from mitim_tools.experiment_tools.AUGtools import NBIbeams
-        if tokamak == "D3D":
-            from mitim_tools.experiment_tools.DIIIDtools import NBIbeams
-
-        contentlines = NBIbeams()
-        self.contents += contentlines + "\n"
+        if NBIbeams_method is not None:
+            self.contents += NBIbeams_method() + "\n"
 
     def addPTSOLVER(self,
         xbounds=[0.95, 0.95, 0.95],
@@ -1361,7 +1336,9 @@ class transp_nml:
 
         self.contents_ptr_tglf = "\n".join(lines) + "\n"
 
-
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Write to file
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def write(self, runid):
 
@@ -1369,7 +1346,6 @@ class transp_nml:
 
         with open(self.file, "w") as file:
             file.write(self.contents)
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # NAMELIST utilities

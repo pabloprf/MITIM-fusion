@@ -1510,7 +1510,6 @@ class freegs_millerized:
         ax.set_xlim([0,1])
         GRAPHICStools.addDenseAxis(ax)
 
-
     # --------------------------------------------------------------
     # Writing
     # --------------------------------------------------------------
@@ -1534,4 +1533,7 @@ class freegs_millerized:
 
         self.transp.write_ufiles()
 
+    def to_profiles(self, file = '~/scratch/input.gacode'):
 
+        print("\t- Converting to PROFILES")
+        pass

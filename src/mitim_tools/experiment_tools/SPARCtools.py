@@ -46,7 +46,7 @@ def defineFirstWall(file_rel=IOtools.expandPath(LimiterPath)):
     return r, z
 
 
-def ICRFantennas(MHz):
+def ICRFantennas(MHz=120.0):
     lines = [
         f"! ----- Antenna Parameters",
         f"nicha     = 1         ! Number of ICRH antennae",

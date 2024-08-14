@@ -565,7 +565,7 @@ def defineFirstWall():
     return r, z
 
 
-def ICRFantennas(MHz):
+def ICRFantennas(MHz=80.0):
     nichas = 2  # 1
 
     lines = [
