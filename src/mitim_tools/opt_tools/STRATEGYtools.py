@@ -901,7 +901,9 @@ class PRF_BO:
             try:
                 pickle_dill.dump(copyClass, handle)
             except:
-                print("problem saving")
+                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications", typeMsg="w")
+                del copyClass.optimization_object
+                pickle_dill.dump(copyClass, handle)
 
         # Get variables back ----------------------------------------------------------------
         for ikey in saver:
