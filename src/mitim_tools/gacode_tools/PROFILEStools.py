@@ -3648,6 +3648,73 @@ class PROFILES_GACODE:
         else:
             print("\t- Cannot plot flux surface geometry", typeMsg="w")
 
+    def plotPeaking(
+        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
+        ):
+        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
+        ne_peaking = self.derived["ne_peaking0.2"]
+        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
+
+        if printVals:
+            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
+
+        # Extra
+        r = self.profiles["rmin(m)"]
+        volp = self.derived["volp_miller"]
+        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
+
+        if debugPlot:
+            fig, axq = plt.subplots()
+
+            ne = self.profiles["ne(10^19/m^3)"]
+            axq.plot(self.profiles["rho(-)"], ne, color="m")
+            ne_vol = (
+                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+            )
+            axq.axhline(y=ne_vol * 10, color="m")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (0,) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking0 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="r")
+            axq.axhline(y=ne_vol * 10, color="r")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (ne[ix],) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking1 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        ne_peaking0 = ne_peaking
+
+        ax.errorbar(
+            [nu_effCGYRO],
+            [ne_peaking],
+            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
+            marker=marker,
+            c=c,
+            markersize=16,
+            capsize=2.0,
+            fmt="s",
+            elinewidth=1.0,
+            capthick=1.0,
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="b")
+            axq.axhline(y=ne_vol * 10, color="b")
+            plt.show()
+
+        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
+
+        return nu_effCGYRO, ne_peaking
+
     def csv(self, file="input.gacode.xlsx"):
         dictExcel = IOtools.OrderedDict()
 
@@ -3712,7 +3779,11 @@ class PROFILES_GACODE:
             ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
             plt.show()
 
-    def to_TGLF(self, rhos=[0.5], TGLFsettings=0):
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+
+    def to_tglf(self, rhos=[0.5], TGLFsettings=0):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -3846,72 +3917,6 @@ class PROFILES_GACODE:
 
         self.transp.write_ufiles()
 
-    def plotPeaking(
-        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
-        ):
-        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
-        ne_peaking = self.derived["ne_peaking0.2"]
-        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
-
-        if printVals:
-            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
-
-        # Extra
-        r = self.profiles["rmin(m)"]
-        volp = self.derived["volp_miller"]
-        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
-
-        if debugPlot:
-            fig, axq = plt.subplots()
-
-            ne = self.profiles["ne(10^19/m^3)"]
-            axq.plot(self.profiles["rho(-)"], ne, color="m")
-            ne_vol = (
-                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-            )
-            axq.axhline(y=ne_vol * 10, color="m")
-
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (0,) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking0 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="r")
-            axq.axhline(y=ne_vol * 10, color="r")
-
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (ne[ix],) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking1 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        ne_peaking0 = ne_peaking
-
-        ax.errorbar(
-            [nu_effCGYRO],
-            [ne_peaking],
-            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
-            marker=marker,
-            c=c,
-            markersize=16,
-            capsize=2.0,
-            fmt="s",
-            elinewidth=1.0,
-            capthick=1.0,
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="b")
-            axq.axhline(y=ne_vol * 10, color="b")
-            plt.show()
-
-        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
-
-        return nu_effCGYRO, ne_peaking
 
 class DataTable:
     def __init__(self, variables=None):

@@ -412,7 +412,7 @@ class TGLF:
 
         if specificInputs is None:
 
-            self.inputsTGLF = self.profiles.to_TGLF(rhos=self.rhos)
+            self.inputsTGLF = self.profiles.to_tglf(rhos=self.rhos)
 
             for rho in self.inputsTGLF:
                 self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])

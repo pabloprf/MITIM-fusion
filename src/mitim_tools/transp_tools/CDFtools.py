@@ -15021,6 +15021,10 @@ class transp_output:
             folderWork, restart=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
         )
 
+    # ---------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------
+
     def writeOutput(self, folderWork=None, time=-0.06, avTime=0.05):
         """
         VIP: folderWork will be cleaned!
@@ -15074,7 +15078,6 @@ class transp_output:
         os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
         os.system("mv {0}/TRANSPrun.tar {0}/RELEASE_folder/.".format(self.FolderCDF))
 
-
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
 
         print("\t- Converting to TRANSP")
@@ -15087,6 +15090,10 @@ class transp_output:
             self.transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
 
         self.transp.write_ufiles()
+
+    def to_profiles(self):
+
+        print('Not implemented yet',typeMsg='w')
 
     # ---------------------------------------------------------------------------------------------------------
     # -------- Outputs
