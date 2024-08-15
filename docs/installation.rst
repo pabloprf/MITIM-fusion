@@ -41,11 +41,11 @@ Use ``pip3`` to install all the required MITIM requirements:
    If running in a computing cluster, remove that flag.
    The ``pyqt`` package is used to create condensed figures into a single notebook when interpreting and plotting simulation results.
    
-   If you wish to install all capabilities (including compatibility with the `OMFIT <https://omfit.io/>`_  or `FREEGS <https://github.com/freegs-plasma/freegs>`_ codes), it is recommended that ``pip3`` is run as follows:
+   If you wish to install all capabilities (including compatibility with `OMFIT <https://omfit.io/>`_  or TensorFlow), it is recommended that ``pip3`` is run as follows:
 
    .. code-block:: console
 
-      pip3 install -e MITIM-fusion[pyqt,omfit]
+      pip3 install -e MITIM-fusion[pyqt,omfit,nn]
 
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
