@@ -41,13 +41,70 @@ class transp_run:
             'PichT': ['rfp','RFP',[1], 1E6],
         }
 
-    def namelist_from(self, folder_original,nml_original):
+    # --------------------------------------------------------------------------------------------
+    # Namelist
+    # --------------------------------------------------------------------------------------------
+
+    def namelist(
+        self,
+        timings = {},
+        tokamak = 'SPARC',
+        **transp_params
+        ):
+
+        t = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
+        t.define_machine(tokamak)
+        t.populate(**transp_params)
+        t.write(self.runid)
+
+        self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
+
+    def namelist_from(self,
+        folder_original,
+        nml_original,
+        tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None
+        ):
 
         self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
         os.system(f"cp {folder_original}/{nml_original} {self.nml}")
 
         # Predictive namelists
         os.system(f"cp {folder_original}/*namelist.dat {self.folder}/.")
+
+        # Define timings
+
+        if self.nml is None:
+            print("Please read namelist first", typeMsg='w')
+            return
+
+        if curr_diff is None:
+            curr_diff = tinit
+
+        if sawtooth is None:
+            sawtooth = curr_diff
+
+        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s). Write AC: {writeAC}s")
+
+        IOtools.changeValue(self.nml, "tinit", tinit, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "ftime", ftime, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "tqmoda(1)", curr_diff, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "t_sawtooth_on", sawtooth, None, "=", MaintainComments=True)
+
+        if writeAC is not None:
+            IOtools.changeValue(self.nml, "mthdavg", 2, None, "=", MaintainComments=True)
+
+            avgtim = 0.05  # Average before
+            IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
+
+            for var in ['outtim','fi_outtim','fe_outtim']:
+                IOtools.changeValue(self.nml, var, f"{writeAC:.3f}", None, "=", MaintainComments=True)
+
+            IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
+        
+
+    # --------------------------------------------------------------------------------------------
+    # Ufiles
+    # --------------------------------------------------------------------------------------------
 
     def ufiles_from(self, folder_original, ufiles):
 
@@ -162,36 +219,6 @@ class transp_run:
         else:
             self.geometry_select = None
 
-    def define_timings(self,tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None):
-
-        if self.nml is None:
-            print("Please read namelist first", typeMsg='w')
-            return
-
-        if curr_diff is None:
-            curr_diff = tinit
-
-        if sawtooth is None:
-            sawtooth = curr_diff
-
-        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s). Write AC: {writeAC}s")
-
-        IOtools.changeValue(self.nml, "tinit", tinit, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "ftime", ftime, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "tqmoda(1)", curr_diff, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "t_sawtooth_on", sawtooth, None, "=", MaintainComments=True)
-
-        if writeAC is not None:
-            IOtools.changeValue(self.nml, "mthdavg", 2, None, "=", MaintainComments=True)
-
-            avgtim = 0.05  # Average before
-            IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
-
-            for var in ['outtim','fi_outtim','fe_outtim']:
-                IOtools.changeValue(self.nml, var, f"{writeAC:.3f}", None, "=", MaintainComments=True)
-
-            IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
-        
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
     # --------------------------------------------------------------------------------------------
@@ -219,7 +246,7 @@ class transp_run:
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
 
-    def icrf_on_time(self, time, power_MW, ramp_time = 1E-3):
+    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3):
 
         for t in self.variables.keys():
             if t>time:
@@ -228,6 +255,9 @@ class transp_run:
         self.add_variable_time(time-ramp_time, None, 0.0, variable='RFP')
         self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
         self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
+
+        # Antenna Frequency
+        IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
 
     # --------------------------------------------------------------------------------------------
 
@@ -451,8 +481,6 @@ class transp_input_time:
         # --------------------------------------------------------------
 
         self.geometry['R_lim'], self.geometry['Z_lim'] = rvv, zvv
-
-
 
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 

@@ -48,18 +48,19 @@ def defineFirstWall(file_rel=IOtools.expandPath(LimiterPath)):
 
 def ICRFantennas(MHz=120.0):
     lines = [
-        f"! ----- Antenna Parameters",
-        f"nicha     = 1         ! Number of ICRH antennae",
+        "! ----- Antenna Parameters",
+        "nicha     = 1         ! Number of ICRH antennae",
         f"frqicha   = {MHz}e6   ! Frequency of antenna (Hz)",
-        f"rfartr    = 2.0       ! Distance (cm) from antenna for Faraday shield",
-        f"ngeoant   = 1         ! Geometry representation of antenna (1=traditional)",
-        f"rmjicha   = 165.0     ! Major radius of antenna (cm)",
-        f"rmnicha   = 55.0      ! Minor radius of antenna (cm)",
-        f"thicha    = 26.28     ! Theta extent of antenna (degrees)",
-        f"num_nphi  = 1         ! Num of Nphi per antenna",
-        f"nnphi     = 30        ! Nphi values",
-        f"wnphi     = 1.        ! Nphi power weightings",
-        f"",
+        "!prficha    = 0.0      ! Power of antenna (W)",
+        "rfartr    = 2.0       ! Distance (cm) from antenna for Faraday shield",
+        "ngeoant   = 1         ! Geometry representation of antenna (1=traditional)",
+        "rmjicha   = 165.0     ! Major radius of antenna (cm)",
+        "rmnicha   = 55.0      ! Minor radius of antenna (cm)",
+        "thicha    = 26.28     ! Theta extent of antenna (degrees)",
+        "num_nphi  = 1         ! Num of Nphi per antenna",
+        "nnphi     = 30        ! Nphi values",
+        "wnphi     = 1.        ! Nphi power weightings",
+        "",
     ]
 
     return "\n".join(lines)
