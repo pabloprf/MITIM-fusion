@@ -20,7 +20,7 @@ In a nutshell:
 
 2. Install MITIM (``python3.9`` required):
     ```bash
-    pip install -e MITIM-fusion[pyqt,omfit]
+    pip install -e MITIM-fusion[pyqt]
     ```
 
 References
