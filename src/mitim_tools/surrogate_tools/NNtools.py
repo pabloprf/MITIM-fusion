@@ -50,17 +50,17 @@ class eped_nn(mitim_nn):
         super().__init__(**kwargs)
 
     def __call__(self, 
-                 R,             #m
-                 a,             #m
-                 Ip,            # MA
-                 Bt,            # T
-                 kappa995, 
-                 delta995, 
-                 neped,         #10e19m^-3
-                 betan, 
-                 zeff, 
-                 nesep_ratio=0.3, 
-                 tesep=75    #eV
+                Ip,            # MA
+                Bt,            # T
+                R,             #m
+                a,             #m
+                kappa995, 
+                delta995, 
+                neped,         #10e19m^-3
+                betan, 
+                zeff, 
+                tesep=75,    #eV
+                nesep_ratio=0.3
                  ):
 
         nesep = neped*nesep_ratio
@@ -70,14 +70,17 @@ class eped_nn(mitim_nn):
 
         return self.__call__(inputs)
 
-
-
+# ---------------------------------------------------------------------------------------------
+# test that everything is working
+# ---------------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
 
     nn = eped_nn(type='tf')
-    nn.load('/Users/hallj/MITIM-fusion/src/mitim_tools/surrogate_tools/EPED-NN-MODEL-ARC.h5', 
-            norm="/Users/hallj/MITIM-fusion/src/mitim_tools/surrogate_tools/EPED-NN-NORMALIZATION.txt"
+
+    nn.load('/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-MODEL-ARC.h5', 
+            norm="/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-NORMALIZATION.txt"
             )
-    ptop, wtop = nn(4.25, 1.17, 10.95, 10.8, 1.68, 0.516, 19.27, 1.9, 1.5)
+    ptop, wtop = nn(10.95, 10.8, 4.25, 1.17, 1.68, 0.516, 19.27, 1.9, 1.5)
+
     print(ptop, wtop)
