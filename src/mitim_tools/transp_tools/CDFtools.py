@@ -15086,11 +15086,13 @@ class transp_output:
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        self.transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            self.transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
+            transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
 
-        self.transp.write_ufiles()
+        transp.write_ufiles()
+
+        return transp
 
     def to_profiles(self):
 

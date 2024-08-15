@@ -3911,11 +3911,13 @@ class PROFILES_GACODE:
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        self.transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            self.transp.populate_time.from_profiles(time,self)
+            transp.populate_time.from_profiles(time,self)
 
-        self.transp.write_ufiles()
+        transp.write_ufiles()
+
+        return transp
 
 
 class DataTable:
