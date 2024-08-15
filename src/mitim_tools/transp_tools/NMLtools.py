@@ -151,6 +151,7 @@ class transp_nml:
         self.nzones_frantic = transp_params.get("nzones_frantic",20)
         self.gridsMHD = transp_params.get("gridsMHD",[151,127])
         self.MCparticles = transp_params.get("MCparticles",1e6)
+        self.useNUBEAMforAlphas = transp_params.get("useNUBEAMforAlphas",True)
         
         self.coronal = transp_params.get("coronal",True)
         self.nteq_mode = transp_params.get("nteq_mode",5)
@@ -798,6 +799,9 @@ class transp_nml:
         self.contents += "\n".join(lines) + "\n"
 
     def addFusionProducts(self):
+
+        useNUBEAM = self.DTplasma and self.useNUBEAMforAlphas
+
         lines = [
             "!==============================================================================",
             "! Fusion products, reactions and slowing down",
@@ -805,14 +809,14 @@ class transp_nml:
             "",
             "!----- General Model",
             "",
-            f"nalpha  				   = {int(not self.DTplasma)}     ! Fusion products model (0=MC for alphas, 1= fast model)",
+            f"nalpha  				   = {int(not useNUBEAM)}     ! Fusion products model (0=MC for alphas, 1= fast model)",
             f"nptclf  				   = {int(self.MCparticles)} ! Number of monte carlo particles for fusion product calcs",
             "nlfatom 				   = T     ! Include atomic physics effects on products (e.g. CX)",
             "nl_ignore_mini_conflicts    = T		! Ignore issue with He3 product coinciden with ICRF minority",
             "",
             "!----- Reactions",
             "",
-            f"nlfhe4  = {self.DTplasma}       ! Turn on MC slowing-down of He4 from D+T reactions",
+            f"nlfhe4  = {useNUBEAM}       ! Turn on MC slowing-down of He4 from D+T reactions",
             "plfhe4  = 1.0E2   ! Source power threshold to run MC (in W)",
             "",
             "nlfst   = F       ! Turn on MC slowing-down of T from D+D reactions (D+D=T+p)",

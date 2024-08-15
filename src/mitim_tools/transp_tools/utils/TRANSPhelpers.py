@@ -228,7 +228,7 @@ class transp_run:
         if self.nml is not None:
             for var in self.namelist_variables.keys():
                 IOtools.changeValue(self.nml, var, self.namelist_variables[var], None, "=", MaintainComments=True)
-            print(f"\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
+            print("\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
         else:
             print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='w')
 
@@ -517,7 +517,7 @@ class transp_input_time:
 
         self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = None, Zeff = None, PichT_MW = None):
+    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = None, PichT_MW = None):
 
         self.variables = {}
 
@@ -655,7 +655,7 @@ class transp_input_time:
             # Quantities that do not come from profiles
             # --------------------------------------------------------------
 
-            elif var == 'Vsurf':
+            elif (var == 'Vsurf') and (Vsurf is not None):
                 self.variables[self.transp_instance.quantities[var][1]]['x'] = None
                 self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
 
