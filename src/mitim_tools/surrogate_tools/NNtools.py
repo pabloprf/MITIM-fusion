@@ -1,6 +1,5 @@
 from mitim_tools.misc_tools import IOtools
 import numpy as np
-import os
 
 # ---------------------------------------------------------------------------------------------
 # Main class for Neural Network tools
@@ -39,6 +38,24 @@ class mitim_nn:
         else:
             return self.model.predict(inputs)[0]
 
+'''
+---------------------------------------------------------------------------------------------
+Class for the EPED NN
+---------------------------------------------------------------------------------------------
+Example usage:
+
+    nn = eped_nn(type='tf')
+
+    nn_location = IOtools.expandPath('$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5')
+    norm_location = IOtools.expandPath('$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt')
+
+    nn.load(nn_location, norm=norm_location)
+    
+    ptop, wtop = nn(10.95, 10.8, 4.25, 1.17, 1.68, 0.516, 19.27, 1.9, 1.5)
+
+    print(ptop, wtop)
+
+'''
 
 # ---------------------------------------------------------------------------------------------
 # Class for the EPED NN
@@ -66,21 +83,4 @@ class eped_nn(mitim_nn):
         nesep = neped*nesep_ratio
         inputs = np.array([Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep, nesep])
 
-        self._evaluate_tf(inputs)
-
         return self.__call__(inputs)
-
-# ---------------------------------------------------------------------------------------------
-# test that everything is working
-# ---------------------------------------------------------------------------------------------
-
-if __name__ == '__main__':
-
-    nn = eped_nn(type='tf')
-
-    nn.load('/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-MODEL-ARC.h5', 
-            norm="/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-NORMALIZATION.txt"
-            )
-    ptop, wtop = nn(10.95, 10.8, 4.25, 1.17, 1.68, 0.516, 19.27, 1.9, 1.5)
-
-    print(ptop, wtop)
