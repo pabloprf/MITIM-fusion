@@ -89,7 +89,7 @@ If TRANSP has already been run and the .CDF results file already exists (``cdf_f
 
 	from mitim_tools.transp_tools import CDFtools
 
-	transp_results = CDFtools.CDFreactor( cdf_file )
+	transp_results = CDFtools.transp_output( cdf_file )
 
 	transp_results.plot()
 
@@ -118,7 +118,7 @@ If TRANSP has already been run and the .CDF results file already exists (``cdf_f
 
 .. note::
 
-	The contents of the TRANSP class ``CDFreactor`` can be found in ``transp_tools.CDFtools.py`` if one wants to understand what post-processing is applied to TRANSP outputs and the units of the variables.
+	The contents of the TRANSP class ``transp_output`` can be found in ``transp_tools.CDFtools.py`` if one wants to understand what post-processing is applied to TRANSP outputs and the units of the variables.
 
 TRANSP aliases
 --------------

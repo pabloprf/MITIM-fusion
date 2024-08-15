@@ -343,7 +343,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
 
                 # Sometimes the file is corrupted, len(t) different from len(Te)
                 try:
-                    Reactor = CDFtools.CDFreactor(netCDFfile)
+                    Reactor = CDFtools.transp_output(netCDFfile)
                 except:
                     Reactor = corruptRecover(
                         self.FolderTRANSP, self.runid, self.tok, self.folderGRID_look
@@ -704,7 +704,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
 		"""
         if retrieveAC:
             # Determine if run has AC files requested
-            Reactor = CDFtools.CDFreactor(f"{self.FolderTRANSP}/{file}")
+            Reactor = CDFtools.transp_output(f"{self.FolderTRANSP}/{file}")
             TORIC, TORBEAM, NUBEAM = self.determineACs(Reactor)
             # Retrieve
             retrieveACfiles(
@@ -841,7 +841,7 @@ def corruptRecover(FolderSimulation, nameRunTot, tok, serverCDF):
         try:
             # -----------------
             # Successful & correct run
-            Reactor = CDFtools.CDFreactor(netCDFfile)
+            Reactor = CDFtools.transp_output(netCDFfile)
             Reactor.writeResults_TXT(
                 FolderSimulation + "infoRun_preconvergence.dat", ensureBackUp=False
             )

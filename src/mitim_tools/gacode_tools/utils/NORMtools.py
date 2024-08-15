@@ -138,10 +138,10 @@ def normalizations_transp(
     # Normalization
     if cdf_open is None:
         print("\t- Opening TRANSP CDF file to grab normalizations")
-        from mitim_tools.transp_tools.CDFtools import CDFreactor
+        from mitim_tools.transp_tools.CDFtools import transp_output
 
         try:
-            cdf = CDFreactor(LocationCDF)
+            cdf = transp_output(LocationCDF)
         except:
             print("~! Could not be opened", typeMsg="w")
             cdf = None

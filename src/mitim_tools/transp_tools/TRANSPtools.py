@@ -401,7 +401,7 @@ def storeCDF(FolderTRANSP, runid, retrieveAC=False):
         readFBM = readTORIC = False
 
     try:
-        c = CDFtools.CDFreactor(
+        c = CDFtools.transp_output(
             netCDFfile,
             readTGLF=True,
             readStructures=True,
@@ -412,7 +412,7 @@ def storeCDF(FolderTRANSP, runid, retrieveAC=False):
         )
     except:
         print(
-            "\t- CDF file could not be processed as CDFreactor, possibly corrupted",
+            "\t- CDF file could not be processed as transp_output, possibly corrupted",
             typeMsg="w",
         )
         c = None

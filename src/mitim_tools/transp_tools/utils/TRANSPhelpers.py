@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.gs_tools import FREEGStools
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -11,7 +12,6 @@ from IPython import embed
 # ----------------------------------------------------------------------------------------------------------
 # TRANSP object utilities
 # ----------------------------------------------------------------------------------------------------------
-
 
 class transp_run:
     def __init__(self, folder, shot, runid):
@@ -24,10 +24,14 @@ class transp_run:
         # Initialize variables
         self.variables, self.geometry = {}, {}
         self.nml = None
+        self.namelist_variables = {}
 
         # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
         # ------------------------------------------
+
+        # This helps as mapping between cdf, profs and ufiles
+        # name_cdf : [uf type, uf name, coordinate, factor_cdf, name_profs, factor_profs]
 
         self.quantities = {
             'Ip': ['cur','CUR',None, 1E6],
@@ -41,7 +45,37 @@ class transp_run:
             'PichT': ['rfp','RFP',[1], 1E6],
         }
 
-    def namelist_from(self, folder_original,nml_original):
+    # --------------------------------------------------------------------------------------------
+    # Namelist
+    # --------------------------------------------------------------------------------------------
+
+    def write_namelist(
+        self,
+        timings = {},
+        tokamak = 'SPARC',
+        **transp_params
+        ):
+        ''' 
+        Create a namelist for TRANSP based on default parameters + transp_params
+        '''
+
+        t = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
+        t.define_machine(tokamak)
+        t.populate(**transp_params)
+        t.write(self.runid)
+
+        self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
+
+        self._insert_parameters_namelist()
+
+    def namelist_from(self,
+        folder_original,
+        nml_original,
+        tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None
+        ):
+        '''
+        Copy namelist from folder_original and change timings
+        '''
 
         self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
         os.system(f"cp {folder_original}/{nml_original} {self.nml}")
@@ -49,12 +83,46 @@ class transp_run:
         # Predictive namelists
         os.system(f"cp {folder_original}/*namelist.dat {self.folder}/.")
 
-    def ufiles_from(self, folder_original, ufiles):
+        # Define timings
 
-        for ufile in ufiles:
-            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
+        if self.nml is None:
+            print("Please read namelist first", typeMsg='w')
+            return
+
+        if curr_diff is None:
+            curr_diff = tinit
+
+        if sawtooth is None:
+            sawtooth = curr_diff
+
+        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s). Write AC: {writeAC}s")
+
+        IOtools.changeValue(self.nml, "tinit", tinit, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "ftime", ftime, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "tqmoda(1)", curr_diff, None, "=", MaintainComments=True)
+        IOtools.changeValue(self.nml, "t_sawtooth_on", sawtooth, None, "=", MaintainComments=True)
+
+        if writeAC is not None:
+            IOtools.changeValue(self.nml, "mthdavg", 2, None, "=", MaintainComments=True)
+
+            avgtim = 0.05  # Average before
+            IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
+
+            for var in ['outtim','fi_outtim','fe_outtim']:
+                IOtools.changeValue(self.nml, var, f"{writeAC:.3f}", None, "=", MaintainComments=True)
+
+            IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
+        
+        self._insert_parameters_namelist()
+
+    # --------------------------------------------------------------------------------------------
+    # Ufiles
+    # --------------------------------------------------------------------------------------------
 
     def write_ufiles(self, structures_position = 0, radial_position = 0):
+        '''
+        Write ufiles based on variables that were stored (e.g. from freegs or cdf)
+        '''
 
         self.times = np.sort(np.array(list(self.variables.keys())))
 
@@ -101,7 +169,7 @@ class transp_run:
                 uf.Variables['Z'] = np.array(z)
 
             # Write ufile
-            uf.writeUFILE(f'{self.folder}/PRF12345.{self.quantities[quantity][1]}')
+            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.{self.quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
         # Write MRY ufile
@@ -124,7 +192,7 @@ class transp_run:
         if structures_position is not None:
 
             # --------------------------------------------------------------------------------------------
-            # Write VV in namelist
+            # Write VV in namelist (defer to later)
             # --------------------------------------------------------------------------------------------
 
             geos = []
@@ -133,14 +201,8 @@ class transp_run:
                     geos.append(self.geometry[time])
             self.geometry_select = geos[structures_position]
 
-            VVRmom_str = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
-            VVZmom_str = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
-
-            if self.nml is not None:
-                IOtools.changeValue(self.nml, "VVRmom", VVRmom_str, None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "VVZmom", VVZmom_str, None, "=", MaintainComments=True)
-            else:
-                print("\t- Namelist not available in this transp instance, VV geometry not written", typeMsg='w')
+            self.namelist_variables['VVRmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
+            self.namelist_variables['VVZmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
 
             # --------------------------------------------------------------------------------------------
             # Write Limiters in ufile
@@ -152,46 +214,32 @@ class transp_run:
             # Write Antenna in namelist
             # --------------------------------------------------------------------------------------------
 
-            if self.nml is not None:
-                IOtools.changeValue(self.nml, "rmjicha", 100.0*self.geometry_select['antenna_R'], None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "rmnicha", 100.0*self.geometry_select['antenna_r'], None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "thicha", self.geometry_select['antenna_t'], None, "=", MaintainComments=True)
-            else:
-                print("\t- Namelist not available in this transp instance, Antenna geometry not written", typeMsg='w')
+            self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
+            self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
+            self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
 
         else:
             self.geometry_select = None
 
-    def define_timings(self,tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None):
+        self._insert_parameters_namelist()
 
-        if self.nml is None:
-            print("Please read namelist first", typeMsg='w')
-            return
+    def _insert_parameters_namelist(self):
 
-        if curr_diff is None:
-            curr_diff = tinit
+        if self.nml is not None:
+            for var in self.namelist_variables.keys():
+                IOtools.changeValue(self.nml, var, self.namelist_variables[var], None, "=", MaintainComments=True)
+            print("\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
+        else:
+            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='w')
 
-        if sawtooth is None:
-            sawtooth = curr_diff
+    def ufiles_from(self, folder_original, ufiles):
+        '''
+        Copy ufiles from folder_original
+        '''
 
-        print(f"\t- Defining timings: tinit = {tinit}s, ftime = {ftime}s (and current diffusion from = {curr_diff}s, sawtooth from = {sawtooth}s). Write AC: {writeAC}s")
+        for ufile in ufiles:
+            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
 
-        IOtools.changeValue(self.nml, "tinit", tinit, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "ftime", ftime, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "tqmoda(1)", curr_diff, None, "=", MaintainComments=True)
-        IOtools.changeValue(self.nml, "t_sawtooth_on", sawtooth, None, "=", MaintainComments=True)
-
-        if writeAC is not None:
-            IOtools.changeValue(self.nml, "mthdavg", 2, None, "=", MaintainComments=True)
-
-            avgtim = 0.05  # Average before
-            IOtools.changeValue(self.nml, "avgtim", avgtim, None, "=", MaintainComments=True)
-
-            for var in ['outtim','fi_outtim','fe_outtim']:
-                IOtools.changeValue(self.nml, var, f"{writeAC:.3f}", None, "=", MaintainComments=True)
-
-            IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
-        
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
     # --------------------------------------------------------------------------------------------
@@ -219,7 +267,7 @@ class transp_run:
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
 
-    def icrf_on_time(self, time, power_MW, ramp_time = 1E-3):
+    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3):
 
         for t in self.variables.keys():
             if t>time:
@@ -229,9 +277,12 @@ class transp_run:
         self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
         self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
 
+        # Antenna Frequency
+        IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
+
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamak, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=30.0):
+    def run(self, tokamak, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6):
         '''
         Run TRANSP
         '''
@@ -348,8 +399,12 @@ class transp_input_time:
 
         # Otherwise read from previous, do not load twice
         if cdf_file is not None:
-            print(f"Populating time {time} from {cdf_file}")
-            self.c_original = CDFtools.CDFreactor(cdf_file)
+            if isinstance(cdf_file, str):
+                print(f"Populating time {time} from {cdf_file}")
+                self.c_original = CDFtools.transp_output(cdf_file)
+            else:
+                print(f"Populating time {time} from opened CDF")
+                self.c_original = cdf_file
         else:
             print(f"Populating time {time} from previously opened CDF")
         
@@ -452,8 +507,6 @@ class transp_input_time:
 
         self.geometry['R_lim'], self.geometry['Z_lim'] = rvv, zvv
 
-
-
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
         # Create Miller FreeGS for the desired geometry
@@ -464,7 +517,7 @@ class transp_input_time:
 
         self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = None, Zeff = None, PichT_MW = None):
+    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
         self.variables = {}
 
@@ -582,6 +635,84 @@ class transp_input_time:
         
         self._populate(time)
 
+    def from_profiles(self, time, profiles_file, Vsurf = 0.0):
+
+        self.time = time
+
+        if isinstance(profiles_file, str):
+            self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
+        else:
+            self.p = profiles_file
+
+        self.variables = {}
+        for var in self.transp_instance.quantities.keys():
+            self.variables[self.transp_instance.quantities[var][1]] = {}
+
+            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT']:
+                self.variables[self.transp_instance.quantities[var][1]]['x'],self.variables[self.transp_instance.quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
+            
+            # --------------------------------------------------------------
+            # Quantities that do not come from profiles
+            # --------------------------------------------------------------
+
+            elif (var == 'Vsurf') and (Vsurf is not None):
+                self.variables[self.transp_instance.quantities[var][1]]['x'] = None
+                self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
+
+        self._produce_geometry_profiles()
+        self._populate(time)
+
+    def _produce_quantity_profiles(self, var = 'Te', Vsurf = None):
+
+        if var == 'Ip':
+            x = None
+            z = self.p.profiles['current(MA)'][0] * 1E6
+        elif var == 'RBt_vacuum':
+            x = None
+            z = self.p.profiles["bcentr(T)"][0]* self.p.profiles["rcentr(m)"][0] * 1E2
+        elif var == 'q':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['q(-)']
+        elif var == 'Te':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['te(keV)']*1E3
+        elif var == 'Ti':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['ti(keV)'][:,0]*1E3
+        elif var == 'ne':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['ne(10^19/m^3)']*1E19*1E-6
+        elif var == 'Zeff':
+            x = self.p.profiles['rho(-)']
+            z = self.p.derived['Zeff']
+        elif var == 'PichT':
+            x = [1]
+            z = self.p.derived['qRF_MWmiller'][-1]*1E6
+
+        return x,z
+
+    def _produce_geometry_profiles(self):
+
+        self.geometry = {}
+
+        # --------------------------------------------------------------
+        # Separatrix
+        # --------------------------------------------------------------
+
+        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][-1], self.p.derived["Z_surface"][-1]
+
+        # --------------------------------------------------------------
+        # VV
+        # --------------------------------------------------------------
+
+        self._produce_structures_from_variables(
+            self.p.profiles['rcentr(m)'][0],
+            self.p.derived['a'],
+            self.p.profiles['kappa(-)'][-1],
+            self.p.profiles['zmag(m)'][0],
+            self.p.profiles['delta(-)'][-1],
+            self.p.profiles['zeta(-)'][-1],
+            )
 
 # ----------------------------------------------------------------------------------------------------------
 # Utilities (belonging original to EQmodule.py or namelist)
@@ -930,9 +1061,8 @@ def reconstructAntenna(antrmaj, antrmin, polext):
     return np.array(R), np.array(Z)
 
 
-
 # ----------------------------------------------------------------------------------------------------------
-# Utilities to run interpretive TRANSP
+# Utilities to run interpretive TRANSP (to review and to fix by P. Rodriguez-Fernandez)
 # ----------------------------------------------------------------------------------------------------------
 
 def populateFromMDS(self, runidMDS):
@@ -983,9 +1113,7 @@ def defaultbasedMDS(self, outtims=[], PRFmodified=False):
     nptr = int(self.mpisettings["ptrmpi"] > 1)
 
     # Write generic namelist for this tokamak
-    nml = NMLtools.default_nml(self.shotnumber, self.tok, pservers=[nbi, ntoric, nptr])
-    nml.write(BaseFile=self.nml_file)
-    nml.appendNMLs()
+    default_nml(self.shotnumber, self.tok, self.nml_file, pservers=[nbi, ntoric, nptr])
 
     # To allow the option of giving negative outtimes to reflect from the end
     outtims_new = []
@@ -996,62 +1124,170 @@ def defaultbasedMDS(self, outtims=[], PRFmodified=False):
         else:
             outtims_new.append(i)
 
+    # -----------------------------------------
     # Modify according to TRANSPnamelist_dict
-    changeNamelist(
-        self.nml_file,
-        self.shotnumber,
-        TRANSPnamelist_dict,
-        self.FolderTRANSP,
-        outtims=outtims_new,
-    )
+    # -----------------------------------------
 
-
-def changeNamelist(
-    namelistPath, nameBaseShot, TRANSPnamelist, FolderTRANSP, outtims=[]
-    ):
     # Change shot number
     IOtools.changeValue(
-        namelistPath, "nshot", nameBaseShot, None, "=", MaintainComments=True
+        self.nml_file, "nshot", self.shotnumber, None, "=", MaintainComments=True
     )
 
     # TRANSP fixed namelist + those parameters changed
-    for itag in TRANSPnamelist:
+    for itag in TRANSPnamelist_dict:
         IOtools.changeValue(
-            namelistPath, itag, TRANSPnamelist[itag], None, "=", MaintainComments=True
+            self.nml_file, itag, TRANSPnamelist_dict[itag], None, "=", MaintainComments=True
         )
 
     # Add inputdir to namelist
-    with open(namelistPath, "a") as f:
-        f.write("inputdir='" + os.path.abspath(FolderTRANSP) + "'\n")
+    with open(self.nml_file, "a") as f:
+        f.write("inputdir='" + os.path.abspath(self.FolderTRANSP) + "'\n")
 
     # Change PTR templates
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "pt_template",
-        f'"{os.path.abspath(FolderTRANSP)}/ptsolver_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/ptsolver_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "tglf_template",
-        f'"{os.path.abspath(FolderTRANSP)}/tglf_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/tglf_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "glf23_template",
-        f'"{os.path.abspath(FolderTRANSP)}/glf23_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/glf23_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
 
     # Add outtims
-    if len(outtims) > 0:
-        NMLtools.addOUTtimes(namelistPath, outtims)
+    if len(outtims_new) > 0:
 
+        differenceBetween=0.0
 
+        strNBI, strTOR, strECH = "", "", ""
+        for time in outtims_new:
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (NUBEAM)")
+            strNBI += f"{time:.3f},"
+
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORIC)")
+            strTOR += f"{time - differenceBetween:.3f},"
+
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORBEAM)")
+            strECH += f"{time - differenceBetween:.3f},"
+
+        strNBI = strNBI[:-1]
+        strTOR = strTOR[:-1]
+        strECH = strECH[:-1]
+
+        avgtim = 0.05  # Average before
+
+        IOtools.changeValue(self.nml_file, "mthdavg", 2, None, "=", MaintainComments=True)
+        IOtools.changeValue(
+            self.nml_file, "avgtim", avgtim, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "outtim", strNBI, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "fi_outtim", strTOR, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "fe_outtim", strECH, None, "=", MaintainComments=True
+        )
+
+        # To get birth deposition:
+        IOtools.changeValue(
+            self.nml_file, "nldep0_gather", "T", None, "=", MaintainComments=True
+        )
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Defaults for some machines
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def default_nml(
+    shotnum,
+    tok,
+    nml_file,
+    PlasmaFeatures={
+        "ICH": True,
+        "ECH": False,
+        "NBI": False,
+        "ASH": False,
+        "Fuel": 2.5,
+    },
+    pservers=[1, 1, 0],
+    TGLFsettings=5,
+    useMMX = False,
+    isolver = False,
+    grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
+    ):
+    
+    Pich, Pech, Pnbi, AddHe4ifDT, Fuel = (
+        PlasmaFeatures["ICH"],
+        PlasmaFeatures["ECH"],
+        PlasmaFeatures["NBI"],
+        PlasmaFeatures["ASH"],
+        PlasmaFeatures["Fuel"],
+    )
+
+    transp_params = {"Ufiles": ["lim", "qpr", "cur", "ter", "ti2", "ner", "zf2", "gfd"]}
+
+    if useMMX:  transp_params["Ufiles"].append("mmx")
+    else:       transp_params["Ufiles"].append("mry")
+
+    # ----------------------------------------------------------------------------------------------------------
+    # Differences between tokamaks (different than defaults in NMLtools)
+    # ----------------------------------------------------------------------------------------------------------
+
+    if tok == "SPARC" or tok == "ARC":
+        transp_params["Ufiles"].append("df4")
+        transp_params["Ufiles"].append("vc4")
+
+        transp_params["timeStep_ms"] = 10.0 
+        transp_params["nteq_mode"] = 2
+
+    if tok == "AUG":
+        transp_params["timeStep_ms"] = 10.0
+        transp_params["nteq_mode"] = 2
+        transp_params['msOut'] = 0.1
+        transp_params['UFrotation'] = True
+
+    if tok == "CMOD":
+        transp_params["taupD"] = 30e-3
+        transp_params["taupZ"] = 20e-3
+        transp_params["taupmin"] = 1e6
+        transp_params['UFrotation'] = True
+        transp_params['coeffsSaw'] = [1.0,2.0,1.0,0.4] # If not, 15 condition triggered too much
+
+    # ----------------------------------------------------------------------------------------------------------
+    # Namelist
+    # ----------------------------------------------------------------------------------------------------------
+
+    nml = NMLtools.transp_nml(shotnum=shotnum,inputdir=None,pservers=pservers)
+
+    nml.define_machine(tok)
+
+    nml.populate(
+        Pich=Pich,
+        Pech=Pech,
+        Pnbi=Pnbi,
+        DTplasma=Fuel == 2,
+        AddHe4ifDT=AddHe4ifDT,
+        isolver=isolver,
+        PTsolver=True,
+        TGLFsettings=TGLFsettings,
+        grTGLF=grTGLF,
+        **transp_params
+    )
+
+    nml.write(file=nml_file)
