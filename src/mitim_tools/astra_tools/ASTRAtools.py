@@ -1,10 +1,12 @@
 import os
 import tarfile
 import numpy as np
+import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools,FARMINGtools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -261,3 +263,74 @@ def convert_ASTRA_to_gacode(astra_root,
         p.plot()
 
     return p
+
+
+def create_initial_conditions(te_avg,
+                              ne_avg,
+                              use_eped_pedestal=False, # add this later
+                              file_output_location=None,
+                              n_rho=104, 
+                              ):
+    
+    """Returns a PRF functional form of the kinetic profiles for the initial conditions
+    as a U-file that can be fed directly into ASTRA. Makes an initial guess for the pedestal and uses a tanh functional form
+    outside of psi_n = 0.95"""
+
+    # Define the radial grid
+    rho = np.linspace(0,1,n_rho)
+
+    x, n, T = FunctionalForms.PRFfunctionals_Hmode(
+        T_avol=te_avg,
+        n_avol=ne_avg,
+        nu_T=3.0,
+        nu_n=1.35,
+        aLT=2.0,
+        width_ped=0.06,
+        rho=rho
+    )
+
+    preamble = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X0-
+ Electron Temp       eV        ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X1 PTS-
+        {n_rho}                    ;-# OF  X0 PTS-
+"""
+    
+    with open(file_output_location+"/TE_ASTRA", 'w')  as f:
+        f.write(preamble)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+
+    with open(file_output_location+"/TI_ASTRA", 'w')  as f:
+        f.write(preamble)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+
+    with open(file_output_location+"/NE_ASTRA", 'w')  as f:
+        f.write(preamble)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in n[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+
+    fig, ax = plt.subplots(figsize=(10,8))
+    ax.plot(rho, T)
+    ax.plot(rho, n)
+    #ax.set_ylabel(r"$T_e$ [eV]")
+    ax.set_xlabel(r"$\rho$")
+    ax.set_title("Initial temperature profile")
+    plt.show()
+
+if __name__ == '__main__':
+    create_initial_conditions(te_avg=10, ne_avg=20, file_output_location='/Users/hallj/MITIM-fusion/src/mitim_tools/astra_tools')
