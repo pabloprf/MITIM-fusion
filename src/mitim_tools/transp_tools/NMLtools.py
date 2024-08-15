@@ -61,6 +61,10 @@ class transp_nml:
         self.timeSaw = timings.get("time_sawtooth",self.time_current_diffusion)
         self.timeAC = timings.get("time_extraction",None)
 
+        self.contents_ptr_glf23 = None
+        self.contents_ptr_tglf = None
+        self.contents_ptr_ptsolver = None
+
     def define_machine(self, tokamak):
 
         if tokamak == "SPARC" or tokamak == "ARC":
@@ -164,6 +168,7 @@ class transp_nml:
         self.PTsolver = transp_params.get("PTsolver",False)
         self.xbounds = transp_params.get("xbounds",[0.95,0.95,0.95])
         self.xminTrick = transp_params.get("xminTrick",0.2)
+        self.xmaxTrick = transp_params.get("xmaxTrick",1.0)
         self.grTGLF = transp_params.get("grTGLF",False)
         self.Te_edge = transp_params.get("Te_edge",80.0)
         self.Ti_edge = transp_params.get("Ti_edge",80.0)
@@ -569,7 +574,7 @@ class transp_nml:
             "",
             "nqmoda(2) = 1     ! 4: nlqdata=T, 1: nlmdif=T",
             "nqmodb(2) = 1",
-            f"tqmoda(2) = {self.ftime} ! Time to change to next stage",
+            f"tqmoda(2) = {self.ftime+100.0} ! Time to change to next stage",
             "",
             "tauqmod   = 1.0E-2 ! Transition window ",
             "",
@@ -1105,10 +1110,6 @@ class transp_nml:
 
     def addPTSOLVER(self):
 
-        self.contents_ptr_glf23 = None
-        self.contents_ptr_tglf = None
-        self.contents_ptr_ptsolver = None
-
         self.addPedestal()
         self.addPredictive()
         self.addGLF23()
@@ -1354,234 +1355,36 @@ class transp_nml:
     # Write to file
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def write(self, runid):
+    def write(self, runid = 'Z99', file = None):
 
-        self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
+        if file is not None:
+            self.file = file
+            self.inputdir = os.path.dirname(file)
+        else:
+            self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
 
+        print(f"\t- Writing main namelist to {self.file}")
         with open(self.file, "w") as file:
             file.write(self.contents)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# NAMELIST utilities
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-def addOUTtimes(namelistPath, outtims, differenceBetween=0.0):
-    strNBI, strTOR, strECH = "", "", ""
-    for time in outtims:
-        print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (NUBEAM)")
-        strNBI += f"{time:.3f},"
-
-        print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORIC)")
-        strTOR += f"{time - differenceBetween:.3f},"
-
-        print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORBEAM)")
-        strECH += f"{time - differenceBetween:.3f},"
-
-    strNBI = strNBI[:-1]
-    strTOR = strTOR[:-1]
-    strECH = strECH[:-1]
-
-    avgtim = 0.05  # Average before
-
-    IOtools.changeValue(namelistPath, "mthdavg", 2, None, "=", MaintainComments=True)
-    IOtools.changeValue(
-        namelistPath, "avgtim", avgtim, None, "=", MaintainComments=True
-    )
-    IOtools.changeValue(
-        namelistPath, "outtim", strNBI, None, "=", MaintainComments=True
-    )
-    IOtools.changeValue(
-        namelistPath, "fi_outtim", strTOR, None, "=", MaintainComments=True
-    )
-    IOtools.changeValue(
-        namelistPath, "fe_outtim", strECH, None, "=", MaintainComments=True
-    )
-
-    # To get birth deposition:
-    IOtools.changeValue(
-        namelistPath, "nldep0_gather", "T", None, "=", MaintainComments=True
-    )
-
-def appendUpdates(
-    namelistPath,
-    namelistPath_pt,
-    TRANSPnamelist,
-    MITIMparams,
-    timeStartPrediction,
-    TransportModel,
-    useAxialTrick=True,
-    timeLagDensity=0.0,
-    predictQuantities=["ne", "te", "ti"],
-    pedestalPred=False,
-    rotationPred=False,
-    ):
-    densityTerms = []
-    if "ne" in predictQuantities:
-        densityTerms = ["ne"]
-    TemperatureTerms = []
-    if "te" in predictQuantities:
-        TemperatureTerms.append("te")
-    if "ti" in predictQuantities:
-        TemperatureTerms.append("ti")
-
-    # _________________________Compound axial trick________________________________
-
-    Trick_Te, Trick_Ti, Trick_ne = MITIMparams["AxialDeffs"]
-
-    useAxialTrick = useAxialTrick and (
-        Trick_Te is not None or Trick_Ti is not None or Trick_ne is not None
-    )
-
-    Trick_ne_ptr = ""
-    if Trick_ne is not None:
-        Trick_ne_ptr = f", D_e={Trick_ne}"
-
-    if useAxialTrick:
-        print(
-            f"\t- Effective diffusivities adjusted on axis: chi_e={Trick_Te*1E-4:.1f}m^2/s, chi_i={Trick_Ti*1E-4:.1f}m^2/s{Trick_ne_ptr}"
-        )
-
-        nchan_array, chi0_array = "", ""
-        if Trick_Te is not None:
-            nchan_array += "1,"
-            chi0_array += f"{str(Trick_Te)},"
-        else:
-            nchan_array += "0,"
-            chi0_array += "0,"
-        if Trick_Ti is not None:
-            nchan_array += "1,"
-            chi0_array += f"{str(Trick_Ti)},"
-        else:
-            nchan_array += "0,"
-            chi0_array += "0,"
-        nchan_array += "0,0,0,"
-        chi0_array += "0.0,0.0,0.0,"
-        if Trick_ne is not None:
-            nchan_array += "1"
-            chi0_array += f"{str(Trick_ne)}"
-        else:
-            nchan_array += "0"
-            chi0_array += "0"
-
-        # if Trick_ne is not None: axialTrick += 'XNE_NC_AXIAL   = 0.0\n'
-    # ______________________________________________________________________________
-
-    with open(namelistPath, "a") as f:
-        # ~~~~~ Temperature prediction
-        f.write("\n! ================== UPDATES ==================\n\n")
-        f.write(f"~update_time={timeStartPrediction}\n")
-        for temperatureTerm in TemperatureTerms:
-            f.write(f"lpredict_{temperatureTerm}=1\n")
-
-        # ~~~~~ Density prediction
-        if len(densityTerms) > 0:
-            if timeLagDensity > 0.0:
-                f.write(f"~update_time={timeStartPrediction+timeLagDensity}\n")
-            if timeLagDensity > -1e-5:
-                for densityTerm in densityTerms:
-                    f.write(f"lpredict_{densityTerm}=1\n")
-
-        # ~~~~~ Rotation prediction
-
-        if rotationPred:
-            timeLagRotation = 0.1
-
-            f.write(f"~update_time={timeStartPrediction+timeLagRotation}\n")
-            f.write("lpredict_pphi=1\n")
-
-        if pedestalPred:
-            f.write(f"~update_time={timeStartPrediction}\n")
-            f.write("nmodel_ped_height = 1\n")
-            f.write("nmodel_ped_width = 1\n")
-
-    # Modify pt_namliest
-
-    if TransportModel == "tglf":
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_axial%glf23%active",
-            False,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_confinement%glf23%active",
-            False,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_edge%glf23%active",
-            False,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_axial%tglf%active",
-            True,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_confinement%tglf%active",
-            True,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_edge%tglf%active",
-            True,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-
-    if useAxialTrick:
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_axial%glf23%active",
-            False,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_axial%tglf%active",
-            False,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-
-        IOtools.changeValue(
-            namelistPath_pt,
-            "pt_axial%user%active",
-            True,
-            None,
-            "=",
-            MaintainComments=True,
-        )
-
-        IOtools.changeValue(
-            namelistPath, "nchan", nchan_array, None, "=", MaintainComments=True
-        )
-        IOtools.changeValue(
-            namelistPath, "user_chi0", chi0_array, None, "=", MaintainComments=True
-        )
+        if self.contents_ptr_ptsolver is not None:
+            print(f"\t- Writing PT_SOLVER namelist to {self.file}")
+            with open(f"{self.inputdir}/ptsolver_namelist.dat", "w") as file:
+                file.write(self.contents_ptr_ptsolver)
+        if self.contents_ptr_glf23 is not None:
+            print(f"\t- Writing GLF23 namelist to {self.file}")
+            with open(f"{self.inputdir}/glf23_namelist.dat", "w") as file:
+                file.write(self.contents_ptr_glf23)
+        if self.contents_ptr_tglf is not None:
+            print(f"\t- Writing TGLF namelist to {self.file}")
+            with open(f"{self.inputdir}/tglf_namelist.dat", "w") as file:
+                file.write(self.contents_ptr_tglf)
 
 def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
+    '''
+    This ensures that the folders are adapted to the, e.g., remote execution setup
+    '''
+
     nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
 
     # Change inputdir
@@ -1638,210 +1441,4 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
 
     # Correct namelist just in case
     IOtools.correctNML(nml_file)
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Defaults
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-class default_nml:
-    def __init__(
-        self,
-        shotnum,
-        tok,
-        PlasmaFeatures={
-            "ICH": True,
-            "ECH": False,
-            "NBI": False,
-            "ASH": False,
-            "Fuel": 2.5,
-        },
-        pservers=[1, 1, 0],
-        TGLFsettings=5,
-    ):
-        coeffsSaw = [1.0, 3.0, 1.0, 0.4]
-        useMMX = False
-
-        Pich, Pech, Pnbi, AddHe4ifDT, Fuel = (
-            PlasmaFeatures["ICH"],
-            PlasmaFeatures["ECH"],
-            PlasmaFeatures["NBI"],
-            PlasmaFeatures["ASH"],
-            PlasmaFeatures["Fuel"],
-        )
-
-        DTplasma = Fuel == 2
-
-        Ufiles = {
-            "lim": ["LIM", None],
-            "qpr": ["QPR", -5],
-            "cur": ["CUR", None],
-            "vsf": ["VSF", None],
-            "rbz": ["RBZ", None],
-            "ter": ["TEL", -5],
-            "ti2": ["TIO", -5],
-            "ner": ["NEL", -5],
-            "zf2": ["ZF2", -5],
-            "gfd": ["GFD", None],
-        }
-
-        if useMMX:
-            Ufiles["mmx"] = ["MMX", None]
-        else:
-            Ufiles["mry"] = ["MRY", None]
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~ TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-
-        isolver = False
-
-        grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~ Differences between tokamaks
-        # ~~~~~~~~~~~~~~~~~~~~~~~
-
-        if tok == "SPARC" or tok == "ARC":
-            Ufiles["df4"], Ufiles["vc4"] = ["DHE4", -5], ["VHE4", -5]
-
-            timeStep = 1e-2  # Time step for DTMAXG and the heating modules
-            msOut = 1e0
-            nteq_mode = 2
-            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
-            tokred = "sprc"
-            UFrotation = False
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-        if tok == "AUG":
-            timeStep = 1e-2
-            msOut = 1e-1
-            nteq_mode = 2
-            taupD, taupZ, taupmin = 3.0, 3.0, 3.0
-            tokred = "aug"
-            UFrotation = True
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-        if tok == "CMOD":
-            timeStep = 1e-3
-            msOut = 1.0  # 1E-1
-            nteq_mode = 5
-            taupD, taupZ, taupmin = 30e-3, 20e-3, 1e6
-            tokred = "cmod"
-            UFrotation = True
-            Te_edge = 80.0
-            Ti_edge = 80.0
-
-            coeffsSaw[1] = 2.0  # If not, 15 condition triggered too much
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Primary namelist
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        nzones = 100  # multiple of nzones_distfun
-        nzones_energetic = 50  # multiple of nzones_distfun
-        nzones_distfun = 25
-
-        self.nml = transp_nml(shotnum=shotnum)
-        self.nml.populate(
-            tokamak=tok,
-            tok=tokred,
-            nzones=nzones,
-            nzones_energetic=nzones_energetic,
-            nzones_distfun=nzones_distfun,
-            Pich=Pich,
-            Pech=Pech,
-            Pnbi=Pnbi,
-            pservers=pservers,
-            DTplasma=DTplasma,
-            AddHe4ifDT=AddHe4ifDT,
-            Ufiles=Ufiles,
-            UFrotation=UFrotation,
-            msOut=msOut,
-            timeStep=timeStep,
-            nteq_mode=nteq_mode,
-            taupD=taupD,
-            taupZ=taupZ,
-            taupmin=taupmin,
-            isolver=isolver,
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Predictive
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        self.nml.addPTSOLVER(
-            TGLFsettings=TGLFsettings,
-            grTGLF=grTGLF,
-            Te_edge=Te_edge,
-            Ti_edge=Ti_edge,
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~
-        # Heating Namelists
-        # ~~~~~~~~~~~~~~~~~~~~~~
-
-        # ICRF
-        if Pich:
-            self.nml_ich = transp_nml_heating(
-                Pich=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_ich = ""
-
-        # ECRF
-        if Pech:
-            self.nml_ech = transp_nml_heating(
-                Pech=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_ech = ""
-
-        # NBI
-        if Pnbi:
-            self.nml_nbi = transp_nml_heating(
-                Pnbi=True, tokamak=tok, timeStep=timeStep
-            ).contents
-        else:
-            self.nml_nbi = ""
-
-    def write(self, BaseFile="./10000TR.DAT"):
-        self.BaseFile = BaseFile
-
-        with open(self.BaseFile, "w") as f:
-            f.write(self.nml.contents)
-        IOtools.correctNML(self.BaseFile)
-
-        with open(self.BaseFile + "_ICRF", "w") as f:
-            f.write(self.nml_ich)
-        with open(self.BaseFile + "_ECRF", "w") as f:
-            f.write(self.nml_ech)
-        with open(self.BaseFile + "_NBI", "w") as f:
-            f.write(self.nml_nbi)
-        with open(self.BaseFile + "_LH", "w") as f:
-            f.write("")
-
-        a, b = IOtools.reducePathLevel(self.BaseFile)
-        if self.nml.contents_ptr_ptsolver is not None:
-            with open(a + "ptsolver_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_ptsolver)
-        if self.nml.contents_ptr_tglf is not None:
-            with open(a + "tglf_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_tglf)
-        if self.nml.contents_ptr_glf23 is not None:
-            with open(a + "glf23_namelist.dat", "w") as f:
-                f.write(self.nml.contents_ptr_glf23)
-
-    def appendNMLs(self):
-        possibleAppends = ["ICRF", "ECRF", "NBI", "LH"]
-
-        with open(self.BaseFile, "a") as fo:
-            for i in possibleAppends:
-                try:
-                    with open(self.BaseFile + "_" + i, "r") as fi:
-                        fo.write(fi.read())
-                    os.system("rm " + self.BaseFile + "_" + i)
-                except:
-                    print(f"\t- Could not append {i} file")
 

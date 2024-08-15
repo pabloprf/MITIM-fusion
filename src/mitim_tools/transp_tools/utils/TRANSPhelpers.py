@@ -51,6 +51,9 @@ class transp_run:
         tokamak = 'SPARC',
         **transp_params
         ):
+        ''' 
+        Create a namelist for TRANSP based on default parameters + transp_params
+        '''
 
         t = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
         t.define_machine(tokamak)
@@ -64,6 +67,9 @@ class transp_run:
         nml_original,
         tinit,ftime,curr_diff=None, sawtooth = None, writeAC = None
         ):
+        '''
+        Copy namelist from folder_original and change timings
+        '''
 
         self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
         os.system(f"cp {folder_original}/{nml_original} {self.nml}")
@@ -101,17 +107,14 @@ class transp_run:
 
             IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
         
-
     # --------------------------------------------------------------------------------------------
     # Ufiles
     # --------------------------------------------------------------------------------------------
 
-    def ufiles_from(self, folder_original, ufiles):
-
-        for ufile in ufiles:
-            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
-
     def write_ufiles(self, structures_position = 0, radial_position = 0):
+        '''
+        Write ufiles based on variables that were stored (e.g. from freegs or cdf)
+        '''
 
         self.times = np.sort(np.array(list(self.variables.keys())))
 
@@ -218,6 +221,16 @@ class transp_run:
 
         else:
             self.geometry_select = None
+
+
+    def ufiles_from(self, folder_original, ufiles):
+        '''
+        Copy ufiles from folder_original
+        '''
+
+        for ufile in ufiles:
+            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
+
 
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
@@ -610,6 +623,10 @@ class transp_input_time:
         
         self._populate(time)
 
+    def from_profiles(self, profiles_file):
+
+        if isinstance(profiles_file, str):
+            self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
 
 # ----------------------------------------------------------------------------------------------------------
 # Utilities (belonging original to EQmodule.py or namelist)
@@ -960,7 +977,7 @@ def reconstructAntenna(antrmaj, antrmin, polext):
 
 
 # ----------------------------------------------------------------------------------------------------------
-# Utilities to run interpretive TRANSP
+# Utilities to run interpretive TRANSP (to review and to fix by P. Rodriguez-Fernandez)
 # ----------------------------------------------------------------------------------------------------------
 
 def populateFromMDS(self, runidMDS):
@@ -1011,9 +1028,7 @@ def defaultbasedMDS(self, outtims=[], PRFmodified=False):
     nptr = int(self.mpisettings["ptrmpi"] > 1)
 
     # Write generic namelist for this tokamak
-    nml = NMLtools.default_nml(self.shotnumber, self.tok, pservers=[nbi, ntoric, nptr])
-    nml.write(BaseFile=self.nml_file)
-    nml.appendNMLs()
+    default_nml(self.shotnumber, self.tok, self.nml_file, pservers=[nbi, ntoric, nptr])
 
     # To allow the option of giving negative outtimes to reflect from the end
     outtims_new = []
@@ -1024,62 +1039,170 @@ def defaultbasedMDS(self, outtims=[], PRFmodified=False):
         else:
             outtims_new.append(i)
 
+    # -----------------------------------------
     # Modify according to TRANSPnamelist_dict
-    changeNamelist(
-        self.nml_file,
-        self.shotnumber,
-        TRANSPnamelist_dict,
-        self.FolderTRANSP,
-        outtims=outtims_new,
-    )
+    # -----------------------------------------
 
-
-def changeNamelist(
-    namelistPath, nameBaseShot, TRANSPnamelist, FolderTRANSP, outtims=[]
-    ):
     # Change shot number
     IOtools.changeValue(
-        namelistPath, "nshot", nameBaseShot, None, "=", MaintainComments=True
+        self.nml_file, "nshot", self.shotnumber, None, "=", MaintainComments=True
     )
 
     # TRANSP fixed namelist + those parameters changed
-    for itag in TRANSPnamelist:
+    for itag in TRANSPnamelist_dict:
         IOtools.changeValue(
-            namelistPath, itag, TRANSPnamelist[itag], None, "=", MaintainComments=True
+            self.nml_file, itag, TRANSPnamelist_dict[itag], None, "=", MaintainComments=True
         )
 
     # Add inputdir to namelist
-    with open(namelistPath, "a") as f:
-        f.write("inputdir='" + os.path.abspath(FolderTRANSP) + "'\n")
+    with open(self.nml_file, "a") as f:
+        f.write("inputdir='" + os.path.abspath(self.FolderTRANSP) + "'\n")
 
     # Change PTR templates
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "pt_template",
-        f'"{os.path.abspath(FolderTRANSP)}/ptsolver_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/ptsolver_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "tglf_template",
-        f'"{os.path.abspath(FolderTRANSP)}/tglf_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/tglf_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
     IOtools.changeValue(
-        namelistPath,
+        self.nml_file,
         "glf23_template",
-        f'"{os.path.abspath(FolderTRANSP)}/glf23_namelist.dat"',
+        f'"{os.path.abspath(self.FolderTRANSP)}/glf23_namelist.dat"',
         None,
         "=",
         CommentChar=None,
     )
 
     # Add outtims
-    if len(outtims) > 0:
-        NMLtools.addOUTtimes(namelistPath, outtims)
+    if len(outtims_new) > 0:
 
+        differenceBetween=0.0
 
+        strNBI, strTOR, strECH = "", "", ""
+        for time in outtims_new:
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (NUBEAM)")
+            strNBI += f"{time:.3f},"
+
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORIC)")
+            strTOR += f"{time - differenceBetween:.3f},"
+
+            print(f"\t- Adding time (t={time:.3f}s) to output intermediate files (TORBEAM)")
+            strECH += f"{time - differenceBetween:.3f},"
+
+        strNBI = strNBI[:-1]
+        strTOR = strTOR[:-1]
+        strECH = strECH[:-1]
+
+        avgtim = 0.05  # Average before
+
+        IOtools.changeValue(self.nml_file, "mthdavg", 2, None, "=", MaintainComments=True)
+        IOtools.changeValue(
+            self.nml_file, "avgtim", avgtim, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "outtim", strNBI, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "fi_outtim", strTOR, None, "=", MaintainComments=True
+        )
+        IOtools.changeValue(
+            self.nml_file, "fe_outtim", strECH, None, "=", MaintainComments=True
+        )
+
+        # To get birth deposition:
+        IOtools.changeValue(
+            self.nml_file, "nldep0_gather", "T", None, "=", MaintainComments=True
+        )
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Defaults for some machines
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def default_nml(
+    shotnum,
+    tok,
+    nml_file,
+    PlasmaFeatures={
+        "ICH": True,
+        "ECH": False,
+        "NBI": False,
+        "ASH": False,
+        "Fuel": 2.5,
+    },
+    pservers=[1, 1, 0],
+    TGLFsettings=5,
+    useMMX = False,
+    isolver = False,
+    grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
+    ):
+    
+    Pich, Pech, Pnbi, AddHe4ifDT, Fuel = (
+        PlasmaFeatures["ICH"],
+        PlasmaFeatures["ECH"],
+        PlasmaFeatures["NBI"],
+        PlasmaFeatures["ASH"],
+        PlasmaFeatures["Fuel"],
+    )
+
+    transp_params = {"Ufiles": ["lim", "qpr", "cur", "ter", "ti2", "ner", "zf2", "gfd"]}
+
+    if useMMX:  transp_params["Ufiles"].append("mmx")
+    else:       transp_params["Ufiles"].append("mry")
+
+    # ----------------------------------------------------------------------------------------------------------
+    # Differences between tokamaks (different than defaults in NMLtools)
+    # ----------------------------------------------------------------------------------------------------------
+
+    if tok == "SPARC" or tok == "ARC":
+        transp_params["Ufiles"].append("df4")
+        transp_params["Ufiles"].append("vc4")
+
+        transp_params["timeStep_ms"] = 10.0 
+        transp_params["nteq_mode"] = 2
+
+    if tok == "AUG":
+        transp_params["timeStep_ms"] = 10.0
+        transp_params["nteq_mode"] = 2
+        transp_params['msOut'] = 0.1
+        transp_params['UFrotation'] = True
+
+    if tok == "CMOD":
+        transp_params["taupD"] = 30e-3
+        transp_params["taupZ"] = 20e-3
+        transp_params["taupmin"] = 1e6
+        transp_params['UFrotation'] = True
+        transp_params['coeffsSaw'] = [1.0,2.0,1.0,0.4] # If not, 15 condition triggered too much
+
+    # ----------------------------------------------------------------------------------------------------------
+    # Namelist
+    # ----------------------------------------------------------------------------------------------------------
+
+    nml = NMLtools.transp_nml(shotnum=shotnum,inputdir=None,pservers=pservers)
+
+    nml.define_machine(tok)
+
+    nml.populate(
+        Pich=Pich,
+        Pech=Pech,
+        Pnbi=Pnbi,
+        DTplasma=Fuel == 2,
+        AddHe4ifDT=AddHe4ifDT,
+        isolver=isolver,
+        PTsolver=True,
+        TGLFsettings=TGLFsettings,
+        grTGLF=grTGLF,
+        **transp_params
+    )
+
+    nml.write(file=nml_file)
