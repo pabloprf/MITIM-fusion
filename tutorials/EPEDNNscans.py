@@ -1,9 +1,7 @@
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
-import matplotlib.pyplot as plt
-GRAPHICStools.prep_figure_papers(size=20,slower_but_latex=True)
-from mitim_tools.surrogate_tools import NNtools
 import numpy as np
-import os
+import matplotlib.pyplot as plt
+from mitim_tools.misc_tools import GRAPHICStools, IOtools
+from mitim_tools.surrogate_tools import NNtools
 
 def pedestal_density_scan_plot(
         model:NNtools.eped_nn,
@@ -33,6 +31,7 @@ def pedestal_density_scan_plot(
         ptop.append(p)
         wtop.append(w)
 
+    GRAPHICStools.prep_figure_papers(size=20,slower_but_latex=True)
     fig, ax = plt.subplots(figsize=(10,8))
     GRAPHICStools.addDenseAxis(ax)
 
@@ -45,9 +44,10 @@ if __name__ == '__main__':
 
     nn = NNtools.eped_nn(type='tf')
 
-    nn.load('/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-MODEL-ARC.h5', 
-            norm="/Users/hallj/Documents/Files/Research/ARC-Modeling/nn_data_files/EPED-NN-NORMALIZATION.txt",
-            )
+    nn_location = IOtools.expandPath('$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5')
+    norm_location = IOtools.expandPath('$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt')
+
+    nn.load(nn_location, norm=norm_location)
     
     pedestal_density_scan_plot(
         model=nn,
