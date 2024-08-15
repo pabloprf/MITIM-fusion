@@ -279,7 +279,7 @@ def create_initial_conditions(te_avg,
     # Define the radial grid
     rho = np.linspace(0,1,n_rho)
 
-    x, n, T = FunctionalForms.PRFfunctionals_Hmode(
+    x, T, n = FunctionalForms.PRFfunctionals_Hmode(
         T_avol=te_avg,
         n_avol=ne_avg,
         nu_T=3.0,
