@@ -724,7 +724,7 @@ def profiles_from_geqdsk(file, debug=True):
 def profiles_from_transp(CDFfile, time=None, debug=True):
     from transp_tools import CDFtools
 
-    cdf = CDFtools.CDFreactor(CDFfile)
+    cdf = CDFtools.transp_output(CDFfile)
 
     if time is None:
         it = cdf.ind_saw
@@ -1532,8 +1532,3 @@ class freegs_millerized:
             self.transp.populate_time._from_freegs_eq(time,f=self,ne0_20 = ne0_20)
 
         self.transp.write_ufiles()
-
-    def to_profiles(self, file = '~/scratch/input.gacode'):
-
-        print("\t- Converting to PROFILES")
-        pass

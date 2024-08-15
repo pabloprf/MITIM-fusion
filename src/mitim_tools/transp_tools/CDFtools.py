@@ -83,7 +83,7 @@ def read_cdf_transp(cdf_file):
 
     return dst.variables
 
-class CDFreactor:
+class transp_output:
     def __init__(
         self,
         netCDFfile,
@@ -4571,7 +4571,7 @@ class CDFreactor:
         alpha=1.0,
         legend=True,
         plotLinesSawVerbose=1,
-    ):
+        ):
         sawtooth += 1
 
         if len(self.ind_sawAll) > 2:
@@ -15073,6 +15073,20 @@ class CDFreactor:
 
         os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
         os.system("mv {0}/TRANSPrun.tar {0}/RELEASE_folder/.".format(self.FolderCDF))
+
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
+
+        print("\t- Converting to TRANSP")
+        folder = IOtools.expandPath(folder)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        self.transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        for time in times:
+            self.transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
+
+        self.transp.write_ufiles()
 
     # ---------------------------------------------------------------------------------------------------------
     # -------- Outputs

@@ -40,7 +40,7 @@ def main():
     for i in expl:
         if ":" in i:
             cdfs.append(
-                CDFtools.CDFreactor(
+                CDFtools.transp_output(
                     i.split(":")[1],
                     ssh=i.split(":")[0],
                     readFBM=readFBM,
@@ -54,7 +54,7 @@ def main():
             )
         else:
             cdfs.append(
-                CDFtools.CDFreactor(
+                CDFtools.transp_output(
                     i,
                     readFBM=readFBM,
                     readTGLF=readTGLF,

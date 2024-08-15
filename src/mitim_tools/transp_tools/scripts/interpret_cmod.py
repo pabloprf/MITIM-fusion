@@ -24,7 +24,7 @@ runs = sys.argv[4:]
 cs = []
 lab = []
 for file in runs:
-    cs.append(CDFtools.CDFreactor(file))
+    cs.append(CDFtools.transp_output(file))
     lab.append(file.split("/")[-1].split(".")[0])
 
 # ----- Reading data: MDS+ experimental data

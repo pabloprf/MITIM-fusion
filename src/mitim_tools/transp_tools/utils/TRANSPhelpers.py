@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.gs_tools import FREEGStools
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -11,7 +12,6 @@ from IPython import embed
 # ----------------------------------------------------------------------------------------------------------
 # TRANSP object utilities
 # ----------------------------------------------------------------------------------------------------------
-
 
 class transp_run:
     def __init__(self, folder, shot, runid):
@@ -24,10 +24,14 @@ class transp_run:
         # Initialize variables
         self.variables, self.geometry = {}, {}
         self.nml = None
+        self.namelist_variables = {}
 
         # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
         # ------------------------------------------
+
+        # This helps as mapping between cdf, profs and ufiles
+        # name_cdf : [uf type, uf name, coordinate, factor_cdf, name_profs, factor_profs]
 
         self.quantities = {
             'Ip': ['cur','CUR',None, 1E6],
@@ -45,7 +49,7 @@ class transp_run:
     # Namelist
     # --------------------------------------------------------------------------------------------
 
-    def namelist(
+    def write_namelist(
         self,
         timings = {},
         tokamak = 'SPARC',
@@ -61,6 +65,8 @@ class transp_run:
         t.write(self.runid)
 
         self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
+
+        self._insert_parameters_namelist()
 
     def namelist_from(self,
         folder_original,
@@ -107,6 +113,8 @@ class transp_run:
 
             IOtools.changeValue(self.nml, "nldep0_gather", "T", None, "=", MaintainComments=True)
         
+        self._insert_parameters_namelist()
+
     # --------------------------------------------------------------------------------------------
     # Ufiles
     # --------------------------------------------------------------------------------------------
@@ -184,7 +192,7 @@ class transp_run:
         if structures_position is not None:
 
             # --------------------------------------------------------------------------------------------
-            # Write VV in namelist
+            # Write VV in namelist (defer to later)
             # --------------------------------------------------------------------------------------------
 
             geos = []
@@ -193,14 +201,8 @@ class transp_run:
                     geos.append(self.geometry[time])
             self.geometry_select = geos[structures_position]
 
-            VVRmom_str = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
-            VVZmom_str = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
-
-            if self.nml is not None:
-                IOtools.changeValue(self.nml, "VVRmom", VVRmom_str, None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "VVZmom", VVZmom_str, None, "=", MaintainComments=True)
-            else:
-                print("\t- Namelist not available in this transp instance, VV geometry not written", typeMsg='w')
+            self.namelist_variables['VVRmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
+            self.namelist_variables['VVZmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
 
             # --------------------------------------------------------------------------------------------
             # Write Limiters in ufile
@@ -212,16 +214,23 @@ class transp_run:
             # Write Antenna in namelist
             # --------------------------------------------------------------------------------------------
 
-            if self.nml is not None:
-                IOtools.changeValue(self.nml, "rmjicha", 100.0*self.geometry_select['antenna_R'], None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "rmnicha", 100.0*self.geometry_select['antenna_r'], None, "=", MaintainComments=True)
-                IOtools.changeValue(self.nml, "thicha", self.geometry_select['antenna_t'], None, "=", MaintainComments=True)
-            else:
-                print("\t- Namelist not available in this transp instance, Antenna geometry not written", typeMsg='w')
+            self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
+            self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
+            self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
 
         else:
             self.geometry_select = None
 
+        self._insert_parameters_namelist()
+
+    def _insert_parameters_namelist(self):
+
+        if self.nml is not None:
+            for var in self.namelist_variables.keys():
+                IOtools.changeValue(self.nml, var, self.namelist_variables[var], None, "=", MaintainComments=True)
+            print(f"\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
+        else:
+            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='w')
 
     def ufiles_from(self, folder_original, ufiles):
         '''
@@ -230,7 +239,6 @@ class transp_run:
 
         for ufile in ufiles:
             os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
-
 
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
@@ -391,8 +399,12 @@ class transp_input_time:
 
         # Otherwise read from previous, do not load twice
         if cdf_file is not None:
-            print(f"Populating time {time} from {cdf_file}")
-            self.c_original = CDFtools.CDFreactor(cdf_file)
+            if isinstance(cdf_file, str):
+                print(f"Populating time {time} from {cdf_file}")
+                self.c_original = CDFtools.transp_output(cdf_file)
+            else:
+                print(f"Populating time {time} from opened CDF")
+                self.c_original = cdf_file
         else:
             print(f"Populating time {time} from previously opened CDF")
         
@@ -623,10 +635,84 @@ class transp_input_time:
         
         self._populate(time)
 
-    def from_profiles(self, profiles_file):
+    def from_profiles(self, time, profiles_file, Vsurf = 0.0):
+
+        self.time = time
 
         if isinstance(profiles_file, str):
             self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
+        else:
+            self.p = profiles_file
+
+        self.variables = {}
+        for var in self.transp_instance.quantities.keys():
+            self.variables[self.transp_instance.quantities[var][1]] = {}
+
+            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT']:
+                self.variables[self.transp_instance.quantities[var][1]]['x'],self.variables[self.transp_instance.quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
+            
+            # --------------------------------------------------------------
+            # Quantities that do not come from profiles
+            # --------------------------------------------------------------
+
+            elif var == 'Vsurf':
+                self.variables[self.transp_instance.quantities[var][1]]['x'] = None
+                self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
+
+        self._produce_geometry_profiles()
+        self._populate(time)
+
+    def _produce_quantity_profiles(self, var = 'Te', Vsurf = None):
+
+        if var == 'Ip':
+            x = None
+            z = self.p.profiles['current(MA)'][0] * 1E6
+        elif var == 'RBt_vacuum':
+            x = None
+            z = self.p.profiles["bcentr(T)"][0]* self.p.profiles["rcentr(m)"][0] * 1E2
+        elif var == 'q':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['q(-)']
+        elif var == 'Te':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['te(keV)']*1E3
+        elif var == 'Ti':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['ti(keV)'][:,0]*1E3
+        elif var == 'ne':
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['ne(10^19/m^3)']*1E19*1E-6
+        elif var == 'Zeff':
+            x = self.p.profiles['rho(-)']
+            z = self.p.derived['Zeff']
+        elif var == 'PichT':
+            x = [1]
+            z = self.p.derived['qRF_MWmiller'][-1]*1E6
+
+        return x,z
+
+    def _produce_geometry_profiles(self):
+
+        self.geometry = {}
+
+        # --------------------------------------------------------------
+        # Separatrix
+        # --------------------------------------------------------------
+
+        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][-1], self.p.derived["Z_surface"][-1]
+
+        # --------------------------------------------------------------
+        # VV
+        # --------------------------------------------------------------
+
+        self._produce_structures_from_variables(
+            self.p.profiles['rcentr(m)'][0],
+            self.p.derived['a'],
+            self.p.profiles['kappa(-)'][-1],
+            self.p.profiles['zmag(m)'][0],
+            self.p.profiles['delta(-)'][-1],
+            self.p.profiles['zeta(-)'][-1],
+            )
 
 # ----------------------------------------------------------------------------------------------------------
 # Utilities (belonging original to EQmodule.py or namelist)
@@ -973,7 +1059,6 @@ def reconstructAntenna(antrmaj, antrmin, polext):
         Z.append(antrmin * np.sin(i * np.pi / 180.0))
 
     return np.array(R), np.array(Z)
-
 
 
 # ----------------------------------------------------------------------------------------------------------

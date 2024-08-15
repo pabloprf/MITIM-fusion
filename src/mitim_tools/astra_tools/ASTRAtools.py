@@ -93,7 +93,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
 
         self.cdf_file = f'{self.output_folder}/'
 
-        self.cdf = ASTRA_CDFtools.CDFreactor(self.cdf_file)
+        self.cdf = ASTRA_CDFtools.transp_output(self.cdf_file)
 
     def plot(self):
 
@@ -131,7 +131,7 @@ def convert_ASTRA_to_gacode(astra_root,
     else:
         print(f"Found CDF file: {cdf_file}")
 
-    c = ASTRA_CDFtools.CDFreactor(cdf_file)
+    c = ASTRA_CDFtools.transp_output(cdf_file)
     c.calcProfiles()
 
     # Extract Geometry info
