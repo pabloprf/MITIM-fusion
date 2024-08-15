@@ -24,9 +24,9 @@ class mitim_nn:
         self.norm = None
 
         if norm is not None:
-            self.norm = np.loadtxt('/Users/hallj/MITIM-fusion/src/mitim_tools/surrogate_tools/EPED-NN-NORMALIZATION.txt')
+            self.normalization = np.loadtxt(norm)
             print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
-            print("Norm:", self.norm)
+            print("Norm:", self.normalization)
         
         print(f'\t- Weights file from {IOtools.clipstr(model_path,30)} loaded')
         
@@ -35,7 +35,7 @@ class mitim_nn:
         print('testing evaluation with ', inputs)
 
         if self.norm is not None:
-            return self.model.predict(inputs)[0]*self.norm
+            return self.model.predict(inputs)[0]*self.normalization
         else:
             return self.model.predict(inputs)[0]
 
