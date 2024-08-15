@@ -52,7 +52,7 @@ class transp_run:
     def write_namelist(
         self,
         timings = {},
-        tokamak = 'SPARC',
+        tokamak_structures = 'SPARC',
         **transp_params
         ):
         ''' 
@@ -60,7 +60,7 @@ class transp_run:
         '''
 
         t = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
-        t.define_machine(tokamak)
+        t.define_machine(tokamak_structures)
         t.populate(**transp_params)
         t.write(self.runid)
 
@@ -119,7 +119,7 @@ class transp_run:
     # Ufiles
     # --------------------------------------------------------------------------------------------
 
-    def write_ufiles(self, structures_position = 0, radial_position = 0):
+    def write_ufiles(self, structures_position = -1, radial_position = 0):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
         '''
@@ -208,7 +208,7 @@ class transp_run:
             # Write Limiters in ufile
             # --------------------------------------------------------------------------------------------
 
-            addLimiters_UF(f'{self.folder}/PRF12345.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
+            addLimiters_UF(f'{self.folder}/PRF{self.shot}.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
 
             # --------------------------------------------------------------------------------------------
             # Write Antenna in namelist
@@ -1060,7 +1060,6 @@ def reconstructAntenna(antrmaj, antrmin, polext):
 
     return np.array(R), np.array(Z)
 
-
 # ----------------------------------------------------------------------------------------------------------
 # Utilities to run interpretive TRANSP (to review and to fix by P. Rodriguez-Fernandez)
 # ----------------------------------------------------------------------------------------------------------
@@ -1083,7 +1082,6 @@ def populateFromMDS(self, runidMDS):
         toric_mpi=self.mpisettings["toricmpi"],
         shotnumber=self.shotnumberReal,
     )
-
 
 def defaultbasedMDS(self, outtims=[], PRFmodified=False):
     """

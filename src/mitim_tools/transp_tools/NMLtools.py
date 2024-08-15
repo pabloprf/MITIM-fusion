@@ -65,7 +65,7 @@ class transp_nml:
         self.contents_ptr_tglf = None
         self.contents_ptr_ptsolver = None
 
-    def define_machine(self, tokamak):
+    def define_machine(self, tokamak = "SPARC"):
 
         if tokamak == "SPARC" or tokamak == "ARC":
             from mitim_tools.experiment_tools.SPARCtools import ICRFantennas, defineTRANSPnmlStructures, defineISOLVER
@@ -941,7 +941,7 @@ class transp_nml:
 
         self.contents += "\n".join(lines) + "\n"
 
-        if self.Pich:
+        if self.Pich and 'rfp' not in self.Ufiles:
             lines = [
                 'preRFP	 = "PRF"',
                 'extRFP	 = "RFP"',

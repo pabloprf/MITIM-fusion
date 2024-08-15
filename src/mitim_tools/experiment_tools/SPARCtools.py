@@ -1,9 +1,8 @@
-import os
-from IPython import embed
 from mitim_tools.misc_tools import IOtools
+from IPython import embed
 
 # Location of the FW description (non open source) -------------------
-LimiterPath = "$STUDIES_PATH/information/FREEGS_SPARC/fw/sparc_FW.txt"
+LimiterPath = "$MFEIM_PATH/private_code_mitim/FREEGS_SPARC/fw/sparc_FW.txt"
 # --------------------------------------------------------------------
 
 
