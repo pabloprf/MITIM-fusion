@@ -1521,7 +1521,7 @@ class freegs_millerized:
         with open(filename, "w") as f:
             geqdsk.write(self.eq, f)
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
         if not os.path.exists(folder):
@@ -1529,6 +1529,6 @@ class freegs_millerized:
 
         self.transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            self.transp.populate_time._from_freegs_eq(time,f=self,ne0_20 = ne0_20)
+            self.transp.populate_time._from_freegs_eq(time,f=self,ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
         self.transp.write_ufiles()

@@ -14994,6 +14994,11 @@ class transp_output:
         with open(file, "wb") as handle:
             pickle.dump(dictPKL, handle, protocol=2)
 
+
+    # ---------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------
+
     def produceTGYROfiles(
         self, folderWork="~/scratch/outputsMITIM/", time=-0.06, avTime=0.05
     ):
@@ -15020,10 +15025,6 @@ class transp_output:
         self.tgyro.prep(
             folderWork, restart=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
         )
-
-    # ---------------------------------------------------------------------------------------------------------
-    # Code conversions
-    # ---------------------------------------------------------------------------------------------------------
 
     def writeOutput(self, folderWork=None, time=-0.06, avTime=0.05):
         """

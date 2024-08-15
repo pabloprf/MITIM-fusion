@@ -169,7 +169,7 @@ class transp_run:
                 uf.Variables['Z'] = np.array(z)
 
             # Write ufile
-            uf.writeUFILE(f'{self.folder}/PRF12345.{self.quantities[quantity][1]}')
+            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.{self.quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
         # Write MRY ufile
@@ -282,7 +282,7 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamak, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=30.0):
+    def run(self, tokamak, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6):
         '''
         Run TRANSP
         '''
@@ -517,7 +517,7 @@ class transp_input_time:
 
         self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = None, PichT_MW = None):
+    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
         self.variables = {}
 
