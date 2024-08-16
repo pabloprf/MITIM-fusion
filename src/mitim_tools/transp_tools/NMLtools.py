@@ -152,7 +152,9 @@ class transp_nml:
         self.gridsMHD = transp_params.get("gridsMHD",[151,127])
         self.MCparticles = transp_params.get("MCparticles",1e6)
         self.useNUBEAMforAlphas = transp_params.get("useNUBEAMforAlphas",True)
-        
+        self.toric_ntheta = transp_params.get("toric_ntheta",int(2**7))  # 128, default: 64
+        self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
+
         self.coronal = transp_params.get("coronal",True)
         self.nteq_mode = transp_params.get("nteq_mode",5)
         self.smoothMHD = transp_params.get("smoothMHD",[-1.5,0.15])
@@ -979,8 +981,6 @@ class transp_nml:
                 self.contents += "\n".join(lines) + "\n"
 
     def addICRF(self, ICRFantennas_method=None):
-        theta_points = int(2**7)  # 128, default: 64
-        radial_points = 320  # 320, default: 128
 
         lines = [
             "!===========================================================",
@@ -995,9 +995,9 @@ class transp_nml:
             "! ----- Resolution",
             "",
             f"dticrf     = {self.timeStep_ms*1E-3}   ! Max time step for TORIC",
-            f"NichChi    = {theta_points}   ! Number of poloidal grid points (power of 2)",
-            f"NmdToric   = {int(theta_points/2-1)}   ! Number of poloidal modes (recommended: NichChi/2-1)",
-            f"NichPsi    = {radial_points}   ! Number of radial grid points",
+            f"NichChi    = {self.toric_ntheta}   ! Number of poloidal grid points (power of 2)",
+            f"NmdToric   = {int(self.toric_ntheta/2-1)}   ! Number of poloidal modes (recommended: NichChi/2-1)",
+            f"NichPsi    = {self.toric_nrho}   ! Number of radial grid points",
             "",
             "! ----- Model options",
             "",
