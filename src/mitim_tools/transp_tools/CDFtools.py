@@ -647,8 +647,8 @@ class transp_output:
         self.psi = self.f["PLFLX"][:]  # Poloidal flux (Wb/rad)
         self.phi = self.f["TRFLX"][:]  # Toroidal flux (Wb)
 
-        self.phi_bnd = self.phi[:, -1]
-        self.psi_bnd = self.psi[:, -1] * 2 * np.pi
+        self.phi_bnd = self.phi[:, -1]  # Toroidal flux at boundary (Wb)
+        self.psi_bnd = self.psi[:, -1] *  2 * np.pi  # Poloidal flux at boundary (Wb)
 
         self.phi_check = self.f["TRFCK"][:]
 
@@ -15117,16 +15117,18 @@ class transp_output:
         # Main structure
         # -------------------------------------------------------------------------------------------------------
 
-        profiles = {'shot': np.array(['12345'])}
+        profiles = {}
 
         # Radial grid
-        profiles['rho(-)'] = self.xb[it]
+        rho_grid = self.xb[it]
 
         # Info
         nion = len(self.Species) - 1
-        nexp = profiles['rho(-)'].shape[0]
+        nexp = rho_grid.shape[0]
         profiles['nexp'] = np.array([f'{nexp}'])
         profiles['nion'] = np.array([f'{nion}'])
+
+        profiles['shot'] = np.array(['12345'])
 
         # -------------------------------------------------------------------------------------------------------
         # Species (TO FIX: IGNORES FAST!!!!)
@@ -15159,7 +15161,7 @@ class transp_output:
         # Global equilibrium
         # -------------------------------------------------------------------------------------------------------
 
-        profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / 2*np.pi])
+        profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / (2*np.pi)])
         profiles['rcentr(m)'] = np.array([self.Rmajor[it]])
         profiles['bcentr(T)'] = np.array([self.Bt_vacuum[it]])
         profiles['current(MA)'] = np.array([self.Ip[it]])
@@ -15167,6 +15169,8 @@ class transp_output:
         # -------------------------------------------------------------------------------------------------------
         # Equilibrium profiles
         # -------------------------------------------------------------------------------------------------------
+
+        profiles['rho(-)'] = rho_grid
 
         profiles['polflux(Wb/radian)'] = self.psi[it,:]
         profiles['q(-)'] = self.q[it,:]
@@ -15249,10 +15253,6 @@ class transp_output:
             elif (profiles[key].ndim == 2):
                 profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i],profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
 
-        # Ensure positive values for some
-        for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)']:
-            profiles[key] = profiles[key].clip(min=0.0)
-
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Add zero at the beginning
         # -------------------------------------------------------------------------------------------------------
@@ -15273,6 +15273,10 @@ class transp_output:
         # Load class
         # -------------------------------------------------------------------------------------------------------
         
+        # Ensure positive values for some
+        for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
+            profiles[key] = profiles[key].clip(min=0.0)
+
         p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
 
         return p

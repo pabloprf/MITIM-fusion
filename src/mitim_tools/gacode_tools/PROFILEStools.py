@@ -2,6 +2,7 @@ import copy
 import os
 import torch
 import csv
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -25,6 +26,9 @@ except ImportError:
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
     )
+
+# Suppress only the "divide by zero" warning
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode
@@ -164,12 +168,13 @@ class PROFILES_GACODE:
     # -------------------------------------------------------------------------------------
 
     @classmethod
-    def scratch(cls, profiles, **kwargs_process):
+    def scratch(cls, profiles, label_header='', **kwargs_process):
         instance = cls(None)
 
         # Header
         instance.header = f'''
-#  *original : Created from scratch with MITIM version {__version__}                                                       
+#  Created from scratch with MITIM version {__version__}
+#  {label_header}                                                       
 #
 '''
         # Add data to profiles
