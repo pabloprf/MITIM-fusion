@@ -14,7 +14,7 @@ from mitim_tools.misc_tools import (
     GRAPHICStools,
 )
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.gacode_tools import TGLFtools, TGYROtools
+from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
 from mitim_tools.transp_tools.utils import (
     FBMtools,
@@ -3302,9 +3302,10 @@ class transp_output:
             self.Epot_rot = copy.deepcopy(self.x) * 0.0 + self.eps00
 
         # Get rotation (in XB)
-        self.VtorkHz_check = -derivativeVar(
-            self, self.Epot, specialDerivative=self.psi
-        ) / (2 * np.pi)
+
+        self.w0 = -derivativeVar(self, self.Epot, specialDerivative=self.psi)
+
+        self.VtorkHz_check = self.w0 / (2 * np.pi)
         self.VtorkHz_rot_check = -derivativeVar(
             self, self.Epot_rot, specialDerivative=self.psi
         ) / (2 * np.pi)
@@ -3638,6 +3639,7 @@ class transp_output:
         self.Bt_x = 0.5 * (self.Bt_ext[:, :hf] + self.Bt_ext[:, hf + 1 :])
 
         self.RBt_vacuum = self.f["BZXR"][:] * 1e-2  # Vacuum field T*m
+        self.Bt_vacuum = self.RBt_vacuum / self.Rmajor  # Vacuum field T
         self.Bt_vacuum_avol = self.RBt_vacuum * volumeAverage_var(self.f, self.Rinv)
         self.Bt2_vacuum_avol = self.RBt_vacuum**2 * volumeAverage_var(
             self.f, self.Rinv2
@@ -15094,9 +15096,128 @@ class transp_output:
 
         return transp
 
-    def to_profiles(self):
+    def to_profiles(self, time_extraction = -1):
 
-        print('Not implemented yet',typeMsg='w')
+        if time_extraction == -1:
+            time_extraction = self.t[-1]
+        
+        print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
+
+        it = np.argmin(np.abs(self.t - time_extraction))
+
+        profiles = {'shot': np.array(['12345'])}
+
+        # Radial grid
+        profiles['rho(-)'] = np.append([0.0],self.x_lw)
+
+        # Info
+        nion = len(self.Species) - 1
+        nexp = self.x_lw.shape[0] # because I'll add a zero at the beginning
+        profiles['nexp'] = np.array([f'{nexp}'])
+        profiles['nion'] = np.array([f'{nion}'])
+
+        # Species                                                   # IGNORES FAST!!!!
+        profiles['name'] = []
+        profiles['type'] = []
+        profiles['masse'] = []
+        profiles['mass'] = []
+        profiles['ze'] = []
+        profiles['z'] = []
+        mass_ref = 2.0
+        for specie in self.Species:
+            if specie == 'e':
+                profiles['masse'].append(self.Species[specie]['m/mD'] * mass_ref)
+                profiles['ze'].append(-1.0)
+            else:
+                profiles['name'].append(specie)
+                profiles['mass'].append(self.Species[specie]['m/mD'] * mass_ref)
+                profiles['z'].append(self.Species[specie]['Z'])
+                profiles['type'].append('[therm]')
+        profiles['name'] = np.array(profiles['name'])
+        profiles['type'] = np.array(profiles['type'])
+        profiles['masse'] = np.array(profiles['masse'])
+        profiles['mass'] = np.array(profiles['mass'])
+        profiles['ze'] = np.array(profiles['ze'])
+        profiles['z'] = np.array(profiles['z'])
+
+        # Global equilibrium
+        profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / 2*np.pi])
+        profiles['rcentr(m)'] = np.array([self.Rmajor[it]])
+        profiles['bcentr(T)'] = np.array([self.RBt_vacuum[it]/self.Rmajor[it]])
+        profiles['current(MA)'] = np.array([self.Ip[it]])
+
+        # Equilibrium profiles
+        profiles['polflux(Wb/radian)'] = np.append([self.psi[it,0]],self.psi[it,:])
+        profiles['q(-)'] = np.append([self.q[it,0]],self.q[it,:])
+        
+        # Flux surfaces
+        Rs, Zs = [], []
+        for rho in np.append([0.0],self.xb_lw):
+            R, Z = getFluxSurface(self.f, time_extraction, rho, rhoPol=False, sqrt=True)
+            Rs.append(R)
+            Zs.append(Z)
+        Rs = np.array(Rs)
+        Zs = np.array(Zs)
+        
+        surfaces = GEQtools.mitim_flux_surfaces()
+        surfaces.reconstruct_from_RZ(Rs, Zs)
+        surfaces._to_mxh(n_coeff=7)
+
+        for i in range(7):
+            profiles[f'shape_cos{i}(-)'] = surfaces.cn[:,i]
+            if i > 2:
+                profiles[f'shape_sin{i}(-)'] = surfaces.sn[:,i]
+        
+        profiles['kappa(-)'] = surfaces.kappa
+        profiles['delta(-)'] = np.sin(surfaces.sn[:,1])
+        profiles['zeta(-)'] = -surfaces.sn[:,1]
+        profiles['rmin(m)'] = surfaces.a
+        profiles['rmaj(m)'] = surfaces.R0
+        profiles['zmag(m)'] = surfaces.Z0
+
+        # Kinetic profiles                      # IGNORES FAST!!!!
+        profiles['ni(10^19/m^3)'] = []
+        profiles['ti(keV)'] = []
+        for specie in self.Species:
+            if specie == 'e':
+                profiles['te(keV)'] = np.append([self.Te[it,0]],self.Te[it,:])
+                profiles['ne(10^19/m^3)'] = np.append([self.ne[it,0]],self.ne[it,:])*1E1
+            elif specie == 'D':
+                profiles['ni(10^19/m^3)'].append(np.append([self.nD[it,0]],self.nD[it,:])*1E1)
+                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+            elif specie == 'T':
+                profiles['ni(10^19/m^3)'].append(np.append([self.nT[it,0]],self.nT[it,:])*1E1)
+                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+            else:
+                profiles['ni(10^19/m^3)'].append(np.append([self.nZs[specie]['total'][it,0]],self.nZs[specie]['total'][it,:])*1E1)
+                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+        
+        profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
+        profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
+
+        # Power profiles
+        profiles['qei(MW/m^3)'] = np.append([self.Pei[it,0]],self.Pei[it,:])
+        profiles['qrfe(MW/m^3)'] = np.append([self.Peich[it,0]],self.Peich[it,:])
+        profiles['qrfi(MW/m^3)'] = np.append([self.Piich[it,0]],self.Piich[it,:])
+        profiles['qbrem(MW/m^3)'] = np.append([self.Prad_b[it,0]],self.Prad_b[it,:])
+        profiles['qsync(MW/m^3)'] = np.append([self.Prad_c[it,0]],self.Prad_c[it,:])
+        profiles['qline(MW/m^3)'] = np.append([self.Prad_l[it,0]],self.Prad_l[it,:])
+        profiles['qohme(MW/m^3)'] = np.append([self.Poh[it,0]],self.Poh[it,:])
+        profiles['qfuse(MW/m^3)'] = np.append([self.Pfuse[it,0]],self.Pfuse[it,:])
+        profiles['qfusi(MW/m^3)'] = np.append([self.Pfusi[it,0]],self.Pfusi[it,:])
+
+        # Postprocessing
+        keys_in_xb = ['polflux(Wb/radian)', 'q(-)', 'kappa(-)', 'delta(-)', 'zeta(-)', 'rmin(m)', 'rmaj(m)', 'zmag(m)', 'shape_cos0(-)', 'shape_cos1(-)', 'shape_cos2(-)', 'shape_cos3(-)', 'shape_cos4(-)', 'shape_cos5(-)', 'shape_cos6(-)']
+        for key in profiles:
+
+            # Interpolate quantities in boundary zone
+            if key in keys_in_xb:
+                profiles[key] = np.interp(profiles['rho(-)'], np.append([0.0],self.xb_lw), profiles[key])
+
+        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+
+        return p
+
 
     # ---------------------------------------------------------------------------------------------------------
     # -------- Outputs

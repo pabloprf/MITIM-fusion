@@ -2287,7 +2287,7 @@ class PROFILES_GACODE:
         ax.set_xlabel("$\\rho$")
         # ax.set_ylim(bottom=0);
         ax.set_ylabel(varL)
-        if legYN:
+        if legYN and cont>0:
             ax.legend(loc="best", fontsize=fs)
 
         GRAPHICStools.addDenseAxis(ax)
