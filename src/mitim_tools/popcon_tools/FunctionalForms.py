@@ -108,7 +108,35 @@ def PRFfunctionals_Lmode(T_avol, n_avol, nu_n, rho=None, debug=False):
 
     return x[0], T, n
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Pedestal tanh fit
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
+
+    from scipy.optimize import curve_fit
+
+    # if fitting this to an EPED pedestal, remember that width_eped
+    # is defined in terms of normalized poloidal flux and not rho.
+    # Be sure to interpolate accordingly 
+
+    if x is None:
+        x = np.linspace(0, 1, 100)
+
+    x_top = 1-width_top
+    x_ped = 1-2*width_top/3
+    x_mid = 1-width_top/2
+
+    # Fit
+    density_func = lambda x, a, b: Y_sep + b * (
+        np.tanh(2*(1-x_mid)/width_top/a)-np.tanh(2*(x-x_mid)/width_top/a)
+        )
+    
+    n0, pcov = curve_fit(density_func, [x_top,x_ped,1.0], [Y_top,Y_top/1.08, Y_sep])
+
+    Y = density_func(x, n0[0], n0[1])
+
+    return x, Y
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Belonging to old PEDmodule.py
@@ -317,4 +345,3 @@ def read_mtanh(file_out):
     Ti = np.array(v[nr * 3 :]) * 1e-3
 
     return x, ne, Te, Ti
-
