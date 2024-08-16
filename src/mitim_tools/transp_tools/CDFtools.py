@@ -15096,16 +15096,19 @@ class transp_output:
 
         return transp
 
-    def to_profiles(self, time_extraction = -1):
+    def to_profiles(self, time_extraction = None):
 
-        if time_extraction == -1:
+        if time_extraction == None:
             time_extraction = self.t[-1]
+        elif time_extraction < 0:
+            time_extraction = self.t[-1] + time_extraction
 
         it = np.argmin(np.abs(self.t - time_extraction))
         
         print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
         print("\t\t* Warning: ignoring fast ions, rotation and no-ICRF auxiliary sources",typeMsg='w')
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
+        print("\t\t* Warning: not averaging yet",typeMsg='w')
 
         # TO FIX: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
