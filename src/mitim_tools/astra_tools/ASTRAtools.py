@@ -264,30 +264,11 @@ def convert_ASTRA_to_gacode(astra_root,
 
     return p
 
-def pedestal(x, neped, nsep, tesep, Ptop, Wtop):
-
-    from scipy.optimize import curve_fit
-
-    psitop = 1-Wtop
-    psiped = 1- (2/3 * Wtop)
-    Wmid = 0.5 * Wtop
-    psimid = 1-Wmid
-
-    density_func = lambda psin, a, b: nsep + b * (np.tanh(2*(1-psimid)/Wtop/a)-np.tanh(2*(psin-psimid)/Wtop/a))
-    n0, pcov = curve_fit(density_func, [psitop,psiped,1.0], [neped*1.08, neped, nsep])
-
-    tetop = Ptop/(2*density_func(psitop, n0[0], n0[1])) * 0.6242
-    print(tetop)
-    temp_func = lambda psin, b: tesep + b * (np.tanh(2*(1-psimid)/Wtop/n0[0])-np.tanh(2*(psin-psimid)/Wtop/n0[0]))
-
-    t0, pcov = curve_fit(temp_func, [psitop,1.0], [tetop, tesep])
-
-    return density_func(x, n0[0], n0[1]), temp_func(x, t0[0])
-
 def create_initial_conditions(te_avg,
                               ne_avg,
                               use_eped_pedestal=True, # add this later
                               file_output_location=None,
+                              width_top=0.05,
                               n_rho=104, 
                               ):
     
@@ -298,20 +279,32 @@ def create_initial_conditions(te_avg,
     # Define the radial grid
     rho = np.linspace(0,1,n_rho)
 
+    # replace this two-step process with one functional form: Pablo said he would do this
+
     x, T, n = FunctionalForms.PRFfunctionals_Hmode(
         T_avol=te_avg,
         n_avol=ne_avg,
         nu_T=3.0,
         nu_n=1.35,
         aLT=2.0,
-        width_ped=0.05,
+        width_ped=2*width_top/3,
         rho=rho
     )
 
+    print(len(n))
+
     if use_eped_pedestal:
         BC_index = np.argmin(np.abs(rho-0.95))
+        print(BC_index)
+        width_top = width_top
         ne_ped = n[BC_index]
-        n_ped, T_ped = pedestal(rho, ne_ped, ne_ped/3, 0.075, 300, 0.05)
+        Te_ped = T[BC_index]
+        ne_sep = n[-1]
+        T_sep = T[-1]
+
+        n_ped = FunctionalForms.pedestal_tanh(ne_ped, ne_sep, width_top, x=rho)[1]
+        print(len(n_ped))
+        T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
         n[BC_index:] = n_ped[BC_index:]
         T[BC_index:] = T_ped[BC_index:]
 

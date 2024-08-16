@@ -121,7 +121,7 @@ def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
     # Be sure to interpolate accordingly 
 
     if x is None:
-        x = np.linspace(0, 1, 500)
+        x = np.linspace(0, 1, 100)
 
     x_top = 1-width_top
     x_ped = 1-2*width_top/3
