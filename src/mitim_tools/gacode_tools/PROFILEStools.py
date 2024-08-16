@@ -11,7 +11,7 @@ from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools import TRANSPtools, CDFtools
+from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.popcon_tools import FunctionalForms
@@ -51,16 +51,17 @@ class PROFILES_GACODE:
         self.titles_single = self.titles_singleNum + self.titles_singleArr
 
         self.file = file
-        with open(self.file, "r") as f:
-            self.lines = f.readlines()
 
-        # Read file and store raw data
-        self.readHeader()
-        self.readProfiles()
-        self.readSpecies()
+        if self.file is not None:
+            with open(self.file, "r") as f:
+                self.lines = f.readlines()
 
-        # Process
-        self.process(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            # Read file and store raw data
+            self.readHeader()
+            self.readProfiles()
+
+            # Process
+            self.process(mi_ref=mi_ref, calculateDerived=calculateDerived)
 
     def process(self, mi_ref=None, calculateDerived=True):
         """
@@ -70,6 +71,60 @@ class PROFILES_GACODE:
 				  However, in some ocasions (like when running TGLF), the normalization that must be used
 				  for those quantities is a fixed one (e.g. Deuterium)
 		"""
+
+        # Calculate necessary quantities
+
+        if "qpar_beam(MW/m^3)" in self.profiles:
+            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
+        else:
+            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
+
+        if "qmom(Nm)" in self.profiles:
+            self.varqmom = (
+                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
+            )
+        else:
+            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
+
+        # -------------------------------------------------------------------------------------------------------------------
+        # Insert zeros in those cases whose column are not there
+        # -------------------------------------------------------------------------------------------------------------------
+
+        some_times_are_not_here = [
+            "qei(MW/m^3)",
+            "qohme(MW/m^3)",
+            "johm(MA/m^2)",
+            "jbs(MA/m^2)",
+            "jbstor(MA/m^2)",
+            "w0(rad/s)",
+            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "zmag(m)",
+            self.varqpar,
+            self.varqpar2,
+            "shape_cos0(-)",
+            self.varqmom,
+        ]
+
+        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        for i in range(num_moments):
+            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
+            if i > 1:
+                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
+
+        for ikey in some_times_are_not_here:
+            if ikey not in self.profiles.keys():
+                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
+
+
+
+        self.readSpecies()
+        self.produce_shape_lists()
+        self.mi_first = self.Species[0]["A"]
+        self.DTplasma()
+        self.sumFast()
+        # -------------------------------------
+
         if "derived" not in self.__dict__:
             self.derived = {}
 
@@ -109,8 +164,8 @@ class PROFILES_GACODE:
     # -------------------------------------------------------------------------------------
 
     @classmethod
-    def scratch(cls, **kwargs_process):
-        instance = cls()
+    def scratch(cls, profiles, **kwargs_process):
+        instance = cls(None)
 
         # Header
         instance.header = f'''
@@ -118,9 +173,10 @@ class PROFILES_GACODE:
 #
 '''
         # Add data to profiles
-        instance.profiles = {} # TO DO
-        
+        instance.profiles = profiles
+
         instance.process(**kwargs_process)
+
         return instance
 
     # -------------------------------------------------------------------------------------
@@ -237,49 +293,6 @@ class PROFILES_GACODE:
             if self.profiles[title].shape[1] == 1:
                 self.profiles[title] = self.profiles[title][:, 0]
 
-        if "qpar_beam(MW/m^3)" in self.profiles:
-            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
-        else:
-            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
-
-        if "qmom(Nm)" in self.profiles:
-            self.varqmom = (
-                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-            )
-        else:
-            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
-
-        # -------------------------------------------------------------------------------------------------------------------
-        # Insert zeros in those cases whose column are not there
-        # -------------------------------------------------------------------------------------------------------------------
-
-        some_times_are_not_here = [
-            "qei(MW/m^3)",
-            "qohme(MW/m^3)",
-            "johm(MA/m^2)",
-            "jbs(MA/m^2)",
-            "jbstor(MA/m^2)",
-            "w0(rad/s)",
-            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
-            "zmag(m)",
-            self.varqpar,
-            self.varqpar2,
-            "shape_cos0(-)",
-            self.varqmom,
-        ]
-
-        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-        for i in range(num_moments):
-            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
-            if i > 1:
-                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
-
-        for ikey in some_times_are_not_here:
-            if ikey not in self.profiles.keys():
-                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
-
-        self.produce_shape_lists()
 
     def produce_shape_lists(self):
         self.shape_cos = [
@@ -320,11 +333,6 @@ class PROFILES_GACODE:
             Species.append(sp)
 
         self.Species = Species
-
-        self.mi_first = self.Species[0]["A"]
-
-        self.DTplasma()
-        self.sumFast()
 
     def sumFast(self):
         self.nFast = self.profiles["ne(10^19/m^3)"] * 0.0

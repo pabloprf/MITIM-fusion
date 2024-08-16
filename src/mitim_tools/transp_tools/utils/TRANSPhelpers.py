@@ -272,6 +272,8 @@ class transp_run:
         for t in self.variables.keys():
             if t>time:
                 self.add_variable_time(t, None, power_MW*1E6, variable='RFP')
+            else:
+                self.add_variable_time(t, None, 0.0, variable='RFP')
         
         self.add_variable_time(time-ramp_time, None, 0.0, variable='RFP')
         self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
