@@ -264,10 +264,29 @@ def convert_ASTRA_to_gacode(astra_root,
 
     return p
 
+def pedestal(x, neped, nsep, tesep, Ptop, Wtop):
+
+    from scipy.optimize import curve_fit
+
+    psitop = 1-Wtop
+    psiped = 1- (2/3 * Wtop)
+    Wmid = 0.5 * Wtop
+    psimid = 1-Wmid
+
+    density_func = lambda psin, a, b: nsep + b * (np.tanh(2*(1-psimid)/Wtop/a)-np.tanh(2*(psin-psimid)/Wtop/a))
+    n0, pcov = curve_fit(density_func, [psitop,psiped,1.0], [neped*1.08, neped, nsep])
+
+    tetop = Ptop/(2*density_func(psitop, n0[0], n0[1])) * 0.6242
+    print(tetop)
+    temp_func = lambda psin, b: tesep + b * (np.tanh(2*(1-psimid)/Wtop/n0[0])-np.tanh(2*(psin-psimid)/Wtop/n0[0]))
+
+    t0, pcov = curve_fit(temp_func, [psitop,1.0], [tetop, tesep])
+
+    return density_func(x, n0[0], n0[1]), temp_func(x, t0[0])
 
 def create_initial_conditions(te_avg,
                               ne_avg,
-                              use_eped_pedestal=False, # add this later
+                              use_eped_pedestal=True, # add this later
                               file_output_location=None,
                               n_rho=104, 
                               ):
@@ -285,9 +304,16 @@ def create_initial_conditions(te_avg,
         nu_T=3.0,
         nu_n=1.35,
         aLT=2.0,
-        width_ped=0.06,
+        width_ped=0.05,
         rho=rho
     )
+
+    if use_eped_pedestal:
+        BC_index = np.argmin(np.abs(rho-0.95))
+        ne_ped = n[BC_index]
+        n_ped, T_ped = pedestal(rho, ne_ped, ne_ped/3, 0.075, 300, 0.05)
+        n[BC_index:] = n_ped[BC_index:]
+        T[BC_index:] = T_ped[BC_index:]
 
     preamble = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
@@ -325,11 +351,12 @@ def create_initial_conditions(te_avg,
         f.write("\n ")
 
     fig, ax = plt.subplots(figsize=(10,8))
-    ax.plot(rho, T)
-    ax.plot(rho, n)
+    ax.plot(rho, T, label='T')
+    ax.plot(rho, n, label='n')  
     #ax.set_ylabel(r"$T_e$ [eV]")
     ax.set_xlabel(r"$\rho$")
     ax.set_title("Initial temperature profile")
+    ax.legend()
     plt.show()
 
 if __name__ == '__main__':
