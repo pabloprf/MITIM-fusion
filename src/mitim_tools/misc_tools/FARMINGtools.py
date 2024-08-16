@@ -19,16 +19,15 @@ from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-UseCUDAifAvailable = True
-
+import paramiko
 # Paramiko shows some deprecation warnings that are not relevant
 # https://github.com/paramiko/paramiko/issues/2419
 import warnings
-warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 import logging
-logging.getLogger("paramiko").setLevel(logging.INFO)
+warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+logging.getLogger("paramiko").setLevel(logging.WARNING)
 
-import paramiko
+UseCUDAifAvailable = True
 
 """
 New handling of jobs in remote or local clusters. Example use:
