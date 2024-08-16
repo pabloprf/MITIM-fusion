@@ -25,6 +25,8 @@ UseCUDAifAvailable = True
 # https://github.com/paramiko/paramiko/issues/2419
 import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+import logging
+logging.getLogger("paramiko").setLevel(logging.INFO)
 
 import paramiko
 

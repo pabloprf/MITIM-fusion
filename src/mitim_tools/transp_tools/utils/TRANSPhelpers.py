@@ -275,7 +275,8 @@ class transp_run:
             else:
                 self.add_variable_time(t, None, 0.0, variable='RFP')
         
-        self.add_variable_time(time-ramp_time, None, 0.0, variable='RFP')
+        time_prev = round(time - ramp_time, 10)
+        self.add_variable_time(time_prev, None, 0.0, variable='RFP')
         self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
         self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
 
