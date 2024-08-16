@@ -65,83 +65,83 @@ def arrangeTGLF(CDFc, varName="GRATE_TGLF"):
 
 
 class tglfCDF:
-    def __init__(self, cdfReactor):
-        self.t = cdfReactor.t
-        self.x = cdfReactor.x
-        self.x_lw = cdfReactor.x_lw
-        self.tlastsaw = cdfReactor.tlastsaw
-        self.ind_saw = cdfReactor.ind_saw
+    def __init__(self, transp_output):
+        self.t = transp_output.t
+        self.x = transp_output.x
+        self.x_lw = transp_output.x_lw
+        self.tlastsaw = transp_output.tlastsaw
+        self.ind_saw = transp_output.ind_saw
 
-        self.nt = cdfReactor.nt
-        self.nx = cdfReactor.nx
+        self.nt = transp_output.nt
+        self.nx = transp_output.nx
 
         """
 		Convolutions
 		"""
         d_perp_dict, dRdx = {}, {}
-        for ix in cdfReactor.x_lw:
+        for ix in transp_output.x_lw:
             d_perp_dict[ix] = 0.1
             dRdx[ix] = 1.0
         convolution_fun_fluct, factorTot_to_Perp = GACODEdefaults.convolution_CECE(
             d_perp_dict, dRdx=dRdx
         )
 
-        self.getLinearStability(cdfReactor, convolution_fun_fluct, factorTot_to_Perp)
+        self.getLinearStability(transp_output, convolution_fun_fluct, factorTot_to_Perp)
 
         self.getMetrics()
 
-    def getLinearStability(self, cdfReactor, convolution_fun_fluct, factorTot_to_Perp):
+    def getLinearStability(self, transp_output, convolution_fun_fluct, factorTot_to_Perp):
         print("\t\t>> Gathering TGLF linear stability")
 
-        self.kys, self.grates = arrangeTGLF(cdfReactor, varName="GRATE_TGLF")
-        _, self.freqs = arrangeTGLF(cdfReactor, varName="FREQ_TGLF")
+        self.kys, self.grates = arrangeTGLF(transp_output, varName="GRATE_TGLF")
+        _, self.freqs = arrangeTGLF(transp_output, varName="FREQ_TGLF")
 
         print("\t\t>> Gathering TGLF fluctuations")
 
         try:
-            _, self.neFluct = arrangeTGLF(cdfReactor, varName="NEKY")
+            _, self.neFluct = arrangeTGLF(transp_output, varName="NEKY")
             self.ne_level = self.getFluctuationLevels(
-                cdfReactor, self.neFluct, convolution_fun_fluct, factorTot_to_Perp
+                transp_output, self.neFluct, convolution_fun_fluct, factorTot_to_Perp
             )
         except:
             print("/// Could not get NEKY")
 
         try:
-            _, self.TeFluct = arrangeTGLF(cdfReactor, varName="TEKY")
+            _, self.TeFluct = arrangeTGLF(transp_output, varName="TEKY")
             self.Te_level = self.getFluctuationLevels(
-                cdfReactor, self.TeFluct, convolution_fun_fluct, factorTot_to_Perp
+                transp_output, self.TeFluct, convolution_fun_fluct, factorTot_to_Perp
             )
         except:
             print("/// Could not get TEKY")
 
         try:
-            _, self.phiFluct = arrangeTGLF(cdfReactor, varName="POTKY")
+            _, self.phiFluct = arrangeTGLF(transp_output, varName="POTKY")
         except:
             print("/// Could not get POTKY")
 
         try:
-            _, self.QeSpectrum = arrangeTGLF(cdfReactor, varName="TEFLXKY")
-            _, self.QiSpectrum = arrangeTGLF(cdfReactor, varName="TIFLXKY")
-            _, self.QZSpectrum = arrangeTGLF(cdfReactor, varName="TZFLXKY")
+            _, self.QeSpectrum = arrangeTGLF(transp_output, varName="TEFLXKY")
+            _, self.QiSpectrum = arrangeTGLF(transp_output, varName="TIFLXKY")
+            _, self.QZSpectrum = arrangeTGLF(transp_output, varName="TZFLXKY")
         except:
             print("/// Could not get *FLXKY")
 
     def getFluctuationLevels(
-        self, cdfReactor, var, convolution_fun_fluct, factorTot_to_Perp
+        self, transp_output, var, convolution_fun_fluct, factorTot_to_Perp
     ):
         ne_level = []
         cont = 0
-        for it in range(len(cdfReactor.t)):
+        for it in range(len(transp_output.t)):
             ne_aux = []
-            for irho in range(len(cdfReactor.x_lw)):
+            for irho in range(len(transp_output.x_lw)):
                 if len(self.kys[it, irho]) > 0:
                     yy = GACODErun.obtainFluctuationLevel(
                         self.kys[it, irho],
                         var[it, irho],
-                        cdfReactor.rhos[it, irho],
-                        cdfReactor.TGLF_a[it, irho],
+                        transp_output.rhos[it, irho],
+                        transp_output.TGLF_a[it, irho],
                         convolution_fun_fluct=convolution_fun_fluct,
-                        rho_eval=cdfReactor.x_lw[irho],
+                        rho_eval=transp_output.x_lw[irho],
                         factorTot_to_Perp=factorTot_to_Perp,
                         printYN=cont == 0,
                     )

@@ -1,4 +1,5 @@
 import copy
+import os
 import torch
 import csv
 import numpy as np
@@ -10,11 +11,12 @@ from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools import TRANSPtools, CDFtools, NMLtools, UFILEStools
+from mitim_tools.transp_tools import TRANSPtools, CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools import __version__
 
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
@@ -57,6 +59,10 @@ class PROFILES_GACODE:
         self.readProfiles()
         self.readSpecies()
 
+        # Process
+        self.process(mi_ref=mi_ref, calculateDerived=calculateDerived)
+
+    def process(self, mi_ref=None, calculateDerived=True):
         """
 		Perform MITIM derivations (can be expensive, only if requested)
 			Note: One can force what mi_ref to use (in a.m.u.). This is because, by default, MITIM
@@ -97,6 +103,27 @@ class PROFILES_GACODE:
 
         if calculateDerived:
             self.deriveQuantities()
+
+    # -------------------------------------------------------------------------------------
+    # Method to write a scratch file
+    # -------------------------------------------------------------------------------------
+
+    @classmethod
+    def scratch(cls, **kwargs_process):
+        instance = cls()
+
+        # Header
+        instance.header = f'''
+#  *original : Created from scratch with MITIM version {__version__}                                                       
+#
+'''
+        # Add data to profiles
+        instance.profiles = {} # TO DO
+        
+        instance.process(**kwargs_process)
+        return instance
+
+    # -------------------------------------------------------------------------------------
 
     def calculate_Er(
         self,
@@ -3621,6 +3648,73 @@ class PROFILES_GACODE:
         else:
             print("\t- Cannot plot flux surface geometry", typeMsg="w")
 
+    def plotPeaking(
+        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
+        ):
+        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
+        ne_peaking = self.derived["ne_peaking0.2"]
+        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
+
+        if printVals:
+            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
+
+        # Extra
+        r = self.profiles["rmin(m)"]
+        volp = self.derived["volp_miller"]
+        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
+
+        if debugPlot:
+            fig, axq = plt.subplots()
+
+            ne = self.profiles["ne(10^19/m^3)"]
+            axq.plot(self.profiles["rho(-)"], ne, color="m")
+            ne_vol = (
+                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+            )
+            axq.axhline(y=ne_vol * 10, color="m")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (0,) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking0 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="r")
+            axq.axhline(y=ne_vol * 10, color="r")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (ne[ix],) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking1 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        ne_peaking0 = ne_peaking
+
+        ax.errorbar(
+            [nu_effCGYRO],
+            [ne_peaking],
+            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
+            marker=marker,
+            c=c,
+            markersize=16,
+            capsize=2.0,
+            fmt="s",
+            elinewidth=1.0,
+            capthick=1.0,
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="b")
+            axq.axhline(y=ne_vol * 10, color="b")
+            plt.show()
+
+        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
+
+        return nu_effCGYRO, ne_peaking
+
     def csv(self, file="input.gacode.xlsx"):
         dictExcel = IOtools.OrderedDict()
 
@@ -3685,7 +3779,11 @@ class PROFILES_GACODE:
             ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
             plt.show()
 
-    def to_TGLF(self, rhos=[0.5], TGLFsettings=0):
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+
+    def to_tglf(self, rhos=[0.5], TGLFsettings=0):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -3806,224 +3904,19 @@ class PROFILES_GACODE:
 
         return inputsTGLF
 
-    def to_transp(self, folderTRANSP, machine="SPARC"):
-        """
-        Prepares inputs to TRANSP out of input.gacode
-        """
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0]):
 
-        IOtools.askNewFolder(folderTRANSP)
+        print("\t- Converting to TRANSP")
+        folder = IOtools.expandPath(folder)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
-        # ------------------------------------------------
-        # ---- Quantities needed
-        # ------------------------------------------------
+        self.transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        for time in times:
+            self.transp.populate_time.from_profiles(time,self)
 
-        Ip = self.profiles["current(MA)"][0]
-        rho = self.profiles["rho(-)"]
-        q = self.profiles["q(-)"]
-        Bt = self.profiles["bcentr(T)"][0]  # Is this correct?
-        R = self.profiles["rcentr(m)"][0]
-        Zeff = self.derived["Zeff_vol"]
+        self.transp.write_ufiles()
 
-        Te = self.profiles["te(keV)"]
-        Ti = self.profiles["ti(keV)"][:, 0]
-        ne = self.profiles["ne(10^19/m^3)"]
-
-        Prf = self.derived["qRF_MWmiller"][-1]
-
-        Rs = self.derived["R_surface"][-1]
-        Zs = self.derived["Z_surface"][-1]
-
-        # ------------------------------------------------
-        # ---- Build UFILES
-        # ------------------------------------------------
-
-        uf = UFILEStools.UFILEtransp(scratch="cur")
-        uf.Variables["Z"] = np.array([Ip * 1e6, Ip * 1e6])
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.CUR")
-
-        uf = UFILEStools.UFILEtransp(scratch="rbz")
-        uf.Variables["Z"] = np.array([Bt * R * 1e2, Bt * R * 1e2])
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.RBZ")
-
-        uf = UFILEStools.UFILEtransp(scratch="rfp")
-        uf.Variables["X"] = np.array([1])
-        uf.Variables["Z"] = np.array([Prf * 1e6])
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.RFP")
-
-        uf = UFILEStools.UFILEtransp(scratch="zf2")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = np.array([Zeff] * len(rho))
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.ZF2")
-
-        uf = UFILEStools.UFILEtransp(scratch="qpr")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = q
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.QPR")
-
-        uf = UFILEStools.UFILEtransp(scratch="ter")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = Te
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.TEL")
-
-        uf = UFILEStools.UFILEtransp(scratch="ti2")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = Ti
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.TIO")
-
-        uf = UFILEStools.UFILEtransp(scratch="ner")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = ne
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.NEL")
-
-        # Zero UFILES
-        uf = UFILEStools.UFILEtransp(scratch="vsf")
-        uf.Variables["Z"] = np.array([0, 0])
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.VSF")
-
-        uf = UFILEStools.UFILEtransp(scratch="gfd")
-        uf.Variables["Z"] = np.array([0, 0])
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.GFD")
-
-        uf = UFILEStools.UFILEtransp(scratch="df4")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = Te * 0.0
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.DHE4")
-
-        uf = UFILEStools.UFILEtransp(scratch="vc4")
-        uf.Variables["X"] = rho
-        uf.Variables["Z"] = Te * 0.0
-        uf.repeatProfile()
-        uf.writeUFILE(f"{folderTRANSP}/PRF12345.VHE4")
-
-        # ------------------------------------------------
-        # ---- Build Boundary
-        # ------------------------------------------------
-
-        TRANSPhelpers.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_00001.DAT", Rs, Zs)
-        TRANSPhelpers.writeBoundary(f"{folderTRANSP}/BOUNDARY_123456_99999.DAT", Rs, Zs)
-
-        TRANSPhelpers.generateMRY(
-            folderTRANSP,
-            ["00001", "99999"],
-            folderTRANSP,
-            "12345",
-            momentsScruncher=12,
-            BtSign=-1,
-            IpSign=-1,
-            name="",
-        )
-
-        # ------------------------------------------------
-        # ---- Machine
-        # ------------------------------------------------
-
-        if machine == "AUG":
-            from mitim_tools.experiment_tools.AUGtools import defineFirstWall
-        elif machine == "CMOD":
-            from mitim_tools.experiment_tools.CMODtools import defineFirstWall
-        elif machine == "D3D":
-            from mitim_tools.experiment_tools.DIIIDtools import defineFirstWall
-        elif machine == "SPARC":
-            from mitim_tools.experiment_tools.SPARCtools import defineFirstWall
-
-        rlim, zlim = defineFirstWall()
-
-        TRANSPhelpers.addLimiters_UF(f"{folderTRANSP}/PRF12345.LIM", rlim, zlim)
-
-        # ------------------------------------------------
-        # ---- Namelist
-        # ------------------------------------------------
-
-        nml = NMLtools.default_nml("12345", machine)  # ,pservers=[nbi,ntoric,nptr])
-        nml.write(BaseFile=f"{folderTRANSP}/12345A01TR.DAT")
-        nml.appendNMLs()
-
-    def run_transp(self, folderTRANSP, machine="SPARC"):
-        # Prepare inputs
-        self.to_transp(folderTRANSP, machine=machine)
-
-        # Run TRANSP
-        self.t = TRANSPtools.TRANSP(IOtools.expandPath(folderTRANSP), machine)
-        self.t.defineRunParameters(
-            "12345A01", "12345", mpisettings={"trmpi": 1, "toricmpi": 1, "ptrmpi": 1}
-        )
-
-        self.t.run()
-        c = self.t.checkUntilFinished(label="run1", checkMin=30, retrieveAC=True)
-
-    def plotPeaking(
-        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
-        ):
-        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
-        ne_peaking = self.derived["ne_peaking0.2"]
-        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
-
-        if printVals:
-            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
-
-        # Extra
-        r = self.profiles["rmin(m)"]
-        volp = self.derived["volp_miller"]
-        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
-
-        if debugPlot:
-            fig, axq = plt.subplots()
-
-            ne = self.profiles["ne(10^19/m^3)"]
-            axq.plot(self.profiles["rho(-)"], ne, color="m")
-            ne_vol = (
-                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-            )
-            axq.axhline(y=ne_vol * 10, color="m")
-
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (0,) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking0 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="r")
-            axq.axhline(y=ne_vol * 10, color="r")
-
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (ne[ix],) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking1 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        ne_peaking0 = ne_peaking
-
-        ax.errorbar(
-            [nu_effCGYRO],
-            [ne_peaking],
-            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
-            marker=marker,
-            c=c,
-            markersize=16,
-            capsize=2.0,
-            fmt="s",
-            elinewidth=1.0,
-            capthick=1.0,
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="b")
-            axq.axhline(y=ne_vol * 10, color="b")
-            plt.show()
-
-        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
-
-        return nu_effCGYRO, ne_peaking
 
 class DataTable:
     def __init__(self, variables=None):

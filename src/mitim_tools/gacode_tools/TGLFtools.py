@@ -219,7 +219,7 @@ class TGLF:
         restart=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
         recalculatePTOT=True, # Recalculate PTOT in TGYRO
-        cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
+        cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
@@ -362,7 +362,7 @@ class TGLF:
         restart=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
         recalculatePTOT=True, # Recalculate PTOT in TGYRO
-        cdf_open=None,  # Grab normalizations from CDF file that is open as CDFreactor class
+        cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
@@ -412,7 +412,7 @@ class TGLF:
 
         if specificInputs is None:
 
-            self.inputsTGLF = self.profiles.to_TGLF(rhos=self.rhos)
+            self.inputsTGLF = self.profiles.to_tglf(rhos=self.rhos)
 
             for rho in self.inputsTGLF:
                 self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])

@@ -8,7 +8,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 
-class CDFreactor:
+class transp_output:
     """
     Some variables are model-specific, because the formulas are not automatically saved in every astra run.
     In particular be careful when dealing with variables defined through dummy variables, whose names are not
