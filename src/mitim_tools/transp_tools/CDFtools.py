@@ -15100,23 +15100,35 @@ class transp_output:
 
         if time_extraction == -1:
             time_extraction = self.t[-1]
-        
-        print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
 
         it = np.argmin(np.abs(self.t - time_extraction))
+        
+        print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
+        print("\t\t* Warning: ignoring fast ions, rotation and no-ICRF auxiliary sources",typeMsg='w')
+        print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
+
+        # TO FIX: I should be looking at the extrapolated quantities in TRANSP?
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
+
+        # -------------------------------------------------------------------------------------------------------
+        # Main structure
+        # -------------------------------------------------------------------------------------------------------
 
         profiles = {'shot': np.array(['12345'])}
 
         # Radial grid
-        profiles['rho(-)'] = np.append([0.0],self.x_lw)
+        profiles['rho(-)'] = self.xb[it]
 
         # Info
         nion = len(self.Species) - 1
-        nexp = self.x_lw.shape[0] # because I'll add a zero at the beginning
+        nexp = profiles['rho(-)'].shape[0]
         profiles['nexp'] = np.array([f'{nexp}'])
         profiles['nion'] = np.array([f'{nion}'])
 
-        # Species                                                   # IGNORES FAST!!!!
+        # -------------------------------------------------------------------------------------------------------
+        # Species (TO FIX: IGNORES FAST!!!!)
+        # -------------------------------------------------------------------------------------------------------
+
         profiles['name'] = []
         profiles['type'] = []
         profiles['masse'] = []
@@ -15140,80 +15152,124 @@ class transp_output:
         profiles['ze'] = np.array(profiles['ze'])
         profiles['z'] = np.array(profiles['z'])
 
+        # -------------------------------------------------------------------------------------------------------
         # Global equilibrium
+        # -------------------------------------------------------------------------------------------------------
+
         profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / 2*np.pi])
         profiles['rcentr(m)'] = np.array([self.Rmajor[it]])
-        profiles['bcentr(T)'] = np.array([self.RBt_vacuum[it]/self.Rmajor[it]])
+        profiles['bcentr(T)'] = np.array([self.Bt_vacuum[it]])
         profiles['current(MA)'] = np.array([self.Ip[it]])
 
+        # -------------------------------------------------------------------------------------------------------
         # Equilibrium profiles
-        profiles['polflux(Wb/radian)'] = np.append([self.psi[it,0]],self.psi[it,:])
-        profiles['q(-)'] = np.append([self.q[it,0]],self.q[it,:])
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['polflux(Wb/radian)'] = self.psi[it,:]
+        profiles['q(-)'] = self.q[it,:]
         
+        # -------------------------------------------------------------------------------------------------------
         # Flux surfaces
+        # -------------------------------------------------------------------------------------------------------
+
+        coeffs_MXH = 7
+
         Rs, Zs = [], []
-        for rho in np.append([0.0],self.xb_lw):
+        for rho in profiles['rho(-)']:
             R, Z = getFluxSurface(self.f, time_extraction, rho, rhoPol=False, sqrt=True)
             Rs.append(R)
             Zs.append(Z)
         Rs = np.array(Rs)
         Zs = np.array(Zs)
-        
+
         surfaces = GEQtools.mitim_flux_surfaces()
         surfaces.reconstruct_from_RZ(Rs, Zs)
-        surfaces._to_mxh(n_coeff=7)
+        surfaces._to_mxh(n_coeff=coeffs_MXH)
 
-        for i in range(7):
+        for i in range(coeffs_MXH):
             profiles[f'shape_cos{i}(-)'] = surfaces.cn[:,i]
             if i > 2:
                 profiles[f'shape_sin{i}(-)'] = surfaces.sn[:,i]
         
         profiles['kappa(-)'] = surfaces.kappa
         profiles['delta(-)'] = np.sin(surfaces.sn[:,1])
-        profiles['zeta(-)'] = -surfaces.sn[:,1]
+        profiles['zeta(-)'] = -surfaces.sn[:,2]
         profiles['rmin(m)'] = surfaces.a
         profiles['rmaj(m)'] = surfaces.R0
         profiles['zmag(m)'] = surfaces.Z0
 
-        # Kinetic profiles                      # IGNORES FAST!!!!
+        # -------------------------------------------------------------------------------------------------------
+        # Kinetic profiles   (TO FIX: IGNORES FAST!!!!)
+        # -------------------------------------------------------------------------------------------------------
+
         profiles['ni(10^19/m^3)'] = []
         profiles['ti(keV)'] = []
         for specie in self.Species:
             if specie == 'e':
-                profiles['te(keV)'] = np.append([self.Te[it,0]],self.Te[it,:])
-                profiles['ne(10^19/m^3)'] = np.append([self.ne[it,0]],self.ne[it,:])*1E1
+                profiles['te(keV)'] = self.Te[it,:]
+                profiles['ne(10^19/m^3)'] =self.ne[it,:]*1E1
             elif specie == 'D':
-                profiles['ni(10^19/m^3)'].append(np.append([self.nD[it,0]],self.nD[it,:])*1E1)
-                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+                profiles['ni(10^19/m^3)'].append(self.nD[it,:]*1E1)
+                profiles['ti(keV)'].append(self.Ti[it,:])
             elif specie == 'T':
-                profiles['ni(10^19/m^3)'].append(np.append([self.nT[it,0]],self.nT[it,:])*1E1)
-                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+                profiles['ni(10^19/m^3)'].append(self.nT[it,:]*1E1)
+                profiles['ti(keV)'].append(self.Ti[it,:])
             else:
-                profiles['ni(10^19/m^3)'].append(np.append([self.nZs[specie]['total'][it,0]],self.nZs[specie]['total'][it,:])*1E1)
-                profiles['ti(keV)'].append(np.append([self.Ti[it,0]],self.Ti[it,:]))
+                profiles['ni(10^19/m^3)'].append(self.nZs[specie]['total'][it,:]*1E1)
+                profiles['ti(keV)'].append(self.Ti[it,:])
         
         profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
         profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
 
         # Power profiles
-        profiles['qei(MW/m^3)'] = np.append([self.Pei[it,0]],self.Pei[it,:])
-        profiles['qrfe(MW/m^3)'] = np.append([self.Peich[it,0]],self.Peich[it,:])
-        profiles['qrfi(MW/m^3)'] = np.append([self.Piich[it,0]],self.Piich[it,:])
-        profiles['qbrem(MW/m^3)'] = np.append([self.Prad_b[it,0]],self.Prad_b[it,:])
-        profiles['qsync(MW/m^3)'] = np.append([self.Prad_c[it,0]],self.Prad_c[it,:])
-        profiles['qline(MW/m^3)'] = np.append([self.Prad_l[it,0]],self.Prad_l[it,:])
-        profiles['qohme(MW/m^3)'] = np.append([self.Poh[it,0]],self.Poh[it,:])
-        profiles['qfuse(MW/m^3)'] = np.append([self.Pfuse[it,0]],self.Pfuse[it,:])
-        profiles['qfusi(MW/m^3)'] = np.append([self.Pfusi[it,0]],self.Pfusi[it,:])
+        profiles['qei(MW/m^3)'] = self.Pei[it,:]
+        profiles['qrfe(MW/m^3)'] = self.Peich[it,:]
+        profiles['qrfi(MW/m^3)'] = self.Piich[it,:]
+        profiles['qbrem(MW/m^3)'] = self.Prad_b[it,:]
+        profiles['qsync(MW/m^3)'] = self.Prad_c[it,:]
+        profiles['qline(MW/m^3)'] = self.Prad_l[it,:]
+        profiles['qohme(MW/m^3)'] = self.Poh[it,:]
+        profiles['qfuse(MW/m^3)'] = self.Pfuse[it,:]
+        profiles['qfusi(MW/m^3)'] = self.Pfusi[it,:]
 
-        # Postprocessing
-        keys_in_xb = ['polflux(Wb/radian)', 'q(-)', 'kappa(-)', 'delta(-)', 'zeta(-)', 'rmin(m)', 'rmaj(m)', 'zmag(m)', 'shape_cos0(-)', 'shape_cos1(-)', 'shape_cos2(-)', 'shape_cos3(-)', 'shape_cos4(-)', 'shape_cos5(-)', 'shape_cos6(-)']
+        # -------------------------------------------------------------------------------------------------------
+        # Postprocessing: Interpolate from xb to x (boundary to center quantities)
+        # -------------------------------------------------------------------------------------------------------
+
+        def grid_interpolation_method_to_one(x,y,x_new):
+            return extrapolation_routine(x_new, x, y)
+
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']
+        for key in keys_in_x:
+            if (profiles[key].ndim == 1):
+                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key],profiles['rho(-)'])
+            elif (profiles[key].ndim == 2):
+                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i],profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
+
+        # Ensure positive values for some
+        for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)']:
+            profiles[key] = profiles[key].clip(min=0.0)
+
+        # -------------------------------------------------------------------------------------------------------
+        # Postprocessing: Add zero at the beginning
+        # -------------------------------------------------------------------------------------------------------
+
+        def grid_interpolation_method_to_zero(x,y):
+            return extrapolation_routine(np.append(0.0, x), x, y)
+
+
         for key in profiles:
+            if (profiles[key].ndim == 1) and (profiles[key].shape[0] == nexp) and (key != 'rho(-)'):
+                profiles[key] =  grid_interpolation_method_to_zero(profiles['rho(-)'],profiles[key])
+            elif (profiles[key].ndim == 2):
+                profiles[key] = np.vstack([grid_interpolation_method_to_zero(profiles['rho(-)'],profiles[key][:,i]) for i in range(profiles[key].shape[1])]).T
 
-            # Interpolate quantities in boundary zone
-            if key in keys_in_xb:
-                profiles[key] = np.interp(profiles['rho(-)'], np.append([0.0],self.xb_lw), profiles[key])
+        profiles['rho(-)'] = np.append(0.0, profiles['rho(-)'])
 
+        # -------------------------------------------------------------------------------------------------------
+        # Load class
+        # -------------------------------------------------------------------------------------------------------
+        
         p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
 
         return p
