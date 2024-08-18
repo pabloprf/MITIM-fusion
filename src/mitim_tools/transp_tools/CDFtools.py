@@ -205,6 +205,8 @@ class transp_output:
 
         self.getEquilibriumFunctions()
 
+        self.getSpecies()
+
         self.inputFilesTGLF, self.TGLFstandalone = {}, {}
         for i in np.arange(self.t[0] * 1000, self.t[-1] * 1000):
             self.inputFilesTGLF[int(i)], self.TGLFstandalone[int(i)] = None, None
@@ -1042,9 +1044,6 @@ class transp_output:
         self.TGLF_s_zeta = (
             gradNorm(self, self.zetaS) * (-self.rmin / self.TGLF_a) * self.zetaS
         )
-
-        # ---------- Species
-        self.getSpecies(time=None, radius=0.5)
 
         self.TGLF_zs = np.array([-1, 1])
         self.TGLF_mass = np.array([0.000272313, 1])
@@ -13549,47 +13548,106 @@ class transp_output:
     # Additional analysis
     # --------------------------------------
 
-    def getSpecies(self, time=None, radius=0.5):
-        if time is None:
-            it = self.ind_saw
-        else:
-            it = np.argmin(np.abs(self.t - time))
-        ir = np.argmin(np.abs(self.x_lw - radius))
+    def getSpecies(self):
 
         self.Species = {
-            "e": {"type": "thermal", "m/mD": self.me / self.mD, "Z": -1, "n/ne": 1.0}
+            "e": {
+                "name": "e",
+                "type": "thermal",
+                "m": self.me,
+                "Z": -1*self.t,
+                "n": self.ne,
+                "T": self.Te,
+            }
         }
 
         # ~~~~~~ Background ions
-        if self.nD_avol[it] > 1e-5:
+        if self.nD_avol.max() > 1e-5:
             self.Species["D"] = {
-                "type": "background",
-                "m/mD": 1.0,
-                "Z": 1,
-                "n/ne": self.nD[it, ir] / self.ne[it, ir],
+                "name": "D",
+                "type": "thermal",
+                "m": 1.0*self.u,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nD,
+                "T": self.Ti,
             }
-        if self.nT_avol[it] > 1e-5:
+        if self.nT_avol.max() > 1e-5:
             self.Species["T"] = {
-                "type": "background",
-                "m/mD": self.mT / self.mD,
-                "Z": 1,
-                "n/ne": self.nT[it, ir] / self.ne[it, ir],
+                "name": "T",
+                "type": "thermal",
+                "m": self.mT,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nT,
+                "T": self.Ti,
             }
-        if self.nHe4_avol[it] > 1e-5:
-            self.Species["He4"] = {
-                "type": "background",
-                "m/mD": (4 * self.u) / self.mD,
-                "Z": 2,
-                "n/ne": self.nHe4[it, ir] / self.ne[it, ir],
+        if self.nHe4_avol.max() > 1e-5:
+            self.Species["He4_ash"] = {
+                "name": "He",
+                "type": "thermal",
+                "m": 4 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nHe4,
+                "T": self.Ti,
             }
 
         # ~~~~~~ Impurities
         for i in self.nZs:
-            self.Species[i] = {
-                "type": "impurity",
-                "m/mD": (4 * self.u) / self.mD,
-                "Z": self.nZs[i]["Zave"][it, ir],
-                "n/ne": self.nZs[i]["total"][it, ir] / self.ne[it, ir],
+            self.Species[i+"_imp"] = {
+                "name": i,
+                "type": "thermal",
+                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u,      # TO FIX
+                "Z": self.fZs_avol[i]['Zave'],
+                "n": self.nZs[i]["total"],
+                "T": self.Ti,
+            }
+
+        # ~~~~~~ Minorities
+        if self.nminiH.max() > 1e-5:
+            self.Species["H_mini"] = {
+                "name": "H",
+                "type": "fast",
+                "m": 1.0*self.u,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nminiH,
+                "T": self.Tmini,
+            }
+        if self.nminiHe3.max() > 1e-5:
+            self.Species["He3_mini"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 3*self.u,       # TO FIX
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nminiHe3,
+                "T": self.Tmini,
+            }
+
+        # ~~~~~~ Fusion
+        if self.nfusT.max() > 1e-5:
+            self.Species["T_fus"] = {
+                "name": "T",
+                "type": "fast",
+                "m": self.mT,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nfusT,
+                "T": self.Tfus,
+            }
+        if self.nfusHe4.max() > 1e-5:
+            self.Species["He4_fus"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 4 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nfusHe4,
+                "T": self.Tfus,
+            }
+        if self.nfusHe3.max() > 1e-5:
+            self.Species["He3_fus"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 3.0 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nfusHe3,
+                "T": self.Tfus,
             }
 
     # --------------------------- Convergence ------------------
@@ -15106,7 +15164,7 @@ class transp_output:
         it = np.argmin(np.abs(self.t - time_extraction))
         
         print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-        print("\t\t* Warning: ignoring fast ions, rotation and no-ICRF auxiliary sources",typeMsg='w')
+        print("\t\t* Warning: ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
         print("\t\t* Warning: not averaging yet",typeMsg='w')
 
@@ -15131,7 +15189,7 @@ class transp_output:
         profiles['shot'] = np.array(['12345'])
 
         # -------------------------------------------------------------------------------------------------------
-        # Species (TO FIX: IGNORES FAST!!!!)
+        # Species
         # -------------------------------------------------------------------------------------------------------
 
         profiles['name'] = []
@@ -15143,13 +15201,16 @@ class transp_output:
         mass_ref = 2.0
         for specie in self.Species:
             if specie == 'e':
-                profiles['masse'].append(self.Species[specie]['m/mD'] * mass_ref)
+                profiles['masse'].append(self.Species[specie]['m']/self.mD * mass_ref)
                 profiles['ze'].append(-1.0)
             else:
-                profiles['name'].append(specie)
-                profiles['mass'].append(self.Species[specie]['m/mD'] * mass_ref)
-                profiles['z'].append(self.Species[specie]['Z'])
-                profiles['type'].append('[therm]')
+                profiles['name'].append(self.Species[specie]['name'])
+                profiles['mass'].append(self.Species[specie]['m']/self.mD * mass_ref)
+                profiles['z'].append(self.Species[specie]['Z'][it])
+                if self.Species[specie]['type'] == 'thermal':
+                    profiles['type'].append('[therm]')
+                else:
+                    profiles['type'].append('[fast]')
         profiles['name'] = np.array(profiles['name'])
         profiles['type'] = np.array(profiles['type'])
         profiles['masse'] = np.array(profiles['masse'])
@@ -15206,7 +15267,7 @@ class transp_output:
         profiles['zmag(m)'] = surfaces.Z0
 
         # -------------------------------------------------------------------------------------------------------
-        # Kinetic profiles   (TO FIX: IGNORES FAST!!!!)
+        # Kinetic profiles
         # -------------------------------------------------------------------------------------------------------
 
         profiles['ni(10^19/m^3)'] = []
@@ -15215,16 +15276,9 @@ class transp_output:
             if specie == 'e':
                 profiles['te(keV)'] = self.Te[it,:]
                 profiles['ne(10^19/m^3)'] =self.ne[it,:]*1E1
-            elif specie == 'D':
-                profiles['ni(10^19/m^3)'].append(self.nD[it,:]*1E1)
-                profiles['ti(keV)'].append(self.Ti[it,:])
-            elif specie == 'T':
-                profiles['ni(10^19/m^3)'].append(self.nT[it,:]*1E1)
-                profiles['ti(keV)'].append(self.Ti[it,:])
             else:
-                profiles['ni(10^19/m^3)'].append(self.nZs[specie]['total'][it,:]*1E1)
-                profiles['ti(keV)'].append(self.Ti[it,:])
-        
+                profiles['ni(10^19/m^3)'].append(self.Species[specie]['n'][it,:]*1E1)
+                profiles['ti(keV)'].append(self.Species[specie]['T'][it,:])
         profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
         profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
 
@@ -15260,7 +15314,6 @@ class transp_output:
         def grid_interpolation_method_to_zero(x,y):
             return extrapolation_routine(np.append(0.0, x), x, y)
 
-
         for key in profiles:
             if (profiles[key].ndim == 1) and (profiles[key].shape[0] == nexp) and (key != 'rho(-)'):
                 profiles[key] =  grid_interpolation_method_to_zero(profiles['rho(-)'],profiles[key])
@@ -15273,9 +15326,10 @@ class transp_output:
         # Load class
         # -------------------------------------------------------------------------------------------------------
         
-        # Ensure positive values for some
+        # Ensure positive values, non-zero for some
+        minimum = 1E-9
         for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
-            profiles[key] = profiles[key].clip(min=0.0)
+            profiles[key] = profiles[key].clip(min=minimum)
 
         p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
 
