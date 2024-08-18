@@ -54,7 +54,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,
                 "name": self.job_name,
-                "mem": 0,                       # All memory available, since TRANSP manages a lot of memory
+                "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },
         )
 
@@ -97,13 +97,13 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
 
-        dictInfo, _, _ = self.check()
+        # dictInfo, _, _ = self.check()
 
-        # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
-        if dictInfo["info"]["status"] == "finished":
-            self.statusStop = -2
-        else:
-            self.statusStop = 0
+        # # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
+        # if dictInfo["info"]["status"] == "finished":
+        #     self.statusStop = -2
+        # else:
+        #     self.statusStop = 0
 
     def fetch(self, label="run1", retrieveAC=False, **kwargs):
         runSINGULARITY_finish(
@@ -299,7 +299,8 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
         # ------------------------------------------------------------
-        os.system(f"rm -r {folderWork}/tmp_inputs")
+        if os.path.exists("{folderWork}/tmp_inputs"):
+            os.system(f"rm -r {folderWork}/tmp_inputs")
         IOtools.askNewFolder(folderWork + "/tmp_inputs/", force=True)
 
         # os.system(f'cp {folderWork}/PRF* {folderWork}/*TR.DAT {folderWork}/*_namelist.dat {folderWork}/tmp_inputs/.')

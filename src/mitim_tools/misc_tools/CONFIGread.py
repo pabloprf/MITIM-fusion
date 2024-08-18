@@ -33,11 +33,11 @@ class ConfigManager:
         if self._config_file_path is None:
             self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
             if os.path.exists(self._config_file_path):
-                print(f"MITIM > Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
+                print(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
                 self._config_file_path = __mitimroot__ + "/templates/config_user.json"
-                print(f"MITIM > Configuration file path (config_user.json) has not been set, assuming {self._config_file_path}", typeMsg='i')
+                print(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
 config_manager = ConfigManager()

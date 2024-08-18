@@ -79,10 +79,8 @@ class timer(object):
 
         print(f'\t* Script took {createTimeTXT(self.timeDiff)}')
 
-
 def clipstr(txt, chars=40):
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
-
 
 def receiveWebsite(url, data=None):
     NumTriesAfterTimeOut = 60
@@ -120,7 +118,6 @@ def receiveWebsite(url, data=None):
 
     return response
 
-
 def page(url):
     req = urlREQ.Request(url)
     try:
@@ -133,7 +130,6 @@ def page(url):
     the_page = response.read()
 
     return the_page
-
 
 def printMsg(*args, typeMsg="", verbose=None):
     """
@@ -164,7 +160,6 @@ def printMsg(*args, typeMsg="", verbose=None):
 
     if typeMsg == "q":
         return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-
 
 class HiddenPrints:
     """
@@ -218,7 +213,6 @@ def createCDF_simple(file, zvals, names):
         value[:] = zvals[i, :]
 
     ncfile.close()
-
 
 def printPoints(x, numtabs=1):
     """
@@ -1458,6 +1452,23 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
 
 # ~~~~~~~~~~~~~~~~~~ Log File
 
+class log_to_file:
+    def __init__(self, log_file, msg = None):
+        if msg is not None:
+            print(msg)
+        self.log_file = log_file
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
+
+    def __enter__(self):
+        self.log = open(self.log_file, 'a')
+        sys.stdout = self.log
+        sys.stderr = self.log
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
+        self.log.close()
 
 def strip_ansi_codes(text):
     # From chatGPT-4

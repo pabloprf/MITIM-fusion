@@ -1516,7 +1516,7 @@ class freegs_millerized:
 
     def write(self, filename = "mitim_freegs.geqdsk"):
 
-        print(f"\t- Writing equilibrium to {filename}")
+        print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
 
         with open(filename, "w") as f:
             geqdsk.write(self.eq, f)

@@ -1387,20 +1387,20 @@ class transp_nml:
         else:
             self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
 
-        print(f"\t- Writing main namelist to {self.file}")
+        print(f"\t- Writing main namelist to {IOtools.clipstr(self.file)}")
         with open(self.file, "w") as file:
             file.write(self.contents)
 
         if self.contents_ptr_ptsolver is not None:
-            print(f"\t- Writing PT_SOLVER namelist to {self.file}")
+            print(f"\t- Writing PT_SOLVER namelist to {IOtools.clipstr(self.file)}")
             with open(f"{self.inputdir}/ptsolver_namelist.dat", "w") as file:
                 file.write(self.contents_ptr_ptsolver)
         if self.contents_ptr_glf23 is not None:
-            print(f"\t- Writing GLF23 namelist to {self.file}")
+            print(f"\t- Writing GLF23 namelist to {IOtools.clipstr(self.file)}")
             with open(f"{self.inputdir}/glf23_namelist.dat", "w") as file:
                 file.write(self.contents_ptr_glf23)
         if self.contents_ptr_tglf is not None:
-            print(f"\t- Writing TGLF namelist to {self.file}")
+            print(f"\t- Writing TGLF namelist to {IOtools.clipstr(self.file)}")
             with open(f"{self.inputdir}/tglf_namelist.dat", "w") as file:
                 file.write(self.contents_ptr_tglf)
 
