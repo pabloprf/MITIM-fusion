@@ -489,7 +489,7 @@ class transp_input_time:
         # --------------------------------------------------------------
 
         # To fix in the future---------------------------------
-        R, a, kappa, delta, zeta, z0 = R, R, 1.0, 0.0, 0.0, 0.0
+        R, a, kappa, delta, zeta, z0 = R*2, R*2, 1.0, 0.0, 0.0, 0.0
         # -----------------------------------------------------
         
         vv = GEQtools.mitim_flux_surfaces()
@@ -980,7 +980,7 @@ def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -
         vv_func,
         x,
         method="nelder-mead",
-        options={"xtol": 1e-4, "disp": verbose_level in [4, 5]},
+        options={ "disp": verbose_level in [4, 5]},
     )
 
     # ----------------------------------------------------------------------------------
