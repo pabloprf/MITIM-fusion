@@ -274,7 +274,7 @@ class TRANSPgeneric:
 
             if status == "stopped":
                 self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
-                raise Exception(">> TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
+                raise Exception("[mitim] TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
 
             # ------------------------------------------------------------------------------------------------------------------
             # Do something

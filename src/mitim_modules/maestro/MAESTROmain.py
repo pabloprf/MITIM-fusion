@@ -554,8 +554,12 @@ def simple_maestro_workflow(
     nbc_20,
     TGLFsettings = 6,
     DTplasma = True,
-    terminal_outputs = False
+    terminal_outputs = False,
+    full_loops = 2,
     ):
+    '''
+    By default, do 2 loops of TRANSP-PORTALS
+    '''
 
     m = maestro(folder, terminal_outputs = terminal_outputs)
 
@@ -609,7 +613,7 @@ def simple_maestro_workflow(
     }
 
     # ---------------------------------------------------------
-    # beat 1: TRANSP from FreeGS
+    # beat N: TRANSP from FreeGS
     # ---------------------------------------------------------
 
     m.define_beat('transp', initializer='freegs')
@@ -618,7 +622,7 @@ def simple_maestro_workflow(
     m.run()
 
     # ---------------------------------------------------------
-    # beat 2: PORTALS from TRANSP
+    # beat N+1: PORTALS from TRANSP
     # ---------------------------------------------------------
 
     m.define_beat('portals', initializer='transp')
@@ -626,23 +630,24 @@ def simple_maestro_workflow(
     m.prepare(**portals_namelist)
     m.run()
 
-    # ---------------------------------------------------------
-    # beat 3: TRANSP from PORTALS
-    # ---------------------------------------------------------
+    for i in range(full_loops-1):
+        # ---------------------------------------------------------
+        # beat N: TRANSP from PORTALS
+        # ---------------------------------------------------------
 
-    m.define_beat('transp', initializer='portals')
-    m.initialize(**geometry,**parameters)
-    m.prepare(transp_namelist = transp_namelist)
-    m.run()
+        m.define_beat('transp', initializer='portals')
+        m.initialize(**geometry,**parameters)
+        m.prepare(transp_namelist = transp_namelist)
+        m.run()
 
-    # ---------------------------------------------------------
-    # beat 4: PORTALS from TRANSP
-    # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # beat N+1: PORTALS from TRANSP
+        # ---------------------------------------------------------
 
-    m.define_beat('portals', initializer='transp')
-    m.initialize()
-    m.prepare(**portals_namelist)
-    m.run()
+        m.define_beat('portals', initializer='transp')
+        m.initialize()
+        m.prepare(**portals_namelist)
+        m.run()
 
     # ---------------------------------------------------------
     # Finalize
