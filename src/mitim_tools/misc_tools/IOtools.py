@@ -11,8 +11,10 @@ import cProfile
 import termios
 import tty
 import h5py
+import warnings
 import subprocess
 import json
+import functools
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -63,8 +65,8 @@ class speeder(object):
 
 class timer(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, name="\t* Script"):
+        self.name = name
 
     def __enter__(self):
         self.timeBeginning = datetime.datetime.now()
@@ -77,7 +79,18 @@ class timer(object):
 
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
 
-        print(f'\t* Script took {createTimeTXT(self.timeDiff)}')
+        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+
+# Decorator to time functions
+
+def mitim_timer(name="\t* Script"):
+    def decorator_timer(func):
+        @functools.wraps(func)
+        def wrapper_timer(*args, **kwargs):
+            with timer(name):
+                return func(*args, **kwargs)
+        return wrapper_timer
+    return decorator_timer
 
 def clipstr(txt, chars=40):
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
@@ -294,9 +307,7 @@ def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
         zipdir(FolderToZip, zipf)
 
 
-def moveRecursive(
-    check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5
-):
+def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5):
     file_current = f"{commonpreffix}{check}{commonsuffix}"
 
     if os.path.exists(file_current):
@@ -1449,32 +1460,93 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
 
     return psin, ne, dnedpsi, Te, dTedpsi, ni, dnidpsi, Ti, dTidpsi, fig, ax
 
+'''
+Log file utilities
+--------------------------------
+chatGPT 4o as of 08/18/2024
+'''
 
-# ~~~~~~~~~~~~~~~~~~ Log File
+import sys
+import os
+import warnings
+import re
+
+def strip_ansi_codes(text):
+    if not isinstance(text, (str, bytes)):
+        text = str(text)  # Convert non-string types to string
+    # Strip ANSI escape codes
+    ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
+    return ansi_escape.sub("", text)
 
 class log_to_file:
-    def __init__(self, log_file, msg = None):
+    def __init__(self, log_file, msg=None, writeAlsoTerminal=False):
         if msg is not None:
             print(msg)
         self.log_file = log_file
+        self.writeAlsoTerminal = writeAlsoTerminal
         self.stdout = sys.stdout
         self.stderr = sys.stderr
 
     def __enter__(self):
         self.log = open(self.log_file, 'a')
-        sys.stdout = self.log
-        sys.stderr = self.log
+        self.stdout_fd = sys.stdout.fileno()
+        self.stderr_fd = sys.stderr.fileno()
+
+        # Save the actual stdout (1) and stderr (2) file descriptors.
+        self.saved_stdout_fd = os.dup(self.stdout_fd)
+        self.saved_stderr_fd = os.dup(self.stderr_fd)
+
+        # Redirect stdout and stderr to the log file.
+        os.dup2(self.log.fileno(), self.stdout_fd)
+        os.dup2(self.log.fileno(), self.stderr_fd)
+
+        # Redirect Python's sys.stdout and sys.stderr to the log file.
+        sys.stdout = self
+        sys.stderr = self
+
+        # Redirect warnings to the log file
+        logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
+            self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
+        warnings.showwarning = logging_handler
+
+    def write(self, message):
+        # Remove ANSI codes from the message before writing to the log
+        clean_message = strip_ansi_codes(message)
+        if self.writeAlsoTerminal:
+            # Write to terminal as well
+            self.stdout.write(clean_message)
+            self.stdout.flush()  # Ensure terminal output is flushed
+        self.log.write(clean_message)
+        self.log.flush()  # Ensure each write is immediately flushed
+
+    def flush(self):
+        # Ensure sys.stdout and sys.stderr are flushed
+        self.log.flush()
+        if self.writeAlsoTerminal:
+            self.stdout.flush()
 
     def __exit__(self, exc_type, exc_value, traceback):
+        # Flush and restore Python's sys.stdout and sys.stderr
+        sys.stdout.flush()
+        sys.stderr.flush()
         sys.stdout = self.stdout
         sys.stderr = self.stderr
+
+        # Restore the original file descriptors for stdout and stderr
+        os.dup2(self.saved_stdout_fd, self.stdout_fd)
+        os.dup2(self.saved_stderr_fd, self.stderr_fd)
+
+        # Close the duplicate file descriptors
+        os.close(self.saved_stdout_fd)
+        os.close(self.saved_stderr_fd)
+
+        # Close the log file
         self.log.close()
 
-def strip_ansi_codes(text):
-    # From chatGPT-4
-    ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
-    return ansi_escape.sub("", text)
+        # Restore the original warnings behavior
+        warnings.showwarning = warnings._showwarning_orig
 
+# ------------------------------------------------------------------------------
 
 class Logger(object):
     def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
@@ -1508,19 +1580,15 @@ class Logger(object):
 
 
 """
-This tool was originally designed by A.J. Creely, but modifications 
+This HDF5 tool was originally designed by A.J. Creely, but modifications 
 by P. Rodriguez-Fernandez have been made.
 
-
 Example use:
+    plt.ion(); fig, ax = plt.subplots()
+    ax.plot([1.0,2.0],[0.0,1.0],'-o')
 
-plt.ion(); fig, ax = plt.subplots()
-ax.plot([1.0,2.0],[0.0,1.0],'-o')
-
-axesToHDF5({'a':ax},filename='dataset1',check=True)
-
+    axesToHDF5({'a':ax},filename='dataset1',check=True)
 """
-
 
 class hdf5figurefile(object):
     def __init__(self, filename):
