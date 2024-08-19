@@ -74,8 +74,9 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         self.job.check(file_output =f"{self.runid}tr.log")
 
+        embed()
         if len(self.job.machineSettings["slurm"]) == 0:
-            print('\t- Requested to check on a job but no SLURM settings found, getting file though', typeMsg='w')
+            print('\t- (Note: requested to check on a job but was not submitted via slurm)', typeMsg='w')
             infoSLURM = None
         else:
             infoSLURM = self.job.infoSLURM
@@ -473,7 +474,7 @@ def interpretRun(infoSLURM, log_file):
                 "\t- No error nor termination found, assuming it is still running",
                 typeMsg="w",
             )
-            pringLogTail(log_file)
+            pringLogTail(log_file, typeMsg="i")
             status = 0
             info["info"]["status"] = "running"
 
@@ -487,14 +488,14 @@ def interpretRun(infoSLURM, log_file):
     return info, status
 
 
-def pringLogTail(log_file, howmanylines=50):
+def pringLogTail(log_file, howmanylines=50, typeMsg="w"):
     howmanylines = np.min([len(log_file), howmanylines])
 
     print(f"\t* Last {howmanylines} lines of log file:")
     txt = ""
     for i in range(howmanylines):
         txt += f"\t\t{log_file[-howmanylines+i]}"
-    print(txt, typeMsg="w")
+    print(txt, typeMsg=typeMsg)
 
 def runSINGULARITY_finish(folderWork, runid, tok, job_name):
     transp_job = FARMINGtools.mitim_job(folderWork)
