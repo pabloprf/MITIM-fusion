@@ -301,10 +301,10 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         if os.path.exists("{folderWork}/tmp_inputs"):
             os.system(f"rm -r {folderWork}/tmp_inputs")
+        
+        
         IOtools.askNewFolder(folderWork + "/tmp_inputs/", force=True)
-
-        # os.system(f'cp {folderWork}/PRF* {folderWork}/*TR.DAT {folderWork}/*_namelist.dat {folderWork}/tmp_inputs/.')
-        os.system(f"cp {folderWork}/* {folderWork}/tmp_inputs/.")
+        os.system(f"cp -r {folderWork}/* {folderWork}/tmp_inputs/")
 
         inputFolders = [folderWork + "/tmp_inputs/"]
 
@@ -384,11 +384,13 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ------------------
 
     if TRANSPcommand_prep is not None:
-        os.system(f"rm {folderWork}/{runid}tr_dat.log")
+        if os.path.exists(f"{folderWork}/{runid}tr_dat.log"):
+            os.system(f"rm {folderWork}/{runid}tr_dat.log")
 
         # Run first the prep (with tr_dat)
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -409,10 +411,10 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         # Interpret
         TRANSPhelpers.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
 
-        #
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
     # ---------------
     # Execute Full

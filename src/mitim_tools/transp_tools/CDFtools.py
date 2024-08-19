@@ -9414,22 +9414,30 @@ class transp_output:
         # -------------
 
         ax = ax1
-        ax.plot(self.t, self.cptim, lw=2, label="Total")
-        ax.plot(self.t, self.cptim_pt, lw=2, label="PT_SOLVER")
-        ax.plot(self.t, self.cptim_out, lw=2, label="OUT")
+
+        if self.cptim[-1] < 1.0:
+            factor = 60.0
+            lab = "min"
+        else:
+            factor = 1.0
+            lab = "h"
+
+        ax.plot(self.t, self.cptim*factor, lw=2, label="Total")
+        ax.plot(self.t, self.cptim_pt*factor, lw=2, label="PT_SOLVER")
+        ax.plot(self.t, self.cptim_out*factor, lw=2, label="OUT")
         ax.plot(
             self.t,
             self.cptim_geom + self.cptim_mhd + self.cptim_fsa,
             lw=2,
             label="EQ+MHD+FSA",
         )
-        ax.plot(self.t, self.cptim_nubeam, lw=2, label="NUBEAM")
-        ax.plot(self.t, self.cptim_icrf, lw=2, label="ICRF")
-        ax.plot(self.t, self.cptim_fpp, lw=2, label="FPP")
+        ax.plot(self.t, self.cptim_nubeam*factor, lw=2, label="NUBEAM")
+        ax.plot(self.t, self.cptim_icrf*factor, lw=2, label="ICRF")
+        ax.plot(self.t, self.cptim_fpp*factor, lw=2, label="FPP")
 
         ax.plot(
             self.t,
-            self.cptim + self.cptim_out,
+            (self.cptim + self.cptim_out)*factor,
             lw=2,
             ls="--",
             c="c",
@@ -9437,21 +9445,21 @@ class transp_output:
         )
         ax.plot(
             self.t,
-            self.cptim_icrf
+            (self.cptim_icrf
             + self.cptim_fpp
             + self.cptim_nubeam
             + self.cptim_pt
             + self.cptim_out
             + self.cptim_geom
             + self.cptim_mhd
-            + self.cptim_fsa,
+            + self.cptim_fsa)*factor,
             lw=2,
             ls="--",
             c="y",
             label="check",
         )
 
-        ax.set_ylabel("Wall-time $t_{CPU}$ (h)")
+        ax.set_ylabel(f"Wall-time $t_{{CPU}}$ ({lab})")
         ax.set_xlabel("Time (s)")
         ax.set_ylim(bottom=0)
 
