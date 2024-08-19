@@ -65,12 +65,14 @@ def default_namelist(optimization_options, CGYROrun=False):
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
         optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
+        optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
     else:
         # Allow excursions for TGLF
         optimization_options["StrategyOptions"]["AllowedExcursions"] = [
             0.05,
             0.05,
         ]  # This would be 10% if [-100,100]
+        optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
 
     # Surrogate
     optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
@@ -81,9 +83,6 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
     # Acquisition
-    optimization_options["optimizers"] = (
-        "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
-    )
     optimization_options["acquisition_type"] = "posterior_mean"
 
     return optimization_options

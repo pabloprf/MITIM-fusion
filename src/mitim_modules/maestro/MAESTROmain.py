@@ -608,7 +608,6 @@ def simple_maestro_workflow(
             "BO_iterations": 30,
             "maximum_value": 1e-2, # x100 better residual
             "maximum_value_is_rel": True,
-            "optimizers": "botorch"
         }
     }
 
