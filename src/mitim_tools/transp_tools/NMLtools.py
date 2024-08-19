@@ -152,7 +152,7 @@ class transp_nml:
         self.gridsMHD = transp_params.get("gridsMHD",[151,127])
         self.MCparticles = transp_params.get("MCparticles",1e6)
         self.useNUBEAMforAlphas = transp_params.get("useNUBEAMforAlphas",True)
-        self.toric_ntheta = transp_params.get("toric_ntheta",int(2**7))  # 128, default: 64
+        self.toric_ntheta = transp_params.get("toric_ntheta",128)  # 128 int(2**7), default: 64
         self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
 
         self.coronal = transp_params.get("coronal",True)
@@ -248,9 +248,9 @@ class transp_nml:
             "!----- Spatial resolution",
             "",
             f"nzones   = {self.nzones} ! Number of radial zones in 1D transport equations",
-            f"nzone_nb = {self.nzones_energetic} ! Number of zones in NUBEAM (beams and alphas)",
-            f"nzone_fp = {self.nzones_energetic} ! Number of zones in the FPPMOD (minority ICRF)",
-            f"nzone_fb = {self.nzones_distfun} ! Number of zone rows in fast ion distr function (must be divider of all other)",
+            f"nzone_nb = {self.nzones_energetic} ! Number of zones in NUBEAM for beams and alphas (default 20)",
+            f"nzone_fp = {self.nzones_energetic} ! Number of zones in the FPPMOD for ICRF minority (default 20)",
+            f"nzone_fb = {self.nzones_distfun} ! Number of zone rows in fast ion distr function (default 10)",
             "",
             "!----- Temporal resolution",
             "",
@@ -1011,9 +1011,9 @@ class transp_nml:
             "",
             "! ----- Resolution",
             "",
-            f"NichChi    = {self.toric_ntheta}   ! Number of poloidal grid points (power of 2)",
-            f"NmdToric   = {int(self.toric_ntheta/2-1)}   ! Number of poloidal modes (recommended: NichChi/2-1)",
-            f"NichPsi    = {self.toric_nrho}   ! Number of radial grid points",
+            f"nichchi    = {self.toric_ntheta}   ! Number of poloidal grid points, powers of 2 (default 64)",
+            f"nmdtoric   = {int(self.toric_ntheta/2-1)}   ! Number of poloidal modes (recommended: NichChi/2-1)",
+            f"nichpsi    = {self.toric_nrho}   ! Number of radial grid points (default 128)",
             "",
             "! ----- Model options",
             "",

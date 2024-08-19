@@ -15,6 +15,7 @@ import warnings
 import subprocess
 import json
 import functools
+import contextlib
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -93,7 +94,7 @@ def mitim_timer(name="\t* Script"):
     return decorator_timer
 
 def clipstr(txt, chars=40):
-    return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
+    return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
 def receiveWebsite(url, data=None):
     NumTriesAfterTimeOut = 60
@@ -1466,6 +1467,14 @@ Log file utilities
 chatGPT 4o as of 08/18/2024
 '''
 
+@contextlib.contextmanager
+def conditional_log_to_file(log_file=None, msg=None):
+    if log_file is not None:
+        with log_to_file(log_file, msg) as logger:
+            yield logger
+    else:
+        yield None  # Simply pass through without logging
+
 def strip_ansi_codes(text):
     if not isinstance(text, (str, bytes)):
         text = str(text)  # Convert non-string types to string
@@ -1474,11 +1483,10 @@ def strip_ansi_codes(text):
     return ansi_escape.sub("", text)
 
 class log_to_file:
-    def __init__(self, log_file, msg=None, writeAlsoTerminal=False):
+    def __init__(self, log_file, msg=None):
         if msg is not None:
             print(msg)
         self.log_file = log_file
-        self.writeAlsoTerminal = writeAlsoTerminal
         self.stdout = sys.stdout
         self.stderr = sys.stderr
 
@@ -1507,18 +1515,12 @@ class log_to_file:
     def write(self, message):
         # Remove ANSI codes from the message before writing to the log
         clean_message = strip_ansi_codes(message)
-        if self.writeAlsoTerminal:
-            # Write to terminal as well
-            self.stdout.write(clean_message)
-            self.stdout.flush()  # Ensure terminal output is flushed
         self.log.write(clean_message)
         self.log.flush()  # Ensure each write is immediately flushed
 
     def flush(self):
         # Ensure sys.stdout and sys.stderr are flushed
         self.log.flush()
-        if self.writeAlsoTerminal:
-            self.stdout.flush()
 
     def __exit__(self, exc_type, exc_value, traceback):
         # Flush and restore Python's sys.stdout and sys.stderr

@@ -30,12 +30,19 @@ If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAES
 
 class maestro:
 
-    def __init__(self, folder):
+    def __init__(self, folder, terminal_outputs = False):
+        '''
+        Inputs:
+            - folder: Main folder where all the beats will be saved
+            - terminal_outputs: If True, all outputs will be printed to terminal. If False, they will be saved to a log file per beat step
+        '''
+
         self.folder = IOtools.expandPath(folder)
         self.folder_output = f'{self.folder}/Outputs/'
         os.makedirs(self.folder_output, exist_ok=True)
 
         self.save_file = f'{self.folder_output}/maestro_save.pkl'
+        self.terminal_outputs = terminal_outputs
 
         self.beats = {}
         self.counter = 0
@@ -65,16 +72,16 @@ class maestro:
     def initialize(self, *args, **kwargs):
 
         print('\t- Initializing...')
-        log_file = f'{self.folder_output}/beat_{self.counter}_ini.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        log_file = f'{self.folder_output}/beat_{self.counter}_ini.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.initialize(*args, **kwargs)
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
 
         print('\t- Preparing...')
-        log_file = f'{self.folder_output}/beat_{self.counter}_prep.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        log_file = f'{self.folder_output}/beat_{self.counter}_prep.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.prepare(*args, **kwargs)
 
     def run(self, **kwargs):
@@ -94,15 +101,15 @@ class maestro:
         restart = kwargs.get('restart', False)
 
         # Check if output file already exists
-        log_file = f'{self.folder_output}/beat_{self.counter}_check.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        log_file = f'{self.folder_output}/beat_{self.counter}_check.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             exists = self.beat.check(restart=restart)
 
         # Run 
         print('\t- Running...')
         if not exists:
-            log_file = f'{self.folder_output}/beat_{self.counter}_run.log'
-            with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            log_file = f'{self.folder_output}/beat_{self.counter}_run.log' if (not self.terminal_outputs) else None
+            with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
         else:
             print('\t\t- Skipping beat because output file was found', typeMsg = 'i')
@@ -527,9 +534,10 @@ def simple_maestro_workflow(
     nbc_20,
     TGLFsettings = 6,
     DTplasma = True,
+    terminal_outputs = False
     ):
 
-    m = maestro(folder)
+    m = maestro(folder, terminal_outputs = terminal_outputs)
 
     # ---------------------------------------------------------
     # beat 0: Define info
@@ -543,26 +551,22 @@ def simple_maestro_workflow(
     rho, ne = procreate(y_top = nbc_20, y_sep = nbc_20/3.0, w_top = w_top, aLy = 0.2, w_a = w_a)
     profiles = {'Te': [rho, Te],'Ti': [rho, Ti],'ne': [rho, ne]}
 
-    # Fast TRANSP
+    # Faster TRANSP (different than defaults)
     transp_namelist = {
         'Pich'   : True,
-        'dtHeating_ms' : 1.0, #10.0,
+        'dtHeating_ms' : 5.0,       # Default
         'dtOut_ms' : 10.0,
         'dtIn_ms' : 10.0,
         'nzones' : 60,
-        'nzones_energetic' : 20,
-        'nzones_distfun' : 20,
+        'nzones_energetic' : 20,    # Default but lower than what I used to use
+        'nzones_distfun' : 10,      # Default but lower than what I used to use    
         'MCparticles' : 1e4,
-        'toric_ntheta' : 128, #64,
-        'toric_nrho' : 320, #128,
+        'toric_ntheta' : 64,        # Default values of TORIC, but lower than what I used to use
+        'toric_nrho' : 128,         # Default values of TORIC, but lower than what I used to use
         'DTplasma': DTplasma
     }
 
     # Simple PORTALS
-
-    transport_model = {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
-
-    RoaLocations = np.linspace(0.3,0.9,10) #np.array([0.35,0.55,0.75,0.875,0.9])
 
     portals_namelist = {
         "PORTALSparameters": {
@@ -570,14 +574,14 @@ def simple_maestro_workflow(
             "forceZeroParticleFlux": True
         },
         "MODELparameters": {
-            "RoaLocations": RoaLocations,
-            "transport_model": transport_model
+            "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
+            "transport_model": {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
         },
         "INITparameters": {
             "FastIsThermal": True
         },
         "optimization_options": {
-            "BO_iterations": 20,
+            "BO_iterations": 30,
             "maximum_value": 1e-2, # x100 better residual
             "maximum_value_is_rel": True,
             "optimizers": "botorch"
