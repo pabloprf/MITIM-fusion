@@ -164,7 +164,7 @@ class transp_beat:
         self.time_init = 0.0                                                # Start with D3D equilibrium
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
-        self.time_end = self.time_diffusion + flattop_window                # End
+        self.time_end = 0.1 #self.time_diffusion + flattop_window                # End
 
     # --------------------------------------------------------------------------------------------
     # Initialize
