@@ -71,11 +71,17 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         self.jobid = self.job.jobid
 
     def check(self, **kwargs):
-        self.job.check()
 
-        info, status = interpretRun(self.job.infoSLURM, self.job.log_file)
+        self.job.check(file_output =f"{self.runid}tr.log")
 
-        self.jobid = self.job.jobid_found
+        if len(self.job.machineSettings["slurm"]) == 0:
+            print('\t- Requested to check on a job but no SLURM settings found, getting file though', typeMsg='w')
+            infoSLURM = None
+        else:
+            infoSLURM = self.job.infoSLURM
+            self.jobid = self.job.jobid_found
+
+        info, status = interpretRun(infoSLURM, self.job.log_file)
 
         return info, status, None
 
@@ -163,7 +169,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         automaticProcess=False,
         retrieveAC=False,
         **kwargs,
-    ):
+        ):
         # Launch run
         self.run(restartFromPrevious=False)
 

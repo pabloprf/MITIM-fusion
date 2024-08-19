@@ -628,7 +628,7 @@ class mitim_job:
 
     # --------------------------------------------------------------------
 
-    def check(self):
+    def check(self, file_output = "slurm_output.dat"):
         """
         Check job status slurm
 
@@ -654,7 +654,7 @@ class mitim_job:
             wasThere = False
 
         self.output_files = [
-            "slurm_output.dat",  # The slurm results of the main job!
+            file_output,  # The slurm results of the main job!
             "squeue_output.dat",  # The output of the squeue command
         ]
         self.output_folders = []
@@ -663,14 +663,14 @@ class mitim_job:
         output, error = self.execute(command, printYN=True)
         self.retrieve()
         self.close()
-        self.interpret_status()
+        self.interpret_status(file_output = file_output)
 
         # Back to original
         if wasThere:
             self.output_folders = output_folders_backup
             self.output_files = output_files_backup
 
-    def interpret_status(self):
+    def interpret_status(self, file_output = "slurm_output.dat"):
         """
         Status of job:
             0: Submitted/pending
@@ -718,8 +718,8 @@ class mitim_job:
         # If it was available, read the status of the ACTUAL slurm job
         # ------------------------------------------------------------
 
-        if os.path.exists(self.folder_local + "/slurm_output.dat"):
-            with open(self.folder_local + "/slurm_output.dat", "r") as f:
+        if os.path.exists(f"{self.folder_local}/{file_output}"):
+            with open(f"{self.folder_local}/{file_output}", "r") as f:
                 self.log_file = f.readlines()
         else:
             self.log_file = None
