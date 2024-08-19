@@ -13,6 +13,7 @@ from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools 	import CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools import __version__
 from IPython import embed
 
@@ -21,7 +22,6 @@ MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
 
 If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates
-
 '''
 
 # --------------------------------------------------------------------------------------------
@@ -41,18 +41,19 @@ class maestro:
         self.counter = 0
 
         print('\n -----------------------------------------------------------------------------------')
-        print(f'MAESTRO run (MITIM version {__version__}), folder: {self.folder}')
-        print('-----------------------------------------------------------------------------------\n')
+        print(f'MAESTRO run (MITIM version {__version__})')
+        print('-----------------------------------------------------------------------------------')
+        print(f'folder: {self.folder}')
 
     def define_beat(self, beat, initializer):
 
         self.counter += 1
         if beat == 'transp':
-            print(f'- Beat {self.counter}: TRANSP')
-            self.beats[self.counter] = transp_beatper(self)
+            print(f'\n- Beat {self.counter}: TRANSP ********************************************************************')
+            self.beats[self.counter] = transp_beat(self)
         elif beat == 'portals':
-            print(f'- Beat {self.counter}: PORTALS')
-            self.beats[self.counter] = portals_beatper(self)
+            print(f'\n- Beat {self.counter}: PORTALS ********************************************************************')
+            self.beats[self.counter] = portals_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter]
@@ -60,64 +61,85 @@ class maestro:
         # Define initializer
         self.beat.define_initializer(initializer)
 
+    @mitim_timer('\t\t* Initializer')
     def initialize(self, *args, **kwargs):
 
-        print('\t- Initializing beat...')
+        print('\t- Initializing...')
         log_file = f'{self.folder_output}/beat_{self.counter}_ini.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info saved to {IOtools.clipstr(log_file)}'):
+        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.initialize(*args, **kwargs)
 
+    @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
 
-        print('\t- Preparing beat...')
+        print('\t- Preparing...')
         log_file = f'{self.folder_output}/beat_{self.counter}_prep.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info saved to {IOtools.clipstr(log_file)}'):
+        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.prepare(*args, **kwargs)
 
     def run(self, **kwargs):
 
-        restart = kwargs.get('restart', False)
+        # Save status
+        self.save()
+
+        # Run
+        self._run(**kwargs)
 
         # Save status
         self.save()
+
+    @mitim_timer('\t\t* Run')
+    def _run(self, **kwargs):
+
+        restart = kwargs.get('restart', False)
 
         # Check if output file already exists
         log_file = f'{self.folder_output}/beat_{self.counter}_check.log'
-        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info saved to {IOtools.clipstr(log_file)}'):
+        with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             exists = self.beat.check(restart=restart)
 
         # Run 
-        print('\t- Running beat...')
+        print('\t- Running...')
         if not exists:
             log_file = f'{self.folder_output}/beat_{self.counter}_run.log'
-            #with IOtools.log_to_file(log_file, msg = f'\t\t* Log info saved to {IOtools.clipstr(log_file)}'):
-            self.beat.run(**kwargs)
+            with IOtools.log_to_file(log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+                self.beat.run(**kwargs)
         else:
-            print('\t\t\t- Skipping beat because output file was found', typeMsg = 'i')
+            print('\t\t- Skipping beat because output file was found', typeMsg = 'i')
 
-        # Save status
-        self.save()
-
+    @mitim_timer('\t\t* Saving')
     def save(self):
 
-        print('\t- Saving beat...')
+        print('\t- Saving...')
         # with open(self.save_file, 'wb') as f:
         #     dill.dump(self, f)
         print('\t\t* Cannot save yet',typeMsg = 'w')
         #embed()
 
+    @mitim_timer('\t\t* Finalizing')
+    def finalize(self):
+
+        print('\t- Finalizing MAESTRO run...')
+        
+        # Find final input.gacode
+        if isinstance(self.beat, portals_beat):
+            portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.beat.folder_portals)
+            self.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+
+        elif isinstance(self.beat, transp_beat):
+            cdf = CDFtools.transp_output(f"{self.beat.folder}/{self.beat.transp.shot}{self.beat.transp.runid}.CDF")
+            self.final_p = cdf.to_profiles()
+        
+        # Save final input.gacode
+        final_file = f'{self.folder_output}/input.gacode_final'
+        self.final_p.writeCurrentStatus(file=final_file)
+        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
+
 # --------------------------------------------------------------------------------------------
 # beatper: TRANSP
 # --------------------------------------------------------------------------------------------
 
-class transp_beatper:
-    '''
-    These interpretive TRANSP beatpers have:
-        - Start at 0.0 with D3D equilibrium
-        - Transition to new equilibrium (and profiles) at 0.05 (also defined at 100.0)
-        - Current diffusion and ICRF on at 0.051
-        - End at 0.5
-    '''
+class transp_beat:
 
     def __init__(self, maestro_instance):
             
@@ -126,11 +148,16 @@ class transp_beatper:
 
         os.makedirs(self.folder, exist_ok=True)
 
-        # Hardcoded for now
-        self.time_init = 0.0
-        self.time_transition = 0.05
-        self.time_diffusion = 0.051
-        self.time_end = 0.5
+        # Hardcoded for now how long I want each phase to be
+        transition_window       = 0.1    # s
+        currentheating_window   = 0.001  # s
+        flattop_window          = 0.15   # s
+
+        # Define timings
+        self.time_init = 0.0                                                # Start with D3D equilibrium
+        self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
+        self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
+        self.time_end = self.time_diffusion + flattop_window                # End
 
     # --------------------------------------------------------------------------------------------
     # Initialize
@@ -202,7 +229,8 @@ class transp_beatper:
         self.transp.populate_time.from_freegs(0.0, 1.67, 0.6, 1.75, 0.38, 0.0, 0.0, 0.074, 1.6, 2.0)
         
         # ICRF on
-        self.transp.icrf_on_time(self.time_diffusion, power_MW = self.initializer.PichT_MW, freq_MHz = self.initializer.B_T*10.0)
+        Frequency_He3 = self.initializer.B_T * (2*np.pi /(2/3))  # ~10
+        self.transp.icrf_on_time(self.time_diffusion, power_MW = self.initializer.PichT_MW, freq_MHz = Frequency_He3)
         
         # Write Ufiles
         self.transp.write_ufiles()
@@ -321,7 +349,20 @@ class transp_initializer_from_portals:
 
         os.makedirs(self.folder, exist_ok=True)
 
-    def __call__(self, R, a, kappa_sep, delta_sep, zeta_sep, z0, p0_MPa, Ip_MA, B_T, ne0_20, Zeff, PichT_MW):
+    def __call__(
+        self,
+        R,
+        a,
+        kappa_sep,
+        delta_sep,
+        zeta_sep,
+        z0,
+        Ip_MA,
+        B_T,
+        Zeff,
+        PichT_MW,
+        p0_MPa = 2.5,
+        ne0_20 = 3.0):
 
         # Load params
         self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
@@ -334,6 +375,8 @@ class transp_initializer_from_portals:
         self.portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folder_portals)
         
         self.p = self.portals_output.mitim_runs[self.portals_output.ibest]['powerstate'].profiles
+
+        self.p.writeCurrentStatus(file=self.folder+'/input.gacode' )
 
     def prepare_to_beat(self):
 
@@ -354,7 +397,7 @@ class transp_initializer_from_portals:
 # beatper: PORTALS
 # --------------------------------------------------------------------------------------------
 
-class portals_beatper:
+class portals_beat:
 
     def __init__(self, maestro_instance):
             
@@ -467,16 +510,15 @@ def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
     aL_profile[~linear_region] = aLy
     y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
     roa = np.append( roa, 1.0)
-    y = np.append(y, 0.08)
+    y = np.append(y, y_sep)
 
     return roa, y
-
-
 
 # --------------------------------------------------------------------------------------------
 # Workflow
 # --------------------------------------------------------------------------------------------
 
+@mitim_timer('\t- MAESTRO')
 def simple_maestro_workflow(
     folder,
     geometry,
@@ -484,6 +526,7 @@ def simple_maestro_workflow(
     Tbc_keV,
     nbc_20,
     TGLFsettings = 6,
+    DTplasma = True,
     ):
 
     m = maestro(folder)
@@ -503,20 +546,23 @@ def simple_maestro_workflow(
     # Fast TRANSP
     transp_namelist = {
         'Pich'   : True,
-        'timebeat_ms' : 10.0,
-        'msOut' : 10.0,
-        'msIn' : 10.0,
-        'nzones' : 40,
+        'dtHeating_ms' : 1.0, #10.0,
+        'dtOut_ms' : 10.0,
+        'dtIn_ms' : 10.0,
+        'nzones' : 60,
         'nzones_energetic' : 20,
         'nzones_distfun' : 20,
-        'MCparticles' : 1e3,
-        'toric_ntheta' : 64,
-        'toric_nrho' : 128,
+        'MCparticles' : 1e4,
+        'toric_ntheta' : 128, #64,
+        'toric_nrho' : 320, #128,
+        'DTplasma': DTplasma
     }
 
     # Simple PORTALS
 
     transport_model = {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
+
+    RoaLocations = np.linspace(0.3,0.9,10) #np.array([0.35,0.55,0.75,0.875,0.9])
 
     portals_namelist = {
         "PORTALSparameters": {
@@ -524,7 +570,7 @@ def simple_maestro_workflow(
             "forceZeroParticleFlux": True
         },
         "MODELparameters": {
-            "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
+            "RoaLocations": RoaLocations,
             "transport_model": transport_model
         },
         "INITparameters": {
@@ -573,6 +619,12 @@ def simple_maestro_workflow(
     m.initialize()
     m.prepare(**portals_namelist)
     m.run()
+
+    # ---------------------------------------------------------
+    # Finalize
+    # ---------------------------------------------------------
+
+    m.finalize()
 
     return m
 
