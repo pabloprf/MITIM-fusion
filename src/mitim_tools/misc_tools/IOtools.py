@@ -190,23 +190,21 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
-def get_git_branch(repo_path):
+def get_git_info(repo_path):
+    # Get branch
     result = subprocess.run(['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
-        return result.stdout.strip()
+        branch = result.stdout.strip()
     else:
-        raise Exception(f"Error: {result.stderr.strip()}")
+        branch = None
 
-def get_git_hash(repo_path):
+    # Get hash
     result = subprocess.run(['git', '-C', repo_path, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
-        return result.stdout.strip()
+        commit_hash = result.stdout.strip()
     else:
-        raise Exception(f"Error: {result.stderr.strip()}")
+        commit_hash = None
 
-def get_git_info(repo_path):
-    branch = get_git_branch(repo_path)
-    commit_hash = get_git_hash(repo_path)
     return branch, commit_hash
 
 def createCDF_simple(file, zvals, names):
