@@ -294,14 +294,34 @@ class transp_initializer_from_freegs:
         B_T,
         Zeff,
         PichT_MW,
-        p0_MPa = 2.5,
-        ne0_20 = 3.0,
+        p0_MPa = 1.0,
+        ne0_20 = 1.0,
         profiles = {}):
 
         self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
         self.p0_MPa, self.Ip_MA, self.B_T = p0_MPa, Ip_MA, B_T
         self.ne0_20, self.Zeff, self.PichT_MW = ne0_20, Zeff, PichT_MW
         self.profiles = profiles
+
+        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
+        if 'ne' in profiles:
+            self.ne0_20 = profiles['ne'][1][0]
+        if 'Te' in profiles:
+            Te0_keV = profiles['Te'][1][0]
+            self.p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (self.ne0_20 * 1E20) * 1E-6 #MPa
+            
+        # --------------------------------------------------------------
+        # pressure - temperature and density
+        # --------------------------------------------------------------
+        '''
+        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+
+        if T=Te=Ti and ne=ni
+        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+
+        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+
+        '''
 
         # FreeGS
         self.f = FREEGStools.freegs_millerized(self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0)
