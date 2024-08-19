@@ -137,7 +137,7 @@ def isThisEngaging():
 
     bo = hostname in ["eofe7.", "eofe8.", "eofe10"]
 
-    print(f"\t- Is this engaging? {hostname}: {bo}")
+    #print(f"\t- Is this engaging? {hostname}: {bo}")
 
     return bo
 

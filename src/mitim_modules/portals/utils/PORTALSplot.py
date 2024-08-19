@@ -847,7 +847,7 @@ def PORTALSanalyzer_plotMetrics(
 
     ax = axQ
 
-    isThereFusion = np.nanmax(self.FusionGain) > 0
+    isThereFusion = np.nanmax(self.FusionGain) > 1E-2
 
     if isThereFusion:
         v = self.FusionGain
