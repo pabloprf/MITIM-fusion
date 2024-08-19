@@ -238,43 +238,46 @@ class TRANSPgeneric:
         grabIntermediateEachMin 	- 	If I'm checking and has passed more than grabIntermediateEachMin, retrieve intermediate files
         """
 
-        first = True
-        status, time_passed = 0, 0.0
-        while status != "finished":
-            tt = (
-                datetime.datetime.now() + datetime.timedelta(minutes=checkMin)
-            ).strftime("%H:%M")
+        if len(self.job.machineSettings['slurm']) == 0:
+            print(">> This is not a SLURM job, will not check status", typeMsg="w")
+        else:
+            first = True
+            status, time_passed = 0, 0.0
+            while status != "finished":
+                tt = (
+                    datetime.datetime.now() + datetime.timedelta(minutes=checkMin)
+                ).strftime("%H:%M")
 
-            if first:
-                print(
-                    f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
-                )
-            else:
-                print(
-                    f">> Not finished yet, will check status in {checkMin}min (at {tt})"
-                )
-            time.sleep(60.0 * checkMin)
-            time_passed += 60.0 * checkMin
+                if first:
+                    print(
+                        f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
+                    )
+                else:
+                    print(
+                        f">> Not finished yet, will check status in {checkMin}min (at {tt})"
+                    )
+                time.sleep(60.0 * checkMin)
+                time_passed += 60.0 * checkMin
 
-            print(">> Checking status of run:")
-            info, _, _ = self.check()
-            status = info["info"]["status"]
+                print(">> Checking status of run:")
+                info, _, _ = self.check()
+                status = info["info"]["status"]
 
-            if status == "stopped":
-                print("\t- Run is stopped, getting out of the loop", typeMsg="w")
-                break
+                if status == "stopped":
+                    print("\t- Run is stopped, getting out of the loop", typeMsg="w")
+                    break
 
-            print(">> Grabbing intermediate files?")
-            if time_passed >= 60.0 * grabIntermediateEachMin:
-                print(
-                    f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)"
-                )
-                self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
-                time_passed = 0.0
-            else:
-                print(f"\t- No, because not enough time has passed, {time_passed / 60.0}min < {grabIntermediateEachMin}min")
-            
-            first = False
+                print(">> Grabbing intermediate files?")
+                if time_passed >= 60.0 * grabIntermediateEachMin:
+                    print(
+                        f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)"
+                    )
+                    self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
+                    time_passed = 0.0
+                else:
+                    print(f"\t- No, because not enough time has passed, {time_passed / 60.0}min < {grabIntermediateEachMin}min")
+                
+                first = False
 
         c = self.fetch(label=label, retrieveAC=retrieveAC)
         self.delete()

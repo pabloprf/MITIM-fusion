@@ -299,7 +299,9 @@ class transp_run:
             minutesAllocation = minutesAllocation)
 
         self.t.run()
-        if checkMin is not None:
+
+        # Check until finished if it's a slurm job
+        if len(self.t.job.machineSettings['slurm']) > 0 and (checkMin is not None):
             self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin)
 
     def plot(self, case='run1'):
