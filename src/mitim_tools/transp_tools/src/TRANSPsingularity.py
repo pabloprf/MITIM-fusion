@@ -470,12 +470,12 @@ def interpretRun(infoSLURM, log_file):
             info["info"]["status"] = "finished"
         else:
             print(
-                "Not identified status... assume for the moment that it has finished",
+                "\t- No error nor termination found, assuming it is still running",
                 typeMsg="w",
             )
             pringLogTail(log_file)
-            status = 1
-            info["info"]["status"] = "finished"
+            status = 0
+            info["info"]["status"] = "running"
 
         print(
             f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",
