@@ -1,6 +1,7 @@
 import os
 import copy
 import torch
+import datetime
 import sys
 import pandas as pd
 import dill as pickle_dill
@@ -907,12 +908,43 @@ def retrieveResults(
     return fn, res, prfs_model, log, data_df
 
 
+class Logger(object):
+    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
+        self.terminal = sys.stdout
+        self.logFile = logFile
+        self.writeAlsoTerminal = writeAlsoTerminal
+
+        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        print(f"- Creating log file: {logFile}")
+
+        if DebugMode == 0:
+            with open(self.logFile, "w") as f:
+                f.write(f"* New run ({currentime})\n")
+        else:
+            with open(self.logFile, "a") as f:
+                f.write(
+                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
+                )
+
+    def write(self, message):
+        if self.writeAlsoTerminal:
+            self.terminal.write(message)
+
+        with open(self.logFile, "a") as self.log:
+            self.log.write(IOtools.strip_ansi_codes(message))
+
+    # For python 3 compatibility:
+    def flush(self):
+        pass
+
+
 class LogFile:
     def __init__(self, file):
         self.file = file
 
     def activate(self, writeAlsoTerminal=True):
-        sys.stdout = IOtools.Logger(
+        sys.stdout = Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 

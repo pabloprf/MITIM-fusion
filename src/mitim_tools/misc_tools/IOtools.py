@@ -1466,11 +1466,6 @@ Log file utilities
 chatGPT 4o as of 08/18/2024
 '''
 
-import sys
-import os
-import warnings
-import re
-
 def strip_ansi_codes(text):
     if not isinstance(text, (str, bytes)):
         text = str(text)  # Convert non-string types to string
@@ -1545,39 +1540,6 @@ class log_to_file:
 
         # Restore the original warnings behavior
         warnings.showwarning = warnings._showwarning_orig
-
-# ------------------------------------------------------------------------------
-
-class Logger(object):
-    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
-        self.logFile = logFile
-        self.writeAlsoTerminal = writeAlsoTerminal
-
-        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        print(f"- Creating log file: {logFile}")
-
-        if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
-        else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
-                )
-
-    def write(self, message):
-        if self.writeAlsoTerminal:
-            self.terminal.write(message)
-
-        with open(self.logFile, "a") as self.log:
-            self.log.write(strip_ansi_codes(message))
-
-    # For python 3 compatibility:
-    def flush(self):
-        pass
-
 
 """
 This HDF5 tool was originally designed by A.J. Creely, but modifications 
