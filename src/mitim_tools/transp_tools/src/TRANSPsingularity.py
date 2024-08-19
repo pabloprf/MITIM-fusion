@@ -74,9 +74,8 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         self.job.check(file_output =f"{self.runid}tr.log")
 
-        embed()
-        if len(self.job.machineSettings["slurm"]) == 0:
-            print('\t- (Note: requested to check on a job but was not submitted via slurm)', typeMsg='w')
+        if not self.job.launchSlurm:
+            print('\t- (Note: MITIM "checked" on a job but was not submitted via slurm)', typeMsg='w')
             infoSLURM = None
         else:
             infoSLURM = self.job.infoSLURM

@@ -238,31 +238,47 @@ class TRANSPgeneric:
         grabIntermediateEachMin 	- 	If I'm checking and has passed more than grabIntermediateEachMin, retrieve intermediate files
         """
 
-        first = True
+        first = True 
         status, time_passed = 0, 0.0
         while status != "finished":
+
+            # ------------------------------------------------------------------------------------------------------------------
+            # Waiting Logic
+            # ------------------------------------------------------------------------------------------------------------------
             tt = (
                 datetime.datetime.now() + datetime.timedelta(minutes=checkMin)
             ).strftime("%H:%M")
 
-            if first:
-                print(
-                    f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
-                )
+            if not self.job.launchSlurm:
+                print(">> Simulation not run via slurm, not waiting for check since execution was halted")
             else:
-                print(
-                    f">> Not finished yet, will check status in {checkMin}min (at {tt})"
-                )
-            time.sleep(60.0 * checkMin)
-            time_passed += 60.0 * checkMin
+                if first:
+                    print(
+                        f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
+                    )
+                else:
+                    print(
+                        f">> Not finished yet, will check status in {checkMin}min (at {tt})"
+                    )
+                time.sleep(60.0 * checkMin)
+                time_passed += 60.0 * checkMin
+
+            # ------------------------------------------------------------------------------------------------------------------
+            # Check status
+            # ------------------------------------------------------------------------------------------------------------------
 
             print(">> Checking status of run:")
+
             info, _, _ = self.check()
             status = info["info"]["status"]
 
             if status == "stopped":
-                print("\t- Run is stopped, getting out of the loop", typeMsg="w")
-                break
+                self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
+                raise Exception(">> TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
+
+            # ------------------------------------------------------------------------------------------------------------------
+            # Do something
+            # ------------------------------------------------------------------------------------------------------------------
 
             print(">> Grabbing intermediate files?")
             if time_passed >= 60.0 * grabIntermediateEachMin:

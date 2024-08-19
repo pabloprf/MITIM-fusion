@@ -16463,8 +16463,8 @@ def getBeamTrajectories(namelist):
         from trgui_fbm import plot_aug
     except ImportError:
         print(
-            "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
-            typeMsg="w",
+            "\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
+            typeMsg="i",
         )
 
     xlin, ylin, rlin, zlin = plot_aug.nbi_plot(
@@ -16486,8 +16486,8 @@ def getECRHTrajectories(namelist, Theta_gyr, Phi_gyr):
         from trgui_fbm import los
     except ImportError:
         print(
-            "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
-            typeMsg="w",
+            "\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
+            typeMsg="i",
         )
 
     xsrc = np.array(
