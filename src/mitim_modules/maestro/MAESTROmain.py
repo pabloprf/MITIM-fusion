@@ -262,7 +262,9 @@ class transp_beat:
 
     def run(self, **kwargs):
 
-        self.transp.run('D3D', mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*12, case=self.transp.runid, checkMin=5)
+        hours_allocation = 8 # 12
+
+        self.transp.run('D3D', mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*hours_allocation, case=self.transp.runid, checkMin=5)
         self.c = self.transp.c
 
     # --------------------------------------------------------------------------------------------
@@ -305,8 +307,10 @@ class transp_initializer_from_freegs:
 
         # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
         if 'ne' in profiles:
+            print('\t- Using ne profile instead of the ne0 guess')
             self.ne0_20 = profiles['ne'][1][0]
         if 'Te' in profiles:
+            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
             Te0_keV = profiles['Te'][1][0]
             self.p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (self.ne0_20 * 1E20) * 1E-6 #MPa
             
