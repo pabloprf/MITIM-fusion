@@ -1254,13 +1254,13 @@ def default_nml(
         transp_params["Ufiles"].append("df4")
         transp_params["Ufiles"].append("vc4")
 
-        transp_params["timeStep_ms"] = 10.0 
+        transp_params["dtHeating_ms"] = 10.0 
         transp_params["nteq_mode"] = 2
 
     if tok == "AUG":
-        transp_params["timeStep_ms"] = 10.0
+        transp_params["dtHeating_ms"] = 10.0
         transp_params["nteq_mode"] = 2
-        transp_params['msOut'] = 0.1
+        transp_params['dtOut_ms'] = 0.1
         transp_params['UFrotation'] = True
 
     if tok == "CMOD":

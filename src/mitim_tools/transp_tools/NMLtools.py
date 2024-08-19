@@ -142,9 +142,9 @@ class transp_nml:
         self.LimitersInNML = transp_params.get("LimitersInNML",False)
         self.UFrotation = transp_params.get("UFrotation",False)
 
-        self.timeStep_ms = transp_params.get("timeStep_ms",1.0)
-        self.msOut = transp_params.get("msOut",1)
-        self.msIn = transp_params.get("msIn",1)
+        self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
+        self.dtOut_ms = transp_params.get("dtOut_ms",1)
+        self.dtIn_ms = transp_params.get("dtIn_ms",1)
         self.nzones = transp_params.get("nzones",100)
         self.nzones_energetic = transp_params.get("nzones_energetic",50)
         self.nzones_distfun = transp_params.get("nzones_distfun",25)
@@ -254,14 +254,32 @@ class transp_nml:
             "",
             "!----- Temporal resolution",
             "",
-            f"dtmaxg = {self.timeStep_ms*1E-3}    ! Max time step for MHD",
-            "dtinit = 1.0e-6        ! Initial timestep to obtain power balance (default=1e-6)",
+            "! * Geometry (MHD equilibrium)",
+            f"dtming = {1.0e-5}  ! Minimum timestep",
+            f"dtmaxg = {1.0e-3}  ! Maximum timestep (default 1.0e-2)",
             "",
-            "!----- I/O resolution",
-            f"sedit    = {self.msOut*1E-3} ! Control of time resolution of scalar output",
-            f"stedit   = {self.msOut*1E-3} ! Control of time resolution of profile output",
-            f"tgrid1   = {self.msIn*1E-3}  ! Control of time resolution of 1D input data",
-            f"tgrid2   = {self.msIn*1E-3}  ! Control of time resolution of 2D input data",
+            "! * Particle and energy balance (transport)",
+            f"dtinit = {1.0e-3}  ! Initial timestep (default 1.0e-3)",
+            f"dtmint = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
+            f"dtmaxt = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
+            "",
+            "! * Poloidal field diffusion",
+            f"dtminb = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
+            f"dtmaxb = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
+            "",
+            "! * Heating and current drive",
+            f"dticrf = {self.dtHeating_ms*1E-3} ! Timestep step for ICRF/TORIC (default 5.0e-3)",
+            f"dtech  = {self.dtHeating_ms*1E-3} ! Timestep step for ECH (no default, it is needed)",
+            f"dtlh   = {self.dtHeating_ms*1E-3} ! Timestep step for LH (default 5.0e-3)",
+            f"dtbeam = {self.dtHeating_ms*1E-3} ! Timestep step for NBI (default 5.0e-3)",
+            "",
+            "! * Outputs Resolution",
+            f"sedit  = {self.dtOut_ms*1E-3} ! Control of time resolution of scalar output",
+            f"stedit = {self.dtOut_ms*1E-3} ! Control of time resolution of profile output",
+            "",
+            "! * Inputs Resolution",
+            f"tgrid1 = {self.dtIn_ms*1E-3}  ! Control of time resolution of 1D input data",
+            f"tgrid2 = {self.dtIn_ms*1E-3}  ! Control of time resolution of 2D input data",
             "",
             "!----- MPI Settings",
             "",
@@ -528,10 +546,10 @@ class transp_nml:
     def addMHDandCurrentDiffusion(self):
         if self.isolver:
             levgeo = 12
-            NLQLIM0 = "False"
+            nlqlim0 = "False"
         else:
             levgeo = 11
-            NLQLIM0 = "True"
+            nlqlim0 = "True"
 
         lines = [
             "!=============================================================",
@@ -543,11 +561,11 @@ class transp_nml:
             f"levgeo	       = {levgeo}    ! 11 = TEQ model from LLNL, 12 = ISOLVER",
             "",
             f"nteq_mode     = {self.nteq_mode}   ! Free param to be matched (5= Q,F_edge & loop for Ip)",
-            "nteq_stretch  = 0   ! Radial grid (0 is default)",
-            f"nteq_nrho     = {self.gridsMHD[0]}   ! Radial points in TEQ",
-            f"nteq_ntheta   = {self.gridsMHD[1]}   ! Poloidal points in TEQ",
-            f"teq_smooth    = {self.smoothMHD[0]}  ! Smoothing half-width (negative means -val/nzones)",
-            f"teq_axsmooth  = {self.smoothMHD[1]} ! Smoothing half-width near-axis as val*min(1,2-x/val)",
+            "nteq_stretch  = 0   ! Radial grid distribution",
+            f"nteq_nrho     = {self.gridsMHD[0]}   ! Radial points in TEQ (default 71)",
+            f"nteq_ntheta   = {self.gridsMHD[1]}   ! Poloidal points in TEQ (default 127)",
+            f"teq_smooth    = {self.smoothMHD[0]}  ! Smoothing half-width (negative means -val/nzones) (default -1.5)",
+            f"teq_axsmooth  = {self.smoothMHD[1]} ! Smoothing half-width near-axis as val*min(1,2-x/val) (default 0.05)",
             "softteq       = 0.3   ! Maximum allowed GS average error",
             "",
             "!------ Poloidal field (current) diffusion",
@@ -567,7 +585,7 @@ class transp_nml:
             "",
             "!------ q-profile",
             "",
-            f"nlqlim0  = {NLQLIM0}  ! Place a limit on the max q value possible",
+            f"nlqlim0  = {nlqlim0}  ! Place a limit on the max q value possible",
             "qlim0	  = 5.0  ! Set the max possible q value",
             "nlqdata  = F    ! Use input q data (cannot be set with nlmdif=T as well)",
             "",
@@ -856,7 +874,6 @@ class transp_nml:
             "!----- MonteCarlo controls",
             "",
             "!nlseed  =  		! Random number seed for MC",
-            "!dtbeam = 0.01 	! Beam timestep",
             "!goocon = 10 		! Numeric Goosing",
             "!dtn_nbi_acc = 1.0e-3 ! Orbit timestep control",
             "!nptcls = 1000 	! Constant census number of MC ions to retain",
@@ -882,7 +899,7 @@ class transp_nml:
             "nlomgvtr  = F 	    ! T: Impurity rotation is provided, F: Bulk plasma rotation is provided",
             "ngvtor    = 0 	    ! 0: Toroidal rotation species given by nvtor_z, xvtor_a",
             f"nvtor_z   = {int(self.rotating_impurity[0])}	! Charge of toroidal rotation species",
-            f"xvtor_a   = {int(self.rotating_impurity[1])}	! Mass of toroidal rotation species",
+            f"xvtor_a   = {self.rotating_impurity[1]}	! Mass of toroidal rotation species",
             "xl1ncvph  = 0.10   ! Minimum r/a",
             "xl2ncvph  = 0.85   ! Maximum r/a",
             "",
@@ -994,7 +1011,6 @@ class transp_nml:
             "",
             "! ----- Resolution",
             "",
-            f"dticrf     = {self.timeStep_ms*1E-3}   ! Max time step for TORIC",
             f"NichChi    = {self.toric_ntheta}   ! Number of poloidal grid points (power of 2)",
             f"NmdToric   = {int(self.toric_ntheta/2-1)}   ! Number of poloidal modes (recommended: NichChi/2-1)",
             f"NichPsi    = {self.toric_nrho}   ! Number of radial grid points",
@@ -1087,7 +1103,6 @@ class transp_nml:
             "",
             "nlbeam   = T 		! NUBEAM model on",
             "nlbfpp   = F 		! FPP model on",
-            f"dtbeam   = {self.timeStep_ms*1E-3}		! Beam time-step",
             "",
             "lev_nbidep = 2 	! Ground state dep model (2=ADAS atomic physics)",
             "nsigexc     = 1		! Simple excited states deposition model",
