@@ -24,7 +24,7 @@ def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     return surrogateOptions
 
-def default_physicsBasedParams():
+def default_portals_transformation_variables(additional_params = []):
     """
     Physics-informed parameters to fit surrogates
     ---------------------------------------------
@@ -42,8 +42,8 @@ def default_physicsBasedParams():
                 - transition_evaluations[2]: full
     """
 
-    transition_evaluations = [10, 30, 100]
-    physicsBasedParams = {
+    transition_evaluations = [10, 30, 10000]
+    portals_transformation_variables = {
         transition_evaluations[0]: OrderedDict(
             {
                 "aLte": ["aLte"],
@@ -77,15 +77,20 @@ def default_physicsBasedParams():
         ),
     }
 
+    # Add additional parameters (to be used as fixed parameters but changing in between runs)
+    for key in additional_params:
+        portals_transformation_variables[transition_evaluations[-1]][key] = [key]
+
     # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
-    physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
-    physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace = copy.deepcopy(portals_transformation_variables)
+    portals_transformation_variables_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
 
-    return physicsBasedParams, physicsBasedParams_trace
+    return portals_transformation_variables, portals_transformation_variables_trace
 
-def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
+def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
+
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
     - Provides new Xorig unnormalized
@@ -120,7 +125,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
     ]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
-    for ikey in physicsInformedParams[output]:
+    for ikey in surrogate_transformation_variables[output]:
         xx = powerstate.plasma[ikey][: X.shape[0], index]
         xFit = torch.cat((xFit, xx.unsqueeze(1)), dim=1).to(X)
 

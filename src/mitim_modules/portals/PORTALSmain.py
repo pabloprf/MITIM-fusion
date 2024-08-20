@@ -89,7 +89,20 @@ def default_namelist(optimization_options, CGYROrun=False):
 
 
 class portals(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None, TensorsType=torch.double, CGYROrun=False):
+    def __init__(
+        self, 
+        folder,                             # Folder where the PORTALS workflow will be run
+        namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
+        TensorsType=torch.double,           # Type of tensors to be used (torch.float, torch.double)
+        CGYROrun=False,                     # If True, use CGYRO defaults for best optimization practices
+        portals_transformation_variables = None,          # If None, use defaults for both main and trace
+        portals_transformation_variables_trace = None,
+        additional_params_in_surrogate = [] # Additional parameters to be used in the surrogate (e.g. ['q'])
+        ):
+        '''
+        Note that additional_params_in_surrogate They must exist in the plasma dictionary of the powerstate object
+        '''
+        
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -180,10 +193,12 @@ class portals(STRATEGYtools.opt_evaluator):
 		---------------------------------------------
 		"""
 
+        
+
         (
-            physicsBasedParams,
-            physicsBasedParams_trace,
-        ) = PORTALStools.default_physicsBasedParams()
+            portals_transformation_variables,
+            portals_transformation_variables_trace,
+        ) = PORTALStools.default_portals_transformation_variables(additional_params = additional_params_in_surrogate)
 
         """
 		Parameters to run PORTALS
@@ -208,8 +223,8 @@ class portals(STRATEGYtools.opt_evaluator):
             "includeFastInQi": False,  # If True, and fast ions have been included, in seprateNEO, sum fast
             "useDiffusivities": False,  # If True, use [chi_e,chi_i,D] instead of [Qe,Qi,Gamma]
             "useFluxRatios": False,  # If True, fit to [Qi,Qe/Qi,Ge/Qi]
-            "physicsBasedParams": physicsBasedParams,  # Physics-informed parameters to fit surrogates
-            "physicsBasedParams_trace": physicsBasedParams_trace,  # Physics-informed parameters to fit surrogates for trace impurities
+            "portals_transformation_variables": portals_transformation_variables,  # Physics-informed parameters to fit surrogates
+            "portals_transformation_variables_trace": portals_transformation_variables_trace,  # Physics-informed parameters to fit surrogates for trace impurities
             "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
             "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
             "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
@@ -227,6 +242,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
+            "additional_params_in_surrogate": additional_params_in_surrogate,
         }
 
         for key in self.PORTALSparameters.keys():
@@ -318,7 +334,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.optimization_options['surrogateOptions']['extrapointsModels'] = []
-        for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
+        for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
             if 'Tar' not in key:
                 self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
 

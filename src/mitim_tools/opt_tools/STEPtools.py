@@ -132,29 +132,6 @@ class OPTstep:
         self.avoidPoints = copy.deepcopy(avoidPoints)
         self.curate_outliers()
 
-        # Inform the surrogate physicsParams what iteration we are at by the number of points
-        xTrain = self.x.shape[0] - len(self.avoidPoints)
-
-        if self.surrogate_parameters["physicsInformedParams_dict"] is not None:
-            self.surrogate_parameters[
-                "physicsInformedParams"
-            ] = self.surrogate_parameters["physicsInformedParams_dict"][
-                list(self.surrogate_parameters["physicsInformedParams_dict"].keys())[
-                    np.where(
-                        xTrain
-                        < np.array(
-                            list(
-                                self.surrogate_parameters[
-                                    "physicsInformedParams_dict"
-                                ].keys()
-                            )
-                        )
-                    )[0][0]
-                ]
-            ]
-        else:
-            self.surrogate_parameters["physicsInformedParams"] = None
-
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
                 f.write("\n\n-----------------------------------------------------")
@@ -300,6 +277,17 @@ class OPTstep:
         for GP in self.GP["individual_models"]:
             models += (GP.gpmodel,)
         self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
+
+        # ------------------------------------------------------------------------------------------------------
+        # Make sure each model has the right surrogate_transformation_variables inside the combined model
+        # ------------------------------------------------------------------------------------------------------
+        if self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'] is not None:
+            for i in range(self.y.shape[-1]):
+
+                outi = self.outputs[i] if (self.outputs is not None) else None
+
+                if outi is not None:
+                    self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'][outi] = self.GP["individual_models"][i].surrogate_parameters['surrogate_transformation_variables'][outi]
 
         print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
 

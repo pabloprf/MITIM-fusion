@@ -225,7 +225,17 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["w0", "w0(rad/s)", None, True, False],
         ["B_unit", "B_unit", None, True, True],
         ["B_ref", "B_ref", None, True, True],
+        ["q", "q(-)", None, True, False],
     ]
+
+    # Quantities that do not necessarily need to be used in this powerstate call
+    additional_quantities_for_potential_use = [
+        ["q", "q(-)", None, True, False]
+    ]
+    # ---------------------------------------------------------------------------
+
+    for quant in additional_quantities_for_potential_use:
+        quantities_to_interpolate.append(quant)
 
     for key in quantities_to_interpolate:
         quant = input_gacode.derived[key[1]] if key[4] else input_gacode.profiles[key[1]]

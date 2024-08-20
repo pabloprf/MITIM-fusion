@@ -592,6 +592,11 @@ class portals_beat(beat):
         # Copy to outputs
         os.system(f'cp -r {self.folder}/Outputs {self.folder_output}/Outputs')
 
+        # Add final input.gacode
+        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+        p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+        p.writeCurrentStatus(file=f'{self.folder_output}/input.gacode' )
+
     def inform_save(self):
 
         # Save the residual 
