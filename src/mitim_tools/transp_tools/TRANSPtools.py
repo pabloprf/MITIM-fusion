@@ -249,7 +249,14 @@ class TRANSPgeneric:
                 datetime.datetime.now() + datetime.timedelta(minutes=checkMin)
             ).strftime("%H:%M")
 
-            if not self.job.launchSlurm:
+            try:
+                should_I_wait = self.job.launchSlurm
+            except AttributeError:
+                # globus cases
+                should_I_wait = True
+
+
+            if not should_I_wait:
                 print(">> Simulation not run via slurm, not waiting for check since execution was halted")
             else:
                 if first:
