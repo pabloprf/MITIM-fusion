@@ -331,8 +331,8 @@ def initializeProblem(
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     Variables = {}
-    for ikey in portals_fun.PORTALSparameters["physicsBasedParams"]:
-        Variables[ikey] = prepPhysicsBasedParams(portals_fun, ikey)
+    for ikey in portals_fun.PORTALSparameters["portals_transformation_variables"]:
+        Variables[ikey] = prepportals_transformation_variables(portals_fun, ikey)
 
     portals_fun.surrogate_parameters = {
         "transformationInputs": PORTALStools.produceNewInputs,
@@ -401,11 +401,11 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
     profiles.changeResolution(rho_new=rho_new)
 
 
-def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
+def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
     allOuts = portals_fun.optimization_options["ofs"]
-    physicsBasedParams = portals_fun.PORTALSparameters["physicsBasedParams"][ikey]
-    physicsBasedParams_trace = portals_fun.PORTALSparameters[
-        "physicsBasedParams_trace"
+    portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
+    portals_transformation_variables_trace = portals_fun.PORTALSparameters[
+        "portals_transformation_variables_trace"
     ][ikey]
     additional_params_in_surrogate = portals_fun.PORTALSparameters[
         "additional_params_in_surrogate"
@@ -460,9 +460,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 Variations[kkey] = True
 
             Variables[output] = []
-            for ikey in physicsBasedParams:
+            for ikey in portals_transformation_variables:
                 useThisOne = False
-                for varis in physicsBasedParams[ikey]:
+                for varis in portals_transformation_variables[ikey]:
                     if Variations[varis]:
                         useThisOne = True
                         break
@@ -500,9 +500,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 Variations[kkey] = True
 
             Variables[output] = []
-            for ikey in physicsBasedParams_trace:
+            for ikey in portals_transformation_variables_trace:
                 useThisOne = False
-                for varis in physicsBasedParams_trace[ikey]:
+                for varis in portals_transformation_variables_trace[ikey]:
                     if Variations[varis]:
                         useThisOne = True
                         break

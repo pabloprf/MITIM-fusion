@@ -24,7 +24,7 @@ def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     return surrogateOptions
 
-def default_physicsBasedParams(additional_params = []):
+def default_portals_transformation_variables(additional_params = []):
     """
     Physics-informed parameters to fit surrogates
     ---------------------------------------------
@@ -43,7 +43,7 @@ def default_physicsBasedParams(additional_params = []):
     """
 
     transition_evaluations = [10, 30, 10000]
-    physicsBasedParams = {
+    portals_transformation_variables = {
         transition_evaluations[0]: OrderedDict(
             {
                 "aLte": ["aLte"],
@@ -79,15 +79,15 @@ def default_physicsBasedParams(additional_params = []):
 
     # Add additional parameters (to be used as fixed parameters but changing in between runs)
     for key in additional_params:
-        physicsBasedParams[transition_evaluations[-1]][key] = [key]
+        portals_transformation_variables[transition_evaluations[-1]][key] = [key]
 
     # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
-    physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
-    physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
-    physicsBasedParams_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace = copy.deepcopy(portals_transformation_variables)
+    portals_transformation_variables_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace[transition_evaluations[1]]["aLnZ"] = ["aLnZ"]
+    portals_transformation_variables_trace[transition_evaluations[2]]["aLnZ"] = ["aLnZ"]
 
-    return physicsBasedParams, physicsBasedParams_trace
+    return portals_transformation_variables, portals_transformation_variables_trace
 
 def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
 

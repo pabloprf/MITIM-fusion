@@ -89,7 +89,7 @@ def plot_surrogate_model(
     if newLabels is None or self.gpmodel.ard_num_dims > len(newLabels):
         newLabels = [
             ikey for ikey in self.bounds
-        ]  # For cases where I actually did not transform even if physicsInformed exitsts (constant)
+        ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
 
     """
 	------------------------------------------------------------------------------------------------------------
