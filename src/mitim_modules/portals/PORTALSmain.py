@@ -251,7 +251,6 @@ class portals(STRATEGYtools.opt_evaluator):
     def prep(
         self,
         fileGACODE,
-        folderWork,
         restartYN=False,
         ymax_rel=1.0,
         ymin_rel=1.0,
@@ -326,7 +325,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         if start_from_folder is not None:
             self.reuseTrainingTabular(
-                start_from_folder, folderWork, reevaluateTargets=reevaluateTargets
+                start_from_folder, self.folder, reevaluateTargets=reevaluateTargets
             )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
