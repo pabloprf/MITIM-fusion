@@ -142,6 +142,7 @@ class transp_nml:
         self.LimitersInNML = transp_params.get("LimitersInNML",False)
         self.UFrotation = transp_params.get("UFrotation",False)
 
+        self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
         self.dtOut_ms = transp_params.get("dtOut_ms",1)
         self.dtIn_ms = transp_params.get("dtIn_ms",1)
@@ -256,7 +257,7 @@ class transp_nml:
             "",
             "! * Geometry (MHD equilibrium)",
             f"dtming = {1.0e-5}  ! Minimum timestep",
-            f"dtmaxg = {1.0e-2}  ! Maximum timestep (default 1.0e-2)",
+            f"dtmaxg = {self.dtEquilMax_ms*1E-3}  ! Maximum timestep (default 1.0e-2)",
             "",
             "! * Particle and energy balance (transport)",
             f"dtinit = {1.0e-3}  ! Initial timestep (default 1.0e-3)",

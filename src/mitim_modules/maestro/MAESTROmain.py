@@ -703,6 +703,7 @@ def simple_maestro_workflow(
     # Faster TRANSP (different than defaults)
     transp_namelist = {
         'Pich'   : True,
+        'dtEquilMax_ms': 1.0,       # Higher resolution than default (10.0) to avoid quval error
         'dtHeating_ms' : 5.0,       # Default
         'dtOut_ms' : 10.0,
         'dtIn_ms' : 10.0,
