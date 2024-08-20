@@ -97,7 +97,7 @@ class maestro:
         # If this beat is restarted, all next beats will be restarted
         if self.beat.run_flag:
             self.master_restart = True
-            print('\t\t- Restarting all next beats', typeMsg = 'i')
+            print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
 
     @mitim_timer('\t\t* Initializer')
     def initialize(self, *args, **kwargs):
@@ -131,11 +131,16 @@ class maestro:
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
 
-            # Finalize
-            self.beat.finalize()
+                # Finalize
+                self.beat.finalize()
 
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
+
+        # Inform next beats
+        log_file = f'{self.folder_logs}/beat_{self.counter}_inform.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file):
+            self.beat.inform_save()
 
     @mitim_timer('\t\t* Finalizing')
     def finalize(self):
@@ -148,23 +153,84 @@ class maestro:
             self.beat.finalize_maestro()
 
 # --------------------------------------------------------------------------------------------
-# beatper: TRANSP
+# Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
 
-class transp_beat:
+class beat:
 
-    def __init__(self, maestro_instance):
-            
+    def __init__(self, maestro_instance, beat_name = 'generic'):
+
         self.maestro_instance = maestro_instance
         self.folder_beat = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}/'
 
         # Where to run it
-        self.folder = f'{self.folder_beat}/run_transp/'
+        self.folder = f'{self.folder_beat}/run_{beat_name}/'
         os.makedirs(self.folder, exist_ok=True)
 
         # Where to save the results
         self.folder_output = f'{self.folder_beat}/beat_results/'
         os.makedirs(self.folder_output, exist_ok=True)
+
+    def check(self, restart = False, folder_search = None, suffix = ''):
+        '''
+        Check if output file already exists so that I don't need to run this beat again
+        '''
+
+        if folder_search is None:
+            folder_search = self.folder_output
+
+        output_file = None
+        if not restart:
+        
+            for file_name in os.listdir(folder_search):
+                # Check if the file has a .CDF extension (case insensitive)
+                if file_name.endswith('.CDF'):
+                    output_file = f'{folder_search}/{file_name}'
+
+            if output_file is not None:
+                print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
+
+        else:
+            print('\t\t- Forced restarting of beat', typeMsg = 'i')
+
+        self.run_flag = output_file is None
+
+    def define_initializer(self, *args, **kwargs):
+        pass
+
+    def initialize(self, *args, **kwargs):
+        pass
+
+    def prepare(self, *args, **kwargs):
+        pass
+
+    def run(self, *args, **kwargs):
+        pass
+
+    def finalize(self, *args, **kwargs):
+        pass
+
+    def finalize_maestro(self, *args, **kwargs):
+        pass
+
+    def plot(self, *args, **kwargs):
+        pass
+
+    def inform_save(self, *args, **kwargs):
+        pass
+
+    def _inform(self, *args, **kwargs):
+        pass
+
+# --------------------------------------------------------------------------------------------
+# Beat: TRANSP
+# --------------------------------------------------------------------------------------------
+
+class transp_beat(beat):
+
+    def __init__(self, maestro_instance):
+            
+        super().__init__(maestro_instance, beat_name = 'transp')
 
         # Hardcoded for now how long I want each phase to be
         transition_window       = 0.1    # s
@@ -181,25 +247,7 @@ class transp_beat:
     # Checker
     # --------------------------------------------------------------------------------------------
     def check(self, restart = False):
-        '''
-        Check if output file already exists so that I don't need to run this beat again
-        '''
-
-        output_file = None
-        if not restart:
-        
-            for file_name in os.listdir(self.folder_output):
-                # Check if the file has a .CDF extension (case insensitive)
-                if file_name.endswith('.CDF'):
-                    output_file = f'{self.folder_output}/{file_name}'
-
-            if output_file is not None:
-                print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
-
-        else:
-            print('\t\t- Forced restarting of beat', typeMsg = 'i')
-
-        self.run_flag = output_file is None
+        super().check(restart=restart, folder_search = self.folder_output, suffix = '.CDF')
 
     # --------------------------------------------------------------------------------------------
     # Initialize
@@ -280,7 +328,6 @@ class transp_beat:
     # --------------------------------------------------------------------------------------------
     # Run
     # --------------------------------------------------------------------------------------------
-
     def run(self, **kwargs):
 
         hours_allocation = 8 # 12
@@ -465,48 +512,20 @@ class transp_initializer_from_portals:
         self.portals_output.plot()
 
 # --------------------------------------------------------------------------------------------
-# beatper: PORTALS
+# Beat: PORTALS
 # --------------------------------------------------------------------------------------------
 
-class portals_beat:
+class portals_beat(beat):
 
     def __init__(self, maestro_instance):
-            
-        self.maestro_instance = maestro_instance
-        self.folder_beat = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}/'
-
-        # Where to run it
-        self.folder = f'{self.folder_beat}/run_portals/'
-        os.makedirs(self.folder, exist_ok=True)
-
-        # Where to save the results
-        self.folder_output = f'{self.folder_beat}/beat_results/'
-        os.makedirs(self.folder_output, exist_ok=True)
+        super().__init__(maestro_instance, beat_name = 'portals')
 
     # --------------------------------------------------------------------------------------------
     # Checker
     # --------------------------------------------------------------------------------------------
 
     def check(self, restart = False):
-        '''
-        Check if output file already exists so that I don't need to run this beat again
-        '''
-
-        output_file = None
-        if not restart:
-
-            for file_name in os.listdir(self.folder_output+'/Outputs'):
-                # Check if the file has a .CDF extension (case insensitive)
-                if file_name.endswith('.pkl'):
-                    output_file = f'{self.folder_output}/{file_name}'
-
-            if output_file is not None:
-                print(f'\t\t- Output file already exists: {IOtools.clipstr(output_file)}, not running beat', typeMsg = 'i')
-
-        else:
-            print('\t\t- Forced restarting of beat', typeMsg = 'i')
-
-        self.run_flag = output_file is None
+        super().check(restart=restart, folder_search = self.folder_output+'/Outputs', suffix = '.pkl')
 
     # --------------------------------------------------------------------------------------------
     # Initialize
@@ -529,16 +548,17 @@ class portals_beat:
         self.optimization_options = optimization_options
         self.INITparameters = INITparameters
 
-        self.__inform(use_previous_residual = use_previous_residual)
+        self._inform(use_previous_residual = use_previous_residual)
 
-    def __inform(self, use_previous_residual=False):
+    def _inform(self, use_previous_residual=False):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
-            print('\t- Using previous residual goal as maximum value for optimization')
             self.optimization_options['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
             self.optimization_options['maximum_value_is_rel'] = False
+
+            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['maximum_value']}")
 
     # --------------------------------------------------------------------------------------------
     # Run
@@ -572,10 +592,13 @@ class portals_beat:
         # Copy to outputs
         os.system(f'cp -r {self.folder}/Outputs {self.folder_output}/Outputs')
 
+    def inform_save(self):
+
         # Save the residual 
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
         max_value_neg_residual = portals_output.step.stepSettings['optimization_options']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
+        print(f'\t\t- Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
