@@ -256,7 +256,7 @@ class transp_nml:
             "",
             "! * Geometry (MHD equilibrium)",
             f"dtming = {1.0e-5}  ! Minimum timestep",
-            f"dtmaxg = {1.0e-3}  ! Maximum timestep (default 1.0e-2)",
+            f"dtmaxg = {1.0e-2}  ! Maximum timestep (default 1.0e-2)",
             "",
             "! * Particle and energy balance (transport)",
             f"dtinit = {1.0e-3}  ! Initial timestep (default 1.0e-3)",

@@ -407,6 +407,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
     physicsBasedParams_trace = portals_fun.PORTALSparameters[
         "physicsBasedParams_trace"
     ][ikey]
+    additional_params_in_surrogate = portals_fun.PORTALSparameters[
+        "additional_params_in_surrogate"
+    ]
 
     Variables = {}
     for output in allOuts:
@@ -453,6 +456,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 and (not isAbsValFixed),
             }
 
+            for kkey in additional_params_in_surrogate:
+                Variations[kkey] = True
+
             Variables[output] = []
             for ikey in physicsBasedParams:
                 useThisOne = False
@@ -489,6 +495,9 @@ def prepPhysicsBasedParams(portals_fun, ikey, doNotFitOnFixedValues=False):
                 "nZ": ("nZ" in portals_fun.MODELparameters["ProfilesPredicted"])
                 and (not isAbsValFixed),
             }
+
+            for kkey in additional_params_in_surrogate:
+                Variations[kkey] = True
 
             Variables[output] = []
             for ikey in physicsBasedParams_trace:

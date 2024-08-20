@@ -89,7 +89,20 @@ def default_namelist(optimization_options, CGYROrun=False):
 
 
 class portals(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None, TensorsType=torch.double, CGYROrun=False):
+    def __init__(
+        self, 
+        folder,                             # Folder where the PORTALS workflow will be run
+        namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
+        TensorsType=torch.double,           # Type of tensors to be used (torch.float, torch.double)
+        CGYROrun=False,                     # If True, use CGYRO defaults for best optimization practices
+        physicsBasedParams = None,          # If None, use defaults for both main and trace
+        physicsBasedParams_trace = None,
+        additional_params_in_surrogate = [] # Additional parameters to be used in the surrogate (e.g. ['q'])
+        ):
+        '''
+        Note that additional_params_in_surrogate They must exist in the plasma dictionary of the powerstate object
+        '''
+        
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -180,10 +193,12 @@ class portals(STRATEGYtools.opt_evaluator):
 		---------------------------------------------
 		"""
 
+        
+
         (
             physicsBasedParams,
             physicsBasedParams_trace,
-        ) = PORTALStools.default_physicsBasedParams()
+        ) = PORTALStools.default_physicsBasedParams(additional_params = additional_params_in_surrogate)
 
         """
 		Parameters to run PORTALS
@@ -227,6 +242,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
+            "additional_params_in_surrogate": additional_params_in_surrogate,
         }
 
         for key in self.PORTALSparameters.keys():

@@ -24,7 +24,7 @@ def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
     return surrogateOptions
 
-def default_physicsBasedParams():
+def default_physicsBasedParams(additional_params = []):
     """
     Physics-informed parameters to fit surrogates
     ---------------------------------------------
@@ -77,6 +77,10 @@ def default_physicsBasedParams():
         ),
     }
 
+    # Add additional parameters (to be used as fixed parameters but changing in between runs)
+    for key in additional_params:
+        physicsBasedParams[transition_evaluations[-1]][key] = [key]
+
     # If doing trace impurities, alnZ only affects that channel, but the rest of turbulent state depends on the rest of parameters
     physicsBasedParams_trace = copy.deepcopy(physicsBasedParams)
     physicsBasedParams_trace[transition_evaluations[0]]["aLnZ"] = ["aLnZ"]
@@ -86,6 +90,7 @@ def default_physicsBasedParams():
     return physicsBasedParams, physicsBasedParams_trace
 
 def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
+
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
     - Provides new Xorig unnormalized
