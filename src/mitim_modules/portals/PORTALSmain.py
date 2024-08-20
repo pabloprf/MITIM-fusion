@@ -334,7 +334,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.optimization_options['surrogateOptions']['extrapointsModels'] = []
-        for key in self.surrogate_parameters['physicsInformedParamsComplete'].keys():
+        for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
             if 'Tar' not in key:
                 self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
 

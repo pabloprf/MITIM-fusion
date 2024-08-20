@@ -343,8 +343,8 @@ def initializeProblem(
         ],
         "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
         "useDiffusivities": portals_fun.PORTALSparameters["useDiffusivities"],
-        "physicsInformedParams_dict": Variables,
-        "physicsInformedParamsComplete": copy.deepcopy(
+        "surrogate_transformation_variables_alltimes": Variables,
+        "surrogate_transformation_variables_lasttime": copy.deepcopy(
             Variables[list(Variables.keys())[-1]]
         ),
         "parameters_combined": {},

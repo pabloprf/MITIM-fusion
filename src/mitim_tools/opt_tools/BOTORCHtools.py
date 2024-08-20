@@ -426,7 +426,7 @@ class Transformation_Inputs(
                 X,
                 self.output,
                 self.surrogate_parameters,
-                self.surrogate_parameters["physicsInformedParams"],
+                self.surrogate_parameters["surrogate_transformation_variables"],
             )
 
             # Store the expensive parameters (not for training, or to call outside of ModelList)

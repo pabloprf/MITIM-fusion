@@ -120,8 +120,8 @@ class opt_evaluator:
 
         self.surrogate_parameters = {
             "parameters_combined": {},
-            "physicsInformedParams_dict": None,
-            "physicsInformedParamsComplete": None,
+            "surrogate_transformation_variables_alltimes": None,
+            "surrogate_transformation_variables_lasttime": None,
             "transformationInputs": STEPtools.identity,  # Transformation of inputs
             "transformationOutputs": STEPtools.identityOutputs,  # Transformation of outputs
         }

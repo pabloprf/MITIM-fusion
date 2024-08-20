@@ -42,7 +42,7 @@ def default_physicsBasedParams(additional_params = []):
                 - transition_evaluations[2]: full
     """
 
-    transition_evaluations = [10, 30, 100]
+    transition_evaluations = [10, 30, 10000]
     physicsBasedParams = {
         transition_evaluations[0]: OrderedDict(
             {
@@ -89,7 +89,7 @@ def default_physicsBasedParams(additional_params = []):
 
     return physicsBasedParams, physicsBasedParams_trace
 
-def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams):
+def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
 
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
@@ -125,7 +125,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, physicsInformedParams)
     ]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
-    for ikey in physicsInformedParams[output]:
+    for ikey in surrogate_transformation_variables[output]:
         xx = powerstate.plasma[ikey][: X.shape[0], index]
         xFit = torch.cat((xFit, xx.unsqueeze(1)), dim=1).to(X)
 
