@@ -153,7 +153,10 @@ class maestro:
             
             self.beat.finalize_maestro()
 
-    def plot(self, fn = None):
+    @mitim_timer('\t\t* Plotting')
+    def plot(self, fn = None, num_beats = 2):
+
+        print('*** Plotting MAESTRO ******************************************************************** ')
 
         if fn is None:
             wasProvided = False
@@ -162,11 +165,22 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        for i, beat in self.beats.items():
-            beat.plot(fn = self.fn, counter = i)
+        self._plot_beats(self.fn, num_beats = num_beats)
 
         if not wasProvided:
             self.fn.show()
+
+    def _plot_beats(self, fn, num_beats = 2):
+
+        beats_keys = sorted(sorted(list(self.beats.keys()),reverse=True)[:num_beats])
+        for i,counter in enumerate(beats_keys):
+            beat = self.beats[counter]
+            print(f'\t- Plotting beat #{counter}...')
+            log_file = f'{self.folder_logs}/plot_{counter}.log' if (not self.terminal_outputs) else None
+            with IOtools.conditional_log_to_file(log_file=log_file):
+                msg = beat.plot(fn = self.fn, counter = i)
+            print(msg)
+
 
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
@@ -226,7 +240,7 @@ class beat:
         pass
 
     def plot(self, *args, **kwargs):
-        pass
+        return ''
 
     def inform_save(self, *args, **kwargs):
         pass
@@ -245,7 +259,8 @@ class beat_initializer:
         self.beat_instance = beat_instance
         self.folder = f'{self.beat_instance.folder_beat}/initializer_{label}/'
 
-        os.makedirs(self.folder, exist_ok=True)
+        if len(label) > 0:
+            os.makedirs(self.folder, exist_ok=True)
 
     def __call__(self, *args, **kwargs):
         pass
@@ -381,8 +396,11 @@ class transp_beat(beat):
         if isitfinished:
             c = CDFtools.transp_output(self.folder_output)
             c.plot(fn = fn, counter = counter) 
+            msg = '\t\t- Plotting of TRANSP beat done'
         else:
-            print('\t\t- Cannot plot because the beat has not finished yet', typeMsg = 'w')
+            msg = '\t\t- Cannot plot because the TRANSP beat has not finished yet'
+
+        return msg
         
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
@@ -644,6 +662,9 @@ class portals_beat(beat):
             portals_output.fn = fn
             portals_output.plotPORTALS()
             
+        msg = '\t\t- Plotting of PORTALS beat done'
+
+        return msg
 
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
@@ -815,7 +836,7 @@ def simple_maestro_workflow(
         # ---------------------------------------------------------
 
         m.define_beat('portals', initializer='transp')
-        m.initialize(flattop_window = quality.get('flattop_window', 0.15))
+        m.initialize()
         m.prepare(**portals_namelist)
         m.run()
 
