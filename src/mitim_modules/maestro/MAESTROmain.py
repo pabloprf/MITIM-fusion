@@ -432,7 +432,7 @@ class transp_initializer_from_freegs:
             ne0_20 = self.ne0_20, Zeff = self.Zeff, PichT_MW = self.PichT_MW)
         
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Add profiles  # ROA VA RHO???, psi, etc
+        # Add profiles  # TO FIX ROA VA RHO???, psi, etc
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         
         if 'Te' in self.profiles:
@@ -464,25 +464,7 @@ class transp_initializer_from_portals:
 
         os.makedirs(self.folder, exist_ok=True)
 
-    def __call__(
-        self,
-        R,
-        a,
-        kappa_sep,
-        delta_sep,
-        zeta_sep,
-        z0,
-        Ip_MA,
-        B_T,
-        Zeff,
-        PichT_MW,
-        p0_MPa = 2.5,
-        ne0_20 = 3.0):
-
-        # Load engineering parameters       # TO FIX
-        self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
-        self.p0_MPa, self.Ip_MA, self.B_T = p0_MPa, Ip_MA, B_T
-        self.ne0_20, self.Zeff, self.PichT_MW = ne0_20, Zeff, PichT_MW
+    def __call__(self):
 
         # Load PORTALS from previous beat: profiles with best residual
         folder =  self.beat_instance.maestro_instance.beats[self.beat_instance.maestro_instance.counter-1].folder_output
@@ -492,6 +474,10 @@ class transp_initializer_from_portals:
         self.p = self.portals_output.mitim_runs[self.portals_output.ibest]['powerstate'].profiles
 
         self.p.writeCurrentStatus(file=self.folder+'/input.gacode' )
+
+        # Parameters needed for later
+        self.PichT_MW = self.p.derived['qRF_MWmiller']
+        self.B_T = self.p.profiles['bcentr(T)'][0]
 
     def prepare_to_beat(self):
 
@@ -770,7 +756,7 @@ def simple_maestro_workflow(
         # ---------------------------------------------------------
 
         m.define_beat('transp', initializer='portals')
-        m.initialize(**geometry,**parameters)
+        m.initialize()
         m.prepare(transp_namelist = transp_namelist)
         m.run()
 
@@ -780,7 +766,7 @@ def simple_maestro_workflow(
 
         m.define_beat('portals', initializer='transp')
         m.initialize()
-        m.prepare(use_previous_residual=True,**portals_namelist)
+        m.prepare(use_previous_residual=True, **portals_namelist)
         m.run()
 
     # ---------------------------------------------------------

@@ -15172,7 +15172,7 @@ class transp_output:
     def to_profiles(self, time_extraction = None):
 
         if time_extraction == None:
-            time_extraction = self.t[-1]
+            time_extraction = self.t[self.ind_saw]
         elif time_extraction < 0:
             time_extraction = self.t[-1] + time_extraction
 
