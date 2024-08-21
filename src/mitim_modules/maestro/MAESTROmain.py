@@ -279,11 +279,10 @@ class transp_beat(beat):
         else:
             raise ValueError(f'Initializer "{initializer}" not recognized')
 
-    def initialize(self,*args,  **kwargs):
+    def initialize(self, flattop_window = 0.05,*args,  **kwargs):
 
         transition_window       = 0.1    # s
         currentheating_window   = 0.001  # s
-        flattop_window          = kwargs.get('flattop_window', 0.05)  # s
 
         # Define timings
         self.time_init = 0.0                                                # Start with D3D equilibrium
@@ -510,7 +509,7 @@ class transp_initializer_from_portals(transp_initializer):
         self.p.writeCurrentStatus(file=self.folder+'/input.gacode' )
 
         # Parameters needed for later
-        self.PichT_MW = self.p.derived['qRF_MWmiller']
+        self.PichT_MW = self.p.derived['qRF_MWmiller'][-1]
         self.B_T = self.p.profiles['bcentr(T)'][0]
 
     def prepare_to_beat(self):
