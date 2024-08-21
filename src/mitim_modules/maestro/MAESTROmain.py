@@ -220,6 +220,30 @@ class beat:
         pass
 
 # --------------------------------------------------------------------------------------------
+# Generic initializer class with required methods
+# --------------------------------------------------------------------------------------------
+
+class beat_initializer:
+    
+    def __init__(self, beat_instance, label = ''):
+            
+        self.beat_instance = beat_instance
+        self.folder = f'{self.beat_instance.folder_beat}/initializer_{label}/'
+
+        os.makedirs(self.folder, exist_ok=True)
+
+    def __call__(self, *args, **kwargs):
+        pass
+
+
+# --------------------------------------------------------------------------------------------
+# Generic beat-reuse
+# --------------------------------------------------------------------------------------------
+
+class beat_reuse(beat):
+    def __init__(self, maestro_instance, beat_to_reuse):
+
+# --------------------------------------------------------------------------------------------
 # Beat: TRANSP
 # --------------------------------------------------------------------------------------------
 
@@ -232,7 +256,7 @@ class transp_beat(beat):
         # Hardcoded for now how long I want each phase to be
         transition_window       = 0.1    # s
         currentheating_window   = 0.001  # s
-        flattop_window          = 0.15   # s
+        flattop_window          = 0.05   # s
 
         # Define timings
         self.time_init = 0.0                                                # Start with D3D equilibrium
@@ -262,7 +286,7 @@ class transp_beat(beat):
 
         self.initializer(*args,**kwargs)
 
-    def prepare(self, letter = None, shot = None,transp_namelist = {}, **kwargs_initializer):
+    def prepare(self, letter = None, shot = None, **transp_namelist):
 
         '''
         Using some smart defaults to avoid repeating TRANSP runid
@@ -287,7 +311,7 @@ class transp_beat(beat):
         self.runid = letter + str(self.maestro_instance.counter).zfill(2)
 
         # Use initializer to prepare beat
-        self.initializer.prepare_to_beat(**kwargs_initializer)
+        self.initializer.prepare_to_beat()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Generatic TRANSP operation
@@ -316,7 +340,8 @@ class transp_beat(beat):
         self.transp.populate_time.from_freegs(0.0, 1.67, 0.6, 1.75, 0.38, 0.0, 0.0, 0.074, 1.6, 2.0)
         
         # ICRF on
-        Frequency_He3 = self.initializer.B_T * (2*np.pi /(2/3))  # ~10
+        qm_He3 = 2/3
+        Frequency_He3 = self.initializer.B_T * (2*np.pi/qm_He3)
         self.transp.icrf_on_time(self.time_diffusion, power_MW = self.initializer.PichT_MW, freq_MHz = Frequency_He3)
         
         # Write Ufiles
@@ -351,23 +376,18 @@ class transp_beat(beat):
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
-    # --------------------------------------------------------------------------------------------
-    # Plot
-    # --------------------------------------------------------------------------------------------
-    
-    def plot(self):
+# TRANSP initializers ************************************************************************
 
-        self.c.plot()
+class transp_initializer(beat_initializer):
 
-class transp_initializer_from_freegs:
+    def __init__(self, beat_instance, label = ''):
+        super().__init__(beat_instance, label = label)
+
+class transp_initializer_from_freegs(transp_initializer):
 
     def __init__(self, beat_instance):
+        super().__init__(beat_instance, label = 'freegs')
             
-        self.beat_instance = beat_instance
-        self.folder = f'{self.beat_instance.folder_beat}/initializer_freegs/'
-
-        os.makedirs(self.folder, exist_ok=True)
-
     def __call__(
         self,
         R,
@@ -398,19 +418,6 @@ class transp_initializer_from_freegs:
             Te0_keV = profiles['Te'][1][0]
             self.p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (self.ne0_20 * 1E20) * 1E-6 #MPa
             
-        # --------------------------------------------------------------
-        # pressure - temperature and density
-        # --------------------------------------------------------------
-        '''
-        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
-
-        if T=Te=Ti and ne=ni
-        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
-
-        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
-
-        '''
-
         # FreeGS
         self.f = FREEGStools.freegs_millerized(self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0)
         self.f.prep(self.p0_MPa, self.Ip_MA, self.B_T)
@@ -432,6 +439,19 @@ class transp_initializer_from_freegs:
             ne0_20 = self.ne0_20, Zeff = self.Zeff, PichT_MW = self.PichT_MW)
         
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Add profiles
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self._add_profiles(times)
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Pass to main class' beat
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self.beat_instance.transp = self.transp
+
+    def _add_profiles(self, times):
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Add profiles  # TO FIX ROA VA RHO???, psi, etc
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         
@@ -445,24 +465,16 @@ class transp_initializer_from_freegs:
             for time in times:
                 self.transp.add_variable_time(time, self.profiles['ne'][0], self.profiles['ne'][1]*1E20*1E-6, variable='NEL')
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Pass to main class' beat
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class transp_initializer_from_geqdsk(transp_initializer):
+    def __init__(self, beat_instance):
+        super().__init__(beat_instance, label = 'geqdsk')
 
-        self.beat_instance.transp = self.transp
+    # TO DO
 
-    def plot(self):
-
-        self.f.plot()
-
-class transp_initializer_from_portals:
+class transp_initializer_from_portals(transp_initializer):
 
     def __init__(self, beat_instance):
-            
-        self.beat_instance = beat_instance
-        self.folder = f'{self.beat_instance.folder_beat}/initializer_portals/'
-
-        os.makedirs(self.folder, exist_ok=True)
+        super().__init__(beat_instance, label = 'portals')
 
     def __call__(self):
 
@@ -490,9 +502,6 @@ class transp_initializer_from_portals:
         # Pass to main class' beat
         self.beat_instance.transp = self.transp
 
-    def plot(self):
-        
-        self.portals_output.plot()
 
 # --------------------------------------------------------------------------------------------
 # Beat: PORTALS
@@ -604,21 +613,17 @@ class portals_beat(beat):
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
-    # --------------------------------------------------------------------------------------------
-    # Plot
-    # --------------------------------------------------------------------------------------------
-    def plot(self):
+# PORTALS initializers ************************************************************************
 
-        pass
+class portals_initializer(beat_initializer):
 
-class portals_initializer_from_transp:
+    def __init__(self, beat_instance, label = ''):
+        super().__init__(beat_instance, label = label)
+
+class portals_initializer_from_transp(portals_initializer):
 
     def __init__(self, beat_instance):
-            
-        self.beat_instance = beat_instance
-        self.folder = f'{self.beat_instance.folder_beat}/initializer_transp/'
-
-        os.makedirs(self.folder, exist_ok=True)
+        super().__init__(beat_instance, label = 'transp')
 
     def __call__(self, time_extraction = None, use_previous_portals_profiles = True):
 
@@ -627,6 +632,7 @@ class portals_initializer_from_transp:
         self.cdf = CDFtools.transp_output(self.beat_instance.maestro_instance.beats[beat_num].folder_output)
 
         # Extract profiles at time_extraction
+        time_extraction = self.cdf.t[self.cdf.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
         self.p = self.cdf.to_profiles(time_extraction=time_extraction)
 
         if use_previous_portals_profiles and ('portals_profiles' in self.beat_instance.maestro_instance.parameters_trans_beat):
@@ -644,9 +650,6 @@ class portals_initializer_from_transp:
 
         self.file_gacode = f"{self.folder}/input.gacode"
         self.p.writeCurrentStatus(file=self.file_gacode)
-
-    def plot(self):
-        self.cdf.plot()
 
 # --------------------------------------------------------------------------------------------
 # Workflow
@@ -726,7 +729,7 @@ def simple_maestro_workflow(
             "FastIsThermal": True
         },
         "optimization_options": {
-            "BO_iterations": 20,
+            "BO_iterations": 10,
             "maximum_value": 1e-2, # x100 better residual
             "maximum_value_is_rel": True,
         }
@@ -738,7 +741,7 @@ def simple_maestro_workflow(
 
     m.define_beat('transp', initializer='freegs')
     m.initialize(**geometry,**parameters,profiles = profiles)
-    m.prepare(transp_namelist = transp_namelist)
+    m.prepare(**transp_namelist)
     m.run()
 
     # ---------------------------------------------------------
@@ -757,7 +760,7 @@ def simple_maestro_workflow(
 
         m.define_beat('transp', initializer='portals')
         m.initialize()
-        m.prepare(transp_namelist = transp_namelist)
+        m.prepare(**transp_namelist)
         m.run()
 
         # ---------------------------------------------------------
