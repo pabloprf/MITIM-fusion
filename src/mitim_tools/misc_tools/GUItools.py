@@ -124,7 +124,11 @@ class FigureNotebook:
         Properly closes the FigureNotebook and its associated resources.
         """
         print(f"\n> Closing MITIM Notebook titled: {self.windowtitle}", typeMsg="i")
+        # Disconnect all canvases
+        for canvas in self.canvases:
+            canvas.mpl_disconnect(canvas.callbacks.connect('draw_event', lambda: None))
         self.MainWindow.close()
+        self.app.quit()
 
 class TabWidget(QTabWidget):
     def __init__(self, vertical=False, xextend=1600, *args, **kwargs):

@@ -60,7 +60,7 @@ class PORTALSanalyzer:
 
             try:
                 opt_fun.read_optimization_results(
-                    analysis_level=4, plotYN=False, folderRemote=folderRemote
+                    analysis_level=4, folderRemote=folderRemote
                 )
 
                 return cls(opt_fun, folderAnalysis=folderAnalysis)

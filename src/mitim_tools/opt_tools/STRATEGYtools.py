@@ -199,7 +199,7 @@ class opt_evaluator:
 
     def read_optimization_results(
         self,
-        plotYN=False,
+        plotFN=None,
         folderRemote=None,
         analysis_level=0,
         pointsEvaluateEachGPdimension=50,
@@ -216,7 +216,7 @@ class opt_evaluator:
                 self.folder,
                 analysis_level=analysis_level,
                 doNotShow=True,
-                plotYN=plotYN,
+                plotFN=plotFN,
                 folderRemote=folderRemote,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
@@ -288,7 +288,7 @@ class opt_evaluator:
             )
 
         self.read_optimization_results(
-            plotYN=plotYN and (analysis_level >= 0),
+            plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
             analysis_level=(
                 retrieval_level if (retrieval_level is not None) else analysis_level

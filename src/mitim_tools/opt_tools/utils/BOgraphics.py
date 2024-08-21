@@ -822,7 +822,7 @@ def retrieveResults(
     folderRemote=None,
     analysis_level=0,
     doNotShow=False,
-    plotYN=True,
+    plotFN=None,
     pointsEvaluateEachGPdimension=50,
 ):
     # ----------------------------------------------------------------------------------------------------------------
@@ -893,16 +893,17 @@ def retrieveResults(
 
         prfs_model.optimization_results = res
         prfs_model.logFile = log
-        if plotYN:
+        if plotFN is not None:
             fn = prfs_model.plot(
                 doNotShow=doNotShow,
+                fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
 
     # If no pickle, plot only the contents of optimization_results
     else:
-        if plotYN:
-            fn = res.plot(doNotShow=doNotShow, log=log)
+        if plotFN:
+            fn = res.plot(doNotShow=doNotShow, log=log, fn = plotFN)
         prfs_model = None
 
     return fn, res, prfs_model, log, data_df

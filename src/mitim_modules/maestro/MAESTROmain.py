@@ -626,7 +626,7 @@ class portals_beat(beat):
         # Save the best profiles to use in the next PORTALS beat to avoid issues with TRANSP coarse grid
         self.maestro_instance.parameters_trans_beat['portals_profiles'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
 
-    def plot(self,  fn = None, counter = 0, full_opt = False):
+    def plot(self,  fn = None, counter = 0, full_opt = True):
 
         isitfinished = self.check()
 
