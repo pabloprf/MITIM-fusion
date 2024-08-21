@@ -132,7 +132,7 @@ class transp_output:
 
         # Capability to provide folder and just find the CDF in there
         if os.path.isdir(self.LocationCDF):
-            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True, provide_full_path = True)
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF+'/', ".CDF", agnostic_to_case=True, provide_full_path = True)
 
         # ----------------------------
 
@@ -15976,7 +15976,6 @@ class transp_output:
         with open(file, "wb") as handle:
             pickle.dump(dictPKL, handle, protocol=2)
         print(f" --> Written {file}")
-
 
 # ---------------------------------------------------------------------------------------------------------
 # Operations

@@ -9,8 +9,7 @@ from mitim_tools.opt_tools 	 	import STRATEGYtools
 from mitim_modules.portals 		import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools 	import CONFIGread
+from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools import __version__
@@ -60,7 +59,7 @@ class maestro:
         print('-----------------------------------------------------------------------------------')
         print(f'folder: {self.folder}')
 
-    def define_beat(self, beat, initializer, restart = False):
+    def define_beat(self, beat, initializer = None, restart = False):
 
         self.counter += 1
         if beat == 'transp':
@@ -92,7 +91,8 @@ class maestro:
         print('\t- Checking...')
         log_file = f'{self.folder_logs}/beat_{self.counter}_check.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
-            self.beat.check(restart = restart, **kwargs)
+            exists = self.beat.check(restart = restart, **kwargs)
+            self.beat.run_flag = not exists
 
         # If this beat is restarted, all next beats will be restarted
         if self.beat.run_flag:
@@ -153,6 +153,21 @@ class maestro:
             
             self.beat.finalize_maestro()
 
+    def plot(self, fn = None):
+
+        if fn is None:
+            wasProvided = False
+            self.fn = GUItools.FigureNotebook("MAESTRO")
+        else:
+            wasProvided = True
+            self.fn = fn
+
+        for i, beat in self.beats.items():
+            beat.plot(fn = self.fn, counter = i)
+
+        if not wasProvided:
+            self.fn.show()
+
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
@@ -190,7 +205,7 @@ class beat:
         else:
             print('\t\t- Forced restarting of beat', typeMsg = 'i')
 
-        self.run_flag = output_file is None
+        return output_file is not None
 
     def define_initializer(self, *args, **kwargs):
         pass
@@ -235,47 +250,29 @@ class beat_initializer:
     def __call__(self, *args, **kwargs):
         pass
 
-
-# --------------------------------------------------------------------------------------------
-# Generic beat-reuse
-# --------------------------------------------------------------------------------------------
-
-class beat_reuse(beat):
-    def __init__(self, maestro_instance, beat_to_reuse):
-
 # --------------------------------------------------------------------------------------------
 # Beat: TRANSP
 # --------------------------------------------------------------------------------------------
 
 class transp_beat(beat):
 
-    def __init__(self, maestro_instance):
-            
+    def __init__(self, maestro_instance):            
         super().__init__(maestro_instance, beat_name = 'transp')
-
-        # Hardcoded for now how long I want each phase to be
-        transition_window       = 0.1    # s
-        currentheating_window   = 0.001  # s
-        flattop_window          = 0.05   # s
-
-        # Define timings
-        self.time_init = 0.0                                                # Start with D3D equilibrium
-        self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
-        self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
-        self.time_end = self.time_diffusion + flattop_window                # End
 
     # --------------------------------------------------------------------------------------------
     # Checker
     # --------------------------------------------------------------------------------------------
     def check(self, restart = False):
-        super().check(restart=restart, folder_search = self.folder_output, suffix = '.CDF')
+        return super().check(restart=restart, folder_search = self.folder_output, suffix = '.CDF')
 
     # --------------------------------------------------------------------------------------------
     # Initialize
     # --------------------------------------------------------------------------------------------
     def define_initializer(self, initializer):
 
-        if initializer == 'freegs':
+        if initializer is None:
+            self.initializer = beat_initializer(self)
+        elif initializer == 'freegs':
             self.initializer = transp_initializer_from_freegs(self)
         elif initializer == 'portals':
             self.initializer = transp_initializer_from_portals(self)
@@ -284,6 +281,17 @@ class transp_beat(beat):
 
     def initialize(self,*args,  **kwargs):
 
+        transition_window       = 0.1    # s
+        currentheating_window   = 0.001  # s
+        flattop_window          = kwargs.get('flattop_window', 0.05)  # s
+
+        # Define timings
+        self.time_init = 0.0                                                # Start with D3D equilibrium
+        self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
+        self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
+        self.time_end = self.time_diffusion + flattop_window                # End
+
+        # Initialize
         self.initializer(*args,**kwargs)
 
     def prepare(self, letter = None, shot = None, **transp_namelist):
@@ -357,12 +365,26 @@ class transp_beat(beat):
         self.transp.run('D3D', mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*hours_allocation, case=self.transp.runid, checkMin=5)
         self.c = self.transp.c
 
+    # --------------------------------------------------------------------------------------------
+    # Finalize and plot
+    # --------------------------------------------------------------------------------------------
+
     def finalize(self):
 
         # Copy to outputs
         os.system(f'cp {self.folder}/{self.shot}{self.runid}.CDF {self.folder_output}/.')
         os.system(f'cp {self.folder}/{self.shot}{self.runid}tr.log {self.folder_output}/.')
 
+    def plot(self,  fn = None, counter = 0):
+
+        isitfinished = self.check()
+
+        if isitfinished:
+            c = CDFtools.transp_output(self.folder_output)
+            c.plot(fn = fn, counter = counter) 
+        else:
+            print('\t\t- Cannot plot because the beat has not finished yet', typeMsg = 'w')
+        
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
     # --------------------------------------------------------------------------------------------
@@ -517,21 +539,23 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
 
     def check(self, restart = False):
-        super().check(restart=restart, folder_search = self.folder_output+'/Outputs', suffix = '_object.pkl')
+        return super().check(restart=restart, folder_search = self.folder_output+'/Outputs', suffix = '_object.pkl')
 
     # --------------------------------------------------------------------------------------------
     # Initialize
     # --------------------------------------------------------------------------------------------
     def define_initializer(self, initializer):
 
-        if initializer == 'transp':
+        if initializer is None:
+            self.initializer = beat_initializer(self)
+        elif initializer == 'transp':
             self.initializer = portals_initializer_from_transp(self)
 
     def initialize(self,*args,  **kwargs):
 
         self.initializer(*args,**kwargs)
 
-    def prepare(self, use_previous_residual = False, PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
+    def prepare(self, use_previous_residual = True, PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
 
         self.fileGACODE = self.initializer.file_gacode
 
@@ -542,7 +566,7 @@ class portals_beat(beat):
 
         self._inform(use_previous_residual = use_previous_residual)
 
-    def _inform(self, use_previous_residual=False):
+    def _inform(self, use_previous_residual = True):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
@@ -576,6 +600,9 @@ class portals_beat(beat):
 
         self.prf_bo.run()
 
+    # --------------------------------------------------------------------------------------------
+    # Finalize and plot
+    # --------------------------------------------------------------------------------------------
     def finalize(self):
 
         # Remove output folders
@@ -599,6 +626,25 @@ class portals_beat(beat):
 
         # Save the best profiles to use in the next PORTALS beat to avoid issues with TRANSP coarse grid
         self.maestro_instance.parameters_trans_beat['portals_profiles'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+
+    def plot(self,  fn = None, counter = 0, full_opt = False):
+
+        isitfinished = self.check()
+
+        if isitfinished:
+            folder = self.folder_output
+        else:
+            folder = self.folder
+        
+        if full_opt:
+            opt_fun = STRATEGYtools.opt_evaluator(folder)
+            opt_fun.fn = fn
+            opt_fun.plot_optimization_results(analysis_level=4)
+        else:
+            portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
+            portals_output.fn = fn
+            portals_output.plotPORTALS()
+            
 
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
@@ -678,14 +724,16 @@ def simple_maestro_workflow(
     TGLFsettings = 6,
     DTplasma = True,
     terminal_outputs = False,
-    full_loops = 2,
+    full_loops = 2, # By default, do 2 loops of TRANSP-PORTALS
+    quality = {
+        'maximum_value': 1e-2,  # x100 better residual
+        'BO_iterations': 20,
+        'flattop_window': 0.15, # s
+        }
     ):
-    '''
-    By default, do 2 loops of TRANSP-PORTALS
-    '''
 
     m = maestro(folder, terminal_outputs = terminal_outputs)
-
+    
     # ---------------------------------------------------------
     # beat 0: Define info
     # ---------------------------------------------------------
@@ -729,8 +777,8 @@ def simple_maestro_workflow(
             "FastIsThermal": True
         },
         "optimization_options": {
-            "BO_iterations": 10,
-            "maximum_value": 1e-2, # x100 better residual
+            "BO_iterations": quality.get('BO_iterations', 20),
+            "maximum_value": quality.get('maximum_value', 1e-2),
             "maximum_value_is_rel": True,
         }
     }
@@ -740,7 +788,7 @@ def simple_maestro_workflow(
     # ---------------------------------------------------------
 
     m.define_beat('transp', initializer='freegs')
-    m.initialize(**geometry,**parameters,profiles = profiles)
+    m.initialize(**geometry,**parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15))
     m.prepare(**transp_namelist)
     m.run()
 
@@ -759,7 +807,7 @@ def simple_maestro_workflow(
         # ---------------------------------------------------------
 
         m.define_beat('transp', initializer='portals')
-        m.initialize()
+        m.initialize(flattop_window = quality.get('flattop_window', 0.15))
         m.prepare(**transp_namelist)
         m.run()
 
@@ -768,8 +816,8 @@ def simple_maestro_workflow(
         # ---------------------------------------------------------
 
         m.define_beat('portals', initializer='transp')
-        m.initialize()
-        m.prepare(use_previous_residual=True, **portals_namelist)
+        m.initialize(flattop_window = quality.get('flattop_window', 0.15))
+        m.prepare(**portals_namelist)
         m.run()
 
     # ---------------------------------------------------------
