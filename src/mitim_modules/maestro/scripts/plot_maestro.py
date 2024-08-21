@@ -14,12 +14,16 @@ def main():
     parser.add_argument(
         "--beats", type=int, required=False, default=2
     )  # Last beats to plot
+    parser.add_argument(
+        "--only", type=str, required=False, default=None
+    )
     args = parser.parse_args()
 
     folder = args.folder
     beats = args.beats
+    only = args.only
 
-    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats)
+    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only)
 
     # Import IPython and embed an interactive session
     from IPython import embed

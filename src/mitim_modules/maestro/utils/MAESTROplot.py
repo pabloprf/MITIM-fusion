@@ -1,7 +1,7 @@
 import os
 from mitim_modules.maestro.MAESTROmain import maestro
 
-def plotMAESTRO(folder, num_beats = 2):
+def plotMAESTRO(folder, num_beats = 2, only_beats = None):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
@@ -20,6 +20,6 @@ def plotMAESTRO(folder, num_beats = 2):
         m.define_beat(beat)
 
     # Plot
-    m.plot(num_beats=num_beats)
+    m.plot(num_beats=num_beats, only_beats = only_beats)
 
     return m

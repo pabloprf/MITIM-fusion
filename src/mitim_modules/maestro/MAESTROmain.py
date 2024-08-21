@@ -9,6 +9,7 @@ from mitim_tools.opt_tools 	 	import STRATEGYtools
 from mitim_modules.portals 		import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
@@ -154,7 +155,7 @@ class maestro:
             self.beat.finalize_maestro()
 
     @mitim_timer('\t\t* Plotting')
-    def plot(self, fn = None, num_beats = 2):
+    def plot(self, fn = None, num_beats = 2, only_beats = None):
 
         print('*** Plotting MAESTRO ******************************************************************** ')
 
@@ -165,22 +166,42 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        self._plot_beats(self.fn, num_beats = num_beats)
+        self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats)
+        self._plot_results(self.fn)
 
         if not wasProvided:
             self.fn.show()
 
-    def _plot_beats(self, fn, num_beats = 2):
+    def _plot_beats(self, fn, num_beats = 2, only_beats = None):
 
         beats_keys = sorted(sorted(list(self.beats.keys()),reverse=True)[:num_beats])
         for i,counter in enumerate(beats_keys):
             beat = self.beats[counter]
-            print(f'\t- Plotting beat #{counter}...')
-            log_file = f'{self.folder_logs}/plot_{counter}.log' if (not self.terminal_outputs) else None
-            with IOtools.conditional_log_to_file(log_file=log_file):
-                msg = beat.plot(fn = self.fn, counter = i)
-            print(msg)
+            if only_beats is None or only_beats == beat.name:
 
+                print(f'\t- Plotting beat #{counter}...')
+                log_file = f'{self.folder_logs}/plot_{counter}.log' if (not self.terminal_outputs) else None
+                with IOtools.conditional_log_to_file(log_file=log_file):
+                    msg = beat.plot(fn = self.fn, counter = i)
+                print(msg)
+
+    def _plot_results(self, fn):
+
+        print('\t- Plotting MAESTRO results...')
+
+        # Collect PORTALS profiles
+        ps = []
+        for beat in self.beats.values():
+            if isinstance(beat, portals_beat) and ('input.gacode' in os.listdir(beat.folder_output)):
+                ps.append(PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode'))
+
+        figs = PROFILEStools.add_figures(fn,fnlab_pre = "MAESTRO - ")
+        log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file):
+            PROFILEStools.plotAll(ps, extralabs=[f'beat_{i}' for i in range(len(ps))], figs=figs)
+
+        for p in ps:
+            p.printInfo()
 
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
@@ -194,7 +215,8 @@ class beat:
         self.folder_beat = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}/'
 
         # Where to run it
-        self.folder = f'{self.folder_beat}/run_{beat_name}/'
+        self.name = beat_name
+        self.folder = f'{self.folder_beat}/run_{self.name}/'
         os.makedirs(self.folder, exist_ok=True)
 
         # Where to save the results
