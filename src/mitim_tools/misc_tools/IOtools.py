@@ -658,8 +658,8 @@ def getLocInfo(locFile, removeSpaces=True):
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False
-):
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, provide_full_path=False
+    ):
     """
     Retrieves the file without folder and extension
     """
@@ -667,7 +667,7 @@ def findFileByExtension(
     folder = expandPath(folder, fixSpaces=fixSpaces)
 
     if os.path.exists(folder):
-        allfiles = findExistingFiles(folder, extension)
+        allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
             # print(allfiles)
@@ -693,17 +693,23 @@ def findFileByExtension(
         )
         fileReturn = None
 
+    if provide_full_path and fileReturn is not None:
+        fileReturn = folder + fileReturn + extension
+
     return fileReturn
 
-
-def findExistingFiles(folder, extension):
+def findExistingFiles(folder, extension, agnostic_to_case=False):
     allfiles = []
     for file in os.listdir(folder):
-        if file.endswith(extension):
-            allfiles.append(file)
+
+        if not agnostic_to_case:
+            if file.endswith(extension):
+                allfiles.append(file)
+        else:
+            if file.lower().endswith(extension.lower()):
+                allfiles.append(file)
 
     return allfiles
-
 
 def writeOFs(resultsFile, dictOFs, dictErrors=None):
     """

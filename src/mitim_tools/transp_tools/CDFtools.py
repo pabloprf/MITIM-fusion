@@ -129,6 +129,13 @@ class transp_output:
             netCDFfile = f"{folderScratch}state.cdf"
 
         self.LocationCDF = netCDFfile
+
+        # Capability to provide folder and just find the CDF in there
+        if os.path.isdir(self.LocationCDF):
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True, provide_full_path = True)
+
+        # ----------------------------
+
         self.f = read_cdf_transp(self.LocationCDF) 
 
         self.info = getRunMetaInfo(self.LocationCDF)
