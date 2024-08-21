@@ -96,9 +96,10 @@ class maestro:
 
         # If this beat is restarted, all next beats will be restarted
         if self.beat.run_flag:
+            if not self.master_restart:
+                print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
             self.master_restart = True
-            print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
-
+            
     @mitim_timer('\t\t* Initializer')
     def initialize(self, *args, **kwargs):
 
@@ -181,11 +182,7 @@ class beat:
 
         output_file = None
         if not restart:
-        
-            for file_name in os.listdir(folder_search):
-                # Check if the file has a .CDF extension (case insensitive)
-                if file_name.endswith('.CDF'):
-                    output_file = f'{folder_search}/{file_name}'
+            output_file = IOtools.findFileByExtension(folder_search, suffix, agnostic_to_case=True, provide_full_path=True)
 
             if output_file is not None:
                 print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
@@ -482,12 +479,12 @@ class transp_initializer_from_portals:
         p0_MPa = 2.5,
         ne0_20 = 3.0):
 
-        # Load params
+        # Load engineering parameters       # TO FIX
         self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
         self.p0_MPa, self.Ip_MA, self.B_T = p0_MPa, Ip_MA, B_T
         self.ne0_20, self.Zeff, self.PichT_MW = ne0_20, Zeff, PichT_MW
 
-        # From previous PORTALS's Output
+        # Load PORTALS from previous beat: profiles with best residual
         folder =  self.beat_instance.maestro_instance.beats[self.beat_instance.maestro_instance.counter-1].folder_output
 
         self.portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
@@ -525,7 +522,7 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
 
     def check(self, restart = False):
-        super().check(restart=restart, folder_search = self.folder_output+'/Outputs', suffix = '.pkl')
+        super().check(restart=restart, folder_search = self.folder_output+'/Outputs', suffix = '_object.pkl')
 
     # --------------------------------------------------------------------------------------------
     # Initialize
@@ -599,11 +596,14 @@ class portals_beat(beat):
 
     def inform_save(self):
 
-        # Save the residual 
+        # Save the residual goal to use in the next PORTALS beat
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
         max_value_neg_residual = portals_output.step.stepSettings['optimization_options']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t- Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
+
+        # Save the best profiles to use in the next PORTALS beat to avoid issues with TRANSP coarse grid
+        self.maestro_instance.parameters_trans_beat['portals_profiles'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
 
     # --------------------------------------------------------------------------------------------
     # Finalize in case this is the last beat
@@ -634,17 +634,27 @@ class portals_initializer_from_transp:
 
         os.makedirs(self.folder, exist_ok=True)
 
-    def __call__(self, time_extraction = None):
+    def __call__(self, time_extraction = None, use_previous_portals_profiles = True):
 
-        # From previous TRANSP
-        folder = self.beat_instance.maestro_instance.beats[self.beat_instance.maestro_instance.counter-1].folder_output
-        for file_name in os.listdir(folder):
-            if file_name.endswith('.CDF'):
-                output_file = f'{folder}/{file_name}'
+        # Load TRANSP results from previous beat
+        beat_num = self.beat_instance.maestro_instance.counter-1
+        self.cdf = CDFtools.transp_output(self.beat_instance.maestro_instance.beats[beat_num].folder_output)
 
-        self.cdf = CDFtools.transp_output(output_file)
-
+        # Extract profiles at time_extraction
         self.p = self.cdf.to_profiles(time_extraction=time_extraction)
+
+        if use_previous_portals_profiles and ('portals_profiles' in self.beat_instance.maestro_instance.parameters_trans_beat):
+            print('\t- Using previous PORTALS thermal kinetic profiles instead of the TRANSP profiles')
+            p_prev = self.beat_instance.maestro_instance.parameters_trans_beat['portals_profiles']
+
+            self.p.changeResolution(rho_new=p_prev.profiles['rho(-)'])
+            
+            self.p.profiles['te(keV)'] = p_prev.profiles['te(keV)']
+            self.p.profiles['ne(10^19/m^3)'] = p_prev.profiles['ne(10^19/m^3)']
+            for i,sp in enumerate(self.p.Species):
+                if sp['S'] == 'therm':
+                    self.p.profiles['ti(keV)'][:,i] = p_prev.profiles['ti(keV)'][:,i]
+                    self.p.profiles['ni(10^19/m^3)'][:,i] = p_prev.profiles['ni(10^19/m^3)'][:,i]
 
         self.file_gacode = f"{self.folder}/input.gacode"
         self.p.writeCurrentStatus(file=self.file_gacode)
@@ -652,6 +662,9 @@ class portals_initializer_from_transp:
     def plot(self):
         self.cdf.plot()
 
+# --------------------------------------------------------------------------------------------
+# Workflow
+# --------------------------------------------------------------------------------------------
 
 def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
     
@@ -665,10 +678,6 @@ def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
     y = np.append(y, y_sep)
 
     return roa, y
-
-# --------------------------------------------------------------------------------------------
-# Workflow
-# --------------------------------------------------------------------------------------------
 
 @mitim_timer('\t- MAESTRO')
 def simple_maestro_workflow(
