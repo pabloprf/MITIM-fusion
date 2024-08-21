@@ -522,24 +522,37 @@ class transp_input_time:
 
         self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def _from_freegs_eq(self, time, f = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def _from_freegs_eq(self, time, freegs_eq_object = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+
+        if freegs_eq_object is None:
+            freegs_eq_object = self.f.eq
+
+        # Rho Tor 
+        psi = np.linspace(freegs_eq_object.psi_axis, freegs_eq_object.psi_bndry, 101, endpoint=True)
+        psi_norm = (psi - freegs_eq_object.psi_axis) / (freegs_eq_object.psi_bndry - freegs_eq_object.psi_axis)
+        rhotor = freegs_eq_object.rhotor(psi)
+
+        q = freegs_eq_object.q(psinorm = psi_norm)
+        pressure = freegs_eq_object.pressure(psinorm =psi_norm) # Pa
+
+        Ip = freegs_eq_object._profiles.Ip  # A
+        RB = freegs_eq_object._profiles._fvac* 1E2 
+        RZ = freegs_eq_object.separatrix(npoints= 100)
+
+        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+
+    def from_geqdsk(self, time, geqdsk_file, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+
+        pass
+
+    def _from_eq_quantities(self, time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
         self.variables = {}
-
-        if f is not None:
-            self.f = f
-
         self.ne0_20 = ne0_20
-
-        psi = np.linspace(self.f.eq.psi_axis, self.f.eq.psi_bndry, 101, endpoint=True)
-        psi_norm = (psi - self.f.eq.psi_axis) / (self.f.eq.psi_bndry - self.f.eq.psi_axis)
-        rhotor = self.f.eq.rhotor(psi)
 
         # --------------------------------------------------------------
         # q profile
         # --------------------------------------------------------------
-
-        q = self.f.eq.q(psinorm = psi_norm)
 
         self.variables['QPR'] = {
             'x': rhotor,
@@ -558,8 +571,6 @@ class transp_input_time:
         T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
 
         '''
-
-        pressure = self.f.eq.pressure(psinorm =psi_norm) # Pa
 
         _, ne_20 = PLASMAtools.parabolicProfile(
             Tbar=self.ne0_20/1.25,
@@ -592,12 +603,12 @@ class transp_input_time:
 
         self.variables['CUR'] = {
             'x': None,
-            'z':self.f.Ip_MA * 1E6
+            'z': Ip
             }
 
         self.variables['RBZ'] = {
             'x': None,
-            'z': self.f.R0 * self.f.B_T * 1E2
+            'z': RB
             }
 
         # --------------------------------------------------------------
@@ -626,13 +637,16 @@ class transp_input_time:
         # geometries
         # --------------------------------------------------------------
 
-        RZ = self.f.eq.separatrix(npoints= 100)
+        Rsep, Zsep = RZ[:,0], RZ[:,1]
         self.geometry = {
-            'R_sep': RZ[:,0],
-            'Z_sep': RZ[:,1]
+            'R_sep': Rsep,
+            'Z_sep': Zsep
             }
 
-        self._produce_structures_from_variables(self.f.R0, self.f.a, self.f.kappa_sep, self.f.delta_sep, self.f.zeta_sep, self.f.Z0)
+        surfaces = GEQtools.mitim_flux_surfaces()
+        surfaces.reconstruct_from_RZ(Rsep, Zsep)
+        surfaces._to_miller()
+        self._produce_structures_from_variables(surfaces.R0[0], surfaces.a[0], surfaces.kappa[0], surfaces.delta[0], surfaces.zeta[0], surfaces.Z0[0])
 
         # --------------------------------------------------------------
         # Populate

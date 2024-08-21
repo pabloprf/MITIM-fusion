@@ -1529,7 +1529,7 @@ class freegs_millerized:
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time._from_freegs_eq(time,f=self,ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+            transp.populate_time._from_freegs_eq(time,freegs_eq_object=self.eq,ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
         transp.write_ufiles()
 
