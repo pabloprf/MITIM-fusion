@@ -11,6 +11,28 @@ from IPython import embed
 from mitim_tools.misc_tools import IOtools
 
 
+def adjust_figure_layout(fig):
+    # ChatGPT 4o as of 08/22/2024
+
+    # Apply initial tight layout
+    fig.tight_layout()
+
+    # If tight_layout is not enough, apply subplots_adjust with custom parameters
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, wspace=0.4, hspace=0.4)
+    
+    # Optionally, you can check for overlaps and adjust further if necessary
+    overlaps = fig.get_tight_layout()
+    while overlaps:
+        # Incrementally adjust spacing
+        left, right, top, bottom = fig.subplotpars.left, fig.subplotpars.right, fig.subplotpars.top, fig.subplotpars.bottom
+        wspace, hspace = fig.subplotpars.wspace, fig.subplotpars.hspace
+
+        fig.subplots_adjust(left=left+0.01, right=right-0.01, top=top-0.01, bottom=bottom+0.01, wspace=wspace+0.01, hspace=hspace+0.01)
+        overlaps = fig.get_tight_layout()
+
+    # Redraw the canvas to apply changes
+    fig.canvas.draw_idle()
+
 def aroundZeroLims(zlims):
     z = np.max(np.abs(zlims))
     zlims = [-z, z]

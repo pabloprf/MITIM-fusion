@@ -128,4 +128,4 @@ ax.set_ylabel("Internal inductance, Li")
 ax.legend()
 ax.axvspan(time - avTime, time + avTime, facecolor="b", alpha=0.1, edgecolor="none")
 
-plt.tight_layout()
+GRAPHICStools.adjust_figure_layout(fig)

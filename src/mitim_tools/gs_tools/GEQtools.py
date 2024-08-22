@@ -1245,7 +1245,7 @@ class MITIMgeqdsk:
             axes[0].grid() ; axes[1].grid()
             axes[0].set_title("MXH Coefficients - Cosine")
             axes[1].set_title("MXH Coefficients - Sine")
-            plt.tight_layout()
+            GRAPHICStools.adjust_figure_layout(fig)
             plt.show()
         print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
         return cn, sn, gn, psis

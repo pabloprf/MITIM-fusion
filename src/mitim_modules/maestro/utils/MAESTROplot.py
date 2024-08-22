@@ -97,6 +97,8 @@ def _plot_transitions(self, objs, fn, g=None, label = ""):
     obj2.labelMAESTRO = keys[0]
     _plot_transition(self, obj1, obj2, axs)
 
+    GRAPHICStools.adjust_figure_layout(fig)
+
     # Plot transitions N -> N+1
     for i in range(len(objs)-1):
         obj1 = objs[keys[i]]
@@ -114,6 +116,8 @@ def _plot_transitions(self, objs, fn, g=None, label = ""):
         )
 
         _plot_transition(self, obj1, obj2, axs)
+
+        GRAPHICStools.adjust_figure_layout(fig)
 
 def _plot_transition(self, obj1, obj2, axs):
 

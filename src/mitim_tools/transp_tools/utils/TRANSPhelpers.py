@@ -384,7 +384,7 @@ class transp_run:
         ax.set_ylabel('Current [MA], $R*B_t$ [m*T]')
         ax.set_ylim(bottom=0)
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
 class transp_input_time:

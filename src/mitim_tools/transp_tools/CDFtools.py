@@ -8287,7 +8287,7 @@ class transp_output:
         ax.set_ylim(bottom=0)
         GRAPHICStools.addDenseAxis(ax)
 
-        # plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     def plotEquilParams(self, fig=None, time=None):
         if fig is None:
@@ -13227,174 +13227,216 @@ class transp_output:
         # Machine
         fig = self.fn.add_figure(tab_color=fn_color, label="Machine")
         self.plotMachine(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Equil
         fig = self.fn.add_figure(tab_color=fn_color, label="Equilibrium")
         self.plotEquilParams(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # GS
         fig = self.fn.add_figure(tab_color=fn_color, label="Grad-Shafranov")
         self.plotGS(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Geometry
         fig = self.fn.add_figure(tab_color=fn_color, label="Geometry")
         self.plotGEO(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Profiles
         fig = self.fn.add_figure(tab_color=fn_color, label="Profiles")
         self.plotProfiles(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # PRESSURES
         fig = self.fn.add_figure(tab_color=fn_color, label="Pressure")
         self.plotPressures(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Systems
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Auxiliary)")
         self.plotSeparateSystems(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Heating
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Total)")
         self.plotHeating(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Radial Powe3
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Radial)")
         fig2 = self.fn.add_figure(tab_color=fn_color, label="Power (Cumul.)")
         self.plotRadialPower(time=time, fig=fig, figCum=fig2)
+        GRAPHICStools.adjust_figure_layout(fig)
+        GRAPHICStools.adjust_figure_layout(fig2)
 
         # ICRF
         if np.sum(self.PichT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="ICRF (Total)")
             self.plotICRF_t(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="ICRF (Radial)")
             self.plotICRF(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ECRF
         if np.sum(self.PechT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="ECRF")
             self.plotECRF(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # NBI
         if np.sum(self.PnbiT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="NBI")
             self.plotNBI(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # LH
         if np.sum(self.PlhT) > 0.0 + 2 * self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="LowerHyb")
             self.plotLowerHybrid(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Transport
         fig = self.fn.add_figure(tab_color=fn_color, label="Transport")
         self.plotTransport(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Derivatives
         fig = self.fn.add_figure(tab_color=fn_color, label="Gradients")
         self.plotDerivatives(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Porcelli
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Trigger")
         self.plotSawtooth(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Around sawtooth
         # try:
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Effect")
         try:
             self.plotAroundSawtoothQuantities(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
         except:
             print("\t* Could not plot plotAroundSawtoothQuantities", typeMsg="w")
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Mixing")
         self.plotSawtoothMixing(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Electric Field
         fig = self.fn.add_figure(tab_color=fn_color, label="Current Diffusion")
         self.plotEM(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Poynting")
         self.plotUmag(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Fundamental
         fig = self.fn.add_figure(tab_color=fn_color, label="Fundamental Plasma")
         self.plotFundamental(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Stability
         fig = self.fn.add_figure(tab_color=fn_color, label="MHD Stability")
         self.plotStability(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Electric Field
         fig = self.fn.add_figure(tab_color=fn_color, label="Electric Field")
         self.plotElectricField(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Rotation
         fig = self.fn.add_figure(tab_color=fn_color, label="Rotation")
         self.plotRotation(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Time scales
         try:
             fig = self.fn.add_figure(tab_color=fn_color, label="Time Scales")
             self.plotTimeScales(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
         except:
             pass
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Averaging")
         self.plotTimeAverages(fig=fig, times=timesAv)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Impurities
         fig = self.fn.add_figure(tab_color=fn_color, label="Impurities")
         self.plotImpurities(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Radiation
         fig = self.fn.add_figure(tab_color=fn_color, label="Radiation")
         self.plotRadiation(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Convergence
         fig = self.fn.add_figure(tab_color=fn_color, label="Flux Matching")
         self.checkRun(fig=fig, time=time, printYN=False)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # LH
         fig = self.fn.add_figure(tab_color=fn_color, label="LH Transition")
         self.plotLH(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Particle Balance
         fig = self.fn.add_figure(tab_color=fn_color, label="Particle Balance")
         self.plotParticleBalance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Ions Balance")
         self.plotIonsBalance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Slow Down")
             self.plotSlowDown(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Fast
         fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Radial)")
         self.plotFast(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Fast
         fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Stabilization)")
         self.plotFast2(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Transport)")
             self.plotFastTransport(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Neutrals
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrals")
         self.plotNeutrals(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Performance
         fig = self.fn.add_figure(tab_color=fn_color, label="Performance")
         self.plotPerformance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Nuclear
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrons")
         self.plotNuclear(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Boundary
         fig = self.fn.add_figure(tab_color=fn_color, label="Boundary")
         self.plotDivertor(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # ----------- DIAGRAMS
 
@@ -13407,6 +13449,7 @@ class transp_output:
         # CPU
         fig = self.fn.add_figure(tab_color=fn_color, label="CPU usage")
         self.plotCPUperformance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # ----------- EXTRA
 
@@ -13414,6 +13457,7 @@ class transp_output:
         for i, toric in enumerate(self.torics):
             fig = self.fn.add_figure(tab_color=fn_color, label=f"TORIC #{i+1}")
             self.plotTORIC(fig=fig, position=i)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # FBM
 
@@ -13422,41 +13466,52 @@ class transp_output:
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_gc, finalProfile=self.nfusHe4
             )
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM He4 PO")
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_po, finalProfile=self.nfusHe4
             )
+            GRAPHICStools.adjust_figure_layout(fig)
 
         if self.fbm_Dbeam_gc is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM Dbeam GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_gc, finalProfile=self.nbD)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM Dbeam PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_po, finalProfile=self.nbD)
+            GRAPHICStools.adjust_figure_layout(fig)
 
             if self.fbm_Dbeam_gc.birth is not None:
                 fig = self.fn.add_figure(tab_color=fn_color, label="BIRTH D")
                 self.plotBirth(particleFile=self.fbm_Dbeam_gc, fig=fig)
+                GRAPHICStools.adjust_figure_layout(fig)
 
         if self.fbm_T_gc is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM T GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_gc, finalProfile=self.nfusT)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM T PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_po, finalProfile=self.nfusT)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # TGLF
         if hasattr(self, "TGLF") and self.TGLF is not None:
             figGR = self.fn.add_figure(tab_color=fn_color, label="TGLF1")
             figFL = self.fn.add_figure(tab_color=fn_color, label="TGLF2")
             self.plotTGLF(figGR=figGR, figFL=figFL)
+            GRAPHICStools.adjust_figure_layout(figGR)
+            GRAPHICStools.adjust_figure_layout(figFL)
 
         # ~~~~~~~~~~~~~ Comparisons
         if hasattr(self, "exp") and self.exp is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="EXP")
             self.plotComparison(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ~~~~~~~~~~~~~ Comparisons
         if hasattr(self, "isolver") and self.isolver is not None:
             self.plotISOLVER(fn=self.fn, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ~~~~~~~~~~~~~ Final g-file
         # 	Here I make the exception of reading it at plotting, because I may have generated it since loading the class
@@ -13553,6 +13608,7 @@ class transp_output:
 
             fig = self.fn.add_figure(tab_color=fn_color, label="ANALYSIS - initial")
             self.analyze_initial(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
 
             if len(self.tlastsawU) > 1:
                 fig = self.fn.add_figure(
@@ -14382,7 +14438,7 @@ class transp_output:
 
             ax1.set_xlim([0.05, 35.0])
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     def plotFLTRANSP(self, tglfRun="tglf1", fig=None, label="", time=None):
         if time is not None:
@@ -14544,7 +14600,7 @@ class transp_output:
             ax1.set_ylabel("Te fluct")
             ax2.set_ylabel("ne fluct")
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     # --------
 
