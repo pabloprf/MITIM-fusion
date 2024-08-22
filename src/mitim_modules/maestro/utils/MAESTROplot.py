@@ -45,12 +45,12 @@ def plot_results(self, fn):
     objs = OrderedDict()
     for i,beat in enumerate(self.beats.values()):
         if isinstance(beat, portals_beat) and ('input.gacode' in os.listdir(beat.folder_output)):
-            objs[f'PORTALS beat #{i+1}'] = PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode')
+            objs[f'PORTALS beat #{i+1} (final)'] = PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode')
 
         if isinstance(beat, transp_beat):
             output_file = IOtools.findFileByExtension(beat.folder_output, '.CDF', agnostic_to_case=True, provide_full_path=True)
             if output_file is not None:
-                objs[f'TRANSP beat #{i+1}'] = CDFtools.transp_output(output_file)
+                objs[f'TRANSP beat #{i+1} (final)'] = CDFtools.transp_output(output_file)
 
     # Collect initialization
     g = GEQtools.MITIMgeqdsk(f'{self.beats[1].initializer.folder}/freegs.geqdsk')
@@ -87,8 +87,8 @@ def _plot_transitions(self, objs, fn, g=None, label = ""):
     fig = fn.add_figure(label=f'{label} 0->1', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-        ABCD
-        AEFG
+            ABCDH
+            AEFGI
         """
     )
     obj1 = g
@@ -108,8 +108,8 @@ def _plot_transitions(self, objs, fn, g=None, label = ""):
         fig = fn.add_figure(label=f'{label} {i+1}->{i+2}', tab_color=2)
         axs = fig.subplot_mosaic(
             """
-            ABCD
-            AEFG
+            ABCDH
+            AEFGI
             """
         )
 
@@ -122,24 +122,25 @@ def _plot_transition(self, obj1, obj2, axs):
     # ----------------------------------
 
     ax = axs['A']
-    rho = np.linspace(0, 1, 11)
+    rho = np.linspace(0, 1, 21)
     
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
+    for obj, color, lw in zip([obj1, obj2], ['b', 'r'], [1.0,0.5]):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            obj.plotGeometry(ax=ax, surfaces_rho=rho, label=obj.labelMAESTRO, color=color)
+            obj.plotGeometry(ax=ax, surfaces_rho=rho, label=obj.labelMAESTRO, color=color, lw=lw, lw1=lw*3)
             ax.set_xlim(obj.derived['R_surface'].min()*0.9, obj.derived['R_surface'].max()*1.1)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            obj.plotGeometry(ax=ax, time=obj.t[it], rhoS=rho, label=obj.labelMAESTRO,
+            obj.plotGeometry(ax=ax, time=obj.t[it], rhoS=rho, label=obj.labelMAESTRO,lwB=lw*3, lw = lw,
                 plotComplete=False, plotStructures=False, color=color, plotSurfs=True)
             ax.set_xlim(obj.Rmin[it].min()*0.9, obj.Rmax[it].max()*1.1)
         elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            obj.plotFluxSurfaces(ax=ax, fluxes=rho, rhoPol=False, sqrt=True, color=color, label=obj.labelMAESTRO)
+            obj.plotFluxSurfaces(ax=ax, fluxes=rho, rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,
+            label=obj.labelMAESTRO)
 
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
     ax.set_aspect("equal")
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
 
@@ -161,7 +162,7 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_ylabel("$T_e$ (keV)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
     # Ti profiles
@@ -178,7 +179,7 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_ylabel("$T_i$ (keV)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
     # ne profiles
@@ -195,7 +196,7 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
 
@@ -219,7 +220,7 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
     # Ohmic
@@ -236,7 +237,7 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
 
     # ----------------------------------
@@ -252,10 +253,36 @@ def _plot_transition(self, obj1, obj2, axs):
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
             ax.plot(obj.xb_lw, obj.q[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, GEQtools.MITIMgeqdsk):
+            ax.plot(obj.g['RHOVN'], obj.g['QPSI'], '-.*', markersize=3, label=obj.labelMAESTRO, color=color)
+
 
     ax.set_xlabel("$\\rho_N$")
     ax.set_ylabel("$q$")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
-    ax.legend()
+    ax.legend(prop={'size':8})
+    GRAPHICStools.addDenseAxis(ax)
+
+    # ----------------------------------
+    # Pressure
+    # ----------------------------------
+
+    ax = axs['H']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ptot(Pa)']*1E-6, '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.p_kin[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, GEQtools.MITIMgeqdsk):
+            ax.plot(obj.g['RHOVN'], obj.g['PRES']*1E-6, '-.*', markersize=3, label=obj.labelMAESTRO, color=color)
+
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$p_{kin}$ (MPa)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)

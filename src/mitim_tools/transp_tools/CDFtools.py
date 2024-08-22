@@ -5208,6 +5208,7 @@ class transp_output:
         inverted=False,
         sqrt=True,
         lwB=3,
+        lw = 1,
         label="",
         labelS="",
         plotBound=True,
@@ -5230,7 +5231,6 @@ class transp_output:
         for rho in rhoS:
             RMC, YMC = getFluxSurface(self.f, time, rho, rhoPol=rhoPol, sqrt=sqrt)
             if plotComplete or plotSurfs:
-                lw = 1
                 co = colorsurfs
                 ax.plot(
                     mult * RMC, YMC, lw=lw, c=co, ls=ls, alpha=alphasurfs, label=labelS
