@@ -11,6 +11,9 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 
+MARKERSIZE = 2
+LW = 0.5
+
 def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
@@ -146,55 +149,42 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_aspect("equal")
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Equilibria")
 
 
     # ----------------------------------
     # Kinetic Profiles
     # ----------------------------------
 
-    # Te profiles
+    # T profiles
     ax = axs['B']
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['te(keV)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['te(keV)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ti(keV)'][:,0], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Te[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.x_lw, obj.Te[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.x_lw, obj.Ti[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
 
     ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$T_e$ (keV)")
+    ax.set_ylabel("$T$ (keV)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Temperatures")
 
-    # Ti profiles
+    # ne profiles
     ax = axs['C']
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ti(keV)'][:,0], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Ti[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$T_i$ (keV)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-
-    # ne profiles
-    ax = axs['D']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=3, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.ne[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.x_lw, obj.ne[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
 
     ax.set_xlabel("$\\rho_N$")
     ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
@@ -202,6 +192,59 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Electron Density")
+
+    # ----------------------------------
+    # Pressure
+    # ----------------------------------
+
+    ax = axs['D']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ptot(Pa)']*1E-6, '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.p_kin[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, GEQtools.MITIMgeqdsk):
+            ax.plot(obj.g['RHOVN'], obj.g['PRES']*1E-6, '-.*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$p_{kin}$ (MPa)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend(prop={'size':8})
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Total Pressure")
+
+
+
+
+    # ----------------------------------
+    # Current
+    # ----------------------------------
+
+    # q-profile
+    ax = axs['H']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['q(-)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.xb_lw, obj.q[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, GEQtools.MITIMgeqdsk):
+            ax.plot(obj.g['RHOVN'], obj.g['QPSI'], '-.*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$q$")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend(prop={'size':8})
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Safety Factor")
 
 
     # ----------------------------------
@@ -213,12 +256,12 @@ def _plot_transition(self, obj1, obj2, axs):
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfe(MW/m^3)'], '-o', markersize=3, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfi(MW/m^3)'], '--*', markersize=3, label=obj.labelMAESTRO+', i', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfe(MW/m^3)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfi(MW/m^3)'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Peich[it], '--s', markersize=3, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.x_lw, obj.Peich[it], '-.^', markersize=3, label=obj.labelMAESTRO+', i', color=color)
+            ax.plot(obj.x_lw, obj.Peich[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.x_lw, obj.Peich[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
 
     ax.set_xlabel("$\\rho_N$")
     ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
@@ -226,16 +269,17 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("ICH Power Deposition")
 
     # Ohmic
     ax = axs['F']
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qohme(MW/m^3)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qohme(MW/m^3)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Poh[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.x_lw, obj.Poh[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
 
     ax.set_xlabel("$\\rho_N$")
     ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
@@ -243,50 +287,56 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Ohmic Power Deposition")
 
     # ----------------------------------
-    # Current
+    # Heat fluxes
     # ----------------------------------
 
-    # q-profile
     ax = axs['G']
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['q(-)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.derived['qe_MWm2'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.derived['qi_MWm2'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
+
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.xb_lw, obj.q[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            ax.plot(obj.g['RHOVN'], obj.g['QPSI'], '-.*', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.x_lw, obj.qe_obs_GACODE[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.x_lw, obj.qi_obs_GACODE[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
 
 
     ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$q$")
+    ax.set_ylabel("$Q$ ($MW/m^2$)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Energy Fluxes")
 
     # ----------------------------------
-    # Pressure
+    # Dynamic targets
     # ----------------------------------
 
-    ax = axs['H']
+    ax = axs['I']
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ptot(Pa)']*1E-6, '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.derived['qrad'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', rad', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qei(MW/m^3)'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', exc', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qfuse(MW/m^3)']+obj.profiles['qfusi(MW/m^3)'], '-s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
+
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.p_kin[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            ax.plot(obj.g['RHOVN'], obj.g['PRES']*1E-6, '-.*', markersize=3, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.x_lw, obj.Prad[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', rad', color=color)
+            ax.plot(obj.x_lw, obj.Pei[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', exc', color=color)
+            ax.plot(obj.x_lw, obj.Pfuse[it]+obj.Pfusi[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
 
 
     ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$p_{kin}$ (MPa)")
+    ax.set_ylabel("$Q$ ($MW/m^2$)")
     ax.set_ylim(bottom = 0)
     ax.set_xlim(0,1)
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Dynamic Targets")
