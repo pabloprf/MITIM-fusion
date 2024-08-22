@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.transp_tools import CDFtools
@@ -41,59 +42,99 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 def plot_results(self, fn):
 
     # Collect PORTALS profiles and TRANSP cdfs
-    ps = []
-    ps_nums = []
-    cdfs = []
-    cdfs_nums = []
+    objs = OrderedDict()
     for i,beat in enumerate(self.beats.values()):
         if isinstance(beat, portals_beat) and ('input.gacode' in os.listdir(beat.folder_output)):
-            ps.append(PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode'))
-            ps_nums.append(i+1)
+            objs[f'PORTALS beat #{i+1}'] = PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode')
 
         if isinstance(beat, transp_beat):
             output_file = IOtools.findFileByExtension(beat.folder_output, '.CDF', agnostic_to_case=True, provide_full_path=True)
             if output_file is not None:
-                cdfs.append(CDFtools.transp_output(output_file))
-                cdfs_nums.append(i+1)
-        
-    # Collect geqdsk
+                objs[f'TRANSP beat #{i+1}'] = CDFtools.transp_output(output_file)
+
+    # Collect initialization
     g = GEQtools.MITIMgeqdsk(f'{self.beats[1].initializer.folder}/freegs.geqdsk')
 
     # Plot profiles
-    figs = PROFILEStools.add_figures(fn,fnlab_pre = "MAESTRO - ")
+    _plot_profiles_evolution(self,objs, fn, fnlab_pre = "MAESTRO - ")
+
+    # Plot transitions
+    _plot_transitions(self, objs, fn, g= g, label = "MAESTRO Equilibria")
+
+def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
+
+    ps = []
+    ps_lab = []
+    for label in objs:
+        if isinstance(objs[label], PROFILEStools.PROFILES_GACODE):
+            ps.append(objs[label])
+            ps_lab.append(label)
+
+    # Plot profiles
+    figs = PROFILEStools.add_figures(fn,fnlab_pre = fnlab_pre)
     log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
     with IOtools.conditional_log_to_file(log_file=log_file):
-        PROFILEStools.plotAll(ps, extralabs=[f'beat_{i}' for i in range(len(ps))], figs=figs)
+        PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
 
     for p in ps:
         p.printInfo()
 
-    # Plot equilibria
-    fig = fn.add_figure(label="MAESTRO Equilibria", tab_color=2)
+def _plot_transitions(self, objs, fn, g=None, label = ""):
+
+    keys = list(objs.keys())
+
+    # Plot transitions 0 -> 1
+    fig = fn.add_figure(label=f'{label} 0->1', tab_color=2)
     axs = fig.subplot_mosaic(
         """
         ABCD
+        AEFG
         """
     )
+    obj1 = g
+    obj1.labelMAESTRO = 'geqdsk'
+    obj2 = objs[keys[0]]
+    obj2.labelMAESTRO = keys[0]
+    _plot_transition(self, obj1, obj2, axs)
 
-    rho = np.linspace(0, 1, 11)
+    # Plot transitions N -> N+1
+    for i in range(len(objs)-1):
+        obj1 = objs[keys[i]]
+        obj2 = objs[keys[i+1]]
 
-    colors = GRAPHICStools.listColors()
+        obj1.labelMAESTRO = keys[i]
+        obj2.labelMAESTRO = keys[i+1]
+
+        fig = fn.add_figure(label=f'{label} {i+1}->{i+2}', tab_color=2)
+        axs = fig.subplot_mosaic(
+            """
+            ABCD
+            AEFG
+            """
+        )
+
+        _plot_transition(self, obj1, obj2, axs)
+
+def _plot_transition(self, obj1, obj2, axs):
+
+    # ----------------------------------
+    # Equilibria
+    # ----------------------------------
 
     ax = axs['A']
-
-    g.plotFluxSurfaces(ax=ax, fluxes=rho, rhoPol=False, sqrt=True, color=colors[0], label='FreeGS')
-
-    cont = 1
-    for i in range(len(ps)):
-        ps[i].plotGeometry(ax=ax, surfaces_rho=rho, label=f'PORTALS beat #{ps_nums[i]}', color=colors[cont])
-        cont += 1
-        ax.set_xlim([ps[0].derived['R_surface'].min()*0.95, ps[0].derived['R_surface'].max()*1.05])
-    for i in range(len(cdfs)):
-        it = cdfs[i].ind_saw - 1
-        cdfs[i].plotGeometry(ax=ax, time=cdfs[i].t[it], rhoS=rho, label=f'TRANSP beat #{cdfs_nums[i]}',
-            plotComplete=False, plotStructures=False, color=colors[cont], plotSurfs=True)
-        cont += 1
+    rho = np.linspace(0, 1, 11)
+    
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            obj.plotGeometry(ax=ax, surfaces_rho=rho, label=obj.labelMAESTRO, color=color)
+            ax.set_xlim(obj.derived['R_surface'].min()*0.9, obj.derived['R_surface'].max()*1.1)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            obj.plotGeometry(ax=ax, time=obj.t[it], rhoS=rho, label=obj.labelMAESTRO,
+                plotComplete=False, plotStructures=False, color=color, plotSurfs=True)
+            ax.set_xlim(obj.Rmin[it].min()*0.9, obj.Rmax[it].max()*1.1)
+        elif isinstance(obj, GEQtools.MITIMgeqdsk):
+            obj.plotFluxSurfaces(ax=ax, fluxes=rho, rhoPol=False, sqrt=True, color=color, label=obj.labelMAESTRO)
 
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
@@ -101,50 +142,120 @@ def plot_results(self, fn):
     ax.legend()
     GRAPHICStools.addDenseAxis(ax)
 
-    # Plot Te profiles
+
+    # ----------------------------------
+    # Kinetic Profiles
+    # ----------------------------------
+
+    # Te profiles
     ax = axs['B']
-    cont = 0
-    for i in range(len(ps)):
-        ax.plot(ps[i].profiles['rho(-)'], ps[i].profiles['te(keV)'], '-o', markersize=3, label=f'PORTALS beat #{ps_nums[i]}', color=colors[cont])
-        cont += 1
-    for i in range(len(cdfs)):
-        it = cdfs[i].ind_saw - 1
-        ax.plot(cdfs[i].x_lw, cdfs[i].Te[it], '--s', markersize=3, label=f'TRANSP beat #{cdfs_nums[i]}', color=colors[cont])
-        cont += 1
 
-    ax.set_xlabel("$\\rho_N$"); ax.set_xlim(0,1)
-    ax.set_ylabel("$T_e$ (keV)"); ax.set_ylim(bottom = 0)
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['te(keV)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.Te[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$T_e$ (keV)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
     ax.legend()
     GRAPHICStools.addDenseAxis(ax)
 
-    # Plot Ti profiles
+    # Ti profiles
     ax = axs['C']
-    cont = 0
-    for i in range(len(ps)):
-        ax.plot(ps[i].profiles['rho(-)'], ps[i].profiles['ti(keV)'][:,0], '-o', markersize=3, label=f'PORTALS beat #{ps_nums[i]}', color=colors[cont])
-        cont += 1
-    for i in range(len(cdfs)):
-        it = cdfs[i].ind_saw - 1
-        ax.plot(cdfs[i].x_lw, cdfs[i].Ti[it], '--s', markersize=3, label=f'TRANSP beat #{cdfs_nums[i]}', color=colors[cont])
-        cont += 1
 
-    ax.set_xlabel("$\\rho_N$"); ax.set_xlim(0,1)
-    ax.set_ylabel("$T_i$ (keV)"); ax.set_ylim(bottom = 0)
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ti(keV)'][:,0], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.Ti[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$T_i$ (keV)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
     ax.legend()
     GRAPHICStools.addDenseAxis(ax)
 
-    # Plot ne profiles
+    # ne profiles
     ax = axs['D']
-    cont = 0
-    for i in range(len(ps)):
-        ax.plot(ps[i].profiles['rho(-)'], ps[i].profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=3, label=f'PORTALS beat #{ps_nums[i]}', color=colors[cont])
-        cont += 1
-    for i in range(len(cdfs)):
-        it = cdfs[i].ind_saw - 1
-        ax.plot(cdfs[i].x_lw, cdfs[i].ne[it], '--s', markersize=3, label=f'TRANSP beat #{cdfs_nums[i]}', color=colors[cont])
-        cont += 1
 
-    ax.set_xlabel("$\\rho_N$"); ax.set_xlim(0,1)
-    ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)"); ax.set_ylim(bottom = 0)
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.ne[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend()
+    GRAPHICStools.addDenseAxis(ax)
+
+
+    # ----------------------------------
+    # Powers
+    # ----------------------------------
+
+    # RF
+    ax = axs['E']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfe(MW/m^3)'], '-o', markersize=3, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfi(MW/m^3)'], '--*', markersize=3, label=obj.labelMAESTRO+', i', color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.Peich[it], '--s', markersize=3, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.x_lw, obj.Peich[it], '-.^', markersize=3, label=obj.labelMAESTRO+', i', color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend()
+    GRAPHICStools.addDenseAxis(ax)
+
+    # Ohmic
+    ax = axs['F']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['qohme(MW/m^3)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.x_lw, obj.Poh[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
+    ax.legend()
+    GRAPHICStools.addDenseAxis(ax)
+
+    # ----------------------------------
+    # Current
+    # ----------------------------------
+
+    # q-profile
+    ax = axs['G']
+
+    for obj, color in zip([obj1, obj2], ['b', 'r']):
+        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
+            ax.plot(obj.profiles['rho(-)'], obj.profiles['q(-)'], '-o', markersize=3, label=obj.labelMAESTRO, color=color)
+        elif isinstance(obj, CDFtools.transp_output):
+            it = obj.ind_saw - 1
+            ax.plot(obj.xb_lw, obj.q[it], '--s', markersize=3, label=obj.labelMAESTRO, color=color)
+
+    ax.set_xlabel("$\\rho_N$")
+    ax.set_ylabel("$q$")
+    ax.set_ylim(bottom = 0)
+    ax.set_xlim(0,1)
     ax.legend()
     GRAPHICStools.addDenseAxis(ax)
