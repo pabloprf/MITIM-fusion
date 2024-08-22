@@ -18,8 +18,9 @@ def main():
         "--only", type=str, required=False, default=None
     )
     parser.add_argument(
-        "--simple", type=bool, required=False, default=False
-    )
+        "--simple", required=False, default=False, action="store_true"
+    )  
+
     args = parser.parse_args()
 
     folder = args.folder
