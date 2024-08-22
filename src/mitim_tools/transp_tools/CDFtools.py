@@ -93,7 +93,7 @@ class transp_output:
         readTGLF=False,
         readTORIC=False,
         readGFILE=False,
-        readStructures=False,
+        readStructures=True,
         readGEQDSK=False,
         calculateAccurateLineAverage=None,
         calcualtePorcelli=False,
@@ -133,7 +133,8 @@ class transp_output:
         # Capability to provide folder and just find the CDF in there
         if os.path.isdir(self.LocationCDF):
             self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF+'/', ".CDF", agnostic_to_case=True, provide_full_path = True)
-
+            if self.LocationCDF is None:
+                raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
 
         self.f = read_cdf_transp(self.LocationCDF) 

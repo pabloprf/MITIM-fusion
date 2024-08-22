@@ -290,6 +290,31 @@ class UFILEtransp:
 
             f.write(lineToWrite)
 
+    def plot(self,         
+        ax=None,
+        axis="X",
+        axisSlice="Y",
+        lw=1.0,
+        ms=1.0,
+        alpha=1.0,
+        label=""
+        ):
+
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots()
+
+        colors = GRAPHICStools.listColors()
+
+        for i in range(len(self.Variables[axisSlice])):
+            self.plotVar(ax=ax, axis=axis, axisSlice=axisSlice, val=self.Variables[axisSlice][i], lw=lw, ms=ms, alpha=alpha,
+                label = label + f" {self.Variables[axisSlice][i]:.2f}", color = colors[i])
+
+        ax.set_xlabel(axis)
+        ax.legend()
+        GRAPHICStools.addDenseAxis(ax)
+
+
     def plotVar(
         self,
         ax=None,
@@ -300,6 +325,7 @@ class UFILEtransp:
         ms=1.0,
         alpha=1.0,
         label="",
+        color = 'b'
     ):
         import matplotlib.pyplot as plt
 
@@ -316,7 +342,7 @@ class UFILEtransp:
         if ax is None:
             plt.ion()
             fig, ax = plt.subplots()
-        ax.plot(x, z, "-o", markersize=ms, lw=lw, alpha=alpha, label=label)
+        ax.plot(x, z, "-o", markersize=ms, lw=lw, alpha=alpha, label=label, color=color)
 
     def addEQheader(self, BtSign=-1, IpSign=-1):
         Btstr = f"{BtSign:.4e}".rjust(11)

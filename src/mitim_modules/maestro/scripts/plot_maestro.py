@@ -17,13 +17,17 @@ def main():
     parser.add_argument(
         "--only", type=str, required=False, default=None
     )
+    parser.add_argument(
+        "--simple", type=bool, required=False, default=False
+    )
     args = parser.parse_args()
 
     folder = args.folder
     beats = args.beats
     only = args.only
+    simple = args.simple
 
-    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only)
+    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only, full_plot = not simple)
 
     # Import IPython and embed an interactive session
     from IPython import embed

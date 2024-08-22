@@ -1073,6 +1073,7 @@ class MITIMgeqdsk:
         sqrt=False,
         lw=1,
         plot1=True,
+        label = '',
     ):
         x = self.g["AuxQuantities"]["R"]
         y = self.g["AuxQuantities"]["Z"]
@@ -1086,7 +1087,7 @@ class MITIMgeqdsk:
             z = z**2
 
         cs, csA = plotSurfaces(
-            x, y, z, fluxes=fluxes, ax=ax, color=color, alpha=alpha, lw=lw, plot1=plot1
+            x, y, z, fluxes=fluxes, ax=ax, color=color, alpha=alpha, lw=lw, plot1=plot1, label = label
         )
 
         return cs, csA
@@ -1304,7 +1305,7 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
     return c, s, bbox
 
 def plotSurfaces(
-    R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True
+    R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True, label = ''
 ):
     if ax is None:
         fig, ax = plt.subplots()
@@ -1318,7 +1319,7 @@ def plotSurfaces(
     else:
         csA = None
     cs = ax.contour(
-        Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw
+        Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw, label = label
     )
 
     return cs, csA

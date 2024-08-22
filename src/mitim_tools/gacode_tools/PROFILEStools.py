@@ -3624,7 +3624,7 @@ class PROFILES_GACODE:
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
 
-    def plotGeometry(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b"):
+    def plotGeometry(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = ''):
         if ("R_surface" in self.derived) and (self.derived["R_surface"] is not None):
             if ax is None:
                 plt.ion()
@@ -3651,6 +3651,7 @@ class PROFILES_GACODE:
                 "o",
                 markersize=2,
                 c=color,
+                label = label
             )
 
             if not provided:

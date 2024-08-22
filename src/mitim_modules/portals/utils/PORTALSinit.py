@@ -386,7 +386,7 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
         )
 
     # ----------------------------------------------------------------------------------
-    # 2. Add extra resolution around the modelled (e.g. TGYRO) poitns
+    # 2. Add extra resolution around the modelled (e.g. TGYRO) points
     # ----------------------------------------------------------------------------------
 
     for i in range(points_updown):
