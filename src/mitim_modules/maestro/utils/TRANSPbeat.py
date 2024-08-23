@@ -255,7 +255,7 @@ class transp_initializer_from_profiles(beat_initializer):
     def __init__(self, beat_instance, label = 'profiles'):
         super().__init__(beat_instance, label = label)
 
-    def __call__(self, profiles_file=None, profiles = {}, Vsurf = 0.0):
+    def __call__(self, profiles_file=None, profiles = {}, Vsurf = 0.0, **kwargs):
 
         # Load profiles
         self.p = PROFILEStools.PROFILES_GACODE(profiles_file)

@@ -307,8 +307,9 @@ def simple_maestro_workflow(
     # beat N: TRANSP from FreeGS and freeze engineering parameters
     # ------------------------------------------------------------
 
-    m.define_beat('transp', initializer='freegs')
-    m.initialize(**geometry,**parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15))
+    m.define_beat('transp', initializer='geqdsk' if 'geqdsk_file' in geometry else 'freegs')
+    m.initialize(**geometry, **parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15))
+    
     m.prepare(**transp_namelist)
     m.run()
 

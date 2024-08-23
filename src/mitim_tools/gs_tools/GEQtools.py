@@ -1102,7 +1102,7 @@ class MITIMgeqdsk:
     # Parameterizations
     # -----------------------------------------------------------------------------
 
-    def get_MXH_coeff_new(self, n_coeff=7): 
+    def get_MXH_coeff_new(self, n_coeff=7, plotYN=False): 
 
         psis = self.g["AuxQuantities"]["PSI_NORM"]
         flux_surfaces = self.g['fluxSurfaces']['flux']
@@ -1111,12 +1111,12 @@ class MITIMgeqdsk:
         kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[],[],[]
         
         for flux in range(len(flux_surfaces)):
-            if flux == len(flux_surfaces)-1:
+            if False: #flux == len(flux_surfaces)-1:
                 Rf, Zf = self.Rb_prf, self.Yb_prf
             else:
                 Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
 
-            # Perform the MXH decomposition in
+            # Perform the MXH decompositionusing the MITIM surface class
             surfaces = mitim_flux_surfaces()
             surfaces.reconstruct_from_RZ(Rf,Zf)
             surfaces._to_mxh(n_coeff=n_coeff)
@@ -1144,6 +1144,19 @@ class MITIMgeqdsk:
         zmag = np.array(zmag)
         sn = np.array(sn)
         cn = np.array(cn)
+
+        if plotYN:
+            fig, ax = plt.subplots()
+            ax.plot(self.Rb_prf, self.Yb_prf, 'o-', c = 'b')
+
+            surfaces = mitim_flux_surfaces()
+            surfaces.reconstruct_from_RZ(self.Rb_prf, self.Yb_prf)
+            surfaces._to_mxh(n_coeff=n_coeff)
+            surfaces._from_mxh()
+
+            ax.plot(surfaces.R[0], surfaces.Z[0], 'o-', c = 'r')
+
+            plt.show()
 
         return psis, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn
 

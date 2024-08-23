@@ -185,10 +185,10 @@ class transp_run:
                     t = str(int(time*1E3)).zfill(5)
                     R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
-                    # # Downsample seems to be necessary sometimes ----
-                    # R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
-                    # R, Z = R[:-1], Z[:-1]
-                    # # -----------------------------------------------
+                    # Downsample seems to be necessary sometimes ----
+                    R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
+                    R, Z = R[:-1], Z[:-1]
+                    # -----------------------------------------------
 
                     writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
                     tt.append(t)
