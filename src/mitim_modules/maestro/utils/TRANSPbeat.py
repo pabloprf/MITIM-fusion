@@ -2,7 +2,7 @@ import os
 import copy
 import hashlib
 import numpy as np
-from mitim_tools.gs_tools import FREEGStools
+from mitim_tools.gs_tools import FREEGStools, GEQtools
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
@@ -51,24 +51,31 @@ class transp_beat(beat):
             self.initializer = beat_initializer(self)
         elif initializer == 'freegs':
             self.initializer = transp_initializer_from_freegs(self)
+        elif initializer == 'geqdsk':
+            self.initializer = transp_initializer_from_geqdsk(self)
         elif initializer == 'portals':
             self.initializer = transp_initializer_from_portals(self)
         else:
             raise ValueError(f'Initializer "{initializer}" not recognized')
 
-    def initialize(self, flattop_window = 0.05, freeze_parameters = False, *args,  **kwargs):
+    def initialize(
+        self,
+        flattop_window      = 0.15,  # To allow for steady-state in heating and current diffusion
+        transition_window   = 0.10,  # To prevent equilibrium crashes
+        freeze_parameters = False, 
+        **kwargs_initializer
+        ):
 
-        transition_window       = 0.1    # s
-        currentheating_window   = 0.001  # s
 
         # Define timings
-        self.time_init = 0.0                                                # Start with D3D equilibrium
+        currentheating_window = 0.001
+        self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
 
         # Initialize
-        self.initializer(*args,**kwargs)
+        self.initializer(**kwargs_initializer)
 
         # Freeze parameters
         if freeze_parameters:
@@ -76,15 +83,19 @@ class transp_beat(beat):
 
     def _freeze_parameters(self):
 
-        RZ_sep = self.initializer.f.eq.separatrix(npoints= 100)
+        quantities = {
+            'Ip_MA': self.initializer.Ip_MA,
+            'B_T': self.initializer.B_T,
+            'Zeff': self.initializer.Zeff,
+            'PichT_MW': self.initializer.PichT_MW,
+            'RZsep': self.initializer.RZsep
+        }
 
-        self.maestro_instance.freeze_parameters(
-            self.initializer.Ip_MA,
-            self.initializer.B_T,
-            self.initializer.Zeff,
-            self.initializer.PichT_MW,
-            RZ_sep
-            )
+        # Freeze parameters to maestro class to avoid leaks when going from beat to beat
+        self.maestro_instance.freeze_parameters(*quantities.values())
+
+        # Save numpy arrays to folder for easy reading
+        np.savez(f'{self.initializer.folder}/frozen_quantities.npz', **quantities)
 
     def prepare(self, letter = None, shot = None, **transp_namelist):
 
@@ -142,10 +153,22 @@ class transp_beat(beat):
         # Write Ufiles
         self.transp.write_ufiles()
 
-    def _additional_operations(self):
+    def _additional_operations(self, machine_initialization = 'CMOD'):
 
-        # Trick needed to avoid quval error when starting from D3D
-        self.transp.populate_time.from_freegs(self.time_init, 1.67, 0.6, 1.75, 0.38, 0.0, 0.0, 0.074, 1.6, 2.0)
+        '''
+        ----------------------------------------------------------------------------------------------------------------------
+        TRANSP must be initialized with a specific machine, so here I use the trick of changing the equilibrium and parameters
+        in time, to make a smooth transition and avoid equilibrium crashes (e.g. quval error)
+        ----------------------------------------------------------------------------------------------------------------------
+        '''
+        self.machine_run = machine_initialization
+
+        if self.machine_run == 'D3D':
+            R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T = 1.67, 0.6, 1.75, 0.38, 0.0, 0.0, 0.074, 1.6, 2.0
+        elif self.machine_run == 'CMOD':
+            R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4
+        
+        self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T)
         
         '''
         --------------------------------------------------------------------------------------------
@@ -193,7 +216,7 @@ class transp_beat(beat):
 
         hours_allocation = 8 # 12
 
-        self.transp.run('D3D', mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*hours_allocation, case=self.transp.runid, checkMin=5)
+        self.transp.run(self.machine_run, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*hours_allocation, case=self.transp.runid, checkMin=5)
         self.c = self.transp.c
 
     # --------------------------------------------------------------------------------------------
@@ -242,28 +265,21 @@ class transp_beat(beat):
 # Initializers
 # --------------------------------------------------------------------------------------------
 
-class transp_initializer_from_freegs(transp_initializer):
-
-    def __init__(self, beat_instance):
-        super().__init__(beat_instance, label = 'freegs')
+class transp_initializer_from_eq(transp_initializer):
+    def __init__(self, beat_instance, label = ''):
+        super().__init__(beat_instance, label = label)
             
     def __call__(
         self,
-        R,
-        a,
-        kappa_sep,
-        delta_sep,
-        zeta_sep,
-        z0,
-        Ip_MA,
-        B_T,
-        Zeff,
-        PichT_MW,
+        Ip_MA = 1.0,
+        B_T = 5.4,
+        Zeff = 1.5,
+        PichT_MW = 10.0,
         p0_MPa = 1.0,
         ne0_20 = 1.0,
-        profiles = {}):
+        profiles = {},
+        **kwargs_f):
 
-        self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
         self.p0_MPa, self.Ip_MA, self.B_T = p0_MPa, Ip_MA, B_T
         self.ne0_20, self.Zeff, self.PichT_MW = ne0_20, Zeff, PichT_MW
         self.profiles = profiles
@@ -277,12 +293,11 @@ class transp_initializer_from_freegs(transp_initializer):
             Te0_keV = profiles['Te'][1][0]
             self.p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (self.ne0_20 * 1E20) * 1E-6 #MPa
             
-        # FreeGS
-        self.f = FREEGStools.freegs_millerized(self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0)
-        self.f.prep(self.p0_MPa, self.Ip_MA, self.B_T)
-        self.f.solve()
-        self.f.derive()
-        self.f.write(f'{self.folder}/freegs.geqdsk')
+        # FreeGS or other, that produces f that has a separatrix, engineering parameters and a to_transp()
+        self._produce_f(**kwargs_f)
+
+    def _produce_f(self, **kwargs):
+        pass 
 
     def prepare_to_beat(self):
 
@@ -324,12 +339,53 @@ class transp_initializer_from_freegs(transp_initializer):
             for time in times:
                 self.transp.add_variable_time(time, self.profiles['ne'][0], self.profiles['ne'][1]*1E20*1E-6, variable='NEL')
 
-class transp_initializer_from_geqdsk(transp_initializer):
+class transp_initializer_from_freegs(transp_initializer_from_eq):
+
+    def __init__(self, beat_instance):
+        super().__init__(beat_instance, label = 'freegs')
+            
+    def _produce_f(self,
+        R,
+        a,
+        kappa_sep,
+        delta_sep,
+        zeta_sep,
+        z0):
+
+        # Load parameters
+        self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0 = R, a, kappa_sep, delta_sep, zeta_sep, z0
+
+        # FreeGS
+        self.f = FREEGStools.freegs_millerized(self.R, self.a, self.kappa_sep, self.delta_sep, self.zeta_sep, self.z0)
+        self.f.prep(self.p0_MPa, self.Ip_MA, self.B_T)
+        self.f.solve()
+        self.f.derive()
+        self.f.write(f'{self.folder}/freegs.geqdsk')
+
+        self.RZsep = self.f.eq.separatrix(npoints= 100)
+
+class transp_initializer_from_geqdsk(transp_initializer_from_eq):
     def __init__(self, beat_instance):
         super().__init__(beat_instance, label = 'geqdsk')
 
-    # TO DO
+    def _produce_f(self, geqdsk_file = None):
+        
+        # Generic geqdsk
+        self.f = FREEGStools.geqdsk_reader(geqdsk_file)
 
+        # Load parameters
+        self.R = self.f.g.Rmajor
+        self.a = self.f.g.a
+        self.kappa_sep = self.f.g.kappa
+        self.delta_sep = self.f.g.delta
+        self.zeta_sep = self.f.g.zeta
+        self.z0 = self.f.g.Zmajor
+
+        os.system(f'cp {geqdsk_file} {self.folder}/geqdsk')
+
+        # Separatrix
+        self.RZsep = np.array([self.f.g.Rb_prf,self.f.g.Yb_prf]).T
+        
 class transp_initializer_from_portals(transp_initializer):
 
     def __init__(self, beat_instance):
@@ -370,7 +426,10 @@ class transp_initializer_from_portals(transp_initializer):
 def string_to_sequential_5_digit_number(input_string):
     # Split the input string into the base and the numeric suffix
     base_part = input_string[:-1]
-    sequence_digit = int(input_string[-1])
+    try:
+        sequence_digit = int(input_string[-1])
+    except ValueError:
+        sequence_digit = 0
 
     # Create a hash of the base part using SHA-256
     hash_object = hashlib.sha256(base_part.encode())

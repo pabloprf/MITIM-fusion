@@ -487,7 +487,7 @@ def interpretRun(infoSLURM, log_file):
     return info, status
 
 
-def pringLogTail(log_file, howmanylines=50, typeMsg="w"):
+def pringLogTail(log_file, howmanylines=100, typeMsg="w"):
     howmanylines = np.min([len(log_file), howmanylines])
 
     print(f"\t* Last {howmanylines} lines of log file:")

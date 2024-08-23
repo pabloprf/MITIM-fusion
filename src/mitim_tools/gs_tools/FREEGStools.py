@@ -1534,3 +1534,23 @@ class freegs_millerized:
         transp.write_ufiles()
 
         return transp
+
+class geqdsk_reader:
+    
+    def __init__(self, filename = None):
+
+        self.g = GEQtools.MITIMgeqdsk(filename, fullLCFS=True)
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+
+        print("\t- Converting to TRANSP")
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        for time in times:
+            transp.populate_time._from_geqdsk(time,self.g,ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+
+        transp.write_ufiles()
+
+        return transp

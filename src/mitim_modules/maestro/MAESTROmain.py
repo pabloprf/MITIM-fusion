@@ -15,8 +15,12 @@ from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 '''
 MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
+ (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
 
-If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates
+Description of capabilities:
+
+- If initialized with... # TO DO
+
 '''
 
 # --------------------------------------------------------------------------------------------

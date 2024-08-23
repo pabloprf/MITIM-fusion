@@ -180,6 +180,13 @@ class transp_run:
             if (time in self.geometry) and ('R_sep' in self.geometry[time]):
                 t = str(int(time*1E3)).zfill(5)
                 R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
+
+                # Downsample ------------------------------------
+                R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
+                R, Z = R[:-1], Z[:-1]
+                # -----------------------------------------------
+
+
                 writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
                 tt.append(t)
 
@@ -541,9 +548,19 @@ class transp_input_time:
 
         self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def from_geqdsk(self, time, geqdsk_file, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def _from_geqdsk(self, time, geqdsk_object, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+        
 
-        pass
+        rhotor = geqdsk_object.g['RHOVN']
+        q = geqdsk_object.g['QPSI']
+        pressure = geqdsk_object.g['PRES']
+
+        Ip = geqdsk_object.g['CURRENT']  # A
+        RB = geqdsk_object.g['RCENTR']*geqdsk_object.g['BCENTR'] * 1E2 
+        RZ = np.array([geqdsk_object.Rb_prf,geqdsk_object.Yb_prf]).T
+
+        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+
 
     def _from_eq_quantities(self, time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 

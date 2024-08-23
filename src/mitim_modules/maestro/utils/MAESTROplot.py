@@ -11,7 +11,7 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 
-MARKERSIZE = 2
+MARKERSIZE = 4
 LW = 0.5
 
 def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
