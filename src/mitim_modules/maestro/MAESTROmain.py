@@ -54,7 +54,7 @@ class maestro:
         self.master_restart = master_restart # If True, all next beats will be restarted
 
         self.parameters_trans_beat = {} # I can save parameters that can be useful for future beats
-        self.profiles_with_engineering_parameters = None
+        self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
 
         print('\n -----------------------------------------------------------------------------------')
         print(f'MAESTRO run (MITIM version {__version__})')
@@ -79,20 +79,6 @@ class maestro:
 
         # Check here if the beat has already been performed
         self._check(restart = restart or self.master_restart )
-
-    def freeze_parameters(self, profiles):
-        '''
-        During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
-        to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
-        if beat by beat it's, for whatever reason, lower.
-        In other words, e.g., it's best to not pass the ICH power from input.gacode PORTALS to TRANSP, but
-        rather take the original intended ICH power.
-        I assume that the PROFILES object passed here contains:
-            Ip, Bt, Zeff, PichT_MW, RZsep
-        and those are the ones frozen
-        '''
-
-        self.profiles_with_engineering_parameters = profiles
 
     # --------------------------------------------------------------------------------------------
     # Beat operations
@@ -128,23 +114,24 @@ class maestro:
             log_file = f'{self.folder_logs}/beat_{self.counter}_ini.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.initialize(*args, **kwargs)
-
-                # Freeze parameters
-                if kwargs.get('freeze_parameters', False):
-                    '''
-                    During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
-                    to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
-                    if beat by beat it's, for whatever reason, lower.
-                    In other words, e.g., it's best to not pass the ICH power from input.gacode PORTALS to TRANSP, but
-                    rather take the original intended ICH power.
-                    I assume that the PROFILES object passed here contains:
-                        Ip, Bt, Zeff, PichT_MW, RZsep
-                    and those are the ones frozen
-                    '''
-                    self.beat.freeze_parameters()
-
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
+            self.beat.retrieve_frozen_parameters_when_skipping()
+
+        '''
+        Freeze parameters
+        -----------------
+        During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
+        to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
+        if beat by beat it's, for whatever reason, lower.
+        In other words, e.g., it's best to not pass the ICH power from input.gacode PORTALS to TRANSP, but
+        rather take the original intended ICH power.
+        I assume that the PROFILES object passed here contains:
+            Ip, Bt, Zeff, PichT_MW, RZsep
+        and those are the ones frozen
+        I need to to this always, regardless of the run_flag such that next beats can use the frozen parameters
+        '''
+        self.beat.freeze_parameters()
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
@@ -320,7 +307,7 @@ def simple_maestro_workflow(
     # ------------------------------------------------------------
 
     m.define_beat('transp', initializer='freegs')
-    m.initialize(**geometry,**parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15), freeze_parameters = True)
+    m.initialize(**geometry,**parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15))
     m.prepare(**transp_namelist)
     m.run()
 

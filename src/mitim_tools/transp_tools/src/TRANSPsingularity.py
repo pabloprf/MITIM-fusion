@@ -466,6 +466,8 @@ def interpretRun(infoSLURM, log_file):
             "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
             ) or (
             "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
+            ) or (
+                "Segmentation fault - invalid memory reference" in "\n".join(log_file)
             ):
             status = -1
             info["info"]["status"] = "stopped"

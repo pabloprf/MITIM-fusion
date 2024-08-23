@@ -45,7 +45,6 @@ class transp_beat(beat):
         self,
         flattop_window      = 0.15,  # To allow for steady-state in heating and current diffusion
         transition_window   = 0.10,  # To prevent equilibrium crashes
-        freeze_parameters   = False, 
         **kwargs_initializer
         ):
 
@@ -62,8 +61,14 @@ class transp_beat(beat):
 
     def freeze_parameters(self):
 
+        print(f'\t\t- Freezing engineering parameters from MAESTRO: {IOtools.clipstr(self.initializer.folder+"/input.gacode_frozen")}')
         self.maestro_instance.profiles_with_engineering_parameters = self.initializer.p
         self.maestro_instance.profiles_with_engineering_parameters.writeCurrentStatus(file=self.initializer.folder+'/input.gacode_frozen' )
+
+    def retrieve_frozen_parameters_when_skipping(self):
+
+        print(f'\t\t- Retrieving frozen engineering parameters from MAESTRO: {IOtools.clipstr(self.initializer.folder+"/input.gacode_frozen")}')
+        self.initializer.p = PROFILEStools.PROFILES_GACODE(self.initializer.folder+'/input.gacode_frozen')
 
     def prepare(self, letter = None, shot = None, **transp_namelist):
         '''
@@ -116,8 +121,7 @@ class transp_beat(beat):
 
         # Additional operations
         self._additional_operations_add_initialization()
-        if self.maestro_instance.profiles_with_engineering_parameters is not None:
-            self._additional_operations_add_engineering_parameters()
+        self._additional_operations_add_engineering_parameters()
         self._additional_operations_add_ICH()
 
         # Write Ufiles
@@ -175,13 +179,9 @@ class transp_beat(beat):
 
     def _additional_operations_add_ICH(self, qm_minority = 2/3):
 
-        if self.maestro_instance.profiles_with_engineering_parameters is not None:
-            p = self.maestro_instance.profiles_with_engineering_parameters
-            PichT_MW = p.derived['qRF_MWmiller'][-1]
-            B_T = p.profiles['bcentr(T)'][0]
-        else:
-            PichT_MW = self.initializer.PichT_MW
-            B_T = self.initializer.B_T
+        p = self.maestro_instance.profiles_with_engineering_parameters
+        PichT_MW = p.derived['qRF_MWmiller'][-1]
+        B_T = p.profiles['bcentr(T)'][0]
 
         # ICRF on
         Frequency_He3 = B_T * (2*np.pi/qm_minority)
@@ -259,7 +259,9 @@ class transp_initializer_from_profiles(beat_initializer):
             self.p.profiles['ti(keV)'][:,0] = np.interp(self.p.profiles['rho(-)'], profiles['Ti'][0], profiles['Ti'][1])
             self.p.makeAllThermalIonsHaveSameTemp()
         if 'ne' in profiles:
+            old_density = copy.deepcopy(self.p.profiles['ne(10^19/m^3'])
             self.p.profiles['ne(10^19/m^3'] = np.interp(self.p.profiles['rho(-)'], profiles['ne'][0], profiles['ne'][1]*10.0)
+            self.p.profiles['ni(10^19/m^3'] = self.p.profiles['ni(10^19/m^3'] * (self.p.profiles['ne(10^19/m^3']/old_density)
 
         # Write it to initialization folder
         self.p.writeCurrentStatus(file=self.folder+'/input.gacode' )

@@ -44,6 +44,12 @@ class beat:
 
         return output_file is not None
 
+    def freeze_parameters(self):
+        pass
+
+    def retrieve_frozen_parameters_when_skipping(self):
+        pass
+
     def define_initializer(self, *args, **kwargs):
         pass
 
