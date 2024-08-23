@@ -247,10 +247,13 @@ class transp_initializer_from_profiles(beat_initializer):
     def __init__(self, beat_instance, label = 'profiles'):
         super().__init__(beat_instance, label = label)
 
-    def __call__(self,profiles_file=None, profiles = {}):
+    def __call__(self, profiles_file=None, profiles = {}, Vsurf = 0.0):
 
         # Load profiles
         self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
+
+        # Vsurf is a quantity that isn't in the profiles, so I add it here
+        self.p.Vsurf = Vsurf
 
         # Insert new profiles
         if 'Te' in profiles:
@@ -272,7 +275,8 @@ class transp_initializer_from_profiles(beat_initializer):
         times = [self.beat_instance.time_transition,self.beat_instance.time_end+1.0]
         self.transp = self.p.to_transp(
             folder = self.beat_instance.folder,
-            shot = self.beat_instance.shot, runid = self.beat_instance.runid, times = times)
+            shot = self.beat_instance.shot, runid = self.beat_instance.runid, times = times,
+            Vsurf = self.p.Vsurf)
 
         # Pass to main class' beat
         self.beat_instance.transp = self.transp

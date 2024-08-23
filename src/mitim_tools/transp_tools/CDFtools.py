@@ -15515,7 +15515,7 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if self.gfile_in is not None:
-            rmajor, epsilon, kappa, delta, zeta, z0 = self.gfile_in.paramsLCFS()
+            rmajor, epsilon, kappa, delta, zeta, z0 = self.gfile_in.Rmajor, self.gfile_in.eps, self.gfile_in.kappa, self.gfile_in.delta, self.gfile_in.zeta, self.gfile_in.Zmag
             extrakappa = f"\t(gfile kappa = {kappa:.2f})"
             extradelta = f"\t(gfile delta = {delta:.2f})"
         else:

@@ -14,42 +14,36 @@ Note that this module relies on OMFIT classes (https://omfit.io/classes.html) pr
 Modifications are made for nice visualizations and a few extra derivations.
 """
 
+def fix_file(filename):
+    print(
+        f"\t- If geqdsk is appended with coils, removing them to read {filename}"
+    )
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    with open(f"{filename}_noCoils.geqdsk", "w") as f:
+        for cont,line in enumerate(lines):
+            if cont>0 and line[:2] == "  ":
+                break
+            f.write(line)
+    filename = f"{filename}_noCoils.geqdsk"
 
+    return filename
 class MITIMgeqdsk:
     def __init__(self, filename, fullLCFS=False, removeCoils=True):
-        """
-        Read g-eqdsk file using OMFIT classes (dynamic loading)
 
-        Notes:
-                I impose FindSeparatrix because I don't trust the g-file one
-        """
-
+        # Fix file by removing coils
         if removeCoils:
-            print(
-                f"\t- If geqdsk is appended with coils, removing them to read {filename}"
-            )
-            with open(filename, "r") as f:
-                lines = f.readlines()
-            with open(f"{filename}_noCoils.geqdsk", "w") as f:
-                for cont,line in enumerate(lines):
-                    if cont>0 and line[:2] == "  ":
-                        break
-                    f.write(line)
-            filename = f"{filename}_noCoils.geqdsk"
+            filename = fix_file(filename)
 
-        # -------------------------------------------------------------
+        # Read GEQDSK file using OMFIT
         import omfit_classes.omfit_eqdsk
-
-        self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(
-            filename, forceFindSeparatrix=True
-        )
-        # -------------------------------------------------------------
+        self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(filename, forceFindSeparatrix=True)
+        
+        if removeCoils:
+            os.system(f"rm {filename}")
 
         # Extra derivations in MITIM
         self.derive(fullLCFS=fullLCFS)
-
-        if removeCoils:
-            os.system(f"rm {filename}")
 
     @classmethod
     def timeslices(cls, filename, **kwargs):
@@ -90,7 +84,8 @@ class MITIMgeqdsk:
 
         return gs
 
-    def derive(self, fullLCFS=False):
+    def derive(self, fullLCFS=False, debug=False):
+
         self.Jt = self.g.surfAvg("Jt") * 1e-6
         self.Jt_fb = self.g.surfAvg("Jt_fb") * 1e-6
 
@@ -145,22 +140,19 @@ class MITIMgeqdsk:
             self.g["fluxSurfaces"]["geo"]["delta"],
         )
 
-        # Boundary
-        self.determineBoundary(full=fullLCFS)
-
-    def determineBoundary(self, debug=False, full=False):
         """
-        Note that the RBBS and ZBBS values in the gfile are often too scattered and do not reproduce the boundary near x-points.
-        The shaping parameters calculated using fluxSurfaces are correct though.
-
-        Since at __init__ I forced to find separatrix, I'm using OMFIT here
+        --------------------------------------------------------------------------------------------------------------------------------------
+        Boundary
+        --------------------------------------------------------------------------------------------------------------------------------------
+            Note that the RBBS and ZBBS values in the gfile are often too scattered and do not reproduce the boundary near x-points.
+            The shaping parameters calculated using fluxSurfaces are correct though.
         """
 
         self.Rb_gfile, self.Yb_gfile = self.g["RBBBS"], self.g["ZBBBS"]
         self.Rb, self.Yb = self.g["fluxSurfaces"].sep.transpose()
 
         # Using PRF routines (otherwise IM workflow will run TRANSP with error of curvature... I have to fix it)
-        if full:
+        if fullLCFS:
             self.Rb_prf, self.Yb_prf = MATHtools.findBoundaryMath(
                 self.g["AuxQuantities"]["R"],
                 self.g["AuxQuantities"]["Z"],
@@ -183,7 +175,7 @@ class MITIMgeqdsk:
             ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y")
 
             # Old routines
-            if full:
+            if fullLCFS:
                 ax.plot(self.Rb_prf, self.Yb_prf, "-o", c="k")
 
             # Extras
@@ -197,11 +189,11 @@ class MITIMgeqdsk:
 
             plt.show()
 
-    def plotEnclosingBox(self, ax=None):
+    def plotEnclosingBox(self, ax=None, c= "k"):
         if ax is None:
             fig, ax = plt.subplots()
 
-        plotEnclosed(
+        Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL = (
             self.Rmajor,
             self.a,
             self.Zmajor,
@@ -209,86 +201,21 @@ class MITIMgeqdsk:
             self.kappaL,
             self.deltaU,
             self.deltaL,
-            ax=ax,
         )
+
+        ax.axhline(y=Zmajor, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor - a, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor + a, ls="--", c=c, lw=0.5)
+        Rtop = Zmajor + a * kappaU
+        ax.axhline(y=Rtop, ls="--", c=c, lw=0.5)
+        Rbot = Zmajor - a * kappaL
+        ax.axhline(y=Rbot, ls="--", c=c, lw=0.5)
+
+        ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
+
         ax.plot([self.Rmajor, self.Rmag], [self.Zmajor, self.Zmag], "o", markersize=5)
-
-    def paramsLCFS(self):
-        rmajor, epsilon, kappa, delta, zeta, z0 = (
-            self.Rmajor,
-            self.eps,
-            self.kappa,
-            self.delta,
-            self.zeta,
-            self.Zmag,
-        )
-
-        return self.Rmajor, self.eps, self.kappa, self.delta, self.zeta, self.Zmag
-
-    def getShapingRatios(self, name="", runRemote=False):
-        kR = self.kappa995 / self.kappa
-        dR = self.delta995 / self.delta
-
-        return round(kR, 3), round(dR, 3)
-
-    def defineMapping(self):
-        psi = self.g["PSI_NORM"]
-        rho = self.g["RHOVN"]
-
-        return rho, psi
-
-    def changeRZgrid(
-        self,
-        Rmin=0.5,
-        Rmax=1.5,
-        Zext=1.5,
-        interpol="cubic",
-        useOnlyOriginalPoints=False,
-    ):
-        """
-        New grid will be R=[Rmin,Rmax] and Z=[-Zext,Zext]
-        """
-
-        # Old grid
-        Rold = self.g["AuxQuantities"]["R"]
-        Zold = self.g["AuxQuantities"]["Z"]
-        PSIRZ = self.g["PSIRZ"]
-
-        if useOnlyOriginalPoints:
-            i1 = np.argmin(np.abs(Rold - Rmin))
-            i2 = np.argmin(np.abs(Rold - Rmax))
-            j1 = np.argmin(np.abs(Zold + Zext))
-            j2 = np.argmin(np.abs(Zold - Zext))
-
-            self.g["NW"] = i2 - i1
-            Rmin = Rold[i1]
-            Rmax = Rold[i2]
-            self.g["NH"] = j2 - j1
-            Zext = Zold[j2]
-
-        # New grid
-        self.g["RDIM"] = Rmax - Rmin
-        self.g["RLEFT"] = Rmin
-        self.g["ZDIM"] = Zext * 2
-
-        Rnew = np.linspace(0, self.g["RDIM"], self.g["NW"]) + self.g["RLEFT"]
-        Znew = (
-            np.linspace(0, self.g["ZDIM"], self.g["NH"])
-            - self.g["ZDIM"] / 2.0
-            + self.g["ZMID"]
-        )
-
-        # Interpolate
-        self.g["PSIRZ"] = MATHtools.interp2D(
-            Rnew, Znew, Rold, Zold, PSIRZ, kind=interpol
-        )
-
-        # Re-load stuff
-        self.g.addAuxQuantities()
-        self.g.addFluxSurfaces(**self.g.OMFITproperties)
-
-    def translateQuantityTo2D(self, rhoTor, z):
-        return np.interp(self.g["AuxQuantities"]["RHORZ"], rhoTor, z)
 
     def write(self, filename=None):
         """
@@ -1171,6 +1098,10 @@ class MITIMgeqdsk:
 
         return cs
     
+    # -----------------------------------------------------------------------------
+    # Parameterizations
+    # -----------------------------------------------------------------------------
+
     def get_MXH_coeff(self, n, n_coeff=6, plot=False): 
         """
         Calculates MXH Coefficients as a function of poloidal flux
@@ -1180,7 +1111,6 @@ class MITIMgeqdsk:
            flux surface in the geqdsk file. Changing n is only nessary
            if the last closed flux surface is not well resolved.
         """
-        from scipy.signal import savgol_filter
         start=time()
 
         # Upsample the poloidal flux grid
@@ -1447,7 +1377,6 @@ class MITIMgeqdsk:
         return transp
 
 
-
 def get_flux_surface_geometry(R, Z, n_coeff=3):
     """
     Calculates MXH Coefficients for a flux surface
@@ -1503,9 +1432,11 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
         
     return c, s, bbox
 
-def plotSurfaces(
-    R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, lwB=2, plot1=True, label = ''
-):
+# -----------------------------------------------------------------------------
+# Utilities
+# -----------------------------------------------------------------------------
+
+def plotSurfaces(R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, lwB=2, plot1=True, label = ''):
     if ax is None:
         fig, ax = plt.subplots()
 
@@ -1589,22 +1520,6 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
         )
 
     return ax_plasma, fn
-
-def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="k"):
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    ax.axhline(y=Zmajor, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor - a, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor + a, ls="--", c=c, lw=0.5)
-    Rtop = Zmajor + a * kappaU
-    ax.axhline(y=Rtop, ls="--", c=c, lw=0.5)
-    Rbot = Zmajor - a * kappaL
-    ax.axhline(y=Rbot, ls="--", c=c, lw=0.5)
-
-    ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
 
 # -----------------------------------------------------------------------------
 # Tools to handle flux surface definitions
@@ -1802,7 +1717,6 @@ def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
     intersection = line1.intersection(line2)
 
     return intersection.x, intersection.y
-
 
 # --------------------------------------------------------------------------------------------------------------
 # Fixed boundary stuff
