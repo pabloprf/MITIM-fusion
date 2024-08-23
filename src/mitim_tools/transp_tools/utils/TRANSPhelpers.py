@@ -118,7 +118,7 @@ class transp_run:
     # Ufiles
     # --------------------------------------------------------------------------------------------
 
-    def write_ufiles(self, structures_position = -1, radial_position = 0):
+    def write_ufiles(self, structures_position = -1, radial_position = 0, use_mry_file = False):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
         '''
@@ -174,30 +174,81 @@ class transp_run:
             uf.writeUFILE(f'{self.folder}/PRF{self.shot}.{self.quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
-        # Write MRY ufile
+        # Write Boundary UFILE
         # --------------------------------------------------------------------------------------------
 
-        tt = []
-        for time in self.times:
-            if (time in self.geometry) and ('R_sep' in self.geometry[time]):
-                t = str(int(time*1E3)).zfill(5)
-                R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
+        if use_mry_file:
+            # Use MRY file
+            tt = []
+            for time in self.times:
+                if (time in self.geometry) and ('R_sep' in self.geometry[time]):
+                    t = str(int(time*1E3)).zfill(5)
+                    R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
-                # Downsample seems to be necessary sometimes ----
-                R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
-                R, Z = R[:-1], Z[:-1]
-                # -----------------------------------------------
+                    # # Downsample seems to be necessary sometimes ----
+                    # R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
+                    # R, Z = R[:-1], Z[:-1]
+                    # # -----------------------------------------------
 
-                writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
-                tt.append(t)
+                    writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
+                    tt.append(t)
 
-        generateMRY(
-            self.folder,
-            tt,
-            self.folder,
-            self.shot,
-            momentsScruncher=6, # To avoid curvature issues, let's smooth it
-            )
+            generateMRY(
+                self.folder,
+                tt,
+                self.folder,
+                self.shot,
+                momentsScruncher=6, # To avoid curvature issues, let's smooth it
+                )
+
+        else:
+            '''
+            Use Boundary Files
+            -------------------
+            I'm only writing the rho=1 (what's important for the fixed boundary)
+            and the rho=0 (because it's needed, but I'm only giving it at the center as a trick!)
+            '''
+            ts, Rs, Zs, R0, Z0 = [], [], [], [], []
+            for time in self.times:
+                if (time in self.geometry) and ('R_sep' in self.geometry[time]):
+
+                    thetas, R, Z = prepare_RZsep_for_TRANSP(self.geometry[time]['R_sep'], self.geometry[time]['Z_sep'])
+
+                    r0, z0 = (R.max()+R.min())/2, (Z.max()+Z.min())/2
+
+                    ts.append(time)
+                    Rs.append(R)
+                    Zs.append(Z)
+                    R0.append(  r0 * np.ones(R.shape) )
+                    Z0.append(  z0 * np.ones(R.shape) )
+
+            Rs, Zs, R0, Z0 = np.array(Rs), np.array(Zs), np.array(R0), np.array(Z0)
+
+            Zr = np.append(R0[np.newaxis,:,:],Rs[np.newaxis,:,:],axis=0)
+            Zz = np.append(Z0[np.newaxis,:,:],Zs[np.newaxis,:,:],axis=0)
+
+            '''
+            The way my routines are written the UFILE RFS must be written:
+                (t0, theta0, rho0), (t1, theta0, rho0), (t2, theta0, rho0), (t0, theta1, rho0), (t0, theta2, rho0), ...
+            After trial and error, this transposition is what works
+            '''
+            Zr = np.transpose(Zr, (1, 2, 0))
+            Zz = np.transpose(Zz, (1, 2, 0))
+            # --------------------------------------------------------------------------------------------
+
+            uf = UFILEStools.UFILEtransp(scratch='rfs')
+            uf.Variables['X'] = ts
+            uf.Variables['Q'] = [0.0,1.0]
+            uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
+            uf.Variables['Z'] = Zr
+            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.RFS')
+
+            uf = UFILEStools.UFILEtransp(scratch='zfs')
+            uf.Variables['X'] = ts
+            uf.Variables['Q'] = [0.0,1.0]
+            uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
+            uf.Variables['Z'] = Zz
+            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.ZFS')
 
         if structures_position is not None:
 
@@ -399,6 +450,21 @@ class transp_run:
         GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
+
+def prepare_RZsep_for_TRANSP(Ro,Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 100, endpoint=True)):
+    '''
+    TRANSP tends to give troubles with kinks, curvatures and loops in the boundary files.
+    This method developed in MITIM helps to smooth the boundary and avoid these issues.
+    It converts the boundary to MXH and then back to boundary, using a number of coefficients.
+    '''
+
+    surfaces = GEQtools.mitim_flux_surfaces()
+    surfaces.reconstruct_from_RZ(Ro,Zo)
+    surfaces._to_mxh(n_coeff=n_coeff)
+    surfaces._from_mxh(thetas = thetas)
+
+    return thetas, surfaces.R[0], surfaces.Z[0]
+
 class transp_input_time:
 
     def __init__(self, transp_instance):
@@ -466,8 +532,7 @@ class transp_input_time:
         # --------------------------------------------------------------
 
         R_sep, Z_sep = CDFtools.getFluxSurface(self.c_original.f, self.time_extraction, 1.0)
-        R_sep, Z_sep = MATHtools.downsampleCurve(R_sep, Z_sep, nsamp=100)
-        self.geometry['R_sep'], self.geometry['Z_sep'] = R_sep[:-1], Z_sep[:-1]
+        self.geometry['R_sep'], self.geometry['Z_sep'] = R_sep, Z_sep
 
         # --------------------------------------------------------------
         # VV
@@ -858,7 +923,7 @@ def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     rs, zs = IOtools.removeRepeatedPoints_2D(rs, zs)
     # ----- ----- ----- ----- -----
 
-    x, y = rs, zs  # MATHtools.downsampleCurve(rs,zs,nsamp=numLim)
+    x, y = rs, zs
 
     # Write Ufile
     UF = UFILEStools.UFILEtransp(scratch="lim")

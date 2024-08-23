@@ -111,7 +111,7 @@ class portals_beat(beat):
         # Save the best profiles to use in the next PORTALS beat to avoid issues with TRANSP coarse grid
         self.maestro_instance.parameters_trans_beat['portals_profiles'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
 
-    def plot(self,  fn = None, counter = 0, full_plot = True):
+    def grab_output(self, full = False):
 
         isitfinished = self.check()
 
@@ -119,15 +119,25 @@ class portals_beat(beat):
             folder = self.folder_output
         else:
             folder = self.folder
-        
-        if full_plot:
+
+        if full:
             opt_fun = STRATEGYtools.opt_evaluator(folder)
+        else:
+            opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
+
+        return opt_fun
+
+
+    def plot(self,  fn = None, counter = 0, full_plot = True):
+
+        opt_fun = self.grab_output(full = full_plot)
+
+        if full_plot:
             opt_fun.fn = fn
             opt_fun.plot_optimization_results(analysis_level=4)
         else:
-            portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
             fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
-            portals_output.plotMetrics(fig=fig)
+            opt_fun.plotMetrics(fig=fig)
 
         msg = '\t\t- Plotting of PORTALS beat done'
 

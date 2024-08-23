@@ -47,13 +47,13 @@ def plot_results(self, fn):
     # Collect PORTALS profiles and TRANSP cdfs
     objs = OrderedDict()
     for i,beat in enumerate(self.beats.values()):
-        if isinstance(beat, portals_beat) and ('input.gacode' in os.listdir(beat.folder_output)):
-            objs[f'PORTALS beat #{i+1} (final)'] = PROFILEStools.PROFILES_GACODE(f'{beat.folder_output}/input.gacode')
+
 
         if isinstance(beat, transp_beat):
-            output_file = IOtools.findFileByExtension(beat.folder_output, '.CDF', agnostic_to_case=True, provide_full_path=True)
-            if output_file is not None:
-                objs[f'TRANSP beat #{i+1} (final)'] = CDFtools.transp_output(output_file)
+            objs[f'TRANSP beat #{i+1}'] = beat.grab_output()
+        elif isinstance(beat, portals_beat):
+            portals_output = beat.grab_output()
+            objs[f'PORTALS beat #{i+1}'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
 
     # Collect initialization
     ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initializer.folder}/input.gacode')}
@@ -75,11 +75,12 @@ def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
             ps.append(objs[label])
             ps_lab.append(label)
 
-    # Plot profiles
-    figs = PROFILEStools.add_figures(fn,fnlab_pre = fnlab_pre)
-    log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
-    with IOtools.conditional_log_to_file(log_file=log_file):
-        PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
+    if len(ps) > 0:
+        # Plot profiles
+        figs = PROFILEStools.add_figures(fn,fnlab_pre = fnlab_pre)
+        log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file):
+            PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
 
     for p in ps:
         p.printInfo()
@@ -122,7 +123,7 @@ def _plot_transitions(self, objs, fn, ini=None, label = ""):
 
     obj1 = ini['profiles']
     obj1.labelMAESTRO = 'Initial input.gacode'
-    if len(objs) > 0:
+    if len(objs) > 0 and objs[keys[0]] is not None:
         obj2 = objs[keys[0]]
         obj2.labelMAESTRO = keys[0]
     else:

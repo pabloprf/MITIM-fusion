@@ -114,7 +114,7 @@ class transp_beat(beat):
         if 'Ufiles' in transp_namelist_mod:
             raise ValueError('Cannot define UFILES in MAESTRO transp_namelist')
         else:
-            transp_namelist_mod['Ufiles'] = ["qpr","mry","cur","vsf","ter","ti2","ner","rbz","lim","zf2"]
+            transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]#,"mry"]
 
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
@@ -179,9 +179,8 @@ class transp_beat(beat):
 
     def _additional_operations_add_ICH(self, qm_minority = 2/3):
 
-        p = self.maestro_instance.profiles_with_engineering_parameters
-        PichT_MW = p.derived['qRF_MWmiller'][-1]
-        B_T = p.profiles['bcentr(T)'][0]
+        PichT_MW    = self.maestro_instance.profiles_with_engineering_parameters.derived['qRF_MWmiller'][-1]
+        B_T         = self.maestro_instance.profiles_with_engineering_parameters.profiles['bcentr(T)'][0]
 
         # ICRF on
         Frequency_He3 = B_T * (2*np.pi/qm_minority)
@@ -208,7 +207,7 @@ class transp_beat(beat):
         os.system(f'cp {self.folder}/{self.shot}{self.runid}.CDF {self.folder_output}/.')
         os.system(f'cp {self.folder}/{self.shot}{self.runid}tr.log {self.folder_output}/.')
 
-    def plot(self,  fn = None, counter = 0, **kwargs):
+    def grab_output(self):
 
         isitfinished = self.check()
 
@@ -220,8 +219,17 @@ class transp_beat(beat):
             try:
                 c = CDFtools.transp_output(self.folder)
             except ValueError:
-                return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
+                c = None
 
+        return c
+
+    def plot(self,  fn = None, counter = 0, **kwargs):
+
+        c = self.grab_output()
+        
+        if c is None:
+            return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
+        
         c.plot(fn = fn, counter = counter) 
 
         return '\t\t- Plotting of TRANSP beat done'

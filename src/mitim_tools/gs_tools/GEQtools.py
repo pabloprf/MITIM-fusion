@@ -1116,6 +1116,7 @@ class MITIMgeqdsk:
             else:
                 Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
 
+            # Perform the MXH decomposition in
             surfaces = mitim_flux_surfaces()
             surfaces.reconstruct_from_RZ(Rf,Zf)
             surfaces._to_mxh(n_coeff=n_coeff)

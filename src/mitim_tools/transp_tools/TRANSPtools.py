@@ -241,6 +241,11 @@ class TRANSPgeneric:
         from mitim_tools.transp_tools.src.TRANSPglobus import TRANSPglobus
         should_I_wait = isinstance(self, TRANSPglobus) or self.job.launchSlurm
 
+        try:
+            fin = self.latest_info["info"]['info']['status'] == "finished"
+        except AttributeError:
+            fin = False
+
         first = True 
         status, time_passed = 0, 0.0
         while status != "finished":
@@ -254,10 +259,9 @@ class TRANSPgeneric:
 
             if not should_I_wait:
                 print(">> Simulation not run via slurm, not waiting for check since execution was halted")
-            elif self.latest_info["info"]['info']['status'] == "finished":
+            elif fin:
                 print(">> Simulation finished, not waiting for check")
             else:
-                embed()
                 if first:
                     print(
                         f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"

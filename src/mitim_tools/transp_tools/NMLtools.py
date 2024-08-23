@@ -113,6 +113,8 @@ class transp_nml:
         potential_ufiles = {
             "qpr": ["QPR",-5],
             "mry": ["MRY",None],
+            "rfs": ["RFS",None],
+            "zfs": ["ZFS",None],
             "cur": ["CUR",None],
             "vsf": ["VSF",None],
             "ter": ["TEL",-5],

@@ -68,6 +68,9 @@ class beat:
     def finalize_maestro(self, *args, **kwargs):
         pass
 
+    def grab_output(self, *args, **kwargs):
+        pass
+
     def plot(self, *args, **kwargs):
         return ''
 
