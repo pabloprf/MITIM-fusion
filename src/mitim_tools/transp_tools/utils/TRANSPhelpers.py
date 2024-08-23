@@ -552,7 +552,7 @@ class transp_input_time:
 
         self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
-    def _from_geqdsk(self, time, geqdsk_object, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def from_geqdsk(self, time, geqdsk_object, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
         
 
         rhotor = geqdsk_object.g['RHOVN']
@@ -564,7 +564,6 @@ class transp_input_time:
         RZ = np.array([geqdsk_object.Rb_prf,geqdsk_object.Yb_prf]).T
 
         self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
-
 
     def _from_eq_quantities(self, time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 

@@ -2,7 +2,8 @@ import os
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
+from mitim_tools.gacode_tools import PROFILEStools
 from shapely.geometry import LineString
 from IPython import embed
 
@@ -1250,6 +1251,201 @@ class MITIMgeqdsk:
         print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
         return cn, sn, gn, psis
         
+    # -----------------------------------------------------------------------------
+    # For MAESTRO and TRANSP converstions
+    # -----------------------------------------------------------------------------
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  plotYN = False):
+
+        # -------------------------------------------------------------------------------------------------------
+        # Quantities
+        # -------------------------------------------------------------------------------------------------------
+
+        rhotor = self.g['RHOVN']
+        psi = self.g['AuxQuantities']['PSI']  # TO CHECK, WB?
+        q = self.g['QPSI']
+
+
+        Ip = self.g['CURRENT']*1E-6  # MA
+        RZ = np.array([self.g.Rb_prf,self.g.Yb_prf]).T
+
+        torfluxa =  self.g['AuxQuantities']['PHI'][-1] # TO FIX, Wb?
+
+        R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
+        B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
+
+
+        '''
+        Pressure - temperature and density
+
+        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+
+        if T=Te=Ti and ne=ni
+        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+
+        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+
+        '''
+        pressure = self.g['PRES']
+        _, ne_20 = PLASMAtools.parabolicProfile(
+            Tbar=ne0_20/1.25,
+            nu=1.25,
+            rho=rhotor,
+            Tedge=ne0_20/5,
+        )
+
+        T_keV = pressure / (2 * 1.60217662e-19 * ne_20 * 1e20) * 1E-3
+
+        flux_surfaces = self.g['fluxSurfaces']['flux']
+
+        # -------------------------------------------------------------------------------------------------------
+        # Pass to profiles
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles = {}
+
+        Z = 9
+
+        profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
+        profiles['nion'] = np.array(['2'])
+        profiles['shot'] = np.array(['12345'])
+
+        # Just one specie
+        profiles['name'] = np.array(['D','F'])
+        profiles['type'] = np.array(['therm','therm'])
+        profiles['masse'] = np.array([5.4488748e-04])
+        profiles['mass'] = np.array([2.0, Z*2])
+        profiles['ze'] = np.array([-1.0])
+        profiles['z'] = np.array([1.0, Z])
+
+
+        profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
+        profiles['rcentr(m)'] = np.array([R0])
+        profiles['bcentr(T)'] = np.array([B0])
+        profiles['current(MA)'] = np.array([Ip])
+
+        profiles['rho(-)'] = rhotor
+        profiles['polflux(Wb/radian)'] = psi
+        profiles['q(-)'] = q
+
+        # -------------------------------------------------------------------------------------------------------
+        # Flux surfaces
+        # -------------------------------------------------------------------------------------------------------
+
+        coeffs_MXH = 7
+
+        kappa = []
+        delta = []
+        zeta = []
+        rmin = []
+        rmaj = []
+        zmag = []
+        sn = []
+        cn = []
+        for flux in range(len(flux_surfaces)):
+            if flux == len(flux_surfaces)-1:
+                Rf, Zf = self.g.Rb_prf,self.g.Yb_prf
+            else:
+                Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
+
+            surfaces = mitim_flux_surfaces()
+            surfaces.reconstruct_from_RZ(Rf,Zf)
+            surfaces._to_mxh(n_coeff=coeffs_MXH)
+
+            kappa.append(surfaces.kappa[0])
+            delta.append(np.sin(surfaces.sn[0,1]))
+            zeta.append(-surfaces.sn[0,2])
+            rmin.append(surfaces.a[0])
+            rmaj.append(surfaces.R0[0])
+            zmag.append(surfaces.Z0[0])
+
+            c0 = []
+            s0 = []
+            for i in range(coeffs_MXH):
+                c0.append(surfaces.cn[0,i])
+                if i > 2:
+                    s0.append(surfaces.sn[0,i])
+            sn.append(s0)
+            cn.append(c0)
+        kappa = np.array(kappa)
+        delta = np.array(delta)
+        zeta = np.array(zeta)
+        rmin = np.array(rmin)
+        rmaj = np.array(rmaj)
+        zmag = np.array(zmag)
+        sn = np.array(sn)
+        cn = np.array(cn)
+
+        profiles['kappa(-)'] = kappa
+        profiles['delta(-)'] = delta
+        profiles['zeta(-)'] = zeta
+        profiles['rmin(m)'] = rmin
+        profiles['rmaj(m)'] = rmaj
+        profiles['zmag(m)'] = zmag
+        for i in range(coeffs_MXH):
+            profiles[f'shape_cos{i}(-)'] = cn[:,i]
+        for i in range(coeffs_MXH-3):
+            profiles[f'shape_sin{i+3}(-)'] = sn[:,i]
+
+        # -------------------------------------------------------------------------------------------------------
+        # Kinetic profiles
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['te(keV)'] = T_keV
+        profiles['ti(keV)'] = np.array([T_keV]*2).T
+
+        profiles['ne(10^19/m^3)'] = ne_20*10.0
+
+        fZ = (Zeff-1) / (Z**2-Z)
+
+        profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
+
+        # -------------------------------------------------------------------------------------------------------
+        # Power
+        # -------------------------------------------------------------------------------------------------------
+
+        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(
+            Tbar=1.0,
+            nu=5.0,
+            rho=rhotor,
+            Tedge=0.0,
+        )
+
+        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+
+        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
+        p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
+
+        p.deriveQuantities()
+
+        # -------------------------------------------------------------------------------------------------------
+        # Plotting
+        # -------------------------------------------------------------------------------------------------------
+
+        if plotYN:
+
+            fig, ax = plt.subplots()
+            ff = np.linspace(0, 1, 11)
+            self.g.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
+            p.plotGeometry(ax=ax, surfaces_rho=ff, color="b")
+            plt.show()
+
+        return p
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+
+        print("\t- Converting to TRANSP")
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
+        p.writeCurrentStatus(f'{folder}/input.gacode')
+
+        transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
+
+        return transp
+
+
+
 def get_flux_surface_geometry(R, Z, n_coeff=3):
     """
     Calculates MXH Coefficients for a flux surface

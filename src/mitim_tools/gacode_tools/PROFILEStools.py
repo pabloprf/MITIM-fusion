@@ -3918,7 +3918,7 @@ class PROFILES_GACODE:
 
         return inputsTGLF
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3927,7 +3927,7 @@ class PROFILES_GACODE:
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time.from_profiles(time,self)
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
 
         transp.write_ufiles()
 

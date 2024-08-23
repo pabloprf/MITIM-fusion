@@ -2,7 +2,7 @@ import os
 import copy
 import hashlib
 import numpy as np
-from mitim_tools.gs_tools import FREEGStools
+from mitim_tools.gs_tools import FREEGStools, GEQtools
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
@@ -298,7 +298,7 @@ class transp_initializer_from_geqdsk(transp_initializer_from_profiles):
         ):
         
         # Read geqdsk
-        self.f = FREEGStools.geqdsk_reader(geqdsk_file)
+        self.f = GEQtools.MITIMgeqdsk(geqdsk_file, fullLCFS=True)
 
         # Convert to profiles
         p = self.f.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
