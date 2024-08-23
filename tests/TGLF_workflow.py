@@ -18,15 +18,39 @@ tglf.prep_from_tglf(folder, input_tglf)
 tglf.run(
     subFolderTGLF="run1/",
     TGLFsettings=None,
-    runWaveForms=[0.67, 1.2],
     restart=restart,
     forceIfRestart=True,
     extraOptions={"USE_BPER": True},
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="run1")
-tglf.plot(labels=["run1"])
+tglf.read(label="EM")
 
-# Required if running in non-interactive mode
-tglf.fn.show()
+
+gamma = tglf.results['EM']['TGLFout'][0].g 
+ky = tglf.results['EM']['TGLFout'][0].ky
+neTeSpectrum = tglf.results['EM']['TGLFout'][0].neTeSpectrum
+
+
+
+import matplotlib.pyplot as plt
+plt.ion(); fig, ax = plt.subplots()
+
+ax.plot(ky, neTeSpectrum[0,:], 'o-')
+ax.set_xscale('log')
+
+# tglf.plot(labels=["EM","ES"])
+
+
+
+# # Required if running in non-interactive mode
+# tglf.fn.show()
+
+
+import numpy as np
+tglf.runScan(	subFolderTGLF = 'scan1/',
+                TGLFsettings  = 5,
+                restart       = False,
+                variable      = 'RLTS_1',
+                varUpDown 	  = np.array([0.5, 1.5, 2.5]))
+tglf.readScan(label='scan1',variable = 'RLTS_1')

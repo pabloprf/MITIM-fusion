@@ -6,7 +6,7 @@ from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
-from mitim_tools import __version__
+from mitim_tools import __version__, __mitimroot__
 from IPython import embed
 
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
@@ -56,8 +56,9 @@ class maestro:
         self.parameters_trans_beat = {} # I can save parameters that can be useful for future beats
         self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
 
+        branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n -----------------------------------------------------------------------------------')
-        print(f'MAESTRO run (MITIM version {__version__})')
+        print(f'MAESTRO run (MITIM version {__version__}, branch {branch}, commit {commit_hash})')
         print('-----------------------------------------------------------------------------------')
         print(f'folder: {self.folder}')
 

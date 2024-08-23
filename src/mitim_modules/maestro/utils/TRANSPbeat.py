@@ -262,9 +262,9 @@ class transp_initializer_from_profiles(beat_initializer):
             self.p.profiles['ti(keV)'][:,0] = np.interp(self.p.profiles['rho(-)'], profiles['Ti'][0], profiles['Ti'][1])
             self.p.makeAllThermalIonsHaveSameTemp()
         if 'ne' in profiles:
-            old_density = copy.deepcopy(self.p.profiles['ne(10^19/m^3'])
-            self.p.profiles['ne(10^19/m^3'] = np.interp(self.p.profiles['rho(-)'], profiles['ne'][0], profiles['ne'][1]*10.0)
-            self.p.profiles['ni(10^19/m^3'] = self.p.profiles['ni(10^19/m^3'] * (self.p.profiles['ne(10^19/m^3']/old_density)
+            old_density = copy.deepcopy(self.p.profiles['ne(10^19/m^3)'])
+            self.p.profiles['ne(10^19/m^3)'] = np.interp(self.p.profiles['rho(-)'], profiles['ne'][0], profiles['ne'][1]*10.0)
+            self.p.profiles['ni(10^19/m^3)'] = self.p.profiles['ni(10^19/m^3)'] * (self.p.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
         # Write it to initialization folder
         self.p.writeCurrentStatus(file=self.folder+'/input.gacode' )

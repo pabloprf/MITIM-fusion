@@ -83,6 +83,8 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         info, status = interpretRun(infoSLURM, self.job.log_file)
 
+        self.latest_info = {'info': info, 'status': status, 'infoGrid': None}
+
         return info, status, None
 
     def get(

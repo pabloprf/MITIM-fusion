@@ -107,6 +107,8 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                 self.folderGRID, self.tok, self.yearRun
             )
 
+        self.latest_info = {'info': info, 'status': status, 'infoGrid': infoGrid}
+
         return info, status, infoGrid
 
     def get(

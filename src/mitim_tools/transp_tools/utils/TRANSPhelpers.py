@@ -310,8 +310,10 @@ class transp_run:
 
         self.t.run()
 
-        # Check until finished if it's a slurm job
-        if len(self.t.job.machineSettings['slurm']) > 0 and (checkMin is not None):
+        # Check until finished if it's a slurm job or globus
+        from mitim_tools.transp_tools.src.TRANSPglobus import TRANSPglobus
+        is_this_worth_waiting = isinstance(self.t, TRANSPglobus) or (len(self.t.job.machineSettings['slurm']) > 0)
+        if is_this_worth_waiting and (checkMin is not None):
             self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin)
 
     def plot(self, case='run1'):

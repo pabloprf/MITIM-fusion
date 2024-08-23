@@ -229,7 +229,7 @@ class TRANSPgeneric:
             self.fn = self.cdfs[label].fn
 
     def checkUntilFinished(
-        self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False
+        self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False,
     ):
         """
         Launch this after .run(), to check if it has finished
@@ -237,6 +237,9 @@ class TRANSPgeneric:
         checkMin 					- 	Check the grid after these minutes
         grabIntermediateEachMin 	- 	If I'm checking and has passed more than grabIntermediateEachMin, retrieve intermediate files
         """
+
+        from mitim_tools.transp_tools.src.TRANSPglobus import TRANSPglobus
+        should_I_wait = isinstance(self, TRANSPglobus) or self.job.launchSlurm
 
         first = True 
         status, time_passed = 0, 0.0
@@ -249,16 +252,12 @@ class TRANSPgeneric:
                 datetime.datetime.now() + datetime.timedelta(minutes=checkMin)
             ).strftime("%H:%M")
 
-            try:
-                should_I_wait = self.job.launchSlurm
-            except AttributeError:
-                # globus cases
-                should_I_wait = True
-
-
             if not should_I_wait:
                 print(">> Simulation not run via slurm, not waiting for check since execution was halted")
+            elif self.latest_info["info"]['info']['status'] == "finished":
+                print(">> Simulation finished, not waiting for check")
             else:
+                embed()
                 if first:
                     print(
                         f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"

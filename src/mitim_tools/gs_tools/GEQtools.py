@@ -1,5 +1,4 @@
 import os
-from time import time
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
@@ -7,11 +6,12 @@ from mitim_tools.gacode_tools import PROFILEStools
 from shapely.geometry import LineString
 import freegs
 from freegs import geqdsk
+from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
-Modifications are made for nice visualizations and a few extra derivations.
+Modifications are made in MITINM for visualizations and a few extra derivations.
 """
 
 def fix_file(filename):
@@ -38,12 +38,12 @@ class MITIMgeqdsk:
         # Read GEQDSK file using OMFIT
         import omfit_classes.omfit_eqdsk
         self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(filename, forceFindSeparatrix=True)
-        
-        if removeCoils:
-            os.system(f"rm {filename}")
 
         # Extra derivations in MITIM
         self.derive(fullLCFS=fullLCFS)
+
+        if removeCoils:
+            os.system(f"rm {filename}")
 
     @classmethod
     def timeslices(cls, filename, **kwargs):
@@ -1102,7 +1102,51 @@ class MITIMgeqdsk:
     # Parameterizations
     # -----------------------------------------------------------------------------
 
-    def get_MXH_coeff(self, n, n_coeff=6, plot=False): 
+    def get_MXH_coeff_new(self, n_coeff=7): 
+
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        flux_surfaces = self.g['fluxSurfaces']['flux']
+        
+        # Cannot parallelize because differen number of points?
+        kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[],[],[]
+        
+        for flux in range(len(flux_surfaces)):
+            if flux == len(flux_surfaces)-1:
+                Rf, Zf = self.Rb_prf, self.Yb_prf
+            else:
+                Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
+
+            surfaces = mitim_flux_surfaces()
+            surfaces.reconstruct_from_RZ(Rf,Zf)
+            surfaces._to_mxh(n_coeff=n_coeff)
+
+            kappa.append(surfaces.kappa[0])
+            delta.append(np.sin(surfaces.sn[0,1]))
+            zeta.append(-surfaces.sn[0,2])
+            rmin.append(surfaces.a[0])
+            rmaj.append(surfaces.R0[0])
+            zmag.append(surfaces.Z0[0])
+
+            c0, s0 = [], []
+            for i in range(n_coeff):
+                c0.append(surfaces.cn[0,i])
+                if i > 2:
+                    s0.append(surfaces.sn[0,i])
+            sn.append(s0)
+            cn.append(c0)
+
+        kappa = np.array(kappa)
+        delta = np.array(delta)
+        zeta = np.array(zeta)
+        rmin = np.array(rmin)
+        rmaj = np.array(rmaj)
+        zmag = np.array(zmag)
+        sn = np.array(sn)
+        cn = np.array(cn)
+
+        return psis, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn
+
+    def get_MXH_coeff(self, n, n_coeff=6, plotYN=False): 
         """
         Calculates MXH Coefficients as a function of poloidal flux
         n: number of grid points to interpolate the flux surfaces
@@ -1111,7 +1155,6 @@ class MITIMgeqdsk:
            flux surface in the geqdsk file. Changing n is only nessary
            if the last closed flux surface is not well resolved.
         """
-        start=time()
 
         # Upsample the poloidal flux grid
         Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
@@ -1123,22 +1166,19 @@ class MITIMgeqdsk:
         # Select only the R and Z values within the LCFS- I psi_norm outside to 2
         # this works fine for fixed-boundary equilibria but needs v. high tolerance
         # for the full equilibrium with x-point.
-        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
-        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
-        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
-        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
+        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb_prf)))+1 # extra index for tolerance
+        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb_prf)))+1
+        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb_prf)))-1
+        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb_prf)))-1
         Psi_norm[:,:R_min_ind] = 2
         Psi_norm[:,R_max_ind:] = 2
         Psi_norm[:Z_min_ind,:] = 2
         Psi_norm[Z_max_ind:,:] = 2
 
-        #psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
-        #psi_reg = self.g["AuxQuantities"]["PSI"]
-        rhos = self.g["AuxQuantities"]["RHO"]
         psis = self.g["AuxQuantities"]["PSI_NORM"]
         
         cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
-        print(f" \t\t--> Finding g-file flux-surfaces")
+        print(" \t\t--> Finding g-file flux-surfaces")
         for i, psi in enumerate(psis):
             
             if psi == 0:
@@ -1165,10 +1205,8 @@ class MITIMgeqdsk:
             if i == 0:
                 cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
 
-        end=time()
+        if plotYN:
 
-        print(f'\ntotal run time: {end-start} s')
-        if plot:
             fig, axes = plt.subplots(2,1)
             for i in np.arange(n_coeff):
                 axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
@@ -1180,62 +1218,38 @@ class MITIMgeqdsk:
             axes[1].set_title("MXH Coefficients - Sine")
             GRAPHICStools.adjust_figure_layout(fig)
             plt.show()
-        print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
+
         return cn, sn, gn, psis
         
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
-    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  plotYN = False):
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, plotYN = False):
 
         # -------------------------------------------------------------------------------------------------------
-        # Quantities
+        # Quantities from the equilibrium
         # -------------------------------------------------------------------------------------------------------
 
         rhotor = self.g['RHOVN']
         psi = self.g['AuxQuantities']['PSI']  # TO CHECK, WB?
-        q = self.g['QPSI']
-
-
-        Ip = self.g['CURRENT']*1E-6  # MA
-        RZ = np.array([self.g.Rb_prf,self.g.Yb_prf]).T
-
         torfluxa =  self.g['AuxQuantities']['PHI'][-1] # TO FIX, Wb?
+        q = self.g['QPSI']
+        pressure = self.g['PRES']       # Pa
+        Ip = self.g['CURRENT']*1E-6     # MA
 
+        RZ = np.array([self.Rb_prf,self.Yb_prf]).T
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
+        
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
 
-
-        '''
-        Pressure - temperature and density
-
-        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
-
-        if T=Te=Ti and ne=ni
-        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
-
-        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
-
-        '''
-        pressure = self.g['PRES']
-        _, ne_20 = PLASMAtools.parabolicProfile(
-            Tbar=ne0_20/1.25,
-            nu=1.25,
-            rho=rhotor,
-            Tedge=ne0_20/5,
-        )
-
-        T_keV = pressure / (2 * 1.60217662e-19 * ne_20 * 1e20) * 1E-3
-
-        flux_surfaces = self.g['fluxSurfaces']['flux']
+        coeffs_MXH = 7
+        _, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
         # -------------------------------------------------------------------------------------------------------
         # Pass to profiles
         # -------------------------------------------------------------------------------------------------------
 
         profiles = {}
-
-        Z = 9
 
         profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
         profiles['nion'] = np.array(['2'])
@@ -1263,89 +1277,55 @@ class MITIMgeqdsk:
         # Flux surfaces
         # -------------------------------------------------------------------------------------------------------
 
-        coeffs_MXH = 7
-
-        kappa = []
-        delta = []
-        zeta = []
-        rmin = []
-        rmaj = []
-        zmag = []
-        sn = []
-        cn = []
-        for flux in range(len(flux_surfaces)):
-            if flux == len(flux_surfaces)-1:
-                Rf, Zf = self.g.Rb_prf,self.g.Yb_prf
-            else:
-                Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
-
-            surfaces = mitim_flux_surfaces()
-            surfaces.reconstruct_from_RZ(Rf,Zf)
-            surfaces._to_mxh(n_coeff=coeffs_MXH)
-
-            kappa.append(surfaces.kappa[0])
-            delta.append(np.sin(surfaces.sn[0,1]))
-            zeta.append(-surfaces.sn[0,2])
-            rmin.append(surfaces.a[0])
-            rmaj.append(surfaces.R0[0])
-            zmag.append(surfaces.Z0[0])
-
-            c0 = []
-            s0 = []
-            for i in range(coeffs_MXH):
-                c0.append(surfaces.cn[0,i])
-                if i > 2:
-                    s0.append(surfaces.sn[0,i])
-            sn.append(s0)
-            cn.append(c0)
-        kappa = np.array(kappa)
-        delta = np.array(delta)
-        zeta = np.array(zeta)
-        rmin = np.array(rmin)
-        rmaj = np.array(rmaj)
-        zmag = np.array(zmag)
-        sn = np.array(sn)
-        cn = np.array(cn)
-
         profiles['kappa(-)'] = kappa
         profiles['delta(-)'] = delta
         profiles['zeta(-)'] = zeta
         profiles['rmin(m)'] = rmin
         profiles['rmaj(m)'] = rmaj
         profiles['zmag(m)'] = zmag
+
+        sn, cn = np.array(sn), np.array(cn)
         for i in range(coeffs_MXH):
             profiles[f'shape_cos{i}(-)'] = cn[:,i]
         for i in range(coeffs_MXH-3):
             profiles[f'shape_sin{i+3}(-)'] = sn[:,i]
 
-        # -------------------------------------------------------------------------------------------------------
-        # Kinetic profiles
-        # -------------------------------------------------------------------------------------------------------
+        '''
+        -------------------------------------------------------------------------------------------------------
+        Kinetic profiles
+        -------------------------------------------------------------------------------------------------------
+        Pressure division into temperature and density
+            p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+            if T=Te=Ti and ne=ni
+            p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+            T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+        '''
+
+        C = 1E-3 / (2 * 1.60217662e-19 * 1e20)
+        _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
+        T_keV = C * (pressure / ne_20)
+
+        fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
 
         profiles['te(keV)'] = T_keV
         profiles['ti(keV)'] = np.array([T_keV]*2).T
-
         profiles['ne(10^19/m^3)'] = ne_20*10.0
-
-        fZ = (Zeff-1) / (Z**2-Z)
-
         profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
 
         # -------------------------------------------------------------------------------------------------------
-        # Power
+        # Power: insert parabolic and use PROFILES volume integration to find desired power
         # -------------------------------------------------------------------------------------------------------
 
-        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(
-            Tbar=1.0,
-            nu=5.0,
-            rho=rhotor,
-            Tedge=0.0,
-        )
+        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
 
         p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
 
         p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
         p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
+
+        # -------------------------------------------------------------------------------------------------------
+        # Ready to go
+        # -------------------------------------------------------------------------------------------------------
 
         p.deriveQuantities()
 
