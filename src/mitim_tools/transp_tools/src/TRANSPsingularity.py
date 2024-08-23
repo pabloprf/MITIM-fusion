@@ -462,7 +462,11 @@ def interpretRun(infoSLURM, log_file):
 
         if ("Error termination" in "\n".join(log_file)) or (
             "Backtrace for this error:" in "\n".join(log_file)
-        ):
+            ) or (
+            "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
+            ) or (
+            "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
+            ):
             status = -1
             info["info"]["status"] = "stopped"
         elif "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):

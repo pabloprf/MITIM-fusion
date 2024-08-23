@@ -88,3 +88,5 @@ class beat_initializer:
     def __call__(self, *args, **kwargs):
         pass
 
+    def prepare_to_beat(self):
+        pass

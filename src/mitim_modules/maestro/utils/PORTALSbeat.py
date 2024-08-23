@@ -1,16 +1,10 @@
-import torch
 import os
-import numpy as np
-from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.IOtools import mitim_timer
-from mitim_tools import __version__
 from IPython import embed
 
 from mitim_modules.maestro.utils.MAESTRObeat import beat, beat_initializer

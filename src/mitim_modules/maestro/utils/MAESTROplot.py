@@ -56,13 +56,15 @@ def plot_results(self, fn):
                 objs[f'TRANSP beat #{i+1} (final)'] = CDFtools.transp_output(output_file)
 
     # Collect initialization
-    g = GEQtools.MITIMgeqdsk(f'{self.beats[1].initializer.folder}/freegs.geqdsk')
+    ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initializer.folder}/input.gacode')}
+    if os.path.exists(f'{self.beats[1].initializer.folder}/input.geqdsk'):
+        ini['geqdsk'] = GEQtools.MITIMgeqdsk(f'{self.beats[1].initializer.folder}/input.geqdsk')
 
     # Plot profiles
     _plot_profiles_evolution(self,objs, fn, fnlab_pre = "MAESTRO - ")
 
     # Plot transitions
-    _plot_transitions(self, objs, fn, g= g, label = "MAESTRO Equilibria")
+    _plot_transitions(self, objs, fn, ini = ini, label = "MAESTRO Equilibria")
 
 def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
 
@@ -82,11 +84,34 @@ def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
     for p in ps:
         p.printInfo()
 
-def _plot_transitions(self, objs, fn, g=None, label = ""):
+def _plot_transitions(self, objs, fn, ini=None, label = ""):
 
     keys = list(objs.keys())
 
+    # ----------------------------------
+    # Plot initialization (geqdsk to input.gacode)
+    # ----------------------------------
+
+    fig = fn.add_figure(label=f'{label} ini', tab_color=2)
+    axs = fig.subplot_mosaic(
+        """
+            ABCDH
+            AEFGI
+        """
+    )
+
+    if ini['geqdsk'] is not None:
+        obj1 = ini['geqdsk']
+        obj1.labelMAESTRO = 'Initial geqdsk'
+        obj2 = ini['profiles']
+        obj2.labelMAESTRO = 'Initial input.gacode'
+
+        _plot_transition(self, obj1, obj2, axs)
+
+    # ----------------------------------
     # Plot transitions 0 -> 1
+    # ----------------------------------
+
     fig = fn.add_figure(label=f'{label} 0->1', tab_color=2)
     axs = fig.subplot_mosaic(
         """
@@ -94,13 +119,18 @@ def _plot_transitions(self, objs, fn, g=None, label = ""):
             AEFGI
         """
     )
-    obj1 = g
-    obj1.labelMAESTRO = 'geqdsk'
-    obj2 = objs[keys[0]]
-    obj2.labelMAESTRO = keys[0]
+
+    obj1 = ini['profiles']
+    obj1.labelMAESTRO = 'Initial input.gacode'
+    if len(objs) > 0:
+        obj2 = objs[keys[0]]
+        obj2.labelMAESTRO = keys[0]
+    else:
+        obj2 = None
     _plot_transition(self, obj1, obj2, axs)
 
     GRAPHICStools.adjust_figure_layout(fig)
+
 
     # Plot transitions N -> N+1
     for i in range(len(objs)-1):
@@ -202,7 +232,7 @@ def _plot_transition(self, obj1, obj2, axs):
 
     for obj, color in zip([obj1, obj2], ['b', 'r']):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ptot(Pa)']*1E-6, '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
+            ax.plot(obj.profiles['rho(-)'], obj.derived['ptot_manual'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
             ax.plot(obj.x_lw, obj.p_kin[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
@@ -303,7 +333,7 @@ def _plot_transition(self, obj1, obj2, axs):
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1
             ax.plot(obj.x_lw, obj.qe_obs_GACODE[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.x_lw, obj.qi_obs_GACODE[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
+            ax.plot(obj.x_lw, obj.qi_obs_GACODE[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
 
 
     ax.set_xlabel("$\\rho_N$")
@@ -324,7 +354,8 @@ def _plot_transition(self, obj1, obj2, axs):
         if isinstance(obj, PROFILEStools.PROFILES_GACODE):
             ax.plot(obj.profiles['rho(-)'], obj.derived['qrad'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', rad', color=color)
             ax.plot(obj.profiles['rho(-)'], obj.profiles['qei(MW/m^3)'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', exc', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qfuse(MW/m^3)']+obj.profiles['qfusi(MW/m^3)'], '-s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
+            if 'qfuse(MW/m^3)' in obj.profiles:
+                ax.plot(obj.profiles['rho(-)'], obj.profiles['qfuse(MW/m^3)']+obj.profiles['qfusi(MW/m^3)'], '-s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
 
         elif isinstance(obj, CDFtools.transp_output):
             it = obj.ind_saw - 1

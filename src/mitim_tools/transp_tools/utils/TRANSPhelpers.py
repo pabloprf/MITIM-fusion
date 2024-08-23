@@ -124,7 +124,10 @@ class transp_run:
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
         '''
 
-        self.times = np.sort(np.array(list(self.variables.keys())))
+        times = np.sort(np.array(list(self.variables.keys())))
+        times_geometry = np.sort(np.array(list(self.geometry.keys())))
+
+        self.times = np.unique(np.concatenate((times, times_geometry)))
 
         # --------------------------------------------------------------------------------------------
         # Write ufiles of profiles
@@ -181,11 +184,10 @@ class transp_run:
                 t = str(int(time*1E3)).zfill(5)
                 R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
-                # Downsample ------------------------------------
+                # Downsample seems to be necessary sometimes ----
                 R, Z = MATHtools.downsampleCurve(R, Z, nsamp=100)
                 R, Z = R[:-1], Z[:-1]
                 # -----------------------------------------------
-
 
                 writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
                 tt.append(t)
@@ -194,7 +196,9 @@ class transp_run:
             self.folder,
             tt,
             self.folder,
-            self.shot)
+            self.shot,
+            momentsScruncher=6, # To avoid curvature issues, let's smooth it
+            )
 
         if structures_position is not None:
 
