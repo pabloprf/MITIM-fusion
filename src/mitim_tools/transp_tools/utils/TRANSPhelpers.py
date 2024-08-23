@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.gs_tools import FREEGStools
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import PROFILEStools
@@ -526,7 +525,7 @@ class transp_input_time:
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
 
         # Create Miller FreeGS for the desired geometry
-        self.f = FREEGStools.freegs_millerized( R, a, kappa_sep, delta_sep, zeta_sep, z0)
+        self.f = GEQtools.freegs_millerized( R, a, kappa_sep, delta_sep, zeta_sep, z0)
         self.f.prep(p0_MPa, Ip_MA, B_T)
         self.f.solve()
         self.f.derive()

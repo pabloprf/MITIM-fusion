@@ -1,5 +1,5 @@
 import os
-from mitim_tools.gs_tools import FREEGStools
+from mitim_tools.gs_tools import GEQtools
 from mitim_tools import __mitimroot__
 
 
@@ -17,7 +17,7 @@ Ip_MA = 8.7
 B_T = 12.16
 
 # Equilibrium
-f = FREEGStools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
+f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
 f.prep(p0_MPa, Ip_MA, B_T, resol_eq = 2**7+1)
 f.solve()
 

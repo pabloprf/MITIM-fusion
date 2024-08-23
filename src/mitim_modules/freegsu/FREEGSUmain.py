@@ -3,7 +3,7 @@ import pickle
 import torch
 import numpy as np
 from collections import OrderedDict
-from mitim_tools.gs_tools import FREEGStools
+from mitim_modules.freegsu import FREEGSUtools
 from mitim_tools.gs_tools.utils import GSplotting
 from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
@@ -86,7 +86,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
             maxVar_V,
             minVar_I,
             minVar_V,
-        ) = FREEGStools.readCoilCalcsMatrices_Supplies(
+        ) = FREEGSUtools.readCoilCalcsMatrices_Supplies(
             IOtools.expandPath(self.function_parameters["params"]["RequirementsFile"])
         )
 
@@ -234,7 +234,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
 
 
 def runFreeGS(self, dictDVs, plot=False, figs=None, onlyPrepare=False, debug=False):
-    out = FREEGStools.evaluator(
+    out = FREEGSUtools.evaluator(
         dictDVs,
         CoilCurrents=self.function_parameters["CoilCurrents"],
         CoilCurrents_lower=(

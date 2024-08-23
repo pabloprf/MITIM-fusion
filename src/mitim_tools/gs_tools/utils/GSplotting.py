@@ -1,14 +1,14 @@
-import copy, pandas, os, pickle
+import pandas
+import os
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 
-import freegs
-from mitim_tools.gs_tools import FREEGStools
+from mitim_modules.freegsu import FREEGSUtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.opt_tools.utils import BOgraphics
 
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
@@ -846,7 +846,7 @@ def plotPowers(
         dIdt,
         RampUp_limits,
         Supplies_limits,
-    ) = FREEGStools.calculatePowerQuantities(metrics, ProblemExtras)
+    ) = FREEGSUtools.calculatePowerQuantities(metrics, ProblemExtras)
 
     [maxVar_dIdT_ramp, maxVar_V_ramp, maxVar_P_ramp] = RampUp_limits
     [maxVar_I_supp, maxVar_V_supp, minVar_I_supp, minVar_V_supp] = Supplies_limits
@@ -1162,7 +1162,7 @@ def writeExtensiveTraces(metrics, file):
         dIdt,
         RampUp_limits,
         Supplies_limits,
-    ) = FREEGStools.calculatePowerQuantities(metrics, metrics["params"])
+    ) = FREEGSUtools.calculatePowerQuantities(metrics, metrics["params"])
 
     writer = pandas.ExcelWriter(file, engine="xlsxwriter")
 
@@ -1417,7 +1417,7 @@ def plotCoilsBars(
             maxVar_V,
             minVar_I,
             minVar_V,
-        ) = FREEGStools.readCoilCalcsMatrices_Supplies(
+        ) = FREEGSUtools.readCoilCalcsMatrices_Supplies(
             IOtools.expandPath(ProblemExtras["RequirementsFile"])
         )
 

@@ -2,7 +2,7 @@ import os
 import copy
 import hashlib
 import numpy as np
-from mitim_tools.gs_tools import FREEGStools, GEQtools
+from mitim_tools.gs_tools import GEQtools
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
@@ -346,7 +346,7 @@ class transp_initializer_from_freegs(transp_initializer_from_geqdsk):
             p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
             
         # Run freegs to generate equilibrium
-        f = FREEGStools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
+        f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
         f.prep(p0_MPa, Ip_MA, B_T)
         f.solve()
         f.derive()
