@@ -315,7 +315,7 @@ class transp_initializer_from_geqdsk(transp_initializer_from_profiles):
         ):
         
         # Read geqdsk
-        self.f = GEQtools.MITIMgeqdsk(geqdsk_file, fullLCFS=True)
+        self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
 
         # Convert to profiles
         p = self.f.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)

@@ -1,4 +1,6 @@
 import os
+import io
+import tempfile
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
@@ -16,35 +18,54 @@ Modifications are made in MITINM for visualizations and a few extra derivations.
 """
 
 def fix_file(filename):
-    print(
-        f"\t- If geqdsk is appended with coils, removing them to read {filename}"
-    )
+
     with open(filename, "r") as f:
         lines = f.readlines()
-    with open(f"{filename}_noCoils.geqdsk", "w") as f:
-        for cont,line in enumerate(lines):
-            if cont>0 and line[:2] == "  ":
-                break
-            f.write(line)
-    filename = f"{filename}_noCoils.geqdsk"
+
+    # -----------------------------------------------------------------------
+    # Remove coils (chatGPT 4o as of 08/24/24)
+    # -----------------------------------------------------------------------
+    # Use StringIO to simulate the file writing
+    noCoils_file = io.StringIO()
+    for cont, line in enumerate(lines):
+        if cont > 0 and line[:2] == "  ":
+            break
+        noCoils_file.write(line)
+
+    # Reset cursor to the start of StringIO
+    noCoils_file.seek(0)
+
+    # Write the StringIO content to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(noCoils_file.getvalue().encode('utf-8'))
+        noCoils_file = tmp_file.name
+    # -----------------------------------------------------------------------
+
+    with open(filename, 'r') as file1, open(noCoils_file, 'r') as file2:
+        file1_content = file1.read()
+        file2_content = file2.read()
+        
+    if file1_content != file2_content:
+        print(f"\t- geqdsk file {IOtools.clipstr(filename)} had coils, I have removed them")
+
+    filename = noCoils_file
 
     return filename
 class MITIMgeqdsk:
-    def __init__(self, filename, fullLCFS=False, removeCoils=True):
+    def __init__(self, filename):
 
-        # Fix file by removing coils
-        if removeCoils:
-            filename = fix_file(filename)
+        # Fix file by removing coils if it has them
+        filename = fix_file(filename)
 
         # Read GEQDSK file using OMFIT
         import omfit_classes.omfit_eqdsk
         self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(filename, forceFindSeparatrix=True)
 
         # Extra derivations in MITIM
-        self.derive(fullLCFS=fullLCFS)
+        self.derive()
 
-        if removeCoils:
-            os.system(f"rm {filename}")
+        # Remove temporary file
+        os.remove(filename)
 
     @classmethod
     def timeslices(cls, filename, **kwargs):
@@ -85,7 +106,7 @@ class MITIMgeqdsk:
 
         return gs
 
-    def derive(self, fullLCFS=False, debug=False):
+    def derive(self, debug=True):
 
         self.Jt = self.g.surfAvg("Jt") * 1e-6
         self.Jt_fb = self.g.surfAvg("Jt_fb") * 1e-6
@@ -152,32 +173,14 @@ class MITIMgeqdsk:
         self.Rb_gfile, self.Yb_gfile = self.g["RBBBS"], self.g["ZBBBS"]
         self.Rb, self.Yb = self.g["fluxSurfaces"].sep.transpose()
 
-        # Using PRF routines (otherwise IM workflow will run TRANSP with error of curvature... I have to fix it)
-        if fullLCFS:
-            self.Rb_prf, self.Yb_prf = MATHtools.findBoundaryMath(
-                self.g["AuxQuantities"]["R"],
-                self.g["AuxQuantities"]["Z"],
-                self.g["AuxQuantities"]["PSIRZ_NORM"],
-                0.99999,
-                5e3,
-                500,
-                None,
-                False,
-                0.1,
-            )
-
         if debug:
             fig, ax = plt.subplots()
 
             # OMFIT
-            ax.plot(self.Rb, self.Yb, "-s", c="r")
+            ax.plot(self.Rb, self.Yb, "-s", c="r", label="OMFIT")
 
             # GFILE
-            ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y")
-
-            # Old routines
-            if fullLCFS:
-                ax.plot(self.Rb_prf, self.Yb_prf, "-o", c="k")
+            ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y", label="GFILE")
 
             # Extras
             self.plotFluxSurfaces(
@@ -187,6 +190,11 @@ class MITIMgeqdsk:
                 ax=ax, color="c", alpha=1.0, rhoPol=True, sqrt=False
             )
             self.plotEnclosingBox(ax=ax)
+
+            ax.legend()
+            ax.set_aspect("equal")
+            ax.set_xlabel("R [m]")
+            ax.set_ylabel("Z [m]")
 
             plt.show()
 
@@ -212,7 +220,6 @@ class MITIMgeqdsk:
         ax.axhline(y=Rtop, ls="--", c=c, lw=0.5)
         Rbot = Zmajor - a * kappaL
         ax.axhline(y=Rbot, ls="--", c=c, lw=0.5)
-
         ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
         ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
 
@@ -241,8 +248,8 @@ class MITIMgeqdsk:
         kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[],[],[]
         
         for flux in range(len(flux_surfaces)):
-            if False: #flux == len(flux_surfaces)-1:
-                Rf, Zf = self.Rb_prf, self.Yb_prf
+            if flux == len(flux_surfaces)-1:
+                Rf, Zf = self.Rb, self.Yb
             else:
                 Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
 
@@ -277,10 +284,10 @@ class MITIMgeqdsk:
 
         if plotYN:
             fig, ax = plt.subplots()
-            ax.plot(self.Rb_prf, self.Yb_prf, 'o-', c = 'b')
+            ax.plot(self.Rb, self.Yb, 'o-', c = 'b')
 
             surfaces = mitim_flux_surfaces()
-            surfaces.reconstruct_from_RZ(self.Rb_prf, self.Yb_prf)
+            surfaces.reconstruct_from_RZ(self.Rb, self.Yb)
             surfaces._to_mxh(n_coeff=n_coeff)
             surfaces._from_mxh()
 
@@ -310,10 +317,10 @@ class MITIMgeqdsk:
         # Select only the R and Z values within the LCFS- I psi_norm outside to 2
         # this works fine for fixed-boundary equilibria but needs v. high tolerance
         # for the full equilibrium with x-point.
-        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb_prf)))+1 # extra index for tolerance
-        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb_prf)))+1
-        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb_prf)))-1
-        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb_prf)))-1
+        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
+        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
+        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
+        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
         Psi_norm[:,:R_min_ind] = 2
         Psi_norm[:,R_max_ind:] = 2
         Psi_norm[:Z_min_ind,:] = 2
@@ -345,7 +352,7 @@ class MITIMgeqdsk:
             #calculate Miller Extended Harmionic coefficients
             #enforce zero at the innermost flux surface
             
-            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
+            cn[:,i], sn[:,i], gn[:,i] = from_RZ_to_mxh(Ri, Zi, n_coeff)
             if i == 0:
                 cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
 
@@ -381,7 +388,7 @@ class MITIMgeqdsk:
         pressure = self.g['PRES']       # Pa
         Ip = self.g['CURRENT']*1E-6     # MA
 
-        RZ = np.array([self.Rb_prf,self.Yb_prf]).T
+        RZ = np.array([self.Rb,self.Yb]).T
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
         
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
@@ -523,94 +530,6 @@ class MITIMgeqdsk:
         GEQplotting.plotXpointEnvelope(self, ax=ax, color=color, alpha=alpha, rhoPol=rhoPol, sqrt=sqrt)
 
 # -----------------------------------------------------------------------------
-# Utilities for parameterizations
-# -----------------------------------------------------------------------------
-
-def get_flux_surface_geometry(R, Z, n_coeff=3):
-    """
-    Calculates MXH Coefficients for a flux surface
-    """
-    Z = np.roll(Z, -np.argmax(R))
-    R = np.roll(R, -np.argmax(R))
-    if Z[1] < Z[0]: # reverses array so that theta increases
-        Z = np.flip(Z)
-        R = np.flip(R)
-
-    # compute bounding box for each flux surface
-    r = 0.5*(np.max(R)-np.min(R))
-    kappa = 0.5*(np.max(Z) - np.min(Z))/r
-    R0 = 0.5*(np.max(R)+np.min(R))
-    Z0 = 0.5*(np.max(Z)+np.min(Z))
-    bbox = [R0, r, Z0, kappa]
-
-    # solve for polar angles
-    # need to use np.clip to avoid floating-point precision errors
-    theta_r = np.arccos(np.clip(((R - R0) / r), -1, 1))
-    theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
-
-    # Find the continuation of theta and theta_r to [0,2pi]
-    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
-
-    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
-    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
-
-    theta_cont[:max_theta] = theta_cont[:max_theta]
-    theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
-    theta_cont[max_theta_r:min_theta] = np.pi-theta[max_theta_r:min_theta]
-    theta_cont[min_theta:] = 2*np.pi+theta[min_theta:]
-
-    theta_r_cont[:max_theta] = theta_r_cont[:max_theta]
-    theta_r_cont[max_theta:max_theta_r] = theta_r[max_theta:max_theta_r]
-    theta_r_cont[max_theta_r:min_theta] = 2*np.pi - theta_r[max_theta_r:min_theta]
-    theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
-
-    theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
-    
-    # fourier decompose to find coefficients
-    c = np.zeros(n_coeff)
-    s = np.zeros(n_coeff)
-    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
-    from scipy.integrate import quad
-    for i in np.arange(n_coeff):
-        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
-        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
-
-        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
-        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
-        
-        
-    return c, s, bbox
-
-def mxh3_shape(R0, a, kappa, Z0, cn, sn, thetas = None):
-
-    if thetas is None:
-        thetas = np.linspace(0, 2 * np.pi, 100)
-
-    # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
-    if IOtools.isfloat(R0):
-        R0 = [R0]
-        a = [a]
-        kappa = [kappa]
-        Z0 = [Z0]
-        cn = np.array(cn)[np.newaxis,:]
-        sn = np.array(sn)[np.newaxis,:]
-
-    R0 = np.array(R0)
-    a = np.array(a)
-    kappa = np.array(kappa)
-    Z0 = np.array(Z0)
-
-    R = np.zeros((R0.shape[0],len(thetas)))
-    Z = np.zeros((R0.shape[0],len(thetas)))
-    n = np.arange(1, sn.shape[1])
-    for i,theta in enumerate(thetas):
-        theta_R = theta + cn[:,0] + np.sum( cn[:,1:]*np.cos(n*theta) + sn[:,1:]*np.sin(n*theta), axis=-1 )
-        R[:,i] = R0 + a*np.cos(theta_R)
-        Z[:,i] = Z0 + kappa*a*np.sin(theta)
-
-    return R, Z
-
-# -----------------------------------------------------------------------------
 # Tools to handle flux surface definitions
 # -----------------------------------------------------------------------------
 class mitim_flux_surfaces:
@@ -657,7 +576,7 @@ class mitim_flux_surfaces:
 
     def _from_mxh(self, thetas = None):
 
-        self.R, self.Z = mxh3_shape(self.R0, self.a, self.kappa, self.Z0, self.cn, self.sn, thetas = thetas)
+        self.R, self.Z = from_mxh_to_RZ(self.R0, self.a, self.kappa, self.Z0, self.cn, self.sn, thetas = thetas)
 
     def reconstruct_from_RZ(self, R, Z):
 
@@ -676,7 +595,7 @@ class mitim_flux_surfaces:
         self.sn = np.zeros((self.R.shape[0],n_coeff))
         self.gn = np.zeros((self.R.shape[0],4))
         for i in range(self.R.shape[0]):
-            self.cn[i,:], self.sn[i,:], self.gn[i,:] = get_flux_surface_geometry(self.R[i,:], self.Z[i,:], n_coeff=n_coeff)
+            self.cn[i,:], self.sn[i,:], self.gn[i,:] = from_RZ_to_mxh(self.R[i,:], self.Z[i,:], n_coeff=n_coeff)
 
         [self.R0, self.a, self.Z0, self.kappa] = self.gn.T
 
@@ -777,6 +696,93 @@ def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
     intersection = line1.intersection(line2)
 
     return intersection.x, intersection.y
+
+# -----------------------------------------------------------------------------
+# Utilities for parameterizations
+# -----------------------------------------------------------------------------
+
+def from_RZ_to_mxh(R, Z, n_coeff=3):
+    """
+    Calculates MXH Coefficients for a flux surface
+    """
+    Z = np.roll(Z, -np.argmax(R))
+    R = np.roll(R, -np.argmax(R))
+    if Z[1] < Z[0]: # reverses array so that theta increases
+        Z = np.flip(Z)
+        R = np.flip(R)
+
+    # compute bounding box for each flux surface
+    r = 0.5*(np.max(R)-np.min(R))
+    kappa = 0.5*(np.max(Z) - np.min(Z))/r
+    R0 = 0.5*(np.max(R)+np.min(R))
+    Z0 = 0.5*(np.max(Z)+np.min(Z))
+    bbox = [R0, r, Z0, kappa]
+
+    # solve for polar angles
+    # need to use np.clip to avoid floating-point precision errors
+    theta_r = np.arccos(np.clip(((R - R0) / r), -1, 1))
+    theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
+
+    # Find the continuation of theta and theta_r to [0,2pi]
+    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+
+    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+
+    theta_cont[:max_theta] = theta_cont[:max_theta]
+    theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
+    theta_cont[max_theta_r:min_theta] = np.pi-theta[max_theta_r:min_theta]
+    theta_cont[min_theta:] = 2*np.pi+theta[min_theta:]
+
+    theta_r_cont[:max_theta] = theta_r_cont[:max_theta]
+    theta_r_cont[max_theta:max_theta_r] = theta_r[max_theta:max_theta_r]
+    theta_r_cont[max_theta_r:min_theta] = 2*np.pi - theta_r[max_theta_r:min_theta]
+    theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
+
+    theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
+    
+    # fourier decompose to find coefficients
+    c = np.zeros(n_coeff)
+    s = np.zeros(n_coeff)
+    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
+    from scipy.integrate import quad
+    for i in np.arange(n_coeff):
+        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
+        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+
+        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
+        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
+        
+    return c, s, bbox
+
+def from_mxh_to_RZ(R0, a, kappa, Z0, cn, sn, thetas = None):
+
+    if thetas is None:
+        thetas = np.linspace(0, 2 * np.pi, 100)
+
+    # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
+    if IOtools.isfloat(R0):
+        R0 = [R0]
+        a = [a]
+        kappa = [kappa]
+        Z0 = [Z0]
+        cn = np.array(cn)[np.newaxis,:]
+        sn = np.array(sn)[np.newaxis,:]
+
+    R0 = np.array(R0)
+    a = np.array(a)
+    kappa = np.array(kappa)
+    Z0 = np.array(Z0)
+
+    R = np.zeros((R0.shape[0],len(thetas)))
+    Z = np.zeros((R0.shape[0],len(thetas)))
+    n = np.arange(1, sn.shape[1])
+    for i,theta in enumerate(thetas):
+        theta_R = theta + cn[:,0] + np.sum( cn[:,1:]*np.cos(n*theta) + sn[:,1:]*np.sin(n*theta), axis=-1 )
+        R[:,i] = R0 + a*np.cos(theta_R)
+        Z[:,i] = Z0 + kappa*a*np.sin(theta)
+
+    return R, Z
 
 # --------------------------------------------------------------------------------------------------------------
 # Fixed boundary stuff
@@ -1195,7 +1201,7 @@ class freegs_millerized:
         scratch_folder = IOtools.expandPath(scratch_folder)
         file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
         self.write(file_scratch)
-        g = MITIMgeqdsk(file_scratch, fullLCFS=True)
+        g = MITIMgeqdsk(file_scratch)
 
         os.remove(file_scratch)
 
@@ -1208,6 +1214,6 @@ class freegs_millerized:
         scratch_folder = IOtools.expandPath(folder)
         file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
         self.write(file_scratch)
-        g = MITIMgeqdsk(file_scratch, fullLCFS=True)
+        g = MITIMgeqdsk(file_scratch)
 
         return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, PichT_MW=PichT_MW, times=times)

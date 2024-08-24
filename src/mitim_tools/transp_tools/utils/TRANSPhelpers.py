@@ -317,8 +317,8 @@ class transp_run:
 
     def add_g_time(self, time, g_file_loc):
 
-        g = GEQtools.MITIMgeqdsk(g_file_loc,fullLCFS=True)
-        self._add_separatrix_time(time, g.Rb_prf, g.Yb_prf)
+        g = GEQtools.MITIMgeqdsk(g_file_loc)
+        self._add_separatrix_time(time, g.Rb, g.Yb)
 
     def _add_separatrix_time(self, time, R_sep, Z_sep):
 
@@ -631,7 +631,7 @@ class transp_input_time:
 
         Ip = geqdsk_object.g['CURRENT']  # A
         RB = geqdsk_object.g['RCENTR']*geqdsk_object.g['BCENTR'] * 1E2 
-        RZ = np.array([geqdsk_object.Rb_prf,geqdsk_object.Yb_prf]).T
+        RZ = np.array([geqdsk_object.Rb,geqdsk_object.Yb]).T
 
         self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 
