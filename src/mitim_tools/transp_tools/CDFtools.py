@@ -24,6 +24,7 @@ from mitim_tools.transp_tools.utils import (
     TRANSPhelpers
 )
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -13528,7 +13529,7 @@ class transp_output:
             if self.gfile_in is None:
                 ax_plasma = self.gfile_out.plot(fn=self.fn, extraLabel="G_out - ")
             else:
-                ax_plasma, fnG = GEQtools.compareGeqdsk(
+                ax_plasma, fnG = GEQplotting.compareGeqdsk(
                     [self.gfile_in, self.gfile_out],
                     fn=self.fn,
                     labelsGs=["G_in", "G_out"],

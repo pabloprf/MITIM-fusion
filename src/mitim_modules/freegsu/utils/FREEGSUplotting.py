@@ -7,6 +7,7 @@ from collections import OrderedDict
 
 from mitim_modules.freegsu import FREEGSUtools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from mitim_tools.misc_tools import IOtools
 
@@ -52,7 +53,7 @@ def writeResults(
     gs = write_gfiles(prfs, whereOutput)
 
     if plotGs:
-        axs, fn = GEQtools.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
+        axs, fn = GEQplotting.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
 
     # ------------- Pickles
     file = f"{whereOutput}/{namePkl}.pkl"
