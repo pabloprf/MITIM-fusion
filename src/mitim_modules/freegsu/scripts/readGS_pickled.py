@@ -9,7 +9,7 @@ import sys
 import pickle
 import copy
 import numpy as np
-from mitim_tools.gs_tools.utils import GSplotting
+from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_modules.freegsu import FREEGSUtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
@@ -44,6 +44,6 @@ print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMs
 # Plot
 # ---------------------------------------------------
 
-GSplotting.plotResult(
+FREEGSUplotting.plotResult(
     prfs, metrics, m["function_parameters"]["Constraints"], ProblemExtras=params
 )

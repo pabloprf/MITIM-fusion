@@ -346,18 +346,22 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamak, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6):
+    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6):
         '''
         Run TRANSP
         '''
         print("\t- Running TRANSP")
 
-        self.t = TRANSPtools.TRANSP(self.folder, tokamak)
+        if tokamak_name is None:
+            tokamak_name = tokamakTRANSP
+
+        self.t = TRANSPtools.TRANSP(self.folder, tokamakTRANSP, tokamak_name = tokamak_name)
 
         self.t.defineRunParameters(
             self.shot + self.runid, self.shot,
             mpisettings = mpisettings,
-            minutesAllocation = minutesAllocation)
+            minutesAllocation = minutesAllocation,
+            tokamak_name = tokamak_name)
 
         self.t.run()
 

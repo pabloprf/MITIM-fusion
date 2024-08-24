@@ -18,7 +18,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         self.job_id, self.job_name = None, None
 
     def defineRunParameters(
-        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, **kwargs
+        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, **kwargs
     ):
         super().defineRunParameters(*args, **kwargs)
 
@@ -49,7 +49,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         self.job.define_machine(
             "transp",
-            f"transp_{self.tok}_{self.runid}/",
+            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}/",
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,

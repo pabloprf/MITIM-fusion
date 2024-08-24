@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from scipy.interpolate import interp1d
-from mitim_tools.gs_tools.utils import FREEGSparams, GSplotting
+from mitim_modules.freegsu.utils import FREEGSUplotting, FREEGSUparams
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -86,7 +86,7 @@ def evaluator(
     # ---- ----  ----  ----  ----  ----
 
     # Upper set
-    coils, coils_names = FREEGSparams.updateCoils(
+    coils, coils_names = FREEGSUparams.updateCoils(
         CoilCurrents,
         dictDVs_upper,
         div1div=Params["div1div"],
@@ -96,7 +96,7 @@ def evaluator(
 
     # Lower ser (if not up-down symmetric)
     if CoilCurrents_lower is not None:
-        coils_lower, _ = FREEGSparams.updateCoils(
+        coils_lower, _ = FREEGSUparams.updateCoils(
             CoilCurrents_lower,
             dictDVs_lower,
             div1div=Params["div1div"],
@@ -107,7 +107,7 @@ def evaluator(
         CoilCurrents_lower, coils_lower = CoilCurrents, coils
 
     # Equalizers
-    coils, coils_lower = FREEGSparams.equalizer(
+    coils, coils_lower = FREEGSUparams.equalizer(
         coils, coils_lower, coils_names, equalizers=Params["equalizers"]
     )
     # ----------------------------
@@ -186,7 +186,7 @@ def evaluator(
         # --------------------------------------------------------
 
         if plot and prfs is not None:
-            GSplotting.plotResult(
+            FREEGSUplotting.plotResult(
                 prfs,
                 metrics,
                 Constraints,
@@ -916,7 +916,7 @@ def runSingleFreeGS(ParamsAll, cont):
     # ---------------
 
     # Convert from array/list to a single value, because this run is individual FREEGS
-    coilsSingle = FREEGSparams.assignCoils(
+    coilsSingle = FREEGSUparams.assignCoils(
         cont,
         cs1,
         cs2,
@@ -954,7 +954,7 @@ def runSingleFreeGS(ParamsAll, cont):
     # ---------------
 
     # Convert from array/list to a single value, because this run is individual FREEGS
-    coilsSingle_l = FREEGSparams.assignCoils(
+    coilsSingle_l = FREEGSUparams.assignCoils(
         cont,
         cs1_l,
         cs2_l,
@@ -984,7 +984,7 @@ def runSingleFreeGS(ParamsAll, cont):
     # if outPhase:
     #   cs10l,cs20l,cs30l,pf10l,pf20l,pf30l,pf40l,
     #   dv10al, dv10bl, dv10cl, dv10dl,
-    #   dv20al, dv20bl, dv20cl, dv20dl = FREEGSparams.assignCoils(len(xpoints)-cont-1,cs1,cs2,cs3,pf1,pf2,pf3,pf4,dv1a, dv1b, dv1c, dv1d,dv2a, dv2b, dv2c, dv2d)
+    #   dv20al, dv20bl, dv20cl, dv20dl = FREEGSUparams.assignCoils(len(xpoints)-cont-1,cs1,cs2,cs3,pf1,pf2,pf3,pf4,dv1a, dv1b, dv1c, dv1d,dv2a, dv2b, dv2c, dv2d)
     #   prf1.sparc_coils.lowerCoils(coils=(cs10l,cs20l,cs30l,pf10l,pf20l,pf30l,pf40l,dv10al, dv10bl, dv10cl, dv10dl,dv20al, dv20bl, dv20cl, dv20dl,0))
     #   lower = xpoints[len(xpoints)-cont-1]
     #   prf1.sparc_coils.process()

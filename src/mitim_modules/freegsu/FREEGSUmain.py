@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from collections import OrderedDict
 from mitim_modules.freegsu import FREEGSUtools
-from mitim_tools.gs_tools.utils import GSplotting
+from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import EVplot
@@ -323,7 +323,7 @@ def analyze_results(
 
         FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
         if storeResults:
-            gs = GSplotting.writeResults(
+            gs = FREEGSUplotting.writeResults(
                 FolderEvaluation,
                 prfs,
                 metrics,
@@ -372,7 +372,7 @@ def combined_analysis(
         for i in range(len(CoilCurrents_all)):
             CoilCurrents[ikey].append(CoilCurrents_all[i][ikey])
 
-    CoilCurrents, Constraints, times_mod = GSplotting.extendSweep(
+    CoilCurrents, Constraints, times_mod = FREEGSUplotting.extendSweep(
         CoilCurrents, Constraints, n=n, orderInEquil=orderInEquil, times=None
     )
 
@@ -415,7 +415,7 @@ def combined_analysis(
         IOtools.askNewFolder(folderEvaluation_out, force=True)
         folderEvaluation = f"{folderEvaluation_out}final_analysis/"
         IOtools.askNewFolder(folderEvaluation, force=True)
-        gs = GSplotting.writeResults(
+        gs = FREEGSUplotting.writeResults(
             folderEvaluation,
             prfs,
             metrics,

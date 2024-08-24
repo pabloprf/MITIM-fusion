@@ -367,6 +367,7 @@ class MITIMgeqdsk:
         self.plotFluxSurfaces(
             ax=ax, fluxes=np.linspace(0, 1, 21), rhoPol=True, sqrt=False, color=color
         )
+        ax.plot(self.Rb, self.Yb, lw=1, c="r")
         ax.set_title("Poloidal Flux")
         ax.set_aspect("equal")
         ax.set_xlabel("R (m)")
@@ -376,6 +377,7 @@ class MITIMgeqdsk:
         self.plotFluxSurfaces(
             ax=ax, fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color
         )
+        ax.plot(self.Rb, self.Yb, lw=1, c="r")
         ax.set_title("Sqrt Toroidal Flux")
         ax.set_aspect("equal")
         ax.set_xlabel("R (m)")
