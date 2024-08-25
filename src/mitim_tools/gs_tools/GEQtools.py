@@ -1,12 +1,14 @@
 import os
 import io
 import tempfile
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
+from scipy.integrate import quad
 import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -172,6 +174,15 @@ class MITIMgeqdsk:
 
         self.Rb_gfile, self.Yb_gfile = self.g["RBBBS"], self.g["ZBBBS"]
         self.Rb, self.Yb = self.g["fluxSurfaces"].sep.transpose()
+        
+        if len(self.Rb) == 0:
+            print("\t- MITIM > No separatrix found in the OMFIT fluxSurfaces, increasing resolution and going all in!",typeMsg='i')
+
+            flx = copy.deepcopy(self.g['fluxSurfaces'])
+            flx._changeResolution(6)
+            flx.findSurfaces([0.0,0.5,1.0])
+            fs = flx['flux'][list(flx['flux'].keys())[-1]]
+            self.Rb, self.Yb = fs['R'], fs['Z']
 
         if debug:
             fig, ax = plt.subplots()
@@ -245,7 +256,7 @@ class MITIMgeqdsk:
         flux_surfaces = self.g['fluxSurfaces']['flux']
         
         # Cannot parallelize because differen number of points?
-        kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[],[],[]
+        kappa, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[]
         
         for flux in range(len(flux_surfaces)):
             if flux == len(flux_surfaces)-1:
@@ -259,23 +270,14 @@ class MITIMgeqdsk:
             surfaces._to_mxh(n_coeff=n_coeff)
 
             kappa.append(surfaces.kappa[0])
-            delta.append(np.sin(surfaces.sn[0,1]))
-            zeta.append(-surfaces.sn[0,2])
             rmin.append(surfaces.a[0])
             rmaj.append(surfaces.R0[0])
             zmag.append(surfaces.Z0[0])
 
-            c0, s0 = [], []
-            for i in range(n_coeff):
-                c0.append(surfaces.cn[0,i])
-                if i > 2:
-                    s0.append(surfaces.sn[0,i])
-            sn.append(s0)
-            cn.append(c0)
+            sn.append(surfaces.sn[0,:])
+            cn.append(surfaces.cn[0,:])
 
         kappa = np.array(kappa)
-        delta = np.array(delta)
-        zeta = np.array(zeta)
         rmin = np.array(rmin)
         rmaj = np.array(rmaj)
         zmag = np.array(zmag)
@@ -295,7 +297,12 @@ class MITIMgeqdsk:
 
             plt.show()
 
-        return psis, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn
+        '''
+        Reminder that 
+            sn = [0.0, np.arcsin(delta), -zeta, ...] 
+        '''
+
+        return psis, rmaj, rmin, zmag, kappa, cn, sn
 
     def get_MXH_coeff(self, n, n_coeff=6, plotYN=False): 
         """
@@ -393,7 +400,10 @@ class MITIMgeqdsk:
         
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
 
-        _, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
+        _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
+
+        delta = np.sin(sn[:,1])
+        zeta = -sn[:,2]
 
         # -------------------------------------------------------------------------------------------------------
         # Pass to profiles
@@ -438,7 +448,7 @@ class MITIMgeqdsk:
         for i in range(coeffs_MXH):
             profiles[f'shape_cos{i}(-)'] = cn[:,i]
         for i in range(coeffs_MXH-3):
-            profiles[f'shape_sin{i+3}(-)'] = sn[:,i]
+            profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
 
         '''
         -------------------------------------------------------------------------------------------------------
@@ -487,7 +497,7 @@ class MITIMgeqdsk:
 
             fig, ax = plt.subplots()
             ff = np.linspace(0, 1, 11)
-            self.g.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
+            self.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
             p.plotGeometry(ax=ax, surfaces_rho=ff, color="b")
             plt.show()
 
@@ -723,10 +733,13 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
     theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
 
     # Find the continuation of theta and theta_r to [0,2pi]
-    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+    theta_r_cont = np.copy(theta_r)
+    theta_cont = np.copy(theta)
 
-    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
-    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+    max_theta = np.argmax(theta)
+    min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r)
+    min_theta_r = np.argmin(theta_r)
 
     theta_cont[:max_theta] = theta_cont[:max_theta]
     theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
@@ -740,14 +753,16 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
 
     theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
     
-    # fourier decompose to find coefficients
-    c = np.zeros(n_coeff)
-    s = np.zeros(n_coeff)
-    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
-    from scipy.integrate import quad
+    # Fourier decompose to find coefficients
+    c, s = np.zeros(n_coeff), np.zeros(n_coeff)
+    def f_theta_r(theta):
+        return np.interp(theta, theta_cont, theta_r_cont)
+    
     for i in np.arange(n_coeff):
-        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
-        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+        def integrand_sin(theta):
+            return np.sin(i*theta)*(f_theta_r(theta))
+        def integrand_cos(theta):
+            return np.cos(i*theta)*(f_theta_r(theta))
 
         s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
         c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi

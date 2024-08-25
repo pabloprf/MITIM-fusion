@@ -16,6 +16,7 @@ import subprocess
 import json
 import functools
 import contextlib
+import hashlib
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -1718,3 +1719,27 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         f = h5py.File(filename + ".hdf5", "r")
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
+
+# chatGPT 4o (08/18/2024)
+def string_to_sequential_5_digit_number(input_string):
+    # Split the input string into the base and the numeric suffix
+    base_part = input_string[:-1]
+    try:
+        sequence_digit = int(input_string[-1])
+    except ValueError:
+        sequence_digit = 0
+
+    # Create a hash of the base part using SHA-256
+    hash_object = hashlib.sha256(base_part.encode())
+    
+    # Convert the hash to an integer
+    hash_int = int(hash_object.hexdigest(), 16)
+    
+    # Take the hash modulo 10,000 to get a 4-digit number
+    four_digit_number = hash_int % 10000
+    
+    # Combine the 4-digit hash with the sequence digit to get a 5-digit number
+    five_digit_number = (four_digit_number * 10) + sequence_digit
+    
+    # Ensure it's always 5 digits by adding leading zeros if necessary
+    return f'{five_digit_number:05d}'

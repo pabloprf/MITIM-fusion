@@ -29,42 +29,40 @@ class beat:
         self.folder_output = f'{self.folder_beat}/beat_results/'
         os.makedirs(self.folder_output, exist_ok=True)
 
-    def check(self, restart = False, folder_search = None, suffix = ''):
-        '''
-        Check if output file already exists so that I don't need to run this beat again
-        '''
+        self.initialize_called = False
 
-        if folder_search is None:
-            folder_search = self.folder_output
+    def define_initializer(self, initializer):
 
-        output_file = None
-        if not restart:
-            output_file = IOtools.findFileByExtension(folder_search, suffix, agnostic_to_case=True, provide_full_path=True)
-
-            if output_file is not None:
-                print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
-
+        if initializer is None:
+            self.initialize = initializer_from_previous(self)
+        elif initializer == 'freegs':
+            self.initialize = initializer_from_freegs(self)
+        elif initializer == 'geqdsk':
+            self.initialize = initializer_from_geqdsk(self)
+        elif initializer == 'profiles':
+            self.initialize = beat_initializer(self)
+        elif initializer == 'portals':
+            self.initialize = initializer_from_portals(self)
+        elif initializer == 'transp':
+            self.initialize = initializer_from_transp(self)
         else:
-            print('\t\t- Forced restarting of beat', typeMsg = 'i')
-
-        return output_file is not None
-
-    def freeze_parameters(self):
-        pass
-
-    def retrieve_frozen_parameters_when_skipping(self):
-        pass
-
-    def define_initializer(self, *args, **kwargs):
-        pass
-
-    def initialize(self, *args, **kwargs):
-        pass
+            raise ValueError(f'Initializer "{initializer}" not recognized')
 
     def prepare(self, *args, **kwargs):
         pass
 
     def run(self, *args, **kwargs):
+        pass
+
+    def merge_parameters(self, profiles_current_is_from_beat = None):
+        # self.maestro_instance.profiles_with_engineering_parameters
+        # self.profiles_output
+        pass
+
+    def _inform_save(self, *args, **kwargs):
+        pass
+
+    def _inform(self, *args, **kwargs):
         pass
 
     def finalize(self, *args, **kwargs):
@@ -79,39 +77,18 @@ class beat:
     def plot(self, *args, **kwargs):
         return ''
 
-    def inform_save(self, *args, **kwargs):
-        pass
-
-    def _inform(self, *args, **kwargs):
-        pass
-
 # --------------------------------------------------------------------------------------------
-# Generic initializer classes with required methods
+# [Generic] Initializer from profiles: just load profiles and write them to the initialization folder
 # --------------------------------------------------------------------------------------------
 
 class beat_initializer:
-    
-    def __init__(self, beat_instance, label = ''):
-            
+    def __init__(self, beat_instance, label = 'profiles'):
+
         self.beat_instance = beat_instance
         self.folder = f'{self.beat_instance.folder_beat}/initializer_{label}/'
 
         if len(label) > 0:
             os.makedirs(self.folder, exist_ok=True)
-
-    def __call__(self, *args, **kwargs):
-        '''
-        The call method should produce a self.beat.profiles_current object with the input.gacode profiles
-        '''
-        pass
-
-# --------------------------------------------------------------------------------------------
-# Initializer from profiles: just load profiles and write them to the initialization folder
-# --------------------------------------------------------------------------------------------
-
-class initializer_from_profiles(beat_initializer):
-    def __init__(self, beat_instance, label = 'profiles'):
-        super().__init__(beat_instance, label = label)
 
     def __call__(self, profiles_file = None, profiles = {}, Vsurf = 0.0, use_previous_portals_profiles = True,  **kwargs_beat):
 
@@ -156,11 +133,35 @@ class initializer_from_profiles(beat_initializer):
         # Pass the profiles to the beat instance
         self.beat_instance.profiles_current = self.profiles_current
 
+        # Initializer has been called
+        self.beat_instance.initialize_called = True
+
+# --------------------------------------------------------------------------------------------
+# Initializer from previous beat: load the profiles and call the profiles initializer
+# --------------------------------------------------------------------------------------------
+
+class initializer_from_previous(beat_initializer):
+    
+    def __init__(self, beat_instance, label = 'previous_beat'):
+        super().__init__(beat_instance, label = label)
+
+    def __call__(self, *args, **kwargs):
+        '''
+        The call method should produce a self.beat.profiles_current object with the input.gacode profiles
+        '''
+
+        print("\t- Initializing profiles from previous beat's result", typeMsg = 'i')
+        
+        beat_num = self.beat_instance.maestro_instance.counter-1
+        profiles_file = f"{self.beat_instance.maestro_instance.beats[beat_num].folder_output}/input.gacode"
+
+        super().__call__(profiles_file)
+
 # --------------------------------------------------------------------------------------------
 # Initializer from PORTALS results: load the profiles with best residual and call the profiles initializer
 # --------------------------------------------------------------------------------------------
 
-class initializer_from_portals(initializer_from_profiles):
+class initializer_from_portals(beat_initializer):
     '''
     Idea is to find the profiles with best residual and then call the profiles initializer
     '''
@@ -184,7 +185,7 @@ class initializer_from_portals(initializer_from_profiles):
 # Initializer from TRANSP: load the profiles at a given time and call the profiles initializer
 # --------------------------------------------------------------------------------------------
 
-class initializer_from_transp(initializer_from_profiles):
+class initializer_from_transp(beat_initializer):
 
     def __init__(self, beat_instance):
         super().__init__(beat_instance, label = 'transp')
@@ -208,7 +209,7 @@ class initializer_from_transp(initializer_from_profiles):
 # Initializer from GEQDSK: load the geqdsk and call the profiles initializer
 # --------------------------------------------------------------------------------------------
 
-class initializer_from_geqdsk(initializer_from_profiles):
+class initializer_from_geqdsk(beat_initializer):
     '''
     Idea is to write geqdsk to profile and then call the profiles initializer
     '''

@@ -11,8 +11,8 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 
-MARKERSIZE = 4
-LW = 0.5
+MARKERSIZE = 1
+LW = 1.0
 
 def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
@@ -27,6 +27,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
         elif 'run_portals' in os.listdir(f'{folder_beats}/{beats[beat]}'):
             beat_types.append('portals')
             
+    # First initializer
     beat_initializer = None
     if 'initializer_freegs' in os.listdir(f'{folder_beats}/{beats[0]}'):
         beat_initializer = 'freegs'
@@ -37,7 +38,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
     # Create "dummy" maestro by only defining the beats
     from mitim_modules.maestro.MAESTROmain import maestro
-    m = maestro(folder, terminal_outputs = False)
+    m = maestro(folder, terminal_outputs = True)
     for i,beat in enumerate(beat_types):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
 
@@ -52,26 +53,21 @@ def plot_results(self, fn):
     objs = OrderedDict()
     for i,beat in enumerate(self.beats.values()):
 
+        obj, profs = beat.grab_output()
 
         if isinstance(beat, transp_beat):
-            objs[f'TRANSP beat #{i+1}'] = beat.grab_output()
+            objs[f'TRANSP beat #{i+1}'] = profs #obj
         elif isinstance(beat, portals_beat):
-            portals_output = beat.grab_output()
-            objs[f'PORTALS beat #{i+1}'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+            objs[f'PORTALS beat #{i+1}'] = obj.mitim_runs[obj.ibest]['powerstate'].profiles
 
     # Collect initialization
-    ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initializer.folder}/input.gacode')}
-    if os.path.exists(f'{self.beats[1].initializer.folder}/input.geqdsk'):
-        ini['geqdsk'] = GEQtools.MITIMgeqdsk(f'{self.beats[1].initializer.folder}/input.geqdsk')
+    ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initialize.folder}/input.gacode')}
+    if os.path.exists(f'{self.beats[1].initialize.folder}/input.geqdsk'):
+        ini['geqdsk'] = GEQtools.MITIMgeqdsk(f'{self.beats[1].initialize.folder}/input.geqdsk')
 
+    # ********************************************************************************************************
     # Plot profiles
-    _plot_profiles_evolution(self,objs, fn, fnlab_pre = "MAESTRO - ")
-
-    # Plot transitions
-    _plot_transitions(self, objs, fn, ini = ini, label = "MAESTRO Equilibria")
-
-def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
-
+    # ********************************************************************************************************
     ps = []
     ps_lab = []
     for label in objs:
@@ -81,7 +77,7 @@ def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
 
     if len(ps) > 0:
         # Plot profiles
-        figs = PROFILEStools.add_figures(fn,fnlab_pre = fnlab_pre)
+        figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
             PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
@@ -89,8 +85,11 @@ def _plot_profiles_evolution(self,objs, fn, fnlab_pre = ""):
     for p in ps:
         p.printInfo()
 
-def _plot_transitions(self, objs, fn, ini=None, label = ""):
+    # ********************************************************************************************************
+    # Plot transitions
+    # ********************************************************************************************************
 
+    label = "MAESTRO Equilibria"
     keys = list(objs.keys())
 
     # ----------------------------------
@@ -141,6 +140,9 @@ def _plot_transitions(self, objs, fn, ini=None, label = ""):
     for i in range(len(objs)-1):
         obj1 = objs[keys[i]]
         obj2 = objs[keys[i+1]]
+
+        if obj1 is None or obj2 is None:
+            continue
 
         obj1.labelMAESTRO = keys[i]
         obj2.labelMAESTRO = keys[i+1]
@@ -252,9 +254,6 @@ def _plot_transition(self, obj1, obj2, axs):
     ax.legend(prop={'size':8})
     GRAPHICStools.addDenseAxis(ax)
     ax.set_title("Total Pressure")
-
-
-
 
     # ----------------------------------
     # Current
