@@ -2,12 +2,16 @@ import os
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis
-from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_modules.maestro.utils.MAESTRObeat import (
+    beat, 
+    beat_initializer, 
+    initializer_from_profiles, 
+    initializer_from_portals, 
+    initializer_from_transp
+    )
 from IPython import embed
-
-from mitim_modules.maestro.utils.MAESTRObeat import beat, beat_initializer
 
 # --------------------------------------------------------------------------------------------
 # Beat: PORTALS
@@ -33,7 +37,13 @@ class portals_beat(beat):
         if initializer is None:
             self.initializer = beat_initializer(self)
         elif initializer == 'transp':
-            self.initializer = portals_initializer_from_transp(self)
+            self.initializer = initializer_from_transp(self)
+        elif initializer == 'profiles':
+            self.initializer = initializer_from_profiles(self)
+        elif initializer == 'portals':
+            self.initializer = initializer_from_portals(self)
+        else:
+            raise ValueError(f'Initializer "{initializer}" not recognized')
 
     def initialize(self,*args,  **kwargs):
 
@@ -41,7 +51,8 @@ class portals_beat(beat):
 
     def prepare(self, use_previous_residual = True, PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
 
-        self.fileGACODE = self.initializer.file_gacode
+        self.fileGACODE = f"{self.folder}/input.gacode"
+        self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
 
         self.PORTALSparameters = PORTALSparameters
         self.MODELparameters = MODELparameters
@@ -127,7 +138,6 @@ class portals_beat(beat):
 
         return opt_fun
 
-
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
         opt_fun = self.grab_output(full = full_plot)
@@ -155,41 +165,3 @@ class portals_beat(beat):
         final_file = f'{self.maestro_instance.folder_output}/input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
-
-# PORTALS initializers ************************************************************************
-
-class portals_initializer(beat_initializer):
-
-    def __init__(self, beat_instance, label = ''):
-        super().__init__(beat_instance, label = label)
-
-class portals_initializer_from_transp(portals_initializer):
-
-    def __init__(self, beat_instance):
-        super().__init__(beat_instance, label = 'transp')
-
-    def __call__(self, time_extraction = None, use_previous_portals_profiles = True, **kwargs):
-
-        # Load TRANSP results from previous beat
-        beat_num = self.beat_instance.maestro_instance.counter-1
-        self.cdf = CDFtools.transp_output(self.beat_instance.maestro_instance.beats[beat_num].folder_output)
-
-        # Extract profiles at time_extraction
-        time_extraction = self.cdf.t[self.cdf.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
-        self.p = self.cdf.to_profiles(time_extraction=time_extraction)
-
-        if use_previous_portals_profiles and ('portals_profiles' in self.beat_instance.maestro_instance.parameters_trans_beat):
-            print('\t- Using previous PORTALS thermal kinetic profiles instead of the TRANSP profiles')
-            p_prev = self.beat_instance.maestro_instance.parameters_trans_beat['portals_profiles']
-
-            self.p.changeResolution(rho_new=p_prev.profiles['rho(-)'])
-            
-            self.p.profiles['te(keV)'] = p_prev.profiles['te(keV)']
-            self.p.profiles['ne(10^19/m^3)'] = p_prev.profiles['ne(10^19/m^3)']
-            for i,sp in enumerate(self.p.Species):
-                if sp['S'] == 'therm':
-                    self.p.profiles['ti(keV)'][:,i] = p_prev.profiles['ti(keV)'][:,i]
-                    self.p.profiles['ni(10^19/m^3)'][:,i] = p_prev.profiles['ni(10^19/m^3)'][:,i]
-
-        self.file_gacode = f"{self.folder}/input.gacode"
-        self.p.writeCurrentStatus(file=self.file_gacode)

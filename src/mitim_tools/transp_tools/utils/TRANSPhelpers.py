@@ -355,7 +355,7 @@ class transp_run:
         if tokamak_name is None:
             tokamak_name = tokamakTRANSP
 
-        self.t = TRANSPtools.TRANSP(self.folder, tokamakTRANSP, tokamak_name = tokamak_name)
+        self.t = TRANSPtools.TRANSP(self.folder, tokamakTRANSP)
 
         self.t.defineRunParameters(
             self.shot + self.runid, self.shot,

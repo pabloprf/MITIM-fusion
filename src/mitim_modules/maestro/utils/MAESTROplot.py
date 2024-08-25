@@ -30,6 +30,10 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
     beat_initializer = None
     if 'initializer_freegs' in os.listdir(f'{folder_beats}/{beats[0]}'):
         beat_initializer = 'freegs'
+    elif 'initializer_geqdsk' in os.listdir(f'{folder_beats}/{beats[0]}'):
+        beat_initializer = 'geqdsk'
+    elif 'initializer_profiles' in os.listdir(f'{folder_beats}/{beats[0]}'):
+        beat_initializer = 'profiles'
 
     # Create "dummy" maestro by only defining the beats
     from mitim_modules.maestro.MAESTROmain import maestro

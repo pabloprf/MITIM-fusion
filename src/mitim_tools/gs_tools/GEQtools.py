@@ -106,7 +106,7 @@ class MITIMgeqdsk:
 
         return gs
 
-    def derive(self, debug=True):
+    def derive(self, debug=False):
 
         self.Jt = self.g.surfAvg("Jt") * 1e-6
         self.Jt_fb = self.g.surfAvg("Jt_fb") * 1e-6
@@ -375,7 +375,7 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
-    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, plotYN = False):
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
 
         # -------------------------------------------------------------------------------------------------------
         # Quantities from the equilibrium
@@ -393,7 +393,6 @@ class MITIMgeqdsk:
         
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
 
-        coeffs_MXH = 7
         _, kappa, delta, zeta, rmin, rmaj, zmag, sn, cn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
         # -------------------------------------------------------------------------------------------------------
