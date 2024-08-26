@@ -13,7 +13,7 @@ Overall routine to handle runs depending on being globus or singularity
 """
 
 
-def TRANSP(FolderTRANSP, tokamak):
+def TRANSP(*args):
     s = CONFIGread.load_settings()
 
     if s["preferences"]["transp"] == "globus":
@@ -25,7 +25,7 @@ def TRANSP(FolderTRANSP, tokamak):
             TRANSPsingularity as TRANSPclass,
         )
 
-    return TRANSPclass(FolderTRANSP, tokamak)
+    return TRANSPclass(*args)
 
 
 """

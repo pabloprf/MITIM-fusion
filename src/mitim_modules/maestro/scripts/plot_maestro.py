@@ -18,7 +18,7 @@ def main():
         "--only", type=str, required=False, default=None
     )
     parser.add_argument(
-        "--simple", required=False, default=False, action="store_true"
+        "--complete", required=False, default=False, action="store_true"
     )  
 
     args = parser.parse_args()
@@ -26,9 +26,9 @@ def main():
     folder = args.folder
     beats = args.beats
     only = args.only
-    simple = args.simple
+    complete = args.complete
 
-    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only, full_plot = not simple)
+    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only, full_plot = complete)
 
     # Import IPython and embed an interactive session
     from IPython import embed

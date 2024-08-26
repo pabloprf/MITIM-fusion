@@ -148,10 +148,7 @@ def convert_ASTRA_to_gacode(astra_root,
     else:
         print(f"Found gfile: {geometry_file}")
 
-    try:
-        g = GEQtools.MITIMgeqdsk(geometry_file, removeCoils=False)
-    except:
-        g = GEQtools.MITIMgeqdsk(geometry_file)
+    g = GEQtools.MITIMgeqdsk(geometry_file)
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")

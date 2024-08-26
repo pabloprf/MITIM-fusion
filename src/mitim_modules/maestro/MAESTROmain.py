@@ -1,4 +1,5 @@
 import torch
+import copy
 import os
 import numpy as np
 from mitim_modules.powertorch.physics import CALCtools
@@ -6,6 +7,7 @@ from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __version__, __mitimroot__
 from IPython import embed
 
@@ -36,6 +38,13 @@ class maestro:
             - terminal_outputs: If True, all outputs will be printed to terminal. If False, they will be saved to a log file per beat step
         '''
 
+        self.terminal_outputs = terminal_outputs
+        self.master_restart = master_restart        # If True, all beats will be restarted
+
+        # --------------------------------------------------------------------------------------------
+        # Prepare folders
+        # --------------------------------------------------------------------------------------------
+
         self.folder = IOtools.expandPath(folder)
         
         self.folder_output = f'{self.folder}/Outputs/'
@@ -45,22 +54,30 @@ class maestro:
         self.folder_beats = f'{self.folder}/Beats/'
         os.makedirs(self.folder_beats, exist_ok=True)
 
-        self.save_file = f'{self.folder_output}/maestro_save.pkl'
-        self.terminal_outputs = terminal_outputs
-
-        self.beats = {}
-        self.counter = 0
-
-        self.master_restart = master_restart # If True, all next beats will be restarted
-
-        self.parameters_trans_beat = {} # I can save parameters that can be useful for future beats
-        self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
-
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
-        print('\n -----------------------------------------------------------------------------------')
+        print('\n ---------------------------------------------------------------------------------------------------')
         print(f'MAESTRO run (MITIM version {__version__}, branch {branch}, commit {commit_hash})')
-        print('-----------------------------------------------------------------------------------')
+        print('---------------------------------------------------------------------------------------------------')
         print(f'folder: {self.folder}')
+
+        # --------------------------------------------------------------------------------------------
+        # Prepare variables
+        # --------------------------------------------------------------------------------------------
+    
+        self.beats = {}     # Where all the beats will be stored
+        self.counter = 0    # Counter of current beat
+
+        '''
+        Engineering parameters performed during "freezing"
+        --------------------------------------------------
+        During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
+        to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
+        if from beat to beat it's, for whatever reason, lower.  In other words, e.g., it's best to not
+        pass the ICH power from input.gacode PORTALS to TRANSP, but rather take the original intended ICH power.
+        '''
+
+        self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
+        self.parameters_trans_beat = {} # I can save parameters that can be useful for future beats (e.g. PORTALS residual)
 
     def define_beat(self, beat, initializer = None, restart = False):
 
@@ -79,14 +96,14 @@ class maestro:
         self.beat.define_initializer(initializer)
 
         # Check here if the beat has already been performed
-        self._check(restart = restart or self.master_restart )
+        self.check(restart = restart or self.master_restart )
 
     # --------------------------------------------------------------------------------------------
     # Beat operations
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer('\t\t* Checker')
-    def _check(self, restart = False, **kwargs):
+    def check(self, beat_check = None, restart = False, **kwargs):
         '''
         Note:
             After each beat, the results are passed to an output folder.
@@ -95,18 +112,31 @@ class maestro:
             the checks should happen in the finalize() method of each beat.
         '''
 
+        if beat_check is None:
+            beat_check = self.beat
+
         print('\t- Checking...')
         log_file = f'{self.folder_logs}/beat_{self.counter}_check.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
-            exists = self.beat.check(restart = restart, **kwargs)
-            self.beat.run_flag = not exists
+
+            output_file = None
+            if not restart:
+                output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True, provide_full_path=True)
+                if output_file is not None:
+                    print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
+            else:
+                print('\t\t- Forced restarting of beat', typeMsg = 'i')
+
+            self.beat.run_flag = output_file is None
 
         # If this beat is restarted, all next beats will be restarted
         if self.beat.run_flag:
             if not self.master_restart:
                 print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
             self.master_restart = True
-            
+
+        return output_file is not None
+
     @mitim_timer('\t\t* Initializer')
     def initialize(self, *args, **kwargs):
 
@@ -114,25 +144,15 @@ class maestro:
         if self.beat.run_flag:
             log_file = f'{self.folder_logs}/beat_{self.counter}_ini.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+                # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
+
+                if self.profiles_with_engineering_parameters is None:
+                    # First initialization, freeze engineering parameters
+                    self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
+
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
-            self.beat.retrieve_frozen_parameters_when_skipping()
-
-        '''
-        Freeze parameters
-        -----------------
-        During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
-        to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
-        if beat by beat it's, for whatever reason, lower.
-        In other words, e.g., it's best to not pass the ICH power from input.gacode PORTALS to TRANSP, but
-        rather take the original intended ICH power.
-        I assume that the PROFILES object passed here contains:
-            Ip, Bt, Zeff, PichT_MW, RZsep
-        and those are the ones frozen
-        I need to to this always, regardless of the run_flag such that next beats can use the frozen parameters
-        '''
-        self.beat.freeze_parameters()
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
@@ -158,13 +178,29 @@ class maestro:
                 # Finalize
                 self.beat.finalize()
 
+                # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
+                print('\t\t- Merging engineering parameters from MAESTRO')
+                self.beat.merge_parameters()
+
+                # Produce a new self.profiles_with_engineering_parameters from this merged object
+                self._freeze_parameters()
+
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
 
         # Inform next beats
         log_file = f'{self.folder_logs}/beat_{self.counter}_inform.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
-            self.beat.inform_save()
+            self.beat._inform_save()
+
+    def _freeze_parameters(self, profiles = None):
+
+        if profiles is None:
+            profiles = self.beat.profiles_output
+
+        print('\t\t- Freezing engineering parameters from MAESTRO')
+        self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
+        self.profiles_with_engineering_parameters.writeCurrentStatus(file=self.folder_output+'/input.gacode_frozen' )
 
     @mitim_timer('\t\t* Finalizing')
     def finalize(self):
@@ -173,7 +209,6 @@ class maestro:
         
         log_file = f'{self.folder_output}/beat_final' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
-            
             self.beat.finalize_maestro()
 
     # --------------------------------------------------------------------------------------------
@@ -308,36 +343,34 @@ def simple_maestro_workflow(
     # ------------------------------------------------------------
 
     m.define_beat('transp', initializer='geqdsk' if 'geqdsk_file' in geometry else 'freegs')
-    m.initialize(**geometry, **parameters, profiles = profiles, flattop_window = quality.get('flattop_window', 0.15))
+    m.initialize(**geometry, **parameters, profiles = profiles)
     
-    m.prepare(**transp_namelist)
+    m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
     m.run()
 
     # ---------------------------------------------------------
     # beat N+1: PORTALS from TRANSP
     # ---------------------------------------------------------
 
-    m.define_beat('portals', initializer='transp')
-    m.initialize()
+    m.define_beat('portals')
     m.prepare(**portals_namelist)
     m.run()
 
     for i in range(full_loops-1):
+
         # ---------------------------------------------------------
         # beat N: TRANSP from PORTALS
         # ---------------------------------------------------------
 
-        m.define_beat('transp', initializer='portals')
-        m.initialize(flattop_window = quality.get('flattop_window', 0.15))
-        m.prepare(**transp_namelist)
+        m.define_beat('transp')
+        m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
         m.run()
 
         # ---------------------------------------------------------
         # beat N+1: PORTALS from TRANSP
         # ---------------------------------------------------------
 
-        m.define_beat('portals', initializer='transp')
-        m.initialize()
+        m.define_beat('portals')
         m.prepare(**portals_namelist)
         m.run()
 

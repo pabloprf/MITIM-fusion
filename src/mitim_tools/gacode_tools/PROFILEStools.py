@@ -1207,6 +1207,9 @@ class PROFILES_GACODE:
             ImpurityText = ImpurityText[:-2]
 
             print(f"\n***********************{label}****************")
+            print("Engineering Parameters:")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA")
+            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m, kappa_a = {self.derived['kappa_a']:.2f}, delta = {self.profiles['delta(-)'][-1]:.2f}")
             print("Performance:")
             print(
                 "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
@@ -3728,6 +3731,169 @@ class PROFILES_GACODE:
         # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
 
         return nu_effCGYRO, ne_peaking
+
+    def plotRelevant(self, axs = None, color = 'b', label ='', lw = 1, ms = 1):
+
+        if axs is None:
+            fig = plt.figure()
+            axs = fig.subplot_mosaic(
+                """
+                    ABCDH
+                    AEFGI
+                """
+            )
+            axs = [axs['A'], axs['B'], axs['C'], axs['D'], axs['E'], axs['F'], axs['G'], axs['H'], axs['I']]
+
+        
+
+
+        # ----------------------------------
+        # Equilibria
+        # ----------------------------------
+
+        ax = axs[0]
+        rho = np.linspace(0, 1, 21)
+        
+        self.plotGeometry(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3)
+
+        ax.set_xlabel("R (m)")
+        ax.set_ylabel("Z (m)")
+        ax.set_aspect("equal")
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Equilibria")
+
+        # ----------------------------------
+        # Kinetic Profiles
+        # ----------------------------------
+
+        # T profiles
+        ax = axs[1]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['te(keV)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['ti(keV)'][:,0], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$T$ (keV)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Temperatures")
+
+        # ne profiles
+        ax = axs[2]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Electron Density")
+
+        # ----------------------------------
+        # Pressure
+        # ----------------------------------
+
+        ax = axs[3]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['ptot_manual'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$p_{kin}$ (MPa)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Total Pressure")
+
+        # ----------------------------------
+        # Current
+        # ----------------------------------
+
+        # q-profile
+        ax = axs[4]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['q(-)'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$q$")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Safety Factor")
+
+        # ----------------------------------
+        # Powers
+        # ----------------------------------
+
+        # RF
+        ax = axs[5]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfe(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfi(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("ICH Power Deposition")
+
+        # Ohmic
+        ax = axs[6]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['qohme(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Ohmic Power Deposition")
+
+        # ----------------------------------
+        # Heat fluxes
+        # ----------------------------------
+
+        ax = axs[7]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['qe_MWm2'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.derived['qi_MWm2'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q$ ($MW/m^2$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Energy Fluxes")
+
+        # ----------------------------------
+        # Dynamic targets
+        # ----------------------------------
+
+        ax = axs[8]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['qrad'], '-o', markersize=ms, lw = lw, label=label+', rad', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qei(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', exc', color=color)
+        if 'qfuse(MW/m^3)' in self.profiles:
+            ax.plot(self.profiles['rho(-)'], self.profiles['qfuse(MW/m^3)']+self.profiles['qfusi(MW/m^3)'], '-.s', markersize=ms, lw = lw, label=label+', fus', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q$ ($MW/m^2$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Dynamic Targets")
+
 
     def csv(self, file="input.gacode.xlsx"):
         dictExcel = IOtools.OrderedDict()
