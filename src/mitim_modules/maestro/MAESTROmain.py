@@ -13,6 +13,7 @@ from IPython import embed
 
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
+from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 
 '''
 MAESTRO:
@@ -88,6 +89,9 @@ class maestro:
         elif beat == 'portals':
             print(f'\n- Beat {self.counter}: PORTALS ********************************************************************')
             self.beats[self.counter] = portals_beat(self)
+        elif beat == 'eped':
+            print(f'\n- Beat {self.counter}: EPED ********************************************************************')
+            self.beats[self.counter] = eped_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter]

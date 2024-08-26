@@ -3,7 +3,6 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
-from mitim_tools.transp_tools import CDFtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed

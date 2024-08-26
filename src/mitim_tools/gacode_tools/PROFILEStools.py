@@ -1208,7 +1208,7 @@ class PROFILES_GACODE:
 
             print(f"\n***********************{label}****************")
             print("Engineering Parameters:")
-            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA, Pin = {self.derived['qIn']:.2f}MW")
             print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m, kappa_a = {self.derived['kappa_a']:.2f}, delta = {self.profiles['delta(-)'][-1]:.2f}")
             print("Performance:")
             print(

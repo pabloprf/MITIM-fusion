@@ -31,7 +31,7 @@ class mitim_nn:
         
     def _evaluate_tf(self, inputs):
         
-        print('testing evaluation with ', inputs)
+        print('Evaluating NN with inputs: ', inputs)
 
         if self.normalization is not None:
             return self.model.predict(inputs)[0]*self.normalization
