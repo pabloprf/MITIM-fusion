@@ -20,7 +20,7 @@ class mitim_nn:
         from tensorflow.keras.models import load_model
 
         self.model = load_model(model_path)
-        self.norm = None
+        self.normalization = None
 
         if norm is not None:
             self.normalization = np.loadtxt(norm)
@@ -33,7 +33,7 @@ class mitim_nn:
         
         print('testing evaluation with ', inputs)
 
-        if self.norm is not None:
+        if self.normalization is not None:
             return self.model.predict(inputs)[0]*self.normalization
         else:
             return self.model.predict(inputs)[0]
