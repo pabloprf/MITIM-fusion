@@ -49,27 +49,33 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
 def plot_results(self, fn):
 
-    # Collect PORTALS profiles and TRANSP cdfs
-    objs = OrderedDict()
-    for i,beat in enumerate(self.beats.values()):
-
-        obj, profs = beat.grab_output()
-
-        if isinstance(beat, transp_beat):
-            objs[f'TRANSP beat #{i+1}'] = profs #obj
-        elif isinstance(beat, portals_beat):
-            objs[f'PORTALS beat #{i+1}'] = obj.mitim_runs[obj.ibest]['powerstate'].profiles
+    # ********************************************************************************************************
+    # Collect info
+    # ********************************************************************************************************
 
     # Collect initialization
     ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initialize.folder}/input.gacode')}
     if os.path.exists(f'{self.beats[1].initialize.folder}/input.geqdsk'):
         ini['geqdsk'] = GEQtools.MITIMgeqdsk(f'{self.beats[1].initialize.folder}/input.geqdsk')
 
+    # Collect PORTALS profiles and TRANSP cdfs translated to profiles
+    objs = OrderedDict()
+
+    objs['Initial input.gacode'] = ini['profiles']
+
+    for i,beat in enumerate(self.beats.values()):
+
+        _, profs = beat.grab_output()
+
+        if isinstance(beat, transp_beat):
+            objs[f'TRANSP beat #{i+1}'] = profs
+        elif isinstance(beat, portals_beat):
+            objs[f'PORTALS beat #{i+1}'] = profs
+
     # ********************************************************************************************************
     # Plot profiles
     # ********************************************************************************************************
-    ps = []
-    ps_lab = []
+    ps, ps_lab = [], []
     for label in objs:
         if isinstance(objs[label], PROFILEStools.PROFILES_GACODE):
             ps.append(objs[label])
@@ -85,58 +91,36 @@ def plot_results(self, fn):
     for p in ps:
         p.printInfo()
 
-    # ********************************************************************************************************
-    # Plot transitions
-    # ********************************************************************************************************
-
-    label = "MAESTRO Equilibria"
     keys = list(objs.keys())
+    lw, ms = 1, 0
 
-    # ----------------------------------
+    # ********************************************************************************************************
     # Plot initialization (geqdsk to input.gacode)
-    # ----------------------------------
+    # ********************************************************************************************************
 
-    fig = fn.add_figure(label=f'{label} ini', tab_color=2)
+    fig = fn.add_figure(label='MAESTRO init', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-            ABCDH
-            AEFGI
+        ABCDH
+        AEFGI
         """
     )
+    axs = [ ax for ax in axs.values() ]
 
     if ini['geqdsk'] is not None:
-        obj1 = ini['geqdsk']
-        obj1.labelMAESTRO = 'Initial geqdsk'
-        obj2 = ini['profiles']
-        obj2.labelMAESTRO = 'Initial input.gacode'
+        plot_g_quantities(ini['geqdsk'], axs, color = 'b', lw = lw, ms = ms)
 
-        _plot_transition(self, obj1, obj2, axs)
-
-    # ----------------------------------
-    # Plot transitions 0 -> 1
-    # ----------------------------------
-
-    fig = fn.add_figure(label=f'{label} 0->1', tab_color=2)
-    axs = fig.subplot_mosaic(
-        """
-            ABCDH
-            AEFGI
-        """
-    )
-
-    obj1 = ini['profiles']
-    obj1.labelMAESTRO = 'Initial input.gacode'
-    if len(objs) > 0 and objs[keys[0]] is not None:
-        obj2 = objs[keys[0]]
-        obj2.labelMAESTRO = keys[0]
-    else:
-        obj2 = None
-    _plot_transition(self, obj1, obj2, axs)
+    if objs[keys[0]] is not None:
+        objs[keys[0]].plotRelevant(axs = axs, color = 'r', label =keys[0], lw = lw, ms = ms)
 
     GRAPHICStools.adjust_figure_layout(fig)
 
+    # ********************************************************************************************************
+    # Plot transition N -> N+1
+    # ********************************************************************************************************
 
-    # Plot transitions N -> N+1
+    label = "MAESTRO Transition"
+
     for i in range(len(objs)-1):
         obj1 = objs[keys[i]]
         obj2 = objs[keys[i+1]]
@@ -144,234 +128,45 @@ def plot_results(self, fn):
         if obj1 is None or obj2 is None:
             continue
 
-        obj1.labelMAESTRO = keys[i]
-        obj2.labelMAESTRO = keys[i+1]
-
-        fig = fn.add_figure(label=f'{label} {i+1}->{i+2}', tab_color=2)
+        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=2)
         axs = fig.subplot_mosaic(
             """
             ABCDH
             AEFGI
             """
         )
+        axs = [ ax for ax in axs.values() ]
 
-        _plot_transition(self, obj1, obj2, axs)
+        obj1.plotRelevant(axs = axs, color = 'b', label =keys[i], lw = lw, ms = ms)
+        obj2.plotRelevant(axs = axs, color = 'r', label =keys[i+1], lw = lw, ms = ms)
 
         GRAPHICStools.adjust_figure_layout(fig)
 
-def _plot_transition(self, obj1, obj2, axs):
+    # ********************************************************************************************************
+    # Plot transition 0 -> last
+    # ********************************************************************************************************
 
-    # ----------------------------------
-    # Equilibria
-    # ----------------------------------
-
-    ax = axs['A']
-    rho = np.linspace(0, 1, 21)
+    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=2)
+    axs = fig.subplot_mosaic(
+        """
+        ABCDH
+        AEFGI
+        """
+    )
+    axs = [ ax for ax in axs.values() ]
     
-    for obj, color, lw in zip([obj1, obj2], ['b', 'r'], [1.0,0.5]):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            obj.plotGeometry(ax=ax, surfaces_rho=rho, label=obj.labelMAESTRO, color=color, lw=lw, lw1=lw*3)
-            ax.set_xlim(obj.derived['R_surface'].min()*0.9, obj.derived['R_surface'].max()*1.1)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            obj.plotGeometry(ax=ax, time=obj.t[it], rhoS=rho, label=obj.labelMAESTRO,lwB=lw*3, lw = lw,
-                plotComplete=False, plotStructures=False, color=color, plotSurfs=True)
-            ax.set_xlim(obj.Rmin[it].min()*0.9, obj.Rmax[it].max()*1.1)
-        elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            obj.plotFluxSurfaces(ax=ax, fluxes=rho, rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,
-            label=obj.labelMAESTRO)
+    if ini['geqdsk'] is not None:
+        plot_g_quantities(ini['geqdsk'], axs, color = 'm', lw = lw, ms = ms)
+    if objs[keys[0]] is not None:
+        objs[keys[0]].plotRelevant(axs = axs, color = 'b', label =keys[0], lw = lw, ms = ms)
+    
+    if objs[keys[-1]] is not None:
+        objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms)
 
-    ax.set_xlabel("R (m)")
-    ax.set_ylabel("Z (m)")
-    ax.set_aspect("equal")
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Equilibria")
+    GRAPHICStools.adjust_figure_layout(fig)
 
+def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
 
-    # ----------------------------------
-    # Kinetic Profiles
-    # ----------------------------------
-
-    # T profiles
-    ax = axs['B']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['te(keV)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ti(keV)'][:,0], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Te[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.x_lw, obj.Ti[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$T$ (keV)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Temperatures")
-
-    # ne profiles
-    ax = axs['C']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.ne[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Electron Density")
-
-    # ----------------------------------
-    # Pressure
-    # ----------------------------------
-
-    ax = axs['D']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.derived['ptot_manual'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.p_kin[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            ax.plot(obj.g['RHOVN'], obj.g['PRES']*1E-6, '-.*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$p_{kin}$ (MPa)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Total Pressure")
-
-    # ----------------------------------
-    # Current
-    # ----------------------------------
-
-    # q-profile
-    ax = axs['H']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['q(-)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.xb_lw, obj.q[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, GEQtools.MITIMgeqdsk):
-            ax.plot(obj.g['RHOVN'], obj.g['QPSI'], '-.*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$q$")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Safety Factor")
-
-
-    # ----------------------------------
-    # Powers
-    # ----------------------------------
-
-    # RF
-    ax = axs['E']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfe(MW/m^3)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qrfi(MW/m^3)'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Peich[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.x_lw, obj.Peich[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("ICH Power Deposition")
-
-    # Ohmic
-    ax = axs['F']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qohme(MW/m^3)'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Poh[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO, color=color)
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Ohmic Power Deposition")
-
-    # ----------------------------------
-    # Heat fluxes
-    # ----------------------------------
-
-    ax = axs['G']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.derived['qe_MWm2'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.derived['qi_MWm2'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.qe_obs_GACODE[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', e', color=color)
-            ax.plot(obj.x_lw, obj.qi_obs_GACODE[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', i', color=color)
-
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q$ ($MW/m^2$)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Energy Fluxes")
-
-    # ----------------------------------
-    # Dynamic targets
-    # ----------------------------------
-
-    ax = axs['I']
-
-    for obj, color in zip([obj1, obj2], ['b', 'r']):
-        if isinstance(obj, PROFILEStools.PROFILES_GACODE):
-            ax.plot(obj.profiles['rho(-)'], obj.derived['qrad'], '-o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', rad', color=color)
-            ax.plot(obj.profiles['rho(-)'], obj.profiles['qei(MW/m^3)'], '-*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', exc', color=color)
-            if 'qfuse(MW/m^3)' in obj.profiles:
-                ax.plot(obj.profiles['rho(-)'], obj.profiles['qfuse(MW/m^3)']+obj.profiles['qfusi(MW/m^3)'], '-s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
-
-        elif isinstance(obj, CDFtools.transp_output):
-            it = obj.ind_saw - 1
-            ax.plot(obj.x_lw, obj.Prad[it], '--o', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', rad', color=color)
-            ax.plot(obj.x_lw, obj.Pei[it], '--*', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', exc', color=color)
-            ax.plot(obj.x_lw, obj.Pfuse[it]+obj.Pfusi[it], '--s', markersize=MARKERSIZE, lw = LW, label=obj.labelMAESTRO+', fus', color=color)
-
-
-    ax.set_xlabel("$\\rho_N$")
-    ax.set_ylabel("$Q$ ($MW/m^2$)")
-    ax.set_ylim(bottom = 0)
-    ax.set_xlim(0,1)
-    ax.legend(prop={'size':8})
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_title("Dynamic Targets")
+    g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
+    axs[3].plot(g.g['RHOVN'], g.g['PRES']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+    axs[4].plot(g.g['RHOVN'], g.g['QPSI'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
