@@ -263,10 +263,15 @@ def convert_ASTRA_to_gacode(astra_root,
 
 def create_initial_conditions(te_avg,
                               ne_avg,
+                              q_profile=None,
                               use_eped_pedestal=True, # add this later
                               file_output_location=None,
                               width_top=0.05,
-                              n_rho=104, 
+                              n_rho=104,
+                              rho=None,
+                              Te=None,
+                              ne=None,
+                              Ti=None, 
                               ):
     
     """Returns a PRF functional form of the kinetic profiles for the initial conditions
@@ -274,7 +279,10 @@ def create_initial_conditions(te_avg,
     outside of psi_n = 0.95"""
 
     # Define the radial grid
-    rho = np.linspace(0,1,n_rho)
+    if rho is not None:
+        n_rho = len(rho)
+    else:
+        rho = np.linspace(0,1,n_rho)
 
     # replace this two-step process with one functional form: Pablo said he would do this
 
@@ -288,24 +296,21 @@ def create_initial_conditions(te_avg,
         rho=rho
     )
 
-    print(len(n))
-
     if use_eped_pedestal:
         BC_index = np.argmin(np.abs(rho-0.95))
         print(BC_index)
         width_top = width_top
         ne_ped = n[BC_index]
         Te_ped = T[BC_index]
-        ne_sep = n[-1]
-        T_sep = T[-1]
+        ne_sep = 0.3*ne_ped
+        T_sep = 1
 
         n_ped = FunctionalForms.pedestal_tanh(ne_ped, ne_sep, width_top, x=rho)[1]
-        print(len(n_ped))
         T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
         n[BC_index:] = n_ped[BC_index:]
         T[BC_index:] = T_ped[BC_index:]
 
-    preamble = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+    preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
    0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
  Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
@@ -315,30 +320,75 @@ def create_initial_conditions(te_avg,
           1                    ;-# OF  X1 PTS-
         {n_rho}                    ;-# OF  X0 PTS-
 """
+    preamble_dens = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X0-
+ Electron Density    cm**-3    ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X1 PTS-
+        {n_rho}                    ;-# OF  X0 PTS-
+"""
     
+    preamble_q = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X0-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X1-
+ EFIT q profile                ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X0 PTS-
+        {n_rho}                    ;-# OF  X1 PTS-
+"""
+    
+    if Te is not None:
+        T = Te
+
     with open(file_output_location+"/TE_ASTRA", 'w')  as f:
-        f.write(preamble)
+        f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
-        f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in Te[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
+        f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    if Ti is not None:
+        T = Ti
 
     with open(file_output_location+"/TI_ASTRA", 'w')  as f:
-        f.write(preamble)
+        f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
+        f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    if ne is not None:
+        n = ne
 
     with open(file_output_location+"/NE_ASTRA", 'w')  as f:
-        f.write(preamble)
+        f.write(preamble_dens)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in n[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
+
+    if q_profile is not None:
+
+        q = q_profile
+        
+        with open(file_output_location+"/q_ASTRA", 'w')  as f:
+            f.write(preamble_q)
+            f.write(f" 1.000000e-01\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in q[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
     fig, ax = plt.subplots(figsize=(10,8))
     ax.plot(rho, T, label='T')
@@ -349,5 +399,3 @@ def create_initial_conditions(te_avg,
     ax.legend()
     plt.show()
 
-if __name__ == '__main__':
-    create_initial_conditions(te_avg=10, ne_avg=20, file_output_location='/Users/hallj/MITIM-fusion/src/mitim_tools/astra_tools')
