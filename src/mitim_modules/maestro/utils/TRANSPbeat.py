@@ -81,10 +81,18 @@ class transp_beat(beat):
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
 
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Additional operations
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
         self._additional_operations_add_initialization()
-        self._additional_operations_add_engineering_parameters()
-        self._additional_operations_add_ICH()
+
+        # ICRF on
+        PichT_MW    = self.profiles_current.derived['qRF_MWmiller'][-1]
+        B_T         = self.profiles_current.profiles['bcentr(T)'][0]
+        qm_minority = 2/3
+        Frequency_He3 = B_T * (2*np.pi/qm_minority)
+        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = Frequency_He3)
 
         # Write Ufiles
         self.transp.write_ufiles()
@@ -120,16 +128,42 @@ class transp_beat(beat):
             - Power deposition profiles of high quality (auxiliary heating, but also dynamic targets)
             - Species and fast ions
         However, TRANSP is not modifying the kinetic profiles and therefore I should use the profiles that were frozen before, to
-        avoid "grid leaks", i.e. from beat to beat, the coarse grid interpolates to point to point
+        avoid "grid leaks", i.e. from beat to beat, the coarse grid interpolates to point to point.
+        So, this merge:
+            - Brings back the resolution of the frozen profiles
+            - Inserts kinetic profiles from frozen
+            - Inserts engineering parameters (Ip, Bt) from frozen
+            - Scales power deposition profiles to match the frozen power deposition which I treat as an engineering parameter (Pin)
         '''
 
-        self.profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        self.profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
+        profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
+        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
 
-        # self.maestro_instance.profiles_with_engineering_parameters
-        # self.profiles_output
-        
-        pass
+        p = self.maestro_instance.profiles_with_engineering_parameters
+
+        # First, bring back to the resolution of the frozen
+        self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
+
+        # Insert kinetic profiles from frozen
+        self.profiles_output.profiles['ne(10^19/m^3)'] = p.profiles['ne(10^19/m^3)']
+        self.profiles_output.profiles['te(keV)'] = p.profiles['te(keV)']
+        self.profiles_output.profiles['ti(keV)'][:,0] = p.profiles['ti(keV)'][:,0]
+
+        self.profiles_output.makeAllThermalIonsHaveSameTemp()
+        profiles_output_pre_merge.changeResolution(rho_new = p.profiles['rho(-)'])
+        self.profiles_output.scaleAllThermalDensities(scaleFactor = self.profiles_output.profiles['ne(10^19/m^3)']/profiles_output_pre_merge.profiles['ne(10^19/m^3)'])
+
+        # Insert engineering parameters (except shape)
+        for key in ['current(MA)', 'bcentr(T)']:
+            self.profiles_output.profiles[key] = p.profiles[key]
+
+        # Power scale
+        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+
+        # Write to final input.gacode
+        self.profiles_output.deriveQuantities()
+        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
 
     def grab_output(self):
 
@@ -188,47 +222,3 @@ class transp_beat(beat):
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4, 1.0
         
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
-
-    def _additional_operations_add_engineering_parameters(self):
-        '''
-        --------------------------------------------------------------------------------------------
-        Throughout MAESTRO, the engineering parameters must not change. This avoids leaks.
-        --------------------------------------------------------------------------------------------
-        '''
-
-        print('\t\t- Using engineering parameters from MAESTRO')
-
-        p = self.maestro_instance.profiles_with_engineering_parameters
-
-        # Engineering parameters ---------------------------------
-        Ip_MA = p.profiles['current(MA)'][0]
-        B_T = p.profiles['bcentr(T)'][0]
-        Zeff = p.derived['Zeff_vol']
-        PichT_MW = p.derived['qRF_MWmiller'][-1]
-        R0 = p.profiles['rcentr(m)'][0] #(RZsep.max(axis=0)[0]+RZsep.min(axis=0)[0])/2
-        RZsep =  np.array([p.derived['R_surface'][-1,:], p.derived['Z_surface'][-1,:]]).T
-        # ---------------------------------------------------------
-
-        for time in self.transp.variables:
-            if time > self.time_init:
-                if 'CUR' in self.transp.variables[time]:
-                    self.transp.add_variable_time(time, None, Ip_MA*1E6, variable='CUR')
-                if 'RBZ' in self.transp.variables[time]:
-                    self.transp.add_variable_time(time, None, R0*B_T*1E2, variable='RBZ')
-                if 'ZF2' in self.transp.variables[time]:
-                    z = self.transp.variables[time]['ZF2']['z']/self.transp.variables[time]['ZF2']['z'] * Zeff
-                    self.transp.add_variable_time(time, self.transp.variables[time]['ZF2']['x'], z, variable='ZF2')
-            
-        for time in self.transp.geometry:
-            if time > self.time_init:
-                self.transp._add_separatrix_time(time, RZsep[:,0], RZsep[:,1])
-
-    def _additional_operations_add_ICH(self, qm_minority = 2/3):
-
-        PichT_MW    = self.maestro_instance.profiles_with_engineering_parameters.derived['qRF_MWmiller'][-1]
-        B_T         = self.maestro_instance.profiles_with_engineering_parameters.profiles['bcentr(T)'][0]
-
-        # ICRF on
-        Frequency_He3 = B_T * (2*np.pi/qm_minority)
-        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = Frequency_He3)
-        

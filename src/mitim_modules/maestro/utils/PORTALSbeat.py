@@ -61,14 +61,36 @@ class portals_beat(beat):
         self.profiles_output.writeCurrentStatus(file=f'{self.folder_output}/input.gacode' )
 
     def merge_parameters(self):
-        # self.maestro_instance.profiles_with_engineering_parameters
-        # self.profiles_output
+        '''
+        The goal of the TRANSP beat is to produce:
+            - Internal GS equilibrium
+            - q-profile
+            - Power deposition profiles of high quality (auxiliary heating, but also dynamic targets)
+            - Species and fast ions
+        However, TRANSP is not modifying the kinetic profiles and therefore I should use the profiles that were frozen before, to
+        avoid "grid leaks", i.e. from beat to beat, the coarse grid interpolates to point to point.
+        So, this merge:
+            - Brings back the resolution of the frozen profiles
+            - Inserts kinetic profiles from frozen
+            - Inserts engineering parameters (Ip, Bt) from frozen
+            - Scales power deposition profiles to match the frozen power deposition which I treat as an engineering parameter (Pin)
+        '''
 
-        self.profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        self.profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
+        profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
+        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
 
+        p = self.maestro_instance.profiles_with_engineering_parameters
 
-        pass
+        # First, bring back to the resolution of the frozen
+        self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
+
+        # Insert everything but kinetic profiles and dynamic targets from frozen
+        for key in ['ne(10^19/m^3)', 'te(keV)', 'ti(keV)', 'qei(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
+            self.profiles_output.profiles[key] = p.profiles[key]
+
+        # Write to final input.gacode
+        self.profiles_output.deriveQuantities()
+        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
 
     def grab_output(self, full = False):
 
