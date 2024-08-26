@@ -465,11 +465,23 @@ class PROFILES_GACODE:
             0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
         )
 
+        self.derived["kappa995"] = np.interp(
+            0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
+        )
+
         # I need to to kappa_a with the cross section...
         self.derived["kappa_a"] = self.derived[
             "kappa95"
         ]  # self.derived['surfXS_miller'][-1] / (np.pi*self.derived['a']**2)
         # print('\t- NOTE: Using kappa95 ({0:.2f}) as areal elongation for scalings. I need to work on the implementation of the XS surface area'.format(self.derived['kappa95']),typeMsg='w')
+
+        self.derived["delta95"] = np.interp(
+            0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"]
+        )
+
+        self.derived["delta995"] = np.interp(
+            0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"]
+        )
 
         self.derived["Rgeo"] = float(self.profiles["rcentr(m)"][-1])
         self.derived["B0"] = np.abs(float(self.profiles["bcentr(T)"][-1]))
@@ -3743,9 +3755,6 @@ class PROFILES_GACODE:
                 """
             )
             axs = [axs['A'], axs['B'], axs['C'], axs['D'], axs['E'], axs['F'], axs['G'], axs['H'], axs['I']]
-
-        
-
 
         # ----------------------------------
         # Equilibria

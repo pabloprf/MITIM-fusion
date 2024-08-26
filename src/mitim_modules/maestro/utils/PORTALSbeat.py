@@ -16,11 +16,6 @@ class portals_beat(beat):
 
     def prepare(self, use_previous_residual = True, PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
 
-        # Initialize if necessary
-        if not self.initialize_called:
-            self.initialize()
-        # -----------------------------
-
         self.fileGACODE = f"{self.initialize.folder}/input.gacode"
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
 
@@ -127,10 +122,7 @@ class portals_beat(beat):
     def _inform_save(self):
 
         # Save the residual goal to use in the next PORTALS beat
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+        portals_output, _ = self.grab_output()
         max_value_neg_residual = portals_output.step.stepSettings['optimization_options']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t- Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
-
-        # Save the best profiles to use in the next PORTALS beat to avoid issues with TRANSP coarse grid
-        self.maestro_instance.parameters_trans_beat['portals_profiles'] = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles

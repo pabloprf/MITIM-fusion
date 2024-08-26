@@ -151,12 +151,13 @@ class maestro:
                 # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
 
-                if self.profiles_with_engineering_parameters is None:
-                    # First initialization, freeze engineering parameters
-                    self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
-
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
+
+
+        if self.profiles_with_engineering_parameters is None:
+            # First initialization, freeze engineering parameters
+            self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
@@ -165,6 +166,14 @@ class maestro:
         if self.beat.run_flag:
             log_file = f'{self.folder_logs}/beat_{self.counter}_prep.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+                
+                # Initialize if necessary
+                if not self.beat.initialize_called:
+                    self.beat.initialize()
+                # -----------------------------
+
+                self.beat.profiles_current.deriveQuantities()
+                
                 self.beat.prepare(*args, **kwargs)
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
@@ -186,11 +195,11 @@ class maestro:
                 print('\t\t- Merging engineering parameters from MAESTRO')
                 self.beat.merge_parameters()
 
-                # Produce a new self.profiles_with_engineering_parameters from this merged object
-                self._freeze_parameters()
-
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
+
+        # Produce a new self.profiles_with_engineering_parameters from this merged object
+        self._freeze_parameters()
 
         # Inform next beats
         log_file = f'{self.folder_logs}/beat_{self.counter}_inform.log' if (not self.terminal_outputs) else None
@@ -200,7 +209,7 @@ class maestro:
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
-            profiles = self.beat.profiles_output
+            profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.folder_output}/input.gacode')
 
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)

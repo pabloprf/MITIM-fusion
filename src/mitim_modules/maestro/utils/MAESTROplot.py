@@ -9,6 +9,7 @@ from IPython import embed
 
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
+from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 
 MARKERSIZE = 1
 LW = 1.0
@@ -25,7 +26,9 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
             beat_types.append('transp')
         elif 'run_portals' in os.listdir(f'{folder_beats}/{beats[beat]}'):
             beat_types.append('portals')
-            
+        elif 'run_eped' in os.listdir(f'{folder_beats}/{beats[beat]}'):
+            beat_types.append('eped')
+
     # First initializer
     beat_initializer = None
     if 'initializer_freegs' in os.listdir(f'{folder_beats}/{beats[0]}'):
@@ -67,9 +70,13 @@ def plot_results(self, fn):
         _, profs = beat.grab_output()
 
         if isinstance(beat, transp_beat):
-            objs[f'TRANSP beat #{i+1}'] = profs
+            key = f'TRANSP beat #{i+1}'
         elif isinstance(beat, portals_beat):
-            objs[f'PORTALS beat #{i+1}'] = profs
+            key = f'PORTALS beat #{i+1}'
+        elif isinstance(beat, eped_beat):
+            key = f'EPED beat #{i+1}'
+        
+        objs[key] = profs
 
     # ********************************************************************************************************
     # Plot profiles

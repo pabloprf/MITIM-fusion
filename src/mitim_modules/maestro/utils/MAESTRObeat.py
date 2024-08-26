@@ -2,8 +2,6 @@ import os
 import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_modules.portals.utils import PORTALSanalysis
-from mitim_tools.transp_tools import CDFtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -40,10 +38,6 @@ class beat:
             self.initialize = initializer_from_geqdsk(self)
         elif initializer == 'profiles':
             self.initialize = beat_initializer(self)
-        elif initializer == 'portals':
-            self.initialize = initializer_from_portals(self)
-        elif initializer == 'transp':
-            self.initialize = initializer_from_transp(self)
         else:
             raise ValueError(f'Initializer "{initializer}" not recognized')
 
@@ -89,42 +83,27 @@ class beat_initializer:
         if len(label) > 0:
             os.makedirs(self.folder, exist_ok=True)
 
-    def __call__(self, profiles_file = None, profiles = {}, Vsurf = 0.0, use_previous_portals_profiles = True,  **kwargs_beat):
+    def __call__(self, profiles_file = None, profiles = {}, Vsurf = None,  **kwargs_beat):
 
         # Load profiles
         self.profiles_current = PROFILEStools.PROFILES_GACODE(profiles_file)
 
+        # --------------------------------------------------------------------------------------------
+        # Operations
+        # --------------------------------------------------------------------------------------------
+        
         # Vsurf is a quantity that isn't in the profiles, so I add it here
-        self.profiles_current.Vsurf = Vsurf
+        if Vsurf is not None:
+            # Add if provided
+            self.profiles_current.Vsurf = Vsurf
+        elif 'Vsurf' not in self.profiles_current.profiles.__dict__:
+            # Add default if not there
+            self.profiles_current.Vsurf = 0.0
+        
+        # Insert the provided profiles into the profiles_current object
+        self._add_provided_profiles(profiles=profiles)
 
         # --------------------------------------------------------------------------------------------
-        # Insert new profiles
-        # --------------------------------------------------------------------------------------------
-        if 'Te' in profiles:
-            self.profiles_current.profiles['te(keV)'] = np.interp(self.profiles_current.profiles['rho(-)'], profiles['Te'][0], profiles['Te'][1])
-        if 'Ti' in profiles:
-            self.profiles_current.profiles['ti(keV)'][:,0] = np.interp(self.profiles_current.profiles['rho(-)'], profiles['Ti'][0], profiles['Ti'][1])
-            self.profiles_current.makeAllThermalIonsHaveSameTemp()
-        if 'ne' in profiles:
-            old_density = copy.deepcopy(self.profiles_current.profiles['ne(10^19/m^3)'])
-            self.profiles_current.profiles['ne(10^19/m^3)'] = np.interp(self.profiles_current.profiles['rho(-)'], profiles['ne'][0], profiles['ne'][1]*10.0)
-            self.profiles_current.profiles['ni(10^19/m^3)'] = self.profiles_current.profiles['ni(10^19/m^3)'] * (self.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
-
-        # --------------------------------------------------------------------------------------------
-        # Use previous PORTALS profiles
-        # --------------------------------------------------------------------------------------------
-        if use_previous_portals_profiles and ('portals_profiles' in self.beat_instance.maestro_instance.parameters_trans_beat):
-            print('\t- Using previous PORTALS thermal kinetic profiles instead of the TRANSP profiles')
-            p_prev = self.beat_instance.maestro_instance.parameters_trans_beat['portals_profiles']
-
-            self.profiles_current.changeResolution(rho_new=p_prev.profiles['rho(-)'])
-            
-            self.profiles_current.profiles['te(keV)'] = p_prev.profiles['te(keV)']
-            self.profiles_current.profiles['ne(10^19/m^3)'] = p_prev.profiles['ne(10^19/m^3)']
-            for i,sp in enumerate(self.profiles_current.Species):
-                if sp['S'] == 'therm':
-                    self.profiles_current.profiles['ti(keV)'][:,i] = p_prev.profiles['ti(keV)'][:,i]
-                    self.profiles_current.profiles['ni(10^19/m^3)'][:,i] = p_prev.profiles['ni(10^19/m^3)'][:,i]
 
         # Write it to initialization folder
         self.profiles_current.writeCurrentStatus(file=self.folder+'/input.gacode' )
@@ -134,6 +113,21 @@ class beat_initializer:
 
         # Initializer has been called
         self.beat_instance.initialize_called = True
+
+    def _add_provided_profiles(self, profiles = {}):
+
+        if 'rho' in profiles:
+            self.profiles_current.changeResolution(rho_new = profiles['rho'])
+
+        if 'Te' in profiles:
+            self.profiles_current.profiles['te(keV)'] = profiles['Te']
+        if 'Ti' in profiles:
+            self.profiles_current.profiles['ti(keV)'][:,0] = profiles['Ti']
+            self.profiles_current.makeAllThermalIonsHaveSameTemp()
+        if 'ne' in profiles:
+            old_density = copy.deepcopy(self.profiles_current.profiles['ne(10^19/m^3)'])
+            self.profiles_current.profiles['ne(10^19/m^3)'] = profiles['ne']*10.0
+            self.profiles_current.profiles['ni(10^19/m^3)'] = self.profiles_current.profiles['ni(10^19/m^3)'] * (self.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
@@ -155,54 +149,6 @@ class initializer_from_previous(beat_initializer):
         profiles_file = f"{self.beat_instance.maestro_instance.beats[beat_num].folder_output}/input.gacode"
 
         super().__call__(profiles_file)
-
-# --------------------------------------------------------------------------------------------
-# Initializer from PORTALS results: load the profiles with best residual and call the profiles initializer
-# --------------------------------------------------------------------------------------------
-
-class initializer_from_portals(beat_initializer):
-    '''
-    Idea is to find the profiles with best residual and then call the profiles initializer
-    '''
-    def __init__(self, beat_instance):
-        super().__init__(beat_instance, label = 'portals')
-
-    def __call__(self, **kwargs_profiles):
-
-        # Load PORTALS from previous beat: profiles with best residual
-        folder =  self.beat_instance.maestro_instance.beats[self.beat_instance.maestro_instance.counter-1].folder_output
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-        p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
-
-        # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder+'/input.gacode' )
-
-        # Call the profiles initializer
-        super().__call__(self.folder+'/input.gacode', **kwargs_profiles)
-
-# --------------------------------------------------------------------------------------------
-# Initializer from TRANSP: load the profiles at a given time and call the profiles initializer
-# --------------------------------------------------------------------------------------------
-
-class initializer_from_transp(beat_initializer):
-
-    def __init__(self, beat_instance):
-        super().__init__(beat_instance, label = 'transp')
-
-    def __call__(self, time_extraction = None, **kwargs_profiles):
-
-        # Load TRANSP results from previous beat
-        beat_num = self.beat_instance.maestro_instance.counter-1
-        cdf = CDFtools.transp_output(self.beat_instance.maestro_instance.beats[beat_num].folder_output)
-
-        # Extract profiles at time_extraction
-        time_extraction = cdf.t[cdf.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
-        p = cdf.to_profiles(time_extraction=time_extraction)
-
-        file_gacode = f"{self.folder}/input.gacode"
-        p.writeCurrentStatus(file=file_gacode)
-
-        super().__call__(file_gacode, **kwargs_profiles)
 
 # --------------------------------------------------------------------------------------------
 # Initializer from GEQDSK: load the geqdsk and call the profiles initializer

@@ -29,11 +29,6 @@ class transp_beat(beat):
                 e.g. pablorf -> 'P"
         '''
 
-        # Initialize if necessary
-        if not self.initialize_called:
-            self.initialize()
-        # -----------------------------
-
         # Define timings
         currentheating_window = 0.001
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
