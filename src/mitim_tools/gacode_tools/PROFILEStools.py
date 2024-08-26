@@ -2202,8 +2202,7 @@ class PROFILES_GACODE:
 
         self.plot_temps(ax=ax00, leg=legYN, col=color, lw=lw, fs=fs, extralab=extralab)
         self.plot_dens(ax=ax01, leg=legYN, col=color, lw=lw, fs=fs, extralab=extralab)
-        # self.plot_powers(axs=[ax00b,ax01b,ax10b],leg=True,col='b',lw=2,fs=fs)
-
+ 
         ax = ax10
         cont = 0
         for i in range(len(self.Species)):
@@ -3534,111 +3533,6 @@ class PROFILES_GACODE:
 
         GRAPHICStools.addDenseAxis(ax)
 
-    def plot_powers(self, axs=None, leg=False, col="b", lw=2, extralab="", fs=10):
-        if axs is None:
-            fig, axs = plt.subplots(ncols=3)
-
-        rho = self.profiles["rho(-)"]
-
-        ax = axs[0]
-        var = self.profiles["pow_e(MW)"]
-        varL = "$Q_e$, $Q_i$ (MW)"
-        if leg:
-            lab = extralab + "e"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var = self.profiles["pow_i(MW)"]
-        if leg:
-            lab = "i"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="--", label=lab, c=col)
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-        ax = axs[1]
-        var = self.profiles["pow_e(MW)"]
-        varL = "$Q_e$ (MW)"
-        if leg:
-            lab = extralab + "total"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var1 = self.profiles["pow_e_aux(MW)"]
-        if leg:
-            lab = extralab + "aux"
-        else:
-            lab = ""
-        ax.plot(rho, var1, lw=lw, ls="--", label=lab, c=col)
-        var2 = self.profiles["pow_e_fus(MW)"]
-        if leg:
-            lab = extralab + "fus"
-        else:
-            lab = ""
-        ax.plot(rho, var2, lw=lw, ls="-.", label=lab, c=col)
-        var3 = (
-            self.profiles["pow_e_sync(MW)"]
-            + self.profiles["pow_e_brem(MW)"]
-            + self.profiles["pow_e_line(MW)"]
-        )
-        if leg:
-            lab = extralab + "rad"
-        else:
-            lab = ""
-        ax.plot(rho, var3, lw=lw, ls=":", label=lab, c=col)
-        var4 = self.profiles["pow_ei(MW)"]
-        if leg:
-            lab = extralab + "e->i"
-        else:
-            lab = ""
-        ax.plot(rho, -var4, lw=lw / 2, ls="-", label=lab, c=col)
-        # ax.plot(rho,var1+var2-var3-var4,lw=lw,ls='--',c='y',label='check')
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
-
-        ax = axs[2]
-        var = self.profiles["pow_i(MW)"]
-        varL = "$Q_i$ (MW)"
-        if leg:
-            lab = extralab + "total"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var1 = self.profiles["pow_i_aux(MW)"]
-        if leg:
-            lab = extralab + "aux"
-        else:
-            lab = ""
-        ax.plot(rho, var1, lw=lw, ls="--", label=lab, c=col)
-        var2 = self.profiles["pow_i_fus(MW)"]
-        if leg:
-            lab = extralab + "fus"
-        else:
-            lab = ""
-        ax.plot(rho, var2, lw=lw, ls="-.", label=lab, c=col)
-        var4 = self.profiles["pow_ei(MW)"]
-        if leg:
-            lab = extralab + "e->i"
-        else:
-            lab = ""
-        ax.plot(rho, var4, lw=lw / 2, ls="-", label=lab, c=col)
-        # ax.plot(rho,var1+var2+var4,lw=lw,ls='--',c='y',label='check')
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
-
     def plotGeometry(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
         if ("R_surface" in self.derived) and (self.derived["R_surface"] is not None):
             if ax is None:
@@ -4179,40 +4073,6 @@ class DataTable:
             # Write each row in self.data to the CSV file
             for row in self.data:
                 writer.writerow(row)
-
-
-def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
-    if fig is None:
-        fig = plt.figure()
-
-    grid = plt.GridSpec(2, 3, hspace=0.6, wspace=0.2)
-    ax00 = fig.add_subplot(grid[0, 0])
-    ax10 = fig.add_subplot(grid[1, 0])
-    ax01 = fig.add_subplot(grid[0, 1])
-    ax11 = fig.add_subplot(grid[1, 1])
-    ax02 = fig.add_subplot(grid[0, 2])
-    # ax12 = fig.add_subplot(grid[1, 2])
-
-    cols = GRAPHICStools.listColors()
-
-    for cont, profile in enumerate(profiles_list):
-        if cont == 0:
-            leg = True
-        else:
-            leg = False
-
-        profile.plot_temps(
-            ax=ax00,
-            leg=True,
-            col=cols[cont],
-            lw=lws[cont],
-            extralab=f" {labs_list[cont]}",
-        )
-        profile.plot_dens(ax=ax10, leg=leg, col=cols[cont], lw=lws[cont])
-        profile.plot_powers(
-            axs=[ax01, ax11, ax02], leg=leg, col=cols[cont], lw=lws[cont]
-        )
-
 
 def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
     if figs is not None:
