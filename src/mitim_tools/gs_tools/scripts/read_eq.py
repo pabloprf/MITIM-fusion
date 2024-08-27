@@ -1,6 +1,8 @@
 import argparse
 from IPython import embed
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gs_tools.utils import GEQplotting
+
 
 def main():
     
@@ -14,7 +16,7 @@ def main():
     for file in files:
         gs.extend(GEQtools.MITIMgeqdsk.timeslices(file))
 
-    axs, fn = GEQtools.compareGeqdsk(gs)
+    axs, fn = GEQplotting.compareGeqdsk(gs)
     fn.show()
     embed()
 

@@ -4,6 +4,7 @@ import gpytorch
 import botorch
 import contextlib
 import ast
+import copy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 UseCUDAifAvailable = True
 
@@ -59,7 +60,7 @@ class surrogate_model:
         self.output_transformed = output_transformed
         self.surrogateOptions = surrogateOptions
         self.dfT = dfT
-        self.surrogate_parameters = surrogate_parameters
+        self.surrogate_parameters = copy.deepcopy(surrogate_parameters) # otherwise I'll rewrite the surrogate_transformation_variables
         self.bounds = bounds
         self.FixedValue = FixedValue
         self.fileTraining = fileTraining
@@ -82,16 +83,16 @@ class surrogate_model:
         if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
             print(
                 f"\t- Noise (variance) has one value only ({Yvaror}), assuming constant for all samples and outputs in absolute terms",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
             Yvaror = Yor * 0.0 + Yvaror
 
         self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
 
         # ---------- Print ----------
-        print("\t- Surrogate options:", verbose=verbose_level)
+        print("\t- Surrogate options:", verbose=read_verbose_level())
         for i in self.surrogateOptions:
-            print(f"\t\t{i:20} = {self.surrogateOptions[i]}", verbose=verbose_level)
+            print(f"\t\t{i:20} = {self.surrogateOptions[i]}", verbose=read_verbose_level())
 
         # --------------------------------------------------------------------
         # Eliminate points if needed (not from the "added" set)
@@ -100,7 +101,7 @@ class surrogate_model:
         if len(self.avoidPoints) > 0:
             print(
                 f"\t- Fitting without considering points: {self.avoidPoints}",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
                 typeMsg="w",
             )
 
@@ -113,22 +114,6 @@ class surrogate_model:
             self.train_Yvar = torch.Tensor(
                 np.delete(self.train_Yvar, self.avoidPoints, axis=0)
             ).to(self.dfT)
-
-        # ------------------------------------------------------------------------------------
-        # Input and Outcome transform (PHYSICS)
-        # ------------------------------------------------------------------------------------
-
-        dimY = self.train_Y.shape[-1]
-
-        input_transform_physics = BOTORCHtools.Transformation_Inputs(
-            self.output, self.surrogate_parameters
-        )
-        outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
-            dimY, self.output, self.surrogate_parameters
-        )
-
-        dimTransformedDV_x = input_transform_physics(self.train_X).shape[-1]
-        dimTransformedDV_y = dimY
 
         # -------------------------------------------------------------------------------------
         # Add points from file
@@ -150,10 +135,9 @@ class surrogate_model:
 
             # Check 2: Is it consistent with the x_names of this run?
             x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
-            x_names_check = self.surrogate_parameters['physicsInformedParamsComplete'][self.output]
+            x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.output]
             if x_names != x_names_check:
                 print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
-
 
             self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
             self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
@@ -162,6 +146,13 @@ class surrogate_model:
             for i in range(len(x_names)):
                 x.append(df_model[f'x{i}'].to_numpy())
             self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
+
+            # ------------------------------------------------------------------------------------------------------------
+            # Define transformation (here because I want to account for the added points)
+            # ------------------------------------------------------------------------------------------------------------
+            self.num_training_points = self.train_X.shape[0] + self.train_X_added_full.shape[0]
+            input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y = self._define_physics_transformation()
+            # ------------------------------------------------------------------------------------------------------------
 
             self.train_X_added = (
                 self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
@@ -173,17 +164,24 @@ class surrogate_model:
                     self.train_X,
                     self.output,
                     self.surrogate_parameters,
-                    self.surrogate_parameters["physicsInformedParamsComplete"],
+                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
                 )
                 dimTransformedDV_x_full = train_X_Complete.shape[-1]
             else:
                 dimTransformedDV_x_full = self.train_X.shape[-1]
 
+            # --------------------------------------------------------------------------------------
+            # Define transformation (here because I want to account for the added points)
+            # --------------------------------------------------------------------------------------
+            self.num_training_points = self.train_X.shape[0]
+            input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y = self._define_physics_transformation()
+            # ------------------------------------------------------------------------------------------------------------
+
             self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full))
             self.train_X_added = torch.empty((0, dimTransformedDV_x))
             self.train_Y_added = torch.empty((0, dimTransformedDV_y))
             self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
-            
+
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
@@ -238,7 +236,7 @@ class surrogate_model:
             outcome_transform_physics,
             output_transformed_standardization,
         )
-
+        
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION
         # ------------------------------------------------------------------------------------
@@ -252,11 +250,11 @@ class surrogate_model:
         )
 
         self.variables = (
-            self.surrogate_parameters["physicsInformedParams"][self.output]
+            self.surrogate_parameters["surrogate_transformation_variables"][self.output]
             if (
                 (self.output is not None)
-                and ("physicsInformedParams" in self.surrogate_parameters)
-                and (self.surrogate_parameters["physicsInformedParams"] is not None)
+                and ("surrogate_transformation_variables" in self.surrogate_parameters)
+                and (self.surrogate_parameters["surrogate_transformation_variables"] is not None)
             )
             else None
         )
@@ -267,7 +265,7 @@ class surrogate_model:
 
         print(
             f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         """
@@ -286,6 +284,43 @@ class surrogate_model:
             train_Y_added=self.train_Y_added,
             train_Yvar_added=self.train_Yvar_added,
         )
+
+    def _define_physics_transformation(self):
+
+        self._select_transition_physics_based_params()
+
+        # Input and Outcome transform (PHYSICS)
+        dimY = self.train_Y.shape[-1]
+        input_transform_physics = BOTORCHtools.Transformation_Inputs(
+            self.output, self.surrogate_parameters
+        )
+        outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
+            dimY, self.output, self.surrogate_parameters
+        )
+
+        dimTransformedDV_x = input_transform_physics(self.train_X).shape[-1]
+        dimTransformedDV_y = dimY
+
+        return input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y
+
+    def _select_transition_physics_based_params(self, ):
+        self.surrogate_parameters["surrogate_transformation_variables"] = None
+        if self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None:
+
+            transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
+                    np.where(
+                        self.num_training_points
+                        < np.array(
+                            list(
+                                self.surrogate_parameters[
+                                    "surrogate_transformation_variables_alltimes"
+                                ].keys()
+                            )
+                        )
+                    )[0][0]
+                ]
+
+            self.surrogate_parameters["surrogate_transformation_variables"] = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
 
     def normalization_pass(
         self,
@@ -382,7 +417,7 @@ class surrogate_model:
         if approx_mll:
             print(
                 f"\t* Using approximate MLL because x has {len(train_x)} elements",
-                verbose=verbose_level,
+                verbose=read_verbose_level(),
             )
         # --------------------------------------------------
 
@@ -403,7 +438,7 @@ class surrogate_model:
             optimizer_kwargs={
                 "method": "L-BFGS-B",
                 "bounds": None,
-                "options": {"disp": verbose_level == 5},
+                "options": {"disp": read_verbose_level() == 5},
                 "callback": callback,
             },
         )
@@ -476,7 +511,7 @@ class surrogate_model:
             self.train_X,
             self.output,
             self.surrogate_parameters,
-            self.surrogate_parameters["physicsInformedParamsComplete"],
+            self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
         )
 
         train_Y, train_Yvar = outcome_transform_physics(
@@ -484,10 +519,10 @@ class surrogate_model:
         )
 
         dv_names_Complete = (
-            self.surrogate_parameters["physicsInformedParamsComplete"][self.output]
+            self.surrogate_parameters["surrogate_transformation_variables_lasttime"][self.output]
             if (
-                "physicsInformedParamsComplete" in self.surrogate_parameters
-                and self.surrogate_parameters["physicsInformedParamsComplete"]
+                "surrogate_transformation_variables_lasttime" in self.surrogate_parameters
+                and self.surrogate_parameters["surrogate_transformation_variables_lasttime"]
                 is not None
             )
             else [i for i in self.bounds]
@@ -807,8 +842,8 @@ class surrogate_model:
             "loss_final": track_fval[-1],
         }
 
-        print("\t- Fitting summary:", verbose=verbose_level)
-        if verbose_level in [4, 5]:
+        print("\t- Fitting summary:", verbose=read_verbose_level())
+        if read_verbose_level() in [4, 5]:
             print("\t\t* Model raw parameters:")
             for param_name, param in self.gpmodel.named_parameters():
                 BOgraphics.printParam(param_name, param, extralab="\t\t\t")

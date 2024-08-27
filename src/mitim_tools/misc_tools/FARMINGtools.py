@@ -12,21 +12,20 @@ import signal
 import datetime
 import torch
 import copy
-import paramiko
 import tarfile
 import numpy as np
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
-
-if verbose_level in [4, 5]:
-    quiet_tag = ""
-else:
-    quiet_tag = "-q "
+import paramiko
+# Paramiko shows some deprecation warnings that are not relevant
+# https://github.com/paramiko/paramiko/issues/2419
+import warnings
+import logging
+warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 UseCUDAifAvailable = True
 
@@ -112,6 +111,7 @@ class mitim_job:
         self.slurm_settings.setdefault("ntasks", 1)
         self.slurm_settings.setdefault("nodes", None)
         self.slurm_settings.setdefault("job_array", None)
+        self.slurm_settings.setdefault("mem", None)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.machineSettings = CONFIGread.machineSettings(
@@ -154,7 +154,7 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands
         self.label_log_files = label_log_files
 
-    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True):
+    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
         if not waitYN:
             removeScratchFolders = False
 
@@ -176,6 +176,7 @@ class mitim_job:
             ntasks=self.slurm_settings["ntasks"],
             cpuspertask=self.slurm_settings["cpuspertask"],
             slurm=self.machineSettings["slurm"],
+            memory_req_by_job=self.slurm_settings["mem"],
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
@@ -202,17 +203,20 @@ class mitim_job:
             comm,
             removeScratchFolders=removeScratchFolders,
             timeoutSecs=timeoutSecs,
-            check_if_files_received=waitYN,
+            check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
         )
 
         # Get jobid
         if self.launchSlurm:
-            with open(self.folder_local + "/mitim.out", "r") as f:
-                aux = f.readlines()
-            for line in aux:
-                if "Submitted batch job " in line:
-                    self.jobid = line.split()[-1]
+            try:
+                with open(self.folder_local + "/mitim.out", "r") as f:
+                    aux = f.readlines()
+                for line in aux:
+                    if "Submitted batch job " in line:
+                        self.jobid = line.split()[-1]
+            except FileNotFoundError:
+                self.jobid = None
         else:
             self.jobid = None
 
@@ -428,7 +432,7 @@ class mitim_job:
         )
 
         # Create a tarball of the local directory
-        print("\t\t- Tarballing")
+        print("\t\t- Tarballing (locally)")
         with tarfile.open(
             os.path.join(self.folder_local, "mitim_send.tar.gz"), "w:gz"
         ) as tar:
@@ -537,7 +541,7 @@ class mitim_job:
                 os.system(f"rm -rf {os.path.join(self.folder_local, folder)}")
 
         # Create a tarball of the output files & folders on the remote machine
-        print("\t\t- Tarballing")
+        print("\t\t- Tarballing (remotely)")
         self.execute(
             "tar -czf "
             + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
@@ -624,7 +628,7 @@ class mitim_job:
 
     # --------------------------------------------------------------------
 
-    def check(self):
+    def check(self, file_output = "slurm_output.dat"):
         """
         Check job status slurm
 
@@ -640,7 +644,7 @@ class mitim_job:
         else:
             txt_look = f"-n {self.slurm_settings['name']}"
 
-        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.24P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
+        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
 
         if "output_files" in self.__dict__:
             output_files_backup = copy.deepcopy(self.output_files)
@@ -650,7 +654,7 @@ class mitim_job:
             wasThere = False
 
         self.output_files = [
-            "slurm_output.dat",  # The slurm results of the main job!
+            file_output,  # The slurm results of the main job!
             "squeue_output.dat",  # The output of the squeue command
         ]
         self.output_folders = []
@@ -659,14 +663,14 @@ class mitim_job:
         output, error = self.execute(command, printYN=True)
         self.retrieve()
         self.close()
-        self.interpret_status()
+        self.interpret_status(file_output = file_output)
 
         # Back to original
         if wasThere:
             self.output_folders = output_folders_backup
             self.output_files = output_files_backup
 
-    def interpret_status(self):
+    def interpret_status(self, file_output = "slurm_output.dat"):
         """
         Status of job:
             0: Submitted/pending
@@ -714,8 +718,8 @@ class mitim_job:
         # If it was available, read the status of the ACTUAL slurm job
         # ------------------------------------------------------------
 
-        if os.path.exists(self.folder_local + "/slurm_output.dat"):
-            with open(self.folder_local + "/slurm_output.dat", "r") as f:
+        if os.path.exists(f"{self.folder_local}/{file_output}"):
+            with open(f"{self.folder_local}/{file_output}", "r") as f:
                 self.log_file = f.readlines()
         else:
             self.log_file = None
@@ -958,6 +962,7 @@ def create_slurm_execution_files(
     minutes=5,
     ntasks=1,
     cpuspertask=4,
+    memory_req_by_job=None,
     job_array=None,
     nodes=None,
     label_log_files="",
@@ -969,9 +974,9 @@ def create_slurm_execution_files(
         command = [command]
 
     folderExecution = IOtools.expandPath(folder_remote)
-    fileSBTACH = f"{folder_local}/mitim_bash.src"
-    fileSHELL = f"{folder_local}/mitim_shell_executor.sh"
-    fileSBTACH_remote = f"{folder_remote}/mitim_bash.src"
+    fileSBTACH = f"{folder_local}/mitim_bash{label_log_files}.src"
+    fileSHELL = f"{folder_local}/mitim_shell_executor{label_log_files}.sh"
+    fileSBTACH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
 
     minutes = int(minutes)
 
@@ -980,13 +985,18 @@ def create_slurm_execution_files(
     exclude = slurm.setdefault("exclude", None)
     account = slurm.setdefault("account", None)
     constraint = slurm.setdefault("constraint", None)
-    memory_req = slurm.setdefault("mem", None)
+    memory_req_by_config = slurm.setdefault("mem", None)
+
+    if memory_req_by_job == 0 :
+        print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
+        memory_req = memory_req_by_job
+    else:
+        memory_req =  memory_req_by_config
 
     """
 	********************************************************************************************
 	Write mitim_bash.src file to execute
 	********************************************************************************************
-		- Contains sourcing of mitim.bashrc, so that it's done at node level
 	"""
 
     if minutes >= 60:
@@ -1037,6 +1047,9 @@ def create_slurm_execution_files(
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
 
+    commandSBATCH.append("#SBATCH --profile=all")
+    
+
     commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
 
     # ******* Commands
@@ -1045,10 +1058,16 @@ def create_slurm_execution_files(
         'echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"'
     )
     commandSBATCH.append(
-        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES nodes were allocated for this job"'
+        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"'
     )
     commandSBATCH.append(
         'echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"'
+    )
+    commandSBATCH.append(
+        'echo "***********************************************************************************************"'
+    )
+    commandSBATCH.append(
+        'echo ""'
     )
     commandSBATCH.append("")
 
@@ -1074,7 +1093,6 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	Write mitim_shell_executor.sh file that handles the execution of the mitim_bash.src with pre and post commands
 	********************************************************************************************
-		- Contains sourcing of mitim.bashrc, so that it's done at machine level
 	"""
 
     commandSHELL = copy.deepcopy(shellPreCommands)
@@ -1097,7 +1115,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && bash mitim_shell_executor.sh > mitim.out"
+    comm = f"cd {folder_remote} && bash mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBTACH, fileSHELL
 

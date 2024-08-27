@@ -13,26 +13,78 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
     GRAPHICStools,
 )
-from mitim_tools.im_tools.modules import EQmodule
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.gacode_tools import TGLFtools, TGYROtools
+from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
-from mitim_tools.transp_tools.tools import (
+from mitim_tools.transp_tools.utils import (
     FBMtools,
     TORICtools,
     PRIMAtools,
     ANALYSIStools,
+    TRANSPhelpers
 )
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-verbose_level = read_verbose_level()
+def read_cdf_transp(cdf_file):
+    '''
+    With the support of chatGPT 4o (08/10/2024)
+    '''
 
+    src = netCDF4.Dataset(cdf_file)
 
-class CDFreactor:
+    if src['TIME'].shape[0] > src['TIME3'].shape[0]:
+        print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
+
+        # Create a dataset object to store the modified data
+        if os.path.exists(f'{cdf_file}_mod'):
+            os.remove(f'{cdf_file}_mod')
+        dst = netCDF4.Dataset(f'{cdf_file}_mod', 'w', memory=None)
+        
+        # Copy global attributes
+        dst.setncatts({attr: src.getncattr(attr) for attr in src.ncattrs()})
+
+        # Copy dimensions, adjust TIME dimension
+        for name, dimension in src.dimensions.items():
+            if name == 'TIME':
+                # Adjust TIME dimension size based on TIME3
+                new_time_size = src['TIME3'].shape[0]
+                dst.createDimension(name, new_time_size)
+            else:
+                dst.createDimension(name, len(dimension) if not dimension.isunlimited() else None)
+
+        # Copy variables, adjust TIME variable
+        for name, variable in src.variables.items():
+            # Copy variable attributes
+            var_attrs = {attr: variable.getncattr(attr) for attr in variable.ncattrs()}
+            
+            # Adjust the TIME variable
+            if name == 'TIME':
+                new_var = dst.createVariable(name, variable.datatype, variable.dimensions)
+                new_var.setncatts(var_attrs)
+                new_var[:] = src['TIME'][:src['TIME3'].shape[0]]  # Adjust TIME variable data
+            else:
+                new_var = dst.createVariable(name, variable.datatype, variable.dimensions)
+                new_var.setncatts(var_attrs)
+                
+                # Adjust variables that depend on TIME
+                if 'TIME' in variable.dimensions:
+                    time_index = variable.dimensions.index('TIME')
+                    slicing = [slice(None)] * variable.ndim
+                    slicing[time_index] = slice(0, src['TIME3'].shape[0])
+                    new_var[:] = variable[tuple(slicing)]
+                else:
+                    new_var[:] = variable[:]
+
+    else:
+        dst = src
+
+    return dst.variables
+
+class transp_output:
     def __init__(
         self,
         netCDFfile,
@@ -42,7 +94,7 @@ class CDFreactor:
         readTGLF=False,
         readTORIC=False,
         readGFILE=False,
-        readStructures=False,
+        readStructures=True,
         readGEQDSK=False,
         calculateAccurateLineAverage=None,
         calcualtePorcelli=False,
@@ -78,7 +130,15 @@ class CDFreactor:
             netCDFfile = f"{folderScratch}state.cdf"
 
         self.LocationCDF = netCDFfile
-        self.f = netCDF4.Dataset(self.LocationCDF).variables
+
+        # Capability to provide folder and just find the CDF in there
+        if os.path.isdir(self.LocationCDF):
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF+'/', ".CDF", agnostic_to_case=True, provide_full_path = True)
+            if self.LocationCDF is None:
+                raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
+        # ----------------------------
+
+        self.f = read_cdf_transp(self.LocationCDF) 
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
@@ -153,6 +213,8 @@ class CDFreactor:
         self.checkQNZEFF()
 
         self.getEquilibriumFunctions()
+
+        self.getSpecies()
 
         self.inputFilesTGLF, self.TGLFstandalone = {}, {}
         for i in np.arange(self.t[0] * 1000, self.t[-1] * 1000):
@@ -596,8 +658,8 @@ class CDFreactor:
         self.psi = self.f["PLFLX"][:]  # Poloidal flux (Wb/rad)
         self.phi = self.f["TRFLX"][:]  # Toroidal flux (Wb)
 
-        self.phi_bnd = self.phi[:, -1]
-        self.psi_bnd = self.psi[:, -1] * 2 * np.pi
+        self.phi_bnd = self.phi[:, -1]  # Toroidal flux at boundary (Wb)
+        self.psi_bnd = self.psi[:, -1] *  2 * np.pi  # Poloidal flux at boundary (Wb)
 
         self.phi_check = self.f["TRFCK"][:]
 
@@ -992,9 +1054,6 @@ class CDFreactor:
             gradNorm(self, self.zetaS) * (-self.rmin / self.TGLF_a) * self.zetaS
         )
 
-        # ---------- Species
-        self.getSpecies(time=None, radius=0.5)
-
         self.TGLF_zs = np.array([-1, 1])
         self.TGLF_mass = np.array([0.000272313, 1])
         self.TGLF_rlns = np.array([self.aLne, self.aLnD])
@@ -1023,6 +1082,11 @@ class CDFreactor:
         # 	self.fG_950[it] = np.interp([0.95],self.psin[it],self.fG[it])[0]
 
     def getDilutions(self):
+
+        '''
+        Note that ni in TRANSP seems to not include He3 !!!
+        '''
+
         self.ni = self.f["NI"][:] * 1e6 * 1e-20  # in 10^20m^-3
         self.ni_avol = volumeAverage(self.f, "NI") * 1e6 * 1e-20  # in 10^20m^-3
 
@@ -1033,23 +1097,23 @@ class CDFreactor:
             self.nD_avol = volumeAverage(self.f, "ND") * 1e6 * 1e-20  # in 10^20m^-3
         except:
             print("\t- This plasma had no Deuterium")
-            self.nD = self.ni * 0.0 + self.eps00
-            self.nD_avol = self.ni_avol * 0.0 + self.eps00
+            self.nD = self.ne * 0.0 + self.eps00
+            self.nD_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nH = self.f["NH"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nH_avol = volumeAverage(self.f, "NH") * 1e6 * 1e-20  # in 10^20m^-3
         except:
-            self.nH = self.ni * 0.0 + self.eps00
-            self.nH_avol = self.ni_avol * 0.0 + self.eps00
+            self.nH = self.ne * 0.0 + self.eps00
+            self.nH_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nT = self.f["NT"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nT_avol = volumeAverage(self.f, "NT") * 1e6 * 1e-20  # in 10^20m^-3
         except:
             print("\t- This plasma had no Tritium")
-            self.nT = self.ni * 0.0 + self.eps00
-            self.nT_avol = self.ni_avol * 0.0 + self.eps00
+            self.nT = self.ne * 0.0 + self.eps00
+            self.nT_avol = self.ne_avol * 0.0 + self.eps00
 
         try:
             self.nHe4 = self.f["NHE4"][:] * 1e6 * 1e-20  # in 10^20m^-3
@@ -1062,8 +1126,8 @@ class CDFreactor:
                 print(
                     " \t- This plasma, although DT, had no thermal alphas being tracked"
                 )
-            self.nHe4 = self.ni * 0.0 + self.eps00
-            self.nHe4_avol = self.ni_avol * 0.0 + self.eps00
+            self.nHe4 = self.ne * 0.0 + self.eps00
+            self.nHe4_avol = self.ne_avol * 0.0 + self.eps00
 
         self.nT_particles = self.volume * self.nT_avol  # in 10^20 particles
         self.nD_particles = self.volume * self.nD_avol  # in 10^20 particles
@@ -1330,7 +1394,7 @@ class CDFreactor:
             self.nfusHe3_avol = (
                 volumeAverage(self.f, "FDENS_3") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusHe3 = self.nD * 0.0 + self.eps00
             self.nfusHe3_avol = self.nD_avol * 0.0 + self.eps00
 
@@ -1339,7 +1403,7 @@ class CDFreactor:
             self.nfusT_avol = (
                 volumeAverage(self.f, "FDENS_T") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusT = self.nD * 0.0 + self.eps00
             self.nfusT_avol = self.nD_avol * 0.0 + self.eps00
 
@@ -1348,7 +1412,7 @@ class CDFreactor:
             self.nfusH_avol = (
                 volumeAverage(self.f, "FDENS_P") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except KeyError:
+        except (KeyError,IndexError):
             self.nfusH = self.nD * 0.0 + self.eps00
             self.nfusH_avol = self.nD_avol * 0.0 + self.eps00
 
@@ -1717,8 +1781,8 @@ class CDFreactor:
 
             self.Gf_loss_cx = self.f["SBCXX"][:] * 1e-20  # in 1E20 particles/s
         except:
-            self.D_f = self.x_lw * 0.0
-            self.V_f = self.x_lw * 0.0
+            self.D_f = self.Te * 0.0
+            self.V_f = self.Te * 0.0
             self.Pf_loss_orbit = self.t * 0.0
             self.Gf_loss_cx = self.t * 0.0
 
@@ -3246,9 +3310,10 @@ class CDFreactor:
             self.Epot_rot = copy.deepcopy(self.x) * 0.0 + self.eps00
 
         # Get rotation (in XB)
-        self.VtorkHz_check = -derivativeVar(
-            self, self.Epot, specialDerivative=self.psi
-        ) / (2 * np.pi)
+
+        self.w0 = -derivativeVar(self, self.Epot, specialDerivative=self.psi)
+
+        self.VtorkHz_check = self.w0 / (2 * np.pi)
         self.VtorkHz_rot_check = -derivativeVar(
             self, self.Epot_rot, specialDerivative=self.psi
         ) / (2 * np.pi)
@@ -3582,6 +3647,7 @@ class CDFreactor:
         self.Bt_x = 0.5 * (self.Bt_ext[:, :hf] + self.Bt_ext[:, hf + 1 :])
 
         self.RBt_vacuum = self.f["BZXR"][:] * 1e-2  # Vacuum field T*m
+        self.Bt_vacuum = self.RBt_vacuum / self.Rmajor  # Vacuum field T
         self.Bt_vacuum_avol = self.RBt_vacuum * volumeAverage_var(self.f, self.Rinv)
         self.Bt2_vacuum_avol = self.RBt_vacuum**2 * volumeAverage_var(
             self.f, self.Rinv2
@@ -4515,7 +4581,7 @@ class CDFreactor:
         alpha=1.0,
         legend=True,
         plotLinesSawVerbose=1,
-    ):
+        ):
         sawtooth += 1
 
         if len(self.ind_sawAll) > 2:
@@ -5143,6 +5209,7 @@ class CDFreactor:
         inverted=False,
         sqrt=True,
         lwB=3,
+        lw = 1,
         label="",
         labelS="",
         plotBound=True,
@@ -5165,7 +5232,6 @@ class CDFreactor:
         for rho in rhoS:
             RMC, YMC = getFluxSurface(self.f, time, rho, rhoPol=rhoPol, sqrt=sqrt)
             if plotComplete or plotSurfs:
-                lw = 1
                 co = colorsurfs
                 ax.plot(
                     mult * RMC, YMC, lw=lw, c=co, ls=ls, alpha=alphasurfs, label=labelS
@@ -5808,7 +5874,7 @@ class CDFreactor:
         ax4 = fig.add_subplot(grid[1, 1])
 
         ax5 = fig.add_subplot(grid[0, 2])
-        # ax6 = fig.add_subplot(grid[1,2])
+        ax6 = fig.add_subplot(grid[1,2])
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Variation of electromagnetic quantities
@@ -5970,6 +6036,19 @@ class CDFreactor:
         ax.set_ylabel("Time (s)")
 
         GRAPHICStools.addDenseAxis(ax)
+
+        ax = ax6
+        rhos = [0.2, 0.4, 0.6, 0.8, 0.95]
+        for i in rhos:
+            ix = np.argmin(np.abs(self.x_lw - i))
+            ax.plot(self.t, self.q[:, ix], lw=1, label=f"$\\rho_N={i:.2f}$")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("q")
+        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        ax.axhline(y=1.0, c="k", ls="--", lw=1)
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+
 
     def plotElectricField(self, fig=None, time=None):
         if time is None:
@@ -6809,7 +6888,7 @@ class CDFreactor:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(4, 2, hspace=0.4, wspace=0.4)
+        grid = plt.GridSpec(4, 2, hspace=0.6, wspace=0.4)
         ax1 = fig.add_subplot(grid[:2, 0])
         ax3 = fig.add_subplot(grid[2, 0], sharex=ax1)
         ax2 = fig.add_subplot(grid[3, 0], sharex=ax1)
@@ -6956,22 +7035,22 @@ class CDFreactor:
         ax2.set_xlabel("Time (s)")
 
         # q profile trace
-        rhos = [0.9, 0.99]
-        for i in rhos:
-            irho = np.argmin(np.abs(self.x_lw - i))
+        
+        for irho in range(10):
             ax3e.plot(
                 self.t,
                 self.q[:, irho],
                 ls="-",
                 lw=2,
-                label=f"q @ $\\rho_N$={i}",
+                label=f"q @ $\\rho_N$={self.xb_lw[irho]:.3f}",
             )
-        ax3e.plot(self.t, self.q95, ls="-", lw=3, label="$q_{95}$")
 
         ax3e.legend(loc="best", prop={"size": self.mainLegendSize})
         ax3e.set_ylabel("q")
+        ax3e.set_title("First 10 radii of q-profile")
+        ax3e.axhline(y=1.0, ls="--", c="k", lw=0.5)
 
-        GRAPHICStools.addLegendApart(ax3e, ratio=0.7)
+        GRAPHICStools.addLegendApart(ax3e, ratio=0.7, size=6)
 
         GRAPHICStools.addDenseAxis(ax3e)
 
@@ -8209,7 +8288,7 @@ class CDFreactor:
         ax.set_ylim(bottom=0)
         GRAPHICStools.addDenseAxis(ax)
 
-        # plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     def plotEquilParams(self, fig=None, time=None):
         if fig is None:
@@ -9344,22 +9423,30 @@ class CDFreactor:
         # -------------
 
         ax = ax1
-        ax.plot(self.t, self.cptim, lw=2, label="Total")
-        ax.plot(self.t, self.cptim_pt, lw=2, label="PT_SOLVER")
-        ax.plot(self.t, self.cptim_out, lw=2, label="OUT")
+
+        if self.cptim[-1] < 1.0:
+            factor = 60.0
+            lab = "min"
+        else:
+            factor = 1.0
+            lab = "h"
+
+        ax.plot(self.t, self.cptim*factor, lw=2, label="Total")
+        ax.plot(self.t, self.cptim_pt*factor, lw=2, label="PT_SOLVER")
+        ax.plot(self.t, self.cptim_out*factor, lw=2, label="OUT")
         ax.plot(
             self.t,
             self.cptim_geom + self.cptim_mhd + self.cptim_fsa,
             lw=2,
             label="EQ+MHD+FSA",
         )
-        ax.plot(self.t, self.cptim_nubeam, lw=2, label="NUBEAM")
-        ax.plot(self.t, self.cptim_icrf, lw=2, label="ICRF")
-        ax.plot(self.t, self.cptim_fpp, lw=2, label="FPP")
+        ax.plot(self.t, self.cptim_nubeam*factor, lw=2, label="NUBEAM")
+        ax.plot(self.t, self.cptim_icrf*factor, lw=2, label="ICRF")
+        ax.plot(self.t, self.cptim_fpp*factor, lw=2, label="FPP")
 
         ax.plot(
             self.t,
-            self.cptim + self.cptim_out,
+            (self.cptim + self.cptim_out)*factor,
             lw=2,
             ls="--",
             c="c",
@@ -9367,21 +9454,21 @@ class CDFreactor:
         )
         ax.plot(
             self.t,
-            self.cptim_icrf
+            (self.cptim_icrf
             + self.cptim_fpp
             + self.cptim_nubeam
             + self.cptim_pt
             + self.cptim_out
             + self.cptim_geom
             + self.cptim_mhd
-            + self.cptim_fsa,
+            + self.cptim_fsa)*factor,
             lw=2,
             ls="--",
             c="y",
             label="check",
         )
 
-        ax.set_ylabel("Wall-time $t_{CPU}$ (h)")
+        ax.set_ylabel(f"Wall-time $t_{{CPU}}$ ({lab})")
         ax.set_xlabel("Time (s)")
         ax.set_ylim(bottom=0)
 
@@ -12089,7 +12176,7 @@ class CDFreactor:
         ax.plot(x0, y2, c="g", lw=2, label="$M_c * (R\\cdot B_\\phi)_v$")
 
         ax.set_title(
-            f"F funciton , $R\\cdot B_\\phi$ (t={self.t[it2]:.3f}-{self.t[it]:.3f})"
+            f"F function , $R\\cdot B_\\phi$ (t={self.t[it2]:.3f}-{self.t[it]:.3f})"
         )
         ax.set_ylabel("")
         ax.set_xlabel("$\\psi_n$")
@@ -13141,174 +13228,216 @@ class CDFreactor:
         # Machine
         fig = self.fn.add_figure(tab_color=fn_color, label="Machine")
         self.plotMachine(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Equil
         fig = self.fn.add_figure(tab_color=fn_color, label="Equilibrium")
         self.plotEquilParams(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # GS
         fig = self.fn.add_figure(tab_color=fn_color, label="Grad-Shafranov")
         self.plotGS(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Geometry
         fig = self.fn.add_figure(tab_color=fn_color, label="Geometry")
         self.plotGEO(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Profiles
         fig = self.fn.add_figure(tab_color=fn_color, label="Profiles")
         self.plotProfiles(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # PRESSURES
         fig = self.fn.add_figure(tab_color=fn_color, label="Pressure")
         self.plotPressures(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Systems
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Auxiliary)")
         self.plotSeparateSystems(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Heating
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Total)")
         self.plotHeating(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Radial Powe3
         fig = self.fn.add_figure(tab_color=fn_color, label="Power (Radial)")
         fig2 = self.fn.add_figure(tab_color=fn_color, label="Power (Cumul.)")
         self.plotRadialPower(time=time, fig=fig, figCum=fig2)
+        GRAPHICStools.adjust_figure_layout(fig)
+        GRAPHICStools.adjust_figure_layout(fig2)
 
         # ICRF
         if np.sum(self.PichT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="ICRF (Total)")
             self.plotICRF_t(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="ICRF (Radial)")
             self.plotICRF(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ECRF
         if np.sum(self.PechT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="ECRF")
             self.plotECRF(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # NBI
         if np.sum(self.PnbiT) > 0.0 + self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="NBI")
             self.plotNBI(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # LH
         if np.sum(self.PlhT) > 0.0 + 2 * self.eps00 * (len(self.t) + 1):
             fig = self.fn.add_figure(tab_color=fn_color, label="LowerHyb")
             self.plotLowerHybrid(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Transport
         fig = self.fn.add_figure(tab_color=fn_color, label="Transport")
         self.plotTransport(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Derivatives
         fig = self.fn.add_figure(tab_color=fn_color, label="Gradients")
         self.plotDerivatives(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Porcelli
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Trigger")
         self.plotSawtooth(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Around sawtooth
         # try:
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Effect")
         try:
             self.plotAroundSawtoothQuantities(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
         except:
-            print("Could not plot plotAroundSawtoothQuantities", typeMsg="w")
+            print("\t* Could not plot plotAroundSawtoothQuantities", typeMsg="w")
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Sawtooth Mixing")
         self.plotSawtoothMixing(fig=fig)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Electric Field
         fig = self.fn.add_figure(tab_color=fn_color, label="Current Diffusion")
         self.plotEM(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Poynting")
         self.plotUmag(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Fundamental
         fig = self.fn.add_figure(tab_color=fn_color, label="Fundamental Plasma")
         self.plotFundamental(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Stability
         fig = self.fn.add_figure(tab_color=fn_color, label="MHD Stability")
         self.plotStability(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Electric Field
         fig = self.fn.add_figure(tab_color=fn_color, label="Electric Field")
         self.plotElectricField(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Rotation
         fig = self.fn.add_figure(tab_color=fn_color, label="Rotation")
         self.plotRotation(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Time scales
         try:
             fig = self.fn.add_figure(tab_color=fn_color, label="Time Scales")
             self.plotTimeScales(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
         except:
             pass
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Averaging")
         self.plotTimeAverages(fig=fig, times=timesAv)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Impurities
         fig = self.fn.add_figure(tab_color=fn_color, label="Impurities")
         self.plotImpurities(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Radiation
         fig = self.fn.add_figure(tab_color=fn_color, label="Radiation")
         self.plotRadiation(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Convergence
         fig = self.fn.add_figure(tab_color=fn_color, label="Flux Matching")
         self.checkRun(fig=fig, time=time, printYN=False)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # LH
         fig = self.fn.add_figure(tab_color=fn_color, label="LH Transition")
         self.plotLH(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Particle Balance
         fig = self.fn.add_figure(tab_color=fn_color, label="Particle Balance")
         self.plotParticleBalance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         fig = self.fn.add_figure(tab_color=fn_color, label="Ions Balance")
         self.plotIonsBalance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Slow Down")
             self.plotSlowDown(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Fast
         fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Radial)")
         self.plotFast(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Fast
         fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Stabilization)")
         self.plotFast2(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # SLow down
         if self.neutrons_thrDT[-1] > self.eps00:
             fig = self.fn.add_figure(tab_color=fn_color, label="Fast (Transport)")
             self.plotFastTransport(fig=fig, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # Neutrals
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrals")
         self.plotNeutrals(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Performance
         fig = self.fn.add_figure(tab_color=fn_color, label="Performance")
         self.plotPerformance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Nuclear
         fig = self.fn.add_figure(tab_color=fn_color, label="Neutrons")
         self.plotNuclear(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # Boundary
         fig = self.fn.add_figure(tab_color=fn_color, label="Boundary")
         self.plotDivertor(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # ----------- DIAGRAMS
 
@@ -13321,6 +13450,7 @@ class CDFreactor:
         # CPU
         fig = self.fn.add_figure(tab_color=fn_color, label="CPU usage")
         self.plotCPUperformance(fig=fig, time=time)
+        GRAPHICStools.adjust_figure_layout(fig)
 
         # ----------- EXTRA
 
@@ -13328,6 +13458,7 @@ class CDFreactor:
         for i, toric in enumerate(self.torics):
             fig = self.fn.add_figure(tab_color=fn_color, label=f"TORIC #{i+1}")
             self.plotTORIC(fig=fig, position=i)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # FBM
 
@@ -13336,41 +13467,52 @@ class CDFreactor:
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_gc, finalProfile=self.nfusHe4
             )
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM He4 PO")
             self.plotFBM(
                 fig=fig, particleFile=self.fbm_He4_po, finalProfile=self.nfusHe4
             )
+            GRAPHICStools.adjust_figure_layout(fig)
 
         if self.fbm_Dbeam_gc is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM Dbeam GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_gc, finalProfile=self.nbD)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM Dbeam PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_Dbeam_po, finalProfile=self.nbD)
+            GRAPHICStools.adjust_figure_layout(fig)
 
             if self.fbm_Dbeam_gc.birth is not None:
                 fig = self.fn.add_figure(tab_color=fn_color, label="BIRTH D")
                 self.plotBirth(particleFile=self.fbm_Dbeam_gc, fig=fig)
+                GRAPHICStools.adjust_figure_layout(fig)
 
         if self.fbm_T_gc is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM T GC")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_gc, finalProfile=self.nfusT)
+            GRAPHICStools.adjust_figure_layout(fig)
             fig = self.fn.add_figure(tab_color=fn_color, label="FBM T PO")
             self.plotFBM(fig=fig, particleFile=self.fbm_T_po, finalProfile=self.nfusT)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # TGLF
         if hasattr(self, "TGLF") and self.TGLF is not None:
             figGR = self.fn.add_figure(tab_color=fn_color, label="TGLF1")
             figFL = self.fn.add_figure(tab_color=fn_color, label="TGLF2")
             self.plotTGLF(figGR=figGR, figFL=figFL)
+            GRAPHICStools.adjust_figure_layout(figGR)
+            GRAPHICStools.adjust_figure_layout(figFL)
 
         # ~~~~~~~~~~~~~ Comparisons
         if hasattr(self, "exp") and self.exp is not None:
             fig = self.fn.add_figure(tab_color=fn_color, label="EXP")
             self.plotComparison(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ~~~~~~~~~~~~~ Comparisons
         if hasattr(self, "isolver") and self.isolver is not None:
             self.plotISOLVER(fn=self.fn, time=time)
+            GRAPHICStools.adjust_figure_layout(fig)
 
         # ~~~~~~~~~~~~~ Final g-file
         # 	Here I make the exception of reading it at plotting, because I may have generated it since loading the class
@@ -13387,7 +13529,7 @@ class CDFreactor:
             if self.gfile_in is None:
                 ax_plasma = self.gfile_out.plot(fn=self.fn, extraLabel="G_out - ")
             else:
-                ax_plasma, fnG = GEQtools.compareGeqdsk(
+                ax_plasma, fnG = GEQplotting.compareGeqdsk(
                     [self.gfile_in, self.gfile_out],
                     fn=self.fn,
                     labelsGs=["G_in", "G_out"],
@@ -13467,6 +13609,7 @@ class CDFreactor:
 
             fig = self.fn.add_figure(tab_color=fn_color, label="ANALYSIS - initial")
             self.analyze_initial(fig=fig)
+            GRAPHICStools.adjust_figure_layout(fig)
 
             if len(self.tlastsawU) > 1:
                 fig = self.fn.add_figure(
@@ -13478,47 +13621,106 @@ class CDFreactor:
     # Additional analysis
     # --------------------------------------
 
-    def getSpecies(self, time=None, radius=0.5):
-        if time is None:
-            it = self.ind_saw
-        else:
-            it = np.argmin(np.abs(self.t - time))
-        ir = np.argmin(np.abs(self.x_lw - radius))
+    def getSpecies(self):
 
         self.Species = {
-            "e": {"type": "thermal", "m/mD": self.me / self.mD, "Z": -1, "n/ne": 1.0}
+            "e": {
+                "name": "e",
+                "type": "thermal",
+                "m": self.me,
+                "Z": -1*self.t,
+                "n": self.ne,
+                "T": self.Te,
+            }
         }
 
         # ~~~~~~ Background ions
-        if self.nD_avol[it] > 1e-5:
+        if self.nD_avol.max() > 1e-5:
             self.Species["D"] = {
-                "type": "background",
-                "m/mD": 1.0,
-                "Z": 1,
-                "n/ne": self.nD[it, ir] / self.ne[it, ir],
+                "name": "D",
+                "type": "thermal",
+                "m": 1.0*self.u,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nD,
+                "T": self.Ti,
             }
-        if self.nT_avol[it] > 1e-5:
+        if self.nT_avol.max() > 1e-5:
             self.Species["T"] = {
-                "type": "background",
-                "m/mD": self.mT / self.mD,
-                "Z": 1,
-                "n/ne": self.nT[it, ir] / self.ne[it, ir],
+                "name": "T",
+                "type": "thermal",
+                "m": self.mT,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nT,
+                "T": self.Ti,
             }
-        if self.nHe4_avol[it] > 1e-5:
-            self.Species["He4"] = {
-                "type": "background",
-                "m/mD": (4 * self.u) / self.mD,
-                "Z": 2,
-                "n/ne": self.nHe4[it, ir] / self.ne[it, ir],
+        if self.nHe4_avol.max() > 1e-5:
+            self.Species["He4_ash"] = {
+                "name": "He",
+                "type": "thermal",
+                "m": 4 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nHe4,
+                "T": self.Ti,
             }
 
         # ~~~~~~ Impurities
         for i in self.nZs:
-            self.Species[i] = {
-                "type": "impurity",
-                "m/mD": (4 * self.u) / self.mD,
-                "Z": self.nZs[i]["Zave"][it, ir],
-                "n/ne": self.nZs[i]["total"][it, ir] / self.ne[it, ir],
+            self.Species[i+"_imp"] = {
+                "name": i,
+                "type": "thermal",
+                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u,      # TO FIX
+                "Z": self.fZs_avol[i]['Zave'],
+                "n": self.nZs[i]["total"],
+                "T": self.Ti,
+            }
+
+        # ~~~~~~ Minorities
+        if self.nminiH.max() > 1e-5:
+            self.Species["H_mini"] = {
+                "name": "H",
+                "type": "fast",
+                "m": 1.0*self.u,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nminiH,
+                "T": self.Tmini,
+            }
+        if self.nminiHe3.max() > 1e-5:
+            self.Species["He3_mini"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 3*self.u,       # TO FIX
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nminiHe3,
+                "T": self.Tmini,
+            }
+
+        # ~~~~~~ Fusion
+        if self.nfusT.max() > 1e-5:
+            self.Species["T_fus"] = {
+                "name": "T",
+                "type": "fast",
+                "m": self.mT,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nfusT,
+                "T": self.Tfus,
+            }
+        if self.nfusHe4.max() > 1e-5:
+            self.Species["He4_fus"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 4 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nfusHe4,
+                "T": self.Tfus,
+            }
+        if self.nfusHe3.max() > 1e-5:
+            self.Species["He3_fus"] = {
+                "name": "He",
+                "type": "fast",
+                "m": 3.0 * self.u,
+                "Z": 2*np.ones(len(self.t)),
+                "n": self.nfusHe3,
+                "T": self.Tfus,
             }
 
     # --------------------------- Convergence ------------------
@@ -14237,7 +14439,7 @@ class CDFreactor:
 
             ax1.set_xlim([0.05, 35.0])
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     def plotFLTRANSP(self, tglfRun="tglf1", fig=None, label="", time=None):
         if time is not None:
@@ -14399,7 +14601,7 @@ class CDFreactor:
             ax1.set_ylabel("Te fluct")
             ax2.set_ylabel("ne fluct")
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     # --------
 
@@ -14547,17 +14749,16 @@ class CDFreactor:
     # --------
 
     def getGFILE(self):
+
         print("\t- Looking for equilibrium file in CDF folder...")
-        gf = IOtools.findFileByExtension(self.FolderCDF + "EQ_folder/", ".geq")
-        if gf is not None:
-            print("\t\t- Reference gfile found in folder")
-            try:
-                self.gfile_in = GEQtools.MITIMgeqdsk(
-                    self.FolderCDF + "EQ_folder/" + gf + ".geq"
-                )
-            except:
-                print("\t- Error reagind", typeMsg="w")
-        else:
+        for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
+            for folder in ["EQ_folder/", ""]:
+                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension)
+                if gf is not None:
+                    print("\t\t- Reference gfile found in folder")
+                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
+                    break
+        if gf is None:
             print(
                 "\t\t- Reference g-file associated to this run could not be found",
                 typeMsg="w",
@@ -14565,7 +14766,7 @@ class CDFreactor:
 
         # Try to read boundary too
         if os.path.exists(self.FolderCDF + "/PRF12345.RFS"):
-            self.bound_R, self.bound_Z = EQmodule.readBoundary(
+            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
                 self.FolderCDF + "/PRF12345.RFS", self.FolderCDF + "/PRF12345.ZFS"
             )
 
@@ -14666,7 +14867,7 @@ class CDFreactor:
                 r_ant = IOtools.findValue(namelist, "RMNICHA", "=")
                 t_ant = IOtools.findValue(namelist, "THICHA", "=")
 
-                self.R_ant0, self.Z_ant0 = EQmodule.reconstructAntenna(
+                self.R_ant0, self.Z_ant0 = TRANSPhelpers.reconstructAntenna(
                     R_ant, r_ant, t_ant
                 )
 
@@ -14688,7 +14889,7 @@ class CDFreactor:
                 ]
 
                 for icha in range(nicha):
-                    self.R_ant0, self.Z_ant0 = EQmodule.reconstructAntenna(
+                    self.R_ant0, self.Z_ant0 = TRANSPhelpers.reconstructAntenna(
                         R_ant[icha], r_ant[icha], t_ant[icha]
                     )
 
@@ -14751,7 +14952,7 @@ class CDFreactor:
                     except:
                         break
 
-                self.R_vv, self.Z_vv = EQmodule.reconstructVV(VVr, VVz)
+                self.R_vv, self.Z_vv = TRANSPhelpers.reconstructVV(VVr, VVz)
                 self.R_vv = self.R_vv * 1e-2
                 self.Z_vv = self.Z_vv * 1e-2
 
@@ -14926,6 +15127,11 @@ class CDFreactor:
         with open(file, "wb") as handle:
             pickle.dump(dictPKL, handle, protocol=2)
 
+
+    # ---------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------
+
     def produceTGYROfiles(
         self, folderWork="~/scratch/outputsMITIM/", time=-0.06, avTime=0.05
     ):
@@ -15005,6 +15211,203 @@ class CDFreactor:
 
         os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
         os.system("mv {0}/TRANSPrun.tar {0}/RELEASE_folder/.".format(self.FolderCDF))
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
+
+        print("\t- Converting to TRANSP")
+        folder = IOtools.expandPath(folder)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        for time in times:
+            transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
+
+        transp.write_ufiles()
+
+        return transp
+
+    def to_profiles(self, time_extraction = None):
+
+        if time_extraction is None:
+            time_extraction = self.t[self.ind_saw]
+        elif time_extraction < 0:
+            time_extraction = self.t[-1] + time_extraction
+
+        it = np.argmin(np.abs(self.t - time_extraction))
+        
+        print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
+        print("\t\t* Warning: ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
+        print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
+        print("\t\t* Warning: not time averaging yet",typeMsg='w')
+
+        # TO FIX: I should be looking at the extrapolated quantities in TRANSP?
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
+
+        # -------------------------------------------------------------------------------------------------------
+        # Main structure
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles = {}
+
+        # Radial grid
+        rho_grid = self.xb[it]
+
+        # Info
+        nion = len(self.Species) - 1
+        nexp = rho_grid.shape[0]
+        profiles['nexp'] = np.array([f'{nexp}'])
+        profiles['nion'] = np.array([f'{nion}'])
+
+        profiles['shot'] = np.array(['12345'])
+
+        # -------------------------------------------------------------------------------------------------------
+        # Species
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['name'] = []
+        profiles['type'] = []
+        profiles['masse'] = []
+        profiles['mass'] = []
+        profiles['ze'] = []
+        profiles['z'] = []
+        mass_ref = 2.0
+        for specie in self.Species:
+            if specie == 'e':
+                profiles['masse'].append(self.Species[specie]['m']/self.mD * mass_ref)
+                profiles['ze'].append(-1.0)
+            else:
+                profiles['name'].append(self.Species[specie]['name'])
+                profiles['mass'].append(self.Species[specie]['m']/self.mD * mass_ref)
+                profiles['z'].append(self.Species[specie]['Z'][it])
+                if self.Species[specie]['type'] == 'thermal':
+                    profiles['type'].append('[therm]')
+                else:
+                    profiles['type'].append('[fast]')
+        profiles['name'] = np.array(profiles['name'])
+        profiles['type'] = np.array(profiles['type'])
+        profiles['masse'] = np.array(profiles['masse'])
+        profiles['mass'] = np.array(profiles['mass'])
+        profiles['ze'] = np.array(profiles['ze'])
+        profiles['z'] = np.array(profiles['z'])
+
+        # -------------------------------------------------------------------------------------------------------
+        # Global equilibrium
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / (2*np.pi)])
+        profiles['rcentr(m)'] = np.array([self.Rmajor[it]])
+        profiles['bcentr(T)'] = np.array([self.Bt_vacuum[it]])
+        profiles['current(MA)'] = np.array([self.Ip[it]])
+
+        # -------------------------------------------------------------------------------------------------------
+        # Equilibrium profiles
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['rho(-)'] = rho_grid
+
+        profiles['polflux(Wb/radian)'] = self.psi[it,:]
+        profiles['q(-)'] = self.q[it,:]
+        
+        # -------------------------------------------------------------------------------------------------------
+        # Flux surfaces
+        # -------------------------------------------------------------------------------------------------------
+
+        coeffs_MXH = 7
+
+        Rs, Zs = [], []
+        for rho in profiles['rho(-)']:
+            R, Z = getFluxSurface(self.f, time_extraction, rho, rhoPol=False, sqrt=True)
+            Rs.append(R)
+            Zs.append(Z)
+        Rs = np.array(Rs)
+        Zs = np.array(Zs)
+
+        surfaces = GEQtools.mitim_flux_surfaces()
+        surfaces.reconstruct_from_RZ(Rs, Zs)
+        surfaces._to_mxh(n_coeff=coeffs_MXH)
+
+        for i in range(coeffs_MXH):
+            profiles[f'shape_cos{i}(-)'] = surfaces.cn[:,i]
+            if i > 2:
+                profiles[f'shape_sin{i}(-)'] = surfaces.sn[:,i]
+        
+        profiles['kappa(-)'] = surfaces.kappa
+        profiles['delta(-)'] = np.sin(surfaces.sn[:,1])
+        profiles['zeta(-)'] = -surfaces.sn[:,2]
+        profiles['rmin(m)'] = surfaces.a
+        profiles['rmaj(m)'] = surfaces.R0
+        profiles['zmag(m)'] = surfaces.Z0
+
+        # -------------------------------------------------------------------------------------------------------
+        # Kinetic profiles
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['ni(10^19/m^3)'] = []
+        profiles['ti(keV)'] = []
+        for specie in self.Species:
+            if specie == 'e':
+                profiles['te(keV)'] = self.Te[it,:]
+                profiles['ne(10^19/m^3)'] =self.ne[it,:]*1E1
+            else:
+                profiles['ni(10^19/m^3)'].append(self.Species[specie]['n'][it,:]*1E1)
+                profiles['ti(keV)'].append(self.Species[specie]['T'][it,:])
+        profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
+        profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
+
+        # Power profiles
+        profiles['qei(MW/m^3)'] = self.Pei[it,:]
+        profiles['qrfe(MW/m^3)'] = self.Peich[it,:]
+        profiles['qrfi(MW/m^3)'] = self.Piich[it,:]
+        profiles['qbrem(MW/m^3)'] = self.Prad_b[it,:]
+        profiles['qsync(MW/m^3)'] = self.Prad_c[it,:]
+        profiles['qline(MW/m^3)'] = self.Prad_l[it,:]
+        profiles['qohme(MW/m^3)'] = self.Poh[it,:]
+        profiles['qfuse(MW/m^3)'] = self.Pfuse[it,:]
+        profiles['qfusi(MW/m^3)'] = self.Pfusi[it,:]
+
+        # -------------------------------------------------------------------------------------------------------
+        # Postprocessing: Interpolate from xb to x (boundary to center quantities)
+        # -------------------------------------------------------------------------------------------------------
+
+        def grid_interpolation_method_to_one(x,y,x_new):
+            return extrapolation_routine(x_new, x, y)
+
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']
+        for key in keys_in_x:
+            if (profiles[key].ndim == 1):
+                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key],profiles['rho(-)'])
+            elif (profiles[key].ndim == 2):
+                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i],profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
+
+        # -------------------------------------------------------------------------------------------------------
+        # Postprocessing: Add zero at the beginning
+        # -------------------------------------------------------------------------------------------------------
+
+        def grid_interpolation_method_to_zero(x,y):
+            return extrapolation_routine(np.append(0.0, x), x, y)
+
+        for key in profiles:
+            if (profiles[key].ndim == 1) and (profiles[key].shape[0] == nexp) and (key != 'rho(-)'):
+                profiles[key] =  grid_interpolation_method_to_zero(profiles['rho(-)'],profiles[key])
+            elif (profiles[key].ndim == 2):
+                profiles[key] = np.vstack([grid_interpolation_method_to_zero(profiles['rho(-)'],profiles[key][:,i]) for i in range(profiles[key].shape[1])]).T
+
+        profiles['rho(-)'] = np.append(0.0, profiles['rho(-)'])
+
+        # -------------------------------------------------------------------------------------------------------
+        # Load class
+        # -------------------------------------------------------------------------------------------------------
+        
+        # Ensure positive values, non-zero for some
+        minimum = 1E-9
+        for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
+            profiles[key] = profiles[key].clip(min=minimum)
+
+        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+
+        return p
+
 
     # ---------------------------------------------------------------------------------------------------------
     # -------- Outputs
@@ -15113,7 +15516,7 @@ class CDFreactor:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if self.gfile_in is not None:
-            rmajor, epsilon, kappa, delta, zeta, z0 = self.gfile_in.paramsLCFS()
+            rmajor, epsilon, kappa, delta, zeta, z0 = self.gfile_in.Rmajor, self.gfile_in.eps, self.gfile_in.kappa, self.gfile_in.delta, self.gfile_in.zeta, self.gfile_in.Zmag
             extrakappa = f"\t(gfile kappa = {kappa:.2f})"
             extradelta = f"\t(gfile delta = {delta:.2f})"
         else:
@@ -15632,7 +16035,6 @@ class CDFreactor:
             pickle.dump(dictPKL, handle, protocol=2)
         print(f" --> Written {file}")
 
-
 # ---------------------------------------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------------------------------------
@@ -16093,163 +16495,6 @@ def profilePower(x, volumes, TotalPower, mixRadius, blend=0.05):
 
     return y
 
-
-def findPRFfunctional_params(
-    cdf,
-    T_avol,
-    n_avol,
-    nT,
-    nn,
-    maxit=10000,
-    time=None,
-    useROACoordinate=True,
-    verbose=False,
-):
-    """
-    Because plasmas are not circular, aspect ratio is not infinite, the typical
-    functional forms do not give T as vol average and n as peaking.
-    This function returns T and n that should go into that formula in rho-coordinates.
-    """
-
-    from mitim_tools.popcon_tools import FunctionalForms
-
-    if time is None:
-        it = -1
-    else:
-        it = np.argmin(np.abs(time - cdf.t))
-
-    if useROACoordinate:
-        x = cdf.roa[it]
-    else:
-        x = cdf.x[it]
-
-    error, thr, cont, eta = 100.0, 1e-6, 0, 0.01
-    Tav_try, T0 = T_avol, T_avol * nT
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            Tav_try = Tav_try + ((T_avol - Tav) * eta)
-        peaking_try = T0 / Tav_try
-
-        _, T, _ = FunctionalForms.PRFfunctionals_Hmode(
-            Tav_try, n_avol, peaking_try, nn, rho=x
-        )
-        Tav = volumeAverage_var(cdf.f, T)[it]
-        T0Tav = T[0] / Tav
-        error = np.abs(Tav - T_avol) / T_avol
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded", typeMsg="w")
-
-    print(
-        " --> (it={4}) Running PRF profile with T={0:.3f}, nu={1:.3f} gives profile with <T>={2:.3f} and nu_T={3:.3f}".format(
-            Tav_try, peaking_try, Tav, T0Tav, cont
-        )
-    )
-
-    error, thr, cont, eta = 100.0, 1e-6, 0, 0.01
-    nav_try, n0 = n_avol, n_avol * nn
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            nav_try = nav_try + ((n_avol - nav) * eta)
-        peaking_try = n0 / nav_try
-
-        _, _, n = FunctionalForms.PRFfunctionals_Hmode(
-            Tav_try, nav_try, T0 / Tav_try, peaking_try, rho=x
-        )
-        nav = volumeAverage_var(cdf.f, n)[it]
-        n0nav = n[0] / nav
-        error = np.abs(nav - n_avol) / n_avol
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded")
-
-    print(
-        " --> (it={4}) Running PRF profile with n={0:.3f}, nu={1:.3f} gives profile with <n>={2:.3f} and nu_n={3:.3f}".format(
-            nav_try, peaking_try, nav, n0nav, cont
-        )
-    )
-
-
-def findFunctionalRho_params(
-    cdf,
-    volav,
-    peaking,
-    lamb=None,
-    maxit=10000,
-    time=None,
-    useROACoordinate=True,
-    verbose=False,
-):
-    """
-    Because plasmas are not circular, aspect ratio is not infinite, the typical
-    functional forms do not give T as vol average and n as peaking.
-    This function returns T and n that should go into that formula in rho-coordinates.
-    """
-
-    if time is None:
-        it = -1
-    else:
-        it = np.argmin(np.abs(time - cdf.t))
-
-    if useROACoordinate:
-        x = cdf.roa[it]
-    else:
-        x = cdf.x[it]
-
-    error = 100.0
-    thr = 1e-5
-    cont = 0
-    Tav_try = volav
-    T0 = volav * peaking
-    eta = 0.01
-    while error > thr and cont < maxit:
-        cont += 1
-        if cont > 1:
-            Tav_try = Tav_try + ((volav - Tav) * eta)
-        peaking_try = T0 / Tav_try
-        if lamb is not None:
-            y, _ = MATHtools.profileMARS_PRF(peaking_try, Tav_try, lamb, rho=x)
-        else:
-            y, _ = MATHtools.profileMARS(peaking_try, Tav_try, rho=x)
-        Tav = volumeAverage_var(cdf.f, y)[it]
-        T0Tav = y[0] / Tav
-        error = np.abs(Tav - volav) / volav
-
-        if verbose:
-            print(
-                "it={0} ->> Obtained vol-av={1:.2f} & nu={3:.2f} using {2:.2f} & {4:.2f} in formula".format(
-                    cont, Tav, Tav_try, T0Tav, peaking_try
-                )
-            )
-
-    if cont >= maxit:
-        print("max iterations exceeded")
-
-    print(
-        " --> (it={4}) Running MARS profile with T={0:.3f}, nu={1:.3f} gives profile with <T>={2:.3f} and nu_T={3:.3f}".format(
-            Tav_try, peaking_try, Tav, T0Tav, cont
-        )
-    )
-
-    return x, y
-
-
 def penaltyFunction(x, valuemin=-1e9, valuemax=1e9):
     if valuemax < 1e9:
         fac = 100 / valuemax
@@ -16280,10 +16525,10 @@ def definePenalties(q95, fG, kappa, BetaN, maxKappa=1.8):
 def getBeamTrajectories(namelist):
     try:
         from trgui_fbm import plot_aug
-    except ImportError as e:
+    except ImportError:
         print(
-            "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
-            typeMsg="w",
+            "\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
+            typeMsg="i",
         )
 
     xlin, ylin, rlin, zlin = plot_aug.nbi_plot(
@@ -16303,10 +16548,10 @@ def getBeamTrajectories(namelist):
 def getECRHTrajectories(namelist, Theta_gyr, Phi_gyr):
     try:
         from trgui_fbm import los
-    except ImportError as e:
+    except ImportError:
         print(
-            "\t\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
-            typeMsg="w",
+            "\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
+            typeMsg="i",
         )
 
     xsrc = np.array(

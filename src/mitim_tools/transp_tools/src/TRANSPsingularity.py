@@ -3,22 +3,22 @@ import copy
 import datetime
 import time
 import numpy as np
-from mitim_tools.transp_tools.src import TRANSPmain
+from mitim_tools.transp_tools import TRANSPtools, NMLtools
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools.tools import NMLtools
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
-
-class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
+MINUTES_ALLOWED_JOB_GET = 30
+class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
 
         self.job_id, self.job_name = None, None
 
     def defineRunParameters(
-        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, **kwargs
+        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, **kwargs
     ):
         super().defineRunParameters(*args, **kwargs)
 
@@ -32,7 +32,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         # Make sure that the MPIs are set up properly
         if ensureMPIcompatibility:
-            self.mpisettings = TRANSPmain.ensureMPIcompatibility(
+            self.mpisettings = TRANSPtools.ensureMPIcompatibility(
                 self.nml_file, self.nml_file_ptsolver, self.mpisettings
             )
 
@@ -49,11 +49,12 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
         self.job.define_machine(
             "transp",
-            f"transp_{self.tok}_{self.runid}/",
+            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}/",
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,
                 "name": self.job_name,
+                "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },
         )
 
@@ -70,11 +71,19 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         self.jobid = self.job.jobid
 
     def check(self, **kwargs):
-        self.job.check()
 
-        info, status = interpretRun(self.job.infoSLURM, self.job.log_file)
+        self.job.check(file_output =f"{self.runid}tr.log")
 
-        self.jobid = self.job.jobid_found
+        if not self.job.launchSlurm:
+            print('\t- (Note: MITIM "checked" on a job but was not submitted via slurm)', typeMsg='w')
+            infoSLURM = None
+        else:
+            infoSLURM = self.job.infoSLURM
+            self.jobid = self.job.jobid_found
+
+        info, status = interpretRun(infoSLURM, self.job.log_file)
+
+        self.latest_info = {'info': info, 'status': status, 'infoGrid': None}
 
         return info, status, None
 
@@ -92,29 +101,28 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             self.job_name + "_look",
         )
 
-        self.cdfs[label] = TRANSPmain.storeCDF(
+        self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
         )
 
-        dictInfo, _, _ = self.check()
+        # dictInfo, _, _ = self.check()
 
-        # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
-        if dictInfo["info"]["status"] == "finished":
-            self.statusStop = -2
-        else:
-            self.statusStop = 0
+        # # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
+        # if dictInfo["info"]["status"] == "finished":
+        #     self.statusStop = -2
+        # else:
+        #     self.statusStop = 0
 
-    def fetch(self, label="run1", retrieveAC=False, minutesAllocation=60, **kwargs):
+    def fetch(self, label="run1", retrieveAC=False, **kwargs):
         runSINGULARITY_finish(
             self.FolderTRANSP,
             self.runid,
             self.tok,
             self.job_name,
-            minutes=minutesAllocation,
         )
 
         # Get reactor to call for ACs as well
-        self.cdfs[label] = TRANSPmain.storeCDF(
+        self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=False
         )
 
@@ -129,7 +137,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
             )
 
             # Re-Read again
-            self.cdfs[label] = TRANSPmain.storeCDF(
+            self.cdfs[label] = TRANSPtools.storeCDF(
                 self.FolderTRANSP, self.runid, retrieveAC=retrieveAC
             )
 
@@ -163,7 +171,7 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
         automaticProcess=False,
         retrieveAC=False,
         **kwargs,
-    ):
+        ):
         # Launch run
         self.run(restartFromPrevious=False)
 
@@ -224,22 +232,22 @@ class TRANSPsingularity(TRANSPmain.TRANSPgeneric):
 
             self.fetch(label="run1", retrieveAC=retrieveAC)
 
-        # If run is for some reason stuck and does not admit looks, repeat process
-        elif self.statusStop == 10:
-            print(
-                f" >>>>>>>>>>> Run {self.runid} does not admit looks, removing and running loop again"
-            )
-            self.delete(howManyCancel=2, MinWaitDeletion=2)
+        # # If run is for some reason stuck and does not admit looks, repeat process
+        # elif self.statusStop == 10:
+        #     print(
+        #         f" >>>>>>>>>>> Run {self.runid} does not admit looks, removing and running loop again"
+        #     )
+        #     self.delete(howManyCancel=2, MinWaitDeletion=2)
 
-            HasItFailed = self.automatic(
-                convCriteria,
-                minWaitLook=minWaitLook,
-                timeStartPrediction=timeStartPrediction,
-                checkForActive=checkForActive,
-                phasetxt=phasetxt,
-                automaticProcess=automaticProcess,
-                retrieveAC=retrieveAC,
-            )
+        #     HasItFailed = self.automatic(
+        #         convCriteria,
+        #         minWaitLook=minWaitLook,
+        #         timeStartPrediction=timeStartPrediction,
+        #         checkForActive=checkForActive,
+        #         phasetxt=phasetxt,
+        #         automaticProcess=automaticProcess,
+        #         retrieveAC=retrieveAC,
+        #     )
 
         # If run has sucessfully run and converged
         else:
@@ -299,11 +307,12 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
         # ------------------------------------------------------------
-        os.system(f"rm -r {folderWork}/tmp_inputs")
+        if os.path.exists("{folderWork}/tmp_inputs"):
+            os.system(f"rm -r {folderWork}/tmp_inputs")
+        
+        
         IOtools.askNewFolder(folderWork + "/tmp_inputs/", force=True)
-
-        # os.system(f'cp {folderWork}/PRF* {folderWork}/*TR.DAT {folderWork}/*_namelist.dat {folderWork}/tmp_inputs/.')
-        os.system(f"cp {folderWork}/* {folderWork}/tmp_inputs/.")
+        os.system(f"cp -r {folderWork}/* {folderWork}/tmp_inputs/")
 
         inputFolders = [folderWork + "/tmp_inputs/"]
 
@@ -383,11 +392,13 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ------------------
 
     if TRANSPcommand_prep is not None:
-        os.system(f"rm {folderWork}/{runid}tr_dat.log")
+        if os.path.exists(f"{folderWork}/{runid}tr_dat.log"):
+            os.system(f"rm {folderWork}/{runid}tr_dat.log")
 
         # Run first the prep (with tr_dat)
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -406,12 +417,12 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         transp_job.launchSlurm = lS  # Back to original
 
         # Interpret
-        NMLtools.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
+        TRANSPhelpers.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
 
-        #
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-        os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
+            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
 
     # ---------------
     # Execute Full
@@ -453,7 +464,13 @@ def interpretRun(infoSLURM, log_file):
 
         if ("Error termination" in "\n".join(log_file)) or (
             "Backtrace for this error:" in "\n".join(log_file)
-        ):
+            ) or (
+            "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
+            ) or (
+            "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
+            ) or (
+                "Segmentation fault - invalid memory reference" in "\n".join(log_file)
+            ):
             status = -1
             info["info"]["status"] = "stopped"
         elif "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):
@@ -461,12 +478,12 @@ def interpretRun(infoSLURM, log_file):
             info["info"]["status"] = "finished"
         else:
             print(
-                "Not identified status... assume for the moment that it has finished",
+                "\t- No error nor termination found, assuming it is still running",
                 typeMsg="w",
             )
-            pringLogTail(log_file)
-            status = 1
-            info["info"]["status"] = "finished"
+            pringLogTail(log_file, typeMsg="i")
+            status = 0
+            info["info"]["status"] = "running"
 
         print(
             f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",
@@ -478,23 +495,23 @@ def interpretRun(infoSLURM, log_file):
     return info, status
 
 
-def pringLogTail(log_file, howmanylines=50):
+def pringLogTail(log_file, howmanylines=100, typeMsg="w"):
     howmanylines = np.min([len(log_file), howmanylines])
 
     print(f"\t* Last {howmanylines} lines of log file:")
     txt = ""
     for i in range(howmanylines):
         txt += f"\t\t{log_file[-howmanylines+i]}"
-    print(txt, typeMsg="w")
+    print(txt, typeMsg=typeMsg)
 
-
-def runSINGULARITY_finish(folderWork, runid, tok, job_name, minutes=60):
+def runSINGULARITY_finish(folderWork, runid, tok, job_name):
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
         "transp",
         job_name,
-        launchSlurm=False,
+        launchSlurm=True,
+        slurm_settings={"name": job_name+"_finish", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
     # ---------------
@@ -524,6 +541,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     transp_job.prep(
         TRANSPcommand,
         output_folders=["results/"],
+        output_files=[f"{runid}tr.log"],
         label_log_files="_finish",
     )
 
@@ -533,15 +551,15 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
 
     os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
 
-
-def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
+def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
         "transp",
         job_name,
-        launchSlurm=False,
+        launchSlurm=True,
+        slurm_settings={"name": job_name+"_look", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
     # ---------------
@@ -557,8 +575,11 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name):
     else:
         txt_bind = ""
 
+    # Avoid copying the bash and executable, and the FI cdf files that sometimes vanish. Try to minimize copying window and not crashing after errors
+    extra_commands = " --delay-updates --ignore-errors --exclude='*_state.cdf' --exclude='*.tmp' --exclude='mitim*'"
+
     TRANSPcommand = f"""
-cp -r {folderTRANSP}/* . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -567,14 +588,23 @@ cp -r {folderTRANSP}/* . &&  singularity run {txt_bind}--app plotcon $TRANSP_SIN
 
     print('* Submitting a "look" request to the cluster', typeMsg="i")
 
-    outputFiles = [f"{runid}.CDF"]
+    outputFiles = [f"{runid}.CDF",f"{runid}tr.log"]
 
     transp_job.prep(
         TRANSPcommand,
         output_files=outputFiles,
+        label_log_files="_look",
     )
 
-    transp_job.run()
+    # Not sure why but the look sometimes just rabndomly (?) fails, so we need to try a few times, outside of the logic of the mitim_job checker
+    for i in range(times_retry_look):
+        transp_job.run(check_if_files_received=False)
+        if os.path.exists(f"{folderWork}/{runid}.CDF"):
+            break
+        else:
+            print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
+    if not os.path.exists(f"{folderWork}/{runid}.CDF"):
+        print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
 
 
 def organizeACfiles(

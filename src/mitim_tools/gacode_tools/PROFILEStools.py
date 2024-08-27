@@ -1,6 +1,8 @@
 import copy
+import os
 import torch
 import csv
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -9,14 +11,13 @@ from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtool
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
-from mitim_tools.gacode_tools.utils import TRANSPinteraction, GACODEdefaults
+from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.im_tools.modules import PEDmodule
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
-verbose_level = read_verbose_level()
+from mitim_tools import __version__
 
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
@@ -25,6 +26,9 @@ except ImportError:
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
     )
+
+# Suppress only the "divide by zero" warning
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode
@@ -51,14 +55,19 @@ class PROFILES_GACODE:
         self.titles_single = self.titles_singleNum + self.titles_singleArr
 
         self.file = file
-        with open(self.file, "r") as f:
-            self.lines = f.readlines()
 
-        # Read file and store raw data
-        self.readHeader()
-        self.readProfiles()
-        self.readSpecies()
+        if self.file is not None:
+            with open(self.file, "r") as f:
+                self.lines = f.readlines()
 
+            # Read file and store raw data
+            self.readHeader()
+            self.readProfiles()
+
+            # Process
+            self.process(mi_ref=mi_ref, calculateDerived=calculateDerived)
+
+    def process(self, mi_ref=None, calculateDerived=True):
         """
 		Perform MITIM derivations (can be expensive, only if requested)
 			Note: One can force what mi_ref to use (in a.m.u.). This is because, by default, MITIM
@@ -66,6 +75,60 @@ class PROFILES_GACODE:
 				  However, in some ocasions (like when running TGLF), the normalization that must be used
 				  for those quantities is a fixed one (e.g. Deuterium)
 		"""
+
+        # Calculate necessary quantities
+
+        if "qpar_beam(MW/m^3)" in self.profiles:
+            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
+        else:
+            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
+
+        if "qmom(Nm)" in self.profiles:
+            self.varqmom = (
+                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
+            )
+        else:
+            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
+
+        # -------------------------------------------------------------------------------------------------------------------
+        # Insert zeros in those cases whose column are not there
+        # -------------------------------------------------------------------------------------------------------------------
+
+        some_times_are_not_here = [
+            "qei(MW/m^3)",
+            "qohme(MW/m^3)",
+            "johm(MA/m^2)",
+            "jbs(MA/m^2)",
+            "jbstor(MA/m^2)",
+            "w0(rad/s)",
+            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
+            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
+            "zmag(m)",
+            self.varqpar,
+            self.varqpar2,
+            "shape_cos0(-)",
+            self.varqmom,
+        ]
+
+        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        for i in range(num_moments):
+            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
+            if i > 1:
+                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
+
+        for ikey in some_times_are_not_here:
+            if ikey not in self.profiles.keys():
+                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
+
+
+
+        self.readSpecies()
+        self.produce_shape_lists()
+        self.mi_first = self.Species[0]["A"]
+        self.DTplasma()
+        self.sumFast()
+        # -------------------------------------
+
         if "derived" not in self.__dict__:
             self.derived = {}
 
@@ -100,16 +163,28 @@ class PROFILES_GACODE:
         if calculateDerived:
             self.deriveQuantities()
 
-    # ***** Operations
+    # -------------------------------------------------------------------------------------
+    # Method to write a scratch file
+    # -------------------------------------------------------------------------------------
 
-    def runTRANSPfromGACODE(self, folderTRANSP, machine="SPARC"):
-        # Prepare inputs
-        TRANSPinteraction.prepareTRANSPfromGACODE(self, folderTRANSP, machine=machine)
+    @classmethod
+    def scratch(cls, profiles, label_header='', **kwargs_process):
+        instance = cls(None)
 
-        # Run TRANSP
-        self.cdf_transp = TRANSPinteraction.runTRANSPfromGACODE(
-            folderTRANSP, machine=machine
-        )
+        # Header
+        instance.header = f'''
+#  Created from scratch with MITIM version {__version__}
+#  {label_header}                                                       
+#
+'''
+        # Add data to profiles
+        instance.profiles = profiles
+
+        instance.process(**kwargs_process)
+
+        return instance
+
+    # -------------------------------------------------------------------------------------
 
     def calculate_Er(
         self,
@@ -223,49 +298,6 @@ class PROFILES_GACODE:
             if self.profiles[title].shape[1] == 1:
                 self.profiles[title] = self.profiles[title][:, 0]
 
-        if "qpar_beam(MW/m^3)" in self.profiles:
-            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
-        else:
-            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
-
-        if "qmom(Nm)" in self.profiles:
-            self.varqmom = (
-                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-            )
-        else:
-            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
-
-        # -------------------------------------------------------------------------------------------------------------------
-        # Insert zeros in those cases whose column are not there
-        # -------------------------------------------------------------------------------------------------------------------
-
-        some_times_are_not_here = [
-            "qei(MW/m^3)",
-            "qohme(MW/m^3)",
-            "johm(MA/m^2)",
-            "jbs(MA/m^2)",
-            "jbstor(MA/m^2)",
-            "w0(rad/s)",
-            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
-            "zmag(m)",
-            self.varqpar,
-            self.varqpar2,
-            "shape_cos0(-)",
-            self.varqmom,
-        ]
-
-        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-        for i in range(num_moments):
-            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
-            if i > 1:
-                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
-
-        for ikey in some_times_are_not_here:
-            if ikey not in self.profiles.keys():
-                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
-
-        self.produce_shape_lists()
 
     def produce_shape_lists(self):
         self.shape_cos = [
@@ -279,7 +311,7 @@ class PROFILES_GACODE:
         ]
         self.shape_sin = [
             None,
-            None,  # s1 is triangularity
+            None,  # s1 is arcsin(triangularity)
             None,  # s2 is minus squareness
             self.profiles["shape_sin3(-)"],
             self.profiles["shape_sin4(-)"],
@@ -306,11 +338,6 @@ class PROFILES_GACODE:
             Species.append(sp)
 
         self.Species = Species
-
-        self.mi_first = self.Species[0]["A"]
-
-        self.DTplasma()
-        self.sumFast()
 
     def sumFast(self):
         self.nFast = self.profiles["ne(10^19/m^3)"] * 0.0
@@ -394,27 +421,30 @@ class PROFILES_GACODE:
                 n_theta=n_theta_geo,
             )
 
-            try:
-                (
-                    self.derived["R_surface"],
-                    self.derived["Z_surface"],
-                ) = GEQtools.create_geo_MXH3(
-                    self.profiles["rmaj(m)"],
-                    self.profiles["rmin(m)"],
-                    self.profiles["zmag(m)"],
-                    self.profiles["kappa(-)"],
-                    self.profiles["delta(-)"],
-                    self.profiles["zeta(-)"],
-                    self.shape_cos,
-                    self.shape_sin,
-                    debugPlot=False
+            # Calculate flux surfaces
+            cn = np.array(self.shape_cos).T
+            sn = copy.deepcopy(self.shape_sin)
+            sn[0] = self.profiles["rmaj(m)"]*0.0
+            sn[1] = np.arcsin(self.profiles["delta(-)"])
+            sn[2] = -self.profiles["zeta(-)"]
+            sn = np.array(sn).T
+            flux_surfaces = GEQtools.mitim_flux_surfaces()
+            flux_surfaces.reconstruct_from_mxh_moments(
+                self.profiles["rmaj(m)"],
+                self.profiles["rmin(m)"],
+                self.profiles["kappa(-)"],
+                self.profiles["zmag(m)"],
+                cn,
+                sn)
+            self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
+            # -----------------------------------------------
+
+            #cross-sectional area of each flux surface
+            self.derived["surfXS"] = GEOMETRYtools.xsec_area_RZ(
+                self.derived["R_surface"],
+                self.derived["Z_surface"]
                 )
-            except:
-                self.derived["R_surface"] = self.derived["Z_surface"] = None
-                print(
-                    "\t- Cannot calculate flux surface geometry out of the MXH3 moments",
-                    typeMsg="w",
-                )
+
             self.derived["R_LF"] = self.derived["R_surface"].max(
                 axis=1
             )  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
@@ -441,11 +471,19 @@ class PROFILES_GACODE:
             0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
         )
 
-        # I need to to kappa_a with the cross section...
-        self.derived["kappa_a"] = self.derived[
-            "kappa95"
-        ]  # self.derived['surfXS_miller'][-1] / (np.pi*self.derived['a']**2)
-        # print('\t- NOTE: Using kappa95 ({0:.2f}) as areal elongation for scalings. I need to work on the implementation of the XS surface area'.format(self.derived['kappa95']),typeMsg='w')
+        self.derived["kappa995"] = np.interp(
+            0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
+        )
+
+        self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
+
+        self.derived["delta95"] = np.interp(
+            0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"]
+        )
+
+        self.derived["delta995"] = np.interp(
+            0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"]
+        )
 
         self.derived["Rgeo"] = float(self.profiles["rcentr(m)"][-1])
         self.derived["B0"] = np.abs(float(self.profiles["bcentr(T)"][-1]))
@@ -958,20 +996,14 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        """
-		This beta is very approx, since I should be using the average of B**2? is B_ref?
-		"""
         # Beta = CALCtools.integrateFS( self.derived['ptot_manual']*1E6 / (self.derived['B_ref']**2/(2*4*np.pi*1E-7 )),r,volp)[-1] / self.derived['volume']
         # Beta = self.derived['ptot_manual_vol']*1E6 / (self.derived['B0']**2/(2*4*np.pi*1E-7 ))
-        # Beta = self.derived['ptot_manual_vol']*1E6 / ( CALCtools.integrateFS(  self.derived['B_ref']**2 ,r,volp)[-1] / self.derived['volume'] /(2*4*np.pi*1E-7) )
+        Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+        #self.derived["BetaN_old"] = (Beta_old / (np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"]))* 100.0)
+        # Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
 
-        Beta = (
-            self.derived["pthr_manual_vol"]
-            * 1e6
-            / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7))
-        )
         self.derived["BetaN"] = (
-            Beta
+            Beta_old
             / (
                 np.abs(float(self.profiles["current(MA)"][-1]))
                 / (self.derived["a"] * self.derived["B0"])
@@ -1183,6 +1215,9 @@ class PROFILES_GACODE:
             ImpurityText = ImpurityText[:-2]
 
             print(f"\n***********************{label}****************")
+            print("Engineering Parameters:")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA, Pin = {self.derived['qIn']:.2f}MW")
+            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m, kappa_a = {self.derived['kappa_a']:.2f} (kappa_sep = {self.profiles['kappa(-)'][-1]:.2f}), delta_sep = {self.profiles['delta(-)'][-1]:.2f}")
             print("Performance:")
             print(
                 "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
@@ -1394,7 +1429,7 @@ class PROFILES_GACODE:
 
         print(
             f"\t\t~ File {IOtools.clipstr(file)} written",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         # Update file
@@ -1965,7 +2000,7 @@ class PROFILES_GACODE:
         ne = self.profiles["ne(10^19/m^3)"] * 1e19
         Te = self.profiles["te(keV)"] * 1e3
         Ti = self.profiles["ti(keV)"][:, 0] * 1e3
-        PEDmodule.create_dummy_plasmastate(
+        FunctionalForms.create_dummy_plasmastate(
             plasmastate, rho, rhob, psipol, ne, Te * 1e-3, Ti * 1e-3
         )
 
@@ -1977,7 +2012,7 @@ class PROFILES_GACODE:
         ptop = tetop * (netop * 1e-20) * 3.2e1 * 1e-6
         p1 = ptop * p1_over_ptot
 
-        x, neP, TeP, TiP = PEDmodule.fit_pedestal_mtanh(
+        x, neP, TeP, TiP = FunctionalForms.fit_pedestal_mtanh(
             width_top_psi,
             netop * 1e-20,
             p1 * 1e6,
@@ -2163,8 +2198,7 @@ class PROFILES_GACODE:
 
         self.plot_temps(ax=ax00, leg=legYN, col=color, lw=lw, fs=fs, extralab=extralab)
         self.plot_dens(ax=ax01, leg=legYN, col=color, lw=lw, fs=fs, extralab=extralab)
-        # self.plot_powers(axs=[ax00b,ax01b,ax10b],leg=True,col='b',lw=2,fs=fs)
-
+ 
         ax = ax10
         cont = 0
         for i in range(len(self.Species)):
@@ -2268,7 +2302,7 @@ class PROFILES_GACODE:
         ax.set_xlabel("$\\rho$")
         # ax.set_ylim(bottom=0);
         ax.set_ylabel(varL)
-        if legYN:
+        if legYN and cont>0:
             ax.legend(loc="best", fontsize=fs)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3495,112 +3529,7 @@ class PROFILES_GACODE:
 
         GRAPHICStools.addDenseAxis(ax)
 
-    def plot_powers(self, axs=None, leg=False, col="b", lw=2, extralab="", fs=10):
-        if axs is None:
-            fig, axs = plt.subplots(ncols=3)
-
-        rho = self.profiles["rho(-)"]
-
-        ax = axs[0]
-        var = self.profiles["pow_e(MW)"]
-        varL = "$Q_e$, $Q_i$ (MW)"
-        if leg:
-            lab = extralab + "e"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var = self.profiles["pow_i(MW)"]
-        if leg:
-            lab = "i"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="--", label=lab, c=col)
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-        ax = axs[1]
-        var = self.profiles["pow_e(MW)"]
-        varL = "$Q_e$ (MW)"
-        if leg:
-            lab = extralab + "total"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var1 = self.profiles["pow_e_aux(MW)"]
-        if leg:
-            lab = extralab + "aux"
-        else:
-            lab = ""
-        ax.plot(rho, var1, lw=lw, ls="--", label=lab, c=col)
-        var2 = self.profiles["pow_e_fus(MW)"]
-        if leg:
-            lab = extralab + "fus"
-        else:
-            lab = ""
-        ax.plot(rho, var2, lw=lw, ls="-.", label=lab, c=col)
-        var3 = (
-            self.profiles["pow_e_sync(MW)"]
-            + self.profiles["pow_e_brem(MW)"]
-            + self.profiles["pow_e_line(MW)"]
-        )
-        if leg:
-            lab = extralab + "rad"
-        else:
-            lab = ""
-        ax.plot(rho, var3, lw=lw, ls=":", label=lab, c=col)
-        var4 = self.profiles["pow_ei(MW)"]
-        if leg:
-            lab = extralab + "e->i"
-        else:
-            lab = ""
-        ax.plot(rho, -var4, lw=lw / 2, ls="-", label=lab, c=col)
-        # ax.plot(rho,var1+var2-var3-var4,lw=lw,ls='--',c='y',label='check')
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
-
-        ax = axs[2]
-        var = self.profiles["pow_i(MW)"]
-        varL = "$Q_i$ (MW)"
-        if leg:
-            lab = extralab + "total"
-        else:
-            lab = ""
-        ax.plot(rho, var, lw=lw, ls="-", label=lab, c=col)
-        var1 = self.profiles["pow_i_aux(MW)"]
-        if leg:
-            lab = extralab + "aux"
-        else:
-            lab = ""
-        ax.plot(rho, var1, lw=lw, ls="--", label=lab, c=col)
-        var2 = self.profiles["pow_i_fus(MW)"]
-        if leg:
-            lab = extralab + "fus"
-        else:
-            lab = ""
-        ax.plot(rho, var2, lw=lw, ls="-.", label=lab, c=col)
-        var4 = self.profiles["pow_ei(MW)"]
-        if leg:
-            lab = extralab + "e->i"
-        else:
-            lab = ""
-        ax.plot(rho, var4, lw=lw / 2, ls="-", label=lab, c=col)
-        # ax.plot(rho,var1+var2+var4,lw=lw,ls='--',c='y',label='check')
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
-        ax.legend(loc="best", fontsize=fs)
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
-
-    def plotGeometry(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b"):
+    def plotGeometry(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
         if ("R_surface" in self.derived) and (self.derived["R_surface"] is not None):
             if ax is None:
                 plt.ion()
@@ -3616,7 +3545,7 @@ class PROFILES_GACODE:
                     self.derived["R_surface"][ir, :],
                     self.derived["Z_surface"][ir, :],
                     "-",
-                    lw=1.0,
+                    lw=lw if rho<1.0 else lw1,
                     c=color,
                 )
 
@@ -3627,6 +3556,7 @@ class PROFILES_GACODE:
                 "o",
                 markersize=2,
                 c=color,
+                label = label
             )
 
             if not provided:
@@ -3636,6 +3566,233 @@ class PROFILES_GACODE:
             ax.set_aspect("equal")
         else:
             print("\t- Cannot plot flux surface geometry", typeMsg="w")
+
+    def plotPeaking(
+        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
+        ):
+        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
+        ne_peaking = self.derived["ne_peaking0.2"]
+        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
+
+        if printVals:
+            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
+
+        # Extra
+        r = self.profiles["rmin(m)"]
+        volp = self.derived["volp_miller"]
+        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
+
+        if debugPlot:
+            fig, axq = plt.subplots()
+
+            ne = self.profiles["ne(10^19/m^3)"]
+            axq.plot(self.profiles["rho(-)"], ne, color="m")
+            ne_vol = (
+                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+            )
+            axq.axhline(y=ne_vol * 10, color="m")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (0,) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking0 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="r")
+            axq.axhline(y=ne_vol * 10, color="r")
+
+        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
+        ne[ix:] = (ne[ix],) * len(ne[ix:])
+        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_peaking1 = (
+            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
+        )
+
+        ne_peaking0 = ne_peaking
+
+        ax.errorbar(
+            [nu_effCGYRO],
+            [ne_peaking],
+            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
+            marker=marker,
+            c=c,
+            markersize=16,
+            capsize=2.0,
+            fmt="s",
+            elinewidth=1.0,
+            capthick=1.0,
+        )
+
+        if debugPlot:
+            axq.plot(self.profiles["rho(-)"], ne, color="b")
+            axq.axhline(y=ne_vol * 10, color="b")
+            plt.show()
+
+        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
+
+        return nu_effCGYRO, ne_peaking
+
+    def plotRelevant(self, axs = None, color = 'b', label ='', lw = 1, ms = 1):
+
+        if axs is None:
+            fig = plt.figure()
+            axs = fig.subplot_mosaic(
+                """
+                    ABCDH
+                    AEFGI
+                """
+            )
+            axs = [axs['A'], axs['B'], axs['C'], axs['D'], axs['E'], axs['F'], axs['G'], axs['H'], axs['I']]
+
+        # ----------------------------------
+        # Equilibria
+        # ----------------------------------
+
+        ax = axs[0]
+        rho = np.linspace(0, 1, 21)
+        
+        self.plotGeometry(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3)
+
+        ax.set_xlabel("R (m)")
+        ax.set_ylabel("Z (m)")
+        ax.set_aspect("equal")
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Equilibria")
+
+        # ----------------------------------
+        # Kinetic Profiles
+        # ----------------------------------
+
+        # T profiles
+        ax = axs[1]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['te(keV)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['ti(keV)'][:,0], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$T$ (keV)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Temperatures")
+
+        # ne profiles
+        ax = axs[2]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Electron Density")
+
+        # ----------------------------------
+        # Pressure
+        # ----------------------------------
+
+        ax = axs[3]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['ptot_manual'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$p_{kin}$ (MPa)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Total Pressure")
+
+        # ----------------------------------
+        # Current
+        # ----------------------------------
+
+        # q-profile
+        ax = axs[4]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['q(-)'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$q$")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Safety Factor")
+
+        # ----------------------------------
+        # Powers
+        # ----------------------------------
+
+        # RF
+        ax = axs[5]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfe(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfi(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("ICH Power Deposition")
+
+        # Ohmic
+        ax = axs[6]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['qohme(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Ohmic Power Deposition")
+
+        # ----------------------------------
+        # Heat fluxes
+        # ----------------------------------
+
+        ax = axs[7]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['qe_MWm2'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.derived['qi_MWm2'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q$ ($MW/m^2$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Energy Fluxes")
+
+        # ----------------------------------
+        # Dynamic targets
+        # ----------------------------------
+
+        ax = axs[8]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['qrad'], '-o', markersize=ms, lw = lw, label=label+', rad', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qei(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', exc', color=color)
+        if 'qfuse(MW/m^3)' in self.profiles:
+            ax.plot(self.profiles['rho(-)'], self.profiles['qfuse(MW/m^3)']+self.profiles['qfusi(MW/m^3)'], '-.s', markersize=ms, lw = lw, label=label+', fus', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$Q$ ($MW/m^2$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Dynamic Targets")
+
 
     def csv(self, file="input.gacode.xlsx"):
         dictExcel = IOtools.OrderedDict()
@@ -3701,7 +3858,11 @@ class PROFILES_GACODE:
             ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
             plt.show()
 
-    def to_TGLF(self, rhos=[0.5], TGLFsettings=0):
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+    # Code conversions
+    # ---------------------------------------------------------------------------------------------------------------------------------------
+
+    def to_tglf(self, rhos=[0.5], TGLFsettings=0):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -3729,7 +3890,8 @@ class PROFILES_GACODE:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             #mass_ref = self.derived["mi_ref"]
-            mass_ref = 2.0 # It turns out that GACODE calculates quantities with md=2.01355, but the masses are normalized to 2.0 exactly…
+            # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
+            mass_ref = 2.0
 
             mass_e = 0.000272445 * mass_ref
 
@@ -3821,72 +3983,21 @@ class PROFILES_GACODE:
 
         return inputsTGLF
 
-    def plotPeaking(
-        self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
-        ):
-        nu_effCGYRO = self.derived["nu_eff"] * 2 / self.derived["Zeff_vol"]
-        ne_peaking = self.derived["ne_peaking0.2"]
-        ax.scatter([nu_effCGYRO], [ne_peaking], s=400, c=c, marker=marker, label=label)
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):
 
-        if printVals:
-            print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
+        print("\t- Converting to TRANSP")
+        folder = IOtools.expandPath(folder)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
-        # Extra
-        r = self.profiles["rmin(m)"]
-        volp = self.derived["volp_miller"]
-        ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
+        transp = TRANSPhelpers.transp_run(folder, shot, runid)
+        for time in times:
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
 
-        if debugPlot:
-            fig, axq = plt.subplots()
+        transp.write_ufiles()
 
-            ne = self.profiles["ne(10^19/m^3)"]
-            axq.plot(self.profiles["rho(-)"], ne, color="m")
-            ne_vol = (
-                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-            )
-            axq.axhline(y=ne_vol * 10, color="m")
+        return transp
 
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (0,) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking0 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="r")
-            axq.axhline(y=ne_vol * 10, color="r")
-
-        ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
-        ne[ix:] = (ne[ix],) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
-        ne_peaking1 = (
-            ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
-        )
-
-        ne_peaking0 = ne_peaking
-
-        ax.errorbar(
-            [nu_effCGYRO],
-            [ne_peaking],
-            yerr=[[ne_peaking - ne_peaking1], [ne_peaking0 - ne_peaking]],
-            marker=marker,
-            c=c,
-            markersize=16,
-            capsize=2.0,
-            fmt="s",
-            elinewidth=1.0,
-            capthick=1.0,
-        )
-
-        if debugPlot:
-            axq.plot(self.profiles["rho(-)"], ne, color="b")
-            axq.axhline(y=ne_vol * 10, color="b")
-            plt.show()
-
-        # print(f'{ne_peaking0}-{ne_peaking}-{ne_peaking1}')
-
-        return nu_effCGYRO, ne_peaking
 
 class DataTable:
     def __init__(self, variables=None):
@@ -3958,40 +4069,6 @@ class DataTable:
             # Write each row in self.data to the CSV file
             for row in self.data:
                 writer.writerow(row)
-
-
-def compareProfiles(profiles_list, fig=None, labs_list=[""] * 10, lws=[3] * 10):
-    if fig is None:
-        fig = plt.figure()
-
-    grid = plt.GridSpec(2, 3, hspace=0.6, wspace=0.2)
-    ax00 = fig.add_subplot(grid[0, 0])
-    ax10 = fig.add_subplot(grid[1, 0])
-    ax01 = fig.add_subplot(grid[0, 1])
-    ax11 = fig.add_subplot(grid[1, 1])
-    ax02 = fig.add_subplot(grid[0, 2])
-    # ax12 = fig.add_subplot(grid[1, 2])
-
-    cols = GRAPHICStools.listColors()
-
-    for cont, profile in enumerate(profiles_list):
-        if cont == 0:
-            leg = True
-        else:
-            leg = False
-
-        profile.plot_temps(
-            ax=ax00,
-            leg=True,
-            col=cols[cont],
-            lw=lws[cont],
-            extralab=f" {labs_list[cont]}",
-        )
-        profile.plot_dens(ax=ax10, leg=leg, col=cols[cont], lw=lws[cont])
-        profile.plot_powers(
-            axs=[ax01, ax11, ax02], leg=leg, col=cols[cont], lw=lws[cont]
-        )
-
 
 def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
     if figs is not None:

@@ -11,8 +11,12 @@ import cProfile
 import termios
 import tty
 import h5py
+import warnings
 import subprocess
 import json
+import functools
+import contextlib
+import hashlib
 from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -61,10 +65,37 @@ class speeder(object):
             f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
+class timer(object):
+
+    def __init__(self, name="\t* Script"):
+        self.name = name
+
+    def __enter__(self):
+        self.timeBeginning = datetime.datetime.now()
+        return self
+
+    def __exit__(self, *args):
+        self._get_time()
+
+    def _get_time(self):
+
+        self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
+
+        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+
+# Decorator to time functions
+
+def mitim_timer(name="\t* Script"):
+    def decorator_timer(func):
+        @functools.wraps(func)
+        def wrapper_timer(*args, **kwargs):
+            with timer(name):
+                return func(*args, **kwargs)
+        return wrapper_timer
+    return decorator_timer
 
 def clipstr(txt, chars=40):
-    return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}"
-
+    return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
 def receiveWebsite(url, data=None):
     NumTriesAfterTimeOut = 60
@@ -102,7 +133,6 @@ def receiveWebsite(url, data=None):
 
     return response
 
-
 def page(url):
     req = urlREQ.Request(url)
     try:
@@ -115,7 +145,6 @@ def page(url):
     the_page = response.read()
 
     return the_page
-
 
 def printMsg(*args, typeMsg="", verbose=None):
     """
@@ -147,7 +176,6 @@ def printMsg(*args, typeMsg="", verbose=None):
     if typeMsg == "q":
         return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
 
-
 class HiddenPrints:
     """
     Usage:
@@ -163,23 +191,21 @@ class HiddenPrints:
         sys.stdout.close()
         sys.stdout = self._original_stdout
 
-def get_git_branch(repo_path):
+def get_git_info(repo_path):
+    # Get branch
     result = subprocess.run(['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
-        return result.stdout.strip()
+        branch = result.stdout.strip()
     else:
-        raise Exception(f"Error: {result.stderr.strip()}")
+        branch = None
 
-def get_git_hash(repo_path):
+    # Get hash
     result = subprocess.run(['git', '-C', repo_path, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
-        return result.stdout.strip()
+        commit_hash = result.stdout.strip()
     else:
-        raise Exception(f"Error: {result.stderr.strip()}")
+        commit_hash = None
 
-def get_git_info(repo_path):
-    branch = get_git_branch(repo_path)
-    commit_hash = get_git_hash(repo_path)
     return branch, commit_hash
 
 def createCDF_simple(file, zvals, names):
@@ -200,7 +226,6 @@ def createCDF_simple(file, zvals, names):
         value[:] = zvals[i, :]
 
     ncfile.close()
-
 
 def printPoints(x, numtabs=1):
     """
@@ -282,9 +307,7 @@ def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
         zipdir(FolderToZip, zipf)
 
 
-def moveRecursive(
-    check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5
-):
+def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5):
     file_current = f"{commonpreffix}{check}{commonsuffix}"
 
     if os.path.exists(file_current):
@@ -636,8 +659,8 @@ def getLocInfo(locFile, removeSpaces=True):
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False
-):
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, provide_full_path=False
+    ):
     """
     Retrieves the file without folder and extension
     """
@@ -645,7 +668,7 @@ def findFileByExtension(
     folder = expandPath(folder, fixSpaces=fixSpaces)
 
     if os.path.exists(folder):
-        allfiles = findExistingFiles(folder, extension)
+        allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
             # print(allfiles)
@@ -664,24 +687,30 @@ def findFileByExtension(
     else:
         from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-        verbose_level = read_verbose_level()
+        
         printMsg(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
         fileReturn = None
 
+    if provide_full_path and fileReturn is not None:
+        fileReturn = folder + fileReturn + extension
+
     return fileReturn
 
-
-def findExistingFiles(folder, extension):
+def findExistingFiles(folder, extension, agnostic_to_case=False):
     allfiles = []
     for file in os.listdir(folder):
-        if file.endswith(extension):
-            allfiles.append(file)
+
+        if not agnostic_to_case:
+            if file.endswith(extension):
+                allfiles.append(file)
+        else:
+            if file.lower().endswith(extension.lower()):
+                allfiles.append(file)
 
     return allfiles
-
 
 def writeOFs(resultsFile, dictOFs, dictErrors=None):
     """
@@ -813,7 +842,7 @@ def findValue(
         if raiseException:
             raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
         else:
-            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=verbose_level) #,typeMsg='w')
+            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=read_verbose_level()) #,typeMsg='w')
             return None
 
 
@@ -1323,9 +1352,9 @@ def expandPath(txt, fixSpaces=False, ensurePathValid=False):
     pathn = os.path.expanduser(os.path.expandvars(txt))
 
     if fixSpaces:
-        pathn = pathn.replace(" ", "\ ")
-        pathn = pathn.replace("(", "\(")
-        pathn = pathn.replace(")", "\)")
+        pathn = pathn.replace(" ", r"\ ")
+        pathn = pathn.replace("(", r"\(")
+        pathn = pathn.replace(")", r"\)")
 
     return pathn
 
@@ -1437,61 +1466,109 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
 
     return psin, ne, dnedpsi, Te, dTedpsi, ni, dnidpsi, Ti, dTidpsi, fig, ax
 
+'''
+Log file utilities
+--------------------------------
+chatGPT 4o as of 08/18/2024
+'''
 
-# ~~~~~~~~~~~~~~~~~~ Log File
+@contextlib.contextmanager
+def conditional_log_to_file(log_file=None, msg=None):
 
+    # Check if sys.stdout and sys.stderr have valid file descriptors (e.g. already inside a log!)
+    try:
+        sys.stdout.fileno()
+        sys.stderr.fileno()
+        fileno_supported = True
+    except AttributeError:
+        fileno_supported = False
+
+    if log_file is not None and fileno_supported:
+        with log_to_file(log_file, msg) as logger:
+            yield logger
+    else:
+        if msg:
+            print(msg)  # Optionally print the message even if not logging to file
+        yield None  # Simply pass through without logging
 
 def strip_ansi_codes(text):
-    # From chatGPT-4
+    if not isinstance(text, (str, bytes)):
+        text = str(text)  # Convert non-string types to string
+    # Strip ANSI escape codes
     ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
     return ansi_escape.sub("", text)
 
+class log_to_file:
+    def __init__(self, log_file, msg=None):
+        if msg is not None:
+            print(msg)
+        self.log_file = log_file
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
 
-class Logger(object):
-    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
-        self.logFile = logFile
-        self.writeAlsoTerminal = writeAlsoTerminal
+    def __enter__(self):
+        self.log = open(self.log_file, 'a')
+        self.stdout_fd = sys.stdout.fileno()
+        self.stderr_fd = sys.stderr.fileno()
 
-        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Save the actual stdout (1) and stderr (2) file descriptors.
+        self.saved_stdout_fd = os.dup(self.stdout_fd)
+        self.saved_stderr_fd = os.dup(self.stderr_fd)
 
-        print(f"- Creating log file: {logFile}")
+        # Redirect stdout and stderr to the log file.
+        os.dup2(self.log.fileno(), self.stdout_fd)
+        os.dup2(self.log.fileno(), self.stderr_fd)
 
-        if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
-        else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
-                )
+        # Redirect Python's sys.stdout and sys.stderr to the log file.
+        sys.stdout = self
+        sys.stderr = self
+
+        # Redirect warnings to the log file
+        logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
+            self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
+        warnings.showwarning = logging_handler
 
     def write(self, message):
-        if self.writeAlsoTerminal:
-            self.terminal.write(message)
+        # Remove ANSI codes from the message before writing to the log
+        clean_message = strip_ansi_codes(message)
+        self.log.write(clean_message)
+        self.log.flush()  # Ensure each write is immediately flushed
 
-        with open(self.logFile, "a") as self.log:
-            self.log.write(strip_ansi_codes(message))
-
-    # For python 3 compatibility:
     def flush(self):
-        pass
+        # Ensure sys.stdout and sys.stderr are flushed
+        self.log.flush()
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        # Flush and restore Python's sys.stdout and sys.stderr
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
+
+        # Restore the original file descriptors for stdout and stderr
+        os.dup2(self.saved_stdout_fd, self.stdout_fd)
+        os.dup2(self.saved_stderr_fd, self.stderr_fd)
+
+        # Close the duplicate file descriptors
+        os.close(self.saved_stdout_fd)
+        os.close(self.saved_stderr_fd)
+
+        # Close the log file
+        self.log.close()
+
+        # Restore the original warnings behavior
+        warnings.showwarning = warnings._showwarning_orig
 
 """
-This tool was originally designed by A.J. Creely, but modifications 
+This HDF5 tool was originally designed by A.J. Creely, but modifications 
 by P. Rodriguez-Fernandez have been made.
 
-
 Example use:
+    plt.ion(); fig, ax = plt.subplots()
+    ax.plot([1.0,2.0],[0.0,1.0],'-o')
 
-plt.ion(); fig, ax = plt.subplots()
-ax.plot([1.0,2.0],[0.0,1.0],'-o')
-
-axesToHDF5({'a':ax},filename='dataset1',check=True)
-
+    axesToHDF5({'a':ax},filename='dataset1',check=True)
 """
-
 
 class hdf5figurefile(object):
     def __init__(self, filename):
@@ -1653,3 +1730,27 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         f = h5py.File(filename + ".hdf5", "r")
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
+
+# chatGPT 4o (08/18/2024)
+def string_to_sequential_5_digit_number(input_string):
+    # Split the input string into the base and the numeric suffix
+    base_part = input_string[:-1]
+    try:
+        sequence_digit = int(input_string[-1])
+    except ValueError:
+        sequence_digit = 0
+
+    # Create a hash of the base part using SHA-256
+    hash_object = hashlib.sha256(base_part.encode())
+    
+    # Convert the hash to an integer
+    hash_int = int(hash_object.hexdigest(), 16)
+    
+    # Take the hash modulo 10,000 to get a 4-digit number
+    four_digit_number = hash_int % 10000
+    
+    # Combine the 4-digit hash with the sequence digit to get a 5-digit number
+    five_digit_number = (four_digit_number * 10) + sequence_digit
+    
+    # Ensure it's always 5 digits by adding leading zeros if necessary
+    return f'{five_digit_number:05d}'

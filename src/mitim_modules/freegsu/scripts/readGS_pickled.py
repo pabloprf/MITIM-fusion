@@ -5,12 +5,12 @@ For comparison among optimizations.
 Can only deal with freegs runs run through MITIM. I cannot combine stuff
 """
 
-import sys, pickle, copy
+import sys
+import pickle
+import copy
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.gs_tools.utils import GSplotting
-from mitim_tools.gs_tools import FREEGStools
+from mitim_modules.freegsu.utils import FREEGSUplotting
+from mitim_modules.freegsu import FREEGSUtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 files = sys.argv[1:]
@@ -35,7 +35,7 @@ params = copy.deepcopy(m["params"])
 # Re calculate metrics with these extended prfs
 # ---------------------------------------------------
 
-metrics, opts = FREEGStools.calculateMetrics(prfs, separatrixPoint=None)
+metrics, opts = FREEGSUtools.calculateMetrics(prfs, separatrixPoint=None)
 
 params["times"] = np.arange(0, 0.3 * len(prfs), 0.3)
 print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMsg="w")
@@ -44,6 +44,6 @@ print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMs
 # Plot
 # ---------------------------------------------------
 
-GSplotting.plotResult(
+FREEGSUplotting.plotResult(
     prfs, metrics, m["function_parameters"]["Constraints"], ProblemExtras=params
 )

@@ -484,9 +484,9 @@ nicrf  = 8   ! 8: Modern TORIC
 
 ! ----- Resolution
 
-dticrf     = 0.001   ! Max time step for TORIC
-NichChi    = 128   ! Number of poloidal grid points (power of 2)
-NmdToric   = 63   ! Number of poloidal modes (recommended: NichChi/2-1)
+dticrf     = 0.005   ! Max time step for TORIC
+NichChi    = 64  ! Number of poloidal grid points (power of 2)
+NmdToric   = 31   ! Number of poloidal modes (recommended: NichChi/2-1)
 NichPsi    = 320   ! Number of radial grid points
 
 ! ----- Model options

@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStools
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.im_tools.modules import EQmodule
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
@@ -565,13 +565,14 @@ def defineFirstWall():
     return r, z
 
 
-def ICRFantennas(MHz):
+def ICRFantennas(MHz=[80.0, 78.0]):
     nichas = 2  # 1
 
     lines = [
         "! ----- Antenna Parameters",
         f"nicha       = {nichas}         \t ! Number of ICRH antennae",
-        "frqicha     = 80.0e6,78.0e6 ! Frequency of antenna (Hz)".format(MHz),
+        f"frqicha     = {MHz[0]}e6,{MHz[1]}e6 ! Frequency of antenna (Hz)",
+        "!prficha    = 0.0,0.0       ! Power of antenna (W)",
         "rfartr      = 2.0           ! Distance (cm) from antenna for Faraday shield",
         "ngeoant     = 1         	 ! Geometry representation of antenna (1=traditional)",
         "rmjicha     = 60.8,60.8     ! Major radius of antenna (cm)",
@@ -582,7 +583,6 @@ def ICRFantennas(MHz):
         "phicha(1,1) = 0,180   		 ! Phasing of antenna elements (deg)",
         "phicha(1,2) = 0,180",
         "",
-        "!==================================================================",
     ]
 
     return "\n".join(lines)
@@ -669,7 +669,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     # ---- Add C-Mod limiter
 
     rlim, zlim = defineFirstWall()
-    EQmodule.addLimiters_UF(f"{folderWork}/PRF{shotnum}.LIM", rlim, zlim)
+    TRANSPhelpers.addLimiters_UF(f"{folderWork}/PRF{shotnum}.LIM", rlim, zlim)
 
     # ---- No gas flow (my way is to give this file)
 

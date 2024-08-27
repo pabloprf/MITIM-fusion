@@ -60,7 +60,7 @@ class PORTALSanalyzer:
 
             try:
                 opt_fun.read_optimization_results(
-                    analysis_level=4, plotYN=False, folderRemote=folderRemote
+                    analysis_level=4, folderRemote=folderRemote
                 )
 
                 return cls(opt_fun, folderAnalysis=folderAnalysis)
@@ -140,6 +140,10 @@ class PORTALSanalyzer:
             self.iextra = None
         else:
             self.iextra = self.ilast
+
+        if self.mitim_runs[0] is None:
+            print("* Issue with reading mitim_run 0, likely due to a restart of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
+            print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
 
         # Store setup of TGYRO run
         self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].numpy()

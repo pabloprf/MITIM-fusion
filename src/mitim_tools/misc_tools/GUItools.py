@@ -36,9 +36,6 @@ from IPython import embed
 
 plt.rcParams["figure.max_open_warning"] = False
 
-dpi_notebook = read_dpi()
-
-
 class FigureNotebook:
     def __init__(self, windowtitle, parent=None, geometry="1800x900", vertical=True):
         plt.ioff()
@@ -65,7 +62,7 @@ class FigureNotebook:
         self.MainWindow.show()
 
     def add_figure(self, label="", tab_color=None):
-        figure = plt.figure(dpi=dpi_notebook)
+        figure = plt.figure(dpi=read_dpi())
         self.addPlot(label, figure, tab_color=tab_color)
 
         return figure
@@ -127,7 +124,11 @@ class FigureNotebook:
         Properly closes the FigureNotebook and its associated resources.
         """
         print(f"\n> Closing MITIM Notebook titled: {self.windowtitle}", typeMsg="i")
+        # Disconnect all canvases
+        # for canvas in self.canvases:
+        #     canvas.mpl_disconnect(canvas.callbacks.connect('draw_event', lambda: None))
         self.MainWindow.close()
+        self.app.quit()
 
 class TabWidget(QTabWidget):
     def __init__(self, vertical=False, xextend=1600, *args, **kwargs):

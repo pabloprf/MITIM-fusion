@@ -15,18 +15,27 @@ if restart and os.path.exists(folder):
 
 tglf = TGLFtools.TGLF()
 tglf.prep_from_tglf(folder, input_tglf)
+
 tglf.run(
     subFolderTGLF="run1/",
     TGLFsettings=None,
-    runWaveForms=[0.67, 1.2],
     restart=restart,
     forceIfRestart=True,
-    extraOptions={"USE_BPER": True},
+    extraOptions={"USE_BPER": False, "USE_BPAR": False},
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="run1")
-tglf.plot(labels=["run1"])
+tglf.read(label="ES")
 
-# Required if running in non-interactive mode
-tglf.fn.show()
+tglf.run(
+    subFolderTGLF="run1/",
+    TGLFsettings=None,
+    restart=restart,
+    forceIfRestart=True,
+    extraOptions={"USE_BPER": True, "USE_BPAR": True},
+    slurm_setup={"cores": 4, "minutes": 1},
+)
+
+tglf.read(label="EM")
+
+tglf.plot(labels=["EM","ES"])

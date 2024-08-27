@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MITIM"
-version = "2.0.0"
+version = "2.1.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,12 +21,12 @@ classifiers = [
 
 dependencies = [
   "pip",
-  "numpy<2.0", # Some issue happened with 2.0.0
+  "numpy",
   "matplotlib",
   "argparse",
   "h5py",
   "netCDF4",
-  "xarray==2022.6.0", # This is a compromise between the requirements of omfit_classes (fails for high versions) and the PLASMAstate xr reader (importlib_metadata issues)
+  "xarray",
   "pandas",
   "xlsxwriter",
   "statsmodels",
@@ -37,8 +37,10 @@ dependencies = [
   "deap",
   "paramiko",
   "tqdm",
-  "botorch==0.9.4",  # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
-  "scikit-image",  # Stricly not for MITIM, but good to have for pygacode
+  "shapely",
+  "freegs",
+  "botorch==0.9.4",   # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
+  "scikit-image",     # Stricly not for MITIM, but good to have for pygacode
 ]
 
 [project.optional-dependencies]
@@ -47,18 +49,20 @@ pyqt = [
 ]
 omfit = [
   "omfit_classes",
-  "matplotlib==3.5.3",  # As of 12/07/2023, omfit_classes fails for higher versions
+  "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
+  "numpy<2.0.0",      # For the xarray requirement below to work
+  "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
+  "matplotlib<3.6",   # As of 12/07/2023, omfit_classes fails for higher versions
   "omas",
   "fortranformat",
   "openpyxl",
 ]
-freegs = [
-  "Shapely",
-  "freegs @ git+https://github.com/bendudson/freegs.git",
-]
 test = [
   "pytest",
   "coverage",
+]
+nn = [
+  "tensorflow==2.15.0", #  As of 08/15/2023, requires python>3.10 (J. Hall)
 ]
 
 [project.urls]
@@ -88,12 +92,11 @@ mitim_trcheck_p = "mitim_tools.transp_tools.scripts.run_check_periodic:main"	# e
 mitim_trclean = "mitim_tools.transp_tools.scripts.run_clean:main" 		# e.g. mitim_trclean 88664P CMOD --numbers 1,2,3
 mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 # e.g. mitim_trlook 152895P01 CMOD --nofull --plot --remove
 
+# MAESTRO
+mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
+
 # To run TRANSP (in folder with required files): transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
 mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
-
-# Run IM
-mitim_run_im = "mitim_tools.im_tools.scripts.run_im:main"                # To run complete IM evaluation:   runim 7 [DebugOption: --debug 0]
-#runmitim = "mitim_opt/scenarios_tools/scripts/runMITIM_BO.py"  # To peform scenario optimization
 
 # Others
 mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"

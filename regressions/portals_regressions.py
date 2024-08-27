@@ -1,7 +1,7 @@
 import argparse
 import torch
 import os
-from mitim_tools.misc_tools import IOtools, CONFIGread
+from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.powertorch.physics import TRANSPORTtools

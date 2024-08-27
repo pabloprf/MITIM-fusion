@@ -1,6 +1,7 @@
 import os
 import copy
 import torch
+import datetime
 import sys
 import pandas as pd
 import dill as pickle_dill
@@ -19,7 +20,7 @@ from mitim_tools import __mitimroot__
 
 from IPython import embed
 
-verbose_level = read_verbose_level()
+
 
 
 # ----------------------------------------------------------------------------------------------------
@@ -88,7 +89,7 @@ def plot_surrogate_model(
     if newLabels is None or self.gpmodel.ard_num_dims > len(newLabels):
         newLabels = [
             ikey for ikey in self.bounds
-        ]  # For cases where I actually did not transform even if physicsInformed exitsts (constant)
+        ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
 
     """
 	------------------------------------------------------------------------------------------------------------
@@ -821,7 +822,7 @@ def retrieveResults(
     folderRemote=None,
     analysis_level=0,
     doNotShow=False,
-    plotYN=True,
+    plotFN=None,
     pointsEvaluateEachGPdimension=50,
 ):
     # ----------------------------------------------------------------------------------------------------------------
@@ -892,19 +893,51 @@ def retrieveResults(
 
         prfs_model.optimization_results = res
         prfs_model.logFile = log
-        if plotYN:
+        if plotFN is not None:
             fn = prfs_model.plot(
                 doNotShow=doNotShow,
+                fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
 
     # If no pickle, plot only the contents of optimization_results
     else:
-        if plotYN:
-            fn = res.plot(doNotShow=doNotShow, log=log)
+        if plotFN:
+            fn = res.plot(doNotShow=doNotShow, log=log, fn = plotFN)
         prfs_model = None
 
     return fn, res, prfs_model, log, data_df
+
+
+class Logger(object):
+    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
+        self.terminal = sys.stdout
+        self.logFile = logFile
+        self.writeAlsoTerminal = writeAlsoTerminal
+
+        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        print(f"- Creating log file: {logFile}")
+
+        if DebugMode == 0:
+            with open(self.logFile, "w") as f:
+                f.write(f"* New run ({currentime})\n")
+        else:
+            with open(self.logFile, "a") as f:
+                f.write(
+                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
+                )
+
+    def write(self, message):
+        if self.writeAlsoTerminal:
+            self.terminal.write(message)
+
+        with open(self.logFile, "a") as self.log:
+            self.log.write(IOtools.strip_ansi_codes(message))
+
+    # For python 3 compatibility:
+    def flush(self):
+        pass
 
 
 class LogFile:
@@ -912,7 +945,7 @@ class LogFile:
         self.file = file
 
     def activate(self, writeAlsoTerminal=True):
-        sys.stdout = IOtools.Logger(
+        sys.stdout = Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 
@@ -1202,7 +1235,7 @@ class optimization_data:
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
         print(
             f"\t* Reading points from file ({self.file})",
-            verbose=verbose_level,
+            verbose=read_verbose_level(),
         )
 
         self.data = pd.read_csv(self.file)
@@ -1300,7 +1333,7 @@ class optimization_results:
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* optimization_results updated", verbose=verbose_level)
+        print("\t* optimization_results updated", verbose=read_verbose_level())
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")

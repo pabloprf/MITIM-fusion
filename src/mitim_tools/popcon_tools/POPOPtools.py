@@ -277,7 +277,7 @@ class CFSpopop:
 # 		ax.set_xlabel('$\\langle T_e \\rangle$ (keV)')
 # 		ax.set_ylabel('$\\langle n_e \\rangle$ ($10^{19}m^{-3}$)')
 
-# 		plt.tight_layout()
+# 		GRAPHICStools.adjust_figure_layout(fig)
 
 # 		return ax
 

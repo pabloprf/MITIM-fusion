@@ -3,12 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools.tools import PLASMASTATEtools
+from mitim_tools.transp_tools.utils import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
-verbose_level = read_verbose_level()
+
 
 
 def runTGYRO(
@@ -1066,7 +1066,7 @@ def runTGLF(
                     print(
                         f"\t!! file {file} ({original_file}) could not be retrived",
                         typeMsg="w",
-                        verbose=verbose_level,
+                        verbose=read_verbose_level(),
                     )
 
     if fineall:

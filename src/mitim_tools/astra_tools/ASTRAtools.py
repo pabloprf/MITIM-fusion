@@ -1,10 +1,12 @@
 import os
 import tarfile
 import numpy as np
+import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools,FARMINGtools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -93,7 +95,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
 
         self.cdf_file = f'{self.output_folder}/'
 
-        self.cdf = ASTRA_CDFtools.CDFreactor(self.cdf_file)
+        self.cdf = ASTRA_CDFtools.transp_output(self.cdf_file)
 
     def plot(self):
 
@@ -131,7 +133,7 @@ def convert_ASTRA_to_gacode(astra_root,
     else:
         print(f"Found CDF file: {cdf_file}")
 
-    c = ASTRA_CDFtools.CDFreactor(cdf_file)
+    c = ASTRA_CDFtools.transp_output(cdf_file)
     c.calcProfiles()
 
     # Extract Geometry info
@@ -146,14 +148,13 @@ def convert_ASTRA_to_gacode(astra_root,
     else:
         print(f"Found gfile: {geometry_file}")
 
-    try:
-        g = GEQtools.MITIMgeqdsk(geometry_file, removeCoils=False)
-    except:
-        g = GEQtools.MITIMgeqdsk(geometry_file)
+    g = GEQtools.MITIMgeqdsk(geometry_file)
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
-    shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+    psis, rmaj, rmin, zmag, kappa, cn, sn   = g.get_MXH_coeff_new()
+    print(cn.shape, sn.shape)
+    #shape_cos, shape_sin, bbox, psin_grid
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -185,25 +186,25 @@ def convert_ASTRA_to_gacode(astra_root,
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
                                          
     # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
-    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)    
+    interp_to_rho = lambda x: np.interp(polflux_norm, psis, x)    
 
     q = interp_to_nexp(c.q[ai])                ; params['q(-)'] = q
-    rmaj = interp_to_rho(bbox[0,:])            ; params['rmaj(m)'] = rmaj
-    rmin = interp_to_rho(bbox[1,:])            ; params['rmin(m)'] = rmin
-    zmag = interp_to_rho(bbox[2,:])            ; params['zmag(m)'] = zmag
-    kappa = interp_to_rho(bbox[3,:])           ; params['kappa(-)'] = kappa
-    delta = interp_to_rho(shape_sin[1,:])      ; params['delta(-)'] = delta
-    zeta = interp_to_rho(-shape_sin[2,:])      ; params['zeta(-)'] = zeta
-    shape_cos0 = interp_to_rho(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
-    shape_cos1 = interp_to_rho(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
-    shape_cos2 = interp_to_rho(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
-    shape_cos3 = interp_to_rho(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
-    shape_cos4 = interp_to_rho(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
-    shape_cos5 = interp_to_rho(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
+    rmaj = interp_to_rho(rmaj)            ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_rho(rmin)            ; params['rmin(m)'] = rmin
+    zmag = interp_to_rho(zmag)            ; params['zmag(m)'] = zmag
+    kappa = interp_to_rho(kappa)           ; params['kappa(-)'] = kappa
+    delta = interp_to_rho(sn[:,1])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-sn[:,2])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
     shape_cos6 = np.zeros(nexp)                ; params['shape_cos6(-)'] = shape_cos6
-    shape_sin3 = interp_to_rho(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
-    shape_sin4 = interp_to_rho(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
-    shape_sin5 = interp_to_rho(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin3 = interp_to_rho(sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
     shape_sin6 = np.zeros(nexp)                ; params['shape_sin6(-)'] = shape_sin6
 
     ne = interp_to_nexp(c.ne[ai,:])            ; params['ne(10^19/m^3)'] = ne
@@ -261,3 +262,142 @@ def convert_ASTRA_to_gacode(astra_root,
         p.plot()
 
     return p
+
+def create_initial_conditions(te_avg,
+                              ne_avg,
+                              q_profile=None,
+                              use_eped_pedestal=True, # add this later
+                              file_output_location=None,
+                              width_top=0.05,
+                              n_rho=104,
+                              rho=None,
+                              Te=None,
+                              ne=None,
+                              Ti=None, 
+                              ):
+    
+    """Returns a PRF functional form of the kinetic profiles for the initial conditions
+    as a U-file that can be fed directly into ASTRA. Makes an initial guess for the pedestal and uses a tanh functional form
+    outside of psi_n = 0.95"""
+
+    # Define the radial grid
+    if rho is not None:
+        n_rho = len(rho)
+    else:
+        rho = np.linspace(0,1,n_rho)
+
+    # replace this two-step process with one functional form: Pablo said he would do this
+
+    x, T, n = FunctionalForms.PRFfunctionals_Hmode(
+        T_avol=te_avg,
+        n_avol=ne_avg,
+        nu_T=3.0,
+        nu_n=1.35,
+        aLT=2.0,
+        width_ped=2*width_top/3,
+        rho=rho
+    )
+
+    if use_eped_pedestal:
+        BC_index = np.argmin(np.abs(rho-0.95))
+        print(BC_index)
+        width_top = width_top
+        ne_ped = n[BC_index]
+        Te_ped = T[BC_index]
+        ne_sep = 0.3*ne_ped
+        T_sep = 1
+
+        n_ped = FunctionalForms.pedestal_tanh(ne_ped, ne_sep, width_top, x=rho)[1]
+        T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
+        n[BC_index:] = n_ped[BC_index:]
+        T[BC_index:] = T_ped[BC_index:]
+
+    preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X0-
+ Electron Temp       eV        ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X1 PTS-
+        {n_rho}                    ;-# OF  X0 PTS-
+"""
+    preamble_dens = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X1-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X0-
+ Electron Density    cm**-3    ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X1 PTS-
+        {n_rho}                    ;-# OF  X0 PTS-
+"""
+    
+    preamble_q = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X0-
+ rho_tor                       ;-INDEPENDENT VARIABLE LABEL: X1-
+ EFIT q profile                ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM 3:AVG+SM
+          1                    ;-# OF  X0 PTS-
+        {n_rho}                    ;-# OF  X1 PTS-
+"""
+    
+    if Te is not None:
+        T = Te
+
+    with open(file_output_location+"/TE_ASTRA", 'w')  as f:
+        f.write(preamble_Temp)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in Te[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    if Ti is not None:
+        T = Ti
+
+    with open(file_output_location+"/TI_ASTRA", 'w')  as f:
+        f.write(preamble_Temp)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    if ne is not None:
+        n = ne
+
+    with open(file_output_location+"/NE_ASTRA", 'w')  as f:
+        f.write(preamble_dens)
+        f.write(f" 1.000000e-01\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in n[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ")
+
+    if q_profile is not None:
+
+        q = q_profile
+        
+        with open(file_output_location+"/q_ASTRA", 'w')  as f:
+            f.write(preamble_q)
+            f.write(f" 1.000000e-01\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in q[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    fig, ax = plt.subplots(figsize=(10,8))
+    ax.plot(rho, T, label='T')
+    ax.plot(rho, n, label='n')  
+    #ax.set_ylabel(r"$T_e$ [eV]")
+    ax.set_xlabel(r"$\rho$")
+    ax.set_title("Initial temperature profile")
+    ax.legend()
+    plt.show()
+

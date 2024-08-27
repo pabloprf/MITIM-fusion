@@ -1,51 +1,73 @@
 import os
-from time import time
+import io
+import tempfile
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
+from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.gs_tools.utils import GEQplotting
+from shapely.geometry import LineString
+from scipy.integrate import quad
+import freegs
+from freegs import geqdsk
+from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
-Modifications are made for nice visualizations and a few extra derivations.
+Modifications are made in MITINM for visualizations and a few extra derivations.
 """
 
+def fix_file(filename):
 
+    with open(filename, "r") as f:
+        lines = f.readlines()
+
+    # -----------------------------------------------------------------------
+    # Remove coils (chatGPT 4o as of 08/24/24)
+    # -----------------------------------------------------------------------
+    # Use StringIO to simulate the file writing
+    noCoils_file = io.StringIO()
+    for cont, line in enumerate(lines):
+        if cont > 0 and line[:2] == "  ":
+            break
+        noCoils_file.write(line)
+
+    # Reset cursor to the start of StringIO
+    noCoils_file.seek(0)
+
+    # Write the StringIO content to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(noCoils_file.getvalue().encode('utf-8'))
+        noCoils_file = tmp_file.name
+    # -----------------------------------------------------------------------
+
+    with open(filename, 'r') as file1, open(noCoils_file, 'r') as file2:
+        file1_content = file1.read()
+        file2_content = file2.read()
+        
+    if file1_content != file2_content:
+        print(f"\t- geqdsk file {IOtools.clipstr(filename)} had coils, I have removed them")
+
+    filename = noCoils_file
+
+    return filename
 class MITIMgeqdsk:
-    def __init__(self, filename, fullLCFS=False, removeCoils=True):
-        """
-        Read g-eqdsk file using OMFIT classes (dynamic loading)
+    def __init__(self, filename):
 
-        Notes:
-                I impose FindSeparatrix because I don't trust the g-file one
-        """
+        # Fix file by removing coils if it has them
+        filename = fix_file(filename)
 
-        if removeCoils:
-            print(
-                f"\t- If geqdsk is appended with coils, removing them to read {filename}"
-            )
-            with open(filename, "r") as f:
-                lines = f.readlines()
-            with open(f"{filename}_noCoils.geqdsk", "w") as f:
-                for cont,line in enumerate(lines):
-                    if cont>0 and line[:2] == "  ":
-                        break
-                    f.write(line)
-            filename = f"{filename}_noCoils.geqdsk"
-
-        # -------------------------------------------------------------
+        # Read GEQDSK file using OMFIT
         import omfit_classes.omfit_eqdsk
-
-        self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(
-            filename, forceFindSeparatrix=True
-        )
-        # -------------------------------------------------------------
+        self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(filename, forceFindSeparatrix=True)
 
         # Extra derivations in MITIM
-        self.derive(fullLCFS=fullLCFS)
+        self.derive()
 
-        if removeCoils:
-            os.system(f"rm {filename}")
+        # Remove temporary file
+        os.remove(filename)
 
     @classmethod
     def timeslices(cls, filename, **kwargs):
@@ -86,7 +108,8 @@ class MITIMgeqdsk:
 
         return gs
 
-    def derive(self, fullLCFS=False):
+    def derive(self, debug=False):
+
         self.Jt = self.g.surfAvg("Jt") * 1e-6
         self.Jt_fb = self.g.surfAvg("Jt_fb") * 1e-6
 
@@ -141,46 +164,34 @@ class MITIMgeqdsk:
             self.g["fluxSurfaces"]["geo"]["delta"],
         )
 
-        # Boundary
-        self.determineBoundary(full=fullLCFS)
-
-    def determineBoundary(self, debug=False, full=False):
         """
-        Note that the RBBS and ZBBS values in the gfile are often too scattered and do not reproduce the boundary near x-points.
-        The shaping parameters calculated using fluxSurfaces are correct though.
-
-        Since at __init__ I forced to find separatrix, I'm using OMFIT here
+        --------------------------------------------------------------------------------------------------------------------------------------
+        Boundary
+        --------------------------------------------------------------------------------------------------------------------------------------
+            Note that the RBBS and ZBBS values in the gfile are often too scattered and do not reproduce the boundary near x-points.
+            The shaping parameters calculated using fluxSurfaces are correct though.
         """
 
         self.Rb_gfile, self.Yb_gfile = self.g["RBBBS"], self.g["ZBBBS"]
         self.Rb, self.Yb = self.g["fluxSurfaces"].sep.transpose()
+        
+        if len(self.Rb) == 0:
+            print("\t- MITIM > No separatrix found in the OMFIT fluxSurfaces, increasing resolution and going all in!",typeMsg='i')
 
-        # Using PRF routines (otherwise IM workflow will run TRANSP with error of curvature... I have to fix it)
-        if full:
-            self.Rb_prf, self.Yb_prf = MATHtools.findBoundaryMath(
-                self.g["AuxQuantities"]["R"],
-                self.g["AuxQuantities"]["Z"],
-                self.g["AuxQuantities"]["PSIRZ_NORM"],
-                0.99999,
-                5e3,
-                500,
-                None,
-                False,
-                0.1,
-            )
+            flx = copy.deepcopy(self.g['fluxSurfaces'])
+            flx._changeResolution(6)
+            flx.findSurfaces([0.0,0.5,1.0])
+            fs = flx['flux'][list(flx['flux'].keys())[-1]]
+            self.Rb, self.Yb = fs['R'], fs['Z']
 
         if debug:
             fig, ax = plt.subplots()
 
             # OMFIT
-            ax.plot(self.Rb, self.Yb, "-s", c="r")
+            ax.plot(self.Rb, self.Yb, "-s", c="r", label="OMFIT")
 
             # GFILE
-            ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y")
-
-            # Old routines
-            if full:
-                ax.plot(self.Rb_prf, self.Yb_prf, "-o", c="k")
+            ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y", label="GFILE")
 
             # Extras
             self.plotFluxSurfaces(
@@ -191,13 +202,18 @@ class MITIMgeqdsk:
             )
             self.plotEnclosingBox(ax=ax)
 
+            ax.legend()
+            ax.set_aspect("equal")
+            ax.set_xlabel("R [m]")
+            ax.set_ylabel("Z [m]")
+
             plt.show()
 
-    def plotEnclosingBox(self, ax=None):
+    def plotEnclosingBox(self, ax=None, c= "k"):
         if ax is None:
             fig, ax = plt.subplots()
 
-        plotEnclosed(
+        Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL = (
             self.Rmajor,
             self.a,
             self.Zmajor,
@@ -205,86 +221,20 @@ class MITIMgeqdsk:
             self.kappaL,
             self.deltaU,
             self.deltaL,
-            ax=ax,
         )
+
+        ax.axhline(y=Zmajor, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor - a, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor + a, ls="--", c=c, lw=0.5)
+        Rtop = Zmajor + a * kappaU
+        ax.axhline(y=Rtop, ls="--", c=c, lw=0.5)
+        Rbot = Zmajor - a * kappaL
+        ax.axhline(y=Rbot, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
+        ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
+
         ax.plot([self.Rmajor, self.Rmag], [self.Zmajor, self.Zmag], "o", markersize=5)
-
-    def paramsLCFS(self):
-        rmajor, epsilon, kappa, delta, zeta, z0 = (
-            self.Rmajor,
-            self.eps,
-            self.kappa,
-            self.delta,
-            self.zeta,
-            self.Zmag,
-        )
-
-        return self.Rmajor, self.eps, self.kappa, self.delta, self.zeta, self.Zmag
-
-    def getShapingRatios(self, name="", runRemote=False):
-        kR = self.kappa995 / self.kappa
-        dR = self.delta995 / self.delta
-
-        return round(kR, 3), round(dR, 3)
-
-    def defineMapping(self):
-        psi = self.g["PSI_NORM"]
-        rho = self.g["RHOVN"]
-
-        return rho, psi
-
-    def changeRZgrid(
-        self,
-        Rmin=0.5,
-        Rmax=1.5,
-        Zext=1.5,
-        interpol="cubic",
-        useOnlyOriginalPoints=False,
-    ):
-        """
-        New grid will be R=[Rmin,Rmax] and Z=[-Zext,Zext]
-        """
-
-        # Old grid
-        Rold = self.g["AuxQuantities"]["R"]
-        Zold = self.g["AuxQuantities"]["Z"]
-        PSIRZ = self.g["PSIRZ"]
-
-        if useOnlyOriginalPoints:
-            i1 = np.argmin(np.abs(Rold - Rmin))
-            i2 = np.argmin(np.abs(Rold - Rmax))
-            j1 = np.argmin(np.abs(Zold + Zext))
-            j2 = np.argmin(np.abs(Zold - Zext))
-
-            self.g["NW"] = i2 - i1
-            Rmin = Rold[i1]
-            Rmax = Rold[i2]
-            self.g["NH"] = j2 - j1
-            Zext = Zold[j2]
-
-        # New grid
-        self.g["RDIM"] = Rmax - Rmin
-        self.g["RLEFT"] = Rmin
-        self.g["ZDIM"] = Zext * 2
-
-        Rnew = np.linspace(0, self.g["RDIM"], self.g["NW"]) + self.g["RLEFT"]
-        Znew = (
-            np.linspace(0, self.g["ZDIM"], self.g["NH"])
-            - self.g["ZDIM"] / 2.0
-            + self.g["ZMID"]
-        )
-
-        # Interpolate
-        self.g["PSIRZ"] = MATHtools.interp2D(
-            Rnew, Znew, Rold, Zold, PSIRZ, kind=interpol
-        )
-
-        # Re-load stuff
-        self.g.addAuxQuantities()
-        self.g.addFluxSurfaces(**self.g.OMFITproperties)
-
-    def translateQuantityTo2D(self, rhoTor, z):
-        return np.interp(self.g["AuxQuantities"]["RHORZ"], rhoTor, z)
 
     def write(self, filename=None):
         """
@@ -296,958 +246,396 @@ class MITIMgeqdsk:
 
         self.g.save()
 
+    # -----------------------------------------------------------------------------
+    # Parameterizations
+    # -----------------------------------------------------------------------------
+
+    def get_MXH_coeff_new(self, n_coeff=7, plotYN=False): 
+
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        flux_surfaces = self.g['fluxSurfaces']['flux']
+        
+        # Cannot parallelize because different number of points?
+        kappa, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[]
+        
+        for flux in range(len(flux_surfaces)):
+            if flux == len(flux_surfaces)-1:
+                Rf, Zf = self.Rb, self.Yb
+            else:
+                Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
+
+            # Perform the MXH decompositionusing the MITIM surface class
+            surfaces = mitim_flux_surfaces()
+            surfaces.reconstruct_from_RZ(Rf,Zf)
+            surfaces._to_mxh(n_coeff=n_coeff)
+
+            kappa.append(surfaces.kappa[0])
+            rmin.append(surfaces.a[0])
+            rmaj.append(surfaces.R0[0])
+            zmag.append(surfaces.Z0[0])
+
+            sn.append(surfaces.sn[0,:])
+            cn.append(surfaces.cn[0,:])
+
+        kappa = np.array(kappa)
+        rmin = np.array(rmin)
+        rmaj = np.array(rmaj)
+        zmag = np.array(zmag)
+        sn = np.array(sn)
+        cn = np.array(cn)
+
+        if plotYN:
+            fig, ax = plt.subplots()
+            ax.plot(self.Rb, self.Yb, 'o-', c = 'b')
+
+            surfaces = mitim_flux_surfaces()
+            surfaces.reconstruct_from_RZ(self.Rb, self.Yb)
+            surfaces._to_mxh(n_coeff=n_coeff)
+            surfaces._from_mxh()
+
+            ax.plot(surfaces.R[0], surfaces.Z[0], 'o-', c = 'r')
+
+            plt.show()
+
+        '''
+        Reminder that 
+            sn = [0.0, np.arcsin(delta), -zeta, ...] 
+        '''
+
+        return psis, rmaj, rmin, zmag, kappa, cn, sn
+        
+    # -----------------------------------------------------------------------------
+    # For MAESTRO and TRANSP converstions
+    # -----------------------------------------------------------------------------
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
+
+        # -------------------------------------------------------------------------------------------------------
+        # Quantities from the equilibrium
+        # -------------------------------------------------------------------------------------------------------
+
+        rhotor = self.g['RHOVN']
+        psi = self.g['AuxQuantities']['PSI']                           # Wb/rad
+        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)     # Wb/rad
+        q = self.g['QPSI']
+        pressure = self.g['PRES']       # Pa
+        Ip = self.g['CURRENT']*1E-6     # MA
+
+        RZ = np.array([self.Rb,self.Yb]).T
+        R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
+        
+        B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
+
+        _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
+
+        delta = np.sin(sn[:,1])
+        zeta = -sn[:,2]
+
+        # -------------------------------------------------------------------------------------------------------
+        # Pass to profiles
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles = {}
+
+        profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
+        profiles['nion'] = np.array(['2'])
+        profiles['shot'] = np.array(['12345'])
+
+        # Just one specie
+        profiles['name'] = np.array(['D','F'])
+        profiles['type'] = np.array(['therm','therm'])
+        profiles['masse'] = np.array([5.4488748e-04])
+        profiles['mass'] = np.array([2.0, Z*2])
+        profiles['ze'] = np.array([-1.0])
+        profiles['z'] = np.array([1.0, Z])
+
+
+        profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
+        profiles['rcentr(m)'] = np.array([R0])
+        profiles['bcentr(T)'] = np.array([B0])
+        profiles['current(MA)'] = np.array([Ip])
+
+        profiles['rho(-)'] = rhotor
+        profiles['polflux(Wb/radian)'] = psi
+        profiles['q(-)'] = q
+
+        # -------------------------------------------------------------------------------------------------------
+        # Flux surfaces
+        # -------------------------------------------------------------------------------------------------------
+
+        profiles['kappa(-)'] = kappa
+        profiles['delta(-)'] = delta
+        profiles['zeta(-)'] = zeta
+        profiles['rmin(m)'] = rmin
+        profiles['rmaj(m)'] = rmaj
+        profiles['zmag(m)'] = zmag
+
+        sn, cn = np.array(sn), np.array(cn)
+        for i in range(coeffs_MXH):
+            profiles[f'shape_cos{i}(-)'] = cn[:,i]
+        for i in range(coeffs_MXH-3):
+            profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
+
+        '''
+        -------------------------------------------------------------------------------------------------------
+        Kinetic profiles
+        -------------------------------------------------------------------------------------------------------
+        Pressure division into temperature and density
+            p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+            if T=Te=Ti and ne=ni
+            p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+            T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+        '''
+
+        C = 1 / (2 * 1.60217662e-19 * 1e20)
+        _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
+        T_keV = C * (pressure / ne_20) * 1E-3
+
+        fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
+
+        profiles['te(keV)'] = T_keV
+        profiles['ti(keV)'] = np.array([T_keV]*2).T
+        profiles['ne(10^19/m^3)'] = ne_20*10.0
+        profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
+
+        # -------------------------------------------------------------------------------------------------------
+        # Power: insert parabolic and use PROFILES volume integration to find desired power
+        # -------------------------------------------------------------------------------------------------------
+
+        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
+
+        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+
+        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
+        p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
+
+        # -------------------------------------------------------------------------------------------------------
+        # Ready to go
+        # -------------------------------------------------------------------------------------------------------
+
+        p.deriveQuantities()
+
+        # -------------------------------------------------------------------------------------------------------
+        # Plotting
+        # -------------------------------------------------------------------------------------------------------
+
+        if plotYN:
+
+            fig, ax = plt.subplots()
+            ff = np.linspace(0, 1, 11)
+            self.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
+            p.plotGeometry(ax=ax, surfaces_rho=ff, color="b")
+            plt.show()
+
+        return p
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+
+        print("\t- Converting to TRANSP")
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
+        p.writeCurrentStatus(f'{folder}/input.gacode')
+
+        transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
+
+        return transp
+
     # ---------------------------------------------------------------------------------------------------------------------------------------
     # Plotting
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
     def plot(self, fn=None, extraLabel=""):
-        if fn is None:
-            wasProvided = False
-
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-            self.fn = FigureNotebook("GEQDSK Notebook", geometry="1600x1000")
-        else:
-            wasProvided = True
-            self.fn = fn
-        # -----------------------------------------------------------------------------
-        # OMFIT Summary
-        # -----------------------------------------------------------------------------
-        # fig = self.fn.add_figure(label=extraLabel+'OMFIT Summ')
-        # self.g.plot()
-
-        # -----------------------------------------------------------------------------
-        # Flux
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Surfaces")
-        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[:, 0])
-        ax2 = fig.add_subplot(grid[:, 1])
-        ax3 = fig.add_subplot(grid[0, 2])
-        ax4 = fig.add_subplot(grid[1, 2])
-
-        self.plotFS(axs=[ax1, ax2, ax3, ax4])
-
-        # -----------------------------------------------------------------------------
-        # Currents
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Currents")
-        grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[2, 0])
-        ax2 = fig.add_subplot(grid[:2, 0])
-        ax3 = fig.add_subplot(grid[2, 1])
-        ax4 = fig.add_subplot(grid[:2, 1])
-        ax5 = fig.add_subplot(grid[2, 2])
-        ax6 = fig.add_subplot(grid[:2, 2])
-        ax7 = fig.add_subplot(grid[2, 3])
-        ax8 = fig.add_subplot(grid[:2, 3])
-        ax9 = fig.add_subplot(grid[2, 4])
-        ax10 = fig.add_subplot(grid[:2, 4])
-
-        self.plotCurrents(
-            axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1]
-        )
-
-        # -----------------------------------------------------------------------------
-        # Fields
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Fields")
-        grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[2, 0])
-        ax2 = fig.add_subplot(grid[:2, 0])
-        ax3 = fig.add_subplot(grid[2, 1])
-        ax4 = fig.add_subplot(grid[:2, 1])
-        ax5 = fig.add_subplot(grid[2, 2])
-        ax6 = fig.add_subplot(grid[:2, 2])
-        ax7 = fig.add_subplot(grid[2, 3])
-        ax8 = fig.add_subplot(grid[:2, 3])
-        ax9 = fig.add_subplot(grid[2, 4])
-        ax10 = fig.add_subplot(grid[:2, 4])
-
-        self.plotFields(
-            axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1]
-        )
-
-        # -----------------------------------------------------------------------------
-        # Checks
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "GS Quality")
-        grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax1E = ax1.twinx()
-        ax2 = fig.add_subplot(grid[1, 0])
-        ax3 = fig.add_subplot(grid[:, 1])
-        ax4 = fig.add_subplot(grid[:, 2])
-        ax5 = fig.add_subplot(grid[:, 3])
-
-        self.plotChecks(axs=[ax1, ax1E, ax2, ax3, ax4, ax5])
-
-        # -----------------------------------------------------------------------------
-        # Parameterization
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Parameteriz.")
-        grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[:, 0])
-        ax2 = fig.add_subplot(grid[0, 1])
-        ax3 = fig.add_subplot(grid[1, 1])
-        ax4 = fig.add_subplot(grid[2, 1])
-        ax5 = fig.add_subplot(grid[:, 2])
-
-        self.plotParameterization(axs=[ax1, ax2, ax3, ax4, ax5])
-
-        # -----------------------------------------------------------------------------
-        # Plasma
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Plasma")
-        grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-
-        ax_plasma = [
-            fig.add_subplot(grid[0, 0]),
-            fig.add_subplot(grid[1, 0]),
-            fig.add_subplot(grid[0, 1]),
-            fig.add_subplot(grid[1, 1]),
-            fig.add_subplot(grid[0, 2]),
-            fig.add_subplot(grid[1, 2]),
-            fig.add_subplot(grid[0, 3]),
-            fig.add_subplot(grid[1, 3]),
-        ]
-        ax_plasma = self.plotPlasma(axs=ax_plasma, legendYN=not wasProvided)
-
-        # -----------------------------------------------------------------------------
-        # Geometry
-        # -----------------------------------------------------------------------------
-        fig = self.fn.add_figure(label=extraLabel + "Geometry")
-        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax2 = fig.add_subplot(grid[0, 1])
-        ax3 = fig.add_subplot(grid[1, 0])
-        ax4 = fig.add_subplot(grid[1, 1])
-
-        self.plotGeometry(axs=[ax1, ax2, ax3, ax4])
-
-        return ax_plasma
+        GEQplotting.plot(self, fn=fn, extraLabel=extraLabel)
 
     def plotFS(self, axs=None, color="b", label=""):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=4)
-
-        ax = axs[0]
-        self.plotFluxSurfaces(
-            ax=ax, fluxes=np.linspace(0, 1, 21), rhoPol=True, sqrt=False, color=color
-        )
-        ax.set_title("Poloidal Flux")
-        ax.set_aspect("equal")
-        ax.set_xlabel("R (m)")
-        ax.set_ylabel("Z (m)")
-
-        ax = axs[1]
-        self.plotFluxSurfaces(
-            ax=ax, fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color
-        )
-        ax.set_title("Sqrt Toroidal Flux")
-        ax.set_aspect("equal")
-        ax.set_xlabel("R (m)")
-        ax.set_ylabel("Z (m)")
-
-        ax = axs[2]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g["AuxQuantities"]["RHO"]
-        ax.plot(x, y, lw=2, ls="-", c=color, label=label)
-        ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
-
-        ax.set_xlabel("$\\Psi_n$ (PSI_NORM)")
-        ax.set_ylabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
-
-        ax = axs[3]
-        x = self.g["AuxQuantities"]["RHO"]
-        y = self.g["AuxQuantities"]["RHOp"]
-        ax.plot(x, y, lw=2, ls="-", c=color)
-        ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
-
-        ax.set_ylabel("$\\sqrt{\\Psi_n}$ (RHOp)")
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
-
-    def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=10)
-
-        ax = axs[0]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Jr") * 1e-6
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_ylabel("FSA $\\langle J\\rangle$ ($MA/m^2$)")
-        ax.set_xlim([0, 1])
-
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[1]
-        self.plot2Dquantity(
-            ax=ax, var="Jr", title="Radial Current Jr", zlims=zlims, factor=1e-6
-        )
-
-        ax = axs[2]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Jz") * 1e-6
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[3]
-        self.plot2Dquantity(
-            ax=ax, var="Jz", title="Vertical Current Jz", zlims=zlims, factor=1e-6
-        )
-
-        ax = axs[4]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Jt") * 1e-6
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[5]
-        self.plot2Dquantity(
-            ax=ax, var="Jt", title="Toroidal Current Jt", zlims=zlims, factor=1e-6
-        )
-
-        ax = axs[6]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Jp") * 1e-6
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[7]
-        self.plot2Dquantity(
-            ax=ax, var="Jp", title="Poloidal Current Jp", zlims=zlims, factor=1e-6
-        )
-
-        ax = axs[8]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Jpar") * 1e-6
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[9]
-        self.plot2Dquantity(
-            ax=ax, var="Jpar", title="Parallel Current Jpar", zlims=zlims, factor=1e-6
-        )
-
-    def plotFields(self, axs=None, zlims_thr=[-1, 1]):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=10)
-
-        ax = axs[0]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Br")
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_ylabel("FSA $\\langle B\\rangle$ ($T$)")
-        ax.set_xlim([0, 1])
-
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[1]
-        self.plot2Dquantity(
-            ax=ax, var="Br", title="Radial Field Br", zlims=zlims, titlebar="B ($T$)"
-        )
-
-        ax = axs[2]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Bz")
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[3]
-        self.plot2Dquantity(
-            ax=ax, var="Bz", title="Vertical Field Bz", zlims=zlims, titlebar="B ($T$)"
-        )
-
-        ax = axs[4]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Bt")
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [y.min(), y.max()]
-        # zlims = [np.min([zlims_thr[0],y.min()]),np.max([zlims_thr[1],y.max()])]
-        # zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[5]
-        self.plot2Dquantity(
-            ax=ax, var="Jt", title="Toroidal Field Bt", zlims=zlims, titlebar="B ($T$)"
-        )
-
-        ax = axs[6]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g.surfAvg("Bp")
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
-        zlims = GRAPHICStools.aroundZeroLims(zlims)
-        ax.set_ylim(zlims)
-
-        ax = axs[7]
-        self.plot2Dquantity(
-            ax=ax, var="Bp", title="Poloidal Field Bp", zlims=zlims, titlebar="B ($T$)"
-        )
-
-        ax = axs[8]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g["fluxSurfaces"]["avg"]["Bp**2"]
-        ax.plot(x, y, lw=2, ls="-", c="r")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$\\langle B_{\\theta}^2\\rangle$")
-
-        ax = axs[9]
-        x = self.g["fluxSurfaces"]["midplane"]["R"]
-        y = self.g["fluxSurfaces"]["midplane"]["Bt"]
-        ax.plot(x, y, lw=2, ls="-", c="r", label="$B_{t}$")
-        y = self.g["fluxSurfaces"]["midplane"]["Bp"]
-        ax.plot(x, y, lw=2, ls="-", c="b", label="$B_{p}$")
-        y = self.g["fluxSurfaces"]["midplane"]["Bz"]
-        ax.plot(x, y, lw=2, ls="-", c="g", label="$B_{z}$")
-        y = self.g["fluxSurfaces"]["midplane"]["Br"]
-        ax.plot(x, y, lw=2, ls="-", c="m", label="$B_{r}$")
-        y = self.g["fluxSurfaces"]["geo"]["bunit"]
-        ax.plot(x, y, lw=2, ls="-", c="c", label="$B_{unit}$")
-        ax.set_xlabel("$R$ LF midplane")
-        ax.set_ylabel("$B$ (T)")
-        ax.legend()
-
-    def plotChecks(self, axs=None):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=8)
-
-        ax = axs[0]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y1 = self.Jt
-        ax.plot(x, np.abs(y1), lw=2, ls="-", c="b", label="$\\langle Jt\\rangle$")
-        zmax = y1.max()
-        zmin = y1.min()
-        y2 = self.Jt_fb
-        ax.plot(x, np.abs(y2), lw=2, ls="-", c="g", label="$\\langle Jt_{FB}\\rangle$")
-
-        y3 = self.Jerror
-        ax.plot(
-            x,
-            y3,
-            lw=1,
-            ls="-",
-            c="r",
-            label="$|\\langle Jt\\rangle-\\langle Jt_{FB}\\rangle|$",
-        )
-
-        ax.set_ylabel("Current Density ($MA/m^2$)")
-
-        axE = axs[1]
-        yErr = np.abs(self.Jerror / self.Jt) * 100.0
-        axE.plot(x, yErr, lw=0.5, ls="--", c="b")
-        axE.set_ylim([0, 50])
-        axE.set_ylabel("Relative Error (%)")
-
-        ax.set_title("$|\\langle Jt\\rangle|$")
-        ax.set_ylim(bottom=0)
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\Psi_n$")
-        ax.legend()
-
-        ax = axs[2]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y1 = self.g["FFPRIM"]
-        ax.plot(x, y1, lw=2, ls="-", c="r", label="$FF'$")
-        y2 = self.g["PPRIME"] * (4 * np.pi * 1e-7)
-        ax.plot(x, y2, lw=2, ls="-", c="b", label="$p'*\\mu_0$")
-
-        ax.set_ylabel("")
-        ax.legend()
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-
-        ax = axs[3]
-        self.plot2Dquantity(
-            ax=ax,
-            var="Jt",
-            title="Toroidal Current Jt",
-            zlims=[zmin, zmax],
-            cmap="viridis",
-            factor=1e-6,
-        )
-
-        ax = axs[4]
-        self.plot2Dquantity(
-            ax=ax,
-            var="Jt_fb",
-            title="Toroidal Current Jt (FB)",
-            zlims=[zmin, zmax],
-            cmap="viridis",
-            factor=1e-6,
-        )
-
-        ax = axs[5]
-        z = (
-            np.abs(self.g["AuxQuantities"]["Jt"] - self.g["AuxQuantities"]["Jt_fb"])
-            * 1e-6
-        )
-        zmaxx = np.max([np.abs(zmax), np.abs(zmin)])
-        self.plot2Dquantity(
-            ax=ax,
-            var=z,
-            title="Absolute Error",
-            zlims=[0, zmaxx],
-            cmap="viridis",
-            direct=True,
-        )
-
-    def plotParameterization(self, axs=None):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=5)
-
-        ax = axs[0]
-        cs, csA = self.plotFluxSurfaces(
-            ax=ax, fluxes=np.linspace(0, 1, 21), rhoPol=True, sqrt=False
-        )
-
-        # Boundary, axis and limiter
-        ax.plot(self.Rb, self.Yb, lw=1, c="r")
-        ax.plot(self.g["RMAXIS"], self.g["ZMAXIS"], "+", markersize=10, c="r")
-        ax.plot([self.Rmag], [self.Zmag], "o", markersize=5, c="m")
-        ax.plot([self.Rmajor], [self.Zmag], "+", markersize=10, c="k")
-        ax.plot(self.g["RLIM"], self.g["ZLIM"], lw=1, c="k")
-
-        import matplotlib
-
-        path = matplotlib.path.Path(
-            np.transpose(np.array([self.g["RLIM"], self.g["ZLIM"]]))
-        )
-        patch = matplotlib.patches.PathPatch(path, facecolor="none")
-        ax.add_patch(patch)
-        for col in cs.collections:
-            col.set_clip_path(patch)
-        for col in csA.collections:
-            col.set_clip_path(patch)
-
-        self.plotEnclosingBox(ax=ax)
-
-        ax.set_aspect("equal")
-        ax.set_title("Poloidal Flux")
-        ax.set_xlabel("R (m)")
-        ax.set_ylabel("Z (m)")
-
-        ax = axs[1]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g["fluxSurfaces"]["geo"]["kap"]
-        ax.plot(x, y, label="$\\kappa$")
-        y = self.g["fluxSurfaces"]["geo"]["kapl"]
-        ax.plot(x, y, ls="--", label="$\\kappa_L$")
-        y = self.g["fluxSurfaces"]["geo"]["kapu"]
-        ax.plot(x, y, ls="--", label="$\\kappa_U$")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("Elongation $\\kappa$")
-        ax.legend()
-
-        ax = axs[2]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g["fluxSurfaces"]["geo"]["delta"]
-        ax.plot(x, y, label="$\\delta$")
-        y = self.g["fluxSurfaces"]["geo"]["dell"]
-        ax.plot(x, y, ls="--", label="$\\delta_L$")
-        y = self.g["fluxSurfaces"]["geo"]["delu"]
-        ax.plot(x, y, ls="--", label="$\\delta_U$")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("Triangularity $\\delta$")
-        ax.legend()
-
-        ax = axs[3]
-        x = self.g["AuxQuantities"]["PSI_NORM"]
-        y = self.g["fluxSurfaces"]["geo"]["zeta"]
-        ax.plot(x, y, label="$\\zeta$")
-        y = self.g["fluxSurfaces"]["geo"]["zetail"]
-        ax.plot(x, y, ls="--", label="$\\zeta_{IL}$")
-        y = self.g["fluxSurfaces"]["geo"]["zetaiu"]
-        ax.plot(x, y, ls="--", label="$\\zeta_{IU}$")
-        y = self.g["fluxSurfaces"]["geo"]["zetaol"]
-        ax.plot(x, y, ls="--", label="$\\zeta_{OL}$")
-        y = self.g["fluxSurfaces"]["geo"]["zetaou"]
-        ax.plot(x, y, ls="--", label="$\\zeta_{OU}$")
-        ax.set_xlabel("$\\Psi_n$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("Squareness $\\zeta$")
-        ax.legend()
-
-        ax = axs[4]
-        ax.text(
-            0.0,
-            11.0,
-            "Rmajor = {0:.3f}m, Rmag = {1:.3f}m (Zmag = {2:.3f}m)".format(
-                self.Rmajor, self.Rmag, self.Zmag
-            ),
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            10.0,
-            f"a = {self.a:.3f}m, eps = {self.eps:.3f}",
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            9.0,
-            "kappa = {0:.3f} (kU = {1:.3f}, kL = {2:.3f})".format(
-                self.kappa, self.kappaU, self.kappaL
-            ),
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            8.0,
-            f"    kappa95 = {self.kappa95:.3f},  kappa995 = {self.kappa995:.3f}",
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            7.0,
-            "delta = {0:.3f} (dU = {1:.3f}, dL = {2:.3f})".format(
-                self.delta, self.deltaU, self.deltaL
-            ),
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            6.0,
-            f"    delta95 = {self.delta95:.3f},  delta995 = {self.delta995:.3f}",
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-        ax.text(
-            0.0,
-            5.0,
-            f"zeta = {self.zeta:.3f}",
-            color="k",
-            fontsize=10,
-            fontweight="normal",
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            rotation=0,
-        )
-
-        ax.set_ylim([0, 12])
-        ax.set_xlim([-1, 1])
-
-        ax.set_axis_off()
+        GEQplotting.plotFS(self, axs=axs, color=color, label=label)
 
     def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=7)
-
-        ax_plasma = axs
-
-        ax = ax_plasma[0]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            self.g["PRES"] * 1e-6,
-            "-s",
-            c=color,
-            lw=2,
-            markersize=3,
-            label="geqdsk p",
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("pressure (MPa)")
-
-        ax = ax_plasma[1]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            -self.g["PPRIME"] * 1e-6,
-            c=color,
-            lw=2,
-            ls="-",
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylabel("pressure gradient -p' (MPa/[])")
-        ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
-
-        ax = ax_plasma[2]
-        ax.plot(self.g["AuxQuantities"]["RHO"], self.g["FPOL"], c=color, lw=2, ls="-")
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylabel("$F = RB_{\\phi}$ (T*m)")
-
-        ax = ax_plasma[3]
-        ax.plot(self.g["AuxQuantities"]["RHO"], self.g["FFPRIM"], c=color, lw=2, ls="-")
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylabel("FF' (T*m/[])")
-        ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
-
-        ax = ax_plasma[4]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            np.abs(self.g["QPSI"]),
-            "-s",
-            c=color,
-            lw=2,
-            markersize=3,
-            label=label + "geqdsk q",
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("safety factor q")
-        ax.axhline(y=1.0, ls="--", lw=0.5, c="k")
-
-        ax = ax_plasma[5]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            np.abs(self.g.surfAvg("Jt") * 1e-6),
-            "-s",
-            c=color,
-            lw=2,
-            markersize=3,
-            label=label + "geqdsk Jt",
-        )
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            np.abs(self.g.surfAvg("Jt_fb") * 1e-6),
-            "--o",
-            c=color,
-            lw=2,
-            markersize=3,
-            label=label + "geqdsk Jt(fb)",
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylabel("FSA toroidal current density ($MA/m^2$)")
-        ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
-
-        if legendYN:
-            ax.legend()
-
-        ax = ax_plasma[6]
-        ax.plot(
-            self.g["fluxSurfaces"]["midplane"]["R"],
-            np.abs(self.g["fluxSurfaces"]["midplane"]["Bt"]),
-            "-s",
-            c=color,
-            lw=2,
-            markersize=3,
-            label=label + "geqdsk Bt",
-        )
-        ax.plot(
-            self.g["fluxSurfaces"]["midplane"]["R"],
-            np.abs(self.g["fluxSurfaces"]["midplane"]["Bp"]),
-            "--o",
-            c=color,
-            lw=2,
-            markersize=3,
-            label=label + "geqdsk Bp",
-        )
-        ax.set_xlabel("R (m) midplane")
-        ax.set_ylabel("Midplane fields (abs())")
-
-        if legendYN:
-            ax.legend()
-
-        return ax_plasma
+        GEQplotting.plotPlasma(self, axs=axs, legendYN=legendYN, color=color, label=label)
 
     def plotGeometry(self, axs=None, color="r"):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=4)
+        GEQplotting.plotGeometry(self, axs=axs, color=color)
 
-        ax = axs[0]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            self.g["fluxSurfaces"]["geo"]["cxArea"],
-            "-",
-            c=color,
-            lw=2,
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("CX Area ($m^2$)")
+    def plotFluxSurfaces(self, ax=None, fluxes=[1.0], color="b", alpha=1.0, rhoPol=True, sqrt=False, lw=1, lwB=2, plot1=True, label = ''):
+        return GEQplotting.plotFluxSurfaces(self, ax=ax, fluxes=fluxes, color=color, alpha=alpha, rhoPol=rhoPol, sqrt=sqrt, lw=lw, lwB=lwB, plot1=plot1, label = label)
 
-        ax = axs[1]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            self.g["fluxSurfaces"]["geo"]["surfArea"],
-            "-",
-            c=color,
-            lw=2,
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("Surface Area ($m^2$)")
+    def plotXpointEnvelope(self, ax=None, color="b", alpha=1.0, rhoPol=True, sqrt=False):
+        GEQplotting.plotXpointEnvelope(self, ax=ax, color=color, alpha=alpha, rhoPol=rhoPol, sqrt=sqrt)
 
-        ax = axs[2]
-        ax.plot(
-            self.g["AuxQuantities"]["RHO"],
-            self.g["fluxSurfaces"]["geo"]["vol"],
-            "-",
-            c=color,
-            lw=2,
-        )
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("Volume ($m^3$)")
+# -----------------------------------------------------------------------------
+# Tools to handle flux surface definitions
+# -----------------------------------------------------------------------------
+class mitim_flux_surfaces:
 
-    def plotFluxSurfaces(
-        self,
-        ax=None,
-        fluxes=[1.0],
-        color="b",
-        alpha=1.0,
-        rhoPol=True,
-        sqrt=False,
-        lw=1,
-        plot1=True,
-    ):
-        x = self.g["AuxQuantities"]["R"]
-        y = self.g["AuxQuantities"]["Z"]
+    def reconstruct_from_mxh_moments(self,R0, a, kappa, Z0, cn, sn, thetas = None):
+        '''
+        sn = [0.0, np.arcsin(delta), -zeta, ...]
+        cn = [...]
 
-        if rhoPol:
-            z = self.g["AuxQuantities"]["RHOpRZ"]
-        else:
-            z = self.g["AuxQuantities"]["RHORZ"]
+        You can provide a multi-dim array of (radii, )
+        '''
 
-        if not sqrt:
-            z = z**2
+        self.R0 = R0
+        self.a = a
+        self.kappa = kappa
+        self.Z0 = Z0
+        self.cn = cn
+        self.sn = sn
 
-        cs, csA = plotSurfaces(
-            x, y, z, fluxes=fluxes, ax=ax, color=color, alpha=alpha, lw=lw, plot1=plot1
-        )
+        self.delta = np.sin(self.sn[...,1])
+        self.zeta = -self.sn[...,2]
 
-        return cs, csA
+        self._from_mxh(thetas = thetas)
+        
+    def reconstruct_from_miller(self,R0, a, kappa, Z0, delta, zeta, thetas = None):
+        '''
+        sn = [0.0, np.arcsin(delta), -zeta, ...]
+        cn = [...]
 
-    def plotXpointEnvelope(
-        self, ax=None, color="b", alpha=1.0, rhoPol=True, sqrt=False
-    ):
-        flx = 0.001
-        fluxes = [1.0 - flx, 1.0 - flx / 2, 1.0, 1.0 + flx / 2, 1.0 + flx]
+        You can provide a multi-dim array of (radii, ) or not
+        '''
 
-        self.plotFluxSurfaces(
-            fluxes=fluxes, ax=ax, color=color, alpha=alpha, rhoPol=rhoPol, sqrt=sqrt
-        )
+        self.R0 = R0
+        self.a = a
+        self.kappa = kappa
+        self.Z0 = Z0
+        self.delta = delta
+        self.zeta = zeta
 
-    def plot2Dquantity(
-        self,
-        ax=None,
-        var="Jr",
-        zlims=None,
-        title="Radial Current",
-        cmap="seismic",
-        direct=False,
-        titlebar="J ($MA/m^2$)",
-        factor=1.0,
-        includeSurfs=True,
-    ):
+        self.cn = np.array([0.0,0.0,0.0])
+        self.sn = np.array([0.0,np.arcsin(self.delta),-self.zeta])
+
+        self._from_mxh(thetas = thetas)
+
+    def _from_mxh(self, thetas = None):
+
+        self.R, self.Z = from_mxh_to_RZ(self.R0, self.a, self.kappa, self.Z0, self.cn, self.sn, thetas = thetas)
+
+    def reconstruct_from_RZ(self, R, Z):
+
+        self.R = R
+        self.Z = Z
+
+        if len(self.R.shape) == 1:
+            self.R = self.R[np.newaxis,:]
+            self.Z = self.Z[np.newaxis,:]
+
+        self._to_miller()
+
+    def _to_mxh(self, n_coeff=6):
+
+        self.cn = np.zeros((self.R.shape[0],n_coeff))
+        self.sn = np.zeros((self.R.shape[0],n_coeff))
+        self.gn = np.zeros((self.R.shape[0],4))
+        for i in range(self.R.shape[0]):
+            self.cn[i,:], self.sn[i,:], self.gn[i,:] = from_RZ_to_mxh(self.R[i,:], self.Z[i,:], n_coeff=n_coeff)
+
+        [self.R0, self.a, self.Z0, self.kappa] = self.gn.T
+
+    def _to_miller(self):
+
+        self.R0 = np.mean(self.R, axis=-1)
+        self.Z0 = np.mean(self.Z, axis=-1)
+
+        Rmin = np.min(self.R, axis=-1)
+        Rmax = np.max(self.R, axis=-1)
+        Zmax = np.max(self.Z, axis=-1)
+        Zmin = np.min(self.Z, axis=-1)
+
+        self.a = (Rmax - Rmin) / 2
+
+        # Elongations
+
+        self.kappa_u = (Zmax - self.Z0) / self.a
+        self.kappa_l = (self.Z0 - Zmin) / self.a
+        self.kappa = (self.kappa_u + self.kappa_l) / 2
+
+        # Triangularities
+
+        RatZmax = self.R[np.arange(self.R.shape[0]),np.argmax(self.Z,axis=-1)]
+        self.delta_u = (self.R0-RatZmax) / self.a
+
+        RatZmin = self.R[np.arange(self.R.shape[0]),np.argmin(self.Z,axis=-1)]
+        self.delta_l = (self.R0-RatZmin) / self.a
+
+        self.delta = (self.delta_u + self.delta_l) / 2
+
+        # Squareness (not parallel for the time being)
+        self.zeta = np.zeros(self.R0.shape)
+        # for i in range(self.R0.shape[0]):
+        #     Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+        #     self.zeta[i] = zeta_uo
+
+    def plot(self, ax = None, color = 'r', label = None, plot_extremes=False):
+
         if ax is None:
             fig, ax = plt.subplots()
 
-        x = self.g["AuxQuantities"]["R"]
-        y = self.g["AuxQuantities"]["Z"]
-        if not direct:
-            z = self.g["AuxQuantities"][var] * factor
-        else:
-            z = var
+        for i in range(self.R.shape[0]):
+            ax.plot(self.R[i,:], self.Z[i,:], color = color, label = label)
 
-        if zlims is None:
-            am = np.amax(np.abs(z[:, :]))
-            ming = -am
-            maxg = am
-        else:
-            ming = zlims[0]
-            maxg = zlims[1]
-        levels = np.linspace(ming, maxg, 100)
-        colticks = np.linspace(ming, maxg, 5)
+            if plot_extremes:
+                ax.plot([self.R[i,self.Z[i,:].argmax()]], [self.Z[i,:].max()], 'o', color=color, markersize=5)
+                ax.plot([self.R[i,self.Z[i,:].argmin()]], [self.Z[i,:].min()], 'o', color=color, markersize=5)
 
-        cs = ax.contourf(x, y, z, levels=levels, extend="both", cmap=cmap)
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        if label is not None: 
+            ax.legend()
+        GRAPHICStools.addDenseAxis(ax)
 
-        cbar = GRAPHICStools.addColorbarSubplot(
-            ax,
-            cs,
-            barfmt="%3.1f",
-            title=titlebar,
-            fontsize=10,
-            fontsizeTitle=8,
-            ylabel="",
-            ticks=colticks,
-            orientation="bottom",
-            drawedges=False,
-            padCB="25%",
-        )
+def find_squareness_points(R, Z, debug = False):
 
-        ax.set_aspect("equal")
-        ax.set_title(title)
-        ax.set_xlabel("R (m)")
-        ax.set_ylabel("Z (m)")
+    # Reference point (A)
+    R_of_maxZ = R[Z.argmax()] 
+    Z_of_maxR = Z[R.argmax()]
 
-        if includeSurfs:
-            self.plotFluxSurfaces(
-                ax=ax,
-                fluxes=np.linspace(0, 1, 6),
-                rhoPol=False,
-                sqrt=True,
-                color="k",
-                lw=0.5,
-            )
-
-        return cs
+    # Upper Outer Squareness point (D)
+    R_of_maxR = R.max()
+    Z_of_maxZ = Z.max()
     
-    def get_MXH_coeff(self, n, n_coeff=6, plot=False): 
-        """
-        Calculates MXH Coefficients as a function of poloidal flux
-        n: number of grid points to interpolate the flux surfaces
-           NOT the number of radial points returned. This function
-           will return n_coeff sin and cosine coefficients for each
-           flux surface in the geqdsk file. Changing n is only nessary
-           if the last closed flux surface is not well resolved.
-        """
-        from scipy.signal import savgol_filter
-        start=time()
+    # Find intersection with separatrix (C)
+    Ri_uo, Zi_uo = find_intersection_squareness(R, Z, R_of_maxZ, Z_of_maxR, R_of_maxR, Z_of_maxZ)
 
-        # Upsample the poloidal flux grid
-        Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
-        R = np.linspace(np.min(Raux),np.max(Raux),n)
-        Z = np.linspace(np.min(Zaux),np.max(Zaux),n)
-        Psi_norm = MATHtools.interp2D(R, Z, Raux, Zaux, self.g["AuxQuantities"]["PSIRZ_NORM"])
+    # Find point B
+    Rs_uo = R_of_maxZ + (R_of_maxR-R_of_maxZ)/2
+    Zs_uo = Z_of_maxR + (Z_of_maxZ-Z_of_maxR)/2
 
-        # calculate the LCFS boundary
-        # Select only the R and Z values within the LCFS- I psi_norm outside to 2
-        # this works fine for fixed-boundary equilibria but needs v. high tolerance
-        # for the full equilibrium with x-point.
-        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
-        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
-        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
-        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
-        Psi_norm[:,:R_min_ind] = 2
-        Psi_norm[:,R_max_ind:] = 2
-        Psi_norm[:Z_min_ind,:] = 2
-        Psi_norm[Z_max_ind:,:] = 2
+    # Squareness is defined as the distance BC divided by the distance AB
+    zeta_uo = np.sqrt((Ri_uo-Rs_uo)**2 + (Zi_uo-Zs_uo)**2) / np.sqrt((R_of_maxZ-R_of_maxR)**2 + (Z_of_maxZ-Z_of_maxR)**2)
 
-        #psis = np.linspace(0.001,0.9999,self.g["AuxQuantities"]["PSI_NORM"].size)
-        #psi_reg = self.g["AuxQuantities"]["PSI"]
-        rhos = self.g["AuxQuantities"]["RHO"]
-        psis = self.g["AuxQuantities"]["PSI_NORM"]
-        
-        cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
-        print(f" \t\t--> Finding g-file flux-surfaces")
-        for i, psi in enumerate(psis):
-            
-            if psi == 0:
-                psi+=0.0001
+    if debug:
+        plt.ion()
+        fig, ax = plt.subplots()
+        ax.plot(R, Z, 'o-')
+        ax.plot([R_of_maxZ], [Z_of_maxR], 'o', color='b', label = 'A')
+        ax.plot([R_of_maxR], [Z_of_maxZ], 'o', color='r', label = 'D')
+        ax.plot([Ri_uo], [Zi_uo], 'o', color='k', label = 'C')
+        ax.plot([Rs_uo], [Zs_uo], 'o', color='g', label = 'B')
+        ax.set_aspect('equal')
+        ax.legend()
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
 
-            # need to construct level contours for each flux surface 
-            Ri, Zi = MATHtools.drawContours(
-                R,
-                Z,
-                Psi_norm,
-                n,
-                psi,
-            )
-            Ri, Zi = Ri[0], Zi[0]
-                
-            # interpolate R,Z contours to have the same dimensions
-            Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
-            Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
-    
-            #calculate Miller Extended Harmionic coefficients
-            #enforce zero at the innermost flux surface
-            
-            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
-            if i == 0:
-                cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
+    return Ri_uo, Zi_uo, zeta_uo
 
-        end=time()
+def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
 
-        print(f'\ntotal run time: {end-start} s')
-        if plot:
-            fig, axes = plt.subplots(2,1)
-            for i in np.arange(n_coeff):
-                axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
-                axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
-            axes[0].legend() ; axes[1].legend()
-            axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
-            axes[0].grid() ; axes[1].grid()
-            axes[0].set_title("MXH Coefficients - Cosine")
-            axes[1].set_title("MXH Coefficients - Sine")
-            plt.tight_layout()
-            plt.show()
-        print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
-        return cn, sn, gn, psis
-        
-def get_flux_surface_geometry(R, Z, n_coeff=3):
+    R_line = np.linspace(Ax, Dx, 100)
+    Z_line = np.linspace(Az, Dz, 100)
+    line1 = LineString(zip(R_line, Z_line))
+    line2 = LineString(zip(R, Z))
+    intersection = line1.intersection(line2)
+
+    return intersection.x, intersection.y
+
+# -----------------------------------------------------------------------------
+# Utilities for parameterizations
+# -----------------------------------------------------------------------------
+
+def from_RZ_to_mxh(R, Z, n_coeff=3):
     """
     Calculates MXH Coefficients for a flux surface
     """
@@ -1270,10 +658,13 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
     theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
 
     # Find the continuation of theta and theta_r to [0,2pi]
-    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+    theta_r_cont = np.copy(theta_r)
+    theta_cont = np.copy(theta)
 
-    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
-    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+    max_theta = np.argmax(theta)
+    min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r)
+    min_theta_r = np.argmin(theta_r)
 
     theta_cont[:max_theta] = theta_cont[:max_theta]
     theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
@@ -1287,182 +678,481 @@ def get_flux_surface_geometry(R, Z, n_coeff=3):
 
     theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
     
-    # fourier decompose to find coefficients
-    c = np.zeros(n_coeff)
-    s = np.zeros(n_coeff)
-    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
-    from scipy.integrate import quad
+    # Fourier decompose to find coefficients
+    c, s = np.zeros(n_coeff), np.zeros(n_coeff)
+    def f_theta_r(theta):
+        return np.interp(theta, theta_cont, theta_r_cont)
+    
     for i in np.arange(n_coeff):
-        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
-        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+        def integrand_sin(theta):
+            return np.sin(i*theta)*(f_theta_r(theta))
+        def integrand_cos(theta):
+            return np.cos(i*theta)*(f_theta_r(theta))
 
         s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
         c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
         
-        
     return c, s, bbox
 
+def from_mxh_to_RZ(R0, a, kappa, Z0, cn, sn, thetas = None):
 
+    if thetas is None:
+        thetas = np.linspace(0, 2 * np.pi, 100)
 
+    # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
+    if IOtools.isfloat(R0):
+        R0 = [R0]
+        a = [a]
+        kappa = [kappa]
+        Z0 = [Z0]
+        cn = np.array(cn)[np.newaxis,:]
+        sn = np.array(sn)[np.newaxis,:]
 
-def plotSurfaces(
-    R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, plot1=True
-):
-    if ax is None:
-        fig, ax = plt.subplots()
+    R0 = np.array(R0)
+    a = np.array(a)
+    kappa = np.array(kappa)
+    Z0 = np.array(Z0)
 
-    [Rg, Yg] = np.meshgrid(R, Z)
-
-    if plot1:
-        csA = ax.contour(
-            Rg, Yg, F, 1000, levels=[1.0], colors=color, alpha=alpha, linewidths=lw * 2
-        )
-    else:
-        csA = None
-    cs = ax.contour(
-        Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw
-    )
-
-    return cs, csA
-
-
-def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
-    if fn is None:
-        wasProvided = False
-
-        from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        fn = FigureNotebook("GEQDSK Notebook", geometry="1600x1000")
-    else:
-        wasProvided = True
-
-    if labelsGs is None:
-        labelsGs = []
-        for i, g in enumerate(geqdsks):
-            labelsGs.append(f"#{i + 1}")
-
-    # -----------------------------------------------------------------------------
-    # Plot All
-    # -----------------------------------------------------------------------------
-    if plotAll:
-        for i, g in enumerate(geqdsks):
-            _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - ")
-
-    # -----------------------------------------------------------------------------
-    # Compare in same plot - Surfaces
-    # -----------------------------------------------------------------------------
-    fig = fn.add_figure(label=extraLabel + "Comp. - Surfaces")
-
-    grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-    ax1 = fig.add_subplot(grid[:, 0])
-    ax2 = fig.add_subplot(grid[:, 1])
-    ax3 = fig.add_subplot(grid[0, 2])
-    ax4 = fig.add_subplot(grid[1, 2])
-    axs = [ax1, ax2, ax3, ax4]
-
-    cols = GRAPHICStools.listColors()
-
-    for i, g in enumerate(geqdsks):
-        g.plotFS(axs=axs, color=cols[i], label=f"#{i + 1}")
-
-    ax3.legend()
-
-    # -----------------------------------------------------------------------------
-    # Compare in same plot - Surfaces
-    # -----------------------------------------------------------------------------
-    fig = fn.add_figure(label=extraLabel + "Comp. - Plasma")
-    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-
-    ax_plasma = [
-        fig.add_subplot(grid[0, 0]),
-        fig.add_subplot(grid[1, 0]),
-        fig.add_subplot(grid[0, 1]),
-        fig.add_subplot(grid[1, 1]),
-        fig.add_subplot(grid[0, 2]),
-        fig.add_subplot(grid[1, 2]),
-        fig.add_subplot(grid[0, 3]),
-    ]  # ,
-    # fig.add_subplot(grid[1,3])]
-
-    cols = GRAPHICStools.listColors()
-
-    for i, g in enumerate(geqdsks):
-        g.plotFS(axs=[ax1, ax2, ax3, ax4], color=cols[i], label=f"{labelsGs[i]} ")
-        g.plotPlasma(
-            axs=ax_plasma,
-            legendYN=False,
-            color=cols[i],
-            label=f"{labelsGs[i]} ",
-        )
-
-    return ax_plasma, fn
-
-
-def plotEnclosed(Rmajor, a, Zmajor, kappaU, kappaL, deltaU, deltaL, ax=None, c="k"):
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    ax.axhline(y=Zmajor, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor - a, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor + a, ls="--", c=c, lw=0.5)
-    Rtop = Zmajor + a * kappaU
-    ax.axhline(y=Rtop, ls="--", c=c, lw=0.5)
-    Rbot = Zmajor - a * kappaL
-    ax.axhline(y=Rbot, ls="--", c=c, lw=0.5)
-
-    ax.axvline(x=Rmajor - a * deltaU, ls="--", c=c, lw=0.5)
-    ax.axvline(x=Rmajor - a * deltaL, ls="--", c=c, lw=0.5)
-
-
-def create_geo_MXH3(
-    Rmaj, rmin, zmag, kappa, delta, zeta, shape_cos, shape_sin, debugPlot=False
-):
-    """
-    R and Z outputs have (dim_flux_surface,dim_theta)
-    """
-
-    theta = np.linspace(0, 2 * np.pi, 100)
-
-    # Organize cos/sin
-    shape_cos0 = shape_cos[0]
-    shape_cos_n = []
-    shape_sin_n = [np.arcsin(delta), -zeta]
-    for i in range(len(shape_cos) - 1):
-        shape_cos_n.append(shape_cos[i + 1])
-        if i > 1:
-            shape_sin_n.append(shape_sin[i + 1])
-    shape_cos_n = np.array(shape_cos_n)
-    shape_sin_n = np.array(shape_sin_n)
-
-    R, Z = [], []
-    for ir in range(Rmaj.shape[0]):
-        c_0 = shape_cos0[ir]
-        c_n = shape_cos_n[:, ir]
-        s_n = shape_sin_n[:, ir]
-
-        theta_R = []
-        for i in range(len(theta)):
-            s = theta[i] + c_0
-            for m in range(len(c_n)):
-                s += c_n[m] * np.cos((m + 1) * theta[i]) + s_n[m] * np.sin(
-                    (m + 1) * theta[i]
-                )
-            theta_R.append(s)
-        theta_R = np.array(theta_R)
-
-        R_0 = Rmaj[ir] + rmin[ir] * np.cos(theta_R)
-        Z_0 = zmag[ir] + kappa[ir] * rmin[ir] * np.sin(theta)
-
-        R.append(R_0)
-        Z.append(Z_0)
-
-    R, Z = np.array(R), np.array(Z)
-
-    if debugPlot:
-        fig, ax = plt.subplots()
-        for ir in range(R.shape[0]):
-            ax.plot(R[ir, :], Z[ir, :])
-        plt.show()
+    R = np.zeros((R0.shape[0],len(thetas)))
+    Z = np.zeros((R0.shape[0],len(thetas)))
+    n = np.arange(1, sn.shape[1])
+    for i,theta in enumerate(thetas):
+        theta_R = theta + cn[:,0] + np.sum( cn[:,1:]*np.cos(n*theta) + sn[:,1:]*np.sin(n*theta), axis=-1 )
+        R[:,i] = R0 + a*np.cos(theta_R)
+        Z[:,i] = Z0 + kappa*a*np.sin(theta)
 
     return R, Z
+
+# --------------------------------------------------------------------------------------------------------------
+# Fixed boundary stuff
+# --------------------------------------------------------------------------------------------------------------
+
+class freegs_millerized:
+
+    def __init__(self, R, a, kappa_sep, delta_sep, zeta_sep, z0):
+
+        print("> Fixed-boundary equilibrium with FREEGS")
+
+        print("\t- Initializing miller geometry")
+        print(f"\t\t* R={R} m, a={a} m, kappa_sep={kappa_sep}, delta_sep={delta_sep}, zeta_sep={zeta_sep}, z0={z0} m")
+
+        self.R0 = R
+        self.a = a
+        self.kappa_sep = kappa_sep
+        self.delta_sep = delta_sep
+        self.zeta_sep = zeta_sep
+        self.Z0 = z0
+
+        thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+
+        self.mitim_separatrix = mitim_flux_surfaces()
+        self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
+        self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
+
+    def prep(self,  p0_MPa, Ip_MA, B_T, beta_pol = None, n_coils = 10, resol_eq = 2**8+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
+
+        print("\t- Initializing plasma parameters")
+        if beta_pol is not None:
+            print(f"\t\t* beta_pol={beta_pol}, Ip={Ip_MA} MA, B={B_T} T")
+        else:
+            print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
+
+        self.p0_MPa = p0_MPa
+        self.Ip_MA = Ip_MA
+        self.B_T = B_T
+        self.beta_pol = beta_pol
+        self.parameters_profiles = parameters_profiles
+
+        print(f"\t- Preparing equilibrium with FREEGS, with a resolution of {resol_eq}x{resol_eq}")
+        self._define_coils(n_coils)
+        self._define_eq(resol = resol_eq)
+        self._define_gs()
+
+        # Define xpoints
+        print("\t\t* Defining upper and lower x-points")
+        self.xpoints = [
+            (self.R0 - self.a*self.delta_sep, self.Z0+self.a*self.kappa_sep),
+            (self.R0 - self.a*self.delta_sep, self.Z0-self.a*self.kappa_sep),
+        ]
+
+        # Define isoflux
+        print("\t\t* Defining midplane separatrix (isoflux)")
+        self.isoflux = [
+            (self.xpoints[0][0], self.xpoints[0][1], self.R0 + self.a, self.Z0),                 # Upper x-point with outer midplane
+            (self.xpoints[0][0], self.xpoints[0][1], self.R0 - self.a, self.Z0),                 # Upper x-point with inner midplane
+            (self.xpoints[0][0], self.xpoints[0][1], self.xpoints[1][0], self.xpoints[1][1]),   # Between x-points
+        ]
+
+        print("\t\t* Defining squareness isoflux point")
+
+        # Find squareness point
+        Rsq, Zsq, _ = find_squareness_points(self.R_sep, self.Z_sep)
+
+        self.isoflux.append(
+            (self.xpoints[0][0], self.xpoints[0][1], Rsq, Zsq)         # Upper x-point with squareness point
+        )
+        self.isoflux.append(
+            (self.xpoints[0][0], self.xpoints[0][1], Rsq, -Zsq)        # Upper x-point with squareness point
+        )
+
+        # Combine
+        self.constrain = freegs.control.constrain(
+            isoflux=self.isoflux,
+            xpoints=self.xpoints,
+            )
+
+    def _define_coils(self, n, rel_distance_coils = 0.5, updown_coils = True):
+
+        print(f"\t- Defining {n} coils{' (up-down symmetric)' if updown_coils else ''} at a distance of {rel_distance_coils}*a from the separatrix")
+
+        self.distance_coils = self.a*rel_distance_coils
+        self.updown_coils = updown_coils
+
+        if self.updown_coils:
+            thetas = np.linspace(0, np.pi, n)
+        else:
+            thetas = np.linspace(0, 2*np.pi, n, endpoint=False)
+
+        self.mitim_coils_surface = mitim_flux_surfaces()
+        self.mitim_coils_surface.reconstruct_from_miller(self.R0, (self.a+self.distance_coils), self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
+        self.Rcoils, self.Zcoils = self.mitim_coils_surface.R[0,:], self.mitim_coils_surface.Z[0,:]
+
+        self.coils = []
+        for num, (R, Z) in enumerate(zip(self.Rcoils, self.Zcoils)):
+
+            if self.updown_coils and Z > 0:
+                coilU = freegs.machine.Coil(
+                    R,
+                    Z
+                    )
+                coilL = freegs.machine.Coil(
+                    R,
+                    -Z
+                    )
+                coil = freegs.machine.Circuit( [ ('U', coilU, 1.0 ), ('L', coilL, 1.0 ) ] )
+            else:
+
+                coil = freegs.machine.Coil(
+                    R,
+                    Z
+                    )
+
+            self.coils.append(
+                (f"coil_{num}", coil)
+                )
+
+    def _define_eq(self, resol=2**9+1):
+
+        print("\t- Defining equilibrium")
+        self.tokamak = freegs.machine.Machine(self.coils)
+
+        a = self.a + self.distance_coils
+
+        Rmin = (self.R0-a) - a*0.25
+        Rmax = (self.R0+a) + a*0.25
+
+        b = a*self.kappa_sep
+        Zmin = (self.Z0 - b) - b*0.25
+        Zmax = (self.Z0 + b) + b*0.25
+
+        self.eq = freegs.Equilibrium(tokamak=self.tokamak,
+                                Rmin=Rmin, Rmax=Rmax,
+                                Zmin=Zmin, Zmax=Zmax,
+                                nx=resol, ny=resol,
+                                boundary=freegs.boundary.freeBoundaryHagenow)
+
+    def _define_gs(self):
+
+        if self.beta_pol is None:
+            print("\t- Defining Grad-Shafranov equilibrium: p0, Ip and vaccum R*Bt")
+
+            self.profiles = freegs.jtor.ConstrainPaxisIp(self.eq,
+                self.p0_MPa*1E6, self.Ip_MA*1E6, self.R0*self.B_T,
+                alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
+
+        else:
+            print("\t- Defining Grad-Shafranov equilibrium: beta_pol, Ip and vaccum R*Bt")
+
+            self.profiles = freegs.jtor.ConstrainBetapIp(self.eq,
+                self.beta_pol, self.Ip_MA*1E6, self.R0*self.B_T,
+                alpha_m=self.parameters_profiles['alpha_m'], alpha_n=self.parameters_profiles['alpha_n'], Raxis=self.parameters_profiles['Raxis'])
+
+    def solve(self, show = False, rtol=1e-6):
+
+        print("\t- Solving equilibrium with FREEGS")
+        with IOtools.timer():
+            self.x,self.y = freegs.solve(self.eq,         # The equilibrium to adjust
+                self.profiles,                 # The toroidal current profile function
+                constrain=self.constrain,      # Constraint function to set coil currents
+                show=show,
+                rtol=rtol,             # Default is 1e-3
+                atol=1e-10,
+                maxits=100,            # Default is 50
+                convergenceInfo=True)  
+            print("\t\t * Done!")
+
+        self.check()
+
+    def check(self, warning_error = 0.01, plotYN = False):
+
+        print("\t- Checking separatrix quality (Miller vs FREEGS)")
+        RZ = self.eq.separatrix()
+
+        self.mitim_separatrix_eq = mitim_flux_surfaces()
+        self.mitim_separatrix_eq.reconstruct_from_RZ(RZ[:,0], RZ[:,1])
+
+        # --------------------------------------------------------------
+        # Check errors
+        # --------------------------------------------------------------
+
+        max_error = 0.0
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
+            miller_value = getattr(self, key)
+            sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
+            error = abs( (miller_value-sep_value)/miller_value )
+            print(f"\t\t* {key}: {miller_value:.3f} vs {sep_value:.3f} ({100*error:.2f}%)")
+
+            max_error = np.max([max_error, error])
+
+        if max_error > warning_error:
+            print(f"\t\t- WARNING: maximum error is {100*max_error:.2f}%", typeMsg='w')
+        else:
+            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='i')
+
+        # --------------------------------------------------------------
+        # Plotting
+        # --------------------------------------------------------------
+
+        if plotYN:
+
+            plt.ion()
+            fig = plt.figure(figsize=(12,8))
+            axs = fig.subplot_mosaic(
+                """
+                AB
+                AB
+                CB
+                """
+            )
+
+            # Plot direct FreeGS output
+
+            ax = axs['A']
+            self.eq.plot(axis=ax,show=False)
+            self.constrain.plot(axis=ax, show=False)
+
+            for coil in self.coils:
+                if isinstance(coil[1],freegs.machine.Circuit):
+                    ax.plot([coil[1]['U'].R], [coil[1]['U'].Z], 's', c='k', markersize=2)
+                    ax.plot([coil[1]['L'].R], [coil[1]['L'].Z], 's', c='k', markersize=2)
+                else:
+                    ax.plot([coil[1].R], [coil[1].Z], 's', c='k', markersize=2)
+
+            GRAPHICStools.addLegendApart(ax,ratio=0.9,size=10)
+
+            ax = axs['C']
+            ax.plot(self.x,'-o', markersize=3, color='b', label = '$\\psi$ max change')
+            ax.set_xlabel('Iteration')
+            ax.set_ylabel('$\\psi$ max change')
+            ax.set_yscale('log')
+            ax.legend(loc='lower left',prop={'size': 10})
+
+            ax = axs['C'].twinx()
+            ax.plot(self.y,'-o', markersize=3, color='r', label = '$\\psi$ max relative change')
+            ax.set_ylabel('$\\psi$ max relative change')
+            ax.set_yscale('log')
+            ax.legend(loc='upper right',prop={'size': 10})
+
+            # Plot comparison of equilibria
+
+            ax = axs['B']
+
+            self.mitim_separatrix.plot(ax=ax, color = 'b', label = 'Miller (original)', plot_extremes=True)
+            self.mitim_separatrix_eq.plot(ax=ax, color = 'r', label = 'Separatrix (freegs)', plot_extremes=True)
+
+            ax.legend(prop={'size': 10})
+
+    def derive(self, psi_surfaces = np.linspace(0,1.0,10), psi_profiles = np.linspace(0,1.0,100)):
+
+        # Grab surfaces
+        Rs, Zs = [], []
+        for psi_norm in psi_surfaces:
+            R, Z = self.find_surface(psi_norm)
+            Rs.append(R)
+            Zs.append(Z)
+        Rs = np.array(Rs)
+        Zs = np.array(Zs)
+            
+        # Calculate surface stuff in parallel
+        self.surfaces = mitim_flux_surfaces()
+        self.surfaces.reconstruct_from_RZ(Rs, Zs)
+        self.surfaces.psi = psi_surfaces
+
+        # Grab profiles
+        self.profile_psi_norm = psi_profiles
+        self.profile_pressure = self.eq.pressure(psinorm =psi_profiles)*1E-6
+        self.profile_q = self.eq.q(psinorm = psi_profiles)
+        self.profile_RB = self.eq.fpol(psinorm = psi_profiles)
+
+        # Grab quantities
+        self.profile_q95 = self.eq.q(psinorm = 0.95)
+        self.profile_q0 = self.eq.q(psinorm = 0.0)
+        self.profile_betaN = self.eq.betaN()
+        self.profile_Li2 = self.eq.internalInductance2()
+        self.profile_pave = self.eq.pressure_ave()
+        self.profile_beta_pol =  self.eq.poloidalBeta()
+        self.profile_Ashaf = self.eq.shafranovShift
+
+    def find_surface(self, psi_norm = 0.5, thetas = None):
+
+        if psi_norm == 0.0:
+            psi_norm = 1E-6
+
+        if psi_norm == 1.0:
+            RZ = self.eq.separatrix(npoints= 1000 if thetas is None else len(thetas))
+            R, Z = RZ[:,0], RZ[:,1]
+        else:
+            if thetas is None:
+                thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+
+            from freegs.critical import find_psisurface, find_critical
+            from scipy import interpolate
+
+            psi = self.eq.psi()
+            opoint, xpoint = find_critical(self.eq.R, self.eq.Z, psi)
+            psinorm = (psi - opoint[0][2]) / (self.eq.psi_bndry - opoint[0][2])
+            psifunc = interpolate.RectBivariateSpline(self.eq.R[:, 0], self.eq.Z[0, :], psinorm)
+            r0, z0 = opoint[0][0:2]
+
+            R = np.zeros(len(thetas))
+            Z = np.zeros(len(thetas))
+            for i,theta in enumerate(thetas):
+                R[i],Z[i] = find_psisurface(
+                    self.eq,
+                    psifunc,
+                    r0,
+                    z0,
+                    r0 + 10.0 * np.sin(theta),
+                    z0 + 10.0 * np.cos(theta),
+                    psival=psi_norm,
+                    n=1000,
+                )
+        return R,Z
+
+    # --------------------------------------------------------------
+    # Plotting
+    # --------------------------------------------------------------
+
+    def plot(self, axs = None, color = 'b', label = ''):
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(16,7))
+            axs = fig.subplot_mosaic(
+                """
+                A12
+                A34
+                """)
+            axs = [axs['A'], axs['1'], axs['2'], axs['3'], axs['4']]
+
+        self.plot_flux_surfaces(ax = axs[0], color = color)
+        self.plot_profiles(axs = axs[1:], color = color, label = label)
+
+    def plot_flux_surfaces(self, ax = None, color = 'b'):
+
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots(figsize=(12,8))
+
+        for i in range(self.surfaces.R.shape[0]):
+            ax.plot(self.surfaces.R[i],self.surfaces.Z[i], '-', label = f'$\\psi$ = {self.surfaces.psi[i]:.2f}', color = color, markersize=3)
+
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        GRAPHICStools.addDenseAxis(ax)
+
+    def plot_profiles(self, axs = None, color = 'b', label = ''):
+
+        if axs is None:
+            plt.ion()
+            fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(8,8))
+            axs = axs.flatten()
+
+        ax = axs[0]
+        ax.plot(self.profile_psi_norm,self.profile_pressure,'-',color=color, label = label)
+        ax.set_xlabel('$\\psi$')
+        ax.set_xlim([0,1])
+        ax.set_ylabel('Pressure (MPa)')
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.plot(self.profile_psi_norm,self.profile_q,'-',color=color)
+        ax.axhline(y=1, color='k', ls='--', lw=0.5)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('q')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[2]
+        ax.plot(self.profile_psi_norm,self.profile_RB,'-',color=color)
+        ax.axhline(y=self.R0*self.B_T, color=color, ls='--', lw=0.5)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$R\\cdot B_t$ ($T\\cdot m$)')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+    def plot_flux_surfaces_characteristics(self, axs = None, color = 'b', label = ''):
+
+        if axs is None:
+            plt.ion()
+            fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(8,8))
+            axs = axs.flatten()
+
+        ax = axs[0]
+        ax.plot(self.surfaces.psi, self.surfaces.kappa, '-o', color=color, label = label, markersize=3)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$\\kappa$')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.plot(self.surfaces.psi, self.surfaces.delta, '-o', color=color, label = label, markersize=3)
+        ax.set_xlabel('$\\psi$')
+        ax.set_ylabel('$\\delta$')
+        ax.set_xlim([0,1])
+        GRAPHICStools.addDenseAxis(ax)
+
+    # --------------------------------------------------------------
+    # Writing
+    # --------------------------------------------------------------
+
+    def write(self, filename = "mitim_freegs.geqdsk"):
+
+        print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
+
+        with open(filename, "w") as f:
+            geqdsk.write(self.eq, f)
+
+    def to_profiles(self, scratch_folder = '~/scratch/'):
+
+        # Produce geqdsk object
+        scratch_folder = IOtools.expandPath(scratch_folder)
+        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        self.write(file_scratch)
+        g = MITIMgeqdsk(file_scratch)
+
+        os.remove(file_scratch)
+
+        # From geqdsk to profiles
+        return g.to_profiles()
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+
+        # Produce geqdsk object
+        scratch_folder = IOtools.expandPath(folder)
+        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        self.write(file_scratch)
+        g = MITIMgeqdsk(file_scratch)
+
+        return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, PichT_MW=PichT_MW, times=times)

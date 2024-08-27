@@ -26,14 +26,15 @@ def main():
         arr = np.arange(int(args.numbers), int(args.to) + 1, 1)
 
     s = CONFIGread.load_settings()
-    user = s[s["preferences"]["ntcc"]]["username"]
-
+    
     for i in range(len(arr)):
-        cancelRun(args.runid_str + str(arr[i]).zfill(2))
+        cancelRun(args.runid_str + str(arr[i]).zfill(2), s, args.tokamak)
 
-def cancelRun(namerun):
-    t = TRANSPtools.TRANSP(IOtools.expandPath(s["local"]["scratch"]), args.tokamak)
+def cancelRun(namerun, s, tokamak):
+    t = TRANSPtools.TRANSP(IOtools.expandPath(s["local"]["scratch"]), tokamak)
     t.defineRunParameters(namerun, namerun, ensureMPIcompatibility=False)
+
+    user = s[s["preferences"]["ntcc"]]["username"]
 
     _, _, infoGrid = t.check()
 
@@ -45,10 +46,8 @@ def cancelRun(namerun):
             f"\t>>>> Run {namerun} cannot be found on the grid, not performing any active action"
         )
 
-
-def cancelAll(ParamsAll, cont):
-    cancelRun(ParamsAll["name"] + str(arr[cont]).zfill(2))
-
+# def cancelAll(ParamsAll, cont):
+#     cancelRun(ParamsAll["name"] + str(arr[cont]).zfill(2))
 
 if __name__ == "__main__":
     main()

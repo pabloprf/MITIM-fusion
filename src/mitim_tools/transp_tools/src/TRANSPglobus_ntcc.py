@@ -1,12 +1,9 @@
-import sys, os, time
-import numpy as np
+import os
+import time
 from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, IOtools
-from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools.src import TRANSPglobus, TRANSPmain
-from mitim_tools.transp_tools.tools import NMLtools
-from mitim_tools.misc_tools import CONFIGread
-
+from mitim_tools.transp_tools.utils import TRANSPhelpers
+from mitim_tools.transp_tools import NMLtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 
 retrieveTerminalOutput = True
@@ -176,7 +173,7 @@ def tr_dat(runid, tok, FolderTRANSP):
     # Interpret
     # --------------------------------
 
-    NMLtools.interpret_trdat(f"{FolderTRANSP}/outputtrdat.txt")
+    TRANSPhelpers.interpret_trdat(f"{FolderTRANSP}/outputtrdat.txt")
 
 
 def tr_send(FolderTRANSP, runid, tok):

@@ -331,7 +331,7 @@ class MITIMpopcon:
         axs[1, 1].set_title(r'$\nu_n$ offset History')
         axs[1, 1].legend()
 
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
     def plot_profile_comparison(self, profiles_gacode: PROFILEStools.PROFILES_GACODE):
@@ -368,7 +368,7 @@ class MITIMpopcon:
         ax.legend(loc='lower left')
         ax2.legend(loc='upper right')
         plt.title("ASTRA-GACODE-POPCON Matching",fontsize=24)
-        plt.tight_layout()
+        GRAPHICStools.adjust_figure_layout(fig)
 
     def evaluate_on_grid(self,
              Te_range=np.linspace(5, 15, 10), # temperature range to evaluate, keV

@@ -1,27 +1,14 @@
-import sys, os, pickle, copy, datetime, netCDF4
+import netCDF4
+import math
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from collections import OrderedDict
-from IPython import embed
-from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools
-from mitim_tools.im_tools.modules import EQmodule
-from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
-from mitim_tools.transp_tools.tools import (
-    FBMtools,
-    TORICtools,
-    PRIMAtools,
-    ANALYSIStools,
-)
+from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-import math
+from IPython import embed
 
-verbose_level = read_verbose_level()
 
-class CDFreactor:
+class transp_output:
     """
     Some variables are model-specific, because the formulas are not automatically saved in every astra run.
     In particular be careful when dealing with variables defined through dummy variables, whose names are not

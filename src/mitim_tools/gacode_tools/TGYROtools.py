@@ -22,7 +22,7 @@ except:
 
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-verbose_level = read_verbose_level()
+
 
 """
 Same philosophy as the TGLFtools
@@ -397,6 +397,13 @@ class TGYRO:
 
         print(f"\t\t- Using input.profiles from {IOtools.clipstr(self.profiles.file)}")
         fil = "input.gacode"
+
+        if self.profiles.profiles['rho(-)'][0] > 0.0:
+            print(
+                "\t\t- input.gacode had a finite first rho, which is not allowed. Setting it to 0.0", typeMsg="i"
+            )
+            self.profiles.profiles['rho(-)'][0] = 0.0
+
         self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp + fil)
 
         # -----------------------------------
@@ -4627,7 +4634,7 @@ class TGYROinput:
             for ikey in spec:
                 f.write(f"{ikey} = {spec[ikey]}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=verbose_level)
+        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=read_verbose_level())
 
 
 def print_options(physics_options, solver_options):

@@ -1,13 +1,15 @@
 import argparse
 import copy
 import matplotlib.pyplot as plt
-import torch  # This import is usually needed if torch is called within the pickling object
-import numpy as np
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+# These import are usually needed if they are called within the pickling object
+import torch  
+import numpy as np
+
 
 from IPython import embed
 
@@ -202,7 +204,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
 
 def main():
 
-    verbose_level = read_verbose_level()
+    
 
 # ----- Inputs
 

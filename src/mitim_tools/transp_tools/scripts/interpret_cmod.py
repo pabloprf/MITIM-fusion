@@ -24,7 +24,7 @@ runs = sys.argv[4:]
 cs = []
 lab = []
 for file in runs:
-    cs.append(CDFtools.CDFreactor(file))
+    cs.append(CDFtools.transp_output(file))
     lab.append(file.split("/")[-1].split(".")[0])
 
 # ----- Reading data: MDS+ experimental data
@@ -128,4 +128,4 @@ ax.set_ylabel("Internal inductance, Li")
 ax.legend()
 ax.axvspan(time - avTime, time + avTime, facecolor="b", alpha=0.1, edgecolor="none")
 
-plt.tight_layout()
+GRAPHICStools.adjust_figure_layout(fig)

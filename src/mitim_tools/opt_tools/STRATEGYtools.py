@@ -9,7 +9,7 @@ from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -120,8 +120,8 @@ class opt_evaluator:
 
         self.surrogate_parameters = {
             "parameters_combined": {},
-            "physicsInformedParams_dict": None,
-            "physicsInformedParamsComplete": None,
+            "surrogate_transformation_variables_alltimes": None,
+            "surrogate_transformation_variables_lasttime": None,
             "transformationInputs": STEPtools.identity,  # Transformation of inputs
             "transformationOutputs": STEPtools.identityOutputs,  # Transformation of outputs
         }
@@ -199,7 +199,7 @@ class opt_evaluator:
 
     def read_optimization_results(
         self,
-        plotYN=False,
+        plotFN=None,
         folderRemote=None,
         analysis_level=0,
         pointsEvaluateEachGPdimension=50,
@@ -216,7 +216,7 @@ class opt_evaluator:
                 self.folder,
                 analysis_level=analysis_level,
                 doNotShow=True,
-                plotYN=plotYN,
+                plotFN=plotFN,
                 folderRemote=folderRemote,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             )
@@ -287,8 +287,12 @@ class opt_evaluator:
                 f"\t- Perform extra analysis for this sub-module (analysis level {analysis_level})"
             )
 
+        if plotYN and (analysis_level >= 0):
+            if "fn" not in self.__dict__:
+                self.fn = GUItools.FigureNotebook("MITIM Optimization Results")
+            
         self.read_optimization_results(
-            plotYN=plotYN and (analysis_level >= 0),
+            plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
             analysis_level=(
                 retrieval_level if (retrieval_level is not None) else analysis_level
@@ -901,7 +905,9 @@ class PRF_BO:
             try:
                 pickle_dill.dump(copyClass, handle)
             except:
-                print("problem saving")
+                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables with the variables you think cannot be pickled", typeMsg="w")
+                del copyClass.optimization_object
+                pickle_dill.dump(copyClass, handle)
 
         # Get variables back ----------------------------------------------------------------
         for ikey in saver:
@@ -1250,7 +1256,7 @@ class PRF_BO:
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.restartYN) and self.optimization_options[
+        readCasesFromTabular = (not self.restartYN) or self.optimization_options[
             "read_initial_training_from_csv"
         ]  # Read when starting from previous or forced it
 
