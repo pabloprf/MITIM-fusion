@@ -5,3 +5,4 @@ sphinx-copybutton
 sphinx-togglebutton
 sphinx-panels
 sphinxcontrib-images
+h5py
