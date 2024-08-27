@@ -19,7 +19,7 @@ class beat:
         self.maestro_instance = maestro_instance
 
         if folder_name is None:
-            folder_name = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}'
+            folder_name = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter_current}'
         
         self.folder_beat = f'{folder_name}/'
 
@@ -136,13 +136,13 @@ class initializer_from_previous(beat_initializer):
 
         print("\t- Initializing profiles from previous beat's result", typeMsg = 'i')
         
-        beat_num = self.beat_instance.maestro_instance.counter-1
+        beat_num = self.beat_instance.maestro_instance.counter_current-1
         profiles_file = f"{self.beat_instance.maestro_instance.beats[beat_num].folder_output}/input.gacode"
 
         super().__call__(profiles_file)
 
 # --------------------------------------------------------------------------------------------
-# Initializer from GEQDSK: load the geqdsk and call the profiles initializer
+# Initializer from GEQDSK: load the geqdsk, convert to profiles and call the profiles initializer
 # --------------------------------------------------------------------------------------------
 
 class initializer_from_geqdsk(beat_initializer):
@@ -193,7 +193,7 @@ class initializer_from_geqdsk(beat_initializer):
         print('\t\t- 0.995 flux surface kappa and delta saved for future beats')
 
 # --------------------------------------------------------------------------------------------
-# Initializer from FreeGS: load the equilibrium and call the geqdsk initializer
+# Initializer from FreeGS: load the equilibrium, convert to geqdsk and call the geqdsk initializer
 # --------------------------------------------------------------------------------------------
 
 class initializer_from_freegs(initializer_from_geqdsk):
@@ -238,20 +238,80 @@ class initializer_from_freegs(initializer_from_geqdsk):
         super().__call__(geqdsk_file = f'{self.folder}/freegs.geqdsk',**kwargs_geqdsk)
 
 # --------------------------------------------------------------------------------------------
-# Profile creator
+# [Generic] Profile creator: Insert profiles
 # --------------------------------------------------------------------------------------------
 
-class creator_from_eped:
+class creator:
+    
+        def __init__(self, initialize_instance, parameters, label = 'generic'):
+    
+            self.initialize_instance = initialize_instance
+            self.folder = f'{self.initialize_instance.folder}/creator_{label}/'
+    
+            if len(label) > 0:
+                os.makedirs(self.folder, exist_ok=True)
+    
+            self.parameters = parameters
+    
+        def __call__(self, profiles_insert = {}, **kwargs):
+
+            rho, Te, Ti, ne = profiles_insert['rho'], profiles_insert['Te'], profiles_insert['Ti'], profiles_insert['ne']
+            
+            # Update profiles
+            self.initialize_instance.profiles_current.changeResolution(rho_new = rho)
+
+            self.initialize_instance.profiles_current.profiles['te(keV)'] = Te
+
+            self.initialize_instance.profiles_current.profiles['ti(keV)'][:,0] = Ti
+            self.initialize_instance.profiles_current.makeAllThermalIonsHaveSameTemp()
+
+            old_density = copy.deepcopy(self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'])
+            self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
+            self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
+
+# --------------------------------------------------------------------------------------------
+# Profile creator from parameterization: Create profiles from a parameterization
+# --------------------------------------------------------------------------------------------
+
+class creator_from_parameterization(creator):
+    
+        def __init__(self, initialize_instance, parameters, label = 'parameterization'):
+            super().__init__(initialize_instance, parameters, label = label)
+    
+        def __call__(self, rhotop, Ttop, netop, **kwargs):
+
+            # Produce profiles
+            rho, Te = self.procreate(y_top = Ttop, y_sep = 0.1, w_top = 1-rhotop, aLy = 1.7, w_a = 0.3)
+            rho, Ti = self.procreate(y_top = Ttop, y_sep = 0.1, w_top = 1-rhotop, aLy = 1.5, w_a = 0.3)
+            rho, ne = self.procreate(y_top = netop, y_sep = netop/3.0, w_top = 1-rhotop, aLy = 0.2, w_a = 0.3)
+
+            # Call the generic creator
+            super().__call__({'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne})
+
+        def procreate(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
+            
+            roa = np.linspace(0.0, 1-w_top, 100)
+            aL_profile = np.zeros_like(roa)
+            linear_region = roa <= w_a
+            aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
+            aL_profile[~linear_region] = aLy
+            y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
+            roa = np.append( roa, 1.0)
+            y = np.append(y, y_sep)
+
+            roa_new = np.linspace(0.0, 1.0, 200)
+            y = np.interp(roa_new, roa, y)
+
+            return roa_new, y
+
+# --------------------------------------------------------------------------------------------
+# Profile creator from EPED: Create parameterization using EPED
+# --------------------------------------------------------------------------------------------
+
+class creator_from_eped(creator_from_parameterization):
 
     def __init__(self, initialize_instance, parameters, label = 'eped'):
-
-        self.initialize_instance = initialize_instance
-        self.folder = f'{self.initialize_instance.folder}/creator_{label}/'
-
-        if len(label) > 0:
-            os.makedirs(self.folder, exist_ok=True)
-
-        self.parameters = parameters
+        super().__init__(initialize_instance, parameters, label = label)
 
     def __call__(self):
 
@@ -267,38 +327,8 @@ class creator_from_eped:
         # Run EPED
         eped_results = beat_eped._run()
 
-        # Produce profiles
-        rho, Te = procreate(y_top = eped_results['Ttop'], y_sep = 0.1, w_top = 1-eped_results['rhotop'], aLy = 1.7, w_a = 0.3)
-        rho, Ti = procreate(y_top = eped_results['Ttop'], y_sep = 0.1, w_top = 1-eped_results['rhotop'], aLy = 1.5, w_a = 0.3)
-        rho, ne = procreate(y_top = eped_results['netop'], y_sep = eped_results['netop']/3.0, w_top = 1-eped_results['rhotop'], aLy = 0.2, w_a = 0.3)
-
-        # Update profiles
-        beat_eped.profiles_current.changeResolution(rho_new = rho)
-
-        beat_eped.profiles_current.profiles['te(keV)'] = Te
-
-        beat_eped.profiles_current.profiles['ti(keV)'][:,0] = Ti
-        beat_eped.profiles_current.makeAllThermalIonsHaveSameTemp()
-
-        old_density = copy.deepcopy(beat_eped.profiles_current.profiles['ne(10^19/m^3)'])
-        beat_eped.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
-        beat_eped.profiles_current.profiles['ni(10^19/m^3)'] = beat_eped.profiles_current.profiles['ni(10^19/m^3)'] * (beat_eped.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
+        # Call the profiles creator
+        super().__call__(eped_results['rhotop'], eped_results['Ttop'], eped_results['netop'])
 
         # Save
         np.save(f'{self.folder}/eped_results.npy', eped_results)
-
-def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
-    
-    roa = np.linspace(0.0, 1-w_top, 100)
-    aL_profile = np.zeros_like(roa)
-    linear_region = roa <= w_a
-    aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
-    aL_profile[~linear_region] = aLy
-    y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
-    roa = np.append( roa, 1.0)
-    y = np.append(y, y_sep)
-
-    roa_new = np.linspace(0.0, 1.0, 200)
-    y = np.interp(roa_new, roa, y)
-
-    return roa_new, y

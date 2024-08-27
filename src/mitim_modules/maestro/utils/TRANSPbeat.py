@@ -50,7 +50,7 @@ class transp_beat(beat):
 
         # Define run parameters
         self.shot = shot
-        self.runid = letter + str(self.maestro_instance.counter).zfill(2)
+        self.runid = letter + str(self.maestro_instance.counter_current).zfill(2)
 
         # Write TRANSP from profiles
         times = [self.time_transition,self.time_end+1.0]
@@ -94,7 +94,7 @@ class transp_beat(beat):
         if freq_ICH is None:
 
             B_T         = self.profiles_current.profiles['bcentr(T)'][0]
-            
+
             '''
             Best resonance condition for minority ions
             ------------------------------------------
