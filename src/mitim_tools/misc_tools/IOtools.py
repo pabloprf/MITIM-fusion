@@ -1352,9 +1352,9 @@ def expandPath(txt, fixSpaces=False, ensurePathValid=False):
     pathn = os.path.expanduser(os.path.expandvars(txt))
 
     if fixSpaces:
-        pathn = pathn.replace(" ", "\ ")
-        pathn = pathn.replace("(", "\(")
-        pathn = pathn.replace(")", "\)")
+        pathn = pathn.replace(" ", r"\ ")
+        pathn = pathn.replace("(", r"\(")
+        pathn = pathn.replace(")", r"\)")
 
     return pathn
 
