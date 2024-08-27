@@ -996,17 +996,14 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        """
-		Update 8/24 jbh - changed the calculation of BetaN to use the average effective field
-		"""
         # Beta = CALCtools.integrateFS( self.derived['ptot_manual']*1E6 / (self.derived['B_ref']**2/(2*4*np.pi*1E-7 )),r,volp)[-1] / self.derived['volume']
         # Beta = self.derived['ptot_manual_vol']*1E6 / (self.derived['B0']**2/(2*4*np.pi*1E-7 ))
-        # Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+        Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
         #self.derived["BetaN_old"] = (Beta_old / (np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"]))* 100.0)
-        Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
+        # Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
 
         self.derived["BetaN"] = (
-            Beta
+            Beta_old
             / (
                 np.abs(float(self.profiles["current(MA)"][-1]))
                 / (self.derived["a"] * self.derived["B0"])
