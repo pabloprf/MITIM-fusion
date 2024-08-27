@@ -243,7 +243,7 @@ class initializer_from_freegs(initializer_from_geqdsk):
 
 class creator:
     
-        def __init__(self, initialize_instance, parameters, label = 'generic'):
+        def __init__(self, initialize_instance, profiles_insert = {}, label = 'generic'):
     
             self.initialize_instance = initialize_instance
             self.folder = f'{self.initialize_instance.folder}/creator_{label}/'
@@ -251,11 +251,11 @@ class creator:
             if len(label) > 0:
                 os.makedirs(self.folder, exist_ok=True)
     
-            self.parameters = parameters
-    
-        def __call__(self, profiles_insert = {}, **kwargs):
+            self.profiles_insert = profiles_insert
 
-            rho, Te, Ti, ne = profiles_insert['rho'], profiles_insert['Te'], profiles_insert['Ti'], profiles_insert['ne']
+        def __call__(self):
+
+            rho, Te, Ti, ne = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne']
             
             # Update profiles
             self.initialize_instance.profiles_current.changeResolution(rho_new = rho)
@@ -275,18 +275,23 @@ class creator:
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, parameters, label = 'parameterization'):
-            super().__init__(initialize_instance, parameters, label = label)
+        def __init__(self, initialize_instance, rhotop = None, Ttop = None, netop = None, label = 'parameterization'):
+            super().__init__(initialize_instance, label = label)
+
+            self.rhotop = rhotop
+            self.Ttop = Ttop
+            self.netop = netop
     
-        def __call__(self, rhotop, Ttop, netop, **kwargs):
+        def __call__(self):
 
             # Produce profiles
-            rho, Te = self.procreate(y_top = Ttop, y_sep = 0.1, w_top = 1-rhotop, aLy = 1.7, w_a = 0.3)
-            rho, Ti = self.procreate(y_top = Ttop, y_sep = 0.1, w_top = 1-rhotop, aLy = 1.5, w_a = 0.3)
-            rho, ne = self.procreate(y_top = netop, y_sep = netop/3.0, w_top = 1-rhotop, aLy = 0.2, w_a = 0.3)
-
+            rho, Te = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
+            rho, Ti = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
+            rho, ne = self.procreate(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
+            
             # Call the generic creator
-            super().__call__({'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne})
+            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            super().__call__()
 
         def procreate(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
             
@@ -310,8 +315,10 @@ class creator_from_parameterization(creator):
 
 class creator_from_eped(creator_from_parameterization):
 
-    def __init__(self, initialize_instance, parameters, label = 'eped'):
-        super().__init__(initialize_instance, parameters, label = label)
+    def __init__(self, initialize_instance, parameters = None, label = 'eped'):
+        super().__init__(initialize_instance, label = label)
+
+        self.parameters = parameters
 
     def __call__(self):
 
@@ -328,7 +335,10 @@ class creator_from_eped(creator_from_parameterization):
         eped_results = beat_eped._run()
 
         # Call the profiles creator
-        super().__call__(eped_results['rhotop'], eped_results['Ttop'], eped_results['netop'])
+        self.rhotop = eped_results['rhotop']
+        self.Ttop = eped_results['Ttop']
+        self.netop = eped_results['netop']
+        super().__call__()
 
         # Save
         np.save(f'{self.folder}/eped_results.npy', eped_results)

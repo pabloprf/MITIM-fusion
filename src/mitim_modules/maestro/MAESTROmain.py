@@ -1,6 +1,6 @@
 import copy
 import os
-from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
+from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
@@ -11,18 +11,14 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
-from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped
+from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator
 
 '''
 MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
- 
-'''
 
-# --------------------------------------------------------------------------------------------
-# Main workflow
-# --------------------------------------------------------------------------------------------
+'''
 
 class maestro:
 
@@ -100,12 +96,16 @@ class maestro:
         # Check here if the beat has already been performed
         self.check(restart = restart or self.master_restart )
 
-    def define_creator(self, method, parameters ={}):
+    def define_creator(self, method, **kwargs):
         '''
         To initialize some profile functional form
         '''
         if method == 'eped':
-            self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,parameters)
+            self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs)
+        elif method == 'parameterization':
+            self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs)
+        elif method == 'profiles':
+            self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs)
         else:
             raise ValueError(f'Creator method {method} not recognized')
 
@@ -272,120 +272,5 @@ class maestro:
 
         MAESTROplot.plot_results(self, fn)
 
-# # --------------------------------------------------------------------------------------------
-# # Workflow
-# # --------------------------------------------------------------------------------------------
 
-# @mitim_timer('\t- MAESTRO')
-# def simple_maestro_workflow(
-#     folder,
-#     geometry,
-#     parameters,
-#     Tbc_keV,
-#     nbc_20,
-#     TGLFsettings = 6,
-#     DTplasma = True,
-#     terminal_outputs = False,
-#     full_loops = 2, # By default, do 2 loops of TRANSP-PORTALS
-#     quality = {
-#         'maximum_value': 1e-2,  # x100 better residual
-#         'BO_iterations': 20,
-#         'flattop_window': 0.15, # s
-#         }
-#     ):
-
-#     m = maestro(folder, terminal_outputs = terminal_outputs)
-    
-#     # ---------------------------------------------------------
-#     # beat 0: Define info
-#     # ---------------------------------------------------------
-
-#     # Simple profiles
-
-#     w_top, w_a = 0.05, 0.3
-#     rho, Te = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.7, w_a = w_a)
-#     rho, Ti = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.5, w_a = w_a)
-#     rho, ne = procreate(y_top = nbc_20, y_sep = nbc_20/3.0, w_top = w_top, aLy = 0.2, w_a = w_a)
-#     profiles = {'Te': [rho, Te],'Ti': [rho, Ti],'ne': [rho, ne]}
-
-#     # Faster TRANSP (different than defaults)
-#     transp_namelist = {
-#         'Pich'   : True,
-#         'dtEquilMax_ms': 1.0,       # Higher resolution than default (10.0) to avoid quval error
-#         'dtHeating_ms' : 5.0,       # Default
-#         'dtOut_ms' : 10.0,
-#         'dtIn_ms' : 10.0,
-#         'nzones' : 60,
-#         'nzones_energetic' : 20,    # Default but lower than what I used to use
-#         'nzones_distfun' : 10,      # Default but lower than what I used to use    
-#         'MCparticles' : 1e4,
-#         'toric_ntheta' : 64,        # Default values of TORIC, but lower than what I used to use
-#         'toric_nrho' : 128,         # Default values of TORIC, but lower than what I used to use
-#         'DTplasma': DTplasma
-#     }
-
-#     # Simple PORTALS
-
-#     portals_namelist = {
-#         "PORTALSparameters": {
-#             "launchEvaluationsAsSlurmJobs": not CONFIGread.isThisEngaging(),
-#             "forceZeroParticleFlux": True
-#         },
-#         "MODELparameters": {
-#             "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
-#             "transport_model": {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
-#         },
-#         "INITparameters": {
-#             "FastIsThermal": True
-#         },
-#         "optimization_options": {
-#             "BO_iterations": quality.get('BO_iterations', 20),
-#             "maximum_value": quality.get('maximum_value', 1e-2),
-#             "maximum_value_is_rel": True,
-#         }
-#     }
-
-#     # ------------------------------------------------------------
-#     # beat N: TRANSP from FreeGS and freeze engineering parameters
-#     # ------------------------------------------------------------
-
-#     m.define_beat('transp', initializer='geqdsk' if 'geqdsk_file' in geometry else 'freegs')
-#     m.initialize(**geometry, **parameters, profiles = profiles)
-    
-#     m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
-#     m.run()
-
-#     # ---------------------------------------------------------
-#     # beat N+1: PORTALS from TRANSP
-#     # ---------------------------------------------------------
-
-#     m.define_beat('portals')
-#     m.prepare(**portals_namelist)
-#     m.run()
-
-#     for i in range(full_loops-1):
-
-#         # ---------------------------------------------------------
-#         # beat N: TRANSP from PORTALS
-#         # ---------------------------------------------------------
-
-#         m.define_beat('transp')
-#         m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
-#         m.run()
-
-#         # ---------------------------------------------------------
-#         # beat N+1: PORTALS from TRANSP
-#         # ---------------------------------------------------------
-
-#         m.define_beat('portals')
-#         m.prepare(**portals_namelist)
-#         m.run()
-
-#     # ---------------------------------------------------------
-#     # Finalize
-#     # ---------------------------------------------------------
-
-#     m.finalize()
-
-#     return m
 

@@ -116,14 +116,17 @@ class transp_beat(beat):
 
     def run(self, **kwargs):
 
-        self.transp.run(
-            self.machine_run,
-            mpisettings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}),
-            minutesAllocation = 60*kwargs.get("hours_allocation",8),
-            case = self.transp.runid,
-            tokamak_name = kwargs.get("tokamak_name",None),
-            checkMin = kwargs.get("checkMin",3)
-            )
+        # self.transp.run(
+        #     self.machine_run,
+        #     mpisettings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}),
+        #     minutesAllocation = 60*kwargs.get("hours_allocation",8),
+        #     case = self.transp.runid,
+        #     tokamak_name = kwargs.get("tokamak_name",None),
+        #     checkMin = kwargs.get("checkMin",3)
+        #     )
+
+        os.system(f'cp /Users/pablorf/PROJECTS/project_2024_MITIMsurrogates/maestro_development/tests10/arc7/Beats/Beat_2/run_transp/05537P02.CDF {self.folder}/{self.shot}{self.runid}.CDF')
+        self.transp.c = CDFtools.transp_output(f"{self.folder}/{self.shot}{self.runid}.CDF")
 
     def finalize(self):
 

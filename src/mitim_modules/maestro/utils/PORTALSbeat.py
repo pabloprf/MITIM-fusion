@@ -33,13 +33,29 @@ class portals_beat(beat):
         portals_fun  = PORTALSmain.portals(self.folder)
 
         for key in self.PORTALSparameters:
-            portals_fun.PORTALSparameters[key] = self.PORTALSparameters[key]
+            if not isinstance(portals_fun.PORTALSparameters[key], dict):
+                portals_fun.PORTALSparameters[key] = self.PORTALSparameters[key]
+            else:
+                for subkey in self.PORTALSparameters[key]:
+                    portals_fun.PORTALSparameters[key][subkey] = self.PORTALSparameters[key][subkey]
         for key in self.MODELparameters:
-            portals_fun.MODELparameters[key] = self.MODELparameters[key]
+            if not isinstance(portals_fun.MODELparameters[key], dict):
+                portals_fun.MODELparameters[key] = self.MODELparameters[key]
+            else:
+                for subkey in self.MODELparameters[key]:
+                    portals_fun.MODELparameters[key][subkey] = self.MODELparameters[key][subkey]
         for key in self.optimization_options:
-            portals_fun.optimization_options[key] = self.optimization_options[key]
+            if not isinstance(portals_fun.optimization_options[key], dict):
+                portals_fun.optimization_options[key] = self.optimization_options[key]
+            else:
+                for subkey in self.optimization_options[key]:
+                    portals_fun.optimization_options[key][subkey] = self.optimization_options[key][subkey]
         for key in self.INITparameters:
-            portals_fun.INITparameters[key] = self.INITparameters[key]
+            if not isinstance(portals_fun.INITparameters[key], dict):
+                portals_fun.INITparameters[key] = self.INITparameters[key]
+            else:
+                for subkey in self.INITparameters[key]:
+                    portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
         portals_fun.prep(self.fileGACODE,self.folder,hardGradientLimits = [0,2])
 
