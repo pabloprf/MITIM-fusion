@@ -58,10 +58,10 @@ class transp_run:
         Create a namelist for TRANSP based on default parameters + transp_params
         '''
 
-        t = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
-        t.define_machine(tokamak_structures)
-        t.populate(**transp_params)
-        t.write(self.runid)
+        self.nml_object = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
+        self.nml_object.define_machine(tokamak_structures)
+        self.nml_object.populate(**transp_params)
+        self.nml_object.write(self.runid)
 
         self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
 

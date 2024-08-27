@@ -17,8 +17,9 @@ class transp_beat(beat):
         self,
         letter = None,
         shot = None, 
-        flattop_window      = 0.15,  # To allow for steady-state in heating and current diffusion
+        flattop_window      = 0.20,  # To allow for steady-state in heating and current diffusion
         transition_window   = 0.10,  # To prevent equilibrium crashes
+        freq_ICH            = None,  # Frequency of ICRF heating (if None, find optimal)
         **transp_namelist
         ):
         '''
@@ -89,10 +90,26 @@ class transp_beat(beat):
 
         # ICRF on
         PichT_MW    = self.profiles_current.derived['qRF_MWmiller'][-1]
-        B_T         = self.profiles_current.profiles['bcentr(T)'][0]
-        qm_minority = 2/3
-        Frequency_He3 = B_T * (2*np.pi/qm_minority)
-        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = Frequency_He3)
+        
+        if freq_ICH is None:
+
+            B_T         = self.profiles_current.profiles['bcentr(T)'][0]
+            
+            '''
+            Best resonance condition for minority ions
+            ------------------------------------------
+            B = (Fich * 2 * np.pi) / qm 
+            Fich_MHz = B * qm / (2 * np.pi) * 1e-6
+            qm ~ q/m * 1E8
+            Fich_MHz = B * q/m * 1E8  / (2 * np.pi) * 1e-6 ~ B * q/m * 15.0
+                e.g. He3 in SPARC: F = 12 * 2/3 * 15 = 120 MHz
+            '''
+
+            qm_minority = self.transp.nml_object.Minorities[0]/self.transp.nml_object.Minorities[1]
+            factor_to_account_for_Bplasma = 1.0 #1.05
+            freq_ICH = B_T * qm_minority * 15.0 * factor_to_account_for_Bplasma
+
+        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = freq_ICH)
 
         # Write Ufiles
         self.transp.write_ufiles()

@@ -62,18 +62,13 @@ class portals_beat(beat):
 
     def merge_parameters(self):
         '''
-        The goal of the TRANSP beat is to produce:
-            - Internal GS equilibrium
-            - q-profile
-            - Power deposition profiles of high quality (auxiliary heating, but also dynamic targets)
-            - Species and fast ions
-        However, TRANSP is not modifying the kinetic profiles and therefore I should use the profiles that were frozen before, to
-        avoid "grid leaks", i.e. from beat to beat, the coarse grid interpolates to point to point.
+        The goal of the PORTALS beat is to produce:
+            - Kinetic profiles
+            - Dynamics targets that gave rise to the kinetic profiles
         So, this merge:
             - Brings back the resolution of the frozen profiles
-            - Inserts kinetic profiles from frozen
-            - Inserts engineering parameters (Ip, Bt) from frozen
-            - Scales power deposition profiles to match the frozen power deposition which I treat as an engineering parameter (Pin)
+            - Inserts kinetic profiles
+            - Inserts dynamic targets
         '''
 
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)

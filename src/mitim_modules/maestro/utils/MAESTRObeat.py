@@ -1,8 +1,10 @@
+import torch
 import os
 import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
+from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -12,10 +14,14 @@ from IPython import embed
 
 class beat:
 
-    def __init__(self, maestro_instance, beat_name = 'generic'):
+    def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
 
         self.maestro_instance = maestro_instance
-        self.folder_beat = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}/'
+
+        if folder_name is None:
+            folder_name = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter}'
+        
+        self.folder_beat = f'{folder_name}/'
 
         # Where to run it
         self.name = beat_name
@@ -100,9 +106,9 @@ class beat_initializer:
             # Add default if not there
             self.profiles_current.Vsurf = 0.0
         
-        # Insert the provided profiles into the profiles_current object
-        self._add_provided_profiles(profiles=profiles)
-
+        # Call a potential profile creator -----------------------------------------------------------
+        if hasattr(self, 'profile_creator'):
+            self.profile_creator()
         # --------------------------------------------------------------------------------------------
 
         # Write it to initialization folder
@@ -113,21 +119,6 @@ class beat_initializer:
 
         # Initializer has been called
         self.beat_instance.initialize_called = True
-
-    def _add_provided_profiles(self, profiles = {}):
-
-        if 'rho' in profiles:
-            self.profiles_current.changeResolution(rho_new = profiles['rho'])
-
-        if 'Te' in profiles:
-            self.profiles_current.profiles['te(keV)'] = profiles['Te']
-        if 'Ti' in profiles:
-            self.profiles_current.profiles['ti(keV)'][:,0] = profiles['Ti']
-            self.profiles_current.makeAllThermalIonsHaveSameTemp()
-        if 'ne' in profiles:
-            old_density = copy.deepcopy(self.profiles_current.profiles['ne(10^19/m^3)'])
-            self.profiles_current.profiles['ne(10^19/m^3)'] = profiles['ne']*10.0
-            self.profiles_current.profiles['ni(10^19/m^3)'] = self.profiles_current.profiles['ni(10^19/m^3)'] * (self.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
@@ -177,10 +168,13 @@ class initializer_from_geqdsk(beat_initializer):
         '''
         
         # Read geqdsk
-        f = GEQtools.MITIMgeqdsk(geqdsk_file)
+        self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
+
+        # Potentially save variables
+        self._inform_save()
 
         # Convert to profiles
-        p = f.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
+        p = self.f.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
         p.writeCurrentStatus(file=self.folder+'/input.gacode' )
@@ -190,6 +184,13 @@ class initializer_from_geqdsk(beat_initializer):
 
         # Call the profiles initializer
         super().__call__(self.folder+'/input.gacode', **kwargs_profiles)
+
+    def _inform_save(self):
+
+        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = self.f.kappa995
+        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = self.f.delta995
+
+        print('\t\t- 0.995 flux surface kappa and delta saved for future beats')
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FreeGS: load the equilibrium and call the geqdsk initializer
@@ -236,3 +237,68 @@ class initializer_from_freegs(initializer_from_geqdsk):
         # Call the geqdsk initializer
         super().__call__(geqdsk_file = f'{self.folder}/freegs.geqdsk',**kwargs_geqdsk)
 
+# --------------------------------------------------------------------------------------------
+# Profile creator
+# --------------------------------------------------------------------------------------------
+
+class creator_from_eped:
+
+    def __init__(self, initialize_instance, parameters, label = 'eped'):
+
+        self.initialize_instance = initialize_instance
+        self.folder = f'{self.initialize_instance.folder}/creator_{label}/'
+
+        if len(label) > 0:
+            os.makedirs(self.folder, exist_ok=True)
+
+        self.parameters = parameters
+
+    def __call__(self):
+
+        # Create a beat within here
+        from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+        folder_name = f'{self.initialize_instance.beat_instance.maestro_instance.folder}/Creator_EPED'
+        beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = folder_name)
+        beat_eped.prepare(**self.parameters)
+
+        # Work with this profile
+        beat_eped.profiles_current = self.initialize_instance.profiles_current
+        
+        # Run EPED
+        eped_results = beat_eped._run()
+
+        # Produce profiles
+        rho, Te = procreate(y_top = eped_results['Ttop'], y_sep = 0.1, w_top = 1-eped_results['rhotop'], aLy = 1.7, w_a = 0.3)
+        rho, Ti = procreate(y_top = eped_results['Ttop'], y_sep = 0.1, w_top = 1-eped_results['rhotop'], aLy = 1.5, w_a = 0.3)
+        rho, ne = procreate(y_top = eped_results['netop'], y_sep = eped_results['netop']/3.0, w_top = 1-eped_results['rhotop'], aLy = 0.2, w_a = 0.3)
+
+        # Update profiles
+        beat_eped.profiles_current.changeResolution(rho_new = rho)
+
+        beat_eped.profiles_current.profiles['te(keV)'] = Te
+
+        beat_eped.profiles_current.profiles['ti(keV)'][:,0] = Ti
+        beat_eped.profiles_current.makeAllThermalIonsHaveSameTemp()
+
+        old_density = copy.deepcopy(beat_eped.profiles_current.profiles['ne(10^19/m^3)'])
+        beat_eped.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
+        beat_eped.profiles_current.profiles['ni(10^19/m^3)'] = beat_eped.profiles_current.profiles['ni(10^19/m^3)'] * (beat_eped.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
+
+        # Save
+        np.save(f'{self.folder}/eped_results.npy', eped_results)
+
+def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
+    
+    roa = np.linspace(0.0, 1-w_top, 100)
+    aL_profile = np.zeros_like(roa)
+    linear_region = roa <= w_a
+    aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
+    aL_profile[~linear_region] = aLy
+    y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
+    roa = np.append( roa, 1.0)
+    y = np.append(y, y_sep)
+
+    roa_new = np.linspace(0.0, 1.0, 200)
+    y = np.interp(roa_new, roa, y)
+
+    return roa_new, y

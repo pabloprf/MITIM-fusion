@@ -10,10 +10,10 @@ from IPython import embed
 
 class eped_beat(beat):
 
-    def __init__(self, maestro_instance):
-        super().__init__(maestro_instance, beat_name = 'eped')
+    def __init__(self, maestro_instance, folder_name = None):
+        super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location, norm_location, netop_20 = None):
+    def prepare(self, nn_location, norm_location, netop_20 = None, **kwargs):
 
         self.nn = NNtools.eped_nn(type='tf')
         nn_location = IOtools.expandPath(nn_location)
@@ -30,42 +30,73 @@ class eped_beat(beat):
         os.system(f'cp {self.initialize.folder}/input.gacode {self.folder}/input.gacode')
 
         # -------------------------------------------------------
+        # Run the NN
+        # -------------------------------------------------------
+
+        eped_results = self._run()
+
+        # -------------------------------------------------------
+        # Save stuff
+        # -------------------------------------------------------
+
+        np.save(f'{self.folder_output}/eped_results.npy', eped_results)
+
+        self.rhotop = eped_results['rhotop']
+
+    def _run(self):
+
+        # -------------------------------------------------------
         # Grab inputs from profiles_current and run the NN
         # -------------------------------------------------------
 
+        # Engineering parameters (should not change during MAESTRO)
+        Ip = self.profiles_current.profiles['current(MA)'][0]
+        Bt = self.profiles_current.profiles['bcentr(T)'][0]
+        R = self.profiles_current.profiles['rcentr(m)'][0]
+        a = self.profiles_current.derived['a']
+        zeff = self.profiles_current.derived['Zeff_vol']
+
+        kappa995 = self.profiles_current.derived['kappa995']
+        delta995 = self.profiles_current.derived['delta995']
+        
+        # kappa and delta can be provided via inform() from a previous geqdsk! which is a better near separatrix descriptor
+        if 'kappa995' in self.__dict__:
+            kappa995 = self.kappa995
+
+        if 'delta995' in self.__dict__:
+            delta995 = self.delta995
+            
+        # Parameters that may change during MAESTRO
+        betan = self.profiles_current.derived['BetaN']
+
+        # ne_top can be provided as input to prepare(), recommended in first EPED beat
         if self.netop is None:
-            # Trying to get from the previous run
+            # If not, trying to get from the previous EPED beat via _inform()
             if 'rhotop' in self.__dict__:
                 print(f"\t\t- Using previous rhotop: {self.rhotop}")
+            # If not, using simply the density at rho = 0.9
             else:
                 self.rhotop = 0.9
             self.netop = np.interp(self.rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
 
+        # Assumptions
         neped = self.netop/1.08
+        tesep = self.profiles_current.profiles['te(keV)'][-1] * 1E3
+        nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*1E-1 / neped
 
-        ptop_kPa, wtop_psipol = self.nn(
-            self.profiles_current.profiles['current(MA)'][0],
-            self.profiles_current.profiles['bcentr(T)'][0],
-            self.profiles_current.profiles['rcentr(m)'][0],
-            self.profiles_current.derived['a'],
-            self.profiles_current.derived['kappa995'],
-            self.profiles_current.derived['delta995'],
-            neped,
-            self.profiles_current.derived['BetaN'],
-            self.profiles_current.derived['Zeff_vol'],
-            tesep=self.profiles_current.profiles['te(keV)'][-1],
-            nesep_ratio=self.profiles_current.profiles['ne(10^19/m^3)'][-1]*1E-1 / neped
-        )
+        # -------------------------------------------------------
+        # Run NN
+        # -------------------------------------------------------
+
+        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep=tesep,nesep_ratio=nesep_ratio)
 
         # -------------------------------------------------------
         # Put into profiles
         # -------------------------------------------------------
 
         self.profiles_output, eped_results = add_eped_pressure(copy.deepcopy(self.profiles_current), ptop_kPa, wtop_psipol, self.netop)
-    
-        self.rhotop = eped_results['rhotop']
 
-        np.save(f'{self.folder_output}/eped_results.npy', eped_results)
+        return eped_results
 
     def finalize(self):
         
@@ -140,15 +171,25 @@ class eped_beat(beat):
     # --------------------------------------------------------------------------------------------
     def _inform(self):
 
+        # From a previous EPED beat
         if 'rhotop' in self.maestro_instance.parameters_trans_beat:
             self.rhotop = self.maestro_instance.parameters_trans_beat['rhotop']
             print(f"\t\t- Using previous rhotop: {self.rhotop}")
+
+        # From a geqdsk initialization
+        if 'kappa995' in self.maestro_instance.parameters_trans_beat:
+            self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
+            print(f"\t\t- Using previous kappa995: {self.kappa995}")
+        
+         # From a geqdsk initialization
+        if 'delta995' in self.maestro_instance.parameters_trans_beat:
+            self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
+            print(f"\t\t- Using previous delta995: {self.delta995}")
 
     def _inform_save(self):
 
         eped_output, _ = self.grab_output()
 
-        self.maestro_instance.parameters_trans_beat['netop'] = eped_output['netop']
         self.maestro_instance.parameters_trans_beat['rhotop'] = eped_output['rhotop']
 
         print('\t\t- rhotop and netop saved for future beats')

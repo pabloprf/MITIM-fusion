@@ -1,8 +1,5 @@
-import torch
 import copy
 import os
-import numpy as np
-from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools import IOtools, GUItools, CONFIGread
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -14,6 +11,7 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped
 
 '''
 MAESTRO:
@@ -76,9 +74,13 @@ class maestro:
         if from beat to beat it's, for whatever reason, lower.  In other words, e.g., it's best to not
         pass the ICH power from input.gacode PORTALS to TRANSP, but rather take the original intended ICH power.
         '''
-
         self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
-        self.parameters_trans_beat = {} # I can save parameters that can be useful for future beats (e.g. PORTALS residual)
+
+
+        '''
+        Parameters that can be passed from beat to beat (e.g. PORTALS residual or geqdsk 0.995 flux surface or rho_top EPED) 
+        '''
+        self.parameters_trans_beat = {} 
 
     def define_beat(self, beat, initializer = None, restart = False):
 
@@ -101,6 +103,12 @@ class maestro:
 
         # Check here if the beat has already been performed
         self.check(restart = restart or self.master_restart )
+
+    def add_profile_creator(self, method, parameters ={}):
+        '''
+        "procreate" 
+        '''
+        self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,parameters)
 
     # --------------------------------------------------------------------------------------------
     # Beat operations
@@ -268,19 +276,6 @@ class maestro:
 # --------------------------------------------------------------------------------------------
 # Workflow
 # --------------------------------------------------------------------------------------------
-
-def procreate(y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
-    
-    roa = np.linspace(0.0, 1-w_top, 100)
-    aL_profile = np.zeros_like(roa)
-    linear_region = roa <= w_a
-    aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
-    aL_profile[~linear_region] = aLy
-    y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
-    roa = np.append( roa, 1.0)
-    y = np.append(y, y_sep)
-
-    return roa, y
 
 @mitim_timer('\t- MAESTRO')
 def simple_maestro_workflow(
