@@ -157,7 +157,7 @@ class initializer_from_geqdsk(beat_initializer):
         geqdsk_file = None,
         PichT_MW = 1.0,
         Zeff = 1.5,
-        ne0_20 = 1.0,
+        netop_20 = 1.0,
         coeffs_MXH = 7,
         **kwargs_profiles
         ):
@@ -174,7 +174,7 @@ class initializer_from_geqdsk(beat_initializer):
         self._inform_save()
 
         # Convert to profiles
-        p = self.f.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
+        p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
         p.writeCurrentStatus(file=self.folder+'/input.gacode' )
@@ -288,7 +288,7 @@ class creator_from_parameterization(creator):
             rho, Te = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
             rho, Ti = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
             rho, ne = self.procreate(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
-            
+
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()

@@ -386,9 +386,9 @@ class MITIMgeqdsk:
             T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
         '''
 
-        C = 1E-3 / (2 * 1.60217662e-19 * 1e20)
+        C = 1 / (2 * 1.60217662e-19 * 1e20)
         _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
-        T_keV = C * (pressure / ne_20)
+        T_keV = C * (pressure / ne_20) * 1E-3
 
         fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
 
