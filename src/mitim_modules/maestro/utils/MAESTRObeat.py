@@ -285,15 +285,15 @@ class creator_from_parameterization(creator):
         def __call__(self):
 
             # Produce profiles
-            rho, Te = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
-            rho, Ti = self.procreate(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
-            rho, ne = self.procreate(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
+            rho, Te = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
+            rho, Ti = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
+            rho, ne = self.param_profiles(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-        def procreate(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
+        def param_profiles(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
             
             roa = np.linspace(0.0, 1-w_top, 100)
             aL_profile = np.zeros_like(roa)
