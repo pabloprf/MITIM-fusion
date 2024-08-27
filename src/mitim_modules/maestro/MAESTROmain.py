@@ -17,11 +17,7 @@ from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped
 MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
-
-Description of capabilities:
-
-- If initialized with... # TO DO
-
+ 
 '''
 
 # --------------------------------------------------------------------------------------------
@@ -48,9 +44,9 @@ class maestro:
         
         self.folder_output = f'{self.folder}/Outputs/'
         self.folder_logs = f'{self.folder_output}/Logs/'
-        os.makedirs(self.folder_logs, exist_ok=True)
-
         self.folder_beats = f'{self.folder}/Beats/'
+
+        os.makedirs(self.folder_logs, exist_ok=True)
         os.makedirs(self.folder_beats, exist_ok=True)
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
@@ -63,40 +59,40 @@ class maestro:
         # Prepare variables
         # --------------------------------------------------------------------------------------------
     
-        self.beats = {}     # Where all the beats will be stored
-        self.counter = 0    # Counter of current beat
+        self.beats = {}             # Where all the beats will be stored
+        self.counter_current = 0    # Counter of current beat
 
         '''
         Engineering parameters performed during "freezing"
-        --------------------------------------------------
-        During MAESTRO, the separatrix and main engineering parameters do not change, so I need 
-        to freeze them upon initialization, otherwise we'll have a leak of power or geometry quantities
-        if from beat to beat it's, for whatever reason, lower.  In other words, e.g., it's best to not
-        pass the ICH power from input.gacode PORTALS to TRANSP, but rather take the original intended ICH power.
+        --------------------------------------------------------------------------------------------------------------------
+        During MAESTRO, the separatrix and main engineering parameters do not change, so I need to freeze them upon
+        initialization, otherwise we'll have a leak of power or geometry quantities if from beat to beat it's, for whatever
+        reason, lower.  In other words, e.g., it's best to just pass the relevant outputs from PORTALS or TRANSP to a base
+        profiles object that is frozen and with the resolutions I want to keep for the rest of the MAESTRO run.
         '''
         self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
 
-
         '''
         Parameters that can be passed from beat to beat (e.g. PORTALS residual or geqdsk 0.995 flux surface or rho_top EPED) 
+        --------------------------------------------------------------------------------------------------------------------
         '''
         self.parameters_trans_beat = {} 
 
     def define_beat(self, beat, initializer = None, restart = False):
 
-        self.counter += 1
+        self.counter_current += 1
         if beat == 'transp':
-            print(f'\n- Beat {self.counter}: TRANSP ********************************************************************')
-            self.beats[self.counter] = transp_beat(self)
+            print(f'\n- Beat {self.counter_current}: TRANSP ********************************************************************')
+            self.beats[self.counter_current] = transp_beat(self)
         elif beat == 'portals':
-            print(f'\n- Beat {self.counter}: PORTALS ********************************************************************')
-            self.beats[self.counter] = portals_beat(self)
+            print(f'\n- Beat {self.counter_current}: PORTALS ********************************************************************')
+            self.beats[self.counter_current] = portals_beat(self)
         elif beat == 'eped':
-            print(f'\n- Beat {self.counter}: EPED ********************************************************************')
-            self.beats[self.counter] = eped_beat(self)
+            print(f'\n- Beat {self.counter_current}: EPED ********************************************************************')
+            self.beats[self.counter_current] = eped_beat(self)
 
         # Access current beat easily
-        self.beat = self.beats[self.counter]
+        self.beat = self.beats[self.counter_current]
 
         # Define initializer
         self.beat.define_initializer(initializer)
@@ -104,11 +100,14 @@ class maestro:
         # Check here if the beat has already been performed
         self.check(restart = restart or self.master_restart )
 
-    def add_profile_creator(self, method, parameters ={}):
+    def define_creator(self, method, parameters ={}):
         '''
-        "procreate" 
+        To initialize some profile functional form
         '''
-        self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,parameters)
+        if method == 'eped':
+            self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,parameters)
+        else:
+            raise ValueError(f'Creator method {method} not recognized')
 
     # --------------------------------------------------------------------------------------------
     # Beat operations
@@ -128,7 +127,7 @@ class maestro:
             beat_check = self.beat
 
         print('\t- Checking...')
-        log_file = f'{self.folder_logs}/beat_{self.counter}_check.log' if (not self.terminal_outputs) else None
+        log_file = f'{self.folder_logs}/beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             output_file = None
@@ -154,7 +153,7 @@ class maestro:
 
         print('\t- Initializing...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter}_ini.log' if (not self.terminal_outputs) else None
+            log_file = f'{self.folder_logs}/beat_{self.counter_current}_ini.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
@@ -172,7 +171,7 @@ class maestro:
 
         print('\t- Preparing...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter}_prep.log' if (not self.terminal_outputs) else None
+            log_file = f'{self.folder_logs}/beat_{self.counter_current}_prep.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 
                 # Initialize if necessary
@@ -192,7 +191,7 @@ class maestro:
         # Run 
         print('\t- Running...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter}_run.log' if (not self.terminal_outputs) else None
+            log_file = f'{self.folder_logs}/beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
             with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
 
@@ -210,7 +209,7 @@ class maestro:
         self._freeze_parameters()
 
         # Inform next beats
-        log_file = f'{self.folder_logs}/beat_{self.counter}_inform.log' if (not self.terminal_outputs) else None
+        log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
             self.beat._inform_save()
 
@@ -273,120 +272,120 @@ class maestro:
 
         MAESTROplot.plot_results(self, fn)
 
-# --------------------------------------------------------------------------------------------
-# Workflow
-# --------------------------------------------------------------------------------------------
+# # --------------------------------------------------------------------------------------------
+# # Workflow
+# # --------------------------------------------------------------------------------------------
 
-@mitim_timer('\t- MAESTRO')
-def simple_maestro_workflow(
-    folder,
-    geometry,
-    parameters,
-    Tbc_keV,
-    nbc_20,
-    TGLFsettings = 6,
-    DTplasma = True,
-    terminal_outputs = False,
-    full_loops = 2, # By default, do 2 loops of TRANSP-PORTALS
-    quality = {
-        'maximum_value': 1e-2,  # x100 better residual
-        'BO_iterations': 20,
-        'flattop_window': 0.15, # s
-        }
-    ):
+# @mitim_timer('\t- MAESTRO')
+# def simple_maestro_workflow(
+#     folder,
+#     geometry,
+#     parameters,
+#     Tbc_keV,
+#     nbc_20,
+#     TGLFsettings = 6,
+#     DTplasma = True,
+#     terminal_outputs = False,
+#     full_loops = 2, # By default, do 2 loops of TRANSP-PORTALS
+#     quality = {
+#         'maximum_value': 1e-2,  # x100 better residual
+#         'BO_iterations': 20,
+#         'flattop_window': 0.15, # s
+#         }
+#     ):
 
-    m = maestro(folder, terminal_outputs = terminal_outputs)
+#     m = maestro(folder, terminal_outputs = terminal_outputs)
     
-    # ---------------------------------------------------------
-    # beat 0: Define info
-    # ---------------------------------------------------------
+#     # ---------------------------------------------------------
+#     # beat 0: Define info
+#     # ---------------------------------------------------------
 
-    # Simple profiles
+#     # Simple profiles
 
-    w_top, w_a = 0.05, 0.3
-    rho, Te = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.7, w_a = w_a)
-    rho, Ti = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.5, w_a = w_a)
-    rho, ne = procreate(y_top = nbc_20, y_sep = nbc_20/3.0, w_top = w_top, aLy = 0.2, w_a = w_a)
-    profiles = {'Te': [rho, Te],'Ti': [rho, Ti],'ne': [rho, ne]}
+#     w_top, w_a = 0.05, 0.3
+#     rho, Te = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.7, w_a = w_a)
+#     rho, Ti = procreate(y_top = Tbc_keV, y_sep = 0.1, w_top = w_top, aLy = 1.5, w_a = w_a)
+#     rho, ne = procreate(y_top = nbc_20, y_sep = nbc_20/3.0, w_top = w_top, aLy = 0.2, w_a = w_a)
+#     profiles = {'Te': [rho, Te],'Ti': [rho, Ti],'ne': [rho, ne]}
 
-    # Faster TRANSP (different than defaults)
-    transp_namelist = {
-        'Pich'   : True,
-        'dtEquilMax_ms': 1.0,       # Higher resolution than default (10.0) to avoid quval error
-        'dtHeating_ms' : 5.0,       # Default
-        'dtOut_ms' : 10.0,
-        'dtIn_ms' : 10.0,
-        'nzones' : 60,
-        'nzones_energetic' : 20,    # Default but lower than what I used to use
-        'nzones_distfun' : 10,      # Default but lower than what I used to use    
-        'MCparticles' : 1e4,
-        'toric_ntheta' : 64,        # Default values of TORIC, but lower than what I used to use
-        'toric_nrho' : 128,         # Default values of TORIC, but lower than what I used to use
-        'DTplasma': DTplasma
-    }
+#     # Faster TRANSP (different than defaults)
+#     transp_namelist = {
+#         'Pich'   : True,
+#         'dtEquilMax_ms': 1.0,       # Higher resolution than default (10.0) to avoid quval error
+#         'dtHeating_ms' : 5.0,       # Default
+#         'dtOut_ms' : 10.0,
+#         'dtIn_ms' : 10.0,
+#         'nzones' : 60,
+#         'nzones_energetic' : 20,    # Default but lower than what I used to use
+#         'nzones_distfun' : 10,      # Default but lower than what I used to use    
+#         'MCparticles' : 1e4,
+#         'toric_ntheta' : 64,        # Default values of TORIC, but lower than what I used to use
+#         'toric_nrho' : 128,         # Default values of TORIC, but lower than what I used to use
+#         'DTplasma': DTplasma
+#     }
 
-    # Simple PORTALS
+#     # Simple PORTALS
 
-    portals_namelist = {
-        "PORTALSparameters": {
-            "launchEvaluationsAsSlurmJobs": not CONFIGread.isThisEngaging(),
-            "forceZeroParticleFlux": True
-        },
-        "MODELparameters": {
-            "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
-            "transport_model": {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
-        },
-        "INITparameters": {
-            "FastIsThermal": True
-        },
-        "optimization_options": {
-            "BO_iterations": quality.get('BO_iterations', 20),
-            "maximum_value": quality.get('maximum_value', 1e-2),
-            "maximum_value_is_rel": True,
-        }
-    }
+#     portals_namelist = {
+#         "PORTALSparameters": {
+#             "launchEvaluationsAsSlurmJobs": not CONFIGread.isThisEngaging(),
+#             "forceZeroParticleFlux": True
+#         },
+#         "MODELparameters": {
+#             "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
+#             "transport_model": {"turbulence":'TGLF',"TGLFsettings": TGLFsettings, "extraOptionsTGLF": {}}
+#         },
+#         "INITparameters": {
+#             "FastIsThermal": True
+#         },
+#         "optimization_options": {
+#             "BO_iterations": quality.get('BO_iterations', 20),
+#             "maximum_value": quality.get('maximum_value', 1e-2),
+#             "maximum_value_is_rel": True,
+#         }
+#     }
 
-    # ------------------------------------------------------------
-    # beat N: TRANSP from FreeGS and freeze engineering parameters
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # beat N: TRANSP from FreeGS and freeze engineering parameters
+#     # ------------------------------------------------------------
 
-    m.define_beat('transp', initializer='geqdsk' if 'geqdsk_file' in geometry else 'freegs')
-    m.initialize(**geometry, **parameters, profiles = profiles)
+#     m.define_beat('transp', initializer='geqdsk' if 'geqdsk_file' in geometry else 'freegs')
+#     m.initialize(**geometry, **parameters, profiles = profiles)
     
-    m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
-    m.run()
+#     m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
+#     m.run()
 
-    # ---------------------------------------------------------
-    # beat N+1: PORTALS from TRANSP
-    # ---------------------------------------------------------
+#     # ---------------------------------------------------------
+#     # beat N+1: PORTALS from TRANSP
+#     # ---------------------------------------------------------
 
-    m.define_beat('portals')
-    m.prepare(**portals_namelist)
-    m.run()
+#     m.define_beat('portals')
+#     m.prepare(**portals_namelist)
+#     m.run()
 
-    for i in range(full_loops-1):
+#     for i in range(full_loops-1):
 
-        # ---------------------------------------------------------
-        # beat N: TRANSP from PORTALS
-        # ---------------------------------------------------------
+#         # ---------------------------------------------------------
+#         # beat N: TRANSP from PORTALS
+#         # ---------------------------------------------------------
 
-        m.define_beat('transp')
-        m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
-        m.run()
+#         m.define_beat('transp')
+#         m.prepare(flattop_window = quality.get('flattop_window', 0.15), **transp_namelist)
+#         m.run()
 
-        # ---------------------------------------------------------
-        # beat N+1: PORTALS from TRANSP
-        # ---------------------------------------------------------
+#         # ---------------------------------------------------------
+#         # beat N+1: PORTALS from TRANSP
+#         # ---------------------------------------------------------
 
-        m.define_beat('portals')
-        m.prepare(**portals_namelist)
-        m.run()
+#         m.define_beat('portals')
+#         m.prepare(**portals_namelist)
+#         m.run()
 
-    # ---------------------------------------------------------
-    # Finalize
-    # ---------------------------------------------------------
+#     # ---------------------------------------------------------
+#     # Finalize
+#     # ---------------------------------------------------------
 
-    m.finalize()
+#     m.finalize()
 
-    return m
+#     return m
 
