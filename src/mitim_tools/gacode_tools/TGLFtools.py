@@ -2,6 +2,7 @@ import os
 import copy
 import pickle
 import numpy as np
+import xarray as xr
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools.misc_tools import (
@@ -4970,6 +4971,100 @@ class TGLFoutput:
 
         else:
             self.unnormalization_successful = False
+
+    def to_xarray(self):
+        coord_rename_mapper = {
+            'num_ky': 'nky',
+            'num_nmodes': 'nmodes',
+            'num_species': 'nspecies',
+            'num_fields': 'nfields',
+        }
+        data_rename_mapper = {
+            'AmplitudeSpectrum': 'amplitude',
+            'Eigenvalues': 'eigenvalue',
+            'FieldSpectrum': 'field',
+            'IntensitySpectrum': 'intensity',
+            'nTSpectrum': 'crossphase',
+            'QLFluxSpectrum': 'ql_flux',
+            'SumFluxSpectrum': 'sum_flux',
+        }
+        data_dim_mapper = {
+            'amplitude': ['nspecies', 'nky'],
+            'eigenvalue': ['nmodes', 'nky'],
+            'field': ['nmodes', 'nky'],
+            'intensity': ['nspecies', 'nmodes', 'nky'],
+            'crossphase': ['nspecies', 'nmodes', 'nky'],
+            'ql_flux': ['nspecies', 'nfields', 'nmodes', 'nky'],
+            'sum_flux': ['nspecies', 'nfields', 'nky'],
+        }
+        data_type_mapper = {
+            'amplitude': ['density', 'temperature'],
+            'eigenvalue': ['imaginary', 'real'],
+            'field': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
+            'intensity': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
+            'ql_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
+            'sum_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
+        }
+        coord_dict = {'nruns': [0]}
+        dvars_dict = {}
+        attrs_dict = {}
+        for attr, key in coord_rename_mapper.items():
+            if hasattr(self, f'{attr}'):
+                dim_length = getattr(self, f'{attr}')
+                coord_dict[f'{key}'] = np.arange(dim_length)
+        for attr, key in data_rename_mapper.items():
+            if hasattr(self, f'{attr}'):
+                vals = getattr(self, f'{attr}')
+                data_type_dict = {}
+                if f'{key}' in data_type_mapper:
+                    if vals.shape[0] == len(data_type_mapper[f'{key}']):
+                        tkeys = [f'{key}_{tkey}' for tkey in data_type_mapper[f'{key}']]
+                        tvals = np.split(vals, vals.shape[0], axis=0)
+                        for tkey, tval in zip(tkeys, tvals):
+                            data_type_dict[f'{tkey}'] = np.squeeze(tval, axis=0)
+                else:
+                    data_type_dict[f'{key}'] = vals
+                dims = ['nruns']
+                if f'{key}' in data_dim_mapper:
+                    dims += data_dim_mapper[f'{key}']
+                for dkey in data_type_dict:
+                    dvars_dict[f'{dkey}'] = (dims, np.expand_dims(data_type_dict[f'{dkey}'], axis=0))
+        if dvars_dict:
+            input_dims = ['nruns']
+            dvars_dict['ky'] = (input_dims + ['nky'], np.expand_dims(self.ky, axis=0))
+            if hasattr(self.inputclass, 'plasma'):
+                input_dict = getattr(self.inputclass, 'plasma')
+                for key in input_dict:
+                    nkey = key.lower()
+                    dvars_dict[f'{nkey}'] = (input_dims, np.expand_dims(input_dict[f'{key}'], axis=0))
+            if hasattr(self.inputclass, 'species'):
+                input_dict = getattr(self.inputclass, 'species')
+                species_dict = {}
+                for ii in range(self.num_species):
+                    tglf_ion_num = ii + 1
+                    if tglf_ion_num in input_dict:
+                        for key in input_dict[tglf_ion_num]:
+                            nkey = key.lower()
+                            if nkey not in species_dict:
+                                species_dict[f'{nkey}'] = np.full((self.num_species, ), np.nan)
+                            species_dict[f'{nkey}'][ii] = input_dict[tglf_ion_num][f'{key}']
+                for nkey in species_dict:
+                    dvars_dict[f'{nkey}'] = (input_dims + ['nspecies'], np.expand_dims(species_dict[f'{nkey}'], axis=0))
+            if hasattr(self.inputclass, 'geom'):
+                input_dict = getattr(self.inputclass, 'geom')
+                for key in input_dict:
+                    nkey = key.lower()
+                    dvars_dict[f'{nkey}'] = (input_dims, np.expand_dims(input_dict[f'{key}'], axis=0))
+            attrs_dict['field_names'] = self.fields
+            if hasattr(self.inputclass, 'controls'):
+                input_dict = getattr(self.inputclass, 'controls')
+                for key in input_dict:
+                    nkey = key.lower()
+                    val = input_dict[f'{key}']
+                    if isinstance(val, bool):
+                        val = 'T' if val else 'F'
+                    attrs_dict[f'{nkey}'] = val
+        return xr.Dataset(data_vars=dvars_dict, coords=coord_dict, attrs=attrs_dict)
 
     def plotTGLF_Summary(self, c="b", label="", axs=None, irho_cont=0):
         removeLow = 1e-6  # If Growth Rate below this, remove from list for better logarithmic plotting
