@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import integrate
 from mitim_tools.misc_tools import MATHtools
 from IPython import embed
 
@@ -366,3 +367,17 @@ def volp_surf_Miller_vectorized(
 
     return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_bt0
 
+def xsec_area_RZ(
+        R,
+        Z
+):
+    # calculates the cross-sectional area of the plasma for each flux surface
+    xsec_area = []
+    for i in range(R.shape[0]):
+        R0 = np.max(R[i,:]) - np.min(R[i,:])
+        Z0 = np.max(Z[i,:]) - np.min(Z[i,:])
+        xsec_area.append(np.trapz(R[i], Z[i]))
+
+    xsec_area = np.array(xsec_area)
+
+    return xsec_area
