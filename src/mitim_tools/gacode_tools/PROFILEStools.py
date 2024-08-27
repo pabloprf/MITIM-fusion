@@ -439,6 +439,12 @@ class PROFILES_GACODE:
             self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
             # -----------------------------------------------
 
+            #cross-sectional area of each flux surface
+            self.derived["surfXS"] = GEOMETRYtools.xsec_area_RZ(
+                self.derived["R_surface"],
+                self.derived["Z_surface"]
+                )
+
             self.derived["R_LF"] = self.derived["R_surface"].max(
                 axis=1
             )  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
@@ -469,11 +475,7 @@ class PROFILES_GACODE:
             0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
         )
 
-        # I need to to kappa_a with the cross section...
-        self.derived["kappa_a"] = self.derived[
-            "kappa95"
-        ]  # self.derived['surfXS_miller'][-1] / (np.pi*self.derived['a']**2)
-        # print('\t- NOTE: Using kappa95 ({0:.2f}) as areal elongation for scalings. I need to work on the implementation of the XS surface area'.format(self.derived['kappa95']),typeMsg='w')
+        self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 
         self.derived["delta95"] = np.interp(
             0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"]
@@ -995,17 +997,14 @@ class PROFILES_GACODE:
         )
 
         """
-		This beta is very approx, since I should be using the average of B**2? is B_ref?
+		Update 8/24 jbh - changed the calculation of BetaN to use the average effective field
 		"""
         # Beta = CALCtools.integrateFS( self.derived['ptot_manual']*1E6 / (self.derived['B_ref']**2/(2*4*np.pi*1E-7 )),r,volp)[-1] / self.derived['volume']
         # Beta = self.derived['ptot_manual_vol']*1E6 / (self.derived['B0']**2/(2*4*np.pi*1E-7 ))
-        # Beta = self.derived['ptot_manual_vol']*1E6 / ( CALCtools.integrateFS(  self.derived['B_ref']**2 ,r,volp)[-1] / self.derived['volume'] /(2*4*np.pi*1E-7) )
+        # Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+        #self.derived["BetaN_old"] = (Beta_old / (np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"]))* 100.0)
+        Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
 
-        Beta = (
-            self.derived["pthr_manual_vol"]
-            * 1e6
-            / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7))
-        )
         self.derived["BetaN"] = (
             Beta
             / (
