@@ -125,8 +125,8 @@ class FigureNotebook:
         """
         print(f"\n> Closing MITIM Notebook titled: {self.windowtitle}", typeMsg="i")
         # Disconnect all canvases
-        for canvas in self.canvases:
-            canvas.mpl_disconnect(canvas.callbacks.connect('draw_event', lambda: None))
+        # for canvas in self.canvases:
+        #     canvas.mpl_disconnect(canvas.callbacks.connect('draw_event', lambda: None))
         self.MainWindow.close()
         self.app.quit()
 

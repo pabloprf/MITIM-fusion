@@ -9,7 +9,7 @@ from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -287,6 +287,10 @@ class opt_evaluator:
                 f"\t- Perform extra analysis for this sub-module (analysis level {analysis_level})"
             )
 
+        if plotYN and (analysis_level >= 0):
+            if "fn" not in self.__dict__:
+                self.fn = GUItools.FigureNotebook("MITIM Optimization Results")
+            
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,

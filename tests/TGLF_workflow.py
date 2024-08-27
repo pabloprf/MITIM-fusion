@@ -15,12 +15,24 @@ if restart and os.path.exists(folder):
 
 tglf = TGLFtools.TGLF()
 tglf.prep_from_tglf(folder, input_tglf)
+
 tglf.run(
     subFolderTGLF="run1/",
     TGLFsettings=None,
     restart=restart,
     forceIfRestart=True,
-    extraOptions={"USE_BPER": True},
+    extraOptions={"USE_BPER": False, "USE_BPAR": False},
+    slurm_setup={"cores": 4, "minutes": 1},
+)
+
+tglf.read(label="ES")
+
+tglf.run(
+    subFolderTGLF="run1/",
+    TGLFsettings=None,
+    restart=restart,
+    forceIfRestart=True,
+    extraOptions={"USE_BPER": True, "USE_BPAR": True},
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
