@@ -255,7 +255,7 @@ class MITIMgeqdsk:
         psis = self.g["AuxQuantities"]["PSI_NORM"]
         flux_surfaces = self.g['fluxSurfaces']['flux']
         
-        # Cannot parallelize because differen number of points?
+        # Cannot parallelize because different number of points?
         kappa, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[]
         
         for flux in range(len(flux_surfaces)):
@@ -303,81 +303,6 @@ class MITIMgeqdsk:
         '''
 
         return psis, rmaj, rmin, zmag, kappa, cn, sn
-
-    def get_MXH_coeff(self, n, n_coeff=6, plotYN=False): 
-        """
-        Calculates MXH Coefficients as a function of poloidal flux
-        n: number of grid points to interpolate the flux surfaces
-           NOT the number of radial points returned. This function
-           will return n_coeff sin and cosine coefficients for each
-           flux surface in the geqdsk file. Changing n is only nessary
-           if the last closed flux surface is not well resolved.
-        """
-
-        # Upsample the poloidal flux grid
-        Raux, Zaux = self.g["AuxQuantities"]["R"], self.g["AuxQuantities"]["Z"]
-        R = np.linspace(np.min(Raux),np.max(Raux),n)
-        Z = np.linspace(np.min(Zaux),np.max(Zaux),n)
-        Psi_norm = MATHtools.interp2D(R, Z, Raux, Zaux, self.g["AuxQuantities"]["PSIRZ_NORM"])
-
-        # calculate the LCFS boundary
-        # Select only the R and Z values within the LCFS- I psi_norm outside to 2
-        # this works fine for fixed-boundary equilibria but needs v. high tolerance
-        # for the full equilibrium with x-point.
-        R_max_ind = np.argmin(np.abs(R-np.max(self.Rb)))+1 # extra index for tolerance
-        Z_max_ind = np.argmin(np.abs(Z-np.max(self.Yb)))+1
-        R_min_ind = np.argmin(np.abs(R-np.min(self.Rb)))-1
-        Z_min_ind = np.argmin(np.abs(Z-np.min(self.Yb)))-1
-        Psi_norm[:,:R_min_ind] = 2
-        Psi_norm[:,R_max_ind:] = 2
-        Psi_norm[:Z_min_ind,:] = 2
-        Psi_norm[Z_max_ind:,:] = 2
-
-        psis = self.g["AuxQuantities"]["PSI_NORM"]
-        
-        cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
-        print(" \t\t--> Finding g-file flux-surfaces")
-        for i, psi in enumerate(psis):
-            
-            if psi == 0:
-                psi+=0.0001
-
-            # need to construct level contours for each flux surface 
-            Ri, Zi = MATHtools.drawContours(
-                R,
-                Z,
-                Psi_norm,
-                n,
-                psi,
-            )
-            Ri, Zi = Ri[0], Zi[0]
-                
-            # interpolate R,Z contours to have the same dimensions
-            Ri = np.interp(np.linspace(0,1,n),np.linspace(0,1,Ri.size),Ri)
-            Zi = np.interp(np.linspace(0,1,n),np.linspace(0,1,Zi.size),Zi)
-    
-            #calculate Miller Extended Harmionic coefficients
-            #enforce zero at the innermost flux surface
-            
-            cn[:,i], sn[:,i], gn[:,i] = from_RZ_to_mxh(Ri, Zi, n_coeff)
-            if i == 0:
-                cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
-
-        if plotYN:
-
-            fig, axes = plt.subplots(2,1)
-            for i in np.arange(n_coeff):
-                axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
-                axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
-            axes[0].legend() ; axes[1].legend()
-            axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
-            axes[0].grid() ; axes[1].grid()
-            axes[0].set_title("MXH Coefficients - Cosine")
-            axes[1].set_title("MXH Coefficients - Sine")
-            GRAPHICStools.adjust_figure_layout(fig)
-            plt.show()
-
-        return cn, sn, gn, psis
         
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
