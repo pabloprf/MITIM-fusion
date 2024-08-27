@@ -152,7 +152,9 @@ def convert_ASTRA_to_gacode(astra_root,
 
     # Aquire MXH Coefficients
     print("Finding flux surface geometry ...")
-    shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+    psis, rmaj, rmin, zmag, kappa, cn, sn   = g.get_MXH_coeff_new()
+    print(cn.shape, sn.shape)
+    #shape_cos, shape_sin, bbox, psin_grid
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -184,25 +186,25 @@ def convert_ASTRA_to_gacode(astra_root,
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
                                          
     # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
-    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)    
+    interp_to_rho = lambda x: np.interp(polflux_norm, psis, x)    
 
     q = interp_to_nexp(c.q[ai])                ; params['q(-)'] = q
-    rmaj = interp_to_rho(bbox[0,:])            ; params['rmaj(m)'] = rmaj
-    rmin = interp_to_rho(bbox[1,:])            ; params['rmin(m)'] = rmin
-    zmag = interp_to_rho(bbox[2,:])            ; params['zmag(m)'] = zmag
-    kappa = interp_to_rho(bbox[3,:])           ; params['kappa(-)'] = kappa
-    delta = interp_to_rho(shape_sin[1,:])      ; params['delta(-)'] = delta
-    zeta = interp_to_rho(-shape_sin[2,:])      ; params['zeta(-)'] = zeta
-    shape_cos0 = interp_to_rho(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
-    shape_cos1 = interp_to_rho(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
-    shape_cos2 = interp_to_rho(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
-    shape_cos3 = interp_to_rho(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
-    shape_cos4 = interp_to_rho(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
-    shape_cos5 = interp_to_rho(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
+    rmaj = interp_to_rho(rmaj)            ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_rho(rmin)            ; params['rmin(m)'] = rmin
+    zmag = interp_to_rho(zmag)            ; params['zmag(m)'] = zmag
+    kappa = interp_to_rho(kappa)           ; params['kappa(-)'] = kappa
+    delta = interp_to_rho(sn[:,1])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-sn[:,2])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
     shape_cos6 = np.zeros(nexp)                ; params['shape_cos6(-)'] = shape_cos6
-    shape_sin3 = interp_to_rho(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
-    shape_sin4 = interp_to_rho(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
-    shape_sin5 = interp_to_rho(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin3 = interp_to_rho(sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
     shape_sin6 = np.zeros(nexp)                ; params['shape_sin6(-)'] = shape_sin6
 
     ne = interp_to_nexp(c.ne[ai,:])            ; params['ne(10^19/m^3)'] = ne
