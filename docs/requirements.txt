@@ -7,3 +7,5 @@ sphinx-panels
 sphinxcontrib-images
 h5py
 matplotlib
+importlib-metadata
+IPython
