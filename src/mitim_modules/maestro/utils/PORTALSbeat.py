@@ -57,7 +57,7 @@ class portals_beat(beat):
                 for subkey in self.INITparameters[key]:
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
-        portals_fun.prep(self.fileGACODE,self.folder,hardGradientLimits = [0,2])
+        portals_fun.prep(self.fileGACODE,hardGradientLimits = [0,2])
 
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
 
