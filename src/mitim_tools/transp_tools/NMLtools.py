@@ -96,7 +96,7 @@ class transp_nml:
         self.AddHe4ifDT = transp_params.get("AddHe4ifDT",False)
         self.Minorities = transp_params.get("Minorities",[2,3,0.05])
         self.zlump = transp_params.get("zlump",[
-            [74.0, 183.0, 0.000286],
+            [74.0, 184.0, 0.000286],
             [9.0, 18.0, 0.1]
             ] )
 

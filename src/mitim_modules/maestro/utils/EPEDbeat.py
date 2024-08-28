@@ -88,7 +88,7 @@ class eped_beat(beat):
         # Run NN
         # -------------------------------------------------------
 
-        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep=tesep,nesep_ratio=nesep_ratio)
+        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10.0, betan, zeff, tesep=tesep,nesep_ratio=nesep_ratio)
 
         # -------------------------------------------------------
         # Put into profiles
