@@ -14,7 +14,7 @@ class portals_beat(beat):
     def __init__(self, maestro_instance):
         super().__init__(maestro_instance, beat_name = 'portals')
 
-    def prepare(self, use_previous_residual = True, PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
+    def prepare(self, use_previous_residual = True, use_previous_surrogate_data = False, additional_params_in_surrogate = [], PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
 
         self.fileGACODE = f"{self.initialize.folder}/input.gacode"
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
@@ -24,13 +24,15 @@ class portals_beat(beat):
         self.optimization_options = optimization_options
         self.INITparameters = INITparameters
 
-        self._inform(use_previous_residual = use_previous_residual)
+        self.additional_params_in_surrogate = additional_params_in_surrogate
+
+        self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = use_previous_surrogate_data)
 
     def run(self, **kwargs):
 
         restart = kwargs.get('restart', False)
 
-        portals_fun  = PORTALSmain.portals(self.folder)
+        portals_fun  = PORTALSmain.portals(self.folder, additional_params_in_surrogate = self.additional_params_in_surrogate)
 
         for key in self.PORTALSparameters:
             if not isinstance(portals_fun.PORTALSparameters[key], dict):
@@ -95,12 +97,15 @@ class portals_beat(beat):
         # First, bring back to the resolution of the frozen
         self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
 
-        # Insert everything but kinetic profiles and dynamic targets from frozen
-        for key in p.profiles:
-            if key not in ['ne(10^19/m^3)', 'te(keV)', 'qei(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
-                self.profiles_output.profiles[key] = p.profiles[key]
+        # --------------------------------------------------------------------------------------------
+        # Insert relevant quantities
+        # --------------------------------------------------------------------------------------------
 
-        # Insert species that were not in the current
+        # Merge Te and ne:
+        self.profiles_output.profiles['te(keV)'] = p.profiles['te(keV)']
+        self.profiles_output.profiles['ne(10^19/m^3)'] = p.profiles['ne(10^19/m^3)']
+
+        # Insert Ti and ni
         ni_old = copy.deepcopy(self.profiles_output.profiles['ni(10^19/m^3)'])
         Ti_old = copy.deepcopy(self.profiles_output.profiles['ti(keV)'])
         self.profiles_output.profiles['ni(10^19/m^3)'] = p.profiles['ni(10^19/m^3)']
@@ -108,6 +113,17 @@ class portals_beat(beat):
         for i in range(ni_old.shape[-1]):
             self.profiles_output.profiles['ni(10^19/m^3)'][:,i] = ni_old[:,i]
             self.profiles_output.profiles['ti(keV)'][:,i] = Ti_old[:,i]
+
+        self.prf_bo
+        # Insert powers
+        if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
+            # Insert exchange
+            self.profiles_output.profiles['qei(MW/m^3)'] = p.profiles['qei(MW/m^3)']
+            if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
+                # Insert radiation and fusion
+                for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
+                    self.profiles_output.profiles[key] = p.profiles[key]
+        # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
@@ -152,7 +168,7 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
-    def _inform(self, use_previous_residual = True):
+    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
@@ -162,10 +178,26 @@ class portals_beat(beat):
 
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['maximum_value']}")
 
+        if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
+            self.optimization_options['surrogateOptions'] = {"extrapointsFile": self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']}
+
+            print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
+
     def _inform_save(self):
+
+        print('\t- Saving PORTALS beat parameters for future beats')
 
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()
-        max_value_neg_residual = portals_output.step.stepSettings['optimization_options']['maximum_value']
+
+        stepSettings = portals_output.step.stepSettings
+
+        max_value_neg_residual = stepSettings['optimization_options']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
-        print(f'\t\t- Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
+        print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
+
+        fileTraining = f"{stepSettings['folderOutputs']}/surrogate_data.csv"
+        
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
+        print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
+

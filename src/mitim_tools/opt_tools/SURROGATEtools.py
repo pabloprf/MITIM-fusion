@@ -129,6 +129,16 @@ class surrogate_model:
             df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
             df_model = df[df['Model'] == self.output]
 
+            if len(df_model) == 0:
+                print("\t- No points for this output in the file, nothing to add", typeMsg="i")
+                continueAdding = False
+            else:
+                continueAdding = True
+        else:
+            continueAdding = False
+
+        if continueAdding:
+
             # Check 1: Do the points for this output share the same x_names?
             if df_model['x_names'].nunique() > 1:
                 print("Different x_names for points in the file, prone to errors", typeMsg='q')
