@@ -91,6 +91,7 @@ class transp_output:
         ssh=None,
         ZerothTime=False,
         readFBM=False,
+        ask_if_fbm=False,
         readTGLF=False,
         readTORIC=False,
         readGFILE=False,
@@ -243,7 +244,7 @@ class transp_output:
             if needToConvert:
                 readFBM = print(
                     "\t- Gathering FBM data ——requires conversion of FBM files",
-                    typeMsg="q",
+                    typeMsg="q" if ask_if_fbm else "w",
                 )
             else:
                 print("\t- Gathering FBM data")

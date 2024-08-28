@@ -14,7 +14,20 @@ class portals_beat(beat):
     def __init__(self, maestro_instance):
         super().__init__(maestro_instance, beat_name = 'portals')
 
-    def prepare(self, use_previous_residual = True, use_previous_surrogate_data = False, additional_params_in_surrogate = [], PORTALSparameters = {}, MODELparameters = {}, optimization_options = {}, INITparameters = {}):
+    def prepare(self,
+            use_previous_residual = True,
+            use_previous_surrogate_data = False,
+            additional_params_in_surrogate = [],
+            exploration_ranges = {
+                'ymax_rel': 1.0,
+                'ymin_rel': 1.0,
+                'hardGradientLimits': [0,2]
+            },
+            PORTALSparameters = {},
+            MODELparameters = {},
+            optimization_options = {},
+            INITparameters = {}
+            ):
 
         self.fileGACODE = f"{self.initialize.folder}/input.gacode"
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
@@ -25,6 +38,8 @@ class portals_beat(beat):
         self.INITparameters = INITparameters
 
         self.additional_params_in_surrogate = additional_params_in_surrogate
+
+        self.exploration_ranges = exploration_ranges
 
         self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = use_previous_surrogate_data)
 
@@ -59,7 +74,12 @@ class portals_beat(beat):
                 for subkey in self.INITparameters[key]:
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
-        portals_fun.prep(self.fileGACODE,hardGradientLimits = [0,2])
+        portals_fun.prep(
+            self.fileGACODE,
+            ymax_rel = self.exploration_ranges['ymax_rel'],
+            ymin_rel = self.exploration_ranges['ymin_rel'],
+            hardGradientLimits = self.exploration_ranges['hardGradientLimits']
+            )
 
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
 
@@ -84,25 +104,29 @@ class portals_beat(beat):
             - Kinetic profiles
             - Dynamics targets that gave rise to the kinetic profiles
         So, this merge:
-            - Brings back the resolution of the frozen profiles
+            - Frozen profiles are converted to PORTALS output resolution (opposite to usual, but keeps gradients)
             - Inserts kinetic profiles
-            - Inserts dynamic targets
+            - Inserts dynamic targets (only those that were evolved)
         '''
 
-        profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
-
-        p = self.maestro_instance.profiles_with_engineering_parameters
+        # Write the pre-merge input.gacode before modifying it
+        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
 
         # First, bring back to the resolution of the frozen
-        self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
+        p_frozen = self.maestro_instance.profiles_with_engineering_parameters
+        # self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
+
+        # In PORTALS it is more convenient to bring frozen to portals resolution instead (keeps gradients from beat to beat)
+        p_frozen.changeResolution(rho_new = self.profiles_output.profiles['rho(-)'])
 
         # --------------------------------------------------------------------------------------------
         # Re-define baseline
         # --------------------------------------------------------------------------------------------
 
         profiles_portals_out = copy.deepcopy(self.profiles_output)
-        self.profiles_output = p
+
+        # Baseline is frozen, I'll modify things from here
+        self.profiles_output = p_frozen
 
         # --------------------------------------------------------------------------------------------
         # Insert relevant quantities
@@ -112,12 +136,12 @@ class portals_beat(beat):
         self.profiles_output.profiles['te(keV)'] = profiles_portals_out.profiles['te(keV)']
         self.profiles_output.profiles['ne(10^19/m^3)'] = profiles_portals_out.profiles['ne(10^19/m^3)']
 
-        # Insert Ti and ni
-        ni_old = copy.deepcopy(self.profiles_output.profiles['ni(10^19/m^3)'])
-        Ti_old = copy.deepcopy(self.profiles_output.profiles['ti(keV)'])
-        for i in range(ni_old.shape[-1]):
-            self.profiles_output.profiles['ni(10^19/m^3)'][:,i] = ni_old[:,i]
-            self.profiles_output.profiles['ti(keV)'][:,i] = Ti_old[:,i]
+        # Insert Ti and ni (but check for species in case portals has removed them?)
+        for i,sp in enumerate(profiles_portals_out.Species):
+            for j,sp1 in enumerate(self.profiles_output.Species):
+                if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
+                    self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
+                    self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Insert powers
         if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:

@@ -163,30 +163,36 @@ class transp_beat(beat):
             - Scales power deposition profiles to match the frozen power deposition which I treat as an engineering parameter (Pin)
         '''
 
+        # Write the pre-merge input.gacode before modifying it
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
         profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
 
-        p = self.maestro_instance.profiles_with_engineering_parameters
-
         # First, bring back to the resolution of the frozen
-        self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
+        p_frozen = self.maestro_instance.profiles_with_engineering_parameters
+        self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
+
+        # --------------------------------------------------------------------------------------------
+        # Insert relevant quantities
+        # --------------------------------------------------------------------------------------------
 
         # Insert kinetic profiles from frozen
-        self.profiles_output.profiles['ne(10^19/m^3)'] = p.profiles['ne(10^19/m^3)']
-        self.profiles_output.profiles['te(keV)'] = p.profiles['te(keV)']
-        self.profiles_output.profiles['ti(keV)'][:,0] = p.profiles['ti(keV)'][:,0]
+        self.profiles_output.profiles['ne(10^19/m^3)'] = p_frozen.profiles['ne(10^19/m^3)']
+        self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
+        self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
 
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
-        profiles_output_pre_merge.changeResolution(rho_new = p.profiles['rho(-)'])
+        profiles_output_pre_merge.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
         self.profiles_output.scaleAllThermalDensities(scaleFactor = self.profiles_output.profiles['ne(10^19/m^3)']/profiles_output_pre_merge.profiles['ne(10^19/m^3)'])
 
         # Insert engineering parameters (except shape)
         for key in ['current(MA)', 'bcentr(T)']:
-            self.profiles_output.profiles[key] = p.profiles[key]
+            self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
-        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
-        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+
+        # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
