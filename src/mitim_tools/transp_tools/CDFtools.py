@@ -14753,7 +14753,7 @@ class transp_output:
         print("\t- Looking for equilibrium file in CDF folder...")
         for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
             for folder in ["EQ_folder/", ""]:
-                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension)
+                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
                     self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)

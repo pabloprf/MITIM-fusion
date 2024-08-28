@@ -98,31 +98,35 @@ class portals_beat(beat):
         self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
 
         # --------------------------------------------------------------------------------------------
+        # Re-define baseline
+        # --------------------------------------------------------------------------------------------
+
+        profiles_portals_out = copy.deepcopy(self.profiles_output)
+        self.profiles_output = p
+
+        # --------------------------------------------------------------------------------------------
         # Insert relevant quantities
         # --------------------------------------------------------------------------------------------
 
         # Merge Te and ne:
-        self.profiles_output.profiles['te(keV)'] = p.profiles['te(keV)']
-        self.profiles_output.profiles['ne(10^19/m^3)'] = p.profiles['ne(10^19/m^3)']
+        self.profiles_output.profiles['te(keV)'] = profiles_portals_out.profiles['te(keV)']
+        self.profiles_output.profiles['ne(10^19/m^3)'] = profiles_portals_out.profiles['ne(10^19/m^3)']
 
         # Insert Ti and ni
         ni_old = copy.deepcopy(self.profiles_output.profiles['ni(10^19/m^3)'])
         Ti_old = copy.deepcopy(self.profiles_output.profiles['ti(keV)'])
-        self.profiles_output.profiles['ni(10^19/m^3)'] = p.profiles['ni(10^19/m^3)']
-        self.profiles_output.profiles['ti(keV)'] = p.profiles['ti(keV)']
         for i in range(ni_old.shape[-1]):
             self.profiles_output.profiles['ni(10^19/m^3)'][:,i] = ni_old[:,i]
             self.profiles_output.profiles['ti(keV)'][:,i] = Ti_old[:,i]
 
-        self.prf_bo
         # Insert powers
         if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
             # Insert exchange
-            self.profiles_output.profiles['qei(MW/m^3)'] = p.profiles['qei(MW/m^3)']
+            self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
             if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
                 # Insert radiation and fusion
                 for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
-                    self.profiles_output.profiles[key] = p.profiles[key]
+                    self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode

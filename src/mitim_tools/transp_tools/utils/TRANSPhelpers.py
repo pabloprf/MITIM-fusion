@@ -346,7 +346,7 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6):
+    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False):
         '''
         Run TRANSP
         '''
@@ -369,7 +369,7 @@ class transp_run:
         from mitim_tools.transp_tools.src.TRANSPglobus import TRANSPglobus
         is_this_worth_waiting = isinstance(self.t, TRANSPglobus) or (len(self.t.job.machineSettings['slurm']) > 0)
         if is_this_worth_waiting and (checkMin is not None):
-            self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin)
+            self.c = self.t.checkUntilFinished(label=case, checkMin=checkMin, grabIntermediateEachMin=grabIntermediateEachMin, retrieveAC=retrieveAC)
 
     def plot(self, case='run1'):
 

@@ -129,7 +129,8 @@ class transp_beat(beat):
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
-            checkMin = kwargs.get("checkMin",3)
+            checkMin = kwargs.get("checkMin",3),
+            retrieveAC = kwargs.get("retrieveAC",False),
             )
 
         self.transp.c = CDFtools.transp_output(f"{self.folder}/{self.shot}{self.runid}.CDF")
