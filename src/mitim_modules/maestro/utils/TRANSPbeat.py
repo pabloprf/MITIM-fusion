@@ -20,6 +20,7 @@ class transp_beat(beat):
         flattop_window      = 0.20,  # To allow for steady-state in heating and current diffusion
         transition_window   = 0.10,  # To prevent equilibrium crashes
         freq_ICH            = None,  # Frequency of ICRF heating (if None, find optimal)
+        extractAC           = False,  # To extract AC quantities
         **transp_namelist
         ):
         '''
@@ -36,6 +37,11 @@ class transp_beat(beat):
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
+
+        if extractAC:
+            self.timeAC = self.time_end - 0.001                              # Time to extract TORIC and NUBEAM files
+        else:
+            self.timeAC = None
 
         if shot is None:
             folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
@@ -71,7 +77,8 @@ class transp_beat(beat):
             transp_namelist_mod['timings'] = {
                 "time_start": self.time_init,
                 "time_current_diffusion": self.time_diffusion,
-                "time_end": self.time_end
+                "time_end": self.time_end,
+                "time_extraction": self.timeAC,
             }
 
         if 'Ufiles' in transp_namelist_mod:

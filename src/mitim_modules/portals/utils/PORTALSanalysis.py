@@ -879,7 +879,7 @@ class PORTALSinitializer:
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
         cont = 0
-        for i in range(len(self.powerstates[-1].ProfilesPredicted)):
+        for i in range(np.max[3,len(self.powerstates[-1].ProfilesPredicted)]):
             axsGrads_extra.append(axs[cont])
             axsGrads_extra.append(axs[cont+1])
             cont += 4

@@ -96,8 +96,18 @@ class portals_beat(beat):
         self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
 
         # Insert everything but kinetic profiles and dynamic targets from frozen
-        for key in ['ne(10^19/m^3)', 'te(keV)', 'ti(keV)', 'qei(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
-            self.profiles_output.profiles[key] = p.profiles[key]
+        for key in p.profiles:
+            if key not in ['ne(10^19/m^3)', 'te(keV)', 'qei(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
+                self.profiles_output.profiles[key] = p.profiles[key]
+
+        # Insert species that were not in the current
+        ni_old = copy.deepcopy(self.profiles_output.profiles['ni(10^19/m^3)'])
+        Ti_old = copy.deepcopy(self.profiles_output.profiles['ti(keV)'])
+        self.profiles_output.profiles['ni(10^19/m^3)'] = p.profiles['ni(10^19/m^3)']
+        self.profiles_output.profiles['ti(keV)'] = p.profiles['ti(keV)']
+        for i in range(ni_old.shape[-1]):
+            self.profiles_output.profiles['ni(10^19/m^3)'][:,i] = ni_old[:,i]
+            self.profiles_output.profiles['ti(keV)'][:,i] = Ti_old[:,i]
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()

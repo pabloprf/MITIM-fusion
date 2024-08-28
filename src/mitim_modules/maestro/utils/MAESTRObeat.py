@@ -284,9 +284,11 @@ class creator_from_parameterization(creator):
     
         def __call__(self):
 
+            aLy = 2.0
+
             # Produce profiles
-            rho, Te = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
-            rho, Ti = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
+            rho, Te = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy =aLy, w_a = 0.3)
+            rho, Ti = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy =aLy, w_a = 0.3)
             rho, ne = self.param_profiles(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
 
             # Call the generic creator
@@ -324,8 +326,7 @@ class creator_from_eped(creator_from_parameterization):
 
         # Create a beat within here
         from mitim_modules.maestro.utils.EPEDbeat import eped_beat
-        folder_name = f'{self.initialize_instance.beat_instance.maestro_instance.folder}/Creator_EPED'
-        beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = folder_name)
+        beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
         beat_eped.prepare(**self.parameters)
 
         # Work with this profile
