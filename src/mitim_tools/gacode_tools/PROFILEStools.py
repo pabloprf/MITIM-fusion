@@ -415,6 +415,8 @@ class PROFILES_GACODE:
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
+                self.derived["bp2_miller"],
+                self.derived["bt2_miller"],
                 self.derived["geo_bt"],
             ) = GEOMETRYtools.calculateGeometricFactors(
                 self,
@@ -996,14 +998,37 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        # Beta = CALCtools.integrateFS( self.derived['ptot_manual']*1E6 / (self.derived['B_ref']**2/(2*4*np.pi*1E-7 )),r,volp)[-1] / self.derived['volume']
-        # Beta = self.derived['ptot_manual_vol']*1E6 / (self.derived['B0']**2/(2*4*np.pi*1E-7 ))
+        #Retain the old beta definition for comparison with 0D modeling
         Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
-        #self.derived["BetaN_old"] = (Beta_old / (np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"]))* 100.0)
-        # Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
+        self.derived["BetaN_approx"] = (Beta_old / 
+                                        (np.abs(float(self.profiles["current(MA)"][-1])) / 
+                                         (self.derived["a"] * self.derived["B0"])
+                                         )* 100.0
+                                         ) # expressed in percent
+
+        # using B_unit, derive <B_p^2> and <Bt^2> for betap and betat calculations
+        # equivalent to GACODE expro_bp2, expro_bt2
+
+        self.derived["bp2_exp"] = self.derived["bp2_miller"] * self.derived["B_unit"] ** 2
+        self.derived["bt2_exp"] = self.derived["bt2_miller"] * self.derived["B_unit"] ** 2
+
+        # Calculate the volume averages of bt2 and bp2
+
+        P = self.derived["bp2_exp"]
+        self.derived["bp2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+        P = self.derived["bt2_exp"]
+        self.derived["bt2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+
+        # calculate beta_poloidal and beta_toroidal using volume averaged values
+        from scipy.constants import mu_0
+
+        betap = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bp2_vol_avg"]
+        betat = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bt2_vol_avg"]
+
+        self.derived["Beta"] = 1/(1/betap+1/betat)
 
         self.derived["BetaN"] = (
-            Beta_old
+            self.derived["Beta"]
             / (
                 np.abs(float(self.profiles["current(MA)"][-1]))
                 / (self.derived["a"] * self.derived["B0"])
