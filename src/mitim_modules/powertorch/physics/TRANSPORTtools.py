@@ -530,7 +530,7 @@ def curateTGYROfiles(
     Mt = tgyro.Mt_sim_turb[0, 1:]
     Pexch = tgyro.EXe_sim_turb[0, 1:]
     
-    # Determine TGLF error
+    # Determine TGLF standard deviations
     if use_tglf_scan_trick is not None:
 
         # --------------------------------------------------------------
