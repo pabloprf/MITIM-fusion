@@ -998,7 +998,7 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        #Retain the old beta definition for comparison with 0D modeling
+        # Retain the old beta definition for comparison with 0D modeling
         Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
         self.derived["BetaN_approx"] = (Beta_old / 
                                         (np.abs(float(self.profiles["current(MA)"][-1])) / 
@@ -1006,8 +1006,12 @@ class PROFILES_GACODE:
                                          )* 100.0
                                          ) # expressed in percent
 
-        # using B_unit, derive <B_p^2> and <Bt^2> for betap and betat calculations
-        # equivalent to GACODE expro_bp2, expro_bt2
+        ''' 
+        ---------------------------------------------------------------------------------------------------
+        Using B_unit, derive <B_p^2> and <Bt^2> for betap and betat calculations.
+        Equivalent to GACODE expro_bp2, expro_bt2
+        ---------------------------------------------------------------------------------------------------
+        '''
 
         self.derived["bp2_exp"] = self.derived["bp2_miller"] * self.derived["B_unit"] ** 2
         self.derived["bt2_exp"] = self.derived["bt2_miller"] * self.derived["B_unit"] ** 2
@@ -1022,8 +1026,8 @@ class PROFILES_GACODE:
         # calculate beta_poloidal and beta_toroidal using volume averaged values
         from scipy.constants import mu_0
 
-        betap = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bp2_vol_avg"]
-        betat = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bt2_vol_avg"]
+        betap = 2*mu_0*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_vol_avg"]
+        betat = 2*mu_0*self.derived["ptot_manual_vol"]* 1e6/self.derived["bt2_vol_avg"]
 
         self.derived["Beta"] = 1/(1/betap+1/betat)
 
@@ -1035,7 +1039,7 @@ class PROFILES_GACODE:
             )
             * 100.0
         )
-        # ---
+        # ---------------------------------------------------------------------------------------------------
 
         nG = PLASMAtools.Greenwald_density(
             np.abs(float(self.profiles["current(MA)"][-1])),
