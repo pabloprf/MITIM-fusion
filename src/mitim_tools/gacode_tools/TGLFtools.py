@@ -2582,7 +2582,7 @@ class TGLF:
                 tem.append(tem0)
                 etg.append(etg0)
 
-                if ikey[-3:] == "1.0" and ikey[-4] == "_":
+                if float(ikey.split('_')[-1]) == 1.0:
                     self.scans[label]["positionBase"] = cont
                 cont += 1
 
@@ -3129,6 +3129,7 @@ class TGLF:
     def runScanTurbulenceDrives(
         self,
         subFolderTGLF="drives1",
+        varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
@@ -3139,8 +3140,14 @@ class TGLF:
 
         self.variablesDrives = variablesDrives
 
-        varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
+        if varUpDown is None:
+            varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
+        # ------------------------------------------
+        # Prepare all scans
+        # ------------------------------------------
+
+        tglf_executor, tglf_executor_full, folders = {}, {}, []
         for cont, variable in enumerate(self.variablesDrives):
             # Only ask the restart in the first round
             kwargs_TGLFrun["forceIfRestart"] = cont > 0 or (
@@ -3149,14 +3156,43 @@ class TGLF:
 
             scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.runScan(
-                subFolderTGLF=subFolderTGLF,
+            tglf_executor0, tglf_executor_full0, folders0, _ = self._prepare_scan(
+                scan_name,
                 variable=variable,
                 varUpDown=varUpDown,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
+            tglf_executor = tglf_executor | tglf_executor0
+            tglf_executor_full = tglf_executor_full | tglf_executor_full0
+            folders += folders0
+
+        # ------------------------------------------
+        # Run them all
+        # ------------------------------------------
+
+        self._run(
+            tglf_executor,
+            tglf_executor_full=tglf_executor_full,
+            **kwargs_TGLFrun,
+        )
+
+        # ------------------------------------------
+        # Read results
+        # ------------------------------------------
+
+        cont = 0
+        for variable in self.variablesDrives:
+            for mult in varUpDown:
+                name = f"{variable}_{mult}"
+                self.read(
+                    label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], restartWF = False
+                )
+                cont += 1
+
+            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+
+            self.readScan(label=scan_name, variable=variable)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
