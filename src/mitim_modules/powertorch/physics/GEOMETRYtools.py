@@ -119,6 +119,9 @@ def volp_surf_Miller_vectorized(
         1e-10
     )  # To avoid problems at 0 (Implemented by PRF, not sure how TGYRO deals with this)
 
+    geo_q_in = geo_q_in.clip(1e-10) # To avoid problems at 0 with some geqdsk files that are corrupted...
+
+
     [
         geo_shape_cos0_in,
         geo_shape_cos1_in,
