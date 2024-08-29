@@ -1,10 +1,8 @@
-import torch
 import os
 import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
-from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed

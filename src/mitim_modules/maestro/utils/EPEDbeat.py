@@ -4,6 +4,7 @@ import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.surrogate_tools import NNtools
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
@@ -83,11 +84,11 @@ class eped_beat(beat):
         tesep = self.profiles_current.profiles['te(keV)'][-1]
         nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1] / self.netop
         
-        if 'kappa995' in self.__dict__:         kappa995 = self.kappa995
-        if 'delta995' in self.__dict__:         delta995 = self.delta995
-        if "BetaN" in self.__dict__:            betan = self.BetaN
-        if "Tesep" in self.__dict__:            tesep = self.Tesep
-        if "ne_sep_ratio" in self.__dict__:     nesep_ratio = self.ne_sep_ratio
+        if 'kappa995' in self.__dict__ and self.kappa995 is not None:           kappa995 = self.kappa995
+        if 'delta995' in self.__dict__ and self.delta995 is not None:           delta995 = self.delta995
+        if "BetaN" in self.__dict__ and self.BetaN is not None:                 betan = self.BetaN
+        if "Tesep" in self.__dict__ and self.Tesep is not None:                 tesep = self.Tesep
+        if "ne_sep_ratio" in self.__dict__ and self.ne_sep_ratio is not None:   nesep_ratio = self.ne_sep_ratio
 
         # -------------------------------------------------------
         # Run NN
@@ -130,21 +131,21 @@ class eped_beat(beat):
             print(f'\t\t- {key}: {eped_results[key]}')
 
         # -------------------------------------------------------
-        # Put into profiles
+        # Put into profiles # TO FIX
         # -------------------------------------------------------
 
         self.profiles_output = copy.deepcopy(self.profiles_current)
 
-        ratio = Ttop / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['te(keV)'])
-        self.profiles_output.profiles['te(keV)'] *= ratio
-        
-        ratio = Ttop / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['ti(keV)'][:,0])
-        self.profiles_output.profiles['ti(keV)'][:,0] *= ratio
+        x = self.profiles_current.profiles['rho(-)']
+        xp = rhotop
+
+        self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop)
+
+        self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop)
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
 
-        ratio = self.netop*1E1 / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['ne(10^19/m^3)'])
-        self.profiles_output.profiles['ne(10^19/m^3)'] *= ratio
-        self.profiles_output.scaleAllThermalDensities(scaleFactor=ratio)
+        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,self.netop*1E1)
+        self.profiles_output.enforceQuasineutrality()
 
         # ---------------------------------
         # Re-derive
@@ -249,4 +250,49 @@ class eped_beat(beat):
         self.maestro_instance.parameters_trans_beat['rhotop'] = eped_output['rhotop']
 
         print('\t\t- rhotop and netop saved for future beats')
+
+
+
+def scale_profile_by_stretching(x,y,xp,yp):
+    '''
+    This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
+    '''
+
+    # ynew = copy.deepcopy(y)
+
+    # # Fit new pedestal
+    # _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
+
+    # # Find core
+    # ibc = np.argmin(np.abs(x-xp))
+    # xcore = x[:ibc]
+    # ycore = y[:ibc]
+
+    # ycore_new = np.interp(xcore,xped,yped)
+
+
+
+    # # Find the ratio
+    # ratio = yp / np.interp(xp,x,y)
+
+    # ibc = np.argmin(np.abs(x-xp))
+
+    # # Scale core
+    # ynew[:ibc] = y[:ibc] * ratio
+
+    # # Fit pedestal
+    # #   
+
+    # import matplotlib.pyplot as plt
+    # fig, ax = plt.subplots()
+    # ax.plot(x,y)
+    # ax.plot(x,ynew)
+    # plt.show()
+
+
+    ratio = yp / np.interp(xp,x,y)
+    ynew = y * ratio
+
+    return ynew
+    
 
