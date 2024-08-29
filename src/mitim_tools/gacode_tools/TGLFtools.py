@@ -2342,11 +2342,30 @@ class TGLF:
         **kwargs_TGLFrun,
     ):
 
+        # -------------------------------------
+        # Add baseline
+        # -------------------------------------
+        if (1.0 not in varUpDown) and relativeChanges:
+            print(
+                "\n* Since variations vector did not include base case, I am adding it",
+                typeMsg="i",
+            )
+            varUpDown_new = []
+            added = False
+            for i in varUpDown:
+                if i > 1.0 and not added:
+                    varUpDown_new.append(1.0)
+                    added = True
+                varUpDown_new.append(i)
+        else:
+            varUpDown_new = varUpDown
+
+
         tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
             subFolderTGLF,
             multipliers=multipliers,
             variable=variable,
-            varUpDown=varUpDown,
+            varUpDown=varUpDown_new,
             relativeChanges=relativeChanges,
             **kwargs_TGLFrun,
         )
@@ -2389,7 +2408,7 @@ class TGLF:
 
         if relativeChanges:
             for i in range(len(varUpDown)):
-                varUpDown[i] = round(varUpDown[i], 3)
+                varUpDown[i] = round(varUpDown[i], 6)
 
         print(f"\n- Proceeding to scan {variable}:")
         tglf_executor = {}
@@ -2582,7 +2601,7 @@ class TGLF:
                 tem.append(tem0)
                 etg.append(etg0)
 
-                if ikey[-3:] == "1.0" and ikey[-4] == "_":
+                if float(ikey.split('_')[-1]) == 1.0:
                     self.scans[label]["positionBase"] = cont
                 cont += 1
 
@@ -2683,6 +2702,15 @@ class TGLF:
             for label in labels:
                 normalizations[label] = self.NormalizationSets
 
+        doIhaveBase = True
+        for label in labels:
+            if self.scans[label]["positionBase"] is None:
+                doIhaveBase = False
+
+        if (not doIhaveBase) and relativeX:
+            print('\t\t- No base case (1.0) found for all scans to be plotted, I cannot plot relative')
+            relativeX = False
+
         if relativeX:
             variableLabel += " (%)"
 
@@ -2699,12 +2727,9 @@ class TGLF:
 
             positionBase = self.scans[label]["positionBase"]
 
-            if positionBase is None:
-                relativeX = False
-
             x = self.scans[label]["xV"]
-            xbase = x[:, positionBase : positionBase + 1]
             if relativeX:
+                xbase = x[:, positionBase : positionBase + 1]
                 x = (x - xbase) / xbase * 100.0
 
             Qe, Qi, Ge = (
@@ -3129,8 +3154,11 @@ class TGLF:
     def runScanTurbulenceDrives(
         self,
         subFolderTGLF="drives1",
+        varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
+        add_baseline_to = 'all', # 'all' or 'first' or 'none'
+        add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         **kwargs_TGLFrun,
     ):
@@ -3139,8 +3167,21 @@ class TGLF:
 
         self.variablesDrives = variablesDrives
 
-        varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
+        if varUpDown is None:
+            varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
 
+        varUpDown_dict = {}
+        for i,variable in enumerate(self.variablesDrives):
+            if add_baseline_to == 'all' or (add_baseline_to == 'first' and i == 0):
+                varUpDown_dict[variable] = np.append(1.0, varUpDown)
+            else:
+                varUpDown_dict[variable] = varUpDown
+
+        # ------------------------------------------
+        # Prepare all scans
+        # ------------------------------------------
+
+        tglf_executor, tglf_executor_full, folders = {}, {}, []
         for cont, variable in enumerate(self.variablesDrives):
             # Only ask the restart in the first round
             kwargs_TGLFrun["forceIfRestart"] = cont > 0 or (
@@ -3149,14 +3190,43 @@ class TGLF:
 
             scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.runScan(
-                subFolderTGLF=subFolderTGLF,
+            tglf_executor0, tglf_executor_full0, folders0, _ = self._prepare_scan(
+                scan_name,
                 variable=variable,
-                varUpDown=varUpDown,
+                varUpDown=varUpDown_dict[variable],
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=f"{subFolderTGLF}_{variable}", variable=variable)
+            tglf_executor = tglf_executor | tglf_executor0
+            tglf_executor_full = tglf_executor_full | tglf_executor_full0
+            folders += folders0
+
+        # ------------------------------------------
+        # Run them all
+        # ------------------------------------------
+
+        self._run(
+            tglf_executor,
+            tglf_executor_full=tglf_executor_full,
+            **kwargs_TGLFrun,
+        )
+
+        # ------------------------------------------
+        # Read results
+        # ------------------------------------------
+
+        cont = 0
+        for variable in self.variablesDrives:
+            for mult in varUpDown_dict[variable]:
+                name = f"{variable}_{mult}"
+                self.read(
+                    label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], restartWF = False
+                )
+                cont += 1
+
+            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+
+            self.readScan(label=scan_name, variable=variable)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
