@@ -1020,10 +1020,10 @@ class PROFILES_GACODE:
         self.derived["bt2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
 
         # calculate beta_poloidal and beta_toroidal using volume averaged values
-        from scipy.constants import mu_0
+        # mu0 = 4pi x 10^-7, also need to convert MPa to Pa
 
-        betap = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bp2_vol_avg"]
-        betat = 2*mu_0*self.derived["ptot_manual_vol"]/self.derived["bt2_vol_avg"]
+        betap = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]*1e6/self.derived["bp2_vol_avg"]
+        betat = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]*1e6/self.derived["bt2_vol_avg"]
 
         self.derived["Beta"] = 1/(1/betap+1/betat)
 
@@ -1034,7 +1034,7 @@ class PROFILES_GACODE:
                 / (self.derived["a"] * self.derived["B0"])
             )
             * 100.0
-        )
+        ) # expressed as percent
         # ---
 
         nG = PLASMAtools.Greenwald_density(
