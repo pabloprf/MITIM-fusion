@@ -1,4 +1,5 @@
 import pdb
+import torch
 import netCDF4
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ from IPython import embed
 from mitim_tools.popcon_tools.utils import PRFfunctionals, FUNCTIONALScalc
 from mitim_tools.misc_tools import MATHtools, IOtools, FARMINGtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_modules.powertorch.physics import CALCtools
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # PARABOLIC
@@ -121,7 +123,7 @@ def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
     # Be sure to interpolate accordingly 
 
     if x is None:
-        x = np.linspace(0, 1, 100)
+        x = np.linspace(0, 1, 101)
 
     x_top = 1-width_top
     x_ped = 1-2*width_top/3
@@ -137,6 +139,40 @@ def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
     Y = density_func(x, n0[0], n0[1])
 
     return x, Y
+
+def new_functional_form(
+        rhotop,
+        ytop,
+        ysep,
+        aLy, # aLy is a derivative wrt rho, not truly with respect to roa, 1/Ly_x
+        rhoa=0.3,
+        x=None
+
+):
+    width_top = 1-rhotop
+    x, Yped = pedestal_profile = pedestal_tanh(ytop, ysep, width_top, x=x)
+    print(x)
+    # this returned a profile of the pedestal density
+    bc_index = np.argmin(np.abs(x-rhotop))
+    print(bc_index)
+    xcore = x[:bc_index]
+    print(xcore.shape)
+    # create a gradient profile
+    aLy_profile = np.zeros_like(xcore)
+    linear_region = xcore <= rhoa
+    aLy_profile[linear_region] = (aLy / rhoa) * xcore[linear_region]
+    aLy_profile[~linear_region] = aLy 
+
+    Ycore = CALCtools.integrateGradient(torch.from_numpy(xcore).unsqueeze(0),
+                                        torch.from_numpy(aLy_profile).unsqueeze(0),
+                                        ytop
+                                    ).numpy()[0]
+    print(Ycore.shape)
+    print(Yped.shape)
+    print(x.shape)
+    return x, np.concatenate([Ycore, Yped[bc_index:]])
+
+    
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Belonging to old PEDmodule.py
@@ -345,3 +381,13 @@ def read_mtanh(file_out):
     Ti = np.array(v[nr * 3 :]) * 1e-3
 
     return x, ne, Te, Ti
+
+if __name__ == "__main__":
+    # Test the new_functional_form function
+    x, Y = new_functional_form(0.95, 1.0, 0.1, 2.0)
+    plt.plot(x, Y,marker='o')
+    plt.axvline(0.95, color='k', ls='--')
+    plt.axvline(0.03, color='k', ls='--')
+    plt.axhline(0.1, color='k', ls='--')
+    plt.axhline(1.0, color='k', ls='--')
+    plt.show()

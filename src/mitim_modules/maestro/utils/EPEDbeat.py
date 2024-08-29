@@ -67,7 +67,10 @@ class eped_beat(beat):
             delta995 = self.delta995
             
         # Parameters that may change during MAESTRO
-        betan = self.profiles_current.derived['BetaN']
+        if "betan" in self.__dict__:
+            betan = self.betan
+        else:
+            betan = self.profiles_current.derived['BetaN']
 
         # ne_top can be provided as input to prepare(), recommended in first EPED beat
         if self.netop is None:

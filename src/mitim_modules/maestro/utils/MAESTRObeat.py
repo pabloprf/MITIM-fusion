@@ -11,7 +11,7 @@ from IPython import embed
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
-
+0
 class beat:
 
     def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
@@ -283,7 +283,10 @@ class creator_from_parameterization(creator):
             self.netop = netop
     
         def __call__(self):
+            
+            from scipy.optimize import curve_fit
 
+            objective_func
             aLy = 2.0
 
             # Produce profiles
@@ -331,6 +334,7 @@ class creator_from_eped(creator_from_parameterization):
 
         # Work with this profile
         beat_eped.profiles_current = self.initialize_instance.profiles_current
+        beat_eped.betan = self.parameters['betan']
         
         # Run EPED
         eped_results = beat_eped._run()
