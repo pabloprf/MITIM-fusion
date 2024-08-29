@@ -2702,6 +2702,15 @@ class TGLF:
             for label in labels:
                 normalizations[label] = self.NormalizationSets
 
+        doIhaveBase = True
+        for label in labels:
+            if self.scans[label]["positionBase"] is None:
+                doIhaveBase = False
+
+        if (not doIhaveBase) and relativeX:
+            print('\t\t- No base case (1.0) found for all scans to be plotted, I cannot plot relative')
+            relativeX = False
+
         if relativeX:
             variableLabel += " (%)"
 
@@ -2717,9 +2726,6 @@ class TGLF:
             # -----------------------------------------------------------------------------------------------
 
             positionBase = self.scans[label]["positionBase"]
-
-            if positionBase is None:
-                relativeX = False
 
             x = self.scans[label]["xV"]
             if relativeX:
@@ -3151,6 +3157,7 @@ class TGLF:
         varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
+        add_baseline_to = 'all', # 'all' or 'first' or 'none'
         add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         **kwargs_TGLFrun,
@@ -3165,7 +3172,10 @@ class TGLF:
 
         varUpDown_dict = {}
         for i,variable in enumerate(self.variablesDrives):
-            varUpDown_dict[variable] = varUpDown if (not add_also_baseline_to_first or i > 0) else np.append(1.0, varUpDown)
+            if add_baseline_to == 'all' or (add_baseline_to == 'first' and i == 0):
+                varUpDown_dict[variable] = np.append(1.0, varUpDown)
+            else:
+                varUpDown_dict[variable] = varUpDown
 
         # ------------------------------------------
         # Prepare all scans

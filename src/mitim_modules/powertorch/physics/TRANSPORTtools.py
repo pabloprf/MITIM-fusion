@@ -196,6 +196,7 @@ class tgyro_model(power_transport):
             percentError,
             impurityPosition=impurityPosition,
             includeFast=includeFast,
+            provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
             restart=restart,
         )
@@ -344,69 +345,74 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
 
     tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations/')
 
-    variables_t_scan = []
+    variables_to_scan = []
     for i in profiles:
-        if i == 'te': variables_t_scan.append('RLTS_1')
-        if i == 'ti': variables_t_scan.append('RLTS_2')
-        if i == 'ne': variables_t_scan.append('RLNS_1')
+        if i == 'te': variables_to_scan.append('RLTS_1')
+        if i == 'ti': variables_to_scan.append('RLTS_2')
+        if i == 'ne': variables_to_scan.append('RLNS_1')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+1}')
+        if i == 'w0': 
+            raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
     
-    def scan_var(vari, full = False):
+    relative_scan = [1-delta, 1+delta]
 
-        # Only run the base case once, at the beginning
-        relative_scan = [1, 1-delta, 1+delta] if full else [1-delta, 1+delta]
+    name = 'turb_drives'
 
-        tglf.runScan(
-            'scan1',
-            variable=vari,
-            varUpDown=relative_scan,
-            TGLFsettings=None,
-            ApplyCorrections=False,
-            restart=restart,
-        )
-        tglf.readScan('scan1', variable=vari, positionIon = impurityPosition)
+    tglf.runScanTurbulenceDrives(	
+                    subFolderTGLF = f'{name}/',
+                    variablesDrives = variables_to_scan,
+                    varUpDown     = relative_scan,
+                    TGLFsettings = None,
+                    ApplyCorrections = False,
+                    add_baseline_to = 'first',
+                    restart=restart,
+                    forceIfRestart=True,
+                    slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x Nv = 3 x Nd = 2 +1 = 31 TGLFs at once
+                    )
 
-        # grab values
-        Qe = tglf.scans['scan1']['Qe']
-        Qi = tglf.scans['scan1']['Qi']
-        Ge = tglf.scans['scan1']['Ge']
+    Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
 
-        if check_coincidence_thr is not None and full:
-            Qe_err = abs( (Qe_tgyro-Qe[:,0]) / Qe_tgyro )
-            Qi_err = abs( (Qi_tgyro-Qi[:,0]) / Qi_tgyro )
-            Ge_err = abs( (Ge_tgyro-Ge[:,0]) / Ge_tgyro )
+    cont = 0
+    for vari in variables_to_scan:
+        jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
 
-            print("\t- Checking coincidence between TGLF standalone and TGYRO:")
-            print(f"\t\tmax Qe_err = {Qe_err.max():.1e}")
-            print(f"\t\tmax Qi_err = {Qi_err.max():.1e}")
-            print(f"\t\tmax Ge_err = {Ge_err.max():.1e}")
+        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
+        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
+        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
+        cont += jump
 
-            if np.max([Qe_err.max(), Qi_err.max(), Ge_err.max()]) > check_coincidence_thr:
-                print("\t[mitim] WARNING: max error might be too high", typeMsg="w")
+    # Do a check that TGLF scans are consistent with TGYRO
+    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro )
+    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro )
+    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro )
+    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro )
 
-        return Qe, Qi, Ge
+    F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
 
-    Qe, Qi, Ge = scan_var(variables_t_scan[0], full = True)
-    for i in variables_t_scan[1:]:
-        Qe0, Qi0, Ge0 = scan_var(i)
-        Qe = np.concatenate((Qe, Qe0), axis=1)
-        Qi = np.concatenate((Qi, Qi0), axis=1)
-        Ge = np.concatenate((Ge, Ge0), axis=1)
-
-    # ------------------------------------------------------------------------------------------------------------------------
+    if F_err.max() > check_coincidence_thr:
+        print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+    else:
+        print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
 
     # Calculate the standard deviation of the scans, that's going to be the reported stds
     Qe_std = np.std(Qe, axis=1)
     Qi_std = np.std(Qi, axis=1)
     Ge_std = np.std(Ge, axis=1)
+    GZ_std = np.std(GZ, axis=1)
 
     # The actual point is the original TGYRO one (maybe in the future I decided to use the mean?)
     Qe_point = Qe_tgyro
     Qi_point = Qi_tgyro
     Ge_point = Ge_tgyro
+    GZ_point = GZ_tgyro
 
     # TO DO
-    GZ_point, Mt_point, Pexch_point = GZ_tgyro, Mt_tgyro, Pexch_tgyro
-    GZ_std, Mt_std, Pexch_std = abs(GZ_point) * 0.1, abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
+    Mt_point, Pexch_point = Mt_tgyro, Pexch_tgyro
+    Mt_std, Pexch_std = abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
 
     # TO DO: Careful with fast particles
 
@@ -506,6 +512,7 @@ def curateTGYROfiles(
     ProfilesPredicted,
     folder,
     percentError,
+    provideTurbulentExchange=False,
     impurityPosition=1,
     includeFast=False,
     use_tglf_scan_trick=None,
@@ -532,6 +539,9 @@ def curateTGYROfiles(
     
     # Determine TGLF standard deviations
     if use_tglf_scan_trick is not None:
+
+        if provideTurbulentExchange:
+            raise ValueError("[mitim] Turbulent exchange not implemented yet in TGLF scans")
 
         # --------------------------------------------------------------
         # If using the scan trick
