@@ -1475,15 +1475,7 @@ chatGPT 4o as of 08/18/2024
 @contextlib.contextmanager
 def conditional_log_to_file(log_file=None, msg=None):
 
-    # Check if sys.stdout and sys.stderr have valid file descriptors (e.g. already inside a log!)
-    try:
-        sys.stdout.fileno()
-        sys.stderr.fileno()
-        fileno_supported = True
-    except AttributeError:
-        fileno_supported = False
-
-    if log_file is not None and fileno_supported:
+    if log_file is not None:
         with log_to_file(log_file, msg) as logger:
             yield logger
     else:
