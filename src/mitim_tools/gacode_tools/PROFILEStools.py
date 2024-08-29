@@ -1275,7 +1275,7 @@ class PROFILES_GACODE:
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(
-                "\tBetaN =  {0:.3f} (approx, based on B0 and p_thr)".format(
+                "\tBetaN =  {0:.3f}".format(
                     self.derived["BetaN"]
                 )
             )
