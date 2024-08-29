@@ -462,7 +462,10 @@ def interpretRun(infoSLURM, log_file):
         Case is not running (finished or failed)
         """
 
-        if ("Error termination" in "\n".join(log_file)) or (
+        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):
+            status = 1
+            info["info"]["status"] = "finished"
+        elif ("Error termination" in "\n".join(log_file)) or (
             "Backtrace for this error:" in "\n".join(log_file)
             ) or (
             "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
@@ -473,9 +476,6 @@ def interpretRun(infoSLURM, log_file):
             ):
             status = -1
             info["info"]["status"] = "stopped"
-        elif "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):
-            status = 1
-            info["info"]["status"] = "finished"
         else:
             print(
                 "\t- No error nor termination found, assuming it is still running",
