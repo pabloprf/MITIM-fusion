@@ -148,7 +148,7 @@ def MITIMfunctional_aLyTanh(
         x_a = 0.3,
         x = None,
         nx = 201,   # If x grid not provided, create one with this number of points
-        plotYN = True,
+        plotYN = False,
         ):
     ''' 
     Create a profile with a pedestal tanh and a core with a 1/Ly profile

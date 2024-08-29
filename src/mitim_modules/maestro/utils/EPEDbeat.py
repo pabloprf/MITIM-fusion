@@ -13,7 +13,7 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location, norm_location, netop_20 = None, **kwargs):
+    def prepare(self, nn_location, norm_location, netop_20 = None, BetaN = None, Te_sep = None, ne_sep_ratio = None, **kwargs):
 
         self.nn = NNtools.eped_nn(type='tf')
         nn_location = IOtools.expandPath(nn_location)
@@ -21,7 +21,11 @@ class eped_beat(beat):
 
         self.nn.load(nn_location, norm=norm_location)
 
+        # Parameters to run EPED with instead of those from the profiles
         self.netop = netop_20
+        self.BetaN = BetaN
+        self.Tesep = Te_sep
+        self.ne_sep_ratio = ne_sep_ratio
 
         self._inform()
 
@@ -46,33 +50,23 @@ class eped_beat(beat):
     def _run(self):
 
         # -------------------------------------------------------
-        # Grab inputs from profiles_current and run the NN
+        # Grab inputs from profiles_current
         # -------------------------------------------------------
 
-        # Engineering parameters (should not change during MAESTRO)
         Ip = self.profiles_current.profiles['current(MA)'][0]
         Bt = self.profiles_current.profiles['bcentr(T)'][0]
         R = self.profiles_current.profiles['rcentr(m)'][0]
         a = self.profiles_current.derived['a']
         zeff = self.profiles_current.derived['Zeff_vol']
 
-        kappa995 = self.profiles_current.derived['kappa995']
-        delta995 = self.profiles_current.derived['delta995']
-        
-        # kappa and delta can be provided via inform() from a previous geqdsk! which is a better near separatrix descriptor
-        if 'kappa995' in self.__dict__:
-            kappa995 = self.kappa995
-
-        if 'delta995' in self.__dict__:
-            delta995 = self.delta995
-            
-        # Parameters that may change during MAESTRO
-        if "betan" in self.__dict__:
-            betan = self.betan
-        else:
-            betan = self.profiles_current.derived['BetaN']
-
-        # ne_top can be provided as input to prepare(), recommended in first EPED beat
+        '''
+        -----------------------------------------------------------
+        Grab inputs from profiles_current if not available
+        -----------------------------------------------------------
+            kappa and delta can be provided via inform() from a previous geqdsk! which is a better near separatrix descriptor
+            beta_N and ne_top can be provided as input to prepare(), recommended in first EPED beat
+            tesep and nesep_ratio can be provided as input to prepare(), recommended in first EPED beat to define the profiles "forever"
+        '''
         if self.netop is None:
             # If not, trying to get from the previous EPED beat via _inform()
             if 'rhotop' in self.__dict__:
@@ -82,22 +76,81 @@ class eped_beat(beat):
                 self.rhotop = 0.9
             self.netop = np.interp(self.rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
 
-        # Assumptions
-        neped = self.netop/1.08
-        tesep = self.profiles_current.profiles['te(keV)'][-1] * 1E3
-        nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*1E-1 / neped
+
+        kappa995 = self.profiles_current.derived['kappa995']
+        delta995 = self.profiles_current.derived['delta995']
+        betan = self.profiles_current.derived['BetaN']
+        tesep = self.profiles_current.profiles['te(keV)'][-1]
+        nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1] / self.netop
+        
+        if 'kappa995' in self.__dict__:         kappa995 = self.kappa995
+        if 'delta995' in self.__dict__:         delta995 = self.delta995
+        if "BetaN" in self.__dict__:            betan = self.BetaN
+        if "Tesep" in self.__dict__:            tesep = self.Tesep
+        if "ne_sep_ratio" in self.__dict__:     nesep_ratio = self.ne_sep_ratio
 
         # -------------------------------------------------------
         # Run NN
         # -------------------------------------------------------
 
-        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10.0, betan, zeff, tesep=tesep,nesep_ratio=nesep_ratio)
+        # Assumptions
+        neped = self.netop/1.08
+
+        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10.0, betan, zeff, tesep=tesep* 1E3,nesep_ratio=nesep_ratio)
+
+        # -------------------------------------------------------
+        # Produce relevant quantities
+        # -------------------------------------------------------
+
+        # psi_pol to rhoN
+        rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+
+        # Find factor to account that it's not a pure plasma
+        n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
+        factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
+
+        # Temperature from pressure, assuming Te=Ti
+        Ttop = (ptop_kPa*1E3) / (1.602176634E-19 * factor * self.netop * 1e20) * 1E-3
+
+        # ---------------------------------
+        # Store
+        # ---------------------------------
+
+        eped_results = {
+            'ptop': ptop_kPa,
+            'wtop': wtop_psipol,
+            'Ttop': Ttop,
+            'netop': self.netop,
+            'nesep': nesep_ratio*self.netop,
+            'rhotop': rhotop,
+            'Tesep': tesep,
+        }
+
+        for key in eped_results:
+            print(f'\t\t- {key}: {eped_results[key]}')
 
         # -------------------------------------------------------
         # Put into profiles
         # -------------------------------------------------------
 
-        self.profiles_output, eped_results = add_eped_pressure(copy.deepcopy(self.profiles_current), ptop_kPa, wtop_psipol, self.netop)
+        self.profiles_output = copy.deepcopy(self.profiles_current)
+
+        ratio = Ttop / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['te(keV)'])
+        self.profiles_output.profiles['te(keV)'] *= ratio
+        
+        ratio = Ttop / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['ti(keV)'][:,0])
+        self.profiles_output.profiles['ti(keV)'][:,0] *= ratio
+        self.profiles_output.makeAllThermalIonsHaveSameTemp()
+
+        ratio = self.netop*1E1 / np.interp(rhotop,self.profiles_output.profiles['rho(-)'],self.profiles_output.profiles['ne(10^19/m^3)'])
+        self.profiles_output.profiles['ne(10^19/m^3)'] *= ratio
+        self.profiles_output.scaleAllThermalDensities(scaleFactor=ratio)
+
+        # ---------------------------------
+        # Re-derive
+        # ---------------------------------
+
+        self.profiles_output.deriveQuantities()
 
         return eped_results
 
@@ -197,65 +250,3 @@ class eped_beat(beat):
 
         print('\t\t- rhotop and netop saved for future beats')
 
-# ---------------------------------------------------------------------------------------------------------------------------
-# Utils
-# ---------------------------------------------------------------------------------------------------------------------------
-
-def add_eped_pressure(profiles, ptop, wtop, netop):
-    '''
-    Inputs:
-        ptop in kPa
-        wtop in psi_pol
-        netop in 10^20/m^3
-    Notes:
-        - This function modifies the profiles with the right EPED pressure
-    '''
-
-    # ---------------------------------
-    # Convert
-    # ---------------------------------
-    
-    # psi_pol to rhoN
-    rhotop = np.interp(1-wtop,profiles.derived['psi_pol_n'],profiles.profiles['rho(-)'])
-
-    # Find factor to account that it's not a pure plasma
-    n = profiles.derived['ni_thrAll']/profiles.profiles['ne(10^19/m^3)']
-    factor = 1 + np.interp(rhotop, profiles.profiles['rho(-)'], n )
-
-    # Temperature from pressure, assuming Te=Ti
-    Ttop = (ptop*1E3) / (1.602176634E-19 * factor * netop * 1e20) * 1E-3
-
-    # ---------------------------------
-    # Store
-    # ---------------------------------
-
-    eped_results = {
-        'ptop': ptop,
-        'wtop': wtop,
-        'Ttop': Ttop,
-        'netop': netop,
-        'rhotop': rhotop
-    }
-
-    # ---------------------------------
-    # Modify profiles
-    # ---------------------------------
-    
-    ratio = Ttop / np.interp(rhotop,profiles.profiles['rho(-)'],profiles.profiles['te(keV)'])
-    profiles.profiles['te(keV)'] *= ratio
-    
-    ratio = Ttop / np.interp(rhotop,profiles.profiles['rho(-)'],profiles.profiles['ti(keV)'][:,0])
-    profiles.profiles['ti(keV)'][:,0] *= ratio
-    profiles.makeAllThermalIonsHaveSameTemp()
-
-    ratio = netop*1E1 / np.interp(rhotop,profiles.profiles['rho(-)'],profiles.profiles['ne(10^19/m^3)'])
-    profiles.profiles['ne(10^19/m^3)'] *= ratio
-    profiles.scaleAllThermalDensities(scaleFactor=ratio)
-
-    # ---------------------------------
-    # Re-derive
-    # ---------------------------------
-
-    profiles.deriveQuantities()
-
-    return profiles, eped_results

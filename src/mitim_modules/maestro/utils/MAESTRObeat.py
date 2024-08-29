@@ -5,6 +5,7 @@ import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_modules.powertorch.physics import CALCtools
+from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
@@ -269,50 +270,46 @@ class creator:
             self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
+            # Update derived
+            self.initialize_instance.profiles_current.deriveQuantities()
+
 # --------------------------------------------------------------------------------------------
 # Profile creator from parameterization: Create profiles from a parameterization
 # --------------------------------------------------------------------------------------------
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, rhotop = None, Ttop = None, netop = None, label = 'parameterization'):
+        def __init__(self, initialize_instance, rhotop = None, Ttop = None, netop = None, Tsep = None, nesep = None, BetaN = None, label = 'parameterization'):
             super().__init__(initialize_instance, label = label)
 
             self.rhotop = rhotop
             self.Ttop = Ttop
             self.netop = netop
+            self.BetaN = BetaN
+            self.Tsep = Tsep
+            self.nesep = nesep
     
         def __call__(self):
             
-            from scipy.optimize import curve_fit
+            # from scipy.optimize import curve_fit
+            # objective_func
 
-            objective_func
-            aLy = 2.0
+            # Function to wrap the parameterization ------------------------------------------------------
+            aLT = 2.0
+            aLn = 0.2
+            x_a = 0.3
 
-            # Produce profiles
-            rho, Te = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy =aLy, w_a = 0.3)
-            rho, Ti = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy =aLy, w_a = 0.3)
-            rho, ne = self.param_profiles(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop, self.nesep, aLn, x_a = x_a)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-        def param_profiles(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
-            
-            roa = np.linspace(0.0, 1-w_top, 100)
-            aL_profile = np.zeros_like(roa)
-            linear_region = roa <= w_a
-            aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
-            aL_profile[~linear_region] = aLy
-            y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
-            roa = np.append( roa, 1.0)
-            y = np.append(y, y_sep)
+            obj = np.abs(self.initialize_instance.profiles_current.derived['BetaN'] - self.BetaN)
 
-            roa_new = np.linspace(0.0, 1.0, 200)
-            y = np.interp(roa_new, roa, y)
-
-            return roa_new, y
+            # --------------------------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from EPED: Create parameterization using EPED
@@ -334,7 +331,6 @@ class creator_from_eped(creator_from_parameterization):
 
         # Work with this profile
         beat_eped.profiles_current = self.initialize_instance.profiles_current
-        beat_eped.betan = self.parameters['betan']
         
         # Run EPED
         eped_results = beat_eped._run()
@@ -342,7 +338,10 @@ class creator_from_eped(creator_from_parameterization):
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
         self.Ttop = eped_results['Ttop']
-        self.netop = eped_results['netop']
+        self.netop = eped_results['netop']        
+        self.Tsep = eped_results['Tesep']
+        self.nesep = eped_results['nesep']
+        self.BetaN = beat_eped.BetaN
         super().__call__()
 
         # Save
