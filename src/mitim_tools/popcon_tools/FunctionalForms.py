@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.popcon_tools.utils import PRFfunctionals, FUNCTIONALScalc
-from mitim_tools.misc_tools import MATHtools, IOtools, FARMINGtools
+from mitim_tools.misc_tools import MATHtools, IOtools, FARMINGtools, GRAPHICStools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_modules.powertorch.physics import CALCtools
 
@@ -140,39 +140,81 @@ def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
 
     return x, Y
 
-def new_functional_form(
-        rhotop,
-        ytop,
-        ysep,
+def MITIMfunctional_aLyTanh(
+        x_top,
+        y_top,
+        y_sep,
         aLy, # aLy is a derivative wrt rho, not truly with respect to roa, 1/Ly_x
-        rhoa=0.3,
-        x=None
+        x_a = 0.3,
+        x = None,
+        nx = 201,   # If x grid not provided, create one with this number of points
+        plotYN = True,
+        ):
+    ''' 
+    Create a profile with a pedestal tanh and a core with a 1/Ly profile
+    '''
 
-):
-    width_top = 1-rhotop
-    x, Yped = pedestal_profile = pedestal_tanh(ytop, ysep, width_top, x=x)
-    print(x)
-    # this returned a profile of the pedestal density
-    bc_index = np.argmin(np.abs(x-rhotop))
-    print(bc_index)
+    if x is None:
+        x = np.linspace(0, 1, nx)
+
+    # Create pedestal profile
+    x, Yped = pedestal_tanh(y_top, y_sep, 1-x_top, x=x)
+
+    # Find where the core starts
+    bc_index = np.argmin(np.abs(x-x_top))
     xcore = x[:bc_index]
-    print(xcore.shape)
-    # create a gradient profile
+
+    # Create core 1/Ly profile
     aLy_profile = np.zeros_like(xcore)
-    linear_region = xcore <= rhoa
-    aLy_profile[linear_region] = (aLy / rhoa) * xcore[linear_region]
+    linear_region = xcore <= x_a
+    aLy_profile[linear_region] = (aLy / x_a) * xcore[linear_region]
     aLy_profile[~linear_region] = aLy 
 
+    # Create core profile
     Ycore = CALCtools.integrateGradient(torch.from_numpy(xcore).unsqueeze(0),
                                         torch.from_numpy(aLy_profile).unsqueeze(0),
-                                        ytop
+                                        y_top
                                     ).numpy()[0]
-    print(Ycore.shape)
-    print(Yped.shape)
-    print(x.shape)
-    return x, np.concatenate([Ycore, Yped[bc_index:]])
 
-    
+    # Merge
+    y = np.concatenate([Ycore, Yped[bc_index:]])
+
+    if plotYN:
+        fig, axs = plt.subplots(nrows=2, figsize=(6, 8))
+
+        ax = axs[0]
+        ax.plot(x, y, '-o', c='b', markersize=3, lw=1.0)
+
+        ax.axvline(x_top, color='g', ls='--')
+        ax.axhline(y_top, color='g', ls='--')
+        ax.axhline(y_sep, color='k', ls='--')
+        ax.axvline(x_a, color='r', ls='--')
+
+        ax.set_xlabel(r'$x$')
+        ax.set_xlim([0,1])
+        ax.set_ylabel(r'$y$')
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        aLy_reconstructed = CALCtools.produceGradient(torch.from_numpy(x), torch.from_numpy(y)).numpy()
+
+        ax.plot(x, aLy_reconstructed, '-o', c='b', markersize=3, lw=1.0)
+        ax.plot(xcore, aLy_profile, '-*', c='r', markersize=1, lw=1.0) 
+        ax.axvline(x_a, color='r', ls='--')
+
+        ax.axvline(x_top, color='g', ls='--')
+        ax.axvline(x_a, color='r', ls='--')
+
+        ax.set_xlabel(r'$x$')
+        ax.set_xlim([0,1])
+        ax.set_ylabel(r'$1/Ly$')
+        ax.set_ylim([0,2*aLy])
+        GRAPHICStools.addDenseAxis(ax)
+
+        plt.show()
+
+    return x, y
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Belonging to old PEDmodule.py
@@ -248,7 +290,6 @@ def create_dummy_plasmastate(file, rho, rhob, psipol, ne, te, ti):
     value[:] = psipol
 
     ncfile.close()
-
 
 
 def fit_pedestal_mtanh(
@@ -382,12 +423,3 @@ def read_mtanh(file_out):
 
     return x, ne, Te, Ti
 
-if __name__ == "__main__":
-    # Test the new_functional_form function
-    x, Y = new_functional_form(0.95, 1.0, 0.1, 2.0)
-    plt.plot(x, Y,marker='o')
-    plt.axvline(0.95, color='k', ls='--')
-    plt.axvline(0.03, color='k', ls='--')
-    plt.axhline(0.1, color='k', ls='--')
-    plt.axhline(1.0, color='k', ls='--')
-    plt.show()
