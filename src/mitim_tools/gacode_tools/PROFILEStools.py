@@ -1026,8 +1026,8 @@ class PROFILES_GACODE:
         # calculate beta_poloidal and beta_toroidal using volume averaged values
         # mu0 = 4pi x 10^-7, also need to convert MPa to Pa
 
-        betap = 2*mu_0*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_vol_avg"]
-        betat = 2*mu_0*self.derived["ptot_manual_vol"]* 1e6/self.derived["bt2_vol_avg"]
+        betap = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_vol_avg"]
+        betat = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bt2_vol_avg"]
 
         self.derived["Beta"] = 1/(1/betap+1/betat)
 
