@@ -2342,11 +2342,30 @@ class TGLF:
         **kwargs_TGLFrun,
     ):
 
+        # -------------------------------------
+        # Add baseline
+        # -------------------------------------
+        if (1.0 not in varUpDown) and relativeChanges:
+            print(
+                "\n* Since variations vector did not include base case, I am adding it",
+                typeMsg="i",
+            )
+            varUpDown_new = []
+            added = False
+            for i in varUpDown:
+                if i > 1.0 and not added:
+                    varUpDown_new.append(1.0)
+                    added = True
+                varUpDown_new.append(i)
+        else:
+            varUpDown_new = varUpDown
+
+
         tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
             subFolderTGLF,
             multipliers=multipliers,
             variable=variable,
-            varUpDown=varUpDown,
+            varUpDown=varUpDown_new,
             relativeChanges=relativeChanges,
             **kwargs_TGLFrun,
         )
@@ -2389,7 +2408,7 @@ class TGLF:
 
         if relativeChanges:
             for i in range(len(varUpDown)):
-                varUpDown[i] = round(varUpDown[i], 3)
+                varUpDown[i] = round(varUpDown[i], 6)
 
         print(f"\n- Proceeding to scan {variable}:")
         tglf_executor = {}
@@ -2703,8 +2722,8 @@ class TGLF:
                 relativeX = False
 
             x = self.scans[label]["xV"]
-            xbase = x[:, positionBase : positionBase + 1]
             if relativeX:
+                xbase = x[:, positionBase : positionBase + 1]
                 x = (x - xbase) / xbase * 100.0
 
             Qe, Qi, Ge = (
@@ -3132,6 +3151,7 @@ class TGLF:
         varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
+        add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         **kwargs_TGLFrun,
     ):
@@ -3142,6 +3162,10 @@ class TGLF:
 
         if varUpDown is None:
             varUpDown = np.linspace(1 - variation, 1 + variation, resolutionPoints)
+
+        varUpDown_dict = {}
+        for i,variable in enumerate(self.variablesDrives):
+            varUpDown_dict[variable] = varUpDown if (not add_also_baseline_to_first or i > 0) else np.append(1.0, varUpDown)
 
         # ------------------------------------------
         # Prepare all scans
@@ -3159,7 +3183,7 @@ class TGLF:
             tglf_executor0, tglf_executor_full0, folders0, _ = self._prepare_scan(
                 scan_name,
                 variable=variable,
-                varUpDown=varUpDown,
+                varUpDown=varUpDown_dict[variable],
                 **kwargs_TGLFrun,
             )
 
@@ -3183,7 +3207,7 @@ class TGLF:
 
         cont = 0
         for variable in self.variablesDrives:
-            for mult in varUpDown:
+            for mult in varUpDown_dict[variable]:
                 name = f"{variable}_{mult}"
                 self.read(
                     label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], restartWF = False
