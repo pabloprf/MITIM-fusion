@@ -2387,33 +2387,15 @@ class TGLF:
         while self.subFolderTGLF_scan[-1] == "/":
             self.subFolderTGLF_scan = self.subFolderTGLF_scan[:-1]
 
-        # -------------------------------------
-        # Add baseline
-        # -------------------------------------
-        if (1.0 not in varUpDown) and relativeChanges:
-            print(
-                "\n* Since variations vector did not include base case, I am adding it",
-                typeMsg="i",
-            )
-            varUpDown_new = []
-            added = False
-            for i in varUpDown:
-                if i > 1.0 and not added:
-                    varUpDown_new.append(1.0)
-                    added = True
-                varUpDown_new.append(i)
-        else:
-            varUpDown_new = varUpDown
-
         if relativeChanges:
-            for i in range(len(varUpDown_new)):
-                varUpDown_new[i] = round(varUpDown_new[i], 3)
+            for i in range(len(varUpDown)):
+                varUpDown[i] = round(varUpDown[i], 3)
 
         print(f"\n- Proceeding to scan {variable}:")
         tglf_executor = {}
         tglf_executor_full = {}
         folders = []
-        for cont_mult, mult in enumerate(varUpDown_new):
+        for cont_mult, mult in enumerate(varUpDown):
             mult = round(mult, 6)
 
             if relativeChanges:
@@ -2456,7 +2438,7 @@ class TGLF:
 
             folders.append(copy.deepcopy(folderlast))
 
-        return tglf_executor, tglf_executor_full, folders, varUpDown_new
+        return tglf_executor, tglf_executor_full, folders, varUpDown
 
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
