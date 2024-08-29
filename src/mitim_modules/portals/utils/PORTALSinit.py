@@ -145,6 +145,7 @@ def initializeProblem(
                 "forceZeroParticleFlux"
             ],
             "percentError": portals_fun.PORTALSparameters["percentError"],
+            "use_tglf_scan_trick": portals_fun.PORTALSparameters["use_tglf_scan_trick"],
         }
 
     if "extra_params" not in ModelOptions:

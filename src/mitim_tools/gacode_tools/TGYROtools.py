@@ -642,12 +642,7 @@ class TGYRO:
 		"""
         self.read(label="conv")
 
-    def runTGLF(self, fromlabel="tgyro1", rhos=None, restart=False):
-        """
-        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization)
-
-        Doesn't work with specific inputs now
-        """
+    def grab_tglf_objects(self, subfolder = "tglf_runs/",fromlabel="tgyro1", rhos=None):
 
         if rhos is None:
             rhos = self.rhosToSimulate
@@ -659,19 +654,32 @@ class TGYRO:
             inputclass = TGLFtools.TGLFinput(file=fileN)
             inputsTGLF[rho] = inputclass
 
+        tglf = TGLFtools.TGLF(rhos=rhos)
+        tglf.prep(
+            self.FolderGACODE + subfolder,
+            specificInputs=inputsTGLF,
+            inputgacode=self.FolderTGYRO + "/input.gacode.new",
+            tgyro_results=self.results[fromlabel],
+        )
+
+        return tglf
+
+
+    def runTGLF(self, fromlabel="tgyro1", rhos=None, restart=False):
+        """
+        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization)
+
+        Doesn't work with specific inputs now
+        """
+
+        self.tglf[fromlabel] = self.grab_tglf_objects(fromlabel=fromlabel, rhos=rhos)
+
         """
 		Run TGLF the same way as TGYRO did:		No TGLFsettings and no corrections for species, but what is in the file
 		"""
 
         label = f"{self.nameRuns_default}_tglf1"
 
-        self.tglf[fromlabel] = TGLFtools.TGLF(rhos=rhos)
-        self.tglf[fromlabel].prep(
-            self.FolderGACODE + "tglf_runs/",
-            specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode.new",
-            tgyro_results=self.results[fromlabel],
-        )
         self.tglf[fromlabel].run(
             subFolderTGLF=f"{label}/",
             TGLFsettings=None,

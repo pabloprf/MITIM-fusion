@@ -1,6 +1,7 @@
 import copy
 import os
 import torch
+import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.utils import PORTALScgyro
@@ -117,18 +118,21 @@ class tgyro_model(power_transport):
         # Model Options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        MODELparameters = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters",None)
-        includeFast = self.powerstate.TransportOptions["ModelOptions"].get("includeFastInQi",False)
-        impurityPosition = self.powerstate.TransportOptions["ModelOptions"].get("impurityPosition", 1)
-        useConvectiveFluxes = self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
-        UseFineGridTargets = self.powerstate.TransportOptions["ModelOptions"].get("UseFineGridTargets", False)
-        launchMODELviaSlurm = self.powerstate.TransportOptions["ModelOptions"].get("launchMODELviaSlurm", False)
-        restart = self.powerstate.TransportOptions["ModelOptions"].get("restart", False)
-        provideTurbulentExchange = self.powerstate.TransportOptions["ModelOptions"].get("TurbulentExchange", False)
-        profiles_postprocessing_fun = self.powerstate.TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
-        OriginalFimp = self.powerstate.TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = self.powerstate.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False)
-        percentError = self.powerstate.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])
+        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+
+        MODELparameters = ModelOptions.get("MODELparameters",None)
+        includeFast = ModelOptions.get("includeFastInQi",False)
+        impurityPosition = ModelOptions.get("impurityPosition", 1)
+        useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
+        UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
+        launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
+        restart = ModelOptions.get("restart", False)
+        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
+        profiles_postprocessing_fun = ModelOptions.get("profiles_postprocessing_fun", None)
+        OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
+        forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
+        percentError = ModelOptions.get("percentError", [5, 1, 0.5])
+        use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -184,11 +188,16 @@ class tgyro_model(power_transport):
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
         curateTGYROfiles(
-            tgyro.results["tglf_neo_original"],
+            tgyro,
+            "tglf_neo_original",
+            RadiisToRun,
+            self.powerstate.ProfilesPredicted,
             f"{self.folder}/tglf_neo/",
             percentError,
             impurityPosition=impurityPosition,
             includeFast=includeFast,
+            use_tglf_scan_trick = use_tglf_scan_trick,
+            restart=restart,
         )
 
         # Read again to capture errors
@@ -320,6 +329,90 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
+def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2):
+
+    print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
+
+    # Grab fluxes from TGYRO
+    Qe_tgyro, Qi_tgyro, Ge_tgyro, GZ_tgyro, Mt_tgyro, Pexch_tgyro = fluxesTGYRO
+
+    # ------------------------------------------------------------------------------------------------------------------------
+    # TGLF scans
+    # ------------------------------------------------------------------------------------------------------------------------
+
+    # Prepare scan 
+
+    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations/')
+
+    variables_t_scan = []
+    for i in profiles:
+        if i == 'te': variables_t_scan.append('RLTS_1')
+        if i == 'ti': variables_t_scan.append('RLTS_2')
+        if i == 'ne': variables_t_scan.append('RLNS_1')
+    
+    def scan_var(vari, full = False):
+
+        # Only run the base case once, at the beginning
+        relative_scan = [1, 1-delta, 1+delta] if full else [1-delta, 1+delta]
+
+        tglf.runScan(
+            'scan1',
+            variable=vari,
+            varUpDown=relative_scan,
+            TGLFsettings=None,
+            ApplyCorrections=False,
+            restart=restart,
+        )
+        tglf.readScan('scan1', variable=vari, positionIon = impurityPosition)
+
+        # grab values
+        Qe = tglf.scans['scan1']['Qe']
+        Qi = tglf.scans['scan1']['Qi']
+        Ge = tglf.scans['scan1']['Ge']
+
+        if check_coincidence_thr is not None and full:
+            Qe_err = abs( (Qe_tgyro-Qe[:,0]) / Qe_tgyro )
+            Qi_err = abs( (Qi_tgyro-Qi[:,0]) / Qi_tgyro )
+            Ge_err = abs( (Ge_tgyro-Ge[:,0]) / Ge_tgyro )
+
+            print("\t- Checking coincidence between TGLF standalone and TGYRO:")
+            print(f"\t\tmax Qe_err = {Qe_err.max():.1e}")
+            print(f"\t\tmax Qi_err = {Qi_err.max():.1e}")
+            print(f"\t\tmax Ge_err = {Ge_err.max():.1e}")
+
+            if np.max([Qe_err.max(), Qi_err.max(), Ge_err.max()]) > check_coincidence_thr:
+                print("\t[mitim] WARNING: max error might be too high", typeMsg="w")
+
+        return Qe, Qi, Ge
+
+    Qe, Qi, Ge = scan_var(variables_t_scan[0], full = True)
+    for i in variables_t_scan[1:]:
+        Qe0, Qi0, Ge0 = scan_var(i)
+        Qe = np.concatenate((Qe, Qe0), axis=1)
+        Qi = np.concatenate((Qi, Qi0), axis=1)
+        Ge = np.concatenate((Ge, Ge0), axis=1)
+
+    # ------------------------------------------------------------------------------------------------------------------------
+
+    # Calculate the standard deviation of the scans, that's going to be the reported stds
+    Qe_std = np.std(Qe, axis=1)
+    Qi_std = np.std(Qi, axis=1)
+    Ge_std = np.std(Ge, axis=1)
+
+    # The actual point is the original TGYRO one (maybe in the future I decided to use the mean?)
+    Qe_point = Qe_tgyro
+    Qi_point = Qi_tgyro
+    Ge_point = Ge_tgyro
+
+    # TO DO
+    GZ_point, Mt_point, Pexch_point = GZ_tgyro, Mt_tgyro, Pexch_tgyro
+    GZ_std, Mt_std, Pexch_std = abs(GZ_point) * 0.1, abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
+
+    # TO DO: Careful with fast particles
+
+    return Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, Pexch_point, Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, Pexch_std
+
+
 # ------------------------------------------------------------------
 # SIMPLE Diffusion
 # ------------------------------------------------------------------
@@ -406,32 +499,74 @@ class surrogate_model(power_transport):
 # Functions
 # **************************************************************************************************
 
-def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFast=False):
-    # TGLF ---------------------------------------------------------------------------------------------------------
+def curateTGYROfiles(
+    tgyroObject,
+    label,
+    RadiisToRun,
+    ProfilesPredicted,
+    folder,
+    percentError,
+    impurityPosition=1,
+    includeFast=False,
+    use_tglf_scan_trick=None,
+    restart=False
+    ):
 
+    tgyro = tgyroObject.results[label]
+    
+    # Determine NEO and Target errors
+    relativeErrorNEO = percentError[1] / 100.0
+    relativeErrorTAR = percentError[2] / 100.0
+
+    # **************************************************************************************************************************
+    # TGLF
+    # **************************************************************************************************************************
+    
+    # Grab fluxes
     Qe = tgyro.Qe_sim_turb[0, 1:]
-    if includeFast:
-        Qi = tgyro.QiIons_sim_turb[0, 1:]
-    else:
-        Qi = tgyro.QiIons_sim_turb_thr[0, 1:]
+    Qi = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
     Ge = tgyro.Ge_sim_turb[0, 1:]
     GZ = tgyro.Gi_sim_turb[impurityPosition - 1, 0, 1:]
     Mt = tgyro.Mt_sim_turb[0, 1:]
     Pexch = tgyro.EXe_sim_turb[0, 1:]
+    
+    # Determine TGLF error
+    if use_tglf_scan_trick is not None:
 
-    percentErrorTGLF = percentError[0] / 100.0
+        # --------------------------------------------------------------
+        # If using the scan trick
+        # --------------------------------------------------------------
 
-    QeE = abs(tgyro.Qe_sim_turb[0, 1:]) * percentErrorTGLF
-    if includeFast:
-        QiE = abs(tgyro.QiIons_sim_turb[0, 1:]) * percentErrorTGLF
+        Qe, Qi, Ge, GZ, Mt, Pexch, QeE, QiE, GeE, GZE, MtE, PexchE = tglf_scan_trick(
+            [Qe, Qi, Ge, GZ, Mt, Pexch],
+            tgyroObject,
+            label, 
+            RadiisToRun, 
+            ProfilesPredicted, 
+            impurityPosition=impurityPosition, 
+            includeFast=includeFast, 
+            delta = use_tglf_scan_trick,
+            restart=restart
+            )
+    
     else:
-        QiE = abs(tgyro.QiIons_sim_turb_thr[0, 1:]) * percentErrorTGLF
-    GeE = abs(tgyro.Ge_sim_turb[0, 1:]) * percentErrorTGLF
-    GZE = abs(tgyro.Gi_sim_turb[impurityPosition - 1, 0, 1:]) * percentErrorTGLF
-    MtE = abs(tgyro.Mt_sim_turb[0, 1:]) * percentErrorTGLF
-    PexchE = abs(tgyro.EXe_sim_turb[0, 1:]) * percentErrorTGLF
 
-    # Neo ----------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------
+        # If simply a percentage error provided
+        # --------------------------------------------------------------
+
+        relativeErrorTGLF = [percentError[0] / 100.0]*len(RadiisToRun)
+    
+        QeE = abs(Qe) * relativeErrorTGLF
+        QiE = abs(Qi) * relativeErrorTGLF
+        GeE = abs(Ge) * relativeErrorTGLF
+        GZE = abs(GZ) * relativeErrorTGLF
+        MtE = abs(Mt) * relativeErrorTGLF
+        PexchE = abs(Pexch) * relativeErrorTGLF
+
+    # **************************************************************************************************************************
+    # Neo
+    # **************************************************************************************************************************
 
     QeNeo = tgyro.Qe_sim_neo[0, 1:]
     if includeFast:
@@ -442,16 +577,14 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
     GZNeo = tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]
     MtNeo = tgyro.Mt_sim_neo[0, 1:]
 
-    percentErrorNeo = percentError[1] / 100.0
-
-    QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * percentErrorNeo
+    QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
     if includeFast:
-        QiNeoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * percentErrorNeo
+        QiNeoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
     else:
-        QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * percentErrorNeo
-    GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * percentErrorNeo
-    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]) * percentErrorNeo
-    MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * percentErrorNeo
+        QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
+    GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
+    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]) * relativeErrorNEO
+    MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
 
     # Merge
 
@@ -490,15 +623,15 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
         special_label="_stds",
     )
 
-    # Targets -------------------------------------------------------------------------------------------------------
+    # **************************************************************************************************************************
+    # Targets
+    # **************************************************************************************************************************
 
-    percentErrorTarget = percentError[2] / 100.0
-
-    QeTargetE = abs(tgyro.Qe_tar[0, 1:]) * percentErrorTarget
-    QiTargetE = abs(tgyro.Qi_tar[0, 1:]) * percentErrorTarget
-    GeTargetE = abs(tgyro.Ge_tar[0, 1:]) * percentErrorTarget
+    QeTargetE = abs(tgyro.Qe_tar[0, 1:]) * relativeErrorTAR
+    QiTargetE = abs(tgyro.Qi_tar[0, 1:]) * relativeErrorTAR
+    GeTargetE = abs(tgyro.Ge_tar[0, 1:]) * relativeErrorTAR
     GZTargetE = GeTargetE * 0.0
-    MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * percentErrorTarget
+    MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * relativeErrorTAR
 
     PORTALScgyro.modifyEVO(
         tgyro,
