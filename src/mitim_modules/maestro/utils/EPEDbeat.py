@@ -8,6 +8,7 @@ from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_tools.popcon_tools import FunctionalForms
 from IPython import embed
 
 class eped_beat(beat):
@@ -71,13 +72,12 @@ class eped_beat(beat):
         '''
         if self.neped is None:
             # If not, trying to get from the previous EPED beat via _inform()
-            if 'rhotop' in self.__dict__:
-                print(f"\t\t- Using previous rhotop: {self.rhotop}")
+            if 'rhoped' in self.__dict__:
+                print(f"\t\t- Using previous rhoped: {self.rhoped}")
             # If not, using simply the density at rho = 0.9
             else:
                 self.rhoped = 0.95
             self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
-
 
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
@@ -104,13 +104,13 @@ class eped_beat(beat):
         print(f'\t\t- a: {a:.2f} m')
         print(f'\t\t- kappa995: {kappa995:.3f}')
         print(f'\t\t- delta995: {delta995:.3f}')
-        print(f'\t\t- neped: {neped:.2f} 10^19 m^-3')
+        print(f'\t\t- neped: {neped*10:.2f} 10^19 m^-3')
         print(f'\t\t- betan: {betan:.2f}')
         print(f'\t\t- zeff: {zeff:.2f}')
         print(f'\t\t- tesep: {tesep*1E3:.1f} eV')
         print(f'\t\t- nesep_ratio: {nesep_ratio:.2f}')
 
-        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10.0, betan, zeff, tesep=tesep* 1E3,nesep_ratio=nesep_ratio)
+        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10, betan, zeff, tesep=tesep* 1E3,nesep_ratio=nesep_ratio)
 
         # -------------------------------------------------------
         # Produce relevant quantities
@@ -118,12 +118,12 @@ class eped_beat(beat):
 
         # psi_pol to rhoN
         rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-        self.rhotop = rhotop
         rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
         self.rhoped = rhoped
 
         # Find ne at the top
-        self.netop = np.interp(rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
+        
+        self.netop = 1.08 * self.neped #np.interp(rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
@@ -143,6 +143,7 @@ class eped_beat(beat):
             'netop': self.netop,
             'nesep': nesep_ratio*self.netop,
             'rhotop': rhotop,
+            'rhoped': rhoped,
             'Tesep': tesep,
         }
 
@@ -249,9 +250,9 @@ class eped_beat(beat):
     def _inform(self):
 
         # From a previous EPED beat
-        if 'rhotop' in self.maestro_instance.parameters_trans_beat:
-            self.rhotop = self.maestro_instance.parameters_trans_beat['rhotop']
-            print(f"\t\t- Using previous rhotop: {self.rhotop}")
+        if 'rhoped' in self.maestro_instance.parameters_trans_beat:
+            self.rhoped = self.maestro_instance.parameters_trans_beat['rhoped']
+            print(f"\t\t- Using previous rhoped: {self.rhoped}")
 
         # From a geqdsk initialization
         if 'kappa995' in self.maestro_instance.parameters_trans_beat:
@@ -267,9 +268,9 @@ class eped_beat(beat):
 
         eped_output, _ = self.grab_output()
 
-        self.maestro_instance.parameters_trans_beat['rhotop'] = eped_output['rhotop']
+        self.maestro_instance.parameters_trans_beat['rhoped'] = eped_output['rhoped']
 
-        print('\t\t- rhotop and netop saved for future beats')
+        print('\t\t- rhoped saved for future beats')
 
 
 
@@ -310,4 +311,5 @@ def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
 
     return ynew
     
-
+#def find_ytop(Yped, Ysep, rhoped, rhotop):
+    #pedestal_tanh()

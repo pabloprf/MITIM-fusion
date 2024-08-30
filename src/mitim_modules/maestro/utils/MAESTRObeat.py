@@ -312,9 +312,9 @@ class creator_from_parameterization(creator):
             x0 = [aLT, aLn]
             bounds = [(1.0,3.0), (0.1, 0.3)] # in the future, fix aLT/aLn ?
             print('\n\t -Optimizing aLT and aLn to match BetaN')
-            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-2)
+            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-2, bounds=bounds)
             print(f'\n\t - Gradients: aLT = {res.x[0]:.2f}, aLn = {res.x[1]:.2f}')
-            aLt, aLn = res.x
+            aLT, aLn = res.x
 
             rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
             rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
