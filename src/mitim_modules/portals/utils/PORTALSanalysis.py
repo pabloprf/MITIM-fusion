@@ -2,6 +2,7 @@ import os
 import copy
 import torch
 import numpy as np
+import pandas as pd
 import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
@@ -443,7 +444,8 @@ class PORTALSanalyzer:
         # Make dictionary
         models = {}
         for gp in gps:
-            models[gp.output] = simple_model_portals(gp)
+            #models[gp.output] = simple_model_portals(gp)
+            models[gp.output] = gp
 
         # PRINTING
         print(
@@ -466,7 +468,7 @@ class PORTALSanalyzer:
             typeMsg="i",
         )
 
-        return models
+        return wrapped_model_portals(models)
 
     def extractPORTALS(self, evaluation=None, folder=None):
         if evaluation is None:
@@ -756,6 +758,97 @@ class simple_model_portals:
                 return samples[..., 0].detach().cpu().numpy()
             else:
                 return samples[..., 0].detach()
+
+
+class wrapped_model_portals:
+    def __init__(self, gpdict):
+        self.models = {}
+        self.input_variables = []
+        self.output_variables = []
+        if isinstance(gpdict, dict):
+            self.models.update(gpdict)
+        for key in self.models:
+            if hasattr(self.models[key], 'variables'):
+                for var in self.models[key].variables:
+                    if var not in self.input_variables:
+                        self.input_variables.append(var)
+                if key not in self.output_variables:
+                    self.output_variables.append(key)
+
+    def printInfo(self, detailed=False):
+        print(f"> Models for {self.output_variables} created")
+        print(
+            f"\t- Requires {len(self.input_variables)} variables to evaluate: {self.input_variables}"
+        )
+        if detailed:
+            for key, model in self.models.items():
+                model.printInfo()
+
+    def evalModel(self, x, key):
+        numpy_provided = False
+        if isinstance(x, np.ndarray):
+            x = torch.Tensor(x)
+            numpy_provided = True
+
+        mean, upper, lower, _ = self.models[key].predict(
+            x, produceFundamental=True
+        )
+
+        mean_out = mean[..., 0].detach()
+        upper_out = upper[..., 0].detach()
+        lower_out = lower[..., 0].detach()
+        if numpy_provided:
+            mean_out = mean_out.cpu().numpy()
+            upper_out = upper_out.cpu().numpy()
+            lower_out = lower_out.cpu().numpy()
+
+        return mean_out, upper_out, lower_out
+
+    def sampleModel(self, x, samples, key):
+        numpy_provided = False
+        if isinstance(x, np.ndarray):
+            x = torch.Tensor(x)
+            numpy_provided = True
+
+        _, _, _, samples = self.models[key].predict(
+            x, produceFundamental=True, nSamples=samples
+        )
+
+        samples_out = samples[..., 0].detach()
+        if numpy_provided:
+            samples_out = samples_out.cpu().numpy()
+
+        return samples_out
+
+    def predict(self, x, outputs=None):
+        y = {}
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self.models.keys())
+        for ytag, model in self.models.items():
+            if ytag in targets:
+                inp = copy.deepcopy(x)
+                if isinstance(x, pd.DataFrame):
+                    inp = x.loc[:, model.variables].to_numpy()
+                y[f'{ytag}'], y[f'{ytag}_upper'], y[f'{ytag}_lower'] = self.evalModel(inp, ytag)
+        return pd.DataFrame(data=y)
+
+    def sample(self, x, samples, outputs=None):
+        y = {}
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self.models.keys())
+        for ytag, model in self.models.items():
+            if ytag in targets:
+                inp = copy.deepcopy(x)
+                if isinstance(x, pd.DataFrame):
+                    inp = x.loc[:, model.variables].to_numpy()
+                y[f'{ytag}'] = self.sampleModel(inp, samples, ytag)
+        return pd.DataFrame(data=y)
+
+    def __call__(self, x, samples=None, outputs=None):
+        out = None
+        if samples is None:
+            out = self.predict(x, outputs=outputs)
+        else:
+            out = self.sample(x, samples=samples, outputs=outputs)
+        return out
 
 
 def calcLinearizedModel(
