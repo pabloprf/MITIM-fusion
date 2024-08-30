@@ -326,30 +326,72 @@ def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eli
 
     return file_current
 
+def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
+    '''
+    Calculate the size of the top N attributes of an object and recursively calculate the sizes of the attributes of the top item. 
+    '''
 
-def getsize(obj):
-    print(f"\t{getsizeObject(obj) * 1e-06:.1f} MB")
+    from pympler import asizeof
 
+    sizes = {}
+    prefix = f"{parent_name}." if parent_name else ""
 
-def getsizeObject(obj, seen=None):
-    """Recursively finds size of objects"""
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
     if isinstance(obj, dict):
-        size += sum([getsizeObject(v, seen) for v in obj.values()])
-        size += sum([getsizeObject(k, seen) for k in obj.keys()])
-    elif hasattr(obj, "__dict__"):
-        size += getsizeObject(obj.__dict__, seen)
-    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
-        size += sum([getsizeObject(i, seen) for i in obj])
-    return size
+        items = obj.items()
+    elif isinstance(obj, list) or isinstance(obj, tuple):
+        items = enumerate(obj)
+    elif isinstance(obj, str):
+        return
+    else:
+        items = vars(obj).items()
+
+    # Collect the size of each item in the object
+    for attr_name, attr_value in items:
+        sizes[attr_name] = (asizeof.asizeof(attr_value) * 1E-6, type(attr_value).__name__)
+
+    # Sort the items by size (from high to low)
+    sorted_sizes = dict(sorted(sizes.items(), key=lambda item: item[1][0], reverse=True))
+
+    # Determine the maximum length of the attribute names for alignment
+    max_attr_name_length = max(len(str(attr_name)) for attr_name in sorted_sizes)
+
+    # Print the sizes of the top N items
+    print(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
+    for attr_name, (size, attr_type) in list(sorted_sizes.items())[:N]:
+        full_attr_name = f"{prefix}{attr_name}"
+        print(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
+
+    # Sum the sizes of the remaining attributes
+    remaining_size = sum(size for size, _ in list(sorted_sizes.values())[N:])
+    
+    # Print the total size of the remaining attributes if any
+    if remaining_size > 0:
+        print(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
+
+    # Recursively calculate the sizes of the attributes of the top item
+    if recursion > 0:
+
+        if isinstance(obj, dict):
+            parent_name = list(sorted_sizes.keys())[0]
+            child_obj = obj[list(sorted_sizes.keys())[0]]
+        elif isinstance(obj, list) or isinstance(obj, tuple):
+            parent_name = f"{prefix}{list(sorted_sizes.keys())[0]}"
+            child_obj = obj[list(sorted_sizes.keys())[0]]
+        else:
+            parent_name = list(sorted_sizes.items())[0][0]
+            child_obj = getattr(obj,parent_name)
+        calculate_sizes_obj_recursive(child_obj, N, recursion = recursion - 1, parent_name=parent_name)
+        
+def calculate_size_pickle(file):
+    '''
+    Calculate the size of the object stored in a pickle file.
+    '''
+
+    import pickle  
+
+    with open(file, 'rb') as f:
+        obj = pickle.load(f)
+    calculate_sizes_obj_recursive(obj, recursion = 20)
 
 def read_mitim_nml(json_file):
     with open(json_file, 'r') as file:

@@ -49,9 +49,8 @@ For this tutorial we will need the following modules:
 .. code-block:: python
 
     from mitim_tools.gacode_tools import TGLFtools
-    from mitim_tools.misc_tools   import IOtools
 
-Select the location of the input.gacode file to start the simulation from. Note that you can use the ``IOtools.expandPath()`` method to work with relative paths. You should also select the folder where the simulation will be run:
+Select the location of the input.gacode file to start the simulation from. You should also select the folder where the simulation will be run:
 
 .. code-block:: python
 
@@ -125,7 +124,6 @@ If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and wa
 .. code-block:: python
 
     from mitim_tools.gacode_tools import TGLFtools
-    from mitim_tools.misc_tools   import IOtools
 
     cdf_file = 'MITIM-fusion/tests/data/12345.CDF'
     folder   = 'MITIM-fusion/tests/scratch/tglf_tut/'
@@ -161,7 +159,6 @@ If you have a input.tglf file already, you can still use this script to run it.
 .. code-block:: python
 
     from mitim_tools.gacode_tools import TGLFtools
-    from mitim_tools.misc_tools   import IOtools
 
     inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
     folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
@@ -184,7 +181,6 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
     .. code-block:: python
 
         from mitim_tools.gacode_tools import TGLFtools
-        from mitim_tools.misc_tools   import IOtools
 
         folder           = 'MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder/'
         inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'

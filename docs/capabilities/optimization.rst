@@ -36,7 +36,6 @@ For this tutorial we will need the following modules:
 
    import torch
    import numpy as np
-   from mitim_tools.misc_tools    import IOtools
    from mitim_tools.opt_tools     import STRATEGYtools
 
 Select the location of the MITIM namelist (see :ref:`Understanding the MITIM namelist` to understand how to construct the namelist file) and the folder to work on:

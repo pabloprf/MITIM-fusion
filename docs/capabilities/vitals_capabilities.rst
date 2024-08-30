@@ -25,7 +25,6 @@ For this tutorial we will need the following modules and the folder to run VITAL
 	import numpy as np
 
 	from mitim_tools.gacode_tools import TGLFtools
-	from mitim_tools.misc_tools   import IOtools
 	from mitim_modules.vitals     import VITALSmain
 	from mitim_tools.opt_tools    import STRATEGYtools
 
@@ -89,7 +88,7 @@ At this point, the TGLF class is ready to go into VITALS. One can give the ``tgl
 	tglf.save_pkl(tglf_file)
 
 
-2. VITALS Run 
+1. VITALS Run 
 -------------
 
 First you must select the objective functions (``ofs``) you want VITALS to match:
