@@ -15,7 +15,7 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location, norm_location, netop_20 = None, BetaN = None, Te_sep = None, nesep_ratio = None, **kwargs):
+    def prepare(self, nn_location, norm_location, neped_20 = None, BetaN = None, Te_sep = None, nesep_ratio = None, **kwargs):
 
         self.nn = NNtools.eped_nn(type='tf')
         nn_location = IOtools.expandPath(nn_location)
@@ -24,7 +24,7 @@ class eped_beat(beat):
         self.nn.load(nn_location, norm=norm_location)
 
         # Parameters to run EPED with instead of those from the profiles
-        self.netop = netop_20
+        self.neped = neped_20
         self.BetaN = BetaN
         self.Tesep = Te_sep
         self.nesep_ratio = nesep_ratio # ratio of nsep to neped
@@ -69,17 +69,14 @@ class eped_beat(beat):
             beta_N and ne_top can be provided as input to prepare(), recommended in first EPED beat
             tesep and nesep_ratio can be provided as input to prepare(), recommended in first EPED beat to define the profiles "forever"
         '''
-        if self.netop is None:
+        if self.neped is None:
             # If not, trying to get from the previous EPED beat via _inform()
             if 'rhotop' in self.__dict__:
                 print(f"\t\t- Using previous rhotop: {self.rhotop}")
             # If not, using simply the density at rho = 0.9
             else:
-                self.rhotop = 0.9
-            self.netop = np.interp(self.rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
-
-        self.rhoped = 1-(1-self.rhotop)*2/3 # EPED width definition: ∆top = 1.5∆ped
-        self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
+                self.rhoped = 0.95
+            self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
 
 
         kappa995 = self.profiles_current.derived['kappa995']
@@ -92,14 +89,13 @@ class eped_beat(beat):
         if 'delta995' in self.__dict__ and self.delta995 is not None:           delta995 = self.delta995
         if "BetaN" in self.__dict__ and self.BetaN is not None:                 betan = self.BetaN
         if "Tesep" in self.__dict__ and self.Tesep is not None:                 tesep = self.Tesep
-        if "nesep_ratio" in self.__dict__ and self.nesep_ratio is not None:   nesep_ratio = self.nesep_ratio
+        if "nesep_ratio" in self.__dict__ and self.nesep_ratio is not None:     nesep_ratio = self.nesep_ratio
 
         # -------------------------------------------------------
         # Run NN
         # -------------------------------------------------------
 
-        # Assumptions
-        neped = self.netop/1.08``
+        neped = self.neped
 
         print('\n\t- Running EPED with:')
         print(f'\t\t- Ip: {Ip:.2f} MA')
@@ -108,7 +104,7 @@ class eped_beat(beat):
         print(f'\t\t- a: {a:.2f} m')
         print(f'\t\t- kappa995: {kappa995:.3f}')
         print(f'\t\t- delta995: {delta995:.3f}')
-        print(f'\t\t- neped: {neped*10.0:.2f} 10^19 m^-3')
+        print(f'\t\t- neped: {neped:.2f} 10^19 m^-3')
         print(f'\t\t- betan: {betan:.2f}')
         print(f'\t\t- zeff: {zeff:.2f}')
         print(f'\t\t- tesep: {tesep*1E3:.1f} eV')
@@ -123,6 +119,11 @@ class eped_beat(beat):
         # psi_pol to rhoN
         rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
         self.rhotop = rhotop
+        rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+        self.rhoped = rhoped
+
+        # Find ne at the top
+        self.netop = np.interp(rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
