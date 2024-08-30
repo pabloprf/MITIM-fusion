@@ -177,13 +177,13 @@ class initializer_from_geqdsk(beat_initializer):
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder+'/input.gacode' )
+        p.writeCurrentStatus(file=self.folder+'/input.gacode.geqdsk')
 
         # Copy original geqdsk for reference use
         os.system(f'cp {geqdsk_file} {self.folder}/input.geqdsk')
 
         # Call the profiles initializer
-        super().__call__(self.folder+'/input.gacode', **kwargs_profiles)
+        super().__call__(self.folder+'/input.gacode.geqdsk', **kwargs_profiles)
 
     def _inform_save(self):
 

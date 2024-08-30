@@ -1448,7 +1448,7 @@ class PROFILES_GACODE:
                     if len(self.profiles[i].shape) == 1:
                         for j, val in enumerate(self.profiles[i]):
                             pos = f"{j + 1}".rjust(3)
-                            valt = f"{val:.7e}".rjust(15)
+                            valt = f"{round(val,99):.7e}".rjust(15)
                             f.write(f"{pos}{valt}\n")
                     else:
                         for j, val in enumerate(self.profiles[i]):
