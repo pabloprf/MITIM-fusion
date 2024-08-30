@@ -22,9 +22,8 @@ For this tutorial we will need the following modules:
 .. code-block:: python
 
 	from mitim_tools.gacode_tools import TGYROtools,PROFILEStools
-	from mitim_tools.misc_tools   import IOtools
 
-Select the location of the input.gacode file to start the simulation from. Note that you can use the ``IOtools.expandPath()`` method to work with relative paths. You should also select the folder where the simulation will be run:
+Select the location of the input.gacode file to start the simulation from. You should also select the folder where the simulation will be run:
 
 .. code-block:: python
 
@@ -115,7 +114,6 @@ Create a profiles class with the `input.gacode` file that TGYRO used to run and 
 .. code-block:: python
 
 	from mitim_tools.gacode_tools import TGYROtools,PROFILEStools
-	from mitim_tools.misc_tools   import IOtools
 
 	gacode_file = 'MITIM-fusion/tests/data/input.gacode'
 	folder      = 'MITIM-fusion/tests/scratch/tgyro_tut/run1/'

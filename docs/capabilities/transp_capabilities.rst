@@ -23,7 +23,6 @@ For this tutorial we will need the following modules:
 
 	import os
 	from mitim_tools.transp_tools import TRANSPtools
-	from mitim_tools.misc_tools   import IOtools
 
 TRANSP runs are very personal and specific to each tokamak and plasma, as diagnostic availability strongly varies and namelist settings are not standarized.
 For this reason, this workflow assumes that a folder exists with all the plasma information (UFILES) and namelist required to run TRANSP:
