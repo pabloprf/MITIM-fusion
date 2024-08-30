@@ -98,6 +98,19 @@ class eped_beat(beat):
         # Assumptions
         neped = self.netop/1.08
 
+        print('\n\t- Running EPED with:')
+        print(f'\t\t- Ip: {Ip:.2f} MA')
+        print(f'\t\t- Bt: {Bt:.2f} T')
+        print(f'\t\t- R: {R:.2f} m')
+        print(f'\t\t- a: {a:.2f} m')
+        print(f'\t\t- kappa995: {kappa995:.3f}')
+        print(f'\t\t- delta995: {delta995:.3f}')
+        print(f'\t\t- neped: {neped*10.0:.2f} 10^19 m^-3')
+        print(f'\t\t- betan: {betan:.2f}')
+        print(f'\t\t- zeff: {zeff:.2f}')
+        print(f'\t\t- tesep: {tesep*1E3:.1f} eV')
+        print(f'\t\t- nesep_ratio: {nesep_ratio:.2f}')
+
         ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped*10.0, betan, zeff, tesep=tesep* 1E3,nesep_ratio=nesep_ratio)
 
         # -------------------------------------------------------
@@ -270,12 +283,11 @@ def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     xcore_old = x[:ibc]
     ycore_old = y[:ibc]
 
-    # Find new core
+    # Find extension of new core
     ibc = np.argmin(np.abs(x-xp))
     xcore = x[:ibc]
-    ycore = y[:ibc]
 
-    # Stretch core
+    # Stretch old core into the new extension, and scale it
     x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
     ycore_new = np.interp(xcore,x_core_old_mod,ycore_old) * yped[0] / ycore_old[-1]
 
