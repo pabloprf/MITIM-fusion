@@ -15,7 +15,7 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location, norm_location, netop_20 = None, BetaN = None, Te_sep = None, ne_sep_ratio = None, **kwargs):
+    def prepare(self, nn_location, norm_location, netop_20 = None, BetaN = None, Te_sep = None, nesep_ratio = None, **kwargs):
 
         self.nn = NNtools.eped_nn(type='tf')
         nn_location = IOtools.expandPath(nn_location)
@@ -27,7 +27,7 @@ class eped_beat(beat):
         self.netop = netop_20
         self.BetaN = BetaN
         self.Tesep = Te_sep
-        self.ne_sep_ratio = ne_sep_ratio
+        self.nesep_ratio = nesep_ratio # ratio of nsep to neped
 
         self._inform()
 
@@ -78,25 +78,28 @@ class eped_beat(beat):
                 self.rhotop = 0.9
             self.netop = np.interp(self.rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
 
+        self.rhoped = 1-(1-self.rhotop)*2/3 # EPED width definition: ∆top = 1.5∆ped
+        self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)']) * 1E-1
+
 
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
         betan = self.profiles_current.derived['BetaN']
         tesep = self.profiles_current.profiles['te(keV)'][-1]
-        nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1] / self.netop
+        nesep_ratio = self.profiles_current.profiles['ne(10^19/m^3)'][-1] / self.neped
         
         if 'kappa995' in self.__dict__ and self.kappa995 is not None:           kappa995 = self.kappa995
         if 'delta995' in self.__dict__ and self.delta995 is not None:           delta995 = self.delta995
         if "BetaN" in self.__dict__ and self.BetaN is not None:                 betan = self.BetaN
         if "Tesep" in self.__dict__ and self.Tesep is not None:                 tesep = self.Tesep
-        if "ne_sep_ratio" in self.__dict__ and self.ne_sep_ratio is not None:   nesep_ratio = self.ne_sep_ratio
+        if "nesep_ratio" in self.__dict__ and self.nesep_ratio is not None:   nesep_ratio = self.nesep_ratio
 
         # -------------------------------------------------------
         # Run NN
         # -------------------------------------------------------
 
         # Assumptions
-        neped = self.netop/1.08
+        neped = self.netop/1.08``
 
         print('\n\t- Running EPED with:')
         print(f'\t\t- Ip: {Ip:.2f} MA')
@@ -119,6 +122,7 @@ class eped_beat(beat):
 
         # psi_pol to rhoN
         rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+        self.rhotop = rhotop
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
