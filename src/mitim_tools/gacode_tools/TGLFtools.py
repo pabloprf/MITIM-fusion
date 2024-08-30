@@ -3807,15 +3807,18 @@ def changeANDwrite_TGLF(
 
         newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
 
-        # Apply corrections
-        if ApplyCorrections:
-            print("\t- Applying corrections")
-            inputTGLF_rho.removeLowDensitySpecie()
-            inputTGLF_rho.removeFast()
+        if TGLFsettings is not None:
+            # Apply corrections
+            if ApplyCorrections:
+                print("\t- Applying corrections")
+                inputTGLF_rho.removeLowDensitySpecie()
+                inputTGLF_rho.removeFast()
 
-        # Ensure that plasma to run is quasineutral
-        if Quasineutral:
-            inputTGLF_rho.ensureQuasineutrality()
+            # Ensure that plasma to run is quasineutral
+            if Quasineutral:
+                inputTGLF_rho.ensureQuasineutrality()
+        else:
+            print('\t- Not applying corrections nor quasineutrality because "TGLFsettings" is None')
 
         inputTGLF_rho.writeCurrentStatus(file=newfile)
 
