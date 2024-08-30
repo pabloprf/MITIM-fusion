@@ -1,6 +1,7 @@
 import os
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.surrogate_tools import NNtools
@@ -138,13 +139,14 @@ class eped_beat(beat):
 
         x = self.profiles_current.profiles['rho(-)']
         xp = rhotop
+        xp_old = self.rhotop if 'rhotop' in self.__dict__ else 0.9
 
-        self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop)
+        self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop,xp_old)
 
-        self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop)
+        self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop,xp_old)
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
 
-        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,self.netop*1E1)
+        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,self.netop*1E1,xp_old)
         self.profiles_output.enforceQuasineutrality()
 
         # ---------------------------------
@@ -253,45 +255,41 @@ class eped_beat(beat):
 
 
 
-def scale_profile_by_stretching(x,y,xp,yp):
+def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
     '''
 
-    # ynew = copy.deepcopy(y)
+    ynew = copy.deepcopy(y)
 
-    # # Fit new pedestal
-    # _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
+    # Fit new pedestal
+    _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
 
-    # # Find core
-    # ibc = np.argmin(np.abs(x-xp))
-    # xcore = x[:ibc]
-    # ycore = y[:ibc]
+    # Find old core
+    ibc = np.argmin(np.abs(x-xp_old))
+    xcore_old = x[:ibc]
+    ycore_old = y[:ibc]
 
-    # ycore_new = np.interp(xcore,xped,yped)
+    # Find new core
+    ibc = np.argmin(np.abs(x-xp))
+    xcore = x[:ibc]
+    ycore = y[:ibc]
 
+    # Stretch core
+    x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
+    ycore_new = np.interp(xcore,x_core_old_mod,ycore_old) * yped[0] / ycore_old[-1]
 
+    # Merge
+    ynew[:ibc] = ycore_new
+    ynew[ibc:] = yped[ibc:]
 
-    # # Find the ratio
-    # ratio = yp / np.interp(xp,x,y)
-
-    # ibc = np.argmin(np.abs(x-xp))
-
-    # # Scale core
-    # ynew[:ibc] = y[:ibc] * ratio
-
-    # # Fit pedestal
-    # #   
-
-    # import matplotlib.pyplot as plt
-    # fig, ax = plt.subplots()
-    # ax.plot(x,y)
-    # ax.plot(x,ynew)
-    # plt.show()
-
-
-    ratio = yp / np.interp(xp,x,y)
-    ynew = y * ratio
+    if plotYN:
+        fig, ax = plt.subplots()
+        ax.plot(x,y,'-o',label='old')
+        ax.plot(x,ynew,'-o',label='new')
+        ax.legend()
+    
+        plt.show()
 
     return ynew
     
