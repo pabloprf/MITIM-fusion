@@ -136,12 +136,15 @@ class portals_beat(beat):
         self.profiles_output.profiles['te(keV)'] = profiles_portals_out.profiles['te(keV)']
         self.profiles_output.profiles['ne(10^19/m^3)'] = profiles_portals_out.profiles['ne(10^19/m^3)']
 
-        # Insert Ti and ni (but check for species in case portals has removed them?)
+        # Insert Ti and ni (but check for species in case portals has removed them, e.g. fast ions)
         for i,sp in enumerate(profiles_portals_out.Species):
             for j,sp1 in enumerate(self.profiles_output.Species):
                 if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
                     self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
                     self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
+
+        # Enforce quasineutrality because now I have all the ions
+        self.profiles_output.enforceQuasineutrality()
 
         # Insert powers
         if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
