@@ -111,18 +111,19 @@ def pedestal_tanh(Y_top, Y_sep, width_top, x=None):
     if x is None:
         x = np.linspace(0, 1, 101)
 
+    width_ped = 2/3 * width_top
     x_top = 1-width_top
-    x_ped = 1-2*width_top/3
-    x_mid = 1-width_top/2
+    x_ped = 1-width_ped
+    x_mid = 1-width_ped/2
 
     # Fit
-    density_func = lambda x, a, b: Y_sep + b * (
-        np.tanh(2*(1-x_mid)/width_top/a)-np.tanh(2*(x-x_mid)/width_top/a)
+    density_func = lambda x, b: Y_sep + b * (
+        np.tanh(2*(1-x_mid)/width_ped)-np.tanh(2*(x-x_mid)/width_ped)
         )
     
-    n0, pcov = curve_fit(density_func, [x_top,x_ped,1.0], [Y_top,Y_top/1.08, Y_sep])
+    n0, pcov = curve_fit(density_func, [x_top,1.0], [Y_top, Y_sep])
 
-    Y = density_func(x, n0[0], n0[1])
+    Y = density_func(x, n0[0])
 
     return x, Y
 
@@ -148,7 +149,7 @@ def MITIMfunctional_aLyTanh(
 
     # Find where the core starts
     bc_index = np.argmin(np.abs(x-x_top))
-    xcore = x[:bc_index]
+    xcore = x[:bc_index+1] # inclusive of boundary condition
 
     # Create core 1/Ly profile
     aLy_profile = np.zeros_like(xcore)
@@ -163,7 +164,7 @@ def MITIMfunctional_aLyTanh(
                                     ).numpy()[0]
 
     # Merge
-    y = np.concatenate([Ycore, Yped[bc_index:]])
+    y = np.concatenate([Ycore, Yped[bc_index+1:]])
 
     if plotYN:
         fig, axs = plt.subplots(nrows=2, figsize=(6, 8))
@@ -201,3 +202,6 @@ def MITIMfunctional_aLyTanh(
         plt.show()
 
     return x, y
+
+if __name__=="__main__":
+    MITIMfunctional_aLyTanh(0.95, 1.0, 0.1, 2, plotYN=True)
