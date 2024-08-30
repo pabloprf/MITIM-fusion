@@ -5,6 +5,7 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from scipy.optimize import minimize
 from IPython import embed
 
 # --------------------------------------------------------------------------------------------
@@ -286,16 +287,10 @@ class creator_from_parameterization(creator):
             self.BetaN = BetaN
             self.Tsep = Tsep
             self.nesep = nesep
-    
-        def __call__(self):
-            
-            # from scipy.optimize import curve_fit
-            # objective_func
 
-            # Function to wrap the parameterization ------------------------------------------------------
-            aLT = 2.0
-            aLn = 0.2
-            x_a = 0.3
+        def _return_profile_betan_residual(self, x, x_a, betan):
+            aLT, aLn = x
+            # returns the residual of the betaN to match the profile to the EPED guess
 
             rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
             rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
@@ -305,9 +300,32 @@ class creator_from_parameterization(creator):
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-            obj = np.abs(self.initialize_instance.profiles_current.derived['BetaN'] - self.BetaN)
+            return ((self.initialize_instance.profiles_current.derived['BetaN'] - self.BetaN) / self.BetaN) ** 2
+    
+        def __call__(self):
+
+            # Function to wrap the parameterization ------------------------------------------------------
+            aLT = 2.0
+            aLn = 0.2
+            x_a = 0.3
+
+            x0 = [aLT, aLn]
+            bounds = [(1.0,3.0), (0.1, 0.3)] # in the future, fix aLT/aLn ?
+            print('\n\t -Optimizing aLT and aLn to match BetaN')
+            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-2)
+            print(f'\n\t - Gradients: aLT = {res.x[0]:.2f}, aLn = {res.x[1]:.2f}')
+            aLt, aLn = res.x
+
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop, self.nesep, aLn, x_a=x_a)
+
+            # Call the generic creator
+            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            super().__call__()
 
             # --------------------------------------------------------------------------------------------
+
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from EPED: Create parameterization using EPED
