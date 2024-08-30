@@ -277,6 +277,7 @@ class eped_beat(beat):
 def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
+    xp: top of the pedestal
     '''
 
     ynew = copy.deepcopy(y)
@@ -286,25 +287,30 @@ def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
-    xcore_old = x[:ibc]
-    ycore_old = y[:ibc]
+    xcore_old = x[:ibc+1]
+    ycore_old = y[:ibc+1]
 
     # Find extension of new core
     ibc = np.argmin(np.abs(x-xp))
-    xcore = x[:ibc]
+    xcore = x[:ibc+1]
 
     # Stretch old core into the new extension, and scale it
-    x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
-    ycore_new = np.interp(xcore,x_core_old_mod,ycore_old) * yped[0] / ycore_old[-1]
+    #x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
+
+    x_core_old_mod = xcore_old * xp / xp_old
+    ycore_new = np.interp(xcore,x_core_old_mod,ycore_old) * yp / ycore_old[-1] #was yped[0]
+
 
     # Merge
-    ynew[:ibc] = ycore_new
-    ynew[ibc:] = yped[ibc:]
+    ynew[:ibc+1] = ycore_new
+    ynew[ibc+1:] = yped[ibc+1:]
 
     if plotYN:
         fig, ax = plt.subplots()
         ax.plot(x,y,'-o',label='old')
+        ax.axvline(xp_old, color='k', ls='-.',label="xp_old")
         ax.plot(x,ynew,'-o',label='new')
+        ax.axvline(xp, color='k', ls='--',label="xp_new")
         ax.legend()
     
         plt.show()
