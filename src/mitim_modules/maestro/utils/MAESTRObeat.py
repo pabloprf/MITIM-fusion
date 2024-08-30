@@ -351,6 +351,10 @@ class creator_from_eped(creator_from_parameterization):
         # Run EPED
         eped_results = beat_eped._run()
 
+        # Potentially save variables
+        np.save(f'{beat_eped.folder_output}/eped_results.npy', eped_results)
+        beat_eped._inform_save(eped_results)
+
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
         self.Ttop = eped_results['Ttop']

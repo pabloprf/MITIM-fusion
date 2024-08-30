@@ -70,6 +70,7 @@ class eped_beat(beat):
             beta_N and ne_top can be provided as input to prepare(), recommended in first EPED beat
             tesep and nesep_ratio can be provided as input to prepare(), recommended in first EPED beat to define the profiles "forever"
         '''
+
         if self.neped is None:
             # If not, trying to get from the previous EPED beat via _inform()
             if 'rhoped' in self.__dict__:
@@ -77,8 +78,9 @@ class eped_beat(beat):
             # If not, using simply the density at rho = 0.9
             else:
                 self.rhoped = 0.95
-            self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
+            self.neped = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
 
+        
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
         betan = self.profiles_current.derived['BetaN']
@@ -264,9 +266,10 @@ class eped_beat(beat):
             self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
-    def _inform_save(self):
+    def _inform_save(self, eped_output = None):
 
-        eped_output, _ = self.grab_output()
+        if eped_output is None:
+            eped_output, _ = self.grab_output()
 
         self.maestro_instance.parameters_trans_beat['rhoped'] = eped_output['rhoped']
 
