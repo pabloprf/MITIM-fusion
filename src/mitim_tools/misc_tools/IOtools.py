@@ -1491,34 +1491,45 @@ def strip_ansi_codes(text):
     return ansi_escape.sub("", text)
 
 class log_to_file:
+    _context_count = 0  # Class attribute to keep track of context depth
+
     def __init__(self, log_file, msg=None):
         if msg is not None:
             print(msg)
         self.log_file = log_file
         self.stdout = sys.stdout
         self.stderr = sys.stderr
+        self.log = None
+        self.saved_stdout_fd = None
+        self.saved_stderr_fd = None
 
     def __enter__(self):
-        self.log = open(self.log_file, 'a')
-        self.stdout_fd = sys.stdout.fileno()
-        self.stderr_fd = sys.stderr.fileno()
+        if log_to_file._context_count == 0:
+            # First entry into the context, set up logging
+            self.log = open(self.log_file, 'a')
+            self.stdout_fd = sys.stdout.fileno()
+            self.stderr_fd = sys.stderr.fileno()
 
-        # Save the actual stdout (1) and stderr (2) file descriptors.
-        self.saved_stdout_fd = os.dup(self.stdout_fd)
-        self.saved_stderr_fd = os.dup(self.stderr_fd)
+            # Save the actual stdout (1) and stderr (2) file descriptors.
+            self.saved_stdout_fd = os.dup(self.stdout_fd)
+            self.saved_stderr_fd = os.dup(self.stderr_fd)
 
-        # Redirect stdout and stderr to the log file.
-        os.dup2(self.log.fileno(), self.stdout_fd)
-        os.dup2(self.log.fileno(), self.stderr_fd)
+            # Redirect stdout and stderr to the log file.
+            os.dup2(self.log.fileno(), self.stdout_fd)
+            os.dup2(self.log.fileno(), self.stderr_fd)
 
-        # Redirect Python's sys.stdout and sys.stderr to the log file.
-        sys.stdout = self
-        sys.stderr = self
+            # Redirect Python's sys.stdout and sys.stderr to the log file.
+            sys.stdout = self
+            sys.stderr = self
 
-        # Redirect warnings to the log file
-        logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
-            self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
-        warnings.showwarning = logging_handler
+            # Redirect warnings to the log file
+            logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
+                self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
+            warnings.showwarning = logging_handler
+
+        log_to_file._context_count += 1  # Increment the context depth
+
+        return self
 
     def write(self, message):
         # Remove ANSI codes from the message before writing to the log
@@ -1531,25 +1542,27 @@ class log_to_file:
         self.log.flush()
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # Flush and restore Python's sys.stdout and sys.stderr
-        sys.stdout.flush()
-        sys.stderr.flush()
-        sys.stdout = self.stdout
-        sys.stderr = self.stderr
+        log_to_file._context_count -= 1  # Decrement the context depth
 
-        # Restore the original file descriptors for stdout and stderr
-        os.dup2(self.saved_stdout_fd, self.stdout_fd)
-        os.dup2(self.saved_stderr_fd, self.stderr_fd)
+        if log_to_file._context_count == 0:
+            # Last exit from the context, restore the original state
+            sys.stdout.flush()
+            sys.stderr.flush()
+            sys.stdout = self.stdout
+            sys.stderr = self.stderr
 
-        # Close the duplicate file descriptors
-        os.close(self.saved_stdout_fd)
-        os.close(self.saved_stderr_fd)
+            os.dup2(self.saved_stdout_fd, self.stdout_fd)
+            os.dup2(self.saved_stderr_fd, self.stderr_fd)
 
-        # Close the log file
-        self.log.close()
+            os.close(self.saved_stdout_fd)
+            os.close(self.saved_stderr_fd)
 
-        # Restore the original warnings behavior
-        warnings.showwarning = warnings._showwarning_orig
+            self.log.close()
+
+            # Restore the original warnings behavior
+            warnings.showwarning = warnings._showwarning_orig
+
+        # If still inside a context, don't close the file or restore the state
 
 """
 This HDF5 tool was originally designed by A.J. Creely, but modifications 
