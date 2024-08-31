@@ -15,7 +15,7 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location, norm_location, neped_20 = None, BetaN = None, Tesep_keV = None, nesep_20 = None, **kwargs):
+    def prepare(self, nn_location = None, norm_location = None, neped_20 = None, BetaN = None, Tesep_keV = None, nesep_20 = None, **kwargs):
         ''' 
         EPED beat may receive the following parameters: neped_20, BetaN, Tesep_keV, nesep_20.
         If they are not provided, they will be taken from the profiles_current.
