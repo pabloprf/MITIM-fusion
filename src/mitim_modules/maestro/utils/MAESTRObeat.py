@@ -278,23 +278,23 @@ class creator:
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, rhotop = None, Ttop = None, netop = None, Tsep = None, nesep = None, BetaN = None, label = 'parameterization'):
+        def __init__(self, initialize_instance, rhotop = None, Ttop_keV = None, netop_20 = None, Tsep_keV = None, nesep_20 = None, BetaN = None, label = 'parameterization'):
             super().__init__(initialize_instance, label = label)
 
             self.rhotop = rhotop
-            self.Ttop = Ttop
-            self.netop = netop
+            self.Ttop_keV = Ttop_keV
+            self.netop_20 = netop_20
             self.BetaN = BetaN
-            self.Tsep = Tsep
-            self.nesep = nesep
+            self.Tsep_keV = Tsep_keV
+            self.nesep_20 = nesep_20
 
         def _return_profile_betan_residual(self, x, x_a, betan):
             aLT, aLn = x
             # returns the residual of the betaN to match the profile to the EPED guess
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a = x_a)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop, self.nesep, aLn, x_a = x_a)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
@@ -316,9 +316,9 @@ class creator_from_parameterization(creator):
             print(f'\n\t - Gradients: aLT = {res.x[0]:.2f}, aLn = {res.x[1]:.2f}')
             aLT, aLn = res.x
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop, self.Tsep, aLT, x_a=x_a)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop, self.nesep, aLn, x_a=x_a)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
@@ -357,10 +357,10 @@ class creator_from_eped(creator_from_parameterization):
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
-        self.Ttop = eped_results['Ttop']
-        self.netop = eped_results['netop']        
-        self.Tsep = eped_results['Tesep']
-        self.nesep = eped_results['nesep']
+        self.Ttop_keV = eped_results['Ttop_keV']
+        self.netop_20 = eped_results['netop_20']        
+        self.Tsep_keV = eped_results['Tesep_keV']
+        self.nesep_20 = eped_results['nesep_20']
         self.BetaN = beat_eped.BetaN
         super().__call__()
 
