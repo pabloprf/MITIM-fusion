@@ -281,34 +281,43 @@ def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
     '''
 
-    ynew = copy.deepcopy(y)
-
     # Fit new pedestal
     _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
-    xcore_old = x[:ibc]
-    ycore_old = y[:ibc]
+    xcore_old = x[:ibc+1]
+    ycore_old = y[:ibc+1]
 
     # Find extension of new core
     ibc = np.argmin(np.abs(x-xp))
-    xcore = x[:ibc]
+    xcore = x[:ibc+1]
 
-    # Stretch old core into the new extension, and scale it
+    # Scale core
+    ycore_new = ycore_old * yped[ibc] / ycore_old[-1]
+
+    # Stretch old core into the new extension
     x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
-    ycore_new = np.interp(xcore,x_core_old_mod,ycore_old) * yped[0] / ycore_old[-1]
+    ycore_new = np.interp(xcore,x_core_old_mod,ycore_new)
 
     # Merge
-    ynew[:ibc] = ycore_new
-    ynew[ibc:] = yped[ibc:]
+    ynew = copy.deepcopy(y)
+    ynew[:ibc+1] = ycore_new
+    ynew[ibc+1:] = yped[ibc+1:]
 
     if plotYN:
         fig, ax = plt.subplots()
-        ax.plot(x,y,'-o',label='old')
-        ax.plot(x,ynew,'-o',label='new')
+        ax.plot(x,y,'-o',color='b', label='old')
+        ax.axvline(x=xp_old,color='b',ls='--')
+        ax.plot(x,ynew,'-o',color='r',label='new')
+        ax.axvline(x=xp,color='r',ls='--')
+        ax.axhline(y=yp,color='r',ls='--')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel('x'); ax.set_ylabel('y')
+        ax.set_xlim([0,1]); ax.set_ylim(bottom=0)
         ax.legend()
     
         plt.show()
+
 
     return ynew
