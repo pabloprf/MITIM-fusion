@@ -850,7 +850,7 @@ class PRF_BO:
         del copyClass.optimization_results.PRF_BO
 
         # -------------------------------------------------------------------------------------------------
-        # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TO REMOVE]
+        # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TODO: Remove]
         # -------------------------------------------------------------------------------------------------
 
         del copyClass.lambdaSingleObjective

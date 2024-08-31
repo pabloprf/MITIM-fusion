@@ -300,7 +300,7 @@ class tgyro_model(power_transport):
             )
 
             print("\t- Checking model modifications:")
-            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TO FIX
+            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
                 print(
                     f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}"
                 )
@@ -409,11 +409,11 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
     Ge_point = Ge_tgyro
     GZ_point = GZ_tgyro
 
-    # TO DO
+    # TODO: Implement Mt and Pexch
     Mt_point, Pexch_point = Mt_tgyro, Pexch_tgyro
     Mt_std, Pexch_std = abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
 
-    # TO DO: Careful with fast particles
+    # TODO: Careful with fast particles
 
     return Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, Pexch_point, Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, Pexch_std
 
