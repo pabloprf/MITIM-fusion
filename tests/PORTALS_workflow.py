@@ -10,7 +10,7 @@ if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
 
 # Inputs
 inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folderWork = __mitimroot__ + "/tests/scratch/portals_test/"
+folderWork = __mitimroot__ + "/tests/scratch/portals_test2/"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
@@ -30,7 +30,7 @@ portals_fun.INITparameters["sameDensityGradients"] = True
 portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2 # Run with TGLF SAT 0 
 
 # Prepare run
-portals_fun.prep(inputgacode, folderWork)
+portals_fun.prep(inputgacode)
 
 # --------------------------------------------------------------------------------------------
 # Run
