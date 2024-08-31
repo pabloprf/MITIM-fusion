@@ -338,12 +338,17 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
 
     if isinstance(obj, dict):
         items = obj.items()
-    elif isinstance(obj, list) or isinstance(obj, tuple):
+    elif isinstance(obj, (list, np.ndarray, tuple)):
         items = enumerate(obj)
     elif isinstance(obj, str):
         return
     else:
-        items = vars(obj).items()
+        try:
+            items = vars(obj).items()
+        except:
+            print('Type not recognized, probably out of depth:')
+            print(obj)
+            return
 
     # Collect the size of each item in the object
     for attr_name, attr_value in items:
@@ -374,7 +379,7 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
         if isinstance(obj, dict):
             parent_name = list(sorted_sizes.keys())[0]
             child_obj = obj[list(sorted_sizes.keys())[0]]
-        elif isinstance(obj, list) or isinstance(obj, tuple):
+        elif isinstance(obj, (list, np.ndarray, tuple)):
             parent_name = f"{prefix}{list(sorted_sizes.keys())[0]}"
             child_obj = obj[list(sorted_sizes.keys())[0]]
         else:

@@ -8,7 +8,6 @@ from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
-from mitim_tools.popcon_tools import FunctionalForms
 from IPython import embed
 
 class eped_beat(beat):

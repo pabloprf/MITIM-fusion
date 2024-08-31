@@ -774,10 +774,6 @@ class PRF_BO:
                     else self.optimization_options["train_Ystd"]
                 )
 
-                # Making copy because it changes per step ---- ---- ---- ---- ----
-                surrogate_parameters = copy.deepcopy(self.surrogate_parameters)
-                # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
-
                 current_step = STEPtools.OPTstep(
                     self.train_X,
                     self.train_Y,
@@ -787,7 +783,7 @@ class PRF_BO:
                     currentIteration=self.currentIteration,
                     StrategyOptions=self.StrategyOptions_use,
                     BOmetrics=self.BOmetrics,
-                    surrogate_parameters=surrogate_parameters,
+                    surrogate_parameters=self.surrogate_parameters,
                 )
 
                 # Incorporate strategy_options for later retrieving

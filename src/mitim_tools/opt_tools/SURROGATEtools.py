@@ -60,7 +60,7 @@ class surrogate_model:
         self.output_transformed = output_transformed
         self.surrogateOptions = surrogateOptions
         self.dfT = dfT
-        self.surrogate_parameters = copy.deepcopy(surrogate_parameters) # otherwise I'll rewrite the surrogate_transformation_variables
+        self.surrogate_parameters = surrogate_parameters
         self.bounds = bounds
         self.FixedValue = FixedValue
         self.fileTraining = fileTraining
@@ -260,11 +260,11 @@ class surrogate_model:
         )
 
         self.variables = (
-            self.surrogate_parameters["surrogate_transformation_variables"][self.output]
+            self.surrogate_transformation_variables[self.output]
             if (
                 (self.output is not None)
-                and ("surrogate_transformation_variables" in self.surrogate_parameters)
-                and (self.surrogate_parameters["surrogate_transformation_variables"] is not None)
+                and ("surrogate_transformation_variables" in self.__dict__)
+                and (self.surrogate_transformation_variables is not None)
             )
             else None
         )
@@ -302,7 +302,7 @@ class surrogate_model:
         # Input and Outcome transform (PHYSICS)
         dimY = self.train_Y.shape[-1]
         input_transform_physics = BOTORCHtools.Transformation_Inputs(
-            self.output, self.surrogate_parameters
+            self.output, self.surrogate_parameters, self.surrogate_transformation_variables
         )
         outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
             dimY, self.output, self.surrogate_parameters
@@ -314,7 +314,7 @@ class surrogate_model:
         return input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y
 
     def _select_transition_physics_based_params(self, ):
-        self.surrogate_parameters["surrogate_transformation_variables"] = None
+        self.surrogate_transformation_variables = None
         if self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None:
 
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
@@ -330,7 +330,7 @@ class surrogate_model:
                     )[0][0]
                 ]
 
-            self.surrogate_parameters["surrogate_transformation_variables"] = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
+            self.surrogate_transformation_variables = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
 
     def normalization_pass(
         self,

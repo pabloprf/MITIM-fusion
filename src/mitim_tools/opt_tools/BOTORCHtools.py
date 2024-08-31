@@ -396,6 +396,7 @@ class Transformation_Inputs(
         self,
         output,
         surrogate_parameters,
+        surrogate_transformation_variables,
         indices=None,
         transform_on_train: bool = True,
         transform_on_eval: bool = True,
@@ -414,6 +415,7 @@ class Transformation_Inputs(
         # Custom parameters
         self.output = output
         self.surrogate_parameters = surrogate_parameters
+        self.surrogate_transformation_variables = surrogate_transformation_variables
         self.flag_to_store = False
         self.flag_to_evaluate = True
 
@@ -426,7 +428,7 @@ class Transformation_Inputs(
                 X,
                 self.output,
                 self.surrogate_parameters,
-                self.surrogate_parameters["surrogate_transformation_variables"],
+                self.surrogate_transformation_variables,
             )
 
             # Store the expensive parameters (not for training, or to call outside of ModelList)

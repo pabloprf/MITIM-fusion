@@ -281,13 +281,13 @@ class OPTstep:
         # ------------------------------------------------------------------------------------------------------
         # Make sure each model has the right surrogate_transformation_variables inside the combined model
         # ------------------------------------------------------------------------------------------------------
-        if self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'] is not None:
+        if self.GP["combined_model"].surrogate_transformation_variables is not None:
             for i in range(self.y.shape[-1]):
 
                 outi = self.outputs[i] if (self.outputs is not None) else None
 
                 if outi is not None:
-                    self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'][outi] = self.GP["individual_models"][i].surrogate_parameters['surrogate_transformation_variables'][outi]
+                    self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
 
         print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
 
