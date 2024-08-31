@@ -198,6 +198,7 @@ class tgyro_model(power_transport):
             provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
             restart=restart,
+            extra_name = self.name,
         )
 
         # Read again to capture errors
@@ -329,7 +330,7 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
-def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2):
+def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name=""):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
@@ -367,6 +368,7 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
                     restart=restart,
                     forceIfRestart=True,
                     slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x Nv = 3 x Nd = 2 +1 = 31 TGLFs at once
+                    extra_name = f'{extra_name}_{name}',
                     )
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
@@ -515,7 +517,8 @@ def curateTGYROfiles(
     impurityPosition=1,
     includeFast=False,
     use_tglf_scan_trick=None,
-    restart=False
+    restart=False,
+    extra_name="",
     ):
 
     tgyro = tgyroObject.results[label]
@@ -555,7 +558,8 @@ def curateTGYROfiles(
             impurityPosition=impurityPosition, 
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
-            restart=restart
+            restart=restart,
+            extra_name=extra_name
             )
     
     else:

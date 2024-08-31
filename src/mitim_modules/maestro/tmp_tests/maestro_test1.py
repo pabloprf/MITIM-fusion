@@ -21,7 +21,7 @@ BetaN_initialization = 1.5
 
 # To see what values this namelist can take: mitim_tools/transp_tools/NMLtools.py: _default_params()
 transp_namelist = {
-    'flattop_window': 0.2,       # <--- To allow stationarity
+    'flattop_window': 1.0,       # <--- To allow stationarity
     'extractAC': True,           # <--- To extract TORIC and NUBEAM extra files
     'dtEquilMax_ms': 10.0,       # Default
     'dtHeating_ms' : 5.0,        # Default
@@ -47,7 +47,7 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
                                             "Physics_options": {"TypeTarget": 3},
                                              "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
                         "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
-                        "optimization_options": {"BO_iterations": 5,"maximum_value": 1e-2,"maximum_value_is_rel": True, "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} } }
+                        "optimization_options": {"BO_iterations": 20,"maximum_value": 1e-2,"maximum_value_is_rel": True, "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} } }
 
 # To see what values this namelist can take: mitim_modules/maestro/utils/EPEDbeat.py: prepare()
 eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5',
@@ -57,30 +57,40 @@ eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EP
 # Workflow
 # -----------------------------------------------------------------------------------------------------------------------
 
-m = maestro(folder, terminal_outputs = True)
+m = maestro(folder, terminal_outputs = False)
 
+# Sort TRANSP
+transp_namelist['flattop_window'] = 0.5
 m.define_beat('transp', initializer='geqdsk')
 m.define_creator('eped', BetaN = BetaN_initialization, **eped_parameters,**parameters)
 m.initialize(**geometry, **parameters)
 m.prepare(**transp_namelist)
 m.run(checkMin=3, retrieveAC=transp_namelist['extractAC'])
 
+# EPED
 m.define_beat('eped')
 m.prepare(**eped_parameters)
 m.run()
 
+# Sort PORTALS
+portals_namelist['optimization_options']['BO_iterations'] = 10
 m.define_beat('portals')
 m.prepare(**portals_namelist)
 m.run()
 
+# Long TRANSP
+transp_namelist['flattop_window'] = 1.0
 m.define_beat('transp')
 m.prepare(**transp_namelist)
 m.run(checkMin=3, retrieveAC=transp_namelist['extractAC'])
 
+# EPED
 m.define_beat('eped')
 m.prepare(**eped_parameters)
 m.run()
 
+# Long PORTALS
+portals_namelist['optimization_options']['BO_iterations'] = 20
 m.define_beat('portals')
 m.prepare(**portals_namelist)
 m.run()

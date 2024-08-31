@@ -1783,26 +1783,27 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
 
-# chatGPT 4o (08/18/2024)
-def string_to_sequential_5_digit_number(input_string):
-    # Split the input string into the base and the numeric suffix
+# chatGPT 4o (08/31/2024)
+def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch
+    # Separate the last character and base part
     base_part = input_string[:-1]
-    try:
-        sequence_digit = int(input_string[-1])
-    except ValueError:
-        sequence_digit = 0
+    last_char = input_string[-1]
+    
+    # If the last character is a digit, use it as the sequence number
+    sequence_digit = int(last_char) if last_char.isdigit() else 0
 
-    # Create a hash of the base part using SHA-256
-    hash_object = hashlib.sha256(base_part.encode())
+    # Combine the base part and the sequence digit
+    combined_string = f"{base_part}{sequence_digit}"
+    
+    # Create a hash of the combined string using SHA-256
+    hash_object = hashlib.sha256(combined_string.encode())
     
     # Convert the hash to an integer
     hash_int = int(hash_object.hexdigest(), 16)
     
-    # Take the hash modulo 10,000 to get a 4-digit number
-    four_digit_number = hash_int % 10000
+    # Mod the hash to get a number with the desired number of digits
+    mod_value = 10**num_digits
+    final_number = hash_int % mod_value
     
-    # Combine the 4-digit hash with the sequence digit to get a 5-digit number
-    five_digit_number = (four_digit_number * 10) + sequence_digit
-    
-    # Ensure it's always 5 digits by adding leading zeros if necessary
-    return f'{five_digit_number:05d}'
+    # Format the number to ensure it has exactly `num_digits` digits
+    return f'{final_number:0{num_digits}d}'
