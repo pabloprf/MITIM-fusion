@@ -74,22 +74,13 @@ class eped_beat(beat):
             - tesep and nesep can be provided as input to prepare(), recommended in first EPED beat to define the profiles "forever"
         '''
 
-        # -------------------------------------------------------
-        # neped_20 logic
-        # -------------------------------------------------------
-        # Check if neped_20 is already defined by the prepare() method (e.g. in first beat)
+        # Check if neped_20 is already defined by the prepare() method (e.g. in first beat) or via inform() (e.g. from a previous EPED beat)
         if self.neped_20 is None:
-            # If not, trying to get it from the previous EPED beat via _inform()
-            if 'rhoped' in self.__dict__:
-                print(f"\t\t- Using previous rhoped: {self.rhoped}")
-            # If not, using simply the density at rho = 0.9
-            else:
-                self.rhoped = 0.95
-            self.neped_20 = np.interp(self.rhoped,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
-        # -------------------------------------------------------
+            # If not, using simply the density at rho = 0.95
+            self.neped_20 = np.interp(0.95,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
 
         neped_20 = self.neped_20
-        
+
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
         BetaN = self.profiles_current.derived['BetaN']
@@ -129,19 +120,18 @@ class eped_beat(beat):
 
         # psi_pol to rhoN
         rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-        rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-        self.rhoped = rhoped
+        #rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
 
         # Find ne at the top
         
-        self.netop_20 = 1.08 * self.neped_20 #np.interp(rhotop,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])
+        netop_20 = 1.08 * self.neped_20 # TODO
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
         factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
 
         # Temperature from pressure, assuming Te=Ti
-        Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * self.netop_20 * 1e20) * 1E-3
+        Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3
 
         # ---------------------------------
         # Store
@@ -151,10 +141,9 @@ class eped_beat(beat):
             'ptop_kPa': ptop_kPa,
             'wtop_psipol': wtop_psipol,
             'Ttop_keV': Ttop_keV,
-            'netop_20': self.netop_20,
+            'netop_20': netop_20,
             'nesep_20': nesep_20,
             'rhotop': rhotop,
-            'rhoped': rhoped,
             'Tesep_keV': Tesep_keV,
         }
 
@@ -176,7 +165,7 @@ class eped_beat(beat):
         self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old)
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
 
-        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,self.netop_20*1E1,xp_old)
+        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old)
         self.profiles_output.enforceQuasineutrality()
 
         # ---------------------------------
@@ -261,9 +250,9 @@ class eped_beat(beat):
     def _inform(self):
 
         # From a previous EPED beat
-        if 'rhoped' in self.maestro_instance.parameters_trans_beat:
-            self.rhoped = self.maestro_instance.parameters_trans_beat['rhoped']
-            print(f"\t\t- Using previous rhoped: {self.rhoped}")
+        if 'neped_20' in self.maestro_instance.parameters_trans_beat:
+            self.neped_20 = self.maestro_instance.parameters_trans_beat['neped_20']
+            print(f"\t\t- Using previous neped_20: {self.neped_20}")
 
         # From a geqdsk initialization
         if 'kappa995' in self.maestro_instance.parameters_trans_beat:
@@ -280,9 +269,9 @@ class eped_beat(beat):
         if eped_output is None:
             eped_output, _ = self.grab_output()
 
-        self.maestro_instance.parameters_trans_beat['rhoped'] = eped_output['rhoped']
+        self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
 
-        print('\t\t- rhoped saved for future beats')
+        print('\t\t- neped_20 saved for future beats')
 
 
 
