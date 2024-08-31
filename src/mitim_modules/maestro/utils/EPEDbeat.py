@@ -142,6 +142,7 @@ class eped_beat(beat):
             'wtop_psipol': wtop_psipol,
             'Ttop_keV': Ttop_keV,
             'netop_20': netop_20,
+            'neped_20': neped_20,
             'nesep_20': nesep_20,
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
