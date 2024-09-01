@@ -87,12 +87,13 @@ def plot_results(self, fn):
             ps.append(objs[label])
             ps_lab.append(label)
 
+    maxPlot = 5
     if len(ps) > 0:
         # Plot profiles
         figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
-            PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
+            PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
     for p,pl in zip(ps,ps_lab):
         p.printInfo(label = pl)
@@ -187,7 +188,7 @@ def plot_results(self, fn):
         """
     )
 
-    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw = [], [], [], [], [], [], [], [], [], [], [], []
+    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
         BetaN.append(p.derived['BetaN'])
@@ -201,6 +202,7 @@ def plot_results(self, fn):
         q95.append(p.derived['q95'])
         q0.append(p.derived['q0'])
         xsaw.append(p.derived['rho_saw'])
+        p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
     # -----------------------------------------------------------------
     ax = axs['A']
@@ -213,8 +215,9 @@ def plot_results(self, fn):
     ax.set_xticklabels([])
 
     ax = axs['D']
-    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal')
-    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total')
+    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal <p>')
+    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total <p>')
+    ax.plot(x, p90, '-*', markersize=7, lw = 1, label='Total, p(rho=0.9)')
     ax.set_ylabel('$p$ (MPa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
