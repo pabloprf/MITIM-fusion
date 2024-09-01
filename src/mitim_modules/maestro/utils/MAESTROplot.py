@@ -255,8 +255,8 @@ def plot_results(self, fn):
     ax.set_ylabel('$f_{G}$')
     ax.set_title('Density Evolution')
     GRAPHICStools.addDenseAxis(ax)
-    ax.set_ylim(bottom = 0)
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    ax.set_ylim([0,1.2])
 
     ax.set_xticklabels([])
 

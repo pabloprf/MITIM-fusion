@@ -35,8 +35,8 @@ portals_fun.INITparameters["removeFast"] = True
 portals_fun.INITparameters["quasineutrality"] = True
 
 # Stopping criterion 1: 100x improvement in residual
-portals_fun.optimization_options["maximum_value"] = 1e-2
-portals_fun.optimization_options["maximum_value_is_rel"] = True
+portals_fun.optimization_options['stopping_criteria_parameters']["maximum_value"] = 1e-2
+portals_fun.optimization_options['stopping_criteria_parameters']["maximum_value_is_rel"] = True
 
 # Prepare run: search +-100% the original gradients
 portals_fun.prep(inputgacode, ymax_rel=1.0, ymin_rel=1.0)

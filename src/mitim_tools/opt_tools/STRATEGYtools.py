@@ -435,6 +435,11 @@ class PRF_BO:
         self.surrogate_parameters = self.optimization_object.surrogate_parameters
         self.optimization_options = self.optimization_object.optimization_options
 
+        # Optimization criterion
+        if (self.optimization_options is not None) and \
+           (self.optimization_options['stopping_criteria'] is None):
+                self.optimization_options['stopping_criteria'] = stopping_criteria_default
+
         # Check if the variables are expected
         if self.optimization_options is not None:
             namelist = __mitimroot__ +"/templates/main.namelist.json"
@@ -1112,63 +1117,13 @@ class PRF_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        self.evaluateIfConverged()
+        converged = self.optimization_options['stopping_criteria'](self)
 
-        return y_next, ystd_next
-
-    def evaluateIfConverged(self):
-        hard_finish_residual, hard_finish_variation = False, False
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Stopping criterion based on the minimum residual indicated in namelist
-        # ~~~~~~~~~~~~~~~~~~
-
-        if self.optimization_options["maximum_value"] is not None:
-            print("- Checking residual...")
-            _, _, maximization_value = self.lambdaSingleObjective(
-                torch.from_numpy(self.train_Y).to(self.dfT)
-            )
-
-            best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
-
-            print(
-                f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {self.optimization_options["maximum_value"]:.3e}), based on original: {self.original_maximum_value:.3e}'
-            )
-
-            if best_value_so_far > self.optimization_options["maximum_value"]:
-                hard_finish_residual = True
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Stopping criterion based on the minimum variation indicated in namelist
-        # ~~~~~~~~~~~~~~~~~~
-
-        if self.optimization_options["minimum_dvs_variation"] is not None:
-            print("- Checking DV variations...")
-
-            _, yG_max = TESTtools.DVdistanceMetric(self.train_X)
-
-            hard_finish_variation = (
-                self.currentIteration
-                >= self.optimization_options["minimum_dvs_variation"][0]
-                + self.optimization_options["minimum_dvs_variation"][1]
-            )
-            for i in range(int(self.optimization_options["minimum_dvs_variation"][1])):
-                hard_finish_variation = hard_finish_variation and (
-                    yG_max[-1 - i] < self.optimization_options["minimum_dvs_variation"][2]
-                )
-
-            if hard_finish_variation:
-                print(
-                    f"\t- DVs varied by less than {self.optimization_options['minimum_dvs_variation'][2]}% compared to the rest of individuals for the past {int(self.optimization_options['minimum_dvs_variation'][1])} iterations"
-                )
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Final convergence
-        # ~~~~~~~~~~~~~~~~~~
-
-        if hard_finish_residual or hard_finish_variation:
+        if converged:
             self.hard_finish = self.hard_finish or True
             print("- * Optimization considered converged *", typeMsg="w")
+
+        return y_next, ystd_next
 
     def initializeOptimization(self):
         print("\n")
@@ -1432,33 +1387,6 @@ class PRF_BO:
 
         # Make sure is 2D
         self.train_X = np.atleast_2d(self.train_X)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~ Determine relative residuals
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        self.original_maximum_value = copy.deepcopy(self.optimization_options["maximum_value"])
-
-        if self.optimization_options["maximum_value"] is not None:
-
-            res_base = -self.BOmetrics["overall"]["Residual"][0].item()
-
-            if self.optimization_options["maximum_value_is_rel"]:
-
-                res_new = self.optimization_options["maximum_value"] * res_base
-                print(
-                    f'\n* Maximum value for MITIM optimization convergence provided as relative value of {self.optimization_options["maximum_value"]} from base {res_base:.3e} --> {res_new:.3e}',
-                    typeMsg="i",
-                )
-
-                self.stepSettings["optimization_options"]["maximum_value"] = self.optimization_options[
-                    "maximum_value"
-                ] = res_new
-            else:
-                print(
-                    f'\n* Maximum value for MITIM optimization convergence: {self.optimization_options["maximum_value"]} (starting case has {res_base:.3e})',
-                    typeMsg="i",
-                )
 
         """
 		Some initialization strategies may create points outside of the original bounds, but I may want to include them!
@@ -1913,6 +1841,79 @@ class PRF_BO:
         for i in range(len(axs)):
             GRAPHICStools.addDenseAxis(axs[i])
 
+# ----------------------------------------------------------------------
+# Stopping criteria
+# ----------------------------------------------------------------------
+
+def stopping_criteria_default(prf_bo):
+
+    # ------------------------------------------------------------------------------------
+    # Determine the stopping criteria
+    # ------------------------------------------------------------------------------------
+
+    maximum_value_is_rel    = prf_bo.optimization_options['stopping_criteria_parameters']["maximum_value_is_rel"]
+    maximum_value_orig      = prf_bo.optimization_options['stopping_criteria_parameters']["maximum_value"]
+    minimum_dvs_variation   = prf_bo.optimization_options['stopping_criteria_parameters']["minimum_dvs_variation"]
+
+    res_base = -prf_bo.BOmetrics["overall"]["Residual"][0].item()
+
+    if maximum_value_is_rel:
+        maximum_value = maximum_value_orig * res_base
+        print(f'\n* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}',typeMsg="i")
+    else:
+        print(f'\n* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})',typeMsg="i" )
+        maximum_value = maximum_value_orig
+
+    # ------------------------------------------------------------------------------------
+    # Stopping criteria
+    # ------------------------------------------------------------------------------------
+
+    converged = stopping_criteria_by_value(prf_bo, maximum_value) or stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation)
+
+    return converged
+
+def stopping_criteria_by_value(prf_bo, maximum_value):
+
+    if maximum_value is not None:
+        print("- Checking maximum value so far...")
+        _, _, maximization_value = prf_bo.lambdaSingleObjective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
+
+        best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
+
+        print(f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {maximum_value:.3e})')
+
+        criterion_is_met = best_value_so_far > maximum_value
+
+    else:
+        criterion_is_met = False
+
+    return criterion_is_met
+
+def stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation):
+
+    if minimum_dvs_variation is not None:
+        print("- Checking DV variations...")
+
+        _, yG_max = TESTtools.DVdistanceMetric(prf_bo.train_X)
+
+        criterion_is_met = (
+            prf_bo.currentIteration
+            >= minimum_dvs_variation[0]
+            + minimum_dvs_variation[1]
+        )
+        for i in range(int(minimum_dvs_variation[1])):
+            criterion_is_met = criterion_is_met and (
+                yG_max[-1 - i] < minimum_dvs_variation[2]
+            )
+
+        if criterion_is_met:
+            print(
+                f"\t- DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+            )
+    else:
+        criterion_is_met = False
+
+    return criterion_is_met
 
 def read_from_scratch(file):
     """
