@@ -1117,7 +1117,7 @@ class PRF_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        converged = self.optimization_options['stopping_criteria'](self)
+        converged = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
 
         if converged:
             self.hard_finish = self.hard_finish or True
@@ -1845,15 +1845,15 @@ class PRF_BO:
 # Stopping criteria
 # ----------------------------------------------------------------------
 
-def stopping_criteria_default(prf_bo):
+def stopping_criteria_default(prf_bo, parameters = {}):
 
     # ------------------------------------------------------------------------------------
     # Determine the stopping criteria
     # ------------------------------------------------------------------------------------
 
-    maximum_value_is_rel    = prf_bo.optimization_options['stopping_criteria_parameters']["maximum_value_is_rel"]
-    maximum_value_orig      = prf_bo.optimization_options['stopping_criteria_parameters']["maximum_value"]
-    minimum_dvs_variation   = prf_bo.optimization_options['stopping_criteria_parameters']["minimum_dvs_variation"]
+    maximum_value_is_rel    = parameters["maximum_value_is_rel"]
+    maximum_value_orig      = parameters["maximum_value"]
+    minimum_dvs_variation   = parameters["minimum_dvs_variation"]
 
     res_base = -prf_bo.BOmetrics["overall"]["Residual"][0].item()
 
@@ -1861,9 +1861,9 @@ def stopping_criteria_default(prf_bo):
         maximum_value = maximum_value_orig * res_base
         print(f'\n* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}',typeMsg="i")
     else:
-        print(f'\n* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})',typeMsg="i" )
         maximum_value = maximum_value_orig
-
+        print(f'\n* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})',typeMsg="i" )
+        
     # ------------------------------------------------------------------------------------
     # Stopping criteria
     # ------------------------------------------------------------------------------------
@@ -1875,12 +1875,12 @@ def stopping_criteria_default(prf_bo):
 def stopping_criteria_by_value(prf_bo, maximum_value):
 
     if maximum_value is not None:
-        print("- Checking maximum value so far...")
+        print("\t- Checking maximum value so far...")
         _, _, maximization_value = prf_bo.scalarized_objective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
 
         best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
 
-        print(f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {maximum_value:.3e})')
+        print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {maximum_value:.3e})')
 
         criterion_is_met = best_value_so_far > maximum_value
 
@@ -1892,7 +1892,7 @@ def stopping_criteria_by_value(prf_bo, maximum_value):
 def stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation):
 
     if minimum_dvs_variation is not None:
-        print("- Checking DV variations...")
+        print("\t- Checking DV variations...")
 
         _, yG_max = TESTtools.DVdistanceMetric(prf_bo.train_X)
 
@@ -1908,7 +1908,7 @@ def stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation):
 
         if criterion_is_met:
             print(
-                f"\t- DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+                f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
             )
     else:
         criterion_is_met = False

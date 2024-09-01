@@ -1,6 +1,8 @@
 import torch
 import copy
 import numpy as np
+from mitim_tools.opt_tools 	 	import STRATEGYtools
+from mitim_tools.misc_tools import PLASMAtools
 from collections import OrderedDict
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
@@ -409,3 +411,32 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
                 powerstate.calculateTargets()
 
     return powerstate
+
+
+def stopping_criteria_portals(prf_bo, parameters = {}):
+
+    # Standard stopping criteria
+    converged_by_default = STRATEGYtools.stopping_criteria_default(prf_bo, parameters)
+
+    # Ricci metric
+    print("\t- Checking Ricci metric...")
+
+    Y = torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT)
+    of, cal, _ = prf_bo.scalarized_objective(Y)
+    
+    Ystd = torch.from_numpy(prf_bo.train_Ystd).to(prf_bo.dfT)
+    of_u, cal_u, _ = prf_bo.scalarized_objective(Y+Ystd)
+    of_l, cal_l, _ = prf_bo.scalarized_objective(Y-Ystd)
+
+    of_stdu, cal_stdu = (of_u-of), (cal_u-cal)
+    of_stdl, cal_stdl = (of-of_l), (cal-cal_l)
+
+    of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
+
+    _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std)
+
+    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {parameters['ricci_value']:.3f})")
+
+    converged_by_ricci = chiR.min() < parameters["ricci_value"]
+
+    return converged_by_default or converged_by_ricci

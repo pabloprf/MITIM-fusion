@@ -53,13 +53,14 @@ def default_namelist(optimization_options, CGYROrun=False):
     # Strategy
     optimization_options["BO_iterations"] = 50
     optimization_options["parallel_evaluations"] = 1
-    optimization_options['stopping_criteria_parameters']["minimum_dvs_variation"] = [
-        10,
-        3,
-        1e-1,
-    ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
-    optimization_options['stopping_criteria_parameters']["maximum_value_is_rel"]  = True
-    optimization_options['stopping_criteria_parameters']["maximum_value"]       = 5e-3  # Reducing residual by 200x is enough
+
+    optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+    optimization_options['stopping_criteria_parameters'] =  {
+                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
+                "maximum_value_is_rel": True,
+                "minimum_dvs_variation": [10, 3, 0.01],  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
+                "ricci_value": 0.15,
+            }
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
