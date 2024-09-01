@@ -920,7 +920,7 @@ class PRF_BO:
         )  # This way I reduce the risk of getting a mid-creation file
 
         print(
-            f"\t- MITIM state file {stateFile} generated, containing the PRF_BO class"
+            f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the PRF_BO class"
         )
 
     def read(
@@ -1880,7 +1880,7 @@ def stopping_criteria_by_value(prf_bo, maximum_value):
 
         best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
 
-        print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {maximum_value:.3e})')
+        print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (threshold: {maximum_value:.3e})')
 
         criterion_is_met = best_value_so_far > maximum_value
 

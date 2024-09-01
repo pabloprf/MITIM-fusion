@@ -405,6 +405,15 @@ class PROFILES_GACODE:
             0.95, self.derived["psi_pol_n"], self.profiles["q(-)"]
         )
 
+        self.derived["q0"] = self.profiles["q(-)"][0]
+
+        if self.profiles["q(-)"].min() > 1.0: 
+            self.derived["rho_saw"] = np.nan
+        else:
+            self.derived["rho_saw"] = np.interp(
+                1.0, self.profiles["q(-)"], self.profiles["rho(-)"]
+            )
+
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_miller" not in self.derived):

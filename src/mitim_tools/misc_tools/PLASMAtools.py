@@ -453,7 +453,7 @@ def energy_exchange(Te_keV, Ti_keV, ne_20, ni_20, mi_u, Zi):
 
 def calculateCollisionalities(
     ne, Te, Zeff, R, q, epsilon, ne_avol, Te_avol, R0, Zeff_avol, mi_u=1.0
-):  # TO FIX
+):  #TODO: Needs fixing
     """
     Notes:
             ne in m^-3
@@ -502,7 +502,7 @@ def coll_Angioni07(ne19, TekeV, Rgeo, Zeff=2.0):
     return 0.1 * Zeff * ne19 * Rgeo * TekeV ** (-2)
 
 
-def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  # TO FIX Gstar
+def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  #TODO: FIX Gstar
     """
     p is total pressure in MPa (e.g. p.derived['pthr_manual_vol'])
     nu is nu_effective (e.g. p.derived['nu_eff'] * 2/p.derived['Zeff_vol'])
@@ -539,7 +539,7 @@ def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  # TO FIX Gstar
     return ne_peak_empirical_l, ne_peak_empirical, ne_peak_empirical_u
 
 
-def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  # TO FIX
+def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
     """
     Notes:
             Te in keV

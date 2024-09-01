@@ -152,7 +152,7 @@ class eped_beat(beat):
             print(f'\t\t- {key}: {eped_results[key]}')
 
         # -------------------------------------------------------
-        # Put into profiles # TO FIX
+        # Put into profiles #TODO: This should be looped with the NN evaluation to find the self-consisent betaN with the current profiles
         # -------------------------------------------------------
 
         self.profiles_output = copy.deepcopy(self.profiles_current)

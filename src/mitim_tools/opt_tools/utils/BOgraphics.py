@@ -237,7 +237,7 @@ def plot_surrogate_model(
 
         GRAPHICStools.addDenseAxis(ax)
 
-    elif dimX == 2:  # TO FIX
+    elif dimX == 2:  #TODO: FIX
         # Plot training data
         ax.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)
         ax2.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)

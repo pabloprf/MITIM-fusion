@@ -63,18 +63,18 @@ def plot_results(self, fn):
     # Collect PORTALS profiles and TRANSP cdfs translated to profiles
     objs = OrderedDict()
 
-    objs['Initial input.gacode'] = ini['profiles']
+    objs['Initial profiles'] = ini['profiles']
 
     for i,beat in enumerate(self.beats.values()):
 
         _, profs = beat.grab_output()
 
         if isinstance(beat, transp_beat):
-            key = f'TRANSP beat #{i+1}'
+            key = f'TRANSP b#{i+1}'
         elif isinstance(beat, portals_beat):
-            key = f'PORTALS beat #{i+1}'
+            key = f'PORTALS b#{i+1}'
         elif isinstance(beat, eped_beat):
-            key = f'EPED beat #{i+1}'
+            key = f'EPED b#{i+1}'
         
         objs[key] = profs
 
@@ -178,17 +178,16 @@ def plot_results(self, fn):
     
     axs = fig.subplot_mosaic(
         """
-        ABG
-        ABG
-        AEG
-        DEH
-        DFH
-        DFH
+        ABGI
+        ABGI
+        AEGI
+        DEHJ
+        DFHJ
+        DFHJ
         """
     )
 
-
-    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne = [], [], [], [], [], [], [], [], []
+    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw = [], [], [], [], [], [], [], [], [], [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
         BetaN.append(p.derived['BetaN'])
@@ -199,6 +198,9 @@ def plot_results(self, fn):
         Q.append(p.derived['Q'])
         fG.append(p.derived['fG'])
         nu_ne.append(p.derived['ne_peaking0.2'])
+        q95.append(p.derived['q95'])
+        q0.append(p.derived['q0'])
+        xsaw.append(p.derived['rho_saw'])
 
     # -----------------------------------------------------------------
     ax = axs['A']
@@ -270,6 +272,28 @@ def plot_results(self, fn):
 
     # -----------------------------------------------------------------
 
+    # -----------------------------------------------------------------
+    ax = axs['I']
+    ax.plot(x, q95, '-s', markersize=7, lw = 1, label='q95')
+    ax.plot(x, q0, '-*', markersize=7, lw = 1, label='q0')
+    ax.set_ylabel('$q$')
+    ax.set_title('Current Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    ax.legend()
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    ax = axs['J']
+    ax.plot(x, xsaw, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('Inversion radius (rho)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim([0,1])
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
 
 
 def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):

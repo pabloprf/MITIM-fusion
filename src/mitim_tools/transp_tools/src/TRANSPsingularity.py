@@ -107,7 +107,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         # dictInfo, _, _ = self.check()
 
-        # # THIS NEEDS MORE WORK, LIKE IN GLOBUS # TO FIX
+        # # THIS NEEDS MORE WORK, LIKE IN GLOBUS #TODO: Fix
         # if dictInfo["info"]["status"] == "finished":
         #     self.statusStop = -2
         # else:

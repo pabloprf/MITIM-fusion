@@ -419,7 +419,12 @@ def stopping_criteria_portals(prf_bo, parameters = {}):
     converged_by_default = STRATEGYtools.stopping_criteria_default(prf_bo, parameters)
 
     # Ricci metric
-    print("\t- Checking Ricci metric...")
+
+    ricci_value = parameters["ricci_value"]
+    d0 = parameters.get("ricci_d0", 2.0)
+    la = parameters.get("ricci_lambda", 1.0)
+
+    print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
 
     Y = torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT)
     of, cal, _ = prf_bo.scalarized_objective(Y)
@@ -428,15 +433,16 @@ def stopping_criteria_portals(prf_bo, parameters = {}):
     of_u, cal_u, _ = prf_bo.scalarized_objective(Y+Ystd)
     of_l, cal_l, _ = prf_bo.scalarized_objective(Y-Ystd)
 
+    # If the transformation is linear, they should be the same
     of_stdu, cal_stdu = (of_u-of), (cal_u-cal)
     of_stdl, cal_stdl = (of-of_l), (cal-cal_l)
 
     of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
 
-    _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std)
+    _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
 
-    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {parameters['ricci_value']:.3f})")
+    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f})")
 
-    converged_by_ricci = chiR.min() < parameters["ricci_value"]
+    converged_by_ricci = chiR.min() < ricci_value
 
     return converged_by_default or converged_by_ricci
