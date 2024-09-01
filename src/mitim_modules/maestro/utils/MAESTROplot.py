@@ -94,8 +94,8 @@ def plot_results(self, fn):
         with IOtools.conditional_log_to_file(log_file=log_file):
             PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
 
-    for p in ps:
-        p.printInfo()
+    for p,pl in zip(ps,ps_lab):
+        p.printInfo(label = pl)
 
     keys = list(objs.keys())
     lw, ms = 1, 0
@@ -170,6 +170,107 @@ def plot_results(self, fn):
         objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms)
 
     GRAPHICStools.adjust_figure_layout(fig)
+
+    # ********************************************************************************************************
+    # Plot special info
+    # ********************************************************************************************************
+    fig = fn.add_figure(label='MAESTRO special', tab_color=3)
+    
+    axs = fig.subplot_mosaic(
+        """
+        ABG
+        ABG
+        AEG
+        DEH
+        DFH
+        DFH
+        """
+    )
+
+
+    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne = [], [], [], [], [], [], [], [], []
+    for p,pl in zip(ps,ps_lab):
+        x.append(pl)
+        BetaN.append(p.derived['BetaN'])
+        Pfus.append(p.derived['Pfus'])
+        p_th.append(p.derived['pthr_manual_vol'])
+        p_tot.append(p.derived['ptot_manual_vol'])
+        Pin.append(p.derived['qIn'])
+        Q.append(p.derived['Q'])
+        fG.append(p.derived['fG'])
+        nu_ne.append(p.derived['ne_peaking0.2'])
+
+    # -----------------------------------------------------------------
+    ax = axs['A']
+    ax.plot(x, BetaN, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$\\beta_N$')
+    ax.set_title('Pressure Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    ax = axs['D']
+    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal')
+    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total')
+    ax.set_ylabel('$p$ (MPa)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    ax.legend()
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+
+    ax = axs['B']
+    ax.plot(x, Q, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$Q$')
+    ax.set_title('Performance Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+
+    ax = axs['E']
+    ax.plot(x, Pfus, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$P_{fus}$ (MW)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+
+    ax = axs['F']
+    ax.plot(x, Pin, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$P_{in}$ (MW)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+    ax = axs['G']
+    ax.plot(x, fG, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$f_{G}$')
+    ax.set_title('Density Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+
+    ax.set_xticklabels([])
+
+    ax = axs['H']
+    ax.plot(x, nu_ne, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$\\nu_{ne}$')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+
+
 
 def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
 

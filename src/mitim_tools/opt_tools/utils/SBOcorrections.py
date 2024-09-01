@@ -54,7 +54,7 @@ def modifyTrustRegion(
 
     # Reduce bounds centered at best point so far
 
-    # TODO: Remove when fixed self.bounds
+    #TODO: Remove when fixed self.bounds
     # to tensor
     boundsTensor = []
     for i in self.bounds:
@@ -103,7 +103,7 @@ def modifyTrustRegion(
         newnext = SAMPLINGtools.LHS(eliminated0, bounds, seed=seed)
         self.x_next = newnext
 
-    # TODO: Remove when fixed self.bounds
+    #TODO: Remove when fixed self.bounds
     # from tensor
     for j, i in enumerate(self.bounds):
         self.bounds[i][0] = bounds[0, j]

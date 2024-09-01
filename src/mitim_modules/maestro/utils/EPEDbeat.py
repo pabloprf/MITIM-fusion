@@ -124,14 +124,14 @@ class eped_beat(beat):
 
         # Find ne at the top
         
-        netop_20 = 1.08 * self.neped_20 # TODO: Find this factor from the actual EPED parameterization of this specific simulation
+        netop_20 = 1.08 * self.neped_20 #TODO: Find this factor from the actual EPED parameterization of this specific simulation
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
         factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
 
         # Temperature from pressure, assuming Te=Ti
-        Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 # TODO: Relax this assumption and allow TiTe_ratio as input
+        Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
 
         # ---------------------------------
         # Store

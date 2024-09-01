@@ -287,7 +287,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             mvn = self(Xtr)
             if observation_noise is not False:
                 if torch.is_tensor(observation_noise):
-                    # TODO: Validate noise shape
+                    #TODO: Validate noise shape
                     # make observation_noise `batch_shape x q x n`
                     if self.num_outputs > 1:
                         obs_noise = observation_noise.transpose(-1, -2)

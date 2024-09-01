@@ -93,7 +93,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
         - Requires "profiles_new" to be an object with the new profiles to be predicted (e.g. can have different BC)
 
     Notes:
-        # TODO: So far only works if Te,Ti,ne
+        #TODO: So far only works if Te,Ti,ne
 
     '''
 
