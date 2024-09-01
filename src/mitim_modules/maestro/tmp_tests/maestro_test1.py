@@ -1,17 +1,17 @@
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
-folder = '/Users/pablorf/PROJECTS/project_2024_MITIMsurrogates/maestro_development/tests12/arc8'
+folder = '/Users/pablorf/PROJECTS/project_2024_MITIMsurrogates/maestro_development/tests13/arc1'
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Parameters
 # -----------------------------------------------------------------------------------------------------------------------
 
 parameters  = {'Ip_MA': 10.95, 'B_T': 10.8, 'Zeff': 1.5, 'PichT_MW': 18.0, 'neped_20' : 2.0 , 'Tesep_keV': 0.1, 'nesep_20': 2.0/3.0}
-parameters_mix = {'DTplasma': True, 'lowZ_impurity': 9.0, 'impurity_ratio_WtoZ': 0.00286*0.5, 'minority': [1,1,0.05]}
+parameters_mix = {'DTplasma': True, 'lowZ_impurity': 9.0, 'impurity_ratio_WtoZ': 0.00286*0.5, 'minority': [1,1,0.02]}
 
-#geometry    = {'R': 4.24, 'a': 1.17, 'kappa_sep': 1.77, 'delta_sep': 0.58, 'zeta_sep': 0.0, 'z0': 0.0}
-geometry = {'geqdsk_file': f'{mfe_im_path}/private_data/ARCV2B.geqdsk', 'coeffs_MXH' : 5}
+#initializer, geometry    = 'freegs', {'R': 4.25, 'a': 1.17, 'kappa_sep': 1.77, 'delta_sep': 0.58, 'zeta_sep': 0.0, 'z0': 0.0}
+initializer, geometry = 'geqdsk', {'geqdsk_file': f'{mfe_im_path}/private_data/ARCV2B.geqdsk', 'coeffs_MXH' : 5}
 
 BetaN_initialization = 1.5
 
@@ -47,7 +47,17 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
                                             "Physics_options": {"TypeTarget": 3},
                                              "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
                         "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
-                        "optimization_options": {"BO_iterations": 20,"maximum_value": 1e-2,"maximum_value_is_rel": True, "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} } }
+                        "optimization_options": {
+                            "BO_iterations": 50,
+                            "stopping_criteria_parameters": {
+                                "maximum_value": 1e-3,"maximum_value_is_rel": True,
+                                },
+                            "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} },
+                        "exploration_ranges": {
+                            'ymax_rel': 1.0,
+                            'ymin_rel': 0.9,
+                            'hardGradientLimits': [None,2]
+                        } }
 
 # To see what values this namelist can take: mitim_modules/maestro/utils/EPEDbeat.py: prepare()
 eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5',
@@ -57,78 +67,52 @@ eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EP
 # Workflow
 # -----------------------------------------------------------------------------------------------------------------------
 
-m = maestro(folder, terminal_outputs = False)
+from mitim_tools.misc_tools.IOtools import mitim_timer
 
-# Sort TRANSP
-transp_namelist['flattop_window'] = 0.5
-m.define_beat('transp', initializer='geqdsk')
-m.define_creator('eped', BetaN = BetaN_initialization, **eped_parameters,**parameters)
-m.initialize(**geometry, **parameters)
-m.prepare(**transp_namelist)
-m.run(checkMin=3, retrieveAC=transp_namelist['extractAC'])
+@mitim_timer('\t\t* MAESTRO')
+def run_maestro():
+    m = maestro(folder, terminal_outputs = False)
 
-# EPED
-m.define_beat('eped')
-m.prepare(**eped_parameters)
-m.run()
+    # Sort TRANSP
+    transp_namelist['flattop_window'] = 0.5
+    m.define_beat('transp', initializer=initializer)
+    m.define_creator('eped', BetaN = BetaN_initialization, **eped_parameters,**parameters)
+    m.initialize(**geometry, **parameters)
+    m.prepare(**transp_namelist)
+    m.run(retrieveAC=transp_namelist['extractAC'])
 
-# Sort PORTALS
-portals_namelist['optimization_options']['BO_iterations'] = 10
-m.define_beat('portals')
-m.prepare(**portals_namelist)
-m.run()
+    # EPED
+    m.define_beat('eped')
+    m.prepare(**eped_parameters)
+    m.run()
 
-# Long TRANSP
-transp_namelist['flattop_window'] = 1.0
-m.define_beat('transp')
-m.prepare(**transp_namelist)
-m.run(checkMin=3, retrieveAC=transp_namelist['extractAC'])
+    # PORTALS
+    m.define_beat('portals')
+    m.prepare(**portals_namelist)
+    m.run()
 
-# EPED
-m.define_beat('eped')
-m.prepare(**eped_parameters)
-m.run()
+    # Long TRANSP
+    transp_namelist['flattop_window'] = 1.0
+    m.define_beat('transp')
+    m.prepare(**transp_namelist)
+    m.run(retrieveAC=transp_namelist['extractAC'])
 
-# Long PORTALS
-portals_namelist['optimization_options']['BO_iterations'] = 20
-m.define_beat('portals')
-m.prepare(**portals_namelist)
-m.run()
+    for i in range(4):
+        # EPED
+        m.define_beat('eped')
+        m.prepare(**eped_parameters)
+        m.run()
 
+        # PORTALS
+        m.define_beat('portals')
+        m.prepare(**portals_namelist)
+        m.run()
+
+    return m
+
+m = run_maestro()
 m.finalize()
 
-# # # PORTALS beat only evolving the temperature profiles and fixed targets (5 iterations)
-# # import copy
-# # portals_namelist_beat = copy.deepcopy(portals_namelist)
-# # portals_namelist_beat["MODELparameters"]['ProfilesPredicted'] = ["te", "ti"]
-# # portals_namelist_beat["MODELparameters"]['Physics_options']["TypeTarget"] = 1
-# # portals_namelist_beat["optimization_options"]["BO_iterations"] = 5
-# # portals_namelist_beat["additional_params_in_surrogate"] = ['aLne'] # Such that I can reuse surrogate data in next PORTALS
-# # exploration_ranges = { 'ymax_rel': 1.0, 'ymin_rel': 0.8, 'hardGradientLimits': [0.1,2]}
 
-# # m.define_beat('portals')
-# # m.prepare(exploration_ranges = exploration_ranges, **portals_namelist_beat)
-# # m.run()
 
-# # # PORTALS beat evolving density too but still with fixed targets (5 iterations)
-# # portals_namelist_beat["MODELparameters"]['ProfilesPredicted'] = ["te", "ti", "ne"]
-# # portals_namelist_beat["additional_params_in_surrogate"] = []
-# # exploration_ranges = { 'ymax_rel': 1.0, 'ymin_rel': 0.8, 'hardGradientLimits': [0.1,2]}
 
-# # m.define_beat('portals')
-# # m.prepare(exploration_ranges = exploration_ranges, use_previous_surrogate_data=True,**portals_namelist_beat)
-# # m.run()
-
-# # PORTALS beat, full
-# exploration_ranges = { 'ymax_rel': 1.0, 'ymin_rel': 0.75, 'hardGradientLimits': [0.2,2]}
-# m.define_beat('portals')
-# m.prepare(exploration_ranges = exploration_ranges, use_previous_surrogate_data=True,**portals_namelist)
-# m.run()
-
-# # PORTALS beat, full
-# exploration_ranges = { 'ymax_rel': 1.0, 'ymin_rel': 0.75, 'hardGradientLimits': [0.2,2]}
-# m.define_beat('portals')
-# m.prepare(exploration_ranges = exploration_ranges, use_previous_surrogate_data=True,**portals_namelist)
-# m.run()
-
-# 
