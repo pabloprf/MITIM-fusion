@@ -180,8 +180,11 @@ class portals_beat(beat):
             opt_fun.fn = fn
             opt_fun.plot_optimization_results(analysis_level=4)
         else:
-            fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
-            opt_fun.plotMetrics(fig=fig)
+            if len(opt_fun.powerstates)>0:
+                fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
+                opt_fun.plotMetrics(fig=fig)
+            else:
+                print('\t\t- PORTALS has not run enough to plot anything')
 
         msg = '\t\t- Plotting of PORTALS beat done'
 
