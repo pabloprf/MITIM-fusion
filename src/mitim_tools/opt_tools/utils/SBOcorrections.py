@@ -532,7 +532,7 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
             typeMsg="w",
         )
         self.BOmetrics["overall"]["Residual"] = (
-            -self.lambdaSingleObjective(Y)[2].detach().cpu().numpy()
+            -self.scalarized_objective(Y)[2].detach().cpu().numpy()
         )
         self.BOmetrics["overall"]["ResidualModeledLast"] = self.BOmetrics["overall"][
             "Residual"

@@ -586,7 +586,7 @@ class PRF_BO:
 
             inputs = [i for i in self.bounds]
 
-            self.lambdaSingleObjective = self.optimization_object.scalarized_objective
+            self.scalarized_objective = self.optimization_object.scalarized_objective
 
             self.optimization_data = BOgraphics.optimization_data(
                 inputs,
@@ -813,7 +813,7 @@ class PRF_BO:
 
                 # ***** Optimize
                 self.steps[-1].optimize(
-                    self.lambdaSingleObjective,
+                    self.scalarized_objective,
                     position_best_so_far=self.BOmetrics["overall"]["indBest"],
                     seed=self.seed,
                 )
@@ -858,7 +858,7 @@ class PRF_BO:
         # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TODO: Remove]
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.lambdaSingleObjective
+        del copyClass.scalarized_objective
 
         for i in range(len(self.steps)):
             if "functions" in copyClass.steps[i].__dict__:
@@ -881,10 +881,10 @@ class PRF_BO:
 
         copyClass.optimization_results.PRF_BO = copy.deepcopy(self)
 
-        copyClass.lambdaSingleObjective = copyClass.optimization_object.scalarized_objective
+        copyClass.scalarized_objective = copyClass.optimization_object.scalarized_objective
 
         for i in range(len(copyClass.steps)):
-            copyClass.steps[i].defineFunctions(copyClass.lambdaSingleObjective)
+            copyClass.steps[i].defineFunctions(copyClass.scalarized_objective)
 
         return copyClass
 
@@ -1876,7 +1876,7 @@ def stopping_criteria_by_value(prf_bo, maximum_value):
 
     if maximum_value is not None:
         print("- Checking maximum value so far...")
-        _, _, maximization_value = prf_bo.lambdaSingleObjective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
+        _, _, maximization_value = prf_bo.scalarized_objective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
 
         best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
 

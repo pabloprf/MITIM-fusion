@@ -317,7 +317,7 @@ class OPTstep:
             with open(self.fileOutputs, "a") as f:
                 f.write(f" (took total of {txt_time})")
 
-    def defineFunctions(self, lambdaSingleObjective):
+    def defineFunctions(self, scalarized_objective):
         """
         I create this so that, upon reading a pickle, I re-call it. Otherwise, it is very heavy to store lambdas
         """
@@ -330,7 +330,7 @@ class OPTstep:
 
         # Build function to pass to acquisition
         def residual(Y):
-            return lambdaSingleObjective(Y)[2]
+            return scalarized_objective(Y)[2]
 
         self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
             residual
@@ -381,7 +381,7 @@ class OPTstep:
 
         def residual_function(x, outputComponents=False):
             mean, _, _, _ = self.evaluators["GP"].predict(x)
-            yOut_fun, yOut_cal, yOut = lambdaSingleObjective(mean)
+            yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
 
             return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut
 
@@ -404,7 +404,7 @@ class OPTstep:
 
     def optimize(
         self,
-        lambdaSingleObjective,
+        scalarized_objective,
         position_best_so_far=-1,
         seed=0,
         forceAllPointsInBounds=False,
@@ -414,7 +414,7 @@ class OPTstep:
         Update functions to be used during optimization
         ***********************************************
         """
-        self.defineFunctions(lambdaSingleObjective)
+        self.defineFunctions(scalarized_objective)
 
         """
 		***********************************************
