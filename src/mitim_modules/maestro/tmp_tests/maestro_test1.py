@@ -1,7 +1,7 @@
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
-folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run9/'
+folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run11/'
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Parameters
@@ -71,7 +71,7 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro():
-    m = maestro(folder, terminal_outputs = True)
+    m = maestro(folder, terminal_outputs = False)
 
     # TRANSP with only current diffusion
     transp_namelist['flattop_window'] = 10.0
@@ -87,8 +87,10 @@ def run_maestro():
 
     # TRANSP for toric and nubeam
     transp_namelist['flattop_window'] = 0.5
+    transp_namelist['dtEquilMax_ms'] = 10.0
     transp_namelist['useNUBEAMforAlphas'] = True
     transp_namelist['Pich'] = True
+    
     m.define_beat('transp')
     m.prepare(**transp_namelist)
     m.run()
@@ -108,7 +110,7 @@ def run_maestro():
     m.prepare(**transp_namelist)
     m.run()
 
-    for i in range(3):
+    for i in range(2):
         # EPED
         m.define_beat('eped')
         m.prepare(**eped_parameters)

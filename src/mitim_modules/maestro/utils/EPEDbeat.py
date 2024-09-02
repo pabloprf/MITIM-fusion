@@ -44,7 +44,7 @@ class eped_beat(beat):
         # Run the NN
         # -------------------------------------------------------
 
-        eped_results = self._run(loopBetaN = 20)
+        eped_results = self._run(loopBetaN = 1)
 
         # -------------------------------------------------------
         # Save stuff
