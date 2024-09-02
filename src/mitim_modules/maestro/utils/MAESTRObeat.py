@@ -11,7 +11,7 @@ from IPython import embed
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
-0
+
 class beat:
 
     def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
@@ -170,9 +170,6 @@ class initializer_from_geqdsk(beat_initializer):
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
 
-        # Potentially save variables
-        self._inform_save()
-
         # Convert to profiles
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
@@ -182,13 +179,18 @@ class initializer_from_geqdsk(beat_initializer):
         # Copy original geqdsk for reference use
         os.system(f'cp {geqdsk_file} {self.folder}/input.geqdsk')
 
+        # Save parameters also here in case they are needed already at this beat (e.g. for EPED)
+        self._inform_save()
+
         # Call the profiles initializer
         super().__call__(self.folder+'/input.gacode.geqdsk', **kwargs_profiles)
 
     def _inform_save(self):
 
-        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = self.f.kappa995
-        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = self.f.delta995
+        f = GEQtools.MITIMgeqdsk(f'{self.folder}/input.geqdsk')
+
+        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
+        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.delta995
 
         print('\t\t- 0.995 flux surface kappa and delta saved for future beats')
 
@@ -284,9 +286,9 @@ class creator_from_parameterization(creator):
             self.rhotop = rhotop
             self.Ttop_keV = Ttop_keV
             self.netop_20 = netop_20
-            self.BetaN = BetaN
             self.Tsep_keV = Tsep_keV
             self.nesep_20 = nesep_20
+            self.BetaN = BetaN
 
         def _return_profile_betan_residual(self, x, x_a, betan):
             aLT, aLn = x
@@ -312,8 +314,9 @@ class creator_from_parameterization(creator):
             x0 = [aLT, aLn]
             bounds = [(1.0,3.0), (0.1, 0.3)] # in the future, fix aLT/aLn ?
             print('\n\t -Optimizing aLT and aLn to match BetaN')
-            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-2, bounds=bounds)
+            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-3, bounds=bounds)
             print(f'\n\t - Gradients: aLT = {res.x[0]:.2f}, aLn = {res.x[1]:.2f}')
+            print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN"]:.5f} (target: {self.BetaN:.5f})')
             aLT, aLn = res.x
 
             rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
@@ -355,7 +358,7 @@ class creator_from_eped(creator_from_parameterization):
         beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        eped_results = beat_eped._run()
+        eped_results = beat_eped._run(loopBetaN = 1)
 
         # Potentially save variables
         np.save(f'{beat_eped.folder_output}/eped_results.npy', eped_results)

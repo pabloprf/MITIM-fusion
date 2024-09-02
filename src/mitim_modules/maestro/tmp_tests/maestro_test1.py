@@ -73,13 +73,25 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 def run_maestro():
     m = maestro(folder, terminal_outputs = False)
 
-    # Sort TRANSP
-    transp_namelist['flattop_window'] = 0.5
+    # TRANSP with only current diffusion
+    transp_namelist['flattop_window'] = 10.0
+    transp_namelist['dtEquilMax_ms'] = 50.0 # Let the equilibrium evolve with long steps
+    transp_namelist['useNUBEAMforAlphas'] = False
+    transp_namelist['Pich'] = False
+
     m.define_beat('transp', initializer=initializer)
     m.define_creator('eped', BetaN = BetaN_initialization, **eped_parameters,**parameters)
     m.initialize(**geometry, **parameters)
     m.prepare(**transp_namelist)
-    m.run(retrieveAC=transp_namelist['extractAC'])
+    m.run()
+
+    # TRANSP for toric and nubeam
+    transp_namelist['flattop_window'] = 0.5
+    transp_namelist['useNUBEAMforAlphas'] = True
+    transp_namelist['Pich'] = True
+    m.define_beat('transp')
+    m.prepare(**transp_namelist)
+    m.run()
 
     # EPED
     m.define_beat('eped')
@@ -91,28 +103,25 @@ def run_maestro():
     m.prepare(**portals_namelist)
     m.run()
 
-    # Long TRANSP
-    transp_namelist['flattop_window'] = 1.0
+    # TRANSP
     m.define_beat('transp')
     m.prepare(**transp_namelist)
-    m.run(retrieveAC=transp_namelist['extractAC'])
+    m.run()
 
-    for i in range(4):
+    for i in range(3):
         # EPED
         m.define_beat('eped')
         m.prepare(**eped_parameters)
         m.run()
 
         # PORTALS
+        portals_namelist['optimization_options']['initial_training'] = 2 # Because we are using surrogate data
         m.define_beat('portals')
-        m.prepare(**portals_namelist)
+        m.prepare(**portals_namelist,use_previous_surrogate_data=True)
         m.run()
+
+    m.finalize()
 
     return m
 
 m = run_maestro()
-m.finalize()
-
-
-
-

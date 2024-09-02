@@ -44,7 +44,7 @@ class eped_beat(beat):
         # Run the NN
         # -------------------------------------------------------
 
-        eped_results = self._run()
+        eped_results = self._run(loopBetaN = 20)
 
         # -------------------------------------------------------
         # Save stuff
@@ -54,7 +54,7 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self):
+    def _run(self, loopBetaN = 1):
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -96,10 +96,6 @@ class eped_beat(beat):
 
         nesep_ratio = nesep_20 / neped_20
 
-        # -------------------------------------------------------
-        # Run NN
-        # -------------------------------------------------------
-
         print('\n\t- Running EPED with:')
         print(f'\t\t- Ip: {Ip:.2f} MA')
         print(f'\t\t- Bt: {Bt:.2f} T')
@@ -108,39 +104,73 @@ class eped_beat(beat):
         print(f'\t\t- kappa995: {kappa995:.3f}')
         print(f'\t\t- delta995: {delta995:.3f}')
         print(f'\t\t- neped: {neped_20*10:.2f} 10^19 m^-3')
-        print(f'\t\t- BetaN: {BetaN:.2f}')
         print(f'\t\t- zeff: {zeff:.2f}')
         print(f'\t\t- tesep: {Tesep_keV*1E3:.1f} eV')
         print(f'\t\t- nesep_ratio: {nesep_ratio:.2f}')
 
-        ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped_20*10, BetaN, zeff, tesep=Tesep_keV* 1E3,nesep_ratio=nesep_ratio)
-
         # -------------------------------------------------------
-        # Produce relevant quantities
+        # Run NN
         # -------------------------------------------------------
 
-        # psi_pol to rhoN
-        rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-        rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+        BetaNs, ptop_kPas, wtop_psipols  = [], [], []
+        for i in range(loopBetaN):
+            print(f'\t\t- BetaN: {BetaN:.2f}')
 
-        # Find ne at the top
-        # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
-        # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
-        pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, 
-                                                        nesep_20, 
-                                                        1-rhotop, 
-                                                        x=x
-                                                        )[1]
+            ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped_20*10, BetaN, zeff, tesep=Tesep_keV* 1E3,nesep_ratio=nesep_ratio)
 
-        n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
-        netop_20 = n0[0]
+            BetaNs.append(BetaN)
+            ptop_kPas.append(ptop_kPa)
+            wtop_psipols.append(wtop_psipol)
 
-        # Find factor to account that it's not a pure plasma
-        n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
-        factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
+            # -------------------------------------------------------
+            # Produce relevant quantities
+            # -------------------------------------------------------
 
-        # Temperature from pressure, assuming Te=Ti
-        Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+            # psi_pol to rhoN
+            rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+            #rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+
+            # Find ne at the top
+            netop_20 = 1.08 * self.neped_20 #TODO: Find this factor from the actual EPED parameterization of this specific simulation
+
+            # Find factor to account that it's not a pure plasma
+            n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
+            factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
+
+            # Temperature from pressure, assuming Te=Ti
+            Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+
+            # -------------------------------------------------------
+            # Put into profiles #TODO: This should be looped with the NN evaluation to find the self-consisent betaN with the current profiles
+            # -------------------------------------------------------
+
+            self.profiles_output = copy.deepcopy(self.profiles_current)
+
+            x = self.profiles_current.profiles['rho(-)']
+            xp = rhotop
+            xp_old = self.rhotop if 'rhotop' in self.__dict__ else 0.9
+
+            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old)
+
+            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old)
+            self.profiles_output.makeAllThermalIonsHaveSameTemp()
+
+            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old)
+            self.profiles_output.enforceQuasineutrality()
+
+            # ---------------------------------
+            # Re-derive
+            # ---------------------------------
+
+            self.profiles_output.deriveQuantities()
+
+            BetaN = self.profiles_output.derived['BetaN']
+
+        if loopBetaN > 1:
+            print('\t- Looping over BetaN:')
+            print(f'\t\t* BetaN: {BetaNs}')
+            print(f'\t\t* ptop_kPa: {ptop_kPas}')
+            print(f'\t\t* wtop_psipol: {wtop_psipols}')
 
         # ---------------------------------
         # Store
@@ -159,30 +189,6 @@ class eped_beat(beat):
 
         for key in eped_results:
             print(f'\t\t- {key}: {eped_results[key]}')
-
-        # -------------------------------------------------------
-        # Put into profiles #TODO: This should be looped with the NN evaluation to find the self-consisent betaN with the current profiles
-        # -------------------------------------------------------
-
-        self.profiles_output = copy.deepcopy(self.profiles_current)
-
-        x = self.profiles_current.profiles['rho(-)']
-        xp = rhotop
-        xp_old = self.rhotop if 'rhotop' in self.__dict__ else 0.9
-
-        self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old)
-
-        self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old)
-        self.profiles_output.makeAllThermalIonsHaveSameTemp()
-
-        self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old)
-        self.profiles_output.enforceQuasineutrality()
-
-        # ---------------------------------
-        # Re-derive
-        # ---------------------------------
-
-        self.profiles_output.deriveQuantities()
 
         return eped_results
 
