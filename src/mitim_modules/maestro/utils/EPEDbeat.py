@@ -269,8 +269,8 @@ class eped_beat(beat):
 
         if eped_output is None:
             eped_output, _ = self.grab_output()
-
-        self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
+        else:
+            self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
 
         print('\t\t- neped_20 saved for future beats')
 
