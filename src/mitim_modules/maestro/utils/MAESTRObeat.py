@@ -170,9 +170,6 @@ class initializer_from_geqdsk(beat_initializer):
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
 
-        # Potentially save variables
-        self._inform_save()
-
         # Convert to profiles
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
@@ -187,8 +184,10 @@ class initializer_from_geqdsk(beat_initializer):
 
     def _inform_save(self):
 
-        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = self.f.kappa995
-        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = self.f.delta995
+        f = GEQtools.MITIMgeqdsk(f'{self.folder}/input.geqdsk')
+
+        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
+        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.delta995
 
         print('\t\t- 0.995 flux surface kappa and delta saved for future beats')
 

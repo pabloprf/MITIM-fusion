@@ -161,6 +161,8 @@ class maestro:
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
 
+        # Initializer can also save important parameters
+        self.beat.initialize._inform_save()
 
         if self.profiles_with_engineering_parameters is None:
             # First initialization, freeze engineering parameters
