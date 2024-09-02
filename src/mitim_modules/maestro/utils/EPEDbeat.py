@@ -293,6 +293,7 @@ class eped_beat(beat):
 def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
+    xp: top of the pedestal
     '''
 
     # Fit new pedestal
