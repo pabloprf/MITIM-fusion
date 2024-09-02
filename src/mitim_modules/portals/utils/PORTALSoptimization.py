@@ -32,7 +32,8 @@ def initialization_simple_relax(self):
         os.system(f"mkdir {MainFolder}")
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    namingConvention = f"portals_{b}_ev"
+    digitized = IOtools.string_to_sequential_number(self.folderExecution, num_digits=10)
+    namingConvention = f"portals_{b}_{digitized}_ev"
 
     algorithmOptions = {
         "tol": 1e-6,
@@ -92,7 +93,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
         - Requires "profiles_new" to be an object with the new profiles to be predicted (e.g. can have different BC)
 
     Notes:
-        * So far only works if Te,Ti,ne
+        #TODO: So far only works if Te,Ti,ne
 
     '''
 

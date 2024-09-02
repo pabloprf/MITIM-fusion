@@ -287,7 +287,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             mvn = self(Xtr)
             if observation_noise is not False:
                 if torch.is_tensor(observation_noise):
-                    # TODO: Validate noise shape
+                    #TODO: Validate noise shape
                     # make observation_noise `batch_shape x q x n`
                     if self.num_outputs > 1:
                         obs_noise = observation_noise.transpose(-1, -2)
@@ -396,6 +396,7 @@ class Transformation_Inputs(
         self,
         output,
         surrogate_parameters,
+        surrogate_transformation_variables,
         indices=None,
         transform_on_train: bool = True,
         transform_on_eval: bool = True,
@@ -414,6 +415,7 @@ class Transformation_Inputs(
         # Custom parameters
         self.output = output
         self.surrogate_parameters = surrogate_parameters
+        self.surrogate_transformation_variables = surrogate_transformation_variables
         self.flag_to_store = False
         self.flag_to_evaluate = True
 
@@ -426,7 +428,7 @@ class Transformation_Inputs(
                 X,
                 self.output,
                 self.surrogate_parameters,
-                self.surrogate_parameters["surrogate_transformation_variables"],
+                self.surrogate_transformation_variables,
             )
 
             # Store the expensive parameters (not for training, or to call outside of ModelList)

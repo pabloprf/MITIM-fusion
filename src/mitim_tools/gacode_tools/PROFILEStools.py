@@ -405,6 +405,15 @@ class PROFILES_GACODE:
             0.95, self.derived["psi_pol_n"], self.profiles["q(-)"]
         )
 
+        self.derived["q0"] = self.profiles["q(-)"][0]
+
+        if self.profiles["q(-)"].min() > 1.0: 
+            self.derived["rho_saw"] = np.nan
+        else:
+            self.derived["rho_saw"] = np.interp(
+                1.0, self.profiles["q(-)"], self.profiles["rho(-)"]
+            )
+
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_miller" not in self.derived):
@@ -1448,7 +1457,7 @@ class PROFILES_GACODE:
                     if len(self.profiles[i].shape) == 1:
                         for j, val in enumerate(self.profiles[i]):
                             pos = f"{j + 1}".rjust(3)
-                            valt = f"{val:.7e}".rjust(15)
+                            valt = f"{round(val,99):.7e}".rjust(15)
                             f.write(f"{pos}{valt}\n")
                     else:
                         for j, val in enumerate(self.profiles[i]):

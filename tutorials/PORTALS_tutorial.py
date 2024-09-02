@@ -11,52 +11,45 @@ inputgacode = __mitimroot__ + "/tests/data/input.gacode"
 folder = __mitimroot__ + "/tests/scratch/portals_tut/"
 
 # Initialize PORTALS class
-PORTALS_fun = PORTALSmain.portals(folder)
+portals_fun = PORTALSmain.portals(folder)
 
 # Radial locations (RhoLocations or RoaLocations [last one preceeds])
-PORTALS_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
+portals_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
-PORTALS_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
+portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
 # Codes to use
 from mitim_modules.powertorch.physics import TRANSPORTtools
-PORTALS_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.tgyro_model
+portals_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.tgyro_model
 
 # TGLF specifications
-PORTALS_fun.TGLFparameters[
-    "TGLFsettings"
-] = 5  # SAT2 EM, check out templates/input.tglf.models.json for more options
-PORTALS_fun.TGLFparameters["extraOptionsTGLF"] = {"BPER_USE": False}  # Turn off BPER
+portals_fun.MODELparameters["transport_model"] = {
+	"turbulence":'TGLF',
+	"TGLFsettings": 6,							# Check out templates/input.tglf.models.json for more options
+	"extraOptionsTGLF": {"USE_BPER": False}  	# Turn off BPER
+	}
 
 # Plasma preparation: remove fast species, adjust quasineutrality
-PORTALS_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["quasineutrality"] = True
 
-# Stopping criterion 1: 200x improvement in residual
-PORTALS_fun.optimization_options["maximum_value"] = 200.0
-PORTALS_fun.optimization_options["maximum_value_is_rel"] = True
-
-# Stopping criterion 2: inputs vary less than 0.1% for 3 consecutive iterations after 10 evaluations
-PORTALS_fun.optimization_options["minimum_dvs_variation"] = [10, 3, 1e-1]
+# Stopping criterion 1: 100x improvement in residual
+portals_fun.optimization_options['stopping_criteria_parameters']["maximum_value"] = 1e-2
+portals_fun.optimization_options['stopping_criteria_parameters']["maximum_value_is_rel"] = True
 
 # Prepare run: search +-100% the original gradients
-PORTALS_fun.prep(inputgacode, folder, ymax_rel=1.0, ymin_rel=1.0)
+portals_fun.prep(inputgacode, ymax_rel=1.0, ymin_rel=1.0)
 
 # --------------------------------------------------------------------------------------------
-# Run
+# Run (optimization following namelist: templates/main.namelists.json)
 # --------------------------------------------------------------------------------------------
 
-prf_bo = STRATEGYtools.PRF_BO(PORTALS_fun)
+prf_bo = STRATEGYtools.PRF_BO(portals_fun)
 prf_bo.run()
 
 """
 To plot while it's going or has finished (via alias in portals.bashrc):
 	mitim_plot_portals portals_tut
-
-To plot while it's still in the simple relaxation phase:
-	mitim_plot_portalsSR portals_tut
-
-Debug what's going on with TGLF
-	run ~/PORTALS/portals_opt/PORTALS_tools/scripts/runTGLFdrivesfromPORTALS.py --folder portals_tut/ --ev 27 --pos 0 2
 
 """

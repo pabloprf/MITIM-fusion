@@ -198,6 +198,7 @@ class tgyro_model(power_transport):
             provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
             restart=restart,
+            extra_name = self.name,
         )
 
         # Read again to capture errors
@@ -300,7 +301,7 @@ class tgyro_model(power_transport):
             )
 
             print("\t- Checking model modifications:")
-            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TO FIX
+            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
                 print(
                     f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}"
                 )
@@ -329,7 +330,7 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
-def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2):
+def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name=""):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
@@ -366,7 +367,8 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
                     add_baseline_to = 'first',
                     restart=restart,
                     forceIfRestart=True,
-                    slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x Nv = 3 x Nd = 2 +1 = 31 TGLFs at once
+                    slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x (Nv=3 x Nd=2 + 1) = 35 TGLFs at once
+                    extra_name = f'{extra_name}_{name}',
                     )
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
@@ -384,6 +386,7 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
         GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
         cont += jump
 
+    # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
     Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro )
     Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro )
@@ -391,29 +394,35 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
     GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro )
 
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
-
     if F_err.max() > check_coincidence_thr:
         print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
     else:
         print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
+    # ----------------------------------------------------
 
     # Calculate the standard deviation of the scans, that's going to be the reported stds
-    Qe_std = np.std(Qe, axis=1)
-    Qi_std = np.std(Qi, axis=1)
-    Ge_std = np.std(Ge, axis=1)
-    GZ_std = np.std(GZ, axis=1)
 
-    # The actual point is the original TGYRO one (maybe in the future I decided to use the mean?)
-    Qe_point = Qe_tgyro
-    Qi_point = Qi_tgyro
-    Ge_point = Ge_tgyro
-    GZ_point = GZ_tgyro
+    def calculate_mean_std(Q):
+        # Assumes Q is [radii, points], with [radii, 0] being the baseline
 
-    # TO DO
+        #Qm = Q[:,0]
+        #Qstd = np.std(Q, axis=1)
+
+        Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+
+        return  Qm, Qstd
+
+    Qe_point, Qe_std = calculate_mean_std(Qe)
+    Qi_point, Qi_std = calculate_mean_std(Qi)
+    Ge_point, Ge_std = calculate_mean_std(Ge)
+    GZ_point, GZ_std = calculate_mean_std(GZ)
+
+    #TODO: Implement Mt and Pexch
     Mt_point, Pexch_point = Mt_tgyro, Pexch_tgyro
     Mt_std, Pexch_std = abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
 
-    # TO DO: Careful with fast particles
+    #TODO: Careful with fast particles
 
     return Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, Pexch_point, Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, Pexch_std
 
@@ -515,7 +524,8 @@ def curateTGYROfiles(
     impurityPosition=1,
     includeFast=False,
     use_tglf_scan_trick=None,
-    restart=False
+    restart=False,
+    extra_name="",
     ):
 
     tgyro = tgyroObject.results[label]
@@ -555,7 +565,8 @@ def curateTGYROfiles(
             impurityPosition=impurityPosition, 
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
-            restart=restart
+            restart=restart,
+            extra_name=extra_name
             )
     
     else:

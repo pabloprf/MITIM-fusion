@@ -253,8 +253,10 @@ def initializeProblem(
                 y2 = torch.tensor(RelVar_y_max[cont][conti]).to(dfT)
 
             if hardGradientLimits is not None:
-                y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
-                y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
+                if hardGradientLimits[0] is not None:
+                    y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
+                if hardGradientLimits[1] is not None:
+                    y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
 
             # Check that makes sense
             if y2-y1 < thr:

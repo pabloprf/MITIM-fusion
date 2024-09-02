@@ -560,7 +560,7 @@ class PORTALSanalyzer:
             1. self.MODELparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
-        However, this should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable # TO FIX
+        #TODO: This should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable
         """
         rhos_considered = self.MODELparameters["RhoLocations"]
 
@@ -879,7 +879,7 @@ class PORTALSinitializer:
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
         cont = 0
-        for i in range(np.max[3,len(self.powerstates[-1].ProfilesPredicted)]):
+        for i in range(np.max([3,len(self.powerstates[-1].ProfilesPredicted)])):
             axsGrads_extra.append(axs[cont])
             axsGrads_extra.append(axs[cont+1])
             cont += 4

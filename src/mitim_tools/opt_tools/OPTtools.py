@@ -134,7 +134,7 @@ class fun_optimization:
         if previous_solutions is not None:
             x_opt, y_opt_residual, z_opt = previous_solutions
 
-            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = pointSelection(
+            x_opt, y_opt_residual, z_opt = pointSelection(
                 x_opt2,
                 y_opt_residual2,
                 z_opt2,
@@ -144,18 +144,16 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=self.stepSettings["optimization_options"]["maximum_value"],
             )
 
         else:
-            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = (
+            x_opt, y_opt_residual, z_opt = (
                 x_opt2,
                 y_opt_residual2,
                 z_opt2,
-                False,
             )
 
-        return x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate
+        return x_opt, y_opt_residual, z_opt, info
 
 
 def optAcq(
@@ -251,7 +249,7 @@ def optAcq(
         )
 
         # *********** Optimize
-        x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(
+        x_opt, y_opt_residual, z_opt, info = fun.optimize(
             findOptima,
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
@@ -266,25 +264,6 @@ def optAcq(
                 "bounds": fun.bounds,
             }
         )
-
-        # If hard_finish_surrogate, do not continue
-        if hard_finish_surrogate:
-            x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
-
-            if (x_opt_test.shape[1] == 0) or (
-                stepSettings["optimization_options"]["ensure_new_points"]
-                and (x_opt_test.shape[0] < best_points)
-            ):
-                print(
-                    "- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",
-                    typeMsg="i",
-                )
-            else:
-                print(
-                    "- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",
-                    typeMsg="i",
-                )
-                break
 
     # ~~~~ Clean-up set and complete with actual OFs
 
@@ -322,7 +301,6 @@ def pointSelection(
     z_opt_previous,
     maxExtrapolation=[0.0, 0.0],
     ToleranceNiche=None,
-    enoughPerformance=None,
 ):
     # Remove points if they are outside of bounds by more than margin
     x_opt, y_res, z_opt = pointsOperation_bounds(
@@ -349,20 +327,7 @@ def pointSelection(
     )
     print("\t- " + TESTtools.summaryTypes(z_opt))
 
-    # Check if this is enough and I send a hard_finish
-    hard_finish_surrogate = False
-    if enoughPerformance is not None:
-        print(
-            f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... "
-        )
-        best_now = y_res[0].item()
-        if best_now > enoughPerformance:
-            print(
-                f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer..."
-            )
-            hard_finish_surrogate = True
-
-    return x_opt, y_res, z_opt, hard_finish_surrogate
+    return x_opt, y_res, z_opt
 
 
 def pointsOperation_concat(

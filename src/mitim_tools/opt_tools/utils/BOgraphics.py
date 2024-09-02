@@ -237,7 +237,7 @@ def plot_surrogate_model(
 
         GRAPHICStools.addDenseAxis(ax)
 
-    elif dimX == 2:  # TO FIX
+    elif dimX == 2:  #TODO: FIX
         # Plot training data
         ax.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)
         ax2.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)
@@ -1568,7 +1568,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             evaluations,
             self.OF_labels,
             None,
-            self.PRF_BO.lambdaSingleObjective,
+            self.PRF_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
@@ -2269,7 +2269,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.optima,
             self.OF_labels,
             colors,
-            self.PRF_BO.lambdaSingleObjective,
+            self.PRF_BO.scalarized_objective,
             OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
         )
         xe, yTe, yTMe, _ = plotAndGrab(
@@ -2280,7 +2280,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             colors,
-            self.PRF_BO.lambdaSingleObjective,
+            self.PRF_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
@@ -2433,7 +2433,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.optima,
                 self.OF_labels,
                 None,
-                self.PRF_BO.lambdaSingleObjective,
+                self.PRF_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2448,7 +2448,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.evaluations,
                 self.OF_labels,
                 None,
-                self.PRF_BO.lambdaSingleObjective,
+                self.PRF_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2534,7 +2534,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             None,
-            self.PRF_BO.lambdaSingleObjective,
+            self.PRF_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
@@ -3399,7 +3399,7 @@ def plotAndGrab(
     resu,
     OF_labels,
     colors,
-    lambdaSingleObjective,
+    scalarized_objective,
     alpha=1.0,
     alphaM=1.0,
     lw=1.0,
@@ -3420,8 +3420,8 @@ def plotAndGrab(
 
     yT, yTM, x = np.array(yT), np.array(yTM), np.array(x)
 
-    of, cal, y = lambdaSingleObjective(torch.from_numpy(yT))
-    ofM, calM, yM = lambdaSingleObjective(torch.from_numpy(yTM))
+    of, cal, y = scalarized_objective(torch.from_numpy(yT))
+    ofM, calM, yM = scalarized_objective(torch.from_numpy(yTM))
 
     of, cal, y = of.cpu().numpy(), cal.cpu().numpy(), y.cpu().numpy()
     ofM, calM, yM = ofM.cpu().numpy(), calM.cpu().numpy(), yM.cpu().numpy()

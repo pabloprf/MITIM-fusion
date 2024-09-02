@@ -326,30 +326,77 @@ def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eli
 
     return file_current
 
+def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
+    '''
+    Calculate the size of the top N attributes of an object and recursively calculate the sizes of the attributes of the top item. 
+    '''
 
-def getsize(obj):
-    print(f"\t{getsizeObject(obj) * 1e-06:.1f} MB")
+    from pympler import asizeof
 
+    sizes = {}
+    prefix = f"{parent_name}." if parent_name else ""
 
-def getsizeObject(obj, seen=None):
-    """Recursively finds size of objects"""
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
     if isinstance(obj, dict):
-        size += sum([getsizeObject(v, seen) for v in obj.values()])
-        size += sum([getsizeObject(k, seen) for k in obj.keys()])
-    elif hasattr(obj, "__dict__"):
-        size += getsizeObject(obj.__dict__, seen)
-    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
-        size += sum([getsizeObject(i, seen) for i in obj])
-    return size
+        items = obj.items()
+    elif isinstance(obj, (list, np.ndarray, tuple)):
+        items = enumerate(obj)
+    elif isinstance(obj, str):
+        return
+    else:
+        try:
+            items = vars(obj).items()
+        except:
+            print('Type not recognized, probably out of depth:')
+            print(obj)
+            return
+
+    # Collect the size of each item in the object
+    for attr_name, attr_value in items:
+        sizes[attr_name] = (asizeof.asizeof(attr_value) * 1E-6, type(attr_value).__name__)
+
+    # Sort the items by size (from high to low)
+    sorted_sizes = dict(sorted(sizes.items(), key=lambda item: item[1][0], reverse=True))
+
+    # Determine the maximum length of the attribute names for alignment
+    max_attr_name_length = max(len(str(attr_name)) for attr_name in sorted_sizes)
+
+    # Print the sizes of the top N items
+    print(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
+    for attr_name, (size, attr_type) in list(sorted_sizes.items())[:N]:
+        full_attr_name = f"{prefix}{attr_name}"
+        print(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
+
+    # Sum the sizes of the remaining attributes
+    remaining_size = sum(size for size, _ in list(sorted_sizes.values())[N:])
+    
+    # Print the total size of the remaining attributes if any
+    if remaining_size > 0:
+        print(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
+
+    # Recursively calculate the sizes of the attributes of the top item
+    if recursion > 0:
+
+        if isinstance(obj, dict):
+            parent_name = list(sorted_sizes.keys())[0]
+            child_obj = obj[list(sorted_sizes.keys())[0]]
+        elif isinstance(obj, (list, np.ndarray, tuple)):
+            parent_name = f"{prefix}{list(sorted_sizes.keys())[0]}"
+            child_obj = obj[list(sorted_sizes.keys())[0]]
+        else:
+            parent_name = list(sorted_sizes.items())[0][0]
+            child_obj = getattr(obj,parent_name)
+        calculate_sizes_obj_recursive(child_obj, N, recursion = recursion - 1, parent_name=parent_name)
+        
+def calculate_size_pickle(file):
+    '''
+    Calculate the size of the object stored in a pickle file.
+    '''
+
+    import pickle  
+
+    with open(file, 'rb') as f:
+        obj = pickle.load(f)
+    calculate_sizes_obj_recursive(obj, recursion = 20)
 
 def read_mitim_nml(json_file):
     with open(json_file, 'r') as file:
@@ -1736,26 +1783,27 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
 
-# chatGPT 4o (08/18/2024)
-def string_to_sequential_5_digit_number(input_string):
-    # Split the input string into the base and the numeric suffix
+# chatGPT 4o (08/31/2024)
+def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch
+    # Separate the last character and base part
     base_part = input_string[:-1]
-    try:
-        sequence_digit = int(input_string[-1])
-    except ValueError:
-        sequence_digit = 0
+    last_char = input_string[-1]
+    
+    # If the last character is a digit, use it as the sequence number
+    sequence_digit = int(last_char) if last_char.isdigit() else 0
 
-    # Create a hash of the base part using SHA-256
-    hash_object = hashlib.sha256(base_part.encode())
+    # Combine the base part and the sequence digit
+    combined_string = f"{base_part}{sequence_digit}"
+    
+    # Create a hash of the combined string using SHA-256
+    hash_object = hashlib.sha256(combined_string.encode())
     
     # Convert the hash to an integer
     hash_int = int(hash_object.hexdigest(), 16)
     
-    # Take the hash modulo 10,000 to get a 4-digit number
-    four_digit_number = hash_int % 10000
+    # Mod the hash to get a number with the desired number of digits
+    mod_value = 10**num_digits
+    final_number = hash_int % mod_value
     
-    # Combine the 4-digit hash with the sequence digit to get a 5-digit number
-    five_digit_number = (four_digit_number * 10) + sequence_digit
-    
-    # Ensure it's always 5 digits by adding leading zeros if necessary
-    return f'{five_digit_number:05d}'
+    # Format the number to ensure it has exactly `num_digits` digits
+    return f'{final_number:0{num_digits}d}'

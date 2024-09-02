@@ -571,9 +571,9 @@ class transp_input_time:
         # Limiters
         # --------------------------------------------------------------
 
-        # To fix in the future---------------------------------
+        #TODO: Fix-----------------------------------------------------
         R, a, kappa, delta, zeta, z0 = R*2, R*2, 1.0, 0.0, 0.0, 0.0
-        # -----------------------------------------------------
+        # -------------------------------------------------------------
         
         vv = GEQtools.mitim_flux_surfaces()
         vv.reconstruct_from_miller(R, a, kappa, delta, zeta, z0)
@@ -1170,7 +1170,7 @@ def reconstructAntenna(antrmaj, antrmin, polext):
     return np.array(R), np.array(Z)
 
 # ----------------------------------------------------------------------------------------------------------
-# Utilities to run interpretive TRANSP (to review and to fix by P. Rodriguez-Fernandez)
+# Utilities to run interpretive TRANSP (#TODO: review and fix)
 # ----------------------------------------------------------------------------------------------------------
 
 def populateFromMDS(self, runidMDS):

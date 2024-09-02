@@ -18,7 +18,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
-    beats = sorted(os.listdir(folder_beats))
+    beats = sorted(os.listdir(folder_beats), key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
@@ -63,18 +63,18 @@ def plot_results(self, fn):
     # Collect PORTALS profiles and TRANSP cdfs translated to profiles
     objs = OrderedDict()
 
-    objs['Initial input.gacode'] = ini['profiles']
+    objs['Initial profiles'] = ini['profiles']
 
     for i,beat in enumerate(self.beats.values()):
 
         _, profs = beat.grab_output()
 
         if isinstance(beat, transp_beat):
-            key = f'TRANSP beat #{i+1}'
+            key = f'TRANSP b#{i+1}'
         elif isinstance(beat, portals_beat):
-            key = f'PORTALS beat #{i+1}'
+            key = f'PORTALS b#{i+1}'
         elif isinstance(beat, eped_beat):
-            key = f'EPED beat #{i+1}'
+            key = f'EPED b#{i+1}'
         
         objs[key] = profs
 
@@ -87,15 +87,16 @@ def plot_results(self, fn):
             ps.append(objs[label])
             ps_lab.append(label)
 
+    maxPlot = 5
     if len(ps) > 0:
         # Plot profiles
         figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
-            PROFILEStools.plotAll(ps, extralabs=ps_lab, figs=figs)
+            PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
-    for p in ps:
-        p.printInfo()
+    for p,pl in zip(ps,ps_lab):
+        p.printInfo(label = pl)
 
     keys = list(objs.keys())
     lw, ms = 1, 0
@@ -170,6 +171,133 @@ def plot_results(self, fn):
         objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms)
 
     GRAPHICStools.adjust_figure_layout(fig)
+
+    # ********************************************************************************************************
+    # Plot special info
+    # ********************************************************************************************************
+    fig = fn.add_figure(label='MAESTRO special', tab_color=3)
+    
+    axs = fig.subplot_mosaic(
+        """
+        ABGI
+        ABGI
+        AEGI
+        DEHJ
+        DFHJ
+        DFHJ
+        """
+    )
+
+    x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
+    for p,pl in zip(ps,ps_lab):
+        x.append(pl)
+        BetaN.append(p.derived['BetaN'])
+        Pfus.append(p.derived['Pfus'])
+        p_th.append(p.derived['pthr_manual_vol'])
+        p_tot.append(p.derived['ptot_manual_vol'])
+        Pin.append(p.derived['qIn'])
+        Q.append(p.derived['Q'])
+        fG.append(p.derived['fG'])
+        nu_ne.append(p.derived['ne_peaking0.2'])
+        q95.append(p.derived['q95'])
+        q0.append(p.derived['q0'])
+        xsaw.append(p.derived['rho_saw'])
+        p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
+
+    # -----------------------------------------------------------------
+    ax = axs['A']
+    ax.plot(x, BetaN, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$\\beta_N$')
+    ax.set_title('Pressure Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    ax = axs['D']
+    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal <p>')
+    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total <p>')
+    ax.plot(x, p90, '-*', markersize=7, lw = 1, label='Total, p(rho=0.9)')
+    ax.set_ylabel('$p$ (MPa)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    ax.legend()
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+
+    ax = axs['B']
+    ax.plot(x, Q, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$Q$')
+    ax.set_title('Performance Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+
+    ax = axs['E']
+    ax.plot(x, Pfus, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$P_{fus}$ (MW)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+
+    ax = axs['F']
+    ax.plot(x, Pin, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$P_{in}$ (MW)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+    ax = axs['G']
+    ax.plot(x, fG, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$f_{G}$')
+    ax.set_title('Density Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    ax.set_ylim([0,1.2])
+
+    ax.set_xticklabels([])
+
+    ax = axs['H']
+    ax.plot(x, nu_ne, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('$\\nu_{ne}$')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+
+    # -----------------------------------------------------------------
+    ax = axs['I']
+    ax.plot(x, q95, '-s', markersize=7, lw = 1, label='q95')
+    ax.plot(x, q0, '-*', markersize=7, lw = 1, label='q0')
+    ax.set_ylabel('$q$')
+    ax.set_title('Current Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    ax.legend()
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    ax = axs['J']
+    ax.plot(x, xsaw, '-s', markersize=7, lw = 1)
+    ax.set_ylabel('Inversion radius (rho)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim([0,1])
+    
+    ax.tick_params(axis='x', rotation=45)
+
+    # -----------------------------------------------------------------
+
 
 def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
 

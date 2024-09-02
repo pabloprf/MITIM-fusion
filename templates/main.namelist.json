@@ -7,9 +7,12 @@
         "dvs_base": null,
         "dvs_max": [1.2, 1.2],
         "BO_iterations": 5,
-        "maximum_value": -1e-3,
-        "maximum_value_is_rel": false,
-        "minimum_dvs_variation": [10, 3, 0.01],
+        "stopping_criteria": null,
+        "stopping_criteria_parameters": {
+            "maximum_value": -1e-3,
+            "maximum_value_is_rel": false,
+            "minimum_dvs_variation": [10, 3, 0.01]
+        },
         "type_initialization": 3,
         "initial_training": 5,
         "read_initial_training_from_csv": false,

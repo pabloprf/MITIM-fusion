@@ -180,8 +180,11 @@ class portals_beat(beat):
             opt_fun.fn = fn
             opt_fun.plot_optimization_results(analysis_level=4)
         else:
-            fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
-            opt_fun.plotMetrics(fig=fig)
+            if len(opt_fun.powerstates)>0:
+                fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
+                opt_fun.plotMetrics(fig=fig)
+            else:
+                print('\t\t- PORTALS has not run enough to plot anything')
 
         msg = '\t\t- Plotting of PORTALS beat done'
 
@@ -204,10 +207,10 @@ class portals_beat(beat):
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
-            self.optimization_options['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
-            self.optimization_options['maximum_value_is_rel'] = False
+            self.optimization_options['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
+            self.optimization_options['stopping_criteria_parameters']['maximum_value_is_rel'] = False
 
-            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['maximum_value']}")
+            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['stopping_criteria_parameters']['maximum_value']}")
 
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             self.optimization_options['surrogateOptions'] = {"extrapointsFile": self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']}
@@ -223,7 +226,7 @@ class portals_beat(beat):
 
         stepSettings = portals_output.step.stepSettings
 
-        max_value_neg_residual = stepSettings['optimization_options']['maximum_value']
+        max_value_neg_residual = stepSettings['optimization_options']['stopping_criteria_parameters']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 

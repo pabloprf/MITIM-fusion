@@ -13669,7 +13669,7 @@ class transp_output:
             self.Species[i+"_imp"] = {
                 "name": i,
                 "type": "thermal",
-                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u,      # TO FIX
+                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u, #TODO: FIX
                 "Z": self.fZs_avol[i]['Zave'],
                 "n": self.nZs[i]["total"],
                 "T": self.Ti,
@@ -13689,7 +13689,7 @@ class transp_output:
             self.Species["He3_mini"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 3*self.u,       # TO FIX
+                "m": 3*self.u,       #TODO: FIX
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nminiHe3,
                 "T": self.Tmini,
@@ -15242,7 +15242,7 @@ class transp_output:
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
         print("\t\t* Warning: not time averaging yet",typeMsg='w')
 
-        # TO FIX: I should be looking at the extrapolated quantities in TRANSP?
+        # TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
 
         # -------------------------------------------------------------------------------------------------------

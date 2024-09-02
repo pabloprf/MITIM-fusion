@@ -45,7 +45,7 @@ class transp_beat(beat):
 
         if shot is None:
             folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
-            shot = IOtools.string_to_sequential_5_digit_number(folder_last)
+            shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
             username = IOtools.expandPath('$USER')

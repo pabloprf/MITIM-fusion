@@ -452,49 +452,40 @@ def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
     return of, cal, source, res
 
 
-def calculatePseudos_distributions(
-    powerstate, PORTALSparameters, specific_vars=None,
-):
+def calculatePseudos_distributions(powerstate, PORTALSparameters):
     """
-    Notes
-    -----
-            - Works with tensors
-            - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
+    - Works with tensors
+    - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
     """
 
-    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
-    if specific_vars is not None:
-        var_dict = specific_vars
     # Prepare dictionary from powerstate (for use in Analysis)
-    else:
-        var_dict = {}
+    
+    mapper = {
+        "QeTurb": "Pe_tr_turb",
+        "QiTurb": "Pi_tr_turb",
+        "GeTurb": "Ce_tr_turb",
+        "GZTurb": "CZ_tr_turb",
+        "MtTurb": "Mt_tr_turb",
+        "QeNeo": "Pe_tr_neo",
+        "QiNeo": "Pi_tr_neo",
+        "GeNeo": "Ce_tr_neo",
+        "GZNeo": "CZ_tr_neo",
+        "MtNeo": "Mt_tr_neo",
+        "QeTar": "Pe",
+        "QiTar": "Pi",
+        "GeTar": "Ce",
+        "GZTar": "CZ",
+        "MtTar": "Mt",
+        "PexchTurb": "PexchTurb"
+    }
 
-        mapper = {
-            "QeTurb": "Pe_tr_turb",
-            "QiTurb": "Pi_tr_turb",
-            "GeTurb": "Ce_tr_turb",
-            "GZTurb": "CZ_tr_turb",
-            "MtTurb": "Mt_tr_turb",
-            "QeNeo": "Pe_tr_neo",
-            "QiNeo": "Pi_tr_neo",
-            "GeNeo": "Ce_tr_neo",
-            "GZNeo": "CZ_tr_neo",
-            "MtNeo": "Mt_tr_neo",
-            "QeTar": "Pe",
-            "QiTar": "Pi",
-            "GeTar": "Ce",
-            "GZTar": "CZ",
-            "MtTar": "Mt",
-            "PexchTurb": "PexchTurb"
-        }
-
-        for ikey in mapper:
-            var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
-            if mapper[ikey] + "_stds" in powerstate.plasma:
-                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
-            else:
-                var_dict[ikey + "_stds"] = None
-
+    var_dict = {}
+    for ikey in mapper:
+        var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+        if mapper[ikey] + "_stds" in powerstate.plasma:
+            var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+        else:
+            var_dict[ikey + "_stds"] = None
 
     dfT = var_dict["QeTurb"]  # as a reference for sizes
 

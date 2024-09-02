@@ -50,16 +50,28 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["initial_training"] = 5
     optimization_options["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
 
-    # Strategy
+    # Strategy for stopping
     optimization_options["BO_iterations"] = 50
-    optimization_options["parallel_evaluations"] = 1
-    optimization_options["minimum_dvs_variation"] = [
-        10,
-        3,
-        1e-1,
-    ]  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
-    optimization_options["maximum_value_is_rel"]  = True
-    optimization_options["maximum_value"]       = 5e-3  # Reducing residual by 200x is enough
+    optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+    optimization_options['stopping_criteria_parameters'] =  {
+                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
+                "maximum_value_is_rel": True,
+                "minimum_dvs_variation": [10, 3, 0.01],  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
+                "ricci_value": 0.15,
+                "ricci_d0": 2.0,
+                "ricci_lambda": 1.0,
+            }
+
+    # Surrogate
+    optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
+        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
+    )
+    # optimization_options['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
+
+    optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
+
+    # Acquisition
+    optimization_options["acquisition_type"] = "posterior_mean"
 
     if CGYROrun:
         # Do not allow excursions for CGYRO, at least by default
@@ -72,17 +84,6 @@ def default_namelist(optimization_options, CGYROrun=False):
             0.05,
         ]  # This would be 10% if [-100,100]
         optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
-
-    # Surrogate
-    optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
-        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
-    )
-    # optimization_options['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
-
-    optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
-
-    # Acquisition
-    optimization_options["acquisition_type"] = "posterior_mean"
 
     return optimization_options
 

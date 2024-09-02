@@ -190,7 +190,7 @@ class mitim_job:
 
         self.output_files = curateOutFiles(self.output_files)
 
-        # Relative paths TO FIX
+        # Relative paths #TODO: Fix
         self.input_files = [
             os.path.relpath(path, self.folder_local) for path in self.input_files
         ]
