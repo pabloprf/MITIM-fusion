@@ -2,6 +2,7 @@ import os
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.surrogate_tools import NNtools
@@ -120,11 +121,19 @@ class eped_beat(beat):
 
         # psi_pol to rhoN
         rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-        #rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+        rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
 
         # Find ne at the top
-        
-        netop_20 = 1.08 * self.neped_20 #TODO: Find this factor from the actual EPED parameterization of this specific simulation
+        # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
+        # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
+        pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, 
+                                                        nesep_20, 
+                                                        1-rhotop, 
+                                                        x=x
+                                                        )[1]
+
+        n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+        netop_20 = n0[0]
 
         # Find factor to account that it's not a pure plasma
         n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
@@ -269,8 +278,8 @@ class eped_beat(beat):
 
         if eped_output is None:
             eped_output, _ = self.grab_output()
-        else:
-            self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
+
+        self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
 
         print('\t\t- neped_20 saved for future beats')
 
