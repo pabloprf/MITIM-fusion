@@ -41,23 +41,12 @@ transp_namelist = {
     }
 
 # To see what values this namelist can take: mitim_modules/portals/PORTALSmain.py: __init__()
-portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": True,"forceZeroParticleFlux": True, 'use_tglf_scan_trick': 0.02},
-                        "MODELparameters": { "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
-                                            "ProfilesPredicted": ["te", "ti", "ne"],
-                                            "Physics_options": {"TypeTarget": 3},
-                                             "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
-                        "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
-                        "optimization_options": {
-                            "BO_iterations": 50,
-                            "stopping_criteria_parameters": {
-                                "maximum_value": 1e-3,"maximum_value_is_rel": True,
-                                },
-                            "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} },
-                        "exploration_ranges": {
-                            'ymax_rel': 1.0,
-                            'ymin_rel': 0.9,
-                            'hardGradientLimits': [None,2]
-                        } }
+portals_namelist = {    
+    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": True, 'use_tglf_scan_trick': 0.02},
+    "MODELparameters": {"transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
+    "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
+    "exploration_ranges": {'ymax_rel': 1.0,'ymin_rel': 0.9,'hardGradientLimits': [None,2]} }
+
 
 # To see what values this namelist can take: mitim_modules/maestro/utils/EPEDbeat.py: prepare()
 eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5',
@@ -73,11 +62,22 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 def run_maestro():
     m = maestro(folder, terminal_outputs = False)
 
-    # Sort TRANSP
-    transp_namelist['flattop_window'] = 0.5
+    # TRANSP with only current diffusion
+    transp_namelist['flattop_window'] = 10.0
+    transp_namelist['useNUBEAMforAlphas'] = False
+    transp_namelist['Pich'] = False
+
     m.define_beat('transp', initializer=initializer)
     m.define_creator('eped', BetaN = BetaN_initialization, **eped_parameters,**parameters)
     m.initialize(**geometry, **parameters)
+    m.prepare(**transp_namelist)
+    m.run(retrieveAC=transp_namelist['extractAC'])
+
+    # TRANSP for toric and nubeam
+    transp_namelist['flattop_window'] = 0.5
+    transp_namelist['useNUBEAMforAlphas'] = True
+    transp_namelist['Pich'] = True
+    m.define_beat('transp')
     m.prepare(**transp_namelist)
     m.run(retrieveAC=transp_namelist['extractAC'])
 
@@ -91,8 +91,7 @@ def run_maestro():
     m.prepare(**portals_namelist)
     m.run()
 
-    # Long TRANSP
-    transp_namelist['flattop_window'] = 1.0
+    # TRANSP
     m.define_beat('transp')
     m.prepare(**transp_namelist)
     m.run(retrieveAC=transp_namelist['extractAC'])
@@ -105,14 +104,11 @@ def run_maestro():
 
         # PORTALS
         m.define_beat('portals')
-        m.prepare(**portals_namelist)
+        m.prepare(**portals_namelist,use_previous_surrogate_data=True)
         m.run()
+
+    m.finalize()
 
     return m
 
 m = run_maestro()
-m.finalize()
-
-
-
-

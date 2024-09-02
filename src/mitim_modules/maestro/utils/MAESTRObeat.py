@@ -11,7 +11,7 @@ from IPython import embed
 # --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
-0
+
 class beat:
 
     def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
@@ -284,9 +284,9 @@ class creator_from_parameterization(creator):
             self.rhotop = rhotop
             self.Ttop_keV = Ttop_keV
             self.netop_20 = netop_20
-            self.BetaN = BetaN
             self.Tsep_keV = Tsep_keV
             self.nesep_20 = nesep_20
+            self.BetaN = BetaN
 
         def _return_profile_betan_residual(self, x, x_a, betan):
             aLT, aLn = x
