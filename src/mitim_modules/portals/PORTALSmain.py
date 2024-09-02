@@ -239,7 +239,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": None,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
         }
 
         for key in self.PORTALSparameters.keys():
