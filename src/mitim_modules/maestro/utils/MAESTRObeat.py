@@ -339,20 +339,17 @@ class creator_from_eped(creator_from_parameterization):
     def __init__(self, initialize_instance, label = 'eped', BetaN = None, **parameters):
         super().__init__(initialize_instance, label = label)
 
-        #self.BetaN = BetaN
-        self.parameters = parameters['parameters']
+        self.BetaN = BetaN
+        self.parameters = parameters
         if self.BetaN is None:
-            try:
-                self.BetaN = self.parameters['BetaN']
-            except:
-                raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
+            raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
 
     def __call__(self):
 
         # Create a beat within here
         from mitim_modules.maestro.utils.EPEDbeat import eped_beat
         beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
-        beat_eped.prepare(**self.parameters)
+        beat_eped.prepare(BetaN = self.BetaN, **self.parameters)
 
         # Work with this profile
         beat_eped.profiles_current = self.initialize_instance.profiles_current

@@ -1,7 +1,7 @@
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
-folder = '/Users/pablorf/PROJECTS/project_2024_MITIMsurrogates/maestro_development/tests13/arc1'
+folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run9/'
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Parameters
@@ -71,7 +71,7 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro():
-    m = maestro(folder, terminal_outputs = False)
+    m = maestro(folder, terminal_outputs = True)
 
     # TRANSP with only current diffusion
     transp_namelist['flattop_window'] = 10.0
