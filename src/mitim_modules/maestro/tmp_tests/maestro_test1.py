@@ -1,7 +1,7 @@
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
-folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run11/'
+folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run12/'
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Parameters
@@ -110,14 +110,13 @@ def run_maestro():
     m.prepare(**transp_namelist)
     m.run()
 
-    for i in range(2):
+    for i in range(8):
         # EPED
         m.define_beat('eped')
         m.prepare(**eped_parameters)
         m.run()
 
         # PORTALS
-        portals_namelist['optimization_options']['initial_training'] = 2 # Because we are using surrogate data
         m.define_beat('portals')
         m.prepare(**portals_namelist,use_previous_surrogate_data=True)
         m.run()

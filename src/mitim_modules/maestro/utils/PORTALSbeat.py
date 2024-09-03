@@ -2,7 +2,7 @@ import os
 import copy
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals.utils import PORTALSanalysis
+from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -40,8 +40,9 @@ class portals_beat(beat):
         self.additional_params_in_surrogate = additional_params_in_surrogate
 
         self.exploration_ranges = exploration_ranges
+        self.use_previous_surrogate_data = use_previous_surrogate_data
 
-        self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = use_previous_surrogate_data)
+        self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = self.use_previous_surrogate_data)
 
     def run(self, **kwargs):
 
@@ -74,6 +75,13 @@ class portals_beat(beat):
                 for subkey in self.INITparameters[key]:
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
+        # Flux-match first ---------------
+        if self.use_previous_surrogate_data:
+            self._flux_match_for_first_point()
+            # PORTALS just with one point
+            portals_fun.optimization_options['initial_training'] = 1
+        # --------------------------------
+
         portals_fun.prep(
             self.fileGACODE,
             ymax_rel = self.exploration_ranges['ymax_rel'],
@@ -84,6 +92,23 @@ class portals_beat(beat):
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
 
         self.prf_bo.run()
+
+
+    def _flux_match_for_first_point(self):
+
+        print('\t- Running flux match for first point')
+
+        # Flux-match first
+        folder_fm = f'{self.folder}/flux_match/'
+        os.system(f'mkdir -p {folder_fm}')
+
+        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
+        p = portals.powerstates[portals.ibest].profiles
+        powerstate = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=f'{folder_fm}/optimization_data.csv', plot_results = False)
+
+        # Move files
+        os.makedirs(f'{self.folder}/Outputs/', exist_ok=True)
+        os.system(f'cp {folder_fm}/optimization_data.csv {self.folder}/Outputs/.')
 
     def finalize(self, **kwargs):
 
@@ -217,6 +242,8 @@ class portals_beat(beat):
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             self.optimization_options['surrogateOptions'] = {"extrapointsFile": self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']}
 
+            self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
+
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
 
     def _inform_save(self):
@@ -234,6 +261,7 @@ class portals_beat(beat):
 
         fileTraining = f"{stepSettings['folderOutputs']}/surrogate_data.csv"
         
+        self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 
