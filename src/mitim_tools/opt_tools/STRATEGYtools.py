@@ -634,6 +634,13 @@ class PRF_BO:
 
         self.initializeOptimization()
 
+        self.currentIteration = -1
+        converged = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
+        if converged:
+            print("- Optimization has converged in training!",typeMsg="i")
+            self.numIterations = -1
+            self.hard_finish = True
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~ Iterative workflow
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

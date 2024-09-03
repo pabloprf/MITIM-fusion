@@ -75,12 +75,12 @@ class portals_beat(beat):
                 for subkey in self.INITparameters[key]:
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
-        # Flux-match first ---------------
+        # Flux-match first ------------------------------------------
         if self.use_previous_surrogate_data:
             self._flux_match_for_first_point()
             # PORTALS just with one point
             portals_fun.optimization_options['initial_training'] = 1
-        # --------------------------------
+        # -----------------------------------------------------------
 
         portals_fun.prep(
             self.fileGACODE,
