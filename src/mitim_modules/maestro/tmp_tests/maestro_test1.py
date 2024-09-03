@@ -110,7 +110,7 @@ def run_maestro():
     m.prepare(**transp_namelist)
     m.run()
 
-    for i in range(8):
+    for i in range(9):
         # EPED
         m.define_beat('eped')
         m.prepare(**eped_parameters)
@@ -118,7 +118,7 @@ def run_maestro():
 
         # PORTALS
         m.define_beat('portals')
-        m.prepare(**portals_namelist,use_previous_surrogate_data=True)
+        m.prepare(**portals_namelist,use_previous_surrogate_data=True if i>0 else False) # Reuse the surrogate data if I'm not coming from a TRANSP run
         m.run()
 
     m.finalize()
