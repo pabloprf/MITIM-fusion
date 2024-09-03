@@ -85,7 +85,7 @@ class portals_beat(beat):
 
         self.prf_bo.run()
 
-    def finalize(self):
+    def finalize(self, **kwargs):
 
         # Remove output folders
         os.system(f'rm -r {self.folder_output}/*')

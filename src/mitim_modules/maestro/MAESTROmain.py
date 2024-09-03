@@ -198,7 +198,7 @@ class maestro:
                 self.beat.run(**kwargs)
 
                 # Finalize
-                self.beat.finalize()
+                self.beat.finalize(**kwargs)
 
                 # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
                 print('\t\t- Merging engineering parameters from MAESTRO')

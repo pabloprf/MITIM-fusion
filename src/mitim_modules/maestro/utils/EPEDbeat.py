@@ -201,7 +201,7 @@ class eped_beat(beat):
 
         return eped_results
 
-    def finalize(self):
+    def finalize(self, **kwargs):
         
         self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
 
