@@ -207,6 +207,8 @@ class portals_beat(beat):
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
+            if 'stopping_criteria_parameters' not in self.optimization_options:
+                self.optimization_options['stopping_criteria_parameters'] = {}
             self.optimization_options['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
             self.optimization_options['stopping_criteria_parameters']['maximum_value_is_rel'] = False
 

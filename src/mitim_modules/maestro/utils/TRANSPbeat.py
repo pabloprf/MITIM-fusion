@@ -135,7 +135,7 @@ class transp_beat(beat):
 
         self.transp.c = CDFtools.transp_output(f"{self.folder}/{self.shot}{self.runid}.CDF")
 
-    def finalize(self, force_auxiliary_heating = {'Pe': None, 'Pi': None}, **kwargs):
+    def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
         # Copy to outputs
         os.system(f'cp {self.folder}/{self.shot}{self.runid}TR.DAT {self.folder_output}/.')
@@ -147,22 +147,22 @@ class transp_beat(beat):
         self.profiles_output = self.transp.c.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
-        self._add_heating_profiles(force_auxiliary_heating)
+        self._add_heating_profiles(force_auxiliary_heating_at_output)
 
         # Write profiles
         self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
 
-    def _add_heating_profiles(self, force_auxiliary_heating = {'Pe': None, 'Pi': None}):
+    def _add_heating_profiles(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}):
         '''
-        force_auxiliary_heating['Pe'] has the shaping function (takes rho) and the integrated value
+        force_auxiliary_heating_at_output['Pe'] has the shaping function (takes rho) and the integrated value
         '''
 
         for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MWmiller', 'qRFi_MWmiller']):
 
-            if force_auxiliary_heating[key] is not None:
-                self.profiles_output.profiles[pkey] = force_auxiliary_heating[key][0](self.profiles_output.profiles['rho(-)'])
+            if force_auxiliary_heating_at_output[key] is not None:
+                self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
                 self.profiles_output.deriveQuantities()
-                self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating[key][1]/self.profiles_output.derived[ikey][-1]
+                self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
 
     def merge_parameters(self):
         '''
