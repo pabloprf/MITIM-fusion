@@ -18,7 +18,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
-    beats = sorted(os.listdir(folder_beats), key=lambda x: int(x.split('_')[1]))
+    beats = sorted([item for item in os.listdir(folder_beats) if not item.startswith(".")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
