@@ -128,10 +128,10 @@ If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and wa
     cdf_file = 'MITIM-fusion/tests/data/12345.CDF'
     folder   = 'MITIM-fusion/tests/scratch/tglf_tut/'
 
-    tglf     = TGLFtools.TGLF( cdf    = cdf_file,
-                                hos   = [0.5,0.7],
-                                ime   = 2.5,
-                                vTime = 0.02 )
+    tglf     = TGLFtools.TGLF(  cdf    = cdf_file,
+                                rhos   = [0.5,0.7],
+                                time   = 2.5,
+                                avTime = 0.02 )
 
 Similarly as in the previous section, you need to run the ``prep()`` command, but this time you do not need to provide the input.gacode file:
 
