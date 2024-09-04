@@ -1,5 +1,6 @@
 import copy
 import os
+import datetime
 from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -76,15 +77,17 @@ class maestro:
 
     def define_beat(self, beat, initializer = None, restart = False):
 
+        timeBeginning = datetime.datetime.now()
+
         self.counter_current += 1
         if beat == 'transp':
-            print(f'\n- Beat {self.counter_current}: TRANSP ********************************************************************')
+            print(f'\n- Beat {self.counter_current}: TRANSP ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = transp_beat(self)
         elif beat == 'portals':
-            print(f'\n- Beat {self.counter_current}: PORTALS ********************************************************************')
+            print(f'\n- Beat {self.counter_current}: PORTALS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = portals_beat(self)
         elif beat == 'eped':
-            print(f'\n- Beat {self.counter_current}: EPED ********************************************************************')
+            print(f'\n- Beat {self.counter_current}: EPED ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = eped_beat(self)
 
         # Access current beat easily

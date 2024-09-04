@@ -703,7 +703,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
     return dictOFs
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False
+    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False, tabs_colors=0,
     ):
     if plotYN:
         print("\n *****************************************************")
@@ -722,7 +722,7 @@ def analyze_results(
 
     if plotYN:
         portals_full.fn = fn
-        portals_full.plotPORTALS()
+        portals_full.plotPORTALS(tabs_colors_common=tabs_colors)
 
     # ----------------------------------------------------------------------------------------------------------------
     # Running cases: Original and Best

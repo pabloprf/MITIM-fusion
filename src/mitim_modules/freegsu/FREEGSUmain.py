@@ -266,6 +266,7 @@ def analyze_results(
     onlyBest=False,
     analysis_level=2,
     onlyPrepare=False,
+    **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff

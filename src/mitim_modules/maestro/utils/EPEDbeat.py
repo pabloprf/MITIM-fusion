@@ -228,7 +228,7 @@ class eped_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
-        fig = fn.add_figure(label='EPED', tab_color=5)
+        fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
             ABCDH

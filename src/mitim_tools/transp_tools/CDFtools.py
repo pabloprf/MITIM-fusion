@@ -13217,12 +13217,12 @@ class transp_output:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, counter=0):
+    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, tab_color=0):
         if time is None:
             time = self.t[self.ind_saw]
 
         name = f"MITIM Notebook, run #{self.nameRunid}, profiles at time t={time:.3f}s"
-        fn_color = counter if counter > 0 else None
+        fn_color = tab_color if tab_color > 0 else None
 
         if fn is None:
             self.fn = FigureNotebook(name)

@@ -320,7 +320,7 @@ def runTGLF(
 
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2
+    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2, **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff

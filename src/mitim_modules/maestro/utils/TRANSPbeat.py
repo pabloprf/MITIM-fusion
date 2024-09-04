@@ -240,7 +240,7 @@ class transp_beat(beat):
         if c is None:
             return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
         
-        c.plot(fn = fn, counter = counter) 
+        c.plot(fn = fn, tab_color = counter) 
 
         return '\t\t- Plotting of TRANSP beat done'
 

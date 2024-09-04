@@ -271,6 +271,7 @@ class opt_evaluator:
         plotYN=True,
         pointsEvaluateEachGPdimension=50,
         save_folder=None,
+        tabs_colors=0,
     ):
         time1 = datetime.datetime.now()
 

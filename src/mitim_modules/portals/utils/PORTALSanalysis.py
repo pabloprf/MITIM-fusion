@@ -359,24 +359,24 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self):
+    def plotPORTALS(self, tabs_colors_common = None):
         if self.fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000")
 
-        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=0)
+        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=0 if tabs_colors_common is None else tabs_colors_common)
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=self.fn, fn_color=1)
+        self.plotSummary(fn=self.fn, fn_color=1 if tabs_colors_common is None else tabs_colors_common)
 
-        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=2)
+        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=2 if tabs_colors_common is None else tabs_colors_common)
         self.plotMetrics(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=3)
+        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=3 if tabs_colors_common is None else tabs_colors_common)
         self.plotExpected(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4)
+        fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
         _, _ = self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):

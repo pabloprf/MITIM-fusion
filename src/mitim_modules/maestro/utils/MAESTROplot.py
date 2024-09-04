@@ -224,9 +224,9 @@ def plot_results(self, fn):
     ax.legend()
 
     rotation = 90
-    
-    ax.tick_params(axis='x', rotation=rotation)
+    fontsize = 6
 
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
     # -----------------------------------------------------------------
 
     ax = axs['B']
@@ -254,7 +254,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
-    ax.tick_params(axis='x', rotation=rotation)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
     ax = axs['G']
@@ -273,7 +273,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
-    ax.tick_params(axis='x', rotation=rotation)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
 
@@ -296,7 +296,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     
-    ax.tick_params(axis='x', rotation=rotation)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
 
