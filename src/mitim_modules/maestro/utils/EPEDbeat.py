@@ -296,9 +296,9 @@ class eped_beat(beat):
 
         self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
 
-        print('\t\t- neped_20 saved for future beats')
+        self.maestro_instance.parameters_trans_beat['rhotop'] = eped_output['rhotop']
 
-
+        print('\t\t- neped_20 and rhotop saved for future beats')
 
 def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     '''

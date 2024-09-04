@@ -1,5 +1,6 @@
 import os
 import copy
+import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
@@ -17,6 +18,7 @@ class portals_beat(beat):
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,
+            change_last_radial_call = False,
             additional_params_in_surrogate = [],
             exploration_ranges = {
                 'ymax_rel': 1.0,
@@ -41,8 +43,12 @@ class portals_beat(beat):
 
         self.exploration_ranges = exploration_ranges
         self.use_previous_surrogate_data = use_previous_surrogate_data
+        self.change_last_radial_call = change_last_radial_call
 
-        self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = self.use_previous_surrogate_data)
+        self._inform(use_previous_residual = use_previous_residual, 
+                     use_previous_surrogate_data = self.use_previous_surrogate_data,
+                     change_last_radial_call = self.change_last_radial_call
+                     )
 
     def run(self, **kwargs):
 
@@ -227,7 +233,7 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
-    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True):
+    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True, change_last_radial_call = False):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
@@ -245,6 +251,20 @@ class portals_beat(beat):
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
+
+        if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
+
+            # interpolate the correct roa location from the EPED pedestal top, if it is defined
+            roatop = np.interp(self.maestro_instance.parameters_trans_beat['rhotop'], 
+                               self.profiles_current.profiles['rho(-)'], 
+                               self.profiles_current.derived['roa'])
+            
+            roatop = round(roatop, 3)
+            
+            # set the last value of the radial locations to the interpolated value
+            self.MODELparameters["RoaLocations"][-1] = roatop
+
+
 
     def _inform_save(self):
 
