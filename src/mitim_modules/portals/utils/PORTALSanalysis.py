@@ -762,41 +762,65 @@ class simple_model_portals:
 
 class wrapped_model_portals:
     def __init__(self, gpdict):
-        self.models = {}
-        self.targets = {}
-        self.input_variables = []
-        self.output_variables = []
-        self.training_inputs = {}
-        self.training_outputs = {}
+        self._models = {}
+        self._targets = {}
+        self._input_variables = []
+        self._output_variables = []
+        self._training_inputs = {}
+        self._training_outputs = {}
         if isinstance(gpdict, dict):
             for key in gpdict:
                 if 'Tar' in key:
-                    self.targets[key] = gpdict[key]
+                    self._targets[key] = gpdict[key]
                 else:
-                    self.models[key] = gpdict[key]
-        for key in self.models:
-            if hasattr(self.models[key], 'variables'):
-                for var in self.models[key].variables:
-                    if var not in self.input_variables:
-                        self.input_variables.append(var)
-                if key not in self.output_variables:
-                    self.output_variables.append(key)
-        for key in self.models:
-            if hasattr(self.models[key], 'gpmodel'):
-                if hasattr(self.models[key].gpmodel, 'train_X_usedToTrain'):
-                    xtrain = self.models[key].gpmodel.train_X_usedToTrain.detach().numpy()
+                    self._models[key] = gpdict[key]
+        for key in self._models:
+            if hasattr(self._models[key], 'variables'):
+                for var in self._models[key].variables:
+                    if var not in self._input_variables:
+                        self._input_variables.append(var)
+                if key not in self._output_variables:
+                    self._output_variables.append(key)
+        for key in self._models:
+            if hasattr(self._models[key], 'gpmodel'):
+                if hasattr(self._models[key].gpmodel, 'train_X_usedToTrain'):
+                    xtrain = self._models[key].gpmodel.train_X_usedToTrain.detach().numpy()
                     if len(xtrain.shape) < 2:
                         xtrain = np.atleast_2d(xtrain)
-                    if xtrain.shape[1] != len(self.input_variables):
+                    if xtrain.shape[1] != len(self._input_variables):
                         xtrain = xtrain.T
-                    self.training_inputs[key] = pd.DataFrame(xtrain, columns=self.input_variables)
-                if hasattr(self.models[key].gpmodel, 'train_Y_usedToTrain'):
-                    ytrain = self.models[key].gpmodel.train_Y_usedToTrain.detach().numpy()
+                    self._training_inputs[key] = pd.DataFrame(xtrain, columns=self._input_variables)
+                if hasattr(self._models[key].gpmodel, 'train_Y_usedToTrain'):
+                    ytrain = self._models[key].gpmodel.train_Y_usedToTrain.detach().numpy()
                     if len(ytrain.shape) < 2:
                         ytrain = np.atleast_2d(ytrain)
                     if ytrain.shape[1] != 1:
                         ytrain = ytrain.T
-                    self.training_outputs[key] = pd.DataFrame(ytrain, columns=[key])
+                    self._training_outputs[key] = pd.DataFrame(ytrain, columns=[key])
+
+    @property
+    def models(self):
+        return self._models
+
+    @property
+    def targets(self):
+        return self._targets
+
+    @property
+    def input_variables(self):
+        return copy.deepcopy(self._input_variables)
+
+    @property
+    def output_variables(self):
+        return copy.deepcopy(self._output_variables)
+
+    @property
+    def training_inputs(self):
+        return copy.deepcopy(self._training_inputs)
+
+    @property
+    def training_outputs(self):
+        return copy.deepcopy(self._training_outputs)
 
     def printInfo(self, detailed=False):
         print(f"> Models for {self.output_variables} created")
@@ -804,7 +828,7 @@ class wrapped_model_portals:
             f"\t- Requires {len(self.input_variables)} variables to evaluate: {self.input_variables}"
         )
         if detailed:
-            for key, model in self.models.items():
+            for key, model in self._models.items():
                 model.printInfo()
 
     def evalModel(self, x, key):
@@ -813,7 +837,7 @@ class wrapped_model_portals:
             x = torch.Tensor(x)
             numpy_provided = True
 
-        mean, upper, lower, _ = self.models[key].predict(
+        mean, upper, lower, _ = self._models[key].predict(
             x, produceFundamental=True
         )
 
@@ -833,7 +857,7 @@ class wrapped_model_portals:
             x = torch.Tensor(x)
             numpy_provided = True
 
-        _, _, _, samples = self.models[key].predict(
+        _, _, _, samples = self._models[key].predict(
             x, produceFundamental=True, nSamples=samples
         )
 
@@ -845,8 +869,8 @@ class wrapped_model_portals:
 
     def predict(self, x, outputs=None):
         y = {}
-        targets = outputs if isinstance(outputs, (list, tuple)) else list(self.models.keys())
-        for ytag, model in self.models.items():
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self._models.keys())
+        for ytag, model in self._models.items():
             if ytag in targets:
                 inp = copy.deepcopy(x)
                 if isinstance(x, pd.DataFrame):
@@ -856,8 +880,8 @@ class wrapped_model_portals:
 
     def sample(self, x, samples, outputs=None):
         y = {}
-        targets = outputs if isinstance(outputs, (list, tuple)) else list(self.models.keys())
-        for ytag, model in self.models.items():
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self._models.keys())
+        for ytag, model in self._models.items():
             if ytag in targets:
                 inp = copy.deepcopy(x)
                 if isinstance(x, pd.DataFrame):
@@ -875,8 +899,8 @@ class wrapped_model_portals:
 
     def generateScan(self, output, iteration=-1, scan_range=0.5, scan_resolution=2):
         scan_list = []
-        if output in self.training_inputs:
-            base = self.training_inputs[output]
+        if output in self._training_inputs:
+            base = self._training_inputs[output]
             idx = base.index.values[iteration]
             for var in base:
                 scan_length = scan_resolution * 2 - 1
