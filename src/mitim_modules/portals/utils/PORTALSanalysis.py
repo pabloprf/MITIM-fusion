@@ -444,7 +444,6 @@ class PORTALSanalyzer:
         # Make dictionary
         models = {}
         for gp in gps:
-            #models[gp.output] = simple_model_portals(gp)
             models[gp.output] = gp
 
         # PRINTING
@@ -711,53 +710,6 @@ class PORTALSanalyzer:
 # ****************************************************************************
 # Helpers
 # ****************************************************************************
-
-
-class simple_model_portals:
-    def __init__(self, gp):
-        self.gp = gp
-
-        self.x = self.gp.gpmodel.train_X_usedToTrain
-        self.y = self.gp.gpmodel.train_Y_usedToTrain
-        self.yvar = self.gp.gpmodel.train_Yvar_usedToTrain
-
-        # self.printInfo()
-
-    def printInfo(self):
-        print(f"> Model for {self.gp.output} created")
-        print(
-            f"\t- Fitted to {len(self.gp.variables)} variables in this order: {self.gp.variables}"
-        )
-        print(f"\t- Trained with {self.x.shape[0]} points")
-
-    def __call__(self, x, samples=None):
-        numpy_provided = False
-        if isinstance(x, np.ndarray):
-            x = torch.Tensor(x)
-            numpy_provided = True
-
-        mean, upper, lower, samples = self.gp.predict(
-            x, produceFundamental=True, nSamples=samples
-        )
-
-        if samples is None:
-            if numpy_provided:
-                return (
-                    mean[..., 0].detach().cpu().numpy(),
-                    upper[..., 0].detach().cpu().numpy(),
-                    lower[..., 0].detach().cpu().numpy(),
-                )
-            else:
-                return (
-                    mean[..., 0].detach(),
-                    upper[..., 0].detach(),
-                    lower[..., 0].detach(),
-                )
-        else:
-            if numpy_provided:
-                return samples[..., 0].detach().cpu().numpy()
-            else:
-                return samples[..., 0].detach()
 
 
 class wrapped_model_portals:
