@@ -763,10 +763,17 @@ class simple_model_portals:
 class wrapped_model_portals:
     def __init__(self, gpdict):
         self.models = {}
+        self.targets = {}
         self.input_variables = []
         self.output_variables = []
+        self.training_inputs = {}
+        self.training_outputs = {}
         if isinstance(gpdict, dict):
-            self.models.update(gpdict)
+            for key in gpdict:
+                if 'Tar' in key:
+                    self.targets[key] = gpdict[key]
+                else:
+                    self.models[key] = gpdict[key]
         for key in self.models:
             if hasattr(self.models[key], 'variables'):
                 for var in self.models[key].variables:
@@ -774,6 +781,22 @@ class wrapped_model_portals:
                         self.input_variables.append(var)
                 if key not in self.output_variables:
                     self.output_variables.append(key)
+        for key in self.models:
+            if hasattr(self.models[key], 'gpmodel'):
+                if hasattr(self.models[key].gpmodel, 'train_X_usedToTrain'):
+                    xtrain = self.models[key].gpmodel.train_X_usedToTrain.detach().numpy()
+                    if len(xtrain.shape) < 2:
+                        xtrain = np.atleast_2d(xtrain)
+                    if xtrain.shape[1] != len(self.input_variables):
+                        xtrain = xtrain.T
+                    self.training_inputs[key] = pd.DataFrame(xtrain, columns=self.input_variables)
+                if hasattr(self.models[key].gpmodel, 'train_Y_usedToTrain'):
+                    ytrain = self.models[key].gpmodel.train_Y_usedToTrain.detach().numpy()
+                    if len(ytrain.shape) < 2:
+                        ytrain = np.atleast_2d(ytrain)
+                    if ytrain.shape[1] != 1:
+                        ytrain = ytrain.T
+                    self.training_outputs[key] = pd.DataFrame(ytrain, columns=[key])
 
     def printInfo(self, detailed=False):
         print(f"> Models for {self.output_variables} created")
