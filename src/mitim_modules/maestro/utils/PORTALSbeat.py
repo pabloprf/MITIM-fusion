@@ -254,17 +254,26 @@ class portals_beat(beat):
 
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
-            # interpolate the correct roa location from the EPED pedestal top, if it is defined
-            roatop = np.interp(self.maestro_instance.parameters_trans_beat['rhotop'], 
-                               self.profiles_current.profiles['rho(-)'], 
-                               self.profiles_current.derived['roa'])
-            
-            roatop = round(roatop, 3)
-            
-            # set the last value of the radial locations to the interpolated value
-            self.MODELparameters["RoaLocations"][-1] = roatop
+            if 'RoaLocations' in self.MODELparameters:
 
+                print('\t\t- Using EPED pedetsal top rho to select last radial location of PORTALS in r/a')
 
+                # interpolate the correct roa location from the EPED pedestal top, if it is defined
+                roatop = np.interp(self.maestro_instance.parameters_trans_beat['rhotop'], 
+                                self.profiles_current.profiles['rho(-)'], 
+                                self.profiles_current.derived['roa'])
+                
+                roatop = round(roatop, 3)
+                
+                # set the last value of the radial locations to the interpolated value
+                self.MODELparameters["RoaLocations"][-1] = roatop
+
+            else:
+
+                print('\t\t- Using EPED pedetsal top rho to select last radial location of PORTALS in rho')
+
+                # set the last value of the radial locations to the interpolated value
+                self.MODELparameters["RhoLocations"][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
 
     def _inform_save(self):
 
