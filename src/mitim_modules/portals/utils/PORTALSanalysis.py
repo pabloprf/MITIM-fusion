@@ -873,6 +873,24 @@ class wrapped_model_portals:
             out = self.sample(x, samples=samples, outputs=outputs)
         return out
 
+    def generateScan(self, output, iteration=-1, scan_range=0.5, scan_resolution=2):
+        scan_list = []
+        if output in self.training_inputs:
+            base = self.training_inputs[output]
+            idx = base.index.values[iteration]
+            for var in base:
+                scan_length = scan_resolution * 2 - 1
+                scan_data = {}
+                if scan_length > 1:
+                    scan_data = {key: np.array([base.loc[idx, key]] * scan_length) for key in base}
+                    scan_data[var] = (1.0 + np.linspace(-1.0, 1.0, scan_length) * scan_range) * scan_data[var]
+                else:
+                    scan_data = base.loc[idx, :].to_dict()
+                for key in scan_data:
+                    scan_data[key] = np.atleast_1d(scan_data[key])
+                scan_list.append(pd.DataFrame(data=scan_data))
+        return pd.concat(scan_list, axis=0, ignore_index=True)
+
 
 def calcLinearizedModel(
     prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
