@@ -7,6 +7,7 @@ from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
+from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -274,6 +275,8 @@ def create_initial_conditions(te_avg,
                               Te=None,
                               ne=None,
                               Ti=None, 
+                              geometry=None,
+                              plotYN=False,
                               ):
     
     """Returns a PRF functional form of the kinetic profiles for the initial conditions
@@ -300,7 +303,6 @@ def create_initial_conditions(te_avg,
 
     if use_eped_pedestal:
         BC_index = np.argmin(np.abs(rho-0.95))
-        print(BC_index)
         width_top = width_top
         ne_ped = n[BC_index]
         Te_ped = T[BC_index]
@@ -311,6 +313,9 @@ def create_initial_conditions(te_avg,
         T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
         n[BC_index:] = n_ped[BC_index:]
         T[BC_index:] = T_ped[BC_index:]
+
+        print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
+
 
     preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
@@ -344,8 +349,8 @@ def create_initial_conditions(te_avg,
         {n_rho}                    ;-# OF  X1 PTS-
 """
     
-    if Te is not None:
-        T = Te
+    if Te is None:
+        Te = T
 
     with open(file_output_location+"/TE_ASTRA", 'w')  as f:
         f.write(preamble_Temp)
@@ -356,8 +361,8 @@ def create_initial_conditions(te_avg,
         f.write("\n ")
         f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
-    if Ti is not None:
-        T = Ti
+    if Ti is None:
+        Ti = T
 
     with open(file_output_location+"/TI_ASTRA", 'w')  as f:
         f.write(preamble_Temp)
@@ -392,12 +397,73 @@ def create_initial_conditions(te_avg,
             f.write("\n ")
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
-    fig, ax = plt.subplots(figsize=(10,8))
-    ax.plot(rho, T, label='T')
-    ax.plot(rho, n, label='n')  
-    #ax.set_ylabel(r"$T_e$ [eV]")
-    ax.set_xlabel(r"$\rho$")
-    ax.set_title("Initial temperature profile")
-    ax.legend()
-    plt.show()
+    if geometry is not None:
+        # load in geqdsk file and extract geometry
+        g = GEQtools.MITIMgeqdsk(geometry)
+        RZ = np.array([g.Rb,g.Yb]).T
+
+        r_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
+ POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
+ R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
+          1                    ;-# OF  X PTS-
+        {len(g.Rb)}                    ;-# OF  Y PTS-
+"""
+        
+        z_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
+ POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
+ R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
+          1                    ;-# OF  X PTS-
+        {len(g.Yb)}                    ;-# OF  Y PTS-
+"""
+        
+        with open(file_output_location+"/R_BOUNDARY", 'w')  as f:
+            x = range(1,len(g.Rb)+1)
+            f.write(r_preamble)
+            f.write(f" 1.000000e-01\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n")
+            f.write("\n".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in g.Rb[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+        with open(file_output_location+"/Z_BOUNDARY", 'w')  as f:
+            x = range(1,len(g.Yb)+1)
+            f.write(z_preamble)
+            f.write(f" 1.000000e-01\n ")
+            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n")
+            f.write("\n".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in g.Yb[i:i + 6]) for i in range(0, len(x), 6)))
+            f.write("\n ")
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+    if plotYN==True:
+        fn = GUItools.FigureNotebook("MAESTRO")
+        fig = fn.add_figure(label='Kinetic Profiles', tab_color=1)
+        ax = fig.add_subplot(121)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.plot(rho, T, label='T')
+        ax.plot(rho, n, label='n')  
+        ax.set_ylabel(r"$T_e$ [eV]")
+        ax.set_xlabel(r"$\rho$")
+        ax.set_title("Initial temperature profile")
+        ax.legend()
+
+        ax_geo = fig.add_subplot(122)
+        ax_geo.plot(RZ[:,0], RZ[:,1], label='Geometry')
+
+        fn.show()
+
+if __name__=="__main__":
+    mfe_im_path = '/Users/hallj/MFE-IM'
+
+    create_initial_conditions(10,20, file_output_location='/Users/hallj/MITIM-fusion/src/mitim_tools/astra_tools/tmp',
+                              geometry=f'{mfe_im_path}/private_data/ARCV2B.geqdsk', q_profile=None, plotYN=False)
 
