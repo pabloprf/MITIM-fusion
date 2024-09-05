@@ -441,6 +441,19 @@ class PRF_BO:
            (self.optimization_options['stopping_criteria'] is None):
                 self.optimization_options['stopping_criteria'] = stopping_criteria_default
 
+        # Add optimization print
+        if self.optimization_options is not None:
+            unprint_fun = copy.deepcopy(self.optimization_options['stopping_criteria'])
+            def opt_crit(*args,**kwargs):
+                print('\n--------------------------------------------------')
+                print('Optimization criteria')
+                print('--------------------------------------------------')
+                v = unprint_fun(*args,**kwargs)
+                print('--------------------------------------------------\n')
+                return v
+            self.optimization_options['stopping_criteria'] = opt_crit
+
+
         # Check if the variables are expected
         if self.optimization_options is not None:
             namelist = __mitimroot__ +"/templates/main.namelist.json"
@@ -636,7 +649,7 @@ class PRF_BO:
         self.initializeOptimization()
 
         self.currentIteration = -1
-        converged = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
+        converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = -1
@@ -1125,7 +1138,7 @@ class PRF_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        converged = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
+        converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
 
         if converged:
             self.hard_finish = self.hard_finish or True
@@ -1867,61 +1880,72 @@ def stopping_criteria_default(prf_bo, parameters = {}):
 
     if maximum_value_is_rel:
         maximum_value = maximum_value_orig * res_base
-        print(f'\n* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}',typeMsg="i")
+        print(f'\t* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}')
     else:
         maximum_value = maximum_value_orig
-        print(f'\n* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})',typeMsg="i" )
+        print(f'\t* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})' )
         
     # ------------------------------------------------------------------------------------
     # Stopping criteria
     # ------------------------------------------------------------------------------------
 
-    converged = stopping_criteria_by_value(prf_bo, maximum_value) or stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation)
+    if minimum_dvs_variation is not None:
+        converged_by_dvs, yvals = stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation)
+    else:
+        converged_by_dvs = False
+        yvals = None
 
-    return converged
+    if maximum_value is not None:
+        converged_by_value, yvals = stopping_criteria_by_value(prf_bo, maximum_value)
+    else:
+        converged_by_value = False
+        yvals = None
+
+    converged = converged_by_value or converged_by_dvs
+
+    return converged, yvals
 
 def stopping_criteria_by_value(prf_bo, maximum_value):
 
-    if maximum_value is not None:
-        print("\t- Checking maximum value so far...")
-        _, _, maximization_value = prf_bo.scalarized_objective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
+    # Grab scalarized objectives for each case
+    print("\t- Checking maximum value so far...")
+    _, _, maximization_value = prf_bo.scalarized_objective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
+    yvals = maximization_value.cpu().numpy()
 
-        best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
+    # Best case (maximization)
+    best_value_so_far = np.nanmax(yvals)
 
-        print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (threshold: {maximum_value:.3e})')
+    # Converged?
+    print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (threshold: {maximum_value:.3e})')
+    criterion_is_met = best_value_so_far > maximum_value
 
-        criterion_is_met = best_value_so_far > maximum_value
-
-    else:
-        criterion_is_met = False
-
-    return criterion_is_met
+    return criterion_is_met, -yvals
 
 def stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation):
 
-    if minimum_dvs_variation is not None:
-        print("\t- Checking DV variations...")
+    print("\t- Checking DV variations...")
+    _, yG_max = TESTtools.DVdistanceMetric(prf_bo.train_X)
 
-        _, yG_max = TESTtools.DVdistanceMetric(prf_bo.train_X)
-
-        criterion_is_met = (
-            prf_bo.currentIteration
-            >= minimum_dvs_variation[0]
-            + minimum_dvs_variation[1]
+    criterion_is_met = (
+        prf_bo.currentIteration
+        >= minimum_dvs_variation[0]
+        + minimum_dvs_variation[1]
+    )
+    for i in range(int(minimum_dvs_variation[1])):
+        criterion_is_met = criterion_is_met and (
+            yG_max[-1 - i] < minimum_dvs_variation[2]
         )
-        for i in range(int(minimum_dvs_variation[1])):
-            criterion_is_met = criterion_is_met and (
-                yG_max[-1 - i] < minimum_dvs_variation[2]
-            )
 
-        if criterion_is_met:
-            print(
-                f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
-            )
+    if criterion_is_met:
+        print(
+            f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+        )
     else:
-        criterion_is_met = False
+        print(
+            f"\t\t* DVs have varied by more than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+        )
 
-    return criterion_is_met
+    return criterion_is_met, yG_max
 
 def read_from_scratch(file):
     """

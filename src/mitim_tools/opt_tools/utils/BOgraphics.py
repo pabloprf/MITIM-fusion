@@ -1555,27 +1555,10 @@ Workflow start time: {IOtools.getStringFromTime()}
         self.lines = STR_header + STR_inputs + STR_exec
 
     def getBest(self, rangeT=None):
-        if rangeT is None:
-            evaluations = self.evaluations
-        else:
-            evaluations = self.evaluations[rangeT[0] : rangeT[1]]
 
-        xe, ofcaldif, ofcalMdif, res = plotAndGrab(
-            None,
-            None,
-            None,
-            None,
-            evaluations,
-            self.OF_labels,
-            None,
-            self.PRF_BO.scalarized_objective,
-            alpha=0.0,
-            alphaM=0.0,
-            lab=False,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
-        )
+        converged, res = self.PRF_BO.optimization_options['stopping_criteria'](self.PRF_BO, parameters = self.PRF_BO.optimization_options['stopping_criteria_parameters'])
 
-        best_absolute_index = np.nanargmax(res)
+        best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]
 
         if rangeT is not None:
