@@ -61,7 +61,8 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
 
 # To see what values this namelist can take: mitim_modules/maestro/utils/EPEDbeat.py: prepare()
 eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5',
-                    'norm_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt' }
+                    'norm_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt',
+                    'neped_20' : parameters['neped_20']}
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Workflow
