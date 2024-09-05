@@ -37,7 +37,8 @@
         "stds_outside": null,
         "stds_outside_checker": 5,
         "extrapointsFile": null,
-        "extrapointsModels": null
+        "extrapointsModels": null,
+        "extrapointsModelsAvoidContent": null
     },
     "StrategyOptions": {
         "boundsRefine": null,

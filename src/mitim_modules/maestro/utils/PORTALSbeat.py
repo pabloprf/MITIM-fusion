@@ -45,6 +45,8 @@ class portals_beat(beat):
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
+        self.try_flux_match_only_for_first_point = True
+
         self._inform(use_previous_residual = use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
                      change_last_radial_call = self.change_last_radial_call
@@ -82,7 +84,7 @@ class portals_beat(beat):
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
         # Flux-match first ------------------------------------------
-        if self.use_previous_surrogate_data:
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
             self._flux_match_for_first_point()
             # PORTALS just with one point
             portals_fun.optimization_options['initial_training'] = 1
@@ -98,7 +100,6 @@ class portals_beat(beat):
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
 
         self.prf_bo.run()
-
 
     def _flux_match_for_first_point(self):
 
@@ -245,13 +246,19 @@ class portals_beat(beat):
 
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['stopping_criteria_parameters']['maximum_value']}")
 
+        reusing_surrogate_data = False
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
-            self.optimization_options['surrogateOptions'] = {"extrapointsFile": self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']}
+            if 'surrogateOptions' not in self.optimization_options:
+                self.optimization_options['surrogateOptions'] = {}
+            self.optimization_options['surrogateOptions']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
 
+            reusing_surrogate_data = True
+
+        last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
             if 'RoaLocations' in self.MODELparameters:
@@ -268,12 +275,25 @@ class portals_beat(beat):
                 # set the last value of the radial locations to the interpolated value
                 self.MODELparameters["RoaLocations"][-1] = roatop
 
+                strKeys = 'RoaLocations'
+
             else:
 
                 print('\t\t- Using EPED pedetsal top rho to select last radial location of PORTALS in rho')
 
                 # set the last value of the radial locations to the interpolated value
                 self.MODELparameters["RhoLocations"][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
+
+                strKeys = 'RhoLocations'
+
+            last_radial_location_moved = True
+
+
+        # In the situation where the last radial location moves, I cannot reuse that surrogate data
+        if last_radial_location_moved and reusing_surrogate_data:
+            print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
+            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
 
