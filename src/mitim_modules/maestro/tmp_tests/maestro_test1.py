@@ -7,7 +7,7 @@ folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B
 # Parameters
 # -----------------------------------------------------------------------------------------------------------------------
 
-parameters  = {'Ip_MA': 10.95, 'B_T': 10.8, 'Zeff': 1.5, 'PichT_MW': 18.0, 'neped_20' : 2.0 , 'Tesep_keV': 0.1, 'nesep_20': 2.0/3.0}
+parameters  = {'Ip_MA': 10.95, 'B_T': 10.8, 'Zeff': 1.5, 'PichT_MW': 18.0, 'neped_20' : 1.8 , 'Tesep_keV': 0.1, 'nesep_20': 2.0/3.0}
 parameters_mix = {'DTplasma': True, 'lowZ_impurity': 9.0, 'impurity_ratio_WtoZ': 0.00286*0.5, 'minority': [1,1,0.02]}
 
 #initializer, geometry    = 'freegs', {'R': 4.25, 'a': 1.17, 'kappa_sep': 1.77, 'delta_sep': 0.58, 'zeta_sep': 0.0, 'z0': 0.0}
@@ -61,8 +61,7 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
 
 # To see what values this namelist can take: mitim_modules/maestro/utils/EPEDbeat.py: prepare()
 eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.h5',
-                    'norm_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt',
-                    'neped_20' : parameters['neped_20']}
+                    'norm_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION.txt'}
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Workflow
