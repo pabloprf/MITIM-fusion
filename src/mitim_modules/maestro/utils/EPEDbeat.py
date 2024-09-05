@@ -201,7 +201,7 @@ class eped_beat(beat):
 
         return eped_results
 
-    def finalize(self):
+    def finalize(self, **kwargs):
         
         self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
 
@@ -228,7 +228,7 @@ class eped_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
-        fig = fn.add_figure(label='EPED', tab_color=5)
+        fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
             ABCDH
@@ -296,9 +296,9 @@ class eped_beat(beat):
 
         self.maestro_instance.parameters_trans_beat['neped_20'] = eped_output['neped_20']
 
-        print('\t\t- neped_20 saved for future beats')
+        self.maestro_instance.parameters_trans_beat['rhotop'] = eped_output['rhotop']
 
-
+        print('\t\t- neped_20 and rhotop saved for future beats')
 
 def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     '''

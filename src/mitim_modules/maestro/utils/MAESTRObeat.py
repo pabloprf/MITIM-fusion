@@ -219,14 +219,19 @@ class initializer_from_freegs(initializer_from_geqdsk):
         ):
         
         # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
-        if 'ne' in kwargs_geqdsk.get('profiles',{}):
+        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
             print('\t- Using ne profile instead of the ne0 guess')
-            ne0_20 = kwargs_geqdsk['profiles']['ne'][1][0]
-        if 'Te' in kwargs_geqdsk.get('profiles',{}):
+            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
             print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
-            Te0_keV = kwargs_geqdsk['profiles']['Te'][1][0]
+            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
             p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
-            
+        # If betaN provided, use it to estimate the pressure
+        elif 'BetaN' in kwargs_geqdsk:
+            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
+            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
+            p0_MPa = pvol_MPa * 3.0
+
+
         # Run freegs to generate equilibrium
         f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
         f.prep(p0_MPa, Ip_MA, B_T)

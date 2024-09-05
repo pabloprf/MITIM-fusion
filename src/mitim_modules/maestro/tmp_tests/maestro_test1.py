@@ -1,7 +1,7 @@
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
-folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run11/'
+folder = '/Users/pablorf/PROJECTS/project_2024_ARCim/maestro_runs/runs_v2/arcV2B_run15/'
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Parameters
@@ -11,7 +11,7 @@ parameters  = {'Ip_MA': 10.95, 'B_T': 10.8, 'Zeff': 1.5, 'PichT_MW': 18.0, 'nepe
 parameters_mix = {'DTplasma': True, 'lowZ_impurity': 9.0, 'impurity_ratio_WtoZ': 0.00286*0.5, 'minority': [1,1,0.02]}
 
 #initializer, geometry    = 'freegs', {'R': 4.25, 'a': 1.17, 'kappa_sep': 1.77, 'delta_sep': 0.58, 'zeta_sep': 0.0, 'z0': 0.0}
-initializer, geometry = 'geqdsk', {'geqdsk_file': f'{mfe_im_path}/private_data/ARCV2B.geqdsk', 'coeffs_MXH' : 5}
+initializer, geometry = 'geqdsk', {'geqdsk_file': f'{mfe_im_path}/private_data/ARCV2B.geqdsk', 'coeffs_MXH' : 7}
 
 BetaN_initialization = 1.5
 
@@ -102,7 +102,7 @@ def run_maestro():
 
     # PORTALS
     m.define_beat('portals')
-    m.prepare(**portals_namelist)
+    m.prepare(**portals_namelist, change_last_radial_call = True)
     m.run()
 
     # TRANSP
@@ -110,16 +110,15 @@ def run_maestro():
     m.prepare(**transp_namelist)
     m.run()
 
-    for i in range(2):
+    for i in range(9):
         # EPED
         m.define_beat('eped')
         m.prepare(**eped_parameters)
         m.run()
 
         # PORTALS
-        portals_namelist['optimization_options']['initial_training'] = 2 # Because we are using surrogate data
         m.define_beat('portals')
-        m.prepare(**portals_namelist,use_previous_surrogate_data=True)
+        m.prepare(**portals_namelist,use_previous_surrogate_data=i>0, change_last_radial_call = True) # Reuse the surrogate data if I'm not coming from a TRANSP run
         m.run()
 
     m.finalize()

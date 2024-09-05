@@ -333,9 +333,37 @@ class portals(STRATEGYtools.opt_evaluator):
         # Ignore targets in surrogate_data.csv
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        if 'extrapointsModels' not in self.optimization_options['surrogateOptions'] or \
+            self.optimization_options['surrogateOptions']['extrapointsModels'] is None or \
+            len(self.optimization_options['surrogateOptions']['extrapointsModels'])==0:
+
+            self._define_reuse_models()
+
+        else:
+            print("\t- extrapointsModels already defined, not changing")
+
+    def _define_reuse_models(self):
+        '''
+        The user can define a list of strings to avoid reusing surrogates.
+        e.g. 
+            'Tar' to avoid reusing targets
+            '_5' to avoid reusing position 5
+        '''
+
         self.optimization_options['surrogateOptions']['extrapointsModels'] = []
+
+        # Define avoiders
+        if self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] is None:
+            self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] = ['Tar']
+
+        # Define extrapointsModels
         for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
-            if 'Tar' not in key:
+            add_key = True
+            for avoid in self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent']:
+                if avoid in key:
+                    add_key = False
+                    break
+            if add_key:
                 self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
 
     def run(self, paramsfile, resultsfile):
@@ -703,7 +731,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
     return dictOFs
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False
+    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False, tabs_colors=0,
     ):
     if plotYN:
         print("\n *****************************************************")
@@ -722,7 +750,7 @@ def analyze_results(
 
     if plotYN:
         portals_full.fn = fn
-        portals_full.plotPORTALS()
+        portals_full.plotPORTALS(tabs_colors_common=tabs_colors)
 
     # ----------------------------------------------------------------------------------------------------------------
     # Running cases: Original and Best
