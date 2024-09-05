@@ -416,10 +416,9 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 def stopping_criteria_portals(prf_bo, parameters = {}):
 
     # Standard stopping criteria
-    converged_by_default = STRATEGYtools.stopping_criteria_default(prf_bo, parameters)
+    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(prf_bo, parameters)
 
     # Ricci metric
-
     ricci_value = parameters["ricci_value"]
     d0 = parameters.get("ricci_d0", 2.0)
     la = parameters.get("ricci_lambda", 1.0)
@@ -445,4 +444,12 @@ def stopping_criteria_portals(prf_bo, parameters = {}):
 
     converged_by_ricci = chiR.min() < ricci_value
 
-    return converged_by_default or converged_by_ricci
+    if converged_by_default:
+        print("\t- Default stopping criteria converged, providing as iteration values the scalarized objective")
+        return True, yvals
+    elif converged_by_ricci:
+        print("\t- Ricci metric converged, providing as iteration values the Ricci metric")
+        return True, chiR
+    else:
+        print("\t- No convergence yet, providing as iteration values the scalarized objective")
+        return False, yvals

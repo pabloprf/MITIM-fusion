@@ -1,8 +1,9 @@
 import os
 import copy
+import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals.utils import PORTALSanalysis
+from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
@@ -17,6 +18,7 @@ class portals_beat(beat):
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,
+            change_last_radial_call = False,
             additional_params_in_surrogate = [],
             exploration_ranges = {
                 'ymax_rel': 1.0,
@@ -40,8 +42,15 @@ class portals_beat(beat):
         self.additional_params_in_surrogate = additional_params_in_surrogate
 
         self.exploration_ranges = exploration_ranges
+        self.use_previous_surrogate_data = use_previous_surrogate_data
+        self.change_last_radial_call = change_last_radial_call
 
-        self._inform(use_previous_residual = use_previous_residual, use_previous_surrogate_data = use_previous_surrogate_data)
+        self.try_flux_match_only_for_first_point = True
+
+        self._inform(use_previous_residual = use_previous_residual, 
+                     use_previous_surrogate_data = self.use_previous_surrogate_data,
+                     change_last_radial_call = self.change_last_radial_call
+                     )
 
     def run(self, **kwargs):
 
@@ -74,6 +83,13 @@ class portals_beat(beat):
                 for subkey in self.INITparameters[key]:
                     portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
 
+        # Flux-match first ------------------------------------------
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+            self._flux_match_for_first_point()
+            # PORTALS just with one point
+            portals_fun.optimization_options['initial_training'] = 1
+        # -----------------------------------------------------------
+
         portals_fun.prep(
             self.fileGACODE,
             ymax_rel = self.exploration_ranges['ymax_rel'],
@@ -85,7 +101,23 @@ class portals_beat(beat):
 
         self.prf_bo.run()
 
-    def finalize(self):
+    def _flux_match_for_first_point(self):
+
+        print('\t- Running flux match for first point')
+
+        # Flux-match first
+        folder_fm = f'{self.folder}/flux_match/'
+        os.system(f'mkdir -p {folder_fm}')
+
+        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
+        p = portals.powerstates[portals.ibest].profiles
+        powerstate = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=f'{folder_fm}/optimization_data.csv', plot_results = False)
+
+        # Move files
+        os.makedirs(f'{self.folder}/Outputs/', exist_ok=True)
+        os.system(f'cp {folder_fm}/optimization_data.csv {self.folder}/Outputs/.')
+
+    def finalize(self, **kwargs):
 
         # Remove output folders
         os.system(f'rm -r {self.folder_output}/*')
@@ -178,10 +210,10 @@ class portals_beat(beat):
 
         if full_plot:
             opt_fun.fn = fn
-            opt_fun.plot_optimization_results(analysis_level=4)
+            opt_fun.plot_optimization_results(analysis_level=4, tab_color=counter)
         else:
             if len(opt_fun.powerstates)>0:
-                fig = fn.add_figure(label="PORTALS Metrics", tab_color=2)
+                fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
                 opt_fun.plotMetrics(fig=fig)
             else:
                 print('\t\t- PORTALS has not run enough to plot anything')
@@ -202,20 +234,66 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
-    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True):
+    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True, change_last_radial_call = False):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
+            if 'stopping_criteria_parameters' not in self.optimization_options:
+                self.optimization_options['stopping_criteria_parameters'] = {}
             self.optimization_options['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
             self.optimization_options['stopping_criteria_parameters']['maximum_value_is_rel'] = False
 
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['stopping_criteria_parameters']['maximum_value']}")
 
+        reusing_surrogate_data = False
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
-            self.optimization_options['surrogateOptions'] = {"extrapointsFile": self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']}
+            if 'surrogateOptions' not in self.optimization_options:
+                self.optimization_options['surrogateOptions'] = {}
+            self.optimization_options['surrogateOptions']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
+
+            self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
+
+            reusing_surrogate_data = True
+
+        last_radial_location_moved = False
+        if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
+
+            if 'RoaLocations' in self.MODELparameters:
+
+                print('\t\t- Using EPED pedetsal top rho to select last radial location of PORTALS in r/a')
+
+                # interpolate the correct roa location from the EPED pedestal top, if it is defined
+                roatop = np.interp(self.maestro_instance.parameters_trans_beat['rhotop'], 
+                                self.profiles_current.profiles['rho(-)'], 
+                                self.profiles_current.derived['roa'])
+                
+                roatop = round(roatop, 3)
+                
+                # set the last value of the radial locations to the interpolated value
+                self.MODELparameters["RoaLocations"][-1] = roatop
+
+                strKeys = 'RoaLocations'
+
+            else:
+
+                print('\t\t- Using EPED pedetsal top rho to select last radial location of PORTALS in rho')
+
+                # set the last value of the radial locations to the interpolated value
+                self.MODELparameters["RhoLocations"][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
+
+                strKeys = 'RhoLocations'
+
+            last_radial_location_moved = True
+
+
+        # In the situation where the last radial location moves, I cannot reuse that surrogate data
+        if last_radial_location_moved and reusing_surrogate_data:
+            print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
+            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
 
@@ -232,6 +310,7 @@ class portals_beat(beat):
 
         fileTraining = f"{stepSettings['folderOutputs']}/surrogate_data.csv"
         
+        self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 

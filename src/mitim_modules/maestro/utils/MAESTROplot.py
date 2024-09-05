@@ -18,7 +18,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
-    beats = sorted(os.listdir(folder_beats), key=lambda x: int(x.split('_')[1]))
+    beats = sorted([item for item in os.listdir(folder_beats) if not item.startswith(".")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
@@ -222,9 +222,11 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     ax.legend()
-    
-    ax.tick_params(axis='x', rotation=45)
 
+    rotation = 90
+    fontsize = 6
+
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
     # -----------------------------------------------------------------
 
     ax = axs['B']
@@ -252,7 +254,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
-    ax.tick_params(axis='x', rotation=45)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
     ax = axs['G']
@@ -271,7 +273,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
-    ax.tick_params(axis='x', rotation=45)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
 
@@ -294,7 +296,7 @@ def plot_results(self, fn):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     
-    ax.tick_params(axis='x', rotation=45)
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
 
     # -----------------------------------------------------------------
 

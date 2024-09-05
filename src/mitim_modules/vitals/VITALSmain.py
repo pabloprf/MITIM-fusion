@@ -1,13 +1,11 @@
-import copy, os, pickle, torch
+import copy
+import os
+import pickle
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.gacode_tools import TGLFtools
-from mitim_tools.opt_tools.utils import BOgraphics, EVplot
 from mitim_tools.opt_tools import STRATEGYtools
-
 from IPython import embed
-
 
 def default_namelist(optimization_options):
     """
@@ -320,7 +318,7 @@ def runTGLF(
 
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2
+    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2, **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff

@@ -13217,12 +13217,12 @@ class transp_output:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, counter=0):
+    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, tab_color=0):
         if time is None:
             time = self.t[self.ind_saw]
 
         name = f"MITIM Notebook, run #{self.nameRunid}, profiles at time t={time:.3f}s"
-        fn_color = counter if counter > 0 else None
+        fn_color = tab_color if tab_color > 0 else None
 
         if fn is None:
             self.fn = FigureNotebook(name)
@@ -13643,7 +13643,7 @@ class transp_output:
             self.Species["D"] = {
                 "name": "D",
                 "type": "thermal",
-                "m": 1.0*self.u,
+                "m": self.mD,
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nD,
                 "T": self.Ti,
@@ -13661,7 +13661,7 @@ class transp_output:
             self.Species["He4_ash"] = {
                 "name": "He",
                 "type": "thermal",
-                "m": 4 * self.u,
+                "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nHe4,
                 "T": self.Ti,
@@ -13683,7 +13683,7 @@ class transp_output:
             self.Species["H_mini"] = {
                 "name": "H",
                 "type": "fast",
-                "m": 1.0*self.u,
+                "m": self.mH,
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nminiH,
                 "T": self.Tmini,
@@ -13692,7 +13692,7 @@ class transp_output:
             self.Species["He3_mini"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 3*self.u,       #TODO: FIX
+                "m": self.mHe3,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nminiHe3,
                 "T": self.Tmini,
@@ -13712,7 +13712,7 @@ class transp_output:
             self.Species["He4_fus"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 4 * self.u,
+                "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe4,
                 "T": self.Tfus,
@@ -13721,7 +13721,7 @@ class transp_output:
             self.Species["He3_fus"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 3.0 * self.u,
+                "m": self.mHe3,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe3,
                 "T": self.Tfus,

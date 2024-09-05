@@ -330,7 +330,7 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
-def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name=""):
+def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name="", remove_folders_out = True):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
@@ -370,6 +370,10 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
                     slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x (Nv=3 x Nd=2 + 1) = 35 TGLFs at once
                     extra_name = f'{extra_name}_{name}',
                     )
+
+    # Remove folders because they are heavy to carry many throughout
+    if remove_folders_out:
+        os.system(f"rm -r {tglf.FolderGACODE}")
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
