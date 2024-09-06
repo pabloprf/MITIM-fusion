@@ -849,17 +849,18 @@ class wrapped_model_portals:
             out = self.sample(x, samples=samples, outputs=outputs)
         return out
 
-    def generateScan(self, output, iteration=-1, scan_range=0.5, scan_resolution=2):
+    def generateScan(self, output, iteration=-1, scan_range=0.5, scan_resolution=3):
         scan_list = []
         if output in self._training_inputs:
             base = self._training_inputs[output]
             idx = base.index.values[iteration]
             for var in base:
-                scan_length = scan_resolution * 2 - 1
+                scan_length = int(scan_resolution) if isinstance(scan_resolution, (float, int)) else 3
                 scan_data = {}
                 if scan_length > 1:
+                    scan_width = float(scan_range) if isinstance(scan_range, (float, int)) else 0.5
                     scan_data = {key: np.array([base.loc[idx, key]] * scan_length) for key in base}
-                    scan_data[var] = (1.0 + np.linspace(-1.0, 1.0, scan_length) * scan_range) * scan_data[var]
+                    scan_data[var] = (1.0 + np.linspace(-1.0, 1.0, scan_length) * scan_width) * scan_data[var]
                 else:
                     scan_data = base.loc[idx, :].to_dict()
                 for key in scan_data:
