@@ -772,9 +772,9 @@ class freegs_millerized:
 
         print("\t- Initializing plasma parameters")
         if beta_pol is not None:
-            print(f"\t\t* beta_pol={beta_pol}, Ip={Ip_MA} MA, B={B_T} T")
+            print(f"\t\t* beta_pol={beta_pol:.5f}, Ip={Ip_MA:.5f} MA, B={B_T:.5f} T")
         else:
-            print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
+            print(f"\t\t* p0={p0_MPa:.5f} MPa, Ip={Ip_MA:.5f} MA, B={B_T:.5f} T")
 
         self.p0_MPa = p0_MPa
         self.Ip_MA = Ip_MA
