@@ -1,3 +1,4 @@
+from tensorflow._api.v2 import compat 
 from mitim_modules.maestro.MAESTROmain import maestro
 
 mfe_im_path = '/Users/pablorf/MFE-IM'
