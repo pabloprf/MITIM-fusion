@@ -1537,10 +1537,11 @@ def strip_ansi_codes(text):
     ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
     return ansi_escape.sub("", text)
 
+@contextlib.contextmanager
 class log_to_file:
     _context_count = 0  # Class attribute to keep track of context depth
 
-    def __init__(self, log_file, msg=None):
+    def __init__(self, log_file, msg=None, write_also_to_terminal=True):
         if msg is not None:
             print(msg)
         self.log_file = log_file
@@ -1549,6 +1550,7 @@ class log_to_file:
         self.log = None
         self.saved_stdout_fd = None
         self.saved_stderr_fd = None
+        self.write_also_to_terminal = write_also_to_terminal
 
     def __enter__(self):
         if log_to_file._context_count == 0:
@@ -1570,8 +1572,10 @@ class log_to_file:
             sys.stderr = self
 
             # Redirect warnings to the log file
-            logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
+            def logging_handler(message, category, filename, lineno, file=None, line=None):
                 self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
+            
+            logging_handler = logging_handler
             warnings.showwarning = logging_handler
 
         log_to_file._context_count += 1  # Increment the context depth
@@ -1584,10 +1588,17 @@ class log_to_file:
         self.log.write(clean_message)
         self.log.flush()  # Ensure each write is immediately flushed
 
+        # If write_also_to_terminal is True, also print the message to the terminal
+        if self.write_also_to_terminal:
+            self.stdout.write(message)
+            self.stdout.flush()
+
     def flush(self):
         # Ensure sys.stdout and sys.stderr are flushed
         self.log.flush()
-
+        if self.write_also_to_terminal:
+            self.stdout.flush()
+            
     def __exit__(self, exc_type, exc_value, traceback):
         log_to_file._context_count -= 1  # Decrement the context depth
 
@@ -1608,8 +1619,6 @@ class log_to_file:
 
             # Restore the original warnings behavior
             warnings.showwarning = warnings._showwarning_orig
-
-        # If still inside a context, don't close the file or restore the state
 
 """
 This HDF5 tool was originally designed by A.J. Creely, but modifications 

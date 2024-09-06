@@ -164,12 +164,15 @@ class maestro:
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
 
-        # Initializer can also save important parameters
-        self.beat.initialize._inform_save()
+        log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
+        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
-        if self.profiles_with_engineering_parameters is None:
-            # First initialization, freeze engineering parameters
-            self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
+            # Initializer can also save important parameters
+            self.beat.initialize._inform_save()
+
+            if self.profiles_with_engineering_parameters is None:
+                # First initialization, freeze engineering parameters
+                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
@@ -209,13 +212,14 @@ class maestro:
 
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
-
-        # Produce a new self.profiles_with_engineering_parameters from this merged object
-        self._freeze_parameters()
-
-        # Inform next beats
+        
         log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with IOtools.conditional_log_to_file(log_file=log_file):
+
+            # Produce a new self.profiles_with_engineering_parameters from this merged object
+            self._freeze_parameters()
+
+            # Inform next beats
             self.beat._inform_save()
 
     def _freeze_parameters(self, profiles = None):
