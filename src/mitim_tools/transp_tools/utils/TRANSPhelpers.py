@@ -558,7 +558,7 @@ class transp_input_time:
         # --------------------------------------------------------------
         # Antenna (namelist)
         # --------------------------------------------------------------
-        print(f"\t- Populating Antenna in namelist, with rmin = {a}+{antenna_a}m")
+        print(f"\t- Populating Antenna in namelist, with rmin = {a:.3f}+{antenna_a:.3f}m")
         self.antenna_R = R
         self.antenna_r = a + antenna_a
         self.antenna_t = 30.0
@@ -597,9 +597,10 @@ class transp_input_time:
 
         # Create Miller FreeGS for the desired geometry
         self.f = GEQtools.freegs_millerized( R, a, kappa_sep, delta_sep, zeta_sep, z0)
-        self.f.prep(p0_MPa, Ip_MA, B_T)
+        self.f.prep(p0_MPa, Ip_MA, B_T, constraint_miller_squareness_point= True) #TODO: Not sure why, but C-Mod TRANSP initialization case works better with this
         self.f.solve()
         self.f.derive()
+        #self.f.check(plotYN=True)
 
         self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
 

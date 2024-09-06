@@ -713,7 +713,7 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
 def from_mxh_to_RZ(R0, a, kappa, Z0, cn, sn, thetas = None):
 
     if thetas is None:
-        thetas = np.linspace(0, 2 * np.pi, 1001)
+        thetas = np.linspace(0, 2 * np.pi, 100)
 
     # Prepare data to always have the first dimension a batch (e.g. a radius) for parallel computation
     if IOtools.isfloat(R0):
@@ -945,7 +945,6 @@ class freegs_millerized:
 
         if plotYN:
 
-            plt.ion()
             fig = plt.figure(figsize=(12,8))
             axs = fig.subplot_mosaic(
                 """
@@ -991,6 +990,8 @@ class freegs_millerized:
             self.mitim_separatrix_eq.plot(ax=ax, color = 'r', label = 'Separatrix (freegs)', plot_extremes=True)
 
             ax.legend(prop={'size': 10})
+
+            plt.show()
 
     def derive(self, psi_surfaces = np.linspace(0,1.0,10), psi_profiles = np.linspace(0,1.0,100)):
 
