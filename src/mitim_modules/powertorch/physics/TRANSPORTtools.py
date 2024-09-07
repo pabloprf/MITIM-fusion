@@ -358,6 +358,8 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
 
     name = 'turb_drives'
 
+    tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
+
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = f'{name}/',
                     variablesDrives = variables_to_scan,
