@@ -340,6 +340,7 @@ class OPTstep:
         # Acquisition functions (Maximization problem in MITIM)
         # **************************************************************************************************
 
+        # Some acquisition functions require the best value of the objective found so far
         best_f = self.evaluators["objective"](
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
@@ -380,7 +381,7 @@ class OPTstep:
         # **************************************************************************************************
 
         def residual_function(x, outputComponents=False):
-            mean, _, _, _ = self.evaluators["GP"].predict(x)
+            mean, _, _, _ = self.evaluators["GP"].predict(x) #TODO: make the predict method simply the callable of my GP
             yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
 
             return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut

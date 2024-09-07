@@ -15245,7 +15245,7 @@ class transp_output:
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
         print("\t\t* Warning: not time averaging yet",typeMsg='w')
 
-        # TODO: I should be looking at the extrapolated quantities in TRANSP?
+        #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
 
         # -------------------------------------------------------------------------------------------------------

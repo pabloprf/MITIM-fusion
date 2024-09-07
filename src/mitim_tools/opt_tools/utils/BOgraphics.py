@@ -1841,8 +1841,8 @@ Workflow start time: {IOtools.getStringFromTime()}
         leg=True,
         colorsS=None,
     ):
-        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * 100
-        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * 100
+        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * np.max([100,len(self.OF_labels)])
+        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * np.max([100,len(self.OF_labels)])
 
         if axs is None:
             plt.ion()
