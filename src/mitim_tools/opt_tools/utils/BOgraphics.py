@@ -822,6 +822,7 @@ def retrieveResults(
     doNotShow=False,
     plotFN=None,
     pointsEvaluateEachGPdimension=50,
+    rangePlot = None
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Grab remote results optimization
@@ -896,6 +897,7 @@ def retrieveResults(
                 doNotShow=doNotShow,
                 fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot_force=rangePlot,
             )
 
     # If no pickle, plot only the contents of optimization_results

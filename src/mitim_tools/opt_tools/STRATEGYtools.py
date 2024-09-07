@@ -203,6 +203,7 @@ class opt_evaluator:
         folderRemote=None,
         analysis_level=0,
         pointsEvaluateEachGPdimension=50,
+        rangePlot=None,
     ):
         with np.errstate(all="ignore"):
             CONFIGread.ignoreWarnings()
@@ -219,6 +220,7 @@ class opt_evaluator:
                 plotFN=plotFN,
                 folderRemote=folderRemote,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot=rangePlot,
             )
 
         # Make folders local
@@ -270,6 +272,7 @@ class opt_evaluator:
         retrieval_level=None,
         plotYN=True,
         pointsEvaluateEachGPdimension=50,
+        rangesPlot=None,
         save_folder=None,
         tabs_colors=0,
     ):
@@ -299,6 +302,7 @@ class opt_evaluator:
                 retrieval_level if (retrieval_level is not None) else analysis_level
             ),
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+            rangePlot=rangesPlot,
         )
 
         self_complete = None
@@ -1429,6 +1433,7 @@ class PRF_BO:
         number_of_models_per_tab=5,
         stds=2,
         pointsEvaluateEachGPdimension=50,
+        rangePlot_force=None,
     ):
         print(
             "\n ***************************************************************************"
@@ -1460,12 +1465,15 @@ class PRF_BO:
         number_of_models_per_tab = np.min([number_of_models_per_tab, len(self.outputs)])
         Tabs_needed = int(np.ceil(len(self.outputs) / number_of_models_per_tab))
 
-        if len(GPs) == 1:
-            rangePlot = [0]
-        elif len(GPs) == 2:
-            rangePlot = range(len(GPs))
+        if rangePlot_force is not None:
+            rangePlot = rangePlot_force[:len(GPs)]
         else:
-            rangePlot = [len(GPs) - 2, len(GPs) - 1]
+            if len(GPs) == 1:
+                rangePlot = [0]
+            elif len(GPs) == 2:
+                rangePlot = range(len(GPs))
+            else:
+                rangePlot = [len(GPs) - 2, len(GPs) - 1]
 
         for ck, k in enumerate(rangePlot):
             print(

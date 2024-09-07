@@ -218,6 +218,7 @@ def main():
     parser.add_argument("--resolution", type=int, required=False, default=50)
     parser.add_argument("--save", type=str, required=False, default=None)
     parser.add_argument("--conv", type=float, required=False, default=-1e-2)
+    parser.add_argument("--its", type=int, nargs="*", required=False, default=None)
 
     args = parser.parse_args()
 
@@ -228,6 +229,7 @@ def main():
     resolution = args.resolution
     save_folder = args.save
     conv = args.conv
+    rangePlot = args.its
 
 # -----------------------------------------
 
@@ -284,6 +286,7 @@ def main():
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
             save_folder=save_folder,
+            rangesPlot=rangePlot,
         )
     else:
         opt_funs = []
@@ -295,6 +298,7 @@ def main():
                     folderRemote=folderRemote,
                     retrieval_level=retrieval_level,
                     save_folder=save_folder,
+                    rangesPlot=rangePlot,
                 )
             except:
                 print(f"Could not retrieve #{folderWork}", typeMsg="w")
