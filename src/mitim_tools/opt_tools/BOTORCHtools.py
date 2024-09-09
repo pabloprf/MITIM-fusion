@@ -551,18 +551,22 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
                 - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
         """
 
+        # Posterior distribution
         posterior = self.model.posterior(
             X=X, posterior_transform=self.posterior_transform
         )
 
-        # mean as [batch1...N,q,dimY]
-        mean = posterior.mean
+        # samples as [samples,batch1...N,q,dimY]
+        samples = self.get_posterior_samples(posterior)
 
-        # objective [batch1...N,q]
-        obj = self.objective(mean)
+        # objective [samples,batch1...N,q]
+        obj = self.objective(samples=samples)
 
+        # mean over samples [batch1...N,q]
+        obj_mean = obj.mean(axis=0)
+        
         # max over q
-        acq = obj.max(dim=1)[0]
+        acq = obj_mean.max(axis=-1)[0]
 
         return acq
 
