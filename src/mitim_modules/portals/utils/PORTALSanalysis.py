@@ -2,6 +2,7 @@ import os
 import copy
 import torch
 import numpy as np
+import pandas as pd
 import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
@@ -443,7 +444,7 @@ class PORTALSanalyzer:
         # Make dictionary
         models = {}
         for gp in gps:
-            models[gp.output] = simple_model_portals(gp)
+            models[gp.output] = gp
 
         # PRINTING
         print(
@@ -466,7 +467,7 @@ class PORTALSanalyzer:
             typeMsg="i",
         )
 
-        return models
+        return wrapped_model_portals(models)
 
     def extractPORTALS(self, evaluation=None, folder=None):
         if evaluation is None:
@@ -711,51 +712,161 @@ class PORTALSanalyzer:
 # ****************************************************************************
 
 
-class simple_model_portals:
-    def __init__(self, gp):
-        self.gp = gp
+class wrapped_model_portals:
+    def __init__(self, gpdict):
+        self._models = {}
+        self._targets = {}
+        self._input_variables = []
+        self._output_variables = []
+        self._training_inputs = {}
+        self._training_outputs = {}
+        if isinstance(gpdict, dict):
+            for key in gpdict:
+                if 'Tar' in key:
+                    self._targets[key] = gpdict[key]
+                else:
+                    self._models[key] = gpdict[key]
+        for key in self._models:
+            if hasattr(self._models[key], 'variables'):
+                for var in self._models[key].variables:
+                    if var not in self._input_variables:
+                        self._input_variables.append(var)
+                if key not in self._output_variables:
+                    self._output_variables.append(key)
+        for key in self._models:
+            if hasattr(self._models[key], 'gpmodel'):
+                if hasattr(self._models[key].gpmodel, 'train_X_usedToTrain'):
+                    xtrain = self._models[key].gpmodel.train_X_usedToTrain.detach().numpy()
+                    if len(xtrain.shape) < 2:
+                        xtrain = np.atleast_2d(xtrain)
+                    if xtrain.shape[1] != len(self._input_variables):
+                        xtrain = xtrain.T
+                    self._training_inputs[key] = pd.DataFrame(xtrain, columns=self._input_variables)
+                if hasattr(self._models[key].gpmodel, 'train_Y_usedToTrain'):
+                    ytrain = self._models[key].gpmodel.train_Y_usedToTrain.detach().numpy()
+                    if len(ytrain.shape) < 2:
+                        ytrain = np.atleast_2d(ytrain)
+                    if ytrain.shape[1] != 1:
+                        ytrain = ytrain.T
+                    self._training_outputs[key] = pd.DataFrame(ytrain, columns=[key])
 
-        self.x = self.gp.gpmodel.train_X_usedToTrain
-        self.y = self.gp.gpmodel.train_Y_usedToTrain
-        self.yvar = self.gp.gpmodel.train_Yvar_usedToTrain
+    @property
+    def models(self):
+        return self._models
 
-        # self.printInfo()
+    @property
+    def targets(self):
+        return self._targets
 
-    def printInfo(self):
-        print(f"> Model for {self.gp.output} created")
+    @property
+    def input_variables(self):
+        return copy.deepcopy(self._input_variables)
+
+    @property
+    def output_variables(self):
+        return copy.deepcopy(self._output_variables)
+
+    @property
+    def training_inputs(self):
+        return copy.deepcopy(self._training_inputs)
+
+    @property
+    def training_outputs(self):
+        return copy.deepcopy(self._training_outputs)
+
+    def printInfo(self, detailed=False):
+        print(f"> Models for {self.output_variables} created")
         print(
-            f"\t- Fitted to {len(self.gp.variables)} variables in this order: {self.gp.variables}"
+            f"\t- Requires {len(self.input_variables)} variables to evaluate: {self.input_variables}"
         )
-        print(f"\t- Trained with {self.x.shape[0]} points")
+        if detailed:
+            for key, model in self._models.items():
+                model.printInfo()
 
-    def __call__(self, x, samples=None):
+    def evalModel(self, x, key):
         numpy_provided = False
         if isinstance(x, np.ndarray):
             x = torch.Tensor(x)
             numpy_provided = True
 
-        mean, upper, lower, samples = self.gp.predict(
+        mean, upper, lower, _ = self._models[key].predict(
+            x, produceFundamental=True
+        )
+
+        mean_out = mean[..., 0].detach()
+        upper_out = upper[..., 0].detach()
+        lower_out = lower[..., 0].detach()
+        if numpy_provided:
+            mean_out = mean_out.cpu().numpy()
+            upper_out = upper_out.cpu().numpy()
+            lower_out = lower_out.cpu().numpy()
+
+        return mean_out, upper_out, lower_out
+
+    def sampleModel(self, x, samples, key):
+        numpy_provided = False
+        if isinstance(x, np.ndarray):
+            x = torch.Tensor(x)
+            numpy_provided = True
+
+        _, _, _, samples = self._models[key].predict(
             x, produceFundamental=True, nSamples=samples
         )
 
+        samples_out = samples[..., 0].detach()
+        if numpy_provided:
+            samples_out = samples_out.cpu().numpy()
+
+        return samples_out
+
+    def predict(self, x, outputs=None):
+        y = {}
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self._models.keys())
+        for ytag, model in self._models.items():
+            if ytag in targets:
+                inp = copy.deepcopy(x)
+                if isinstance(x, pd.DataFrame):
+                    inp = x.loc[:, model.variables].to_numpy()
+                y[f'{ytag}'], y[f'{ytag}_upper'], y[f'{ytag}_lower'] = self.evalModel(inp, ytag)
+        return pd.DataFrame(data=y)
+
+    def sample(self, x, samples, outputs=None):
+        y = {}
+        targets = outputs if isinstance(outputs, (list, tuple)) else list(self._models.keys())
+        for ytag, model in self._models.items():
+            if ytag in targets:
+                inp = copy.deepcopy(x)
+                if isinstance(x, pd.DataFrame):
+                    inp = x.loc[:, model.variables].to_numpy()
+                y[f'{ytag}'] = self.sampleModel(inp, samples, ytag)
+        return pd.DataFrame(data=y)
+
+    def __call__(self, x, samples=None, outputs=None):
+        out = None
         if samples is None:
-            if numpy_provided:
-                return (
-                    mean[..., 0].detach().cpu().numpy(),
-                    upper[..., 0].detach().cpu().numpy(),
-                    lower[..., 0].detach().cpu().numpy(),
-                )
-            else:
-                return (
-                    mean[..., 0].detach(),
-                    upper[..., 0].detach(),
-                    lower[..., 0].detach(),
-                )
+            out = self.predict(x, outputs=outputs)
         else:
-            if numpy_provided:
-                return samples[..., 0].detach().cpu().numpy()
-            else:
-                return samples[..., 0].detach()
+            out = self.sample(x, samples=samples, outputs=outputs)
+        return out
+
+    def generateScan(self, output, iteration=-1, scan_range=0.5, scan_resolution=3):
+        scan_list = []
+        if output in self._training_inputs:
+            base = self._training_inputs[output]
+            idx = base.index.values[iteration]
+            for var in base:
+                scan_length = int(scan_resolution) if isinstance(scan_resolution, (float, int)) else 3
+                scan_data = {}
+                if scan_length > 1:
+                    scan_width = float(scan_range) if isinstance(scan_range, (float, int)) else 0.5
+                    scan_data = {key: np.array([base.loc[idx, key]] * scan_length) for key in base}
+                    scan_data[var] = (1.0 + np.linspace(-1.0, 1.0, scan_length) * scan_width) * scan_data[var]
+                else:
+                    scan_data = base.loc[idx, :].to_dict()
+                for key in scan_data:
+                    scan_data[key] = np.atleast_1d(scan_data[key])
+                scan_list.append(pd.DataFrame(data=scan_data))
+        return pd.concat(scan_list, axis=0, ignore_index=True)
 
 
 def calcLinearizedModel(
