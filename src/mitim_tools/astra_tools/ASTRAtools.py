@@ -270,6 +270,7 @@ def create_initial_conditions(te_avg,
                               q_profile=None,
                               use_eped_pedestal=True, # add this later
                               eped_nn=None,
+                              eped_params=None,
                               file_output_location=None,
                               width_top=0.05,
                               n_rho=104,
@@ -367,8 +368,8 @@ def create_initial_conditions(te_avg,
         if eped_nn is not None:
 
             # parameters are hardcoded for now
-            ip, bt, r, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio = 10.95, 10.8, 4.25, 1.17, 1.68, 0.516, 18, 1.9, 1.5, 100, 1./3.
-            p, w = eped_nn(ip, bt, r, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio)
+            
+            p, w = eped_nn(*eped_params)
 
             print(f"Pedestal values: p = {p}, w = {w}")
 
@@ -377,7 +378,7 @@ def create_initial_conditions(te_avg,
 
             print(f"Pedestal location: psin = {w}, rho = {rhotop}")
 
-            netop_19 = 1.08*neped
+            netop_19 = 1.08*eped_params[6]
             print(netop_19, "TOP DENS")
             Ttop_keV = (p*1E3) / (1.602176634E-19 * 2*netop_19 * 1e19) * 1E-3
 
@@ -387,8 +388,8 @@ def create_initial_conditions(te_avg,
             aLn = 0.2
             x_a = 0.3
 
-            x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, tesep*1e-3, aLT, x_a=x_a, nx=n_rho)
-            x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, nesep_ratio*netop_19, aLn, x_a=x_a, nx=n_rho)
+            x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, eped_params[9]*1e-3, aLT, x_a=x_a, nx=n_rho)
+            x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, eped_params[10]*netop_19, aLn, x_a=x_a, nx=n_rho)
 
         else:
 
@@ -405,8 +406,6 @@ def create_initial_conditions(te_avg,
             T[BC_index:] = T_ped[BC_index:]
 
             print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
-
-
 
     preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
@@ -460,19 +459,19 @@ def create_initial_conditions(te_avg,
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
-        f.write("\n ".join(" ".join(f"{num:.6e}" for num in T[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in Ti[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
         f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
-    if ne is not None:
-        n = ne
+    if ne is None:
+        ne = n
 
     with open(file_output_location+"/NE_ASTRA", 'w')  as f:
         f.write(preamble_dens)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
-        f.write("\n ".join(" ".join(f"{num:.6e}" for num in n[i:i + 6]) for i in range(0, len(x), 6)))
+        f.write("\n ".join(" ".join(f"{num:.6e}" for num in ne[i:i + 6]) for i in range(0, len(x), 6)))
         f.write("\n ")
 
     if q_profile is not None:
@@ -509,4 +508,3 @@ def create_initial_conditions(te_avg,
         ax_geo.set_aspect('equal')
 
         fn.show()
-
