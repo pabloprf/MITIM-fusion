@@ -64,6 +64,8 @@ class surrogate_model:
         self.FixedValue = FixedValue
         self.fileTraining = fileTraining
 
+        self.losses = None
+
         if self.dfT is None:
             self.dfT = torch.randn(
                 (2, 2),
@@ -117,7 +119,7 @@ class surrogate_model:
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
-        if (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
+        if ("extrapointsFile" in self.surrogateOptions) and (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
 
             print(
                 f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
@@ -311,7 +313,7 @@ class surrogate_model:
 
     def _select_transition_physics_based_params(self, ):
         self.surrogate_transformation_variables = None
-        if self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None:
+        if ("surrogate_transformation_variables_alltimes" in self.surrogate_parameters) and (self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None):
 
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
                     np.where(
