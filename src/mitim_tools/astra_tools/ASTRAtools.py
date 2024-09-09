@@ -10,6 +10,7 @@ from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
 from mitim_tools import __mitimroot__
 from IPython import embed
+from mitim_tools.surrogate_tools import NNtools
 
 class ASTRA():
 
@@ -268,6 +269,7 @@ def create_initial_conditions(te_avg,
                               ne_avg,
                               q_profile=None,
                               use_eped_pedestal=True, # add this later
+                              eped_nn=None,
                               file_output_location=None,
                               width_top=0.05,
                               n_rho=104,
@@ -289,32 +291,121 @@ def create_initial_conditions(te_avg,
     else:
         rho = np.linspace(0,1,n_rho)
 
+    psi_n = None
+
+    if geometry is not None:
+        # load in geqdsk file and extract geometry
+        g = GEQtools.MITIMgeqdsk(geometry)
+        RZ = np.array([g.Rb,g.Yb]).T
+
+        R = g.Rb
+        Z = g.Yb
+
+        # order profiles correctly
+        # ASTRA expects them to be nonoverlapping, 
+        # starting from outboard midplane and going counter-clockwise
+
+
+        from scipy.signal import savgol_filter
+
+        # apply minor smoothing to the profiles to avoid x point 
+        R = savgol_filter(R, 8, 3, mode='wrap')
+        Z = savgol_filter(Z, 8, 3, mode='wrap')
+
+        rmax_index = np.argmax(R)
+        R = np.roll(R, -(rmax_index+1))
+        Z = np.roll(Z, -(rmax_index+1))
+        if Z[1] < Z[-1]:
+            Z = np.flip(Z)
+            R = np.flip(R)
+        Z[0] = Z[-1] = 0
+
+
+        r_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
+ POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
+ R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
+          1                    ;-# OF  X PTS-
+        {len(R)}                    ;-# OF  Y PTS-
+"""
+
+        z_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
+                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
+   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
+ Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
+ POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
+ R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
+ 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
+          1                    ;-# OF  X PTS-
+        {len(Z)}                    ;-# OF  Y PTS-
+"""
+
+        with open(file_output_location + "/R_BOUNDARY", 'w') as f:
+            x = range(1, len(g.Rb) + 1)
+            f.write(r_preamble)
+            f.write(f"  1.000000e-01\n ")
+            f.write("\n ".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in x[i:i + 6]) for i in
+                               range(0, len(x), 6)))
+            f.write("\n ")
+            f.write("\n ".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in R[i:i + 6]) for i in
+                               range(0, len(x), 6)))
+            f.write("\n ")
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+        with open(file_output_location + "/Z_BOUNDARY", 'w') as f:
+            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
+
+        psi_n = g.g["AuxQuantities"]["PSI_NORM"]
+
     # replace this two-step process with one functional form: Pablo said he would do this
 
-    x, T, n = FunctionalForms.PRFfunctionals_Hmode(
-        T_avol=te_avg,
-        n_avol=ne_avg,
-        nu_T=3.0,
-        nu_n=1.35,
-        aLT=2.0,
-        width_ped=2*width_top/3,
-        rho=rho
-    )
-
     if use_eped_pedestal:
-        BC_index = np.argmin(np.abs(rho-0.95))
-        width_top = width_top
-        ne_ped = n[BC_index]
-        Te_ped = T[BC_index]
-        ne_sep = 0.3*ne_ped
-        T_sep = 1
 
-        n_ped = FunctionalForms.pedestal_tanh(ne_ped, ne_sep, width_top, x=rho)[1]
-        T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
-        n[BC_index:] = n_ped[BC_index:]
-        T[BC_index:] = T_ped[BC_index:]
+        if eped_nn is not None:
 
-        print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
+            # parameters are hardcoded for now
+            ip, bt, r, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio = 10.95, 10.8, 4.25, 1.17, 1.68, 0.516, 18, 1.9, 1.5, 100, 1./3.
+            p, w = eped_nn(ip, bt, r, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio)
+
+            print(f"Pedestal values: p = {p}, w = {w}")
+
+            rho_n = np.linspace(0,1,len(psi_n)) if psi_n is not None else rho
+            rhotop = np.interp(1-w, psi_n, rho_n) if psi_n is not None else 0.5
+
+            print(f"Pedestal location: psin = {w}, rho = {rhotop}")
+
+            netop_19 = 1.08*neped
+            print(netop_19, "TOP DENS")
+            Ttop_keV = (p*1E3) / (1.602176634E-19 * 2*netop_19 * 1e19) * 1E-3
+
+            print(Ttop_keV, "TOP TEMP")
+
+            aLT = 2.0
+            aLn = 0.2
+            x_a = 0.3
+
+            x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, tesep*1e-3, aLT, x_a=x_a, nx=n_rho)
+            x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, nesep_ratio*netop_19, aLn, x_a=x_a, nx=n_rho)
+
+        else:
+
+            BC_index = np.argmin(np.abs(rho-0.95))
+            width_top = width_top
+            ne_ped = n[BC_index]
+            Te_ped = T[BC_index]
+            ne_sep = 0.3*ne_ped
+            T_sep = 1
+
+            n_ped = FunctionalForms.pedestal_tanh(ne_ped, ne_sep, width_top, x=rho)[1]
+            T_ped = FunctionalForms.pedestal_tanh(Te_ped, T_sep, width_top, x=rho)[1]
+            n[BC_index:] = n_ped[BC_index:]
+            T[BC_index:] = T_ped[BC_index:]
+
+            print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
+
 
 
     preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
@@ -397,73 +488,25 @@ def create_initial_conditions(te_avg,
             f.write("\n ")
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
-    if geometry is not None:
-        # load in geqdsk file and extract geometry
-        g = GEQtools.MITIMgeqdsk(geometry)
-        RZ = np.array([g.Rb,g.Yb]).T
-
-        r_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
-                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
-   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
- Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
- POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
- R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
- 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
-          1                    ;-# OF  X PTS-
-        {len(g.Rb)}                    ;-# OF  Y PTS-
-"""
-        
-        z_preamble = f"""  34954AUGD 2 0 6              ;-SHOT #- F(X) DATA -UF2DWR- 27Nov2019
-                               ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
-   0                           ;-NUMBER OF ASSOCIATED SCALAR QUANTITIES-
- Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X-
- POSITION                      ;-INDEPENDENT VARIABLE LABEL: Y-
- R BOUNDARY    [M]             ;-DEPENDENT VARIABLE LABEL-
- 0                             ;-PROC CODE- 0:RAW 1:AVG 2:SM. 3:AVG+SM
-          1                    ;-# OF  X PTS-
-        {len(g.Yb)}                    ;-# OF  Y PTS-
-"""
-        
-        with open(file_output_location+"/R_BOUNDARY", 'w')  as f:
-            x = range(1,len(g.Rb)+1)
-            f.write(r_preamble)
-            f.write(f" 1.000000e-01\n ")
-            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
-            f.write("\n")
-            f.write("\n".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in g.Rb[i:i + 6]) for i in range(0, len(x), 6)))
-            f.write("\n ")
-            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
-
-        with open(file_output_location+"/Z_BOUNDARY", 'w')  as f:
-            x = range(1,len(g.Yb)+1)
-            f.write(z_preamble)
-            f.write(f" 1.000000e-01\n ")
-            f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
-            f.write("\n")
-            f.write("\n".join("".join(f" {num:.6e}" if num >= 0 else f"{num:.6e}" for num in g.Yb[i:i + 6]) for i in range(0, len(x), 6)))
-            f.write("\n ")
-            f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
-
     if plotYN==True:
-        fn = GUItools.FigureNotebook("MAESTRO")
+        fn = GUItools.FigureNotebook("ASTRA Initial Conditions")
         fig = fn.add_figure(label='Kinetic Profiles', tab_color=1)
         ax = fig.add_subplot(121)
+        ax1 = ax.twinx()
         GRAPHICStools.addDenseAxis(ax)
         ax.plot(rho, T, label='T')
-        ax.plot(rho, n, label='n')  
+        ax.plot(rho, n, label='n',color='tab:orange')  
         ax.set_ylabel(r"$T_e$ [eV]")
+        ax1.set_ylabel(r"$n_e$ [$10^{19}m^{-3}$]")
         ax.set_xlabel(r"$\rho$")
+        ax.set_ylim(0,np.max(T)+5)
+        ax1.set_ylim(0,np.max(T)+5)
         ax.set_title("Initial temperature profile")
         ax.legend()
 
         ax_geo = fig.add_subplot(122)
-        ax_geo.plot(RZ[:,0], RZ[:,1], label='Geometry')
+        ax_geo.plot(R,Z)
+        ax_geo.set_aspect('equal')
 
         fn.show()
-
-if __name__=="__main__":
-    mfe_im_path = '/Users/hallj/MFE-IM'
-
-    create_initial_conditions(10,20, file_output_location='/Users/hallj/MITIM-fusion/src/mitim_tools/astra_tools/tmp',
-                              geometry=f'{mfe_im_path}/private_data/ARCV2B.geqdsk', q_profile=None, plotYN=False)
 
