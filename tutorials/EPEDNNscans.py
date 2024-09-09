@@ -40,6 +40,12 @@ def pedestal_density_scan_plot(
     ax.set_xlabel(r"$n_{ped}$ [$10^{19}m^{-3}$]")
     ax.set_title("EPED-NN density scan")
 
+    # print the maximum pedestal pressure and density
+    max_p = np.max(ptop)
+    max_p_index = np.argmax(ptop)
+    max_n = nped[max_p_index]
+    print(f"Maximum pedestal pressure: {max_p} kPa at {max_n} 1e19 m^-3")
+
 if __name__ == '__main__':
 
     nn = NNtools.eped_nn(type='tf')
@@ -60,7 +66,7 @@ if __name__ == '__main__':
         betan=1.9,
         zeff=1.5,
         tesep=75,
-        nesep_ratio=0.3
+        nesep_ratio=1./3.
     )
 
     plt.show()
