@@ -85,9 +85,12 @@ def plot_surrogate_model(
 
     newLabels = self.variables if plotFundamental else [ikey for ikey in self.bounds]
     if newLabels is None or self.gpmodel.ard_num_dims > len(newLabels):
-        newLabels = [
-            ikey for ikey in self.bounds
-        ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        if self.bounds is not None:
+            newLabels = [
+                ikey for ikey in self.bounds
+            ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        else:
+            newLabels = [f"Variable {i}" for i in range(self.gpmodel.ard_num_dims)]
 
     """
 	------------------------------------------------------------------------------------------------------------
