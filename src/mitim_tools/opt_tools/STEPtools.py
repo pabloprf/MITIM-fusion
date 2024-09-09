@@ -345,6 +345,8 @@ class OPTstep:
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
 
+        sample_size = torch.Size([512]) # Default sample size in botorch, acquisition.py
+
         if self.acquisition_type == "posterior_mean":
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
@@ -375,6 +377,8 @@ class OPTstep:
                     self.evaluators["GP"].gpmodel, best_f=best_f
                 )
             )
+
+        self.evaluators["acq_function"]._default_sample_shape = sample_size
 
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
