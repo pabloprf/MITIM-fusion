@@ -225,17 +225,17 @@ class MITIMpopcon:
 
         point = self.results.isel(dim_average_electron_temp=0, dim_average_electron_density=0)
 
-        Pfus_residual = point['P_fusion'].data.magnitude - profiles_gacode.derived['Pfus'] 
+        Pfus_residual = (point['P_fusion'].data.magnitude - profiles_gacode.derived['Pfus']) / profiles_gacode.derived['Pfus']
 
         Psol_residual = ((point['P_LH_thresh'].data.magnitude 
                          * point['ratio_of_P_SOL_to_P_LH'].data.magnitude) 
-                         - profiles_gacode.derived['Psol'])
+                         - profiles_gacode.derived['Psol']) / profiles_gacode.derived['Psol']
 
         Pin_derived = (profiles_gacode.derived['qi_aux_MWmiller'][-1]
                        +profiles_gacode.derived['qe_aux_MWmiller'][-1]
                        )
         
-        Pin_residual = point['P_auxillary'].data.magnitude - Pin_derived
+        Pin_residual = (point['P_auxillary_launched'].data.magnitude - Pin_derived)
 
         self.parameter_history.append(x)
 
@@ -244,7 +244,7 @@ class MITIMpopcon:
                             "Pin": point['P_in'].data.magnitude, 
                             "Psol": point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude, 
                             "taue": point['energy_confinement_time'].data.magnitude, 
-                            "Paux": point['P_auxillary'].data.magnitude}
+                            "Paux": point['P_auxillary_launched'].data.magnitude}
                             )
         
         if print_progress:
@@ -288,7 +288,7 @@ class MITIMpopcon:
                             "Pin": point['P_in'].data.magnitude, 
                             "Psol": point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude, 
                             "taue": point['energy_confinement_time'].data.magnitude, 
-                            "Paux": point['P_auxillary'].data.magnitude}
+                            "Paux": point['P_auxillary_launched'].data.magnitude}
                             )
         
         if print_progress:
@@ -400,13 +400,16 @@ class MITIMpopcon:
         return popcon_2D
     
     def plot(self,
-             dataset_2D=None,
-             plot_template=None,
-             plot_options={}, 
-             use_result=True,
-             title="POPCON Results"
-            ):
-        
+            dataset_2D=None,
+            plot_template=None,
+            plot_options={}, 
+            use_result=True,
+            points=[],
+            title="POPCON Results"
+        ):
+    
+        fig, ax = plt.subplots(dpi=200)
+
         if dataset_2D is None:
             print("No 2D popcon dataset passed. Evaluating based on default ranges...")
             dataset_2D = self.evaluate_on_grid(use_result=use_result)
@@ -419,14 +422,25 @@ class MITIMpopcon:
         # Update plot options
         for key, value in plot_options.items():
             plot_style[key] = value
-        
+
         cfspopcon.plotting.make_plot(
             dataset_2D,
             plot_style,
             points=self.points,
             title=title,
-            save_name=None
+            save_name=None,
+            ax=ax,
         )
+
+        if len(points) > 0:
+            try:
+                for point in points:
+                    ax.scatter(point[0],point[1], color='red', s=100)
+            except:
+                raise ValueError("Points must be a list of tuples (x,y) to plot on the graph.")
+                pass
+
+        return fig, ax
 
     def print_data(self,
                    compare_to_gacode=False,
@@ -452,7 +466,7 @@ class MITIMpopcon:
             print(f"Beta_N:", f"POPCON: {point['normalized_beta'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['BetaN']:.2f}")
             print(f"P_sol: ", f"POPCON: {(point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude):.2f}",
                 f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)", f"({point['P_LH_thresh'].data.magnitude:.2f} of LH threshold)")
-            print(f"P_aux: ", f"POPCON: {point['P_auxillary'].data.magnitude:.2f}",
+            print(f"P_aux: ", f"POPCON: {point['P_auxillary_launched'].data.magnitude:.2f}",
                 f"GACODE: {(profiles_gacode.derived['qi_aux_MWmiller'][-1]+profiles_gacode.derived['qe_aux_MWmiller'][-1]):.2f}",
                 "(MW)")
             print(f"P_rad: ", f"POPCON: {point['P_radiation'].data.magnitude:.2f}",f"GACODE: {profiles_gacode.derived['Prad']:.2f}","(MW)")
@@ -481,7 +495,7 @@ class MITIMpopcon:
                 f"POPCON: {(point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude):.2f}",
                     "(MW)")
             
-            print(f"P_aux: ", f"POPCON: {point['P_auxillary'].data.magnitude:.2f}","(MW)")
+            print(f"P_aux: ", f"POPCON: {point['P_auxillary_launched'].data.magnitude:.2f}","(MW)")
             print(f"P_rad: ", f"POPCON: {point['P_radiation'].data.magnitude:.2f}","(MW)")
             print(f"P_ext: ", f"POPCON: {point['P_external'].data.magnitude:.2f}","(MW)")
             print(f"P_ohm: ", f"POPCON: {point['P_ohmic'].data.magnitude:.2f}","(MW)")
