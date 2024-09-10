@@ -388,7 +388,7 @@ def create_initial_conditions(te_avg,
             aLn = 0.2
             x_a = 0.3
 
-            x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, eped_params[9]*1e-3, aLT, x_a=x_a, nx=n_rho)
+            x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, eped_params[9]*1e-2, aLT, x_a=x_a, nx=n_rho)
             x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, eped_params[10]*netop_19, aLn, x_a=x_a, nx=n_rho)
 
         else:
