@@ -34,7 +34,7 @@ class MITIMpopcon:
         rmaj = profiles_gacode.profiles["rmaj(m)"][-1]
         self.dataset["inverse_aspect_ratio"].data =  (rmin / rmaj) * ureg.dimensionless
 
-        kappa_a = profiles_gacode.derived["kappa_a"]
+        kappa_a = 1.5 #profiles_gacode.derived["kappa_a"]
         kappa_sep = profiles_gacode.profiles["kappa(-)"][-1]
         self.dataset["areal_elongation"].data = kappa_a * ureg.dimensionless
         self.dataset["elongation_ratio_sep_to_areal"].data = (kappa_sep / kappa_a) * ureg.dimensionless
@@ -77,7 +77,8 @@ class MITIMpopcon:
                 concentrations.append((imputity_fs[i] * impurity_zs[i]) / closest_element)
 
         self.dataset = self.dataset.assign_coords(dim_species=np.array(impurities))
-        self.dataset['impurities'] = cfspopcon.helpers.make_impurities_array(impurities, concentrations)
+        #from .formulas.impurities.impurity_array_helpers import make_impurity_concentration_array
+        self.dataset['impurities'] = cfspopcon.formulas.impurities.impurity_array_helpers.make_impurity_concentration_array(impurities, concentrations)
 
         arg_min_rho = np.argmin(np.abs(profiles_gacode.profiles["rho(-)"] - 0.4))
         arg_max_rho = np.argmin(np.abs(profiles_gacode.profiles["rho(-)"] - 0.8))
@@ -142,12 +143,14 @@ class MITIMpopcon:
         self.update_from_gacode(profiles_gacode=profiles_gacode,
                                 confinement_type=confinement_type
                                 )
+
         x0 = [
             self.dataset["normalized_inverse_temp_scale_length"].data.magnitude,
             self.dataset["confinement_time_scalar"].data.magnitude,
             self.dataset["temperature_peaking"].data.magnitude,
             self.dataset["electron_density_peaking_offset"].data.magnitude,
-            self.dataset["ion_to_electron_temp_ratio"].data.magnitude
+            self.dataset["ion_to_electron_temp_ratio"].data.magnitude,
+            self.dataset["radiated_power_scalar"].data.magnitude
         ]
 
         if bounds is None:
@@ -156,55 +159,20 @@ class MITIMpopcon:
                         (0.99*x0[1],1.01*x0[1]),
                         (None,None),
                         (None,None),
-                        (0,1)]
-            
-        print(bounds)
-
-        # first optomization step: make profiles match
-        print("... Optimizing profiles")
-
-        res = minimize(self.match_profiles,
-                        x0,
-                        args=(profiles_gacode, print_progress), 
-                        method='Nelder-Mead',
-                        bounds=bounds, 
-                        options={'disp': True},
-                        tol=1e-1)
-        x1 = [
-            res.x[0], 
-            res.x[1], 
-            res.x[2], 
-            res.x[3], 
-            res.x[4]
-        ]
-
-        if x1[3] >=0:
-            nu_ne_offset_bounds = (0.99*x1[3],1.01*x1[3])
-        else:
-            nu_ne_offset_bounds = (1.01*x1[3],0.99*x1[3])
-
-        if flag:
-            bounds = [(0.99*x1[0],1.01*x1[0]),
-                            (None,None),
-                            (0.99*x1[2],1.01*x1[2]),
-                            nu_ne_offset_bounds,
-                            (0.99*x1[4],1.01*x1[4])]
-            
-        print(bounds)
-
-        # second optimization step: make power balance match
-        print("... Optimizing confinement time")
+                        (0,1),
+                        (None,None)]
 
         res = minimize(self.match_pfus,
-                       x1,
+                       x0,
                        args=(profiles_gacode, print_progress), 
                        method='Nelder-Mead',
                        bounds=bounds, 
                        options={'disp': True},
-                       tol=1e-1)
+                       tol=1e-2)
         
         if res.success:
             self.update_transport(res.x[0], res.x[1], res.x[2], res.x[3], res.x[4])
+            self.dataset["radiated_power_scalar"].data = res.x[5] * ureg.dimensionless
             self.evaluate()
 
         if plot_convergence:
@@ -221,21 +189,37 @@ class MITIMpopcon:
         # returns the residual between the POPCON and GACODE power balance
 
         self.update_transport(aLTe, H_98, nu_te, nu_ne_offset, ti_over_te)
+        radiated_power_scalar = x[5]
+        self.dataset["radiated_power_scalar"].data = radiated_power_scalar * ureg.dimensionless
         self.evaluate()
 
         point = self.results.isel(dim_average_electron_temp=0, dim_average_electron_density=0)
 
         Pfus_residual = (point['P_fusion'].data.magnitude - profiles_gacode.derived['Pfus']) / profiles_gacode.derived['Pfus']
 
-        Psol_residual = ((point['P_LH_thresh'].data.magnitude 
-                         * point['ratio_of_P_SOL_to_P_LH'].data.magnitude) 
-                         - profiles_gacode.derived['Psol']) / profiles_gacode.derived['Psol']
+        #Psol_residual = ((point['P_LH_thresh'].data.magnitude 
+                         #* point['ratio_of_P_SOL_to_P_LH'].data.magnitude) 
+                         #- profiles_gacode.derived['Psol']) / profiles_gacode.derived['Psol']
+        
+        Prad_residual = (point['P_radiation'].data.magnitude - profiles_gacode.derived['Prad']) / profiles_gacode.derived['Prad']
 
         Pin_derived = (profiles_gacode.derived['qi_aux_MWmiller'][-1]
                        +profiles_gacode.derived['qe_aux_MWmiller'][-1]
-                       )
+                       ) 
         
-        Pin_residual = (point['P_auxillary_launched'].data.magnitude - Pin_derived)
+        Pin_residual = (point['P_auxillary_launched'].data.magnitude - Pin_derived) / Pin_derived
+
+        te_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["te(keV)"])
+        te_popcon = point["electron_temp_profile"].data.magnitude
+        te_L2 = np.sum(((te_profiles-te_popcon)/te_profiles)**2)
+
+        ti_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["ti(keV)"][:, 0])
+        ti_popcon = point["ion_temp_profile"].data.magnitude
+        ti_L2 = np.sum(((ti_profiles-ti_popcon)/ti_profiles)**2)
+
+        ne19_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["ne(10^19/m^3)"])
+        ne19_popcon = point["electron_density_profile"].data.magnitude
+        ne19_L2 = np.sum(((ne19_profiles-ne19_popcon)/ne19_profiles)**2)
 
         self.parameter_history.append(x)
 
@@ -249,54 +233,29 @@ class MITIMpopcon:
         
         if print_progress:
             print("Parameters:", x)
-            print("Residual:", Pfus_residual**2 + Psol_residual**2 + Pin_residual**2)
+            print("Residual:", Pfus_residual**2 + Pin_residual**2 + Prad_residual**2 + te_L2 + ti_L2 + ne19_L2)
             print("P_fusion:", point['P_fusion'].data.magnitude, "MW")
         
-        return Pfus_residual**2 + Pin_residual**2 + Psol_residual**2
+        return Pfus_residual**2 + Pin_residual**2 + Prad_residual**2 + te_L2 + ti_L2 + ne19_L2
     
-    def match_profiles(self,
+    def match_radiation(self,
                        x,
-                       profiles_gacode,
-                       print_progress=False
+                       profiles_gacode
                    ):
         
-        aLTe, H_98, nu_te, nu_ne_offset, ti_over_te = x[0], x[1], x[2], x[3], x[4]
-        # returns the difference between the POPCON and GACODE power balance
+        radiated_power_scalar = x[0]
+        # returns the difference between the POPCON and GACODE radiated power
         # optimizes over Pfus, Q, and P_in
+        print(radiated_power_scalar)
 
-        self.update_transport(aLTe, H_98, nu_te, nu_ne_offset, ti_over_te)
+        self.dataset["radiated_power_scalar"].data = radiated_power_scalar * ureg.dimensionless
         self.evaluate()
 
         point = self.results.isel(dim_average_electron_temp=0, dim_average_electron_density=0)
 
-        te_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["te(keV)"])
-        te_popcon = point["electron_temp_profile"].data.magnitude
-        te_L2 = np.sum((te_profiles-te_popcon)**2)
-
-        ti_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["ti(keV)"][:, 0])
-        ti_popcon = point["ion_temp_profile"].data.magnitude
-        ti_L2 = np.sum((ti_profiles-ti_popcon)**2)
-
-        ne19_profiles = np.interp(point["dim_rho"], point["dim_rho"].size*profiles_gacode.profiles["rho(-)"] ,profiles_gacode.profiles["ne(10^19/m^3)"])
-        ne19_popcon = point["electron_density_profile"].data.magnitude
-        ne19_L2 = np.sum((ne19_profiles-ne19_popcon)**2)
-
-        self.parameter_history.append(x)
-
-        self.popcon_history.append({"Pfus": point['P_fusion'].data.magnitude,
-                            "Q": point['Q'].data.magnitude, 
-                            "Pin": point['P_in'].data.magnitude, 
-                            "Psol": point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude, 
-                            "taue": point['energy_confinement_time'].data.magnitude, 
-                            "Paux": point['P_auxillary_launched'].data.magnitude}
-                            )
+        Prad_residual = (point['P_radiation'].data.magnitude - profiles_gacode.derived['Prad']) / profiles_gacode.derived['Prad']
         
-        if print_progress:
-            print("Parameters:", x)
-            print("Residual:", te_L2 + ti_L2 + ne19_L2)
-            print("P_fusion:", point['P_fusion'].data.magnitude, "MW")
-        
-        return te_L2 + ti_L2 + ne19_L2
+        return Prad_residual**2
     
     def plot_convergence(self):
 
@@ -331,7 +290,7 @@ class MITIMpopcon:
         axs[1, 1].set_title(r'$\nu_n$ offset History')
         axs[1, 1].legend()
 
-        GRAPHICStools.adjust_figure_layout(fig)
+        plt.tight_layout()
         plt.show()
 
     def plot_profile_comparison(self, profiles_gacode: PROFILEStools.PROFILES_GACODE):
@@ -368,7 +327,7 @@ class MITIMpopcon:
         ax.legend(loc='lower left')
         ax2.legend(loc='upper right')
         plt.title("ASTRA-GACODE-POPCON Matching",fontsize=24)
-        GRAPHICStools.adjust_figure_layout(fig)
+        plt.tight_layout()
 
     def evaluate_on_grid(self,
              Te_range=np.linspace(5, 15, 10), # temperature range to evaluate, keV
@@ -400,14 +359,14 @@ class MITIMpopcon:
         return popcon_2D
     
     def plot(self,
-            dataset_2D=None,
-            plot_template=None,
-            plot_options={}, 
-            use_result=True,
-            points=[],
-            title="POPCON Results"
-        ):
-    
+             dataset_2D=None,
+             plot_template=None,
+             plot_options={}, 
+             use_result=True,
+             points=[],
+             title="POPCON Results"
+            ):
+        
         fig, ax = plt.subplots(dpi=200)
 
         if dataset_2D is None:
@@ -465,7 +424,7 @@ class MITIMpopcon:
             print(f"TauE:  ", f"POPCON: {point['energy_confinement_time'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['tauE']:.2f}", "(s)")
             print(f"Beta_N:", f"POPCON: {point['normalized_beta'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['BetaN']:.2f}")
             print(f"P_sol: ", f"POPCON: {(point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude):.2f}",
-                f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)", f"({point['P_LH_thresh'].data.magnitude:.2f} of LH threshold)")
+                f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)", f"(~%{point['ratio_of_P_SOL_to_P_LH'].data.magnitude*1e2:.2f} of LH threshold)")
             print(f"P_aux: ", f"POPCON: {point['P_auxillary_launched'].data.magnitude:.2f}",
                 f"GACODE: {(profiles_gacode.derived['qi_aux_MWmiller'][-1]+profiles_gacode.derived['qe_aux_MWmiller'][-1]):.2f}",
                 "(MW)")
