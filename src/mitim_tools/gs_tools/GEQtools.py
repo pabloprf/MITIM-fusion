@@ -143,6 +143,9 @@ class MITIMgeqdsk:
         self.eps = self.a / self.Rmajor
 
         # Core values
+
+        self.kappa_a = self.g["fluxSurfaces"]["geo"]["cxArea"][-1] / (np.pi * self.a**2)
+
         self.kappa995 = np.interp(
             0.995,
             self.g["AuxQuantities"]["PSI_NORM"],
