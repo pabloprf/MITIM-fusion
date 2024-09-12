@@ -384,10 +384,56 @@ def create_initial_conditions(te_avg,
 
             print(Ttop_keV, "TOP TEMP")
 
+            #basically want to wrap this in a function to produce the correct betan
+
+            betan_desired = eped_params[7]
+            
+            from scipy.optimize import minimize
+
+            def _betan_initial_conditions(x, geometry_object, rhotop, Ttop_keV, netop_19, eped_params, x_a=0.3, n_rho=104):
+
+                # Calculate the pressure profile from the initial conditions:
+
+                aLT, aLn = x
+                
+
+                x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, eped_params[9]*1e-2, aLT, x_a=x_a, nx=n_rho)
+                x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, eped_params[10]*netop_19, aLn, x_a=x_a, nx=n_rho)
+
+
+                #calculate the flux surface averaged pressure and approximate betan
+                profiles = geometry_object.to_profiles()
+                profiles.profiles['te(keV)'] = np.interp(profiles.profiles['rho(-)'], x, T)
+                profiles.profiles['ne(10^19/m^3)'] = np.interp(profiles.profiles['rho(-)'], x, n)
+                profiles.profiles['ti(keV)'][:,0] = np.interp(profiles.profiles['rho(-)'], x, T)
+                profiles.makeAllThermalIonsHaveSameTemp()
+                profiles.profiles['ni(10^19/m^3)'][:,0] = profiles.profiles['ne(10^19/m^3)']
+                profiles.enforceQuasineutrality()
+                profiles.deriveQuantities()
+
+                print("residual:", ((profiles.derived['BetaN_approx']-betan_desired) / betan_desired)**2)
+
+                return ((profiles.derived['BetaN_approx']-betan_desired) / betan_desired)**2
+
             aLT = 2.0
             aLn = 0.2
             x_a = 0.3
 
+            x0 = [aLT, aLn]
+            bounds = [(0, 3), (0, 1)]
+
+            res = minimize(_betan_initial_conditions, 
+                           x0, 
+                           args=(g,rhotop, Ttop_keV, netop_19, eped_params, x_a, n_rho), 
+                           method='Nelder-Mead',
+                           bounds=bounds,
+                           tol=1e-1,
+                           options={'disp': True})
+            
+            if res.success:
+                print(res.x)
+                aLT, aLn = res.x
+            
             x, T = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, Ttop_keV, eped_params[9]*1e-2, aLT, x_a=x_a, nx=n_rho)
             x, n = FunctionalForms.MITIMfunctional_aLyTanh(rhotop, netop_19, eped_params[10]*netop_19, aLn, x_a=x_a, nx=n_rho)
 
