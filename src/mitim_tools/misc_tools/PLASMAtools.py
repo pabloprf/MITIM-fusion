@@ -1185,26 +1185,6 @@ def evaluateTE_u(ne, Te, Aqpar, L, P_LCFS, PowerFractionToElectrons=0.5):
     return Te_u
 
 
-def evaluateLCFS_Lmode(
-    n20, pressure_atm=5.0, Psol_MW=10.0, R=1.85, Bp=1.0, Bt=12.2, q95=3.2
-):
-    """
-    Assume that n20 is the volume average in E20
-    """
-
-    # ~~~~~~~~ Evaluation of the temperature
-
-    Lambda_q = calculateHeatFluxWidth_Brunner(pressure_atm)
-    Te, _ = calculateUpstreamTemperature(Lambda_q, q95, n20, Psol_MW, R, Bp, Bt)
-    Te_LCFS = Te * 1e3
-
-    # ~~~~~~~~ Evaluation of the density
-
-    ne_LCFS = n20 * 1e20 * 0.6
-
-    return ne_LCFS, Te_LCFS, Lambda_q
-
-
 def calculatePowerDrawn(t, I, M):
     """
     t = time

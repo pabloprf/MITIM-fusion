@@ -1107,6 +1107,31 @@ class PROFILES_GACODE:
         )
 
         # -------------------------------------------------------
+        # Separatrix estimations
+        # -------------------------------------------------------
+
+        # ~~~~ Estimate lambda_q
+        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
+        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
+
+        # ~~~~ Estimate upstream temperature
+        Bt = self.profiles["bcentr(T)"][0]
+        Bp = self.derived["eps"] * Bt / self.derived["q95"] #TODO: VERY ROUGH APPROXIMATION!!!!
+
+        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q, 
+                self.derived["q95"], 
+                self.derived["ne_vol20"], 
+                self.derived["Psol"], 
+                self.profiles["rcentr(m)"][0], 
+                Bp, 
+                Bt
+                )[0] * 1e3
+
+        # ~~~~ Estimate upstream density
+        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
+
+        # -------------------------------------------------------
         # TGLF-relevant quantities
         # -------------------------------------------------------
 
@@ -1988,29 +2013,6 @@ class PROFILES_GACODE:
         )
 
         self.deriveQuantities()
-
-    def calculateModeledQuantities(self):
-        n20 = self.derived["ne_vol20"]
-        p_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
-        Psol_MW = self.derived["Psol"]
-        R = self.profiles["rcentr(m)"][0]
-        Bt = self.profiles["bcentr(T)"][0]
-        q95 = self.derived["q95"]
-        Bp = (
-            self.derived["eps"] * Bt / q95
-        )  # ----------------------------------- VERY ROUGH APPROXIMATION!!!!
-
-        ne_LCFS, Te_LCFS, Lambda_q = PLASMAtools.evaluateLCFS_Lmode(
-            n20, pressure_atm=p_atm, Psol_MW=Psol_MW, R=R, Bp=Bp, Bt=Bt, q95=q95
-        )
-
-        print(
-            f"- ne_sep ~ {ne_LCFS*1E-20:.1f}    1E20/m3 ({(ne_LCFS*1E-20)/n20 *100:.1f}% from vol.avg.)"
-        )
-        print(
-            f"- Te_sep ~ {Te_LCFS:.1f}  eV (using Psol = {Psol_MW:.1f}MW, p = {p_atm:.1f} atm --> lambda_q = {Lambda_q:.2f} mm)"
-        )
-        print(f"- Ti_sep ~ {2*Te_LCFS:.1f}  eV")
 
     def introduceRotationProfile(self, Mach_LF=1.0, new_file=None):
         print(f"\t- Enforcing Mach Number in LF of {Mach_LF}")
