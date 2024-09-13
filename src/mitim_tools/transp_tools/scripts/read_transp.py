@@ -71,7 +71,7 @@ def main():
 
         fn = FigureNotebook("TRANSP run")
         for i in range(len(cdfs)):
-            cdfs[i].plot(fn=fn, counter=i)
+            cdfs[i].plot(fn=fn, tab_color=i)
 
         fn.show()
 
