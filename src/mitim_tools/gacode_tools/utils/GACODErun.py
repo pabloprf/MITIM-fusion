@@ -1036,7 +1036,7 @@ def runTGLF(
         check_files_in_folder=check_files_in_folder,
     )
 
-    tglf_job.run(removeScratchFolders=False)
+    tglf_job.run(removeScratchFolders=True)
 
     # ---------------------------------------------
     # Organize

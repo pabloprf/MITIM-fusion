@@ -1126,8 +1126,8 @@ class PROFILES_GACODE:
                 self.profiles["rcentr(m)"][0], 
                 Bp, 
                 Bt
-                )[0] * 1e3
-
+                )[0]
+                
         # ~~~~ Estimate upstream density
         self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
 
