@@ -107,7 +107,7 @@ class speeder(object):
         self.profiler = cProfile.Profile()
         self.timeBeginning = datetime.datetime.now()
 
-        printMsg(">>> Profiling started")
+        print(">>> Profiling started")
         self.profiler.enable()
 
         return self
@@ -115,7 +115,7 @@ class speeder(object):
     def __exit__(self, *args):
 
         self.profiler.disable()
-        printMsg(">>> Profiling ended")
+        print(">>> Profiling ended")
 
         self._get_time()
 
@@ -124,7 +124,7 @@ class speeder(object):
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
         self.profiler.dump_stats(self.file)
 
-        printMsg(
+        print(
             f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
