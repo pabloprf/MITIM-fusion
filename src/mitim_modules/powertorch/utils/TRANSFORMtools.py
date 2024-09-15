@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed

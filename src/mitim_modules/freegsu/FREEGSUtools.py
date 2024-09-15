@@ -9,7 +9,6 @@ from scipy.interpolate import interp1d
 from mitim_modules.freegsu.utils import FREEGSUplotting, FREEGSUparams
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
 def evaluator(
@@ -1052,7 +1051,6 @@ class Machine(freegs.machine.Machine):
                 "Current in {0} changed from {1:.2f}MA-t to {2:.2f}MA-t".format(
                     name, coil.current * 1e-6, coil.current * 1e-6 + dI.item() * 1e-6
                 ),
-                verbose=read_verbose_level(),
             )
             coil.current += dI.item()
 

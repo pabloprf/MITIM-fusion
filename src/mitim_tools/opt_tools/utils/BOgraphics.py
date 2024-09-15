@@ -8,14 +8,12 @@ import dill as pickle_dill
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
-from scipy.interpolate import griddata
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, MATHtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools import __mitimroot__
 
 from IPython import embed
@@ -1235,7 +1233,6 @@ class optimization_data:
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
         print(
             f"\t* Reading points from file ({self.file})",
-            verbose=read_verbose_level(),
         )
 
         self.data = pd.read_csv(self.file)
@@ -1333,7 +1330,7 @@ class optimization_results:
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* optimization_results updated", verbose=read_verbose_level())
+        print("\t* optimization_results updated")
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")

@@ -19,12 +19,7 @@ from mitim_tools.gacode_tools.utils import (
     GACODErun,
 )
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
 from IPython import embed
-
-
 
 mi_D = 2.01355
 
@@ -4214,7 +4209,7 @@ class TGLFinput:
                     ikar = f"{ivar}_{ikey}"
                     f.write(f"{ikar.ljust(12)} = {self.species[ikey][ivar]}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=read_verbose_level())
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
     def plotSpecies(self, axs=None, color="b", legends=True):
         if axs is None:
@@ -6360,7 +6355,7 @@ def restart_checker(
                 existsThis = os.path.exists(ffi)
                 existsRho = existsRho and existsThis
                 if not existsThis:
-                    print(f"\t* {ffi} does not exist", verbose=read_verbose_level())
+                    print(f"\t* {ffi} does not exist")
             if not existsRho:
                 rhosEvaluate.append(ir)
 

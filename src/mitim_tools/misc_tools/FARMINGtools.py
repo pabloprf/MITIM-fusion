@@ -17,6 +17,7 @@ import numpy as np
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
 import paramiko
@@ -768,18 +769,21 @@ class mitim_job:
 
         return received
 
-
 class TqdmUpTo(tqdm):
     def __init__(self, *args, **kwargs):
+        self.enabled = read_verbose_level() in [4, 5]
+        if not self.enabled:
+            # Create a 'dummy' progress bar (does nothing)
+            kwargs['disable'] = True
         super().__init__(*args, **kwargs)
         self.initialized = False
 
     def update_to(self, sent, total_size):
-        if not self.initialized:
-            self.total = total_size
-            self.initialized = True
-        self.update(sent - self.n)  # will also set self.n = sent
-
+        if self.enabled:
+            if not self.initialized:
+                self.total = total_size
+                self.initialized = True
+            self.update(sent - self.n)  # will also set self.n = sent
 
 """ 
 	Timeout function

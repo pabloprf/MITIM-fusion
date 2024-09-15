@@ -14,7 +14,6 @@ from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools import __version__
@@ -1173,8 +1172,8 @@ class PROFILES_GACODE:
         self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
         
         s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
-        self.derived['s_q'] =  (self.profiles["q(-)"]/self.derived['roa'])**2 * s
-
+        self.derived['s_q'] = np.nan_to_num((self.profiles["q(-)"]/self.derived['roa'])**2 * s)
+        
         '''
         Rotations
         --------------------------------------------------------
@@ -1490,10 +1489,7 @@ class PROFILES_GACODE:
                             txt = "".join([f"{k:.7e}".rjust(15) for k in val])
                             f.write(f"{pos}{txt}\n")
 
-        print(
-            f"\t\t~ File {IOtools.clipstr(file)} written",
-            verbose=read_verbose_level(),
-        )
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
         # Update file
         self.file = file

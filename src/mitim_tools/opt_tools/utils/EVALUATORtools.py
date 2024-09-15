@@ -5,10 +5,7 @@ from collections import OrderedDict
 import pandas as pd
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
-
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # FUNCTIONS THAT HANDLE PARELELIZATION AND MITIM-SPECIFIC FEATURES (ALLOWING GENERALIZATION TO ANY FUNCTION)
@@ -131,7 +128,7 @@ def mitimRun(
 
     if (not restartYN) and optimization_data is not None:
         # Read result in Tabular Data
-        print("--> Reading Table files...", verbose=read_verbose_level())
+        print("--> Reading Table files...")
         y, yE, _ = optimization_data.grab_data_point(x)
 
         if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
@@ -143,7 +140,6 @@ def mitimRun(
         else:
             print(
                 f"--> Reading Tabular file successful for element {numEval}",
-                verbose=read_verbose_level(),
             )
 
     if restartYN:

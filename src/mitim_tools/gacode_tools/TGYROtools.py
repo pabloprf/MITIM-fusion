@@ -20,10 +20,6 @@ except:
         typeMsg="w",
     )
 
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-
-
 """
 Same philosophy as the TGLFtools
 	tgyro = TGYRO(cdf='12345A02.CDF',time=4.2)
@@ -4642,7 +4638,7 @@ class TGYROinput:
             for ikey in spec:
                 f.write(f"{ikey} = {spec[ikey]}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=read_verbose_level())
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
 
 def print_options(physics_options, solver_options):

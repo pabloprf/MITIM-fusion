@@ -58,7 +58,7 @@ def findOptima(fun, writeTrajectory=False):
     options = {
         "maxiter": iterations,
         "sample_around_best": True,
-        "disp": 50 if read_verbose_level() in [4, 5] else False,
+        "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
     }  # , "nonnegative" : True}
 

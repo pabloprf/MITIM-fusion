@@ -7,11 +7,7 @@ e.g.
 import sys, time
 from mitim_tools.transp_tools.src import TRANSPglobus
 
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
 def main():
-
-    
 
     # User inputs
     users = sys.argv[1:]

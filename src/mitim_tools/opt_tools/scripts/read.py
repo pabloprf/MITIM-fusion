@@ -18,7 +18,7 @@ This script is to read results of a MITIM optimization, and to compare among opt
 
 * Basic use:
 
-	python3 read.py --type [analysis_level] [optional: --remote remoteFolder] --folders [folder_run1, folder_run2, etc] [optional: --seeds 10] [optional: --conv 1E-3]
+	python3 read.py --type [analysis_level] [folder_run1, folder_run2, etc] [optional: --remote remoteFolder] [optional: --seeds 10] [optional: --conv 1E-3]
 		- Full analysis (analysis level 2) performs analysis in the current machine for the base case and optimized case
 		- If remote folder is provided, read from machine and copy stuff to folders
 		- If more than one run specified, analysis_level will forced to -1, meaning... only compare them.
@@ -26,11 +26,11 @@ This script is to read results of a MITIM optimization, and to compare among opt
 * Examples:
 
 	Local:
-		 run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type -1 --folders run44 run45
+		 run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 run45 --type -1
 
 	Remote:
-		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type -1 --remote eofe7.mit.edu:/nobackup1/pablorf/runs_portals/dev/ --folders run44 run45
-		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type 2 --remote  mferws01.psfc.mit.edu-9224:/nobackup1/pablorf/runs_portals/dev/ --folders run44
+		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 run45 --type -1 --remote eofe7.mit.edu:/nobackup1/pablorf/runs_portals/dev/ 
+		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 --type 2 --remote  mferws01.psfc.mit.edu-9224:/nobackup1/pablorf/runs_portals/dev/
 
 * Notes:
 	- Analysis higher than 2 may be enabling other options for mitim and others

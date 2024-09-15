@@ -1,11 +1,7 @@
-import torch, copy
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-
 
 
 def DVdistanceMetric(xT):
@@ -149,7 +145,6 @@ def checkSame(
 ):
     print(
         f"\t\t- Checking evaluation quality between {labels[0]} and {labels[1]}",
-        verbose=read_verbose_level(),
     )
 
     try:
@@ -180,14 +175,12 @@ def checkSame(
                 "\t\t\t~ Evaluators provided error in all individuals less than {0:.1e}% (< {1:.1f}%)".format(
                     percents.max(), thresholdTrigger
                 ),
-                verbose=read_verbose_level(),
             )
         else:
             print(
                 "\t\t\t~ Evaluators provided error in all individuals of {0:.1e}% (> {1:.1f}%), but the absolute value is very low".format(
                     percents.max(), thresholdTrigger
                 ),
-                verbose=read_verbose_level(),
             )
         trouble = False
     else:

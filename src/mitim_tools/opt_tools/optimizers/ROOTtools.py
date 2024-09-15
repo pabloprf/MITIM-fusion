@@ -1,13 +1,12 @@
-import torch, copy, datetime
+import torch
+import copy
+import datetime
 import numpy as np
 from IPython import embed
-from mitim_tools.misc_tools import IOtools, MATHtools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-
 
 
 def findOptima(fun, writeTrajectory=False):
@@ -128,7 +127,6 @@ def findOptima(fun, writeTrajectory=False):
             print(
                 "\n",
                 f"\t\t- ROOT from guessed point {i+1}/{x0.shape[0]}",
-                verbose=read_verbose_level(),
             )
         x_res0 = optim.powell(
             channel_residual_evaluator,

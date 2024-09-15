@@ -9,10 +9,7 @@ import botorch
 import gpytorch
 from IPython import embed
 from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.IOtools import printMsg as print
-
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
@@ -42,11 +39,10 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         FixedNoise = surrogateOptions.get("FixedNoise", False)
         ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
         learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
-        if read_verbose_level() in [4, 5]:
-            print("\t\t* Surrogate model options:")
-            print(
-                f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
-            )
+        print("\t\t* Surrogate model options:")
+        print(
+            f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
+        )
 
         self.store_training(
             train_X,

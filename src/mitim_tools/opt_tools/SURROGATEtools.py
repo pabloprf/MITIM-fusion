@@ -4,15 +4,14 @@ import gpytorch
 import botorch
 import contextlib
 import ast
-import copy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.opt_tools import BOTORCHtools
 from mitim_tools.opt_tools.utils import BOgraphics
-from mitim_tools.misc_tools.IOtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.IOtools import printMsg as print
 from IPython import embed
 
 
@@ -83,16 +82,15 @@ class surrogate_model:
         if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
             print(
                 f"\t- Noise (variance) has one value only ({Yvaror}), assuming constant for all samples and outputs in absolute terms",
-                verbose=read_verbose_level(),
             )
             Yvaror = Yor * 0.0 + Yvaror
 
         self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
 
         # ---------- Print ----------
-        print("\t- Surrogate options:", verbose=read_verbose_level())
+        print("\t- Surrogate options:")
         for i in self.surrogateOptions:
-            print(f"\t\t{i:20} = {self.surrogateOptions[i]}", verbose=read_verbose_level())
+            print(f"\t\t{i:20} = {self.surrogateOptions[i]}")
 
         # --------------------------------------------------------------------
         # Eliminate points if needed (not from the "added" set)
@@ -101,7 +99,6 @@ class surrogate_model:
         if len(self.avoidPoints) > 0:
             print(
                 f"\t- Fitting without considering points: {self.avoidPoints}",
-                verbose=read_verbose_level(),
                 typeMsg="w",
             )
 
@@ -275,7 +272,6 @@ class surrogate_model:
 
         print(
             f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-            verbose=read_verbose_level(),
         )
 
         """
@@ -427,7 +423,6 @@ class surrogate_model:
         if approx_mll:
             print(
                 f"\t* Using approximate MLL because x has {len(train_x)} elements",
-                verbose=read_verbose_level(),
             )
         # --------------------------------------------------
 
@@ -852,29 +847,28 @@ class surrogate_model:
             "loss_final": track_fval[-1],
         }
 
-        print("\t- Fitting summary:", verbose=read_verbose_level())
-        if read_verbose_level() in [4, 5]:
-            print("\t\t* Model raw parameters:")
-            for param_name, param in self.gpmodel.named_parameters():
-                BOgraphics.printParam(param_name, param, extralab="\t\t\t")
+        print("\t- Fitting summary:")
+        print("\t\t* Model raw parameters:")
+        for param_name, param in self.gpmodel.named_parameters():
+            BOgraphics.printParam(param_name, param, extralab="\t\t\t")
 
-            print("\t\t* Model constraints:")
-            dictParam = {}
-            for constraint_name, constraint in self.gpmodel.named_constraints():
-                BOgraphics.printConstraint(constraint_name, constraint, extralab="\t\t")
-                dictParam[constraint_name.replace("_constraint", "")] = constraint
+        print("\t\t* Model constraints:")
+        dictParam = {}
+        for constraint_name, constraint in self.gpmodel.named_constraints():
+            BOgraphics.printConstraint(constraint_name, constraint, extralab="\t\t")
+            dictParam[constraint_name.replace("_constraint", "")] = constraint
 
-            """
-			This is an "inconvenient" way to calculate the actual parameters https://docs.gpytorch.ai/en/stable/examples/00_Basic_Usage/Hyperparameters.html?highlight=constraints#How-do-constraints-work?
-			but I like it.
-			"""
-            print("\t\t* Model actual parameters:")
-            for param_name, param in self.gpmodel.named_parameters():
-                if param_name in dictParam:
-                    param = dictParam[param_name].transform(param)
-                param_name = param_name.replace("raw_", "actual_")
+        """
+        This is an "inconvenient" way to calculate the actual parameters https://docs.gpytorch.ai/en/stable/examples/00_Basic_Usage/Hyperparameters.html?highlight=constraints#How-do-constraints-work?
+        but I like it.
+        """
+        print("\t\t* Model actual parameters:")
+        for param_name, param in self.gpmodel.named_parameters():
+            if param_name in dictParam:
+                param = dictParam[param_name].transform(param)
+            param_name = param_name.replace("raw_", "actual_")
 
-                BOgraphics.printParam(param_name, param, extralab="\t\t\t")
+            BOgraphics.printParam(param_name, param, extralab="\t\t\t")
 
 
 # Class to call the model posterior directly on transformed space (x and y)

@@ -59,7 +59,7 @@ def read_verbose_level():
     if "verbose_level" in s["preferences"]:
         verbose = int(s["preferences"]["verbose_level"])
     else:
-        verbose = 1
+        verbose = 5
 
     # Ignore warnings automatically if low level of verbose
     if verbose in [1, 2]:

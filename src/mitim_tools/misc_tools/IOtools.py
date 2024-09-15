@@ -18,6 +18,7 @@ import functools
 import contextlib
 import hashlib
 from collections import OrderedDict
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -35,6 +36,41 @@ import urllib.request as urlREQ  # urllibR
 import urllib.error as urlERR  # urllibE
 
 
+def printMsg(*args, typeMsg=""):
+    """
+    Print messages with different colors (blue-red is better for colorblind)
+    It also accounts for verbosity
+    """
+
+    # Take into account the verbose level
+    from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+
+    if read_verbose_level() in [4, 5]:
+        # Info (about a choice or something found): Blue
+        if typeMsg == "i":
+            extra = "\u001b[34m"
+        # Warning (about something to be careful about, even if chosen): Red
+        elif typeMsg == "w":
+            extra = "\u001b[31;1m"
+        # Decision to go faster (e.g. because results are found are a step is skipped): Cyan
+        elif typeMsg == "f":
+            extra = "\u001b[36m"
+        # Question or something that is stopped
+        elif (typeMsg == "q") or (typeMsg == "qa"):
+            extra = "\u001b[44;1m\u001b[37m"
+        # Note: Nothing
+        else:
+            extra = "\u001b[0m"
+
+        total = (extra,) + args + ("\u001b[0m",)
+
+        print(*total)
+
+        if typeMsg == "q":
+            return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
+    else:
+        return False
+
 class speeder(object):
     def __init__(self, file):
         self.file = file
@@ -44,7 +80,7 @@ class speeder(object):
         self.profiler = cProfile.Profile()
         self.timeBeginning = datetime.datetime.now()
 
-        print(">>> Profiling started")
+        printMsg(">>> Profiling started")
         self.profiler.enable()
 
         return self
@@ -52,7 +88,7 @@ class speeder(object):
     def __exit__(self, *args):
 
         self.profiler.disable()
-        print(">>> Profiling ended")
+        printMsg(">>> Profiling ended")
 
         self._get_time()
 
@@ -61,7 +97,7 @@ class speeder(object):
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
         self.profiler.dump_stats(self.file)
 
-        print(
+        printMsg(
             f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
@@ -81,7 +117,7 @@ class timer(object):
 
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
 
-        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+        printMsg(f'{self.name} took {createTimeTXT(self.timeDiff)}')
 
 # Decorator to time functions
 
@@ -124,7 +160,7 @@ def receiveWebsite(url, data=None):
             break
 
         except (urlERR.URLError, urlERR.HTTPError) as _excp:
-            print(
+            printMsg(
                 " -------> Website did not respond, relaunching new info request in {0}s".format(
                     secWaitTimeOut
                 )
@@ -146,41 +182,11 @@ def page(url):
 
     return the_page
 
-def printMsg(*args, typeMsg="", verbose=None):
-    """
-    Print messages with different colors (blue-red is better for colorblind)
-    """
-
-    # Info (about a choice or something found): Blue
-    if typeMsg == "i":
-        extra = "\u001b[34m"
-    # Warning (about something to be careful about, even if chosen): Red
-    elif typeMsg == "w":
-        extra = "\u001b[31;1m"
-    # Decision to go faster (e.g. because results are found are a step is skipped): Cyan
-    elif typeMsg == "f":
-        extra = "\u001b[36m"
-    # Question or something that is stopped
-    elif (typeMsg == "q") or (typeMsg == "qa"):
-        extra = "\u001b[44;1m\u001b[37m"
-    # Note: Nothing
-    else:
-        extra = "\u001b[0m"
-
-    total = (extra,) + args + ("\u001b[0m",)
-
-    # Take into account the verbose level is it was provided
-    if (verbose is None) or (verbose in [4, 5]):
-        print(*total)
-
-    if typeMsg == "q":
-        return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-
 class HiddenPrints:
     """
     Usage:
             with IOtools.HiddenPrints():
-                    print("This will not be printed")
+                    printMsg("This will not be printed")
     """
 
     def __enter__(self):
@@ -241,7 +247,7 @@ def printPoints(x, numtabs=1):
         for j in range(x.shape[1]):
             txt += f"{x[i, j]:.3f}, "
         txt = txt[:-2]
-        print(tabs + txt)
+        printMsg(tabs + txt)
 
 
 def isfloat(x):
@@ -281,7 +287,7 @@ def randomWait(dakNumUnit, multiplierMin=1):
 
     maxSeconds = int(dakNumUnit * multiplierMin * 60.0)
     waitSec = random.randint(0, maxSeconds)
-    print(f" >>>>>>>>>>> Waiting {waitSec}s (random, up to {maxSeconds}s)")
+    printMsg(f" >>>>>>>>>>> Waiting {waitSec}s (random, up to {maxSeconds}s)")
     time.sleep(waitSec)
 
 
@@ -293,7 +299,7 @@ def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch
         eliminateAfter=5,
     )
     zipFolder(FolderToZip, ZippedFile=f1)
-    print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
+    printMsg(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
@@ -346,8 +352,8 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
         try:
             items = vars(obj).items()
         except:
-            print('Type not recognized, probably out of depth:')
-            print(obj)
+            printMsg('Type not recognized, probably out of depth:')
+            printMsg(obj)
             return
 
     # Collect the size of each item in the object
@@ -361,17 +367,17 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     max_attr_name_length = max(len(str(attr_name)) for attr_name in sorted_sizes)
 
     # Print the sizes of the top N items
-    print(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
+    printMsg(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
     for attr_name, (size, attr_type) in list(sorted_sizes.items())[:N]:
         full_attr_name = f"{prefix}{attr_name}"
-        print(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
+        printMsg(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
 
     # Sum the sizes of the remaining attributes
     remaining_size = sum(size for size, _ in list(sorted_sizes.values())[N:])
     
     # Print the total size of the remaining attributes if any
     if remaining_size > 0:
-        print(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
+        printMsg(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
 
     # Recursively calculate the sizes of the attributes of the top item
     if recursion > 0:
@@ -508,9 +514,9 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
             df_new = df_new.drop(df.index[0])
-            print(f" ~~~ Row with index {df.index[0]} removed")
+            printMsg(f" ~~~ Row with index {df.index[0]} removed")
         df_new = df_new.append(df)
-        print(f" ~~~ Row with index {df.index[0]} added")
+        printMsg(f" ~~~ Row with index {df.index[0]} added")
     else:
         df_new = df
 
@@ -662,7 +668,7 @@ def askNewFolder(folderWork, force=False, move=None):
     os.system(f"mkdir {folderWork}")
 
     if os.path.exists(folderWork):
-        print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
+        printMsg(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
     else:
         fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
@@ -718,7 +724,7 @@ def findFileByExtension(
         allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
-            # print(allfiles)
+            # printMsg(allfiles)
             if not ForceFirst:
                 raise Exception("More than one file with same extension in the folder!")
             else:
@@ -727,17 +733,13 @@ def findFileByExtension(
         if len(allfiles) == 1:
             fileReturn = allfiles[0].split(extension)[0].split(prefix)[-1]
         else:
-            print(
+            printMsg(
                 f"\t\t~ File with extension {extension} not found in {clipstr(folder)}, returning None"
             )
             fileReturn = None
-    else:
-        from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-        
+    else:        
         printMsg(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
-            verbose=read_verbose_level(),
         )
         fileReturn = None
 
@@ -807,20 +809,20 @@ def query_yes_no(question, extra=""):
 
     while True:
         total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
-        print(*total)
+        printMsg(*total)
         with promting_context():
             choice = sys.stdin.read(1)
         if choice.lower() in valid:
-            print(f"\t\t>> Answer: {choice.lower()}")
+            printMsg(f"\t\t>> Answer: {choice.lower()}")
             if valid[choice.lower()] is not None:
-                print(
+                printMsg(
                     f'\t\t>> Proceeding sending "{valid[choice.lower()]}" flag to main program'
                 )
                 return valid[choice.lower()]
             else:
                 raise Exception("[mitim] Exit request")
         else:
-            print("Please respond with 'y' (yes) or 'n' (no)\n")
+            printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
 
 
 class promting_context(object):
@@ -889,7 +891,7 @@ def findValue(
         if raiseException:
             raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
         else:
-            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=read_verbose_level()) #,typeMsg='w')
+            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath)) #,typeMsg='w')
             return None
 
 
@@ -1025,11 +1027,11 @@ def changeValue(
     if InfoCommand is None:
         try:
             try:
-                print(
+                printMsg(
                     f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value:.4f}'
                 )
             except:
-                print(f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value}')
+                printMsg(f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value}')
         except:
             if TryAgain:
                 changeValue(
@@ -1527,7 +1529,7 @@ def conditional_log_to_file(log_file=None, msg=None):
             yield logger
     else:
         if msg:
-            print(msg)  # Optionally print the message even if not logging to file
+            printMsg(msg)  # Optionally print the message even if not logging to file
         yield None  # Simply pass through without logging
 
 def strip_ansi_codes(text):
@@ -1542,7 +1544,7 @@ class log_to_file:
 
     def __init__(self, log_file, msg=None):
         if msg is not None:
-            print(msg)
+            printMsg(msg)
         self.log_file = log_file
         self.stdout = sys.stdout
         self.stderr = sys.stderr
@@ -1676,8 +1678,8 @@ class hdf5figurefile(object):
         dataTemp = self.plotGroup.create_group("Data" + str(i))
 
         # This might be a problem... Uneven array size.
-        # print(self.xdata)
-        # print(self.xdata[0][:])##WORKING HERE##
+        # printMsg(self.xdata)
+        # printMsg(self.xdata[0][:])##WORKING HERE##
 
         xTemp = dataTemp.create_dataset("XData", (self.xdata[i].size,), dtype="f")
         yTemp = dataTemp.create_dataset("YData", (self.ydata[i].size,), dtype="f")
@@ -1775,13 +1777,13 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         ax = axesarray_dict[name]
         h5file.subplotToHDF5(ax, name=name)
 
-    print(" --> Written " + filename)
+    printMsg(" --> Written " + filename)
 
     if check:
         # Check
         f = h5py.File(filename + ".hdf5", "r")
         for ikey in f.keys():
-            print(np.array(f["a"]["Data0"]["XData"]))
+            printMsg(np.array(f["a"]["Data0"]["XData"]))
 
 # chatGPT 4o (08/31/2024)
 def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch
