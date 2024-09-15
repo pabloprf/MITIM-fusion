@@ -84,8 +84,8 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}{cont}"
         folder = f"{MainFolder}/{nameRun}/"
-        if (not os.path.exists(folder)) and (self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model):
-            os.system(f"mkdir -p {folder}/model_complete/")
+        if self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model:
+            os.makedirs(os.path.join(folder, "model_complete/"), exist_ok=True)
 
         # ***************************************************************************************************************
         # Calculate

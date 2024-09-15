@@ -10,8 +10,7 @@ folder = __mitimroot__ + "/tests/scratch/cgyro_test/"
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-if not os.path.exists(folder):
-    os.system(f"mkdir -p {folder}")
+os.makedirs(folder, exist_ok=True)
 
 cgyro = CGYROtools.CGYRO()
 

@@ -838,8 +838,8 @@ def retrieveResults(
         username = IOtools.expandPath("$USER")
 
         print(" - Grabbing remote")
-        if not os.path.exists(folderWork):
-            os.system(f"mkdir {folderWork}")
+        os.makedirs(folderWork, exist_ok=True)
+
 
         os.system(
             f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}"

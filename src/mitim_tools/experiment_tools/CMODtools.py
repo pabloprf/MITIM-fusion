@@ -818,7 +818,7 @@ def getTRANSP_MDS(
     if nomry and shotnumber is not None:
         print("** Because MRY was not produced, run scrunch2 to produce MMX")
         ff = f"{folderWork}/scrunch/"
-        os.system(f"mkdir {ff}")
+        os.makedirs(ff, exist_ok=True)
         getMMX(shotnumber, runid, ff)
         IOtools.changeValue(nml_file, "premry", None, [], "=")
         IOtools.changeValue(nml_file, "extmry", None, [], "=")

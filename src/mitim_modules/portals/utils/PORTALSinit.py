@@ -47,8 +47,7 @@ def initializeProblem(
     if (restartYN) or (not os.path.exists(folderWork)):
         IOtools.askNewFolder(folderWork, force=restartYN)
 
-    if not os.path.exists(FolderInitialization):
-        os.system(f"mkdir {FolderInitialization}")
+    os.makedirs(FolderInitialization, exist_ok=True)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode

@@ -9,8 +9,7 @@ To run: python3  tests/TGYRO_workflow.py
 
 restart = True
 
-if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
-    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
+os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
 
 gacode_file = __mitimroot__ + "/tests/data/input.gacode"
 folder = __mitimroot__ + "/tests/scratch/tgyro_test/"

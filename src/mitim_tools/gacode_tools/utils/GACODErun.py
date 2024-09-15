@@ -301,8 +301,7 @@ def CDFtoTRXPLoutput(
 ):
     nameFiles, fail_attempts = "10000", 2
 
-    if not os.path.exists(folderWork):
-        os.system(f"mkdir {folderWork}")
+    os.makedirs(folderWork, exist_ok=True)
     if sendState:
         os.system(f"cp {LocationCDF} {folderWork}/{nameFiles}.CDF")
     os.system(f"mv {LocationNML} {folderWork}/{nameFiles}TR.DAT")
@@ -348,8 +347,7 @@ def executeCGYRO(
     name="",
     numcores=32,
 ):
-    if not os.path.exists(FolderCGYRO):
-        os.system(f"mkdir {FolderCGYRO}")
+    os.makedirs(FolderCGYRO, exist_ok=True)
 
     cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
 
@@ -956,8 +954,7 @@ def runTGLF(
             folders.append(folderTGLF_this)
             folders_red.append(f"{subFolderTGLF}/rho_{rho:.4f}")
 
-            if not os.path.exists(folderTGLF_this):
-                os.system(f"mkdir -p {folderTGLF_this}")
+            os.makedirs(folderTGLF_this, exist_ok=True)
 
             fileTGLF = f"{folderTGLF_this}/input.tglf"
             with open(fileTGLF, "w") as f:

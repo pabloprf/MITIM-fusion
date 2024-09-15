@@ -522,10 +522,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
         """
 
-        if not os.path.exists(folderNew):
-            os.system(f"mkdir {folderNew}")
-        if not os.path.exists(f"{folderNew}/Outputs"):
-            os.system(f"mkdir {folderNew}/Outputs")
+        os.makedirs(os.path.join(folderNew, "Outputs/"), exist_ok=True)
 
         os.system(f"cp {folderRead}/Outputs/optimization_data.csv {folderNew}/Outputs/.")
         os.system(f"cp {folderRead}/Outputs/optimization_extra.pkl {folderNew}/Outputs/.")
@@ -548,15 +545,15 @@ class portals(STRATEGYtools.opt_evaluator):
         if reevaluateTargets > 0:
             print("- Re-evaluate targets", typeMsg="i")
 
-            os.system(f"mkdir {folderNew}/TargetsRecalculate/")
+            os.makedirs(os.path.join(folderNew, "TargetsRecalculate/"), exist_ok=True)
 
             for numPORTALS in range(len(optimization_data.data)):
 
                 FolderEvaluation = (
                     f"{folderNew}/TargetsRecalculate/Evaluation.{numPORTALS}"
                 )
-                if not os.path.exists(FolderEvaluation):
-                    os.system(f"mkdir {FolderEvaluation}")
+
+                os.makedirs(FolderEvaluation, exist_ok=True)
 
                 # ------------------------------------------------------------------------------------
                 # Produce design variables
@@ -628,7 +625,7 @@ def runModelEvaluator(
     # ---------------------------------------------------------------------------------------------------
 
     folder_model = FolderEvaluation + "/model_complete/"
-    os.system(f"mkdir {folder_model}")
+    os.makedirs(folder_model, exist_ok=True)
 
     # ---------------------------------------------------------------------------------------------------
     # Prepare evaluating vector X

@@ -33,8 +33,7 @@ def commander(
 
     print(f"* Launching slurm job of MITIM optimization with random seed = {seed}")
 
-    if not os.path.exists(folderWork):
-        os.system(f"mkdir {folderWork}")
+    os.makedirs(folderWork, exist_ok=True)
 
     if extra is not None:
         extra_str = " ".join([str(e) for e in extra])

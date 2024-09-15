@@ -107,7 +107,7 @@ class portals_beat(beat):
 
         # Flux-match first
         folder_fm = f'{self.folder}/flux_match/'
-        os.system(f'mkdir -p {folder_fm}')
+        os.makedirs(f"{folder_fm}", exist_ok=True)
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles

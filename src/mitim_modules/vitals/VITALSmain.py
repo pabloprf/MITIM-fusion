@@ -337,8 +337,7 @@ def analyze_results(
 
         self.tglf_final = self_complete.tglf
         FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
-        if not os.path.exists(FolderEvaluation):
-            os.system(f"mkdir {FolderEvaluation}")
+        os.makedirs(FolderEvaluation, exist_ok=True)
 
         launchSlurm = True
         print("\t- Running original case")

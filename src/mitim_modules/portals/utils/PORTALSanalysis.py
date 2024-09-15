@@ -31,8 +31,8 @@ class PORTALSanalyzer:
             if folderAnalysis is not None
             else f"{self.opt_fun.folder}/Analysis/"
         )
-        if not os.path.exists(self.folder):
-            os.system(f"mkdir {self.folder}")
+
+        os.makedirs(self.folder, exist_ok=True)
 
         self.fn = None
 
@@ -479,8 +479,7 @@ class PORTALSanalyzer:
             folder = f"{self.folder}/portals_step{evaluation}/"
 
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        os.makedirs(folder, exist_ok=True)
 
         # Original class
         portals_fun_original = self.opt_fun.prfs_model.optimization_object
@@ -527,8 +526,7 @@ class PORTALSanalyzer:
             folder = f"{self.folder}/tgyro_step{evaluation}/"
 
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        os.makedirs(folder, exist_ok=True)
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
@@ -577,8 +575,7 @@ class PORTALSanalyzer:
 
         folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        os.makedirs(folder, exist_ok=True)
 
         print(
             f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}"
@@ -618,8 +615,7 @@ class PORTALSanalyzer:
         if folder is None:
             folder = f"{self.folder}/tglf_full/"
 
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        os.makedirs(folder, exist_ok=True)
 
         if onlyBest:
             ranges = [self.ibest]

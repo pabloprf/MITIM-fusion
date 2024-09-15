@@ -61,8 +61,7 @@ def fun(
 
     """
 
-    if not os.path.exists(folderExecution + "/Execution/"):
-        os.mkdir(folderExecution + "/Execution/")
+    os.makedirs(os.path.join(folderExecution, "Execution/"), exist_ok=True)
 
     try:
         x = np.atleast_2d(x)
@@ -144,8 +143,7 @@ def mitimRun(
 
     if restartYN:
         # Create folder
-        if not os.path.exists(folderEvaluation):
-            os.mkdir(folderEvaluation)
+        os.makedirs(folderEvaluation, exist_ok=True)
 
         # Write params.in.X
         IOtools.writeparams(x, paramsfile, bounds, outputs, numEval)

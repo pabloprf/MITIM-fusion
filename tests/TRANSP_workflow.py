@@ -18,8 +18,7 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
-    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
+os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
 
 # ------------------------------------------------------------------------------------
 # 	Input data

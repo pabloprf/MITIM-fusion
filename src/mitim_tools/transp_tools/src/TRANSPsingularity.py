@@ -610,10 +610,9 @@ rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app 
 def organizeACfiles(
     runid, FolderTRANSP, nummax=1, ICRF=False, NUBEAM=False, TORBEAM=False
 ):
-    os.system(f"mkdir {FolderTRANSP}/NUBEAM_folder/")
-    os.system(f"mkdir {FolderTRANSP}/TORIC_folder/")
-    os.system(f"mkdir {FolderTRANSP}/TORBEAM_folder/")
-    os.system(f"mkdir {FolderTRANSP}/FI_folder/")
+
+    for ff in ["NUBEAM_folder", "TORIC_folder", "TORBEAM_folder", "FI_folder"]:
+        os.makedirs(os.path.join(FolderTRANSP, ff), exist_ok=True)
 
     if NUBEAM:
         for i in range(nummax):

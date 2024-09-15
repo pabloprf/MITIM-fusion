@@ -17,8 +17,7 @@ class transp_run:
 
         self.shot, self.runid = shot, runid
         self.folder = folder
-        if not os.path.exists(self.folder):
-            os.system(f"mkdir -p {self.folder}")
+        os.makedirs(self.folder, exist_ok=True)
 
         # Initialize variables
         self.variables, self.geometry = {}, {}

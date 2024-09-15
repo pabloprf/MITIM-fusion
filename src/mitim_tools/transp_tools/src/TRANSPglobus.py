@@ -826,8 +826,7 @@ def getSERVERfile(name, FolderSimulation, nameRunTot, tok, server, nameNewFolder
     nfold = f"{FolderSimulation}/{nameNewFolder}"
 
     if nameNewFolder is not None:
-        if not os.path.exists(nfold):
-            os.system(f"mkdir {nfold}")
+        os.makedirs(nfold, exist_ok=True)
         os.system(f"mv {FolderSimulation}/{name} {nfold}/.")
 
 

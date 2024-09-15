@@ -1172,8 +1172,8 @@ class PROFILES_GACODE:
         self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
         
         s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
-        self.derived['s_q'] = np.nan_to_num((self.profiles["q(-)"]/self.derived['roa'])**2 * s)
-        
+        self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
+
         '''
         Rotations
         --------------------------------------------------------

@@ -68,8 +68,7 @@ class CGYRO:
         # Prepare main folder with input.gacode
         self.folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(self.folder):
-            os.system(f"mkdir -p {self.folder}")
+        os.makedirs(self.folder, exist_ok=True)
 
         self.inputgacode_file = f"{self.folder}/input.gacode"
         os.system(f"cp {inputgacode_file} {self.inputgacode_file}")
@@ -88,8 +87,7 @@ class CGYRO:
 
         self.folderCGYRO = f"{self.folder}/{subFolderCGYRO}_{roa:.6f}/"
 
-        if not os.path.exists(self.folderCGYRO):
-            os.system(f"mkdir -p {self.folderCGYRO}")
+        os.makedirs(self.folderCGYRO, exist_ok=True)
 
         input_cgyro_file = f"{self.folderCGYRO}/input.cgyro"
         inputCGYRO = CGYROinput(file=input_cgyro_file)

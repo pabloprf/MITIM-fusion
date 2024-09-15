@@ -25,11 +25,8 @@ def initialization_simple_relax(self):
 
     folderExecution = IOtools.expandPath(self.folderExecution, ensurePathValid=True)
 
-    if not os.path.exists(f"{folderExecution}/Initialization/"):
-        os.system(f"mkdir {folderExecution}/Initialization/")
     MainFolder = f"{folderExecution}/Initialization/initialization_simple_relax/"
-    if not os.path.exists(MainFolder):
-        os.system(f"mkdir {MainFolder}")
+    os.makedirs(MainFolder, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     digitized = IOtools.string_to_sequential_number(self.folderExecution, num_digits=10)
@@ -63,13 +60,11 @@ def initialization_simple_relax(self):
     # Once flux matching has been attained, copy those as if they were direct MITIM evaluations
     # -------------------------------------------------------------------------------------------
 
-    if not os.path.exists(f"{self.folderExecution}/Execution/"):
-        os.mkdir(f"{self.folderExecution}/Execution/")
+    os.makedirs(os.path.join(self.folderExecution, "Execution/"), exist_ok=True)
 
     for i in range(self.Originalinitial_training):
         ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
-        if not os.path.exists(ff):
-            os.mkdir(ff)
+        os.makedirs(ff, exist_ok=True)
         os.system(
             f"cp -r {MainFolder}/{namingConvention}{i}/model_complete {ff}/model_complete"
         )

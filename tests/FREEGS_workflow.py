@@ -28,8 +28,7 @@ f.derive()
 f.plot()
 
 # Write geqdsk
-if not os.path.exists(__mitimroot__ + "/tests/scratch/freegs_test/"):
-    os.system("mkdir -p " + __mitimroot__ + "/tests/scratch/freegs_test/")
+os.makedirs(os.path.join(__mitimroot__, "tests/scratch/freegs_test/"), exist_ok=True)
 f.write(__mitimroot__ + "/tests/scratch/freegs_test/mitim_freegs.geqdsk")
 
 # Write inputs to run TRANSP

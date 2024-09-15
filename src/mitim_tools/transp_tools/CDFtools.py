@@ -16021,8 +16021,7 @@ class transp_output:
 
         folder = f"{loc}/{name}/"
 
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        os.makedirs(folder, exist_ok=True)
 
         # Impurities
         for cont, key in enumerate(self.nZs):

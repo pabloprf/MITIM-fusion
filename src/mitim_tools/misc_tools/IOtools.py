@@ -420,7 +420,7 @@ def getpythonversion():
     ]
 
 def zipFiles(files, outputFolder, name="info"):
-    os.system(f"mkdir {outputFolder}/{name}")
+    os.makedirs(os.path.join(outputFolder, name), exist_ok=True)
     for i in files:
         os.system(f"cp {i} {outputFolder}/{name}/")
 
@@ -665,7 +665,7 @@ def askNewFolder(folderWork, force=False, move=None):
                 )
                 os.system(f"rm -r {folderWork}")
 
-    os.system(f"mkdir {folderWork}")
+    os.makedirs(folderWork, exist_ok=True)
 
     if os.path.exists(folderWork):
         printMsg(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
