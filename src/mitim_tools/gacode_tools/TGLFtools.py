@@ -278,7 +278,7 @@ class TGLF:
             if exists:
                 print(
                     "\t\t- All input files to TGLF exist, not running scans",
-                    typeMsg="f",
+                    typeMsg="i",
                 )
 
             """
@@ -611,7 +611,7 @@ class TGLF:
         else:
             print(
                 "\t- TGLF not run because all results files found (please ensure consistency!)",
-                typeMsg="f",
+                typeMsg="i",
             )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -720,7 +720,7 @@ class PRF_BO:
                 else:
                     print(
                         f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",
-                        typeMsg="f",
+                        typeMsg="i",
                     )
 
             # In the case of starting from previous, do not run BO process.
@@ -777,7 +777,7 @@ class PRF_BO:
                 # When restarting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
                 self.StrategyOptions_use = current_step.StrategyOptions_use
 
-                print("\t* Step successfully restarted from pkl file", typeMsg="f")
+                print("\t* Step successfully restarted from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
             if self.restartYN:
@@ -975,7 +975,7 @@ class PRF_BO:
             step = aux.steps[iteration]
             print(
                 f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",
-                typeMsg="f",
+                typeMsg="i",
             )
         except FileNotFoundError:
             print(f"\t- State file {stateFile} not found", typeMsg="w")

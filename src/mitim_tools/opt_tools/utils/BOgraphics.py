@@ -1298,8 +1298,10 @@ class optimization_data:
                 else:
                     data_point['maximization_objective'] = np.nan
 
-                data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
-
+                # Check if data_point has any non-NA values
+                if not pd.DataFrame([data_point]).isna().all().all():
+                    data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
+                    
         self.data = data_new
         self.data.to_csv(self.file, index=False)
 

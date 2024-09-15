@@ -538,7 +538,7 @@ class TGYRO:
             os.system(f"rm -r {self.FolderTGYRO_tmp}")
 
         else:
-            print(" ~~~ Not running TGYRO", typeMsg="f")
+            print(" ~~~ Not running TGYRO", typeMsg="i")
 
     def read(self, label="tgyro1", folder=None, file_input_profiles=None):
         # If no specified folder, check the last one
@@ -770,7 +770,7 @@ class TGYRO:
                 special_radii=rhos,
             )
         else:  # special_radii=rhos
-            print("\t\t- No need to run dummy iteration of TGYRO", typeMsg="f")
+            print("\t\t- No need to run dummy iteration of TGYRO", typeMsg="i")
 
         try:
             self.read(
@@ -4794,5 +4794,5 @@ def produceInputs_TGYROworkflow(
     else:
         print(
             "\t\t- TGYRO run already prepared, not entering in preparation (TRXPL+PROFILES_GEN) routines",
-            typeMsg="f",
+            typeMsg="i",
         )

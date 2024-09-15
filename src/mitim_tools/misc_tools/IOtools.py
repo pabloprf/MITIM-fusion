@@ -45,18 +45,20 @@ def printMsg(*args, typeMsg=""):
     # Take into account the verbose level
     from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 
-    if read_verbose_level() in [4, 5]:
+    verbose = read_verbose_level()
+
+    if verbose == 0:
+        return False
+    else:
+
         # Info (about a choice or something found): Blue
         if typeMsg == "i":
             extra = "\u001b[34m"
         # Warning (about something to be careful about, even if chosen): Red
         elif typeMsg == "w":
             extra = "\u001b[31;1m"
-        # Decision to go faster (e.g. because results are found are a step is skipped): Cyan
-        elif typeMsg == "f":
-            extra = "\u001b[36m"
         # Question or something that is stopped
-        elif (typeMsg == "q") or (typeMsg == "qa"):
+        elif typeMsg == "q":
             extra = "\u001b[44;1m\u001b[37m"
         # Note: Nothing
         else:
@@ -64,12 +66,37 @@ def printMsg(*args, typeMsg=""):
 
         total = (extra,) + args + ("\u001b[0m",)
 
-        print(*total)
+        # Print depending on verbose
 
-        if typeMsg == "q":
-            return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-    else:
-        return False
+        if verbose == 1:
+            # Print
+            if typeMsg in ["w"]:
+                print(*total)
+            # Question result
+            return False
+
+        elif verbose == 2:
+            # Print
+            if typeMsg in ["w", "q"]:
+                print(*total)
+            # Question result
+            if typeMsg == "q":
+                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
+
+        elif verbose in [3,4]:
+            # Print
+            if typeMsg in ["w", "q", "i"]:
+                print(*total)
+            # Question result
+            if typeMsg == "q":
+                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
+
+        elif verbose == 5:
+            # Print
+            print(*total)
+            # Question result
+            if typeMsg == "q":
+                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
 
 class speeder(object):
     def __init__(self, file):
