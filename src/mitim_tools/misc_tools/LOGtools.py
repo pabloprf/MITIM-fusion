@@ -193,7 +193,7 @@ class log_to_file:
             sys.stderr = self
 
             # Redirect warnings to the log file
-            logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
+            def logging_handler(message, category, filename, lineno, file=None, line=None):
                 self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
             warnings.showwarning = logging_handler
 
@@ -204,7 +204,12 @@ class log_to_file:
     def write(self, message):
         # Remove ANSI codes from the message before writing to the log
         clean_message = strip_ansi_codes(message)
-        self.log.write(clean_message)
+        try:
+            self.log.write(clean_message)
+        except ValueError:
+            # If the file is closed, reopen it and try again
+            self.log = open(self.log_file, 'a')
+            self.log.write(clean_message)
         self.log.flush()  # Ensure each write is immediately flushed
 
     def flush(self):

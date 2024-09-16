@@ -164,12 +164,14 @@ class maestro:
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
 
-        # Initializer can also save important parameters
-        self.beat.initialize._inform_save()
+        log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
+        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            # Initializer can also save important parameters
+            self.beat.initialize._inform_save()
 
-        if self.profiles_with_engineering_parameters is None:
-            # First initialization, freeze engineering parameters
-            self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
+            if self.profiles_with_engineering_parameters is None:
+                # First initialization, freeze engineering parameters
+                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
