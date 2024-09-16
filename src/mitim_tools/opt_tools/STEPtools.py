@@ -348,7 +348,7 @@ class OPTstep:
         sample_size = torch.Size([512]) # Default sample size in botorch, acquisition.py
 
         if self.acquisition_type == "posterior_mean":
-            self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
+            self.evaluators["acq_function"] = BOTORCHtools.PosteriorMeanMC(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 

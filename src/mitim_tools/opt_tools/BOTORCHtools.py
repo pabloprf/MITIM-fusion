@@ -527,7 +527,7 @@ class ChainedOutcomeTransform(
 # ----------------------------------------------------------------------------------------------------------------------------
 
 
-class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
+class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def __init__(
         self,
         model,
@@ -557,26 +557,17 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
             X=X, posterior_transform=self.posterior_transform
         )
 
-        # mean as [batch1...N,q,dimY]
-        mean = posterior.mean
+        # samples as [samples,batch1...N,q,dimY]
+        samples = self.get_posterior_samples(posterior)
 
-        # objective [batch1...N,q]
-        obj = self.objective(mean)
+        # objective [samples,batch1...N,q]
+        obj = self.objective(samples=samples)
 
-        # max over q
-        acq = obj.max(dim=1)[0]
-
-        # # samples as [samples,batch1...N,q,dimY]
-        # samples = self.get_posterior_samples(posterior)
-
-        # # objective [samples,batch1...N,q]
-        # obj = self.objective(samples=samples)
-
-        # # mean over samples [batch1...N,q]
-        # obj_mean = obj.mean(axis=0)
+        # mean over samples [batch1...N,q]
+        obj_mean = obj.mean(axis=0)
         
-        # # max over q
-        # acq = obj_mean.max(axis=-1)[0]
+        # max over q
+        acq = obj_mean.max(axis=-1)[0]
 
         return acq
 
