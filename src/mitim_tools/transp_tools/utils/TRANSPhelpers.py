@@ -5,7 +5,7 @@ from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtool
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ----------------------------------------------------------------------------------------------------------

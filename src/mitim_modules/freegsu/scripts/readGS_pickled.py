@@ -11,7 +11,7 @@ import copy
 import numpy as np
 from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_modules.freegsu import FREEGSUtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 files = sys.argv[1:]
 

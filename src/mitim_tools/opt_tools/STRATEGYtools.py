@@ -9,7 +9,7 @@ from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -18,8 +18,7 @@ from mitim_tools.opt_tools.utils import (
     EVALUATORtools,
     SAMPLINGtools,
 )
-from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
 UseCUDAifAvailable = True
@@ -206,7 +205,7 @@ class opt_evaluator:
         rangePlot=None,
     ):
         with np.errstate(all="ignore"):
-            CONFIGread.ignoreWarnings()
+            LOGtools.ignoreWarnings()
             (
                 self.fn,
                 self.res,

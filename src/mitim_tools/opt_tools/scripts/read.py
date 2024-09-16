@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # These import are usually needed if they are called within the pickling object
 import torch  

@@ -8,14 +8,10 @@ import socket
 import random
 import zipfile
 import cProfile
-import termios
-import tty
 import h5py
-import warnings
 import subprocess
 import json
 import functools
-import contextlib
 import hashlib
 from collections import OrderedDict
 
@@ -35,68 +31,7 @@ except ImportError:
 import urllib.request as urlREQ  # urllibR
 import urllib.error as urlERR  # urllibE
 
-
-def printMsg(*args, typeMsg=""):
-    """
-    Print messages with different colors (blue-red is better for colorblind)
-    It also accounts for verbosity
-    """
-
-    # Take into account the verbose level
-    from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-    verbose = read_verbose_level()
-
-    if verbose == 0:
-        return False
-    else:
-
-        # Info (about a choice or something found): Blue
-        if typeMsg == "i":
-            extra = "\u001b[34m"
-        # Warning (about something to be careful about, even if chosen): Red
-        elif typeMsg == "w":
-            extra = "\u001b[31;1m"
-        # Question or something that is stopped
-        elif typeMsg == "q":
-            extra = "\u001b[44;1m\u001b[37m"
-        # Note: Nothing
-        else:
-            extra = "\u001b[0m"
-
-        total = (extra,) + args + ("\u001b[0m",)
-
-        # Print depending on verbose
-
-        if verbose == 1:
-            # Print
-            if typeMsg in ["w"]:
-                print(*total)
-            # Question result
-            return False
-
-        elif verbose == 2:
-            # Print
-            if typeMsg in ["w", "q"]:
-                print(*total)
-            # Question result
-            if typeMsg == "q":
-                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-
-        elif verbose in [3,4]:
-            # Print
-            if typeMsg in ["w", "q", "i"]:
-                print(*total)
-            # Question result
-            if typeMsg == "q":
-                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-
-        elif verbose == 5:
-            # Print
-            print(*total)
-            # Question result
-            if typeMsg == "q":
-                return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
     def __init__(self, file):
@@ -144,7 +79,7 @@ class timer(object):
 
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
 
-        printMsg(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
 
 # Decorator to time functions
 
@@ -187,7 +122,7 @@ def receiveWebsite(url, data=None):
             break
 
         except (urlERR.URLError, urlERR.HTTPError) as _excp:
-            printMsg(
+            print(
                 " -------> Website did not respond, relaunching new info request in {0}s".format(
                     secWaitTimeOut
                 )
@@ -208,21 +143,6 @@ def page(url):
     the_page = response.read()
 
     return the_page
-
-class HiddenPrints:
-    """
-    Usage:
-            with IOtools.HiddenPrints():
-                    printMsg("This will not be printed")
-    """
-
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
 
 def get_git_info(repo_path):
     # Get branch
@@ -274,7 +194,7 @@ def printPoints(x, numtabs=1):
         for j in range(x.shape[1]):
             txt += f"{x[i, j]:.3f}, "
         txt = txt[:-2]
-        printMsg(tabs + txt)
+        print(tabs + txt)
 
 
 def isfloat(x):
@@ -314,7 +234,7 @@ def randomWait(dakNumUnit, multiplierMin=1):
 
     maxSeconds = int(dakNumUnit * multiplierMin * 60.0)
     waitSec = random.randint(0, maxSeconds)
-    printMsg(f" >>>>>>>>>>> Waiting {waitSec}s (random, up to {maxSeconds}s)")
+    print(f" >>>>>>>>>>> Waiting {waitSec}s (random, up to {maxSeconds}s)")
     time.sleep(waitSec)
 
 
@@ -326,7 +246,7 @@ def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch
         eliminateAfter=5,
     )
     zipFolder(FolderToZip, ZippedFile=f1)
-    printMsg(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
+    print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
@@ -379,8 +299,8 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
         try:
             items = vars(obj).items()
         except:
-            printMsg('Type not recognized, probably out of depth:')
-            printMsg(obj)
+            print('Type not recognized, probably out of depth:')
+            print(obj)
             return
 
     # Collect the size of each item in the object
@@ -394,17 +314,17 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     max_attr_name_length = max(len(str(attr_name)) for attr_name in sorted_sizes)
 
     # Print the sizes of the top N items
-    printMsg(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
+    print(f'\nSize of {N} largest attributes of {type(obj).__name__}:')
     for attr_name, (size, attr_type) in list(sorted_sizes.items())[:N]:
         full_attr_name = f"{prefix}{attr_name}"
-        printMsg(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
+        print(f'\t{full_attr_name.ljust(max_attr_name_length + len(prefix))}: {size:>10.6f} MB ({attr_type})')
 
     # Sum the sizes of the remaining attributes
     remaining_size = sum(size for size, _ in list(sorted_sizes.values())[N:])
     
     # Print the total size of the remaining attributes if any
     if remaining_size > 0:
-        printMsg(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
+        print(f'\t{prefix}Remaining attributes combined size: {remaining_size:.6f} MB')
 
     # Recursively calculate the sizes of the attributes of the top item
     if recursion > 0:
@@ -541,9 +461,9 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
             df_new = df_new.drop(df.index[0])
-            printMsg(f" ~~~ Row with index {df.index[0]} removed")
+            print(f" ~~~ Row with index {df.index[0]} removed")
         df_new = df_new.append(df)
-        printMsg(f" ~~~ Row with index {df.index[0]} added")
+        print(f" ~~~ Row with index {df.index[0]} added")
     else:
         df_new = df
 
@@ -687,7 +607,7 @@ def askNewFolder(folderWork, force=False, move=None):
             if move is not None:
                 os.system(f"mv {folderWork[:-1]}/ {folderWork[:-1]}_{move}")
             else:
-                printMsg(
+                print(
                     f"You are about to erase the content of {folderWork}", typeMsg="q"
                 )
                 os.system(f"rm -r {folderWork}")
@@ -695,7 +615,7 @@ def askNewFolder(folderWork, force=False, move=None):
     os.makedirs(folderWork, exist_ok=True)
 
     if os.path.exists(folderWork):
-        printMsg(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
+        print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
     else:
         fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
@@ -751,7 +671,7 @@ def findFileByExtension(
         allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
-            # printMsg(allfiles)
+            # print(allfiles)
             if not ForceFirst:
                 raise Exception("More than one file with same extension in the folder!")
             else:
@@ -760,12 +680,12 @@ def findFileByExtension(
         if len(allfiles) == 1:
             fileReturn = allfiles[0].split(extension)[0].split(prefix)[-1]
         else:
-            printMsg(
+            print(
                 f"\t\t~ File with extension {extension} not found in {clipstr(folder)}, returning None"
             )
             fileReturn = None
     else:        
-        printMsg(
+        print(
             f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
         )
         fileReturn = None
@@ -829,40 +749,6 @@ def generateDictionaries(InputsFile):
     return {"dictDVs": dictDVs, "dictOFs": dictOFs}
 
 
-# From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input
-def query_yes_no(question, extra=""):
-    valid = {"y": True, "n": False, "e": None}
-    prompt = " [y/n/e] (yes, no, exit)"
-
-    while True:
-        total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
-        printMsg(*total)
-        with promting_context():
-            choice = sys.stdin.read(1)
-        if choice.lower() in valid:
-            printMsg(f"\t\t>> Answer: {choice.lower()}")
-            if valid[choice.lower()] is not None:
-                printMsg(
-                    f'\t\t>> Proceeding sending "{valid[choice.lower()]}" flag to main program'
-                )
-                return valid[choice.lower()]
-            else:
-                raise Exception("[mitim] Exit request")
-        else:
-            printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
-
-
-class promting_context(object):
-    def __init__(self):
-        self.old_settings = termios.tcgetattr(sys.stdin)
-
-    def __enter__(self):
-        tty.setraw(sys.stdin.fileno())
-
-    def __exit__(self, *args):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-
-
 def findValue(
     FilePath,
     ParamToFind,
@@ -918,7 +804,7 @@ def findValue(
         if raiseException:
             raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
         else:
-            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath)) #,typeMsg='w')
+            # print('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath)) #,typeMsg='w')
             return None
 
 
@@ -1054,11 +940,11 @@ def changeValue(
     if InfoCommand is None:
         try:
             try:
-                printMsg(
+                print(
                     f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value:.4f}'
                 )
             except:
-                printMsg(f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value}')
+                print(f'\t- Namelist parameter "{ParamToChange:s}" changed to {Value}')
         except:
             if TryAgain:
                 changeValue(
@@ -1542,103 +1428,6 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
 
     return psin, ne, dnedpsi, Te, dTedpsi, ni, dnidpsi, Ti, dTidpsi, fig, ax
 
-'''
-Log file utilities
---------------------------------
-chatGPT 4o as of 08/18/2024
-'''
-
-@contextlib.contextmanager
-def conditional_log_to_file(log_file=None, msg=None):
-
-    if log_file is not None:
-        with log_to_file(log_file, msg) as logger:
-            yield logger
-    else:
-        if msg:
-            printMsg(msg)  # Optionally print the message even if not logging to file
-        yield None  # Simply pass through without logging
-
-def strip_ansi_codes(text):
-    if not isinstance(text, (str, bytes)):
-        text = str(text)  # Convert non-string types to string
-    # Strip ANSI escape codes
-    ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
-    return ansi_escape.sub("", text)
-
-class log_to_file:
-    _context_count = 0  # Class attribute to keep track of context depth
-
-    def __init__(self, log_file, msg=None):
-        if msg is not None:
-            printMsg(msg)
-        self.log_file = log_file
-        self.stdout = sys.stdout
-        self.stderr = sys.stderr
-        self.log = None
-        self.saved_stdout_fd = None
-        self.saved_stderr_fd = None
-
-    def __enter__(self):
-        if log_to_file._context_count == 0:
-            # First entry into the context, set up logging
-            self.log = open(self.log_file, 'a')
-            self.stdout_fd = sys.stdout.fileno()
-            self.stderr_fd = sys.stderr.fileno()
-
-            # Save the actual stdout (1) and stderr (2) file descriptors.
-            self.saved_stdout_fd = os.dup(self.stdout_fd)
-            self.saved_stderr_fd = os.dup(self.stderr_fd)
-
-            # Redirect stdout and stderr to the log file.
-            os.dup2(self.log.fileno(), self.stdout_fd)
-            os.dup2(self.log.fileno(), self.stderr_fd)
-
-            # Redirect Python's sys.stdout and sys.stderr to the log file.
-            sys.stdout = self
-            sys.stderr = self
-
-            # Redirect warnings to the log file
-            logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
-                self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
-            warnings.showwarning = logging_handler
-
-        log_to_file._context_count += 1  # Increment the context depth
-
-        return self
-
-    def write(self, message):
-        # Remove ANSI codes from the message before writing to the log
-        clean_message = strip_ansi_codes(message)
-        self.log.write(clean_message)
-        self.log.flush()  # Ensure each write is immediately flushed
-
-    def flush(self):
-        # Ensure sys.stdout and sys.stderr are flushed
-        self.log.flush()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        log_to_file._context_count -= 1  # Decrement the context depth
-
-        if log_to_file._context_count == 0:
-            # Last exit from the context, restore the original state
-            sys.stdout.flush()
-            sys.stderr.flush()
-            sys.stdout = self.stdout
-            sys.stderr = self.stderr
-
-            os.dup2(self.saved_stdout_fd, self.stdout_fd)
-            os.dup2(self.saved_stderr_fd, self.stderr_fd)
-
-            os.close(self.saved_stdout_fd)
-            os.close(self.saved_stderr_fd)
-
-            self.log.close()
-
-            # Restore the original warnings behavior
-            warnings.showwarning = warnings._showwarning_orig
-
-        # If still inside a context, don't close the file or restore the state
 
 """
 This HDF5 tool was originally designed by A.J. Creely, but modifications 
@@ -1705,8 +1494,8 @@ class hdf5figurefile(object):
         dataTemp = self.plotGroup.create_group("Data" + str(i))
 
         # This might be a problem... Uneven array size.
-        # printMsg(self.xdata)
-        # printMsg(self.xdata[0][:])##WORKING HERE##
+        # print(self.xdata)
+        # print(self.xdata[0][:])##WORKING HERE##
 
         xTemp = dataTemp.create_dataset("XData", (self.xdata[i].size,), dtype="f")
         yTemp = dataTemp.create_dataset("YData", (self.ydata[i].size,), dtype="f")
@@ -1804,13 +1593,13 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
         ax = axesarray_dict[name]
         h5file.subplotToHDF5(ax, name=name)
 
-    printMsg(" --> Written " + filename)
+    print(" --> Written " + filename)
 
     if check:
         # Check
         f = h5py.File(filename + ".hdf5", "r")
         for ikey in f.keys():
-            printMsg(np.array(f["a"]["Data0"]["XData"]))
+            print(np.array(f["a"]["Data0"]["XData"]))
 
 # chatGPT 4o (08/31/2024)
 def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch

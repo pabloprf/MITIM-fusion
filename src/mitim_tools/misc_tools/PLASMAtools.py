@@ -10,7 +10,7 @@ from IPython import embed
 from mitim_tools.misc_tools import MATHtools
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 """
 Acknowledgement:

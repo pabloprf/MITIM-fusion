@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed

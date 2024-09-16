@@ -13,20 +13,13 @@ import datetime
 import torch
 import copy
 import tarfile
+import paramiko
 import numpy as np
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
-
-import paramiko
-# Paramiko shows some deprecation warnings that are not relevant
-# https://github.com/paramiko/paramiko/issues/2419
-import warnings
-import logging
-warnings.filterwarnings(action='ignore', module='.*paramiko.*')
-logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 UseCUDAifAvailable = True
 

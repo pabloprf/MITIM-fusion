@@ -4,7 +4,7 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 from mitim_tools.misc_tools import IOtools, FARMINGtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

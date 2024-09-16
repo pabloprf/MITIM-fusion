@@ -9,7 +9,7 @@ from mitim_tools.misc_tools import (
 )
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 try:

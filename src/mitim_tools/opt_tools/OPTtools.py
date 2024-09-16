@@ -5,7 +5,7 @@ import botorch
 import numpy as np
 from mitim_tools.opt_tools.utils import SBOcorrections, TESTtools, SAMPLINGtools
 from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class fun_optimization:

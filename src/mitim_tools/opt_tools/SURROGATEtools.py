@@ -11,7 +11,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.opt_tools import BOTORCHtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 

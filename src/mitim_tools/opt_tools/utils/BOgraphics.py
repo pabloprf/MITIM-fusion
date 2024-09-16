@@ -1,7 +1,6 @@
 import os
 import copy
 import torch
-import datetime
 import sys
 import pandas as pd
 import dill as pickle_dill
@@ -10,10 +9,10 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
 from IPython import embed
@@ -912,43 +911,13 @@ def retrieveResults(
     return fn, res, prfs_model, log, data_df
 
 
-class Logger(object):
-    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
-        self.logFile = logFile
-        self.writeAlsoTerminal = writeAlsoTerminal
-
-        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        print(f"- Creating log file: {logFile}")
-
-        if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
-        else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
-                )
-
-    def write(self, message):
-        if self.writeAlsoTerminal:
-            self.terminal.write(message)
-
-        with open(self.logFile, "a") as self.log:
-            self.log.write(IOtools.strip_ansi_codes(message))
-
-    # For python 3 compatibility:
-    def flush(self):
-        pass
-
 
 class LogFile:
     def __init__(self, file):
         self.file = file
 
     def activate(self, writeAlsoTerminal=True):
-        sys.stdout = Logger(
+        sys.stdout = LOGtools.Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 

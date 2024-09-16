@@ -12,7 +12,7 @@ from deap import base, benchmarks, tools, algorithms, creator, cma
 import deap.benchmarks.tools as bt
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools.OPTtools import summarizeSituation
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 

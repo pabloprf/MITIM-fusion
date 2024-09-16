@@ -1,9 +1,9 @@
 import copy
 import os
 import datetime
-from mitim_tools.misc_tools import IOtools, GUItools
+from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __version__, __mitimroot__
@@ -131,7 +131,7 @@ class maestro:
 
         print('\t- Checking...')
         log_file = f'{self.folder_logs}/beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
-        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             output_file = None
             if not restart:
@@ -157,7 +157,7 @@ class maestro:
         print('\t- Initializing...')
         if self.beat.run_flag:
             log_file = f'{self.folder_logs}/beat_{self.counter_current}_ini.log' if (not self.terminal_outputs) else None
-            with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
 
@@ -177,7 +177,7 @@ class maestro:
         print('\t- Preparing...')
         if self.beat.run_flag:
             log_file = f'{self.folder_logs}/beat_{self.counter_current}_prep.log' if (not self.terminal_outputs) else None
-            with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 
                 # Initialize if necessary
                 if not self.beat.initialize_called:
@@ -197,7 +197,7 @@ class maestro:
         print('\t- Running...')
         if self.beat.run_flag:
             log_file = f'{self.folder_logs}/beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
-            with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
 
                 # Finalize
@@ -215,7 +215,7 @@ class maestro:
 
         # Inform next beats
         log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
-        with IOtools.conditional_log_to_file(log_file=log_file):
+        with LOGtools.conditional_log_to_file(log_file=log_file):
             self.beat._inform_save()
 
     def _freeze_parameters(self, profiles = None):
@@ -233,7 +233,7 @@ class maestro:
         print('\t- Finalizing MAESTRO run...')
         
         log_file = f'{self.folder_output}/beat_final' if (not self.terminal_outputs) else None
-        with IOtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.finalize_maestro()
 
     # --------------------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ class maestro:
 
                 print(f'\t- Plotting beat #{counter}...')
                 log_file = f'{self.folder_logs}/plot_{counter}.log' if (not self.terminal_outputs) else None
-                with IOtools.conditional_log_to_file(log_file=log_file):
+                with LOGtools.conditional_log_to_file(log_file=log_file):
                     msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
                 print(msg)
 

@@ -11,7 +11,7 @@ from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals.utils import PORTALSplot
 from mitim_modules.powertorch import STATEtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class PORTALSanalyzer:

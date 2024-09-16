@@ -4,7 +4,7 @@ import numpy as np
 from IPython import embed
 from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools, TGYROtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 """
 __________________

@@ -26,7 +26,7 @@ from mitim_tools.transp_tools.utils import (
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools.GUItools import FigureNotebook
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def read_cdf_transp(cdf_file):

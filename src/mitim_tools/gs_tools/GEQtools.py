@@ -11,7 +11,7 @@ from shapely.geometry import LineString
 from scipy.integrate import quad
 import freegs
 from freegs import geqdsk
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """

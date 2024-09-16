@@ -7,7 +7,7 @@ from mitim_tools.transp_tools import TRANSPtools, NMLtools
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 MINUTES_ALLOWED_JOB_GET = 30

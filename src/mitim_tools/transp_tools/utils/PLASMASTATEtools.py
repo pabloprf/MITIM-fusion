@@ -26,7 +26,7 @@ The resulting plasmastate file can then be used by profiles_gen without problems
 "Too many ions".
 """
 
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class Plasmastate:
     def __init__(self, CDFfile):

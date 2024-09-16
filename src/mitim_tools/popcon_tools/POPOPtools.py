@@ -7,7 +7,7 @@ from popop.xarrays_with_units import ureg, Quantity
 from popop.drivers import run_original_POPCON
 from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 class CFSpopop:

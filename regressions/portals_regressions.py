@@ -1,11 +1,11 @@
 import argparse
 import torch
 import os
-from mitim_tools.misc_tools import CONFIGread
+from mitim_tools.misc_tools import LOGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.powertorch.physics import TRANSPORTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -51,7 +51,7 @@ for test in tests:
         print("\n>>>>> Running PORTALS test 1: Standard run with constant diffusivities")
         
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
-        with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
+        with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["BO_iterations"] = 2
             portals_fun.optimization_options["initial_training"] = 3
@@ -88,7 +88,7 @@ for test in tests:
         print("\n>>>>> Running PORTALS test 2: Standard run with TGLF")
         
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
-        with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
+        with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["BO_iterations"] = 1
@@ -129,7 +129,7 @@ for test in tests:
         print("\n>>>>> Running PORTALS test 3: Run with TGLF multi-channel")
         
         # os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
-        # with CONFIGread.redirect_all_output_to_file(f'{folderWork}/regression.log'):
+        # with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
         #     portals_fun = PORTALSmain.portals(folderWork)
         #     portals_fun.optimization_options["BO_iterations"] = 2

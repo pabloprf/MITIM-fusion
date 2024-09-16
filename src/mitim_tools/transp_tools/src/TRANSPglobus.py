@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools import CDFtools, TRANSPtools
 from mitim_tools.transp_tools.src import TRANSPglobus_ntcc
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 
