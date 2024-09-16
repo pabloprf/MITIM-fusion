@@ -1612,8 +1612,9 @@ class PROFILES_GACODE:
                 self.profiles[i] = np.delete(self.profiles[i], ions_list, axis=1)
 
         if not fail:
+            # Ensure we extract the scalar value from the array
             self.profiles["nion"] = np.array(
-                [str(int(self.profiles["nion"]) - len(ions_list))]
+                [str(int(self.profiles["nion"][0]) - len(ions_list))]
             )
 
         self.readSpecies()
