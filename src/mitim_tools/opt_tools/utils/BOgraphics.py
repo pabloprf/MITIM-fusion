@@ -1303,10 +1303,13 @@ class optimization_data:
                 else:
                     data_point['maximization_objective'] = np.nan
 
-                # Check if data_point has any non-NA values
+                # Check if both data_point and data_new have any non-NA values
                 if not pd.DataFrame([data_point]).isna().all().all():
-                    data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
-                    
+                    if not data_new.isna().all().all():  # Ensure data_new is not all-NA
+                        data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
+                    else:
+                        data_new = pd.DataFrame([data_point])  # Initialize if data_new is all-NA
+
         self.data = data_new
         self.data.to_csv(self.file, index=False)
 

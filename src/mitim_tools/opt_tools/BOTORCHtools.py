@@ -108,14 +108,15 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
 
         if FixedNoise:
             # Noise not inferred, given by data
-
+            
             likelihood = (
                 gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
-                    noise=train_Yvar_usedToTrain,
+                    noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
                     batch_shape=self._aug_batch_shape,
                     learn_additional_noise=learn_additional_noise,
                 )
             )
+
         else:
             # Infer Noise
 

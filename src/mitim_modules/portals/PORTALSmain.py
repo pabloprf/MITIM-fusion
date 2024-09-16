@@ -398,7 +398,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         if self.optimization_extra is not None:
             with open(self.optimization_extra, "rb") as handle:
-                dictStore = pickle_dill.load(handle)
+                dictStore = pickle_dill.load(handle)                            #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_modified"
