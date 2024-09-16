@@ -68,9 +68,17 @@ There are different options to handle this config file.
       from mitim_tools import config_manager
       config_manager.set(file_location)
 
-Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM.
-For debugging purposes, it is recommended a maximum verbose level of ``5``.
-For production runs, a minimum verbose level of ``1`` is recommended so that you only get important messages.
+Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM:
+
+.. code-block:: console
+   5: everything (normal prints + information prints + warning prints + questions + optimization progress)
+   4: information prints + warning prints + questions + optimization progress
+   3: information prints + warning prints + questions
+   2: warning prints + questions
+   1: warning prints
+   0: nothing
+
+
 ``preferences`` also allows a ``dpi_notebook`` value (in percent from standard), which should be adjusted for each user's screen configuration if the MITIM notebook figures are too small or too large.
 
 This is an example of a ``config_user.json`` file that specifies that TGLF should be run in the *eofe7.mit.edu* machine and TGYRO in the *perlmutter.nersc.gov* machine.

@@ -1,7 +1,7 @@
 {
     "preferences": {
-        "verbose_level":    "1",
-        "dpi_notebook":     "100",
+        "verbose_level":    "5",
+        "dpi_notebook":     "80",
         "trxpl":            "mfews",
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",
