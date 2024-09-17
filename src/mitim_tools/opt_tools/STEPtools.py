@@ -329,7 +329,7 @@ class OPTstep:
         # **************************************************************************************************
 
         # Build function to pass to acquisition
-        def residual(Y):
+        def residual(Y, X = None):
             return scalarized_objective(Y)[2]
 
         self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
