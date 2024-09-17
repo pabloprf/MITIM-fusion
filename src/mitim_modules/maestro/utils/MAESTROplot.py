@@ -14,7 +14,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 MARKERSIZE = 1
 LW = 1.0
 
-def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
+def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
@@ -45,7 +45,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
 
     # Plot
-    m.plot(num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
+    m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
 
     return m
 

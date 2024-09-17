@@ -1,5 +1,6 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
+from mitim_tools.misc_tools import GUItools
 
 """
 Quick way to plot several input.gacode files together
@@ -10,7 +11,7 @@ e.g.
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("folder", type=str)
+    parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument(
         "--beats", type=int, required=False, default=2
     )  # Last beats to plot
@@ -23,12 +24,17 @@ def main():
 
     args = parser.parse_args()
 
-    folder = args.folder
+    folders = args.folders
     beats = args.beats
     only = args.only
     full = args.full
 
-    m = MAESTROplot.plotMAESTRO(folder, num_beats=beats, only_beats = only, full_plot = full)
+    fn = GUItools.FigureNotebook("MAESTRO")
+
+    for folder in folders:
+        m = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
+
+    fn.show()
 
     # Import IPython and embed an interactive session
     from IPython import embed
