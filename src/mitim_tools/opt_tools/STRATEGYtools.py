@@ -930,7 +930,7 @@ class PRF_BO:
             try:
                 pickle_dill.dump(copyClass, handle)
             except:
-                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables with the variables you think cannot be pickled", typeMsg="w")
+                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables = ['variable1', 'variable2'] with the variables you think cannot be pickled", typeMsg="w")
                 del copyClass.optimization_object
                 pickle_dill.dump(copyClass, handle)
 
