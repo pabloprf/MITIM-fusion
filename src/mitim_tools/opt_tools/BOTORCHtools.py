@@ -526,6 +526,46 @@ class ChainedOutcomeTransform(
 # Mean acquisition function in botorch doesn't allow objectives because it's analytic
 # ----------------------------------------------------------------------------------------------------------------------------
 
+class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
+    def __init__(
+        self,
+        model,
+        sampler=None,
+        objective=None,
+        posterior_transform=None,
+        X_pending=None,
+    ):
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=objective,
+            posterior_transform=posterior_transform,
+            X_pending=X_pending,
+        )
+
+    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
+    def forward(self, X):
+        """
+        Notes:
+                - X in the form of [batch,restarts,q,dim]
+                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
+        """
+
+        # Posterior distribution
+        posterior = self.model.posterior(
+            X=X, posterior_transform=self.posterior_transform
+        )
+
+        # mean as [batch1...N,q,dimY]
+        mean = posterior.mean
+
+        # objective [batch1...N,q]
+        obj = self.objective(mean)
+
+        # max over q
+        acq = obj.max(dim=1)[0]
+
+        return acq
 
 class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def __init__(
