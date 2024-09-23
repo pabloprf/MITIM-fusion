@@ -222,20 +222,14 @@ class portals(STRATEGYtools.opt_evaluator):
             "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
             "surrogateForTurbExch": False,  # Run turbulent exchange as surrogate?
             "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes (only CGYRO so far)
-            "Pseudo_multipliers": [
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ],  # [Qe,Qi,Ge] multipliers to calculate pseudo
+            "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": None,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
         }
 
         for key in self.PORTALSparameters.keys():
