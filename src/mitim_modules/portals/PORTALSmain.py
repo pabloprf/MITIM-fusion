@@ -66,15 +66,11 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
         PORTALStools.selectSurrogate, CGYROrun=CGYROrun
     )
-    # optimization_options['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
     # Acquisition
     optimization_options["acquisition_type"] = "posterior_mean"
-
-    # Do not allow excursions 
-    optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
 
     if CGYROrun:
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
