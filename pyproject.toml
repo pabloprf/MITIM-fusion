@@ -62,7 +62,7 @@ test = [
   "coverage",
 ]
 nn = [
-  "tensorflow==2.15.0", #  As of 08/15/2023, requires python>3.10 (J. Hall)
+  "tensorflow",
 ]
 
 [project.urls]
