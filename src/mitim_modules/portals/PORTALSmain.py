@@ -241,9 +241,10 @@ class portals(STRATEGYtools.opt_evaluator):
         restartYN=False,
         ymax_rel=1.0,
         ymin_rel=1.0,
-        dvs_fixed=None,
         limitsAreRelative=True,
+        dvs_fixed=None,
         hardGradientLimits=None,
+        enforceFiniteTemperatureGradients=None,
         define_ranges_from_profiles=None,
         start_from_folder=None,
         reevaluateTargets=0,
@@ -252,15 +253,17 @@ class portals(STRATEGYtools.opt_evaluator):
         ModelOptions=None,
     ):
         """
-        start_from_folder is a folder from which to grab optimization_data and optimization_extra
+        Notes:
+            - ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the dictionary directly, e.g.:
+                    ymax_rel = {
+                        'te': [1.0, 0.5, 0.5, 0.5],
+                        'ti': [0.5, 0.5, 0.5, 0.5],
+                        'ne': [1.0, 0.5, 0.5, 0.5]
+                    }
+            - enforceFiniteTemperatureGradients is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforceFiniteTemperatureGradients = 0.95
+            - start_from_folder is a folder from which to grab optimization_data and optimization_extra
                 (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
-
-        ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
-                ymax_rel = np.array([   [1.0, 0.5, 0.5, 0.5],
-                                        [0.5, 0.5, 0.5, 0.5],
-                                        [1.0, 0.5, 0.5, 0.5]    ])
-
-        seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
+            - seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -278,15 +281,23 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if IOtools.isfloat(ymax_rel):
-            ymax_rel = np.array(
-                [ymax_rel * np.ones(len(self.MODELparameters[key_rhos]))]
-                * len(self.MODELparameters["ProfilesPredicted"])
-            )
+            ymax_rel0 = copy.deepcopy(ymax_rel)
+
+            ymax_rel = {}
+            for prof in self.MODELparameters["ProfilesPredicted"]:
+                ymax_rel[prof] = np.array( [ymax_rel0] * len(self.MODELparameters[key_rhos]) )
+        
         if IOtools.isfloat(ymin_rel):
-            ymin_rel = np.array(
-                [ymin_rel * np.ones(len(self.MODELparameters[key_rhos]))]
-                * len(self.MODELparameters["ProfilesPredicted"])
-            )
+            ymin_rel0 = copy.deepcopy(ymin_rel)
+
+            ymin_rel = {}
+            for prof in self.MODELparameters["ProfilesPredicted"]:
+                ymin_rel[prof] = np.array( [ymin_rel0] * len(self.MODELparameters[key_rhos]) )
+
+        if enforceFiniteTemperatureGradients is not None:
+            for prof in ['te', 'ti']:
+                if prof in ymin_rel:
+                    ymin_rel[prof] = ymin_rel[prof].clip(enforceFiniteTemperatureGradients)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
