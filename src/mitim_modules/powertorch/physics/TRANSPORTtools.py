@@ -353,6 +353,14 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
         if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+1}')
         if i == 'w0': 
             raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
+
+    #TODO: Only if that parameter is changing at that location
+    if 'te' in profiles or 'ti' in profiles:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('XNUE')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('BETAE')
     
     relative_scan = [1-delta, 1+delta]
 
