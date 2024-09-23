@@ -18,6 +18,7 @@ class portals_beat(beat):
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,
+            try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
             additional_params_in_surrogate = [],
             exploration_ranges = {
@@ -45,7 +46,7 @@ class portals_beat(beat):
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
-        self.try_flux_match_only_for_first_point = True
+        self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
 
         self._inform(use_previous_residual = use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,

@@ -329,7 +329,7 @@ class OPTstep:
         # **************************************************************************************************
 
         # Build function to pass to acquisition
-        def residual(Y):
+        def residual(Y, X = None):
             return scalarized_objective(Y)[2]
 
         self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
@@ -349,6 +349,11 @@ class OPTstep:
 
         if self.acquisition_type == "posterior_mean":
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
+                self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
+            )
+
+        elif self.acquisition_type == "posterior_mean_mc":
+            self.evaluators["acq_function"] = BOTORCHtools.PosteriorMeanMC(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 

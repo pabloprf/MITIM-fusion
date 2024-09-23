@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MITIM"
-version = "2.1.0"
+version = "2.2.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -13,7 +13,7 @@ authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
 ]
 classifiers = [
-  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: MIT License",
   "Topic :: Scientific/Engineering",
   "Operating System :: OS Independent",
@@ -39,8 +39,8 @@ dependencies = [
   "tqdm",
   "shapely",
   "freegs",
-  "botorch==0.9.4",   # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
-  "scikit-image",     # Stricly not for MITIM, but good to have for pygacode
+  "botorch>=0.9.4",        # 0.12.0 Comes w/ gpytorch=+=1.13, torch>=2.0.1. PRF also tested w/ torch-2.4.1
+  "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
 ]
 
 [project.optional-dependencies]
