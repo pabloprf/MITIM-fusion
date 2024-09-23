@@ -7,7 +7,7 @@ name = "MITIM"
 version = "2.2.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
@@ -39,8 +39,8 @@ dependencies = [
   "tqdm",
   "shapely",
   "freegs",
-  "botorch==0.12.0",   # Comes w/ gpytorch=+=1.13, torch>=2.0.1. PRF also tested w/ torch-2.4.1
-  "scikit-image",      # Stricly not for MITIM, but good to have for pygacode
+  "botorch>=0.9.4",        # 0.12.0 Comes w/ gpytorch=+=1.13, torch>=2.0.1. PRF also tested w/ torch-2.4.1
+  "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
 ]
 
 [project.optional-dependencies]
@@ -62,7 +62,7 @@ test = [
   "coverage",
 ]
 nn = [
-  "tensorflow",
+  "tensorflow==2.15.0", #  As of 08/15/2023, requires python>3.10 (J. Hall)
 ]
 
 [project.urls]
