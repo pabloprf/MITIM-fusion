@@ -93,9 +93,7 @@ class portals_beat(beat):
 
         portals_fun.prep(
             self.fileGACODE,
-            ymax_rel = self.exploration_ranges['ymax_rel'],
-            ymin_rel = self.exploration_ranges['ymin_rel'],
-            hardGradientLimits = self.exploration_ranges['hardGradientLimits']
+            **self.exploration_ranges,
             )
 
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
