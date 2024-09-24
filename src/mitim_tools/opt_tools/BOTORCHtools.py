@@ -584,6 +584,8 @@ class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
             X_pending=X_pending,
         )
 
+        self.samples_posterior = 2**9 # 512
+
     @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
     def forward(self, X):
         """
@@ -598,6 +600,7 @@ class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
         )
 
         # samples as [samples,batch1...N,q,dimY]
+        self._default_sample_shape = torch.Size([self.samples_posterior])
         samples = self.get_posterior_samples(posterior)
 
         # objective [samples,batch1...N,q]
@@ -609,47 +612,13 @@ class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
         # max over q
         acq = obj_mean.max(axis=-1)[0]
 
+        #print(f'\t X shape {samples.shape}, samples shape: {samples.shape}, obj shape: {obj.shape}, obj_mean shape: {obj_mean.shape}, acq shape: {acq.shape}')
+
         return acq
-
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# My own IC generator that uses previous points too
-# ----------------------------------------------------------------------------------------------------------------------------
-
-
-def ic_generator_wrapper(batch_initial_conditions):
-    def ic_generator(acq_function, bounds, q, num_restarts, raw_samples, **kwargs):
-        if q > 1:
-            raise NotImplementedError(
-                "[MITIM] This situation has not been implemented yet"
-            )
-
-        # Points already provided
-        provided_points = batch_initial_conditions.unsqueeze(1)
-
-        # Only generate the rest
-        num_restarts_new = num_restarts - provided_points.shape[0]
-
-        if num_restarts_new < 1:
-            print(
-                f"\t- More or same points provided than num_restarts ({provided_points.shape[0]} vs {num_restarts}), clipping...",
-                typeMsg="w",
-            )
-            return provided_points[provided_points.shape[0] - num_restarts :, ...]
-        else:
-            new_points = botorch.optim.initializers.gen_batch_initial_conditions(
-                acq_function, bounds, q, num_restarts_new, raw_samples, **kwargs
-            )
-
-            return torch.cat([provided_points, new_points], dim=0)
-
-    return ic_generator
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom kernels
 # ----------------------------------------------------------------------------------------------------------------------------
-
 
 class PRF_NNKernel(gpytorch.kernels.Kernel):
     has_lengthscale, is_stationary = True, False
@@ -772,7 +741,6 @@ class PRF_ConstantKernel(gpytorch.kernels.Kernel):
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom means
 # ----------------------------------------------------------------------------------------------------------------------------
-
 
 # mitim application: If a variable is a gradient, do linear, if not, do just bias
 class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):
