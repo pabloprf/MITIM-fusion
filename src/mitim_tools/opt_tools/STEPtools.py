@@ -325,7 +325,7 @@ class OPTstep:
         self.evaluators = {"GP": self.GP["combined_model"]}
 
         # **************************************************************************************************
-        # Objective (Multi-objective model -> single objective residual)
+        # Objective (multi-objective model -> single objective residual)
         # **************************************************************************************************
 
         # Build function to pass to acquisition
@@ -337,20 +337,22 @@ class OPTstep:
         )
 
         # **************************************************************************************************
-        # Acquisition functions (Maximization problem in MITIM, following BoTorch assumption of maximization)
+        # Acquisition functions (following BoTorch assumption of maximization)
         # **************************************************************************************************
 
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Analytic acquisition functions
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         if self.acquisition_type == "posterior_mean":
-            print('\t* Chosen posterior_mean, careful with objective nonlinearity', typeMsg="w")
+            print('\t* Chosen analytic posterior_mean, careful with objective nonlinearity', typeMsg="w")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel,
                 objective=self.evaluators["objective"]
             )
 
         elif self.acquisition_type == "logei":
-            print("\t* Chosen an analytic acquisition, igoring objective", typeMsg="w")
+            print("\t* Chosen analytic logei, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -358,11 +360,13 @@ class OPTstep:
                 )
             )
 
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Monte Carlo acquisition functions
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        sampler = botorch.sampling.normal.SobolQMCNormalSampler(1024)
+        sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([1024]))
 
-        if self.acquisition_type == "simple_regret_mc":
+        if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qSimpleRegret(
                     self.evaluators["GP"].gpmodel,

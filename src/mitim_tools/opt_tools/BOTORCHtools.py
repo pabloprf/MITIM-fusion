@@ -272,7 +272,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         posterior_transform=None,
         **kwargs,
     ):
-        self.eval()
+        self.eval()  # make sure model is in eval mode
+        # input transforms are applied at `posterior` in `eval` mode, and at
+        # `model.forward()` at the training time
         Xtr = self.transform_inputs(X)
         with botorch.models.utils.gpt_posterior_settings():
             # insert a dimension for the output dimension
@@ -280,25 +282,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 Xtr, output_dim_idx = botorch.models.utils.add_output_dim(
                     X=Xtr, original_batch_shape=self._input_batch_shape
                 )
+            # NOTE: BoTorch's GPyTorchModels also inherit from GPyTorch's ExactGP, thus
+            # self(X) calls GPyTorch's ExactGP's __call__, which computes the posterior,
+            # rather than e.g. SingleTaskGP's forward, which computes the prior.
             mvn = self(Xtr)
-            if observation_noise is not False:
-                if torch.is_tensor(observation_noise):
-                    #TODO: Validate noise shape
-                    # make observation_noise `batch_shape x q x n`
-                    if self.num_outputs > 1:
-                        obs_noise = observation_noise.transpose(-1, -2)
-                    else:
-                        obs_noise = observation_noise.squeeze(-1)
-                    mvn = self.likelihood(mvn, Xtr, noise=obs_noise)
-                elif isinstance(
-                    self.likelihood,
-                    gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood,
-                ):
-                    # Use the mean of the previous noise values (TODO: be smarter here).
-                    noise = self.likelihood.noise.mean().expand(X.shape[:-1])
-                    mvn = self.likelihood(mvn, Xtr, noise=noise)
-                else:
-                    mvn = self.likelihood(mvn, Xtr)
+            mvn = self._apply_noise(X=Xtr, mvn=mvn, observation_noise=observation_noise)
             if self._num_outputs > 1:
                 mean_x = mvn.mean
                 covar_x = mvn.lazy_covariance_matrix
@@ -310,9 +298,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                     )
                     for t in output_indices
                 ]
-                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(
-                    mvns=mvns
-                )
+                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
 
         posterior = botorch.posteriors.gpytorch.GPyTorchPosterior(distribution=mvn)
         if hasattr(self, "outcome_transform"):
@@ -320,7 +306,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         if posterior_transform is not None:
             return posterior_transform(posterior)
         return posterior
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # ModelListGP needs to be modified to allow me to have "common" parameters to models, to not run at every transformation again
