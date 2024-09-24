@@ -559,7 +559,7 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
         # mean as [batch1...N,q,dimY]
         mean = posterior.mean
 
-        # objective [batch1...N,q]
+        # objective [batch1...N,q] -> This assumes the nonlinearity of the objective is not significant, so obj(mean) = mean(obj)
         obj = self.objective(mean)
 
         # max over q
@@ -567,54 +567,11 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
 
         return acq
 
-class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
-    def __init__(
-        self,
-        model,
-        sampler=None,
-        objective=None,
-        posterior_transform=None,
-        X_pending=None,
-    ):
-        super().__init__(
-            model=model,
-            sampler=sampler,
-            objective=objective,
-            posterior_transform=posterior_transform,
-            X_pending=X_pending,
-        )
-
-        self.samples_posterior = 2**9 # 512
-
-    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
-    def forward(self, X):
-        """
-        Notes:
-                - X in the form of [batch,restarts,q,dim]
-                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
-        """
-
-        # Posterior distribution
-        posterior = self.model.posterior(
-            X=X, posterior_transform=self.posterior_transform
-        )
-
-        # samples as [samples,batch1...N,q,dimY]
-        self._default_sample_shape = torch.Size([self.samples_posterior])
-        samples = self.get_posterior_samples(posterior)
-
-        # objective [samples,batch1...N,q]
-        obj = self.objective(samples=samples)
-
-        # mean over samples [batch1...N,q]
-        obj_mean = obj.mean(axis=0)
-        
-        # max over q
-        acq = obj_mean.max(axis=-1)[0]
-
-        #print(f'\t X shape {samples.shape}, samples shape: {samples.shape}, obj shape: {obj.shape}, obj_mean shape: {obj_mean.shape}, acq shape: {acq.shape}')
-
-        return acq
+class qPosteriorMeanMC(botorch.acquisition.monte_carlo.qExpectedImprovement):
+    def __init__( self, model, **kwargs ):
+        super().__init__(model=model,best_f=0.0, **kwargs)
+    def _sample_forward(self, obj):
+        return obj
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom kernels
