@@ -340,32 +340,35 @@ class OPTstep:
         # Acquisition functions (Maximization problem in MITIM, following BoTorch assumption of maximization)
         # **************************************************************************************************
 
-        # Some acquisition functions require the best value of the objective found so far
-        best_f = self.evaluators["objective"](
-            self.evaluators["GP"].train_Y.unsqueeze(1)
-        ).max()
-
         # Analytic acquisition functions
 
         if self.acquisition_type == "posterior_mean":
             print('\t* Chosen posterior_mean, careful with objective nonlinearity', typeMsg="w")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
-                self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
+                self.evaluators["GP"].gpmodel,
+                objective=self.evaluators["objective"]
             )
 
         elif self.acquisition_type == "logei":
             print("\t* Chosen an analytic acquisition, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
-                    self.evaluators["GP"].gpmodel, best_f=best_f
+                    self.evaluators["GP"].gpmodel,
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max()
                 )
             )
 
         # Monte Carlo acquisition functions
 
-        elif self.acquisition_type == "posterior_mean_mc":
-            self.evaluators["acq_function"] = BOTORCHtools.qPosteriorMeanMC(
-                self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
+        sampler = botorch.sampling.normal.SobolQMCNormalSampler(1024)
+
+        if self.acquisition_type == "simple_regret_mc":
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.monte_carlo.qSimpleRegret(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    sampler=sampler
+                )
             )
 
         elif self.acquisition_type == "logei_mc":
@@ -373,10 +376,20 @@ class OPTstep:
                 botorch.acquisition.logei.qLogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
                     objective=self.evaluators["objective"],
-                    best_f=best_f,
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max(),
+                    sampler=sampler
                 )
             )
 
+        elif self.acquisition_type == "noisy_logei_mc":
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.logei.qLogNoisyExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    X_baseline=self.evaluators["GP"].train_X,
+                    sampler=sampler
+                )
+            )
 
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)

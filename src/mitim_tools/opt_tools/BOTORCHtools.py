@@ -567,12 +567,6 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
 
         return acq
 
-class qPosteriorMeanMC(botorch.acquisition.monte_carlo.qExpectedImprovement):
-    def __init__( self, model, **kwargs ):
-        super().__init__(model=model,best_f=0.0, **kwargs)
-    def _sample_forward(self, obj):
-        return obj
-
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom kernels
 # ----------------------------------------------------------------------------------------------------------------------------
