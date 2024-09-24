@@ -32,7 +32,7 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    q = 1  # fun.number_optimized_points
+    q = fun.number_optimized_points
     raw_samples = 2**15  # ~32k (only evaluated once, it's fine that it's a large number)
     num_restarts = 2**6  # 64
 
