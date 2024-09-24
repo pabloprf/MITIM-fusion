@@ -48,7 +48,6 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     colors = GRAPHICStools.listColors()
 
     plt.close("all")
-    plt.ion()
     fig = plt.figure(figsize=(16, 10))
     grid = plt.GridSpec(3, 2, hspace=0.2, wspace=0.1)
     ax0 = fig.add_subplot(grid[0, 0])
@@ -167,7 +166,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
 
         plotAllmembers = len(folderWorks) <= 3
         xe, yCummMean = res.plotImprovement(
-            axs=[ax0, ax1, ax1i],
+            axs=[ax0, ax1, ax1i, None],
             color=color,
             extralab=name + " ",
             plotAllmembers=plotAllmembers,
@@ -176,9 +175,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         if xe[-1] > maxEv:
             maxEv = xe[-1]
 
-        compared = -yCummMean[0] * conv if conv < 0 else conv
-
-        ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
+        #compared = -yCummMean[0] * conv if conv < 0 else conv
+        #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
         if log_class is not None:
             log_class.plot(
@@ -338,7 +336,10 @@ def main():
                 f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
                 typeMsg="w",
             )
-    opt_fun.fn.show()
+    if opt_fun.fn is not None:
+        opt_fun.fn.show()
+    else:
+        plt.show()
 
     embed()
 
