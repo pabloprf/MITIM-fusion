@@ -297,7 +297,7 @@ class portals(STRATEGYtools.opt_evaluator):
         if enforceFiniteTemperatureGradients is not None:
             for prof in ['te', 'ti']:
                 if prof in ymin_rel:
-                    ymin_rel[prof] = ymin_rel[prof].clip(enforceFiniteTemperatureGradients)
+                    ymin_rel[prof] = ymin_rel[prof].clip(min=None,max=enforceFiniteTemperatureGradients)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
