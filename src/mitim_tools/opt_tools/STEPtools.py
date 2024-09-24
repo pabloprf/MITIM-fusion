@@ -345,23 +345,27 @@ class OPTstep:
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
 
+        # Analytic acquisition functions
+
         if self.acquisition_type == "posterior_mean":
+            print('\t* Chosen posterior_mean, careful with objective nonlinearity', typeMsg="w")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 
+        elif self.acquisition_type == "logei":
+            print("\t* Chosen an analytic acquisition, igoring objective", typeMsg="w")
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.analytic.LogExpectedImprovement(
+                    self.evaluators["GP"].gpmodel, best_f=best_f
+                )
+            )
+
+        # Monte Carlo acquisition functions
+
         elif self.acquisition_type == "posterior_mean_mc":
             self.evaluators["acq_function"] = BOTORCHtools.qPosteriorMeanMC(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
-            )
-
-        elif self.acquisition_type == "ei_mc":
-            self.evaluators["acq_function"] = (
-                botorch.acquisition.monte_carlo.qExpectedImprovement(
-                    self.evaluators["GP"].gpmodel,
-                    objective=self.evaluators["objective"],
-                    best_f=best_f,
-                )
             )
 
         elif self.acquisition_type == "logei_mc":
@@ -373,13 +377,6 @@ class OPTstep:
                 )
             )
 
-        elif self.acquisition_type == "logei":
-            print("* Chosen an analytic acquisition, igoring objective", typeMsg="w")
-            self.evaluators["acq_function"] = (
-                botorch.acquisition.analytic.LogExpectedImprovement(
-                    self.evaluators["GP"].gpmodel, best_f=best_f
-                )
-            )
 
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
