@@ -337,7 +337,7 @@ class OPTstep:
         )
 
         # **************************************************************************************************
-        # Acquisition functions (Maximization problem in MITIM)
+        # Acquisition functions (Maximization problem in MITIM, following BoTorch assumption of maximization)
         # **************************************************************************************************
 
         # Some acquisition functions require the best value of the objective found so far
@@ -345,15 +345,13 @@ class OPTstep:
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
 
-        sample_size = torch.Size([512]) # Default sample size in botorch, acquisition.py
-
         if self.acquisition_type == "posterior_mean":
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 
         elif self.acquisition_type == "posterior_mean_mc":
-            self.evaluators["acq_function"] = BOTORCHtools.PosteriorMeanMC(
+            self.evaluators["acq_function"] = BOTORCHtools.qPosteriorMeanMC(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 
@@ -382,8 +380,6 @@ class OPTstep:
                     self.evaluators["GP"].gpmodel, best_f=best_f
                 )
             )
-
-        self.evaluators["acq_function"]._default_sample_shape = sample_size
 
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
