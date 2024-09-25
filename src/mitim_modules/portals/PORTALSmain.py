@@ -54,10 +54,10 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["BO_iterations"] = 50
     optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
     optimization_options['stopping_criteria_parameters'] =  {
-                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
+                "maximum_value": 1e-3,  # Reducing residual by 1000x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.15,
+                "ricci_value": 0.05,
                 "ricci_d0": 2.0,
                 "ricci_lambda": 1.0,
             }
@@ -69,12 +69,11 @@ def default_namelist(optimization_options, CGYROrun=False):
 
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
-    # Acquisition
-    optimization_options["acquisition_type"] = "posterior_mean"
-
     if CGYROrun:
+        optimization_options["acquisition_type"] = "posterior_mean"
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
     else:
+        optimization_options["acquisition_type"] = "logei_mc"
         optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
 
     return optimization_options

@@ -658,18 +658,21 @@ def plotTraining_surrogate_model(
         yerr=stds * trainYvar_tr[:, 0] ** 0.5,
         capsize=5.0,
         fmt="none",
+        label=f'$\\pm{stds}\\sigma$',
     )  # 2*std, confidence bounds
 
     mean, upper, lower, _ = self.predict(train_X, produceFundamental=True)
     mean = mean[:, 0].detach().cpu().numpy()
+    lower = lower[:, 0].detach().cpu().numpy()
+    upper = upper[:, 0].detach().cpu().numpy()
     ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3, label="model")
     ax2.errorbar(
         x,
         mean,
         c="r",
         yerr=[
-            mean - lower[:, 0].detach().cpu().numpy() * stds / 2.0,
-            upper[:, 0].detach().cpu().numpy() * stds / 2.0 - mean,
+            ( mean - lower )/2.0 * stds,
+            ( upper - mean )/2.0 * stds,
         ],
         capsize=3.0,
         fmt="none",
@@ -697,7 +700,7 @@ def plotTraining_surrogate_model(
     ax2.set_xlim(left=0)
 
     if legYN:
-        ax2.legend(loc="best", prop={"size": 4})
+        ax2.legend(loc="best", prop={"size": 5})
 
 
 def localBehavior_surrogate_model(
