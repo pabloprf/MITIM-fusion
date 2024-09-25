@@ -1,15 +1,8 @@
 import argparse
-import matplotlib.pyplot as plt
+import torch
 import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import GRAPHICStools,GUItools
-from IPython import embed	
-
-"""
-e.g.
-	~/MITIM/mitim_opt/opt_tools/scripts/plot_optimizationl.py --folder run1/
-
-"""
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
@@ -40,18 +33,35 @@ step_num = np.arange(step_from, step_to)
 fn = GUItools.FigureNotebook("MITIM BO Acquisition Optimization Analysis")
 fig = fn.add_figure(label='Optimization Convergence')
 
-axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.6, sharex=False, sharey=False)
+axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3, sharex=False, sharey=False)
 
 for step in step_num:
 
-	if 'InfoOptimization' not in strat.steps[step].__dict__: break
-	infoOPT = strat.steps[step].InfoOptimization
+	ax = axs[step]
 
+	if 'InfoOptimization' not in strat.steps[step].__dict__: break
+
+	# Grab info from optimization
+	infoOPT = strat.steps[step].InfoOptimization
 	y_acq = infoOPT[0]['info']['acq_evaluated'].numpy()
 
-	ax = axs[step]
-	ax.plot(y_acq)
-	ax.set_title(f'Step #{step}')
+	# Operate
+	acq = strat.steps[step].evaluators['acq_function']
+
+	acq_trained = np.zeros(strat.steps[step].train_X.shape[0])
+	for ix in range(strat.steps[step].train_X.shape[0]):
+		acq_trained[ix] = acq(torch.Tensor(strat.steps[step].train_X[ix,:]).unsqueeze(0)).item()
+
+
+	# Plot
+	ax.plot(y_acq, c='b')
+	ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=0.5, label='max acq of trained points')
+
+	ax.set_title(f'BO Step #{step}')
+	ax.set_ylabel('acquisition')
+	ax.set_xlabel('iteration')
+	if step == step_num[0]:
+		ax.legend()
 
 	GRAPHICStools.addDenseAxis(ax)
 	ax.set_ylim(top=0.0)
