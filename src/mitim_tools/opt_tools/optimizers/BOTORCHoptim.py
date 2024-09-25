@@ -32,12 +32,13 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    q = fun.number_optimized_points
-    raw_samples = 2**15  # ~32k (only evaluated once, it's fine that it's a large number)
-    num_restarts = 2**6  # 64
+    raw_samples = 10_000  # Note: Only evaluated once, it's fine that it's a large number
+    num_restarts = 16
+    maxiter = 1000
 
+    q = fun.number_optimized_points
     options = {
-        "maxiter": 1000,
+        "maxiter": maxiter,
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
@@ -60,9 +61,7 @@ def findOptima(fun, writeTrajectory=False):
 
     time1 = datetime.datetime.now()
     print(f'\t\t- Time: {time1.strftime("%Y-%m-%d %H:%M:%S")}')
-    print(
-        f"\t\t- Optimizing to find {q} point(s) with {num_restarts} restarts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
-    )
+    print(f"\t\t- Optimizing to find {q} point(s) with {num_restarts =} from {raw_samples =}, {maxiter =}\n")
 
     x_opt, _ = botorch.optim.optimize_acqf(
         acq_function=fun_opt,
