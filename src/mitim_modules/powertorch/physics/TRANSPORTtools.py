@@ -89,6 +89,9 @@ class power_transport:
     def produce_profiles(self):
         pass
 
+    def upload_to_database(self, *args, **kwargs):
+        pass
+
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
@@ -132,6 +135,8 @@ class tgyro_model(power_transport):
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
+
+        database_options = MODELparameters['database_options']
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -203,6 +208,9 @@ class tgyro_model(power_transport):
 
         # Read again to capture errors
         tgyro.read(label="tglf_neo", folder=f"{self.folder}/tglf_neo/")
+
+        # Upload to database
+        self.upload_to_database(database_options)
 
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # Run TGLF standalone --> In preparation for the transition
