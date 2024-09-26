@@ -174,7 +174,8 @@ class portals(STRATEGYtools.opt_evaluator):
                 "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
                 "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
             },
-            "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {}}
+            "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {}},
+            "database_options": {'upload_to_database': False, 'download_to_database': False},
         }
 
         for key in self.MODELparameters.keys():
