@@ -38,7 +38,6 @@ def findOptima(fun, writeTrajectory=False):
 
     q = fun.number_optimized_points
     options = {
-        "maxiter": maxiter,
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
