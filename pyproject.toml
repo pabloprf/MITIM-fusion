@@ -105,3 +105,22 @@ mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
 [tool.pytest.ini_options]
 markers = [
 ]
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+hdf5 = ">=1.14.3,<2"
+netcdf4 = ">=1.7.1,<2"
+numpy = "==1.24.3"
+
+[tool.pixi.pypi-dependencies]
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+pyqt = { features = ["pyqt"], solve-group = "default" }
+test = { features = ["test"], solve-group = "test" }
+nn = { features = ["nn"], solve-group = "nn" }
+
+[tool.pixi.tasks]

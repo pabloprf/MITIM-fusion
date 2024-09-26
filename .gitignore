@@ -9,3 +9,5 @@ config_user.json
 docs/build/
 *.bat
 _build/
+.pixi/*
+pixi.lock
