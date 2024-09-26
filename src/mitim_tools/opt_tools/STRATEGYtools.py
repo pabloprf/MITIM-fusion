@@ -1642,7 +1642,60 @@ class PRF_BO:
                 fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
             )
 
+        """
+		****************************************************************
+		Acquisition
+		****************************************************************
+		"""
+        self.plotAcquisitionOptimization(fn=fn)
+
         return fn
+
+
+    def plotAcquisitionOptimization(self, fn=None, step_from=0, step_to=-1):
+
+        if step_to == -1:
+            step_to = len(self.steps)
+
+        step_to = np.min([step_to, len(self.steps)])
+
+        step_num = np.arange(step_from, step_to)
+
+        fig = fn.add_figure(label='Acquisition Convergence')
+
+        axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3, sharex=False, sharey=False)
+
+        for step in step_num:
+
+            ax = axs[step]
+
+            if 'InfoOptimization' not in self.steps[step].__dict__: break
+
+            # Grab info from optimization
+            infoOPT = self.steps[step].InfoOptimization
+            y_acq = infoOPT[0]['info']['acq_evaluated'].numpy()
+
+            # Operate
+            acq = self.steps[step].evaluators['acq_function']
+
+            acq_trained = np.zeros(self.steps[step].train_X.shape[0])
+            for ix in range(self.steps[step].train_X.shape[0]):
+                acq_trained[ix] = acq(torch.Tensor(self.steps[step].train_X[ix,:]).unsqueeze(0)).item()
+
+
+            # Plot
+            ax.plot(y_acq, c='b')
+            ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=0.5, label='max acq of trained points')
+
+            ax.set_title(f'BO Step #{step}')
+            ax.set_ylabel('acquisition')
+            ax.set_xlabel('iteration')
+            if step == step_num[0]:
+                ax.legend()
+
+            GRAPHICStools.addDenseAxis(ax)
+            ax.set_ylim(top=0.0)
+
 
     def plotModelStatus(
         self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None
