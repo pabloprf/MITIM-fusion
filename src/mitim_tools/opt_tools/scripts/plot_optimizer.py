@@ -27,6 +27,8 @@ strat = opt_fun.prfs_model
 if step_to == -1:
 	step_to = len(strat.steps)
 
+step_to = np.min([step_to, len(strat.steps)])
+
 step_num = np.arange(step_from, step_to)
 
 
