@@ -116,6 +116,7 @@ netcdf4 = ">=1.7.1,<2"
 numpy = "==1.24.3"
 
 [tool.pixi.pypi-dependencies]
+mitim = { path = ".", editable = true }
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
