@@ -19,11 +19,6 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Preparation: Optimizer Options
     ------------------------------
-    The way botorch.optim.optimize_acqf works is as follows:
-        - To start the workflow it needs initial conditions [num_restarts,q,dim] that can be provided via:
-            * batch_initial_conditions (directly by the user)
-            * raw_samples. This is used to randomly explore the parameter space and select the best.
-        - It will optimize to look for a q-number of optimized points from num_restart initial conditions
     Options are:
         - q, number of candidates to produce
         - raw_samples, number of random points to evaluate the acquisition function initially, to select
@@ -34,7 +29,6 @@ def findOptima(fun, writeTrajectory=False):
     
     raw_samples = 10_000  # Note: Only evaluated once, it's fine that it's a large number
     num_restarts = 16
-    maxiter = 1000
 
     q = fun.number_optimized_points
     options = {
@@ -58,18 +52,17 @@ def findOptima(fun, writeTrajectory=False):
     else:
         fun_opt = fun.evaluators["acq_function"]
 
-    time1 = datetime.datetime.now()
-    print(f'\t\t- Time: {time1.strftime("%Y-%m-%d %H:%M:%S")}')
-    print(f"\t\t- Optimizing to find {q} point(s) with {num_restarts =} from {raw_samples =}, {maxiter =}\n")
+    print(f"\t\t- Optimizing using optimize_acqf: {q = }, {num_restarts = }, {raw_samples = }")
 
-    x_opt, _ = botorch.optim.optimize_acqf(
-        acq_function=fun_opt,
-        bounds=fun.bounds_mod,
-        raw_samples=raw_samples,
-        q=q,
-        num_restarts=num_restarts,
-        options=options,
-    )
+    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
+        x_opt, _ = botorch.optim.optimize_acqf(
+            acq_function=fun_opt,
+            bounds=fun.bounds_mod,
+            raw_samples=raw_samples,
+            q=q,
+            num_restarts=num_restarts,
+            options=options,
+        )
 
     acq_evaluated = torch.Tensor(acq_evaluated)
 
@@ -80,10 +73,6 @@ def findOptima(fun, writeTrajectory=False):
 	"""
 
     x_opt = x_opt.flatten(start_dim=0, end_dim=-2) if len(x_opt.shape) > 2 else ( x_opt.unsqueeze(0) if len(x_opt.shape) == 1 else x_opt )
-
-    print(
-        f"\n\t- Optimization took {IOtools.getTimeDifference(time1)}, and it found {x_opt.shape[0]} optima"
-    )
 
     # Summarize
     y_res = OPTtools.summarizeSituation(fun.xGuesses, fun, x_opt)

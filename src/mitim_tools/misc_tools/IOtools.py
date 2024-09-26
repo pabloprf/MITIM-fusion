@@ -1,4 +1,3 @@
-import re
 import os
 import shutil
 import sys
@@ -65,11 +64,13 @@ class speeder(object):
 
 class timer(object):
 
-    def __init__(self, name="\t* Script"):
+    def __init__(self, name="\t* Script", name_timer = '\t* Start time: '):
         self.name = name
+        self.name_timer = name_timer
 
     def __enter__(self):
         self.timeBeginning = datetime.datetime.now()
+        print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
         return self
 
     def __exit__(self, *args):
