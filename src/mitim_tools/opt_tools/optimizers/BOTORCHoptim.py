@@ -27,7 +27,7 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    raw_samples = 10_000  # Note: Only evaluated once, it's fine that it's a large number
+    raw_samples = 1024 #10_000  # Note: Only evaluated once, it's fine that it's a large number
     num_restarts = 16
 
     q = fun.number_optimized_points
@@ -60,6 +60,7 @@ def findOptima(fun, writeTrajectory=False):
             bounds=fun.bounds_mod,
             raw_samples=raw_samples,
             q=q,
+            sequential=True,                # Not really relevant for q=1, but recommendation from BoTorch team for q>1
             num_restarts=num_restarts,
             options=options,
         )
