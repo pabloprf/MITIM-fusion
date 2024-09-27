@@ -435,7 +435,7 @@ class TGYRO:
         minn_true = []
         for i in minn:
             if (self.profiles.Species[i]["S"] != "fast") or (
-                not TGYRO_physics_options["onlyThermal"]
+                not TGYRO_physics_options.get("onlyThermal", False)
             ):
                 minn_true.append(i)
 
