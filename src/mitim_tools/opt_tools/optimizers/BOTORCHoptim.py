@@ -1,5 +1,5 @@
 import torch
-import datetime
+import types
 import botorch
 import random
 from mitim_tools.opt_tools import OPTtools
@@ -29,8 +29,8 @@ def findOptima(fun, writeTrajectory=False):
     
     raw_samples = 1024 #10_000  # Note: Only evaluated once, it's fine that it's a large number
     num_restarts = 16
-
     q = fun.number_optimized_points
+    sequential_q = True       # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
@@ -43,16 +43,17 @@ def findOptima(fun, writeTrajectory=False):
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	"""
 
+    fun_opt = fun.evaluators["acq_function"]
+
     acq_evaluated = []
     if writeTrajectory:
-        def fun_opt(x, v=acq_evaluated):
-            f = fun.evaluators["acq_function"](x)
+        def new_call(self, x, *args, v=acq_evaluated, **kwargs):
+            f = fun_opt(x, *args, **kwargs)
             v.append(f.max().item())
             return f
-    else:
-        fun_opt = fun.evaluators["acq_function"]
+        fun_opt.__call__ = types.MethodType(new_call, fun_opt)
 
-    print(f"\t\t- Optimizing using optimize_acqf: {q = }, {num_restarts = }, {raw_samples = }")
+    print(f"\t\t- Optimizing using optimize_acqf: {q = } {f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''}, {num_restarts = }, {raw_samples = }")
 
     with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
         x_opt, _ = botorch.optim.optimize_acqf(
@@ -60,7 +61,7 @@ def findOptima(fun, writeTrajectory=False):
             bounds=fun.bounds_mod,
             raw_samples=raw_samples,
             q=q,
-            sequential=True,                # Not really relevant for q=1, but recommendation from BoTorch team for q>1
+            sequential=sequential_q,
             num_restarts=num_restarts,
             options=options,
         )
