@@ -22,7 +22,7 @@
         "parallel_evaluations": 1,
         "acquisition_type": "logei_mc",
         "optimizers": "botorch",
-        "newPoints": 1,
+        "points_per_step": 1,
         "favor_proximity_type": 0,
         "ensure_new_points": true
     },

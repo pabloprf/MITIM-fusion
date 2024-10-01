@@ -558,7 +558,7 @@ class PRF_BO:
             self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["ofs"]
 
             # How many points each iteration will produce?
-            self.best_points_sequence = self.optimization_options["newPoints"]
+            self.best_points_sequence = self.optimization_options["points_per_step"]
             self.best_points = int(np.sum(self.best_points_sequence))
 
             """

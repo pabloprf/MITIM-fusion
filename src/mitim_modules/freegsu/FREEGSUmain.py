@@ -21,7 +21,7 @@ def default_namelist(optimization_options):
     optimization_options["BO_iterations"] = 100
     optimization_options["parallel_evaluations"] = 16
     optimization_options['stopping_criteria_parameters']["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
-    optimization_options["newPoints"] = 16  # I found this better
+    optimization_options["points_per_step"] = 16  # I found this better
     optimization_options["surrogateOptions"]["FixedNoise"] = False
     optimization_options["StrategyOptions"]["TURBO"] = True
 
