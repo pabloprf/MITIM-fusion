@@ -72,11 +72,11 @@ def default_namelist(optimization_options, CGYROrun=False):
     if CGYROrun:
         optimization_options["acquisition_type"] = "posterior_mean"
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
-        optimization_options["newPoints"] = 1
+        optimization_options["points_per_step"] = 1
     else:
         optimization_options["acquisition_type"] = "noisy_logei_mc"
         optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
-        optimization_options["newPoints"] = 1
+        optimization_options["points_per_step"] = 1
 
     return optimization_options
 
