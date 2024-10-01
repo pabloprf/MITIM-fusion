@@ -72,9 +72,11 @@ def default_namelist(optimization_options, CGYROrun=False):
     if CGYROrun:
         optimization_options["acquisition_type"] = "posterior_mean"
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
+        optimization_options["newPoints"] = 1
     else:
         optimization_options["acquisition_type"] = "noisy_logei_mc"
         optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
+        optimization_options["newPoints"] = 1
 
     return optimization_options
 
@@ -228,7 +230,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.01,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
         }
 
         for key in self.PORTALSparameters.keys():
@@ -617,6 +619,7 @@ def runModelEvaluator(
     numPORTALS=0,
     dictOFs=None,
     ):
+
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
 
@@ -640,6 +643,9 @@ def runModelEvaluator(
             X[cont] = dictDVs[f"aL{ikey}_{ix+1}"]["value"]
             cont += 1
     X = X.unsqueeze(0)
+
+    # Ensure that the powerstate has the right dimensions
+    powerstate._repeat_tensors(batch_size=X.shape[0])
 
     # ---------------------------------------------------------------------------------------------------
     # Run model through powerstate
