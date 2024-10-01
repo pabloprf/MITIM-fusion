@@ -23,14 +23,15 @@ def findOptima(fun, writeTrajectory=False):
         - q, number of candidates to produce
         - raw_samples, number of random points to evaluate the acquisition function initially, to select
             the best points ("num_restarts" points) to initialize the scipy optimization.
+            Note: Only evaluated once, it's fine that it's a large number
         - num_restarts number of starting points for multistart acquisition function optimization
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    raw_samples = 1024 #10_000  # Note: Only evaluated once, it's fine that it's a large number
+    raw_samples = 1024
     num_restarts = 16
     q = fun.number_optimized_points
-    sequential_q = True       # Not really relevant for q=1, but recommendation from BoTorch team for q>1
+    sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
