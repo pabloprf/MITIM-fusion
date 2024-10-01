@@ -179,7 +179,7 @@ class power_targets:
         variables_to_error = ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
 
         for i in variables_to_error:
-            self.powerstate.plasma[i + "_stds"] = self.powerstate.plasma[i] * assumedPercentError / 100 
+            self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * assumedPercentError / 100 
 
         """
 		**************************************************************************************************
