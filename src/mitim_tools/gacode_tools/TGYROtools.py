@@ -654,7 +654,7 @@ class TGYRO:
         tglf.prep(
             self.FolderGACODE + subfolder,
             specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode.new",
+            inputgacode=self.FolderTGYRO + "/input.gacode",
             tgyro_results=self.results[fromlabel],
         )
 
