@@ -330,7 +330,19 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
-def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name="", remove_folders_out = False):
+def tglf_scan_trick(
+    fluxesTGYRO, 
+    tgyro, 
+    label, 
+    RadiisToRun, 
+    profiles, 
+    impurityPosition=1, includeFast=False,  
+    delta=0.02, 
+    restart=False, 
+    check_coincidence_thr=1E-2, 
+    extra_name="", 
+    remove_folders_out = False
+    ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
@@ -582,7 +594,16 @@ def curateTGYROfiles(
             restart=restart,
             extra_name=extra_name
             )
-    
+
+        min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum
+
+        QeE = QeE.clip(abs(Qe)*min_relative_error)
+        QiE = QiE.clip(abs(Qi)*min_relative_error)
+        GeE = GeE.clip(abs(Ge)*min_relative_error)
+        GZE = GZE.clip(abs(GZ)*min_relative_error)
+        MtE = MtE.clip(abs(Mt)*min_relative_error)
+        PexchE = PexchE.clip(abs(Pexch)*min_relative_error)
+
     else:
 
         # --------------------------------------------------------------
