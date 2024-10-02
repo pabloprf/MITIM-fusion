@@ -422,6 +422,9 @@ def tglf_scan_trick(
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
         print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+        print(f"\t\t* Maximum error in Qe = {Qe_err.max()*100:.2f}% (QeGB at max location = {tgyro.results[label].QeGB_sim_turb[0,1+Qe_err.argmax()]:.1e})")
+        print(f"\t\t* Maximum error in Qi = {Qi_err.max()*100:.2f}% (QiGB at max location = {tgyro.results[label].QiGBIons_sim_turb[0,1+Qi_err.argmax()]:.1e})")
+        print(f"\t\t* Maximum error in Ge = {Ge_err.max()*100:.2f}% (GeGB at max location = {tgyro.results[label].GeGB_sim_turb[0,1+Ge_err.argmax()]:.1e})")
     else:
         print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
     # ----------------------------------------------------
