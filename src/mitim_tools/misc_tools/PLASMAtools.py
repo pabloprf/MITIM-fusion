@@ -32,6 +32,7 @@ pi = 3.141592653589793
 e_J = 1.60218e-19  # C
 u = 1.66054e-27  # kg
 eps0 = 8.85419e-12  # F/m
+mu0 = 4.0 * np.pi * 1.0e-7
 
 # cgs (for TGYRO-inspired calculations)
 me_g = 9.1094e-28  # g
