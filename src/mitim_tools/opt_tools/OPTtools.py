@@ -118,14 +118,9 @@ class fun_optimization:
         """
 
         # ** OPTIMIZE **
-        if method_parameters is not None:
-            x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
-                self, method_parameters, writeTrajectory=True
-            )
-        else:
-            x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
-                self, writeTrajectory=True
-            )
+        x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
+            self, optimization_params = method_parameters, writeTrajectory=True
+        )
         # **********************************************************************
 
         info = storeInfo(x_opt2, acq_evaluated, self)
@@ -244,9 +239,9 @@ def optAcq(
             number_optimized_points = best_points
 
             funct_params = {
-                "raw_samples" : acquisition_optim_params["raw_samples"],
-                "num_restarts" : acquisition_optim_params["num_restarts"]
-            } if "raw_samples" in acquisition_optim_params and "num_restarts" in acquisition_optim_params else {}
+                "raw_samples" : acquisition_optim_params.get("raw_samples",100),
+                "num_restarts" : acquisition_optim_params.get("num_restarts",10),
+            }
         elif "root" in optimizers:
             from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
 
