@@ -8,7 +8,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-def findOptima(fun, writeTrajectory=False):
+def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     print("\t--> BOTORCH optimization techniques used to maximize acquisition")
 
     # Seeds
@@ -28,8 +28,9 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    raw_samples = 1024
-    num_restarts = 16
+    raw_samples = optimization_params["raw_samples"]
+    num_restarts = optimization_params["num_restarts"]
+
     q = fun.number_optimized_points
     sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
