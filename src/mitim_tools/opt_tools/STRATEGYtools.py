@@ -849,6 +849,12 @@ class PRF_BO:
             if self.storeClass and self.restartYN:
                 self.save()
 
+            # -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+            # -_-_-_-_-_-_-_-_-_-_-_-_| TIME BO |_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+            with open (self.folderOutputs + "timeBO.csv","a") as f:
+                f.write(f"{self.currentIteration},{datetime.datetime.now()-timeBeginningThis}\n")
+            # -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~ Run last point with actual model
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

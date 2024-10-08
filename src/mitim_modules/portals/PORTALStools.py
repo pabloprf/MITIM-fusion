@@ -441,6 +441,21 @@ def stopping_criteria_portals(prf_bo, parameters = {}):
 
     _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
 
+    # -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+    # -_-_-_-_-_-_-_-_-_-_-_-_| SAVE OF, CAL AND RICCI PARAMS |_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+    import json
+    with open(f"{parameters['folder']}/ricci_params.json", "w") as f:
+        json.dump(
+            {
+                "of": of.numpy().tolist(), 
+                "cal": cal.numpy().tolist(),
+                "of_std": of_std.numpy().tolist(),
+                "cal_std": cal_std.numpy().tolist(),
+                "d0": d0,
+                "lambda": la
+            }, f)
+    # -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+
     print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f})")
 
     converged_by_ricci = chiR.min() < ricci_value
