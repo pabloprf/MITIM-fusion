@@ -9,7 +9,7 @@ from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
 
 
-def findOptima(fun, writeTrajectory=False):
+def findOptima(fun, writeTrajectory=False, **kwargs):
     print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
     np.random.seed(fun.seed)
 

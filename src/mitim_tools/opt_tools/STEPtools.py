@@ -95,6 +95,7 @@ class OPTstep:
         # **** Step settings
         self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
         self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_type"]
+        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition_params"]
         self.favor_proximity_type = self.stepSettings["optimization_options"]["favor_proximity_type"]
         self.optimizers = self.stepSettings["optimization_options"]["optimizers"]
         self.outputs = self.stepSettings["outputs"]
@@ -364,7 +365,7 @@ class OPTstep:
         # Monte Carlo acquisition functions
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([1024]))
+        sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([self.acquisition_params["mc_samples"]]))
 
         if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
             self.evaluators["acq_function"] = (
@@ -468,6 +469,7 @@ class OPTstep:
             position_best_so_far=position_best_so_far,
             seed=seed,
             forceAllPointsInBounds=forceAllPointsInBounds,
+            acquisition_optim_params=self.acquisition_params["acquisition_optimization"],
         )
 
         print(

@@ -104,6 +104,7 @@ class fun_optimization:
         method_for_optimization,
         previous_solutions=None,
         best_performance_previous_iteration=None,
+        method_parameters={},
     ):
         """
         Possible Methods
@@ -118,7 +119,7 @@ class fun_optimization:
 
         # ** OPTIMIZE **
         x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
-            self, writeTrajectory=True
+            self, optimization_params = method_parameters, writeTrajectory=True
         )
         # **********************************************************************
 
@@ -163,6 +164,7 @@ def optAcq(
     seed=0,
     position_best_so_far=-1,
     forceAllPointsInBounds=False,
+    acquisition_optim_params = {},
 ):
     """
     Everything returned here is unnormalized
@@ -230,14 +232,21 @@ def optAcq(
             from mitim_tools.opt_tools.optimizers.GAtools import findOptima
 
             number_optimized_points = np.max([best_points, 32])
+            funct_params = {}
         elif optimizers == "botorch":
             from mitim_tools.opt_tools.optimizers.BOTORCHoptim import findOptima
 
             number_optimized_points = best_points
+
+            funct_params = {
+                "raw_samples" : acquisition_optim_params.get("raw_samples",100),
+                "num_restarts" : acquisition_optim_params.get("num_restarts",10),
+            }
         elif "root" in optimizers:
             from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
 
             number_optimized_points = int(optimizers.split("_")[1])
+            funct_params = {}
 
         fun.prep(
             number_optimized_points=number_optimized_points,
@@ -250,6 +259,7 @@ def optAcq(
             findOptima,
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
+            method_parameters=funct_params,
         )
         # ****************************************************************************************
 
