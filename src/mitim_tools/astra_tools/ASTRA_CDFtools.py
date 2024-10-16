@@ -55,6 +55,7 @@ class CDFreactor:
         self.ne = self.f["NE"][:]
         self.ni = self.f["NI"][:]
         self.FP = self.f["FP"][:]
+        self.ER = self.f["ER"][:]
         self.VPOL = self.f["VPOL"][:]
         self.VTOR = self.f["VTOR"][:]
         self.F1 = self.f["F1"][:]
@@ -76,11 +77,13 @@ class CDFreactor:
         self.Qn = self.f["QN"][:]
         self.PEECR = self.f["PEECR"][:]
         self.G11 = self.f["G11"][:]
+        self.NALF = self.f["NALF"][:]
 
         # dummy variables
 
         self.CAR1 = self.f["CAR1"][:]
         self.CAR2 = self.f["CAR2"][:]
+        self.CAR2X = self.f["CAR2X"][:]
         self.CAR3 = self.f["CAR3"][:]
         self.CAR4 = self.f["CAR4"][:]
         self.CAR5 = self.f["CAR5"][:]
@@ -122,6 +125,8 @@ class CDFreactor:
         self.CAR39 = self.f["CAR39"][:]
         self.CAR40 = self.f["CAR40"][:]
         self.CAR41 = self.f["CAR41"][:]
+        self.CAR40X = self.f["CAR40X"][:]
+        self.CAR41X = self.f["CAR41X"][:]
         self.CAR42 = self.f["CAR42"][:]
         self.CAR43 = self.f["CAR43"][:]
         self.CAR44 = self.f["CAR44"][:]
@@ -199,9 +204,13 @@ class CDFreactor:
         self.ZRD52 = self.f["ZRD52"][:]
         self.ZRD53 = self.f["ZRD53"][:]
         self.ZRD54 = self.f["ZRD54"][:]
+        self.ZRD55 = self.f["ZRD55"][:]
+        self.ZRD50X = self.f["ZRD50X"][:]
         self.ZRD51X = self.f["ZRD51X"][:]
         self.ZRD52X = self.f["ZRD52X"][:]
         self.ZRD53X = self.f["ZRD53X"][:]
+        self.ZRD54X = self.f["ZRD54X"][:]
+        self.ZRD55X = self.f["ZRD55X"][:]
 
         self.CF1 = self.f["CF1"][:]
         self.CF2 = self.f["CF2"][:]
@@ -318,8 +327,12 @@ class CDFreactor:
         self.PIDT = self.f["CAR4"][:]
         self.PEICL = self.f["CAR5"][:]
         self.POH = self.f["CAR6"][:]
+        self.QIDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
+        self.QEDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.QDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.QICRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.QNBI = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.QECRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.Cu_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.Cubs_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.QE = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
@@ -336,6 +349,10 @@ class CDFreactor:
         self.SLAT = self.f['SLAT'][:]
         self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+        self.q95position = [0]*len(self.PEICR[:,-1])
+        self.q95 = np.zeros(len(self.PEICR[:,-1]))
+        self.delta95 = np.zeros(len(self.PEICR[:,-1]))
+        self.kappa95 = np.zeros(len(self.PEICR[:,-1]))
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
@@ -344,7 +361,11 @@ class CDFreactor:
         
         for kk in range(0,len(self.PEDT[:,-1])):
              self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
+             self.QIDT[kk,:] = np.cumsum(self.PIDT[kk,:]*self.HRO[kk]*self.VR[kk,:])
+             self.QEDT[kk,:] = np.cumsum(self.PEDT[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QDT[kk,:] = np.cumsum((self.PEDT[kk,:]+self.PIDT[kk,:])*self.HRO[kk]*self.VR[kk,:])
+             self.QNBI[kk,:] = np.cumsum((self.PEBM[kk,:]+self.PIBM[kk,:])*self.HRO[kk]*self.VR[kk,:])
+             self.QECRH[kk,:] = np.cumsum(self.PEECR[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QICRH[kk,:] = np.cumsum((self.PIICR[kk,:]+self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
              self.Cubs_tot[kk,:] = np.cumsum(self.Cubs[kk,:]*self.area[kk,:])
@@ -357,6 +378,10 @@ class CDFreactor:
              self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*(self.ne_avg[kk])**0.41*(self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
+             self.q95position[kk] = np.abs(self.FP_norm[kk] - 0.95).argmin()
+             self.q95[kk] = 1/self.Mu[kk,self.q95position[kk]]
+             self.delta95[kk] = self.tria[kk,self.q95position[kk]]
+             self.kappa95[kk] = self.elon[kk,self.q95position[kk]]
 
         self.f_Gr = self.ne_avg/10/self.n_Gr
         # self.QNTOT  = self.f['CAR8'][:]
@@ -376,9 +401,13 @@ class CDFreactor:
         self.ZIM1 = self.f["ZIM1"][:]
         self.ZIM2 = self.f["ZIM2"][:]
         self.ZIM3 = self.f["ZIM3"][:]
+        self.fMAIN = self.NMAIN/self.ne
+        self.f1 = self.NIZ1/self.ne
+        self.f2 = self.NIZ2/self.ne
+        self.f3 = self.NIZ3/self.ne
         self.CAR7 = self.f["CAR7"][:]
         self.ZMAIN = self.f["ZMAIN"][:]
-        self.ptot  = self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON)
+        self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  #in MPa
         self.rlte  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.rlti  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.rlne  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
@@ -408,10 +437,6 @@ class CDFreactor:
         self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper
         self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])
         self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr
-        self.q95position = int(0.95*len(self.CAR1[-1,:])-1)
-        self.q95 = 1/self.Mu[:,self.q95position]
-        self.delta95 = self.tria[:,self.q95position]
-        self.kappa95 = self.elon[:,self.q95position]
         self.q_Uckan = 5*self.ABC**2*self.BTOR/(self.RTOR*self.IPL)*(1+self.kappa95**2*(1+2*self.delta95**2-1.2*self.delta95**3))/2
 
         rtor_matrix = np.zeros(self.rho.shape)
@@ -548,13 +573,13 @@ class CDFreactor:
         ## Make temporal figures ##
         self.axTet = fig.add_subplot(2, 2, 1)
         self.make_temporal_plots(self.axTet, self.Te, rho_tor_aims)
-
-        self.axTet.set_ylabel("Te (keV)")
+        self.axTet.set_xlabel("Time (s)")
+        self.axTet.set_ylabel("$T_e$ (keV)")
 
         self.axTit = fig.add_subplot(2, 2, 3)
         self.make_temporal_plots(self.axTit, self.Ti, rho_tor_aims)
-        self.axTit.set_xlabel("Time")
-        self.axTit.set_ylabel("Ti (keV)")
+        self.axTit.set_xlabel("Time (s)")
+        self.axTit.set_ylabel("$T_i$ (keV)")
 
         plt.legend(title=r"$\rho_{tor}$")
 
@@ -562,11 +587,11 @@ class CDFreactor:
 
         self.axTer = fig.add_subplot(2, 2, 2)
         self.make_radial_plots(self.axTer, self.Te, time_aims)
-        self.axTer.set_ylabel("Te (keV)")
+        self.axTer.set_ylabel("$T_e$ (keV)")
 
         self.axTir = fig.add_subplot(2, 2, 4)
         self.make_radial_plots(self.axTir, self.Ti, time_aims)
-        self.axTir.set_ylabel("Ti (keV)")
+        self.axTir.set_ylabel("$T_i$ (keV)")
 
         plt.legend(title="Times")
 
@@ -579,33 +604,33 @@ class CDFreactor:
         ## Make temporal figures ##
         self.axaLTet = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axaLTet, self.aLTe, rho_tor_aims)
-        self.axaLTet.set_ylabel("aLTe")
+        self.axaLTet.set_ylabel("$a\\nabla T_e/T_e$")
         plt.legend(title=r"$\rho_{tor}$")
 
         self.axaLTit = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(self.axaLTit, self.aLTi, rho_tor_aims)
-        self.axaLTit.set_ylabel("aLTi")
+        self.axaLTit.set_ylabel("$a\\nabla T_i/T_i$")
         plt.legend(title=r"$\rho_{tor}$")
 
         self.axaLnet = fig.add_subplot(2, 3, 3)
         self.make_temporal_plots(self.axaLnet, self.aLne, rho_tor_aims)
-        self.axaLnet.set_ylabel("aLne")
+        self.axaLnet.set_ylabel("$a\\nabla n_e/n_e$")
         plt.legend(title=r"$\rho_{tor}$")
 
         ##Make radial figures ##
         self.axaLTer = fig.add_subplot(2, 3, 4)
         self.make_radial_plots(self.axaLTer, self.aLTe, time_aims)
-        self.axaLTer.set_ylabel("aLTe")
+        self.axaLTer.set_ylabel("$a\\nabla T_e/T_e$")
         plt.legend(title="Times")
 
         self.axaLTir = fig.add_subplot(2, 3, 5)
         self.make_radial_plots(self.axaLTir, self.aLTi, time_aims)
-        self.axaLTir.set_ylabel("aLTi")
+        self.axaLTir.set_ylabel("$a\\nabla T_i/T_i$")
         plt.legend(title="Times")
 
         self.axaLner = fig.add_subplot(2, 3, 6)
         self.make_radial_plots(self.axaLner, self.aLne, time_aims)
-        self.axaLner.set_ylabel("aLne")
+        self.axaLner.set_ylabel("$a\\nabla n_e/n_e$")
         plt.legend(title="Times")
 
     def plot_density(self, time_aims, rho_tor_aims=[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]):
@@ -614,12 +639,12 @@ class CDFreactor:
         # Make temporal figures
         self.axnet = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axnet, self.ne, rho_tor_aims)
-        self.axnet.set_ylabel("Density [1/m^3]")
+        self.axnet.set_ylabel("Density [$10^{19}/m^3$]")
         #plt.legend(title=r"$\rho_{tor}$")
 
         self.axCut = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(self.axCut, self.Cu, rho_tor_aims)
-        self.axCut.set_ylabel("J [MA/m^3]")
+        self.axCut.set_ylabel("J [$MA/m^2$]")
 
         self.axqt = fig.add_subplot(2, 3, 3)
         self.make_temporal_plots(self.axqt, self.q, rho_tor_aims)
@@ -628,11 +653,11 @@ class CDFreactor:
         # Make radial figures
 
         self.axner = fig.add_subplot(2, 3, 4)
-        self.axner.set_ylabel("Density (1/m^3)")
+        self.axner.set_ylabel("Density ($10^{19}/m^3$)")
         self.make_radial_plots(self.axner, self.ne, time_aims)
 
         self.axCur = fig.add_subplot(2, 3, 5)
-        self.axCur.set_ylabel("J[MA/m^3]")
+        self.axCur.set_ylabel("J [$MA/m^2$]")
         self.make_radial_plots(self.axCur, self.Cu, time_aims)
         plt.legend(title="Times")
 
@@ -650,24 +675,28 @@ class CDFreactor:
         # Make temporal figures
         self.axPEt = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axPEt, self.PE, rho_tor_aims)
-        self.axPEt.set_ylabel("PE (MW/m^3)")
+        self.axPEt.set_ylabel("$P_E$ ($MW/m^3$)")
         plt.legend(title=r"$\rho_{tor}$")
 
         self.axPIt = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(self.axPIt, self.PI, rho_tor_aims)
-        self.axPIt.set_ylabel("PI (MW/m^3)")
+        self.axPIt.set_ylabel("$P_I$ ($MW/m^3$)")
 
         self.axPBMt = fig.add_subplot(2, 3, 3)
         self.make_temporal_plots(self.axPBMt, self.PEBM + self.PIBM, rho_tor_aims)
-        self.axPBMt.set_ylabel("Total NBI (MW/m^3)")
+        self.axPBMt.set_ylabel("Total NBI ($MW/m^3$)")
 
         self.axPECRt = fig.add_subplot(2, 3, 4)
         self.make_temporal_plots(self.axPECRt, self.PEECR, rho_tor_aims)
-        self.axPECRt.set_ylabel("Total ECH (MW/m^3)")
+        self.axPECRt.set_ylabel("Total ECH ($MW/m^3$)")
 
         self.axPRADt = fig.add_subplot(2, 3, 5)
         self.make_temporal_plots(self.axPRADt, self.PRAD, rho_tor_aims)
-        self.axPRADt.set_ylabel("PRAD (MW/m^3)")
+        self.axPRADt.set_ylabel("$P_{RAD}$ ($MW/m^3$)")
+
+        self.axPFUSt = fig.add_subplot(2, 3, 6)
+        self.make_temporal_plots(self.axPFUSt, (self.PEDT+self.PIDT)*5, rho_tor_aims)
+        self.axPFUSt.set_ylabel("$P_{FUS}$ ($MW/m^3$)")
 
     def plot_powers_r(
         self, time_aims, rho_tor_aims=[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
@@ -678,24 +707,28 @@ class CDFreactor:
         # Make temporal figures
         self.axPEr = fig.add_subplot(2, 3, 1)
         self.make_radial_plots(self.axPEr, self.PE, time_aims)
-        self.axPEr.set_ylabel("PE (MW/m^3)")
+        self.axPEr.set_ylabel("$P_E$ ($MW/m^3$)")
         plt.legend(title="Times [s]")
 
         self.axPIr = fig.add_subplot(2, 3, 2)
         self.make_radial_plots(self.axPIr, self.PI, time_aims)
-        self.axPIr.set_ylabel("PI (MW/m^3)")
+        self.axPIr.set_ylabel("$P_I$ ($MW/m^3$)")
 
         self.axPBMr = fig.add_subplot(2, 3, 3)
         self.make_radial_plots(self.axPBMr, self.PEBM + self.PIBM, time_aims)
-        self.axPBMr.set_ylabel("Total NBI (MW/m^3)")
+        self.axPBMr.set_ylabel("Total NBI ($MW/m^3$)")
 
         self.axPECRr = fig.add_subplot(2, 3, 4)
         self.make_radial_plots(self.axPECRr, self.PEECR, time_aims)
-        self.axPECRr.set_ylabel("Total ECH (MW/m^3)")
+        self.axPECRr.set_ylabel("Total ECH ($MW/m^3$)")
 
         self.axPRADr = fig.add_subplot(2, 3, 5)
         self.make_radial_plots(self.axPRADr, self.PRAD, time_aims)
-        self.axPRADr.set_ylabel("PRAD (MW/m^3)")
+        self.axPRADr.set_ylabel("$P_{rad}$ ($MW/m^3$)")
+
+        self.axPFUSr = fig.add_subplot(2, 3, 6)
+        self.make_radial_plots(self.axPFUSr, (self.PEDT+self.PIDT)*5, time_aims)
+        self.axPFUSr.set_ylabel("$P_{fus}$ ($MW/m^3$)")
 
     def plot_chi_e(self, time_aims, rho_tor_aims=[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]):
         fig = self.fn.add_figure(label="Chi_e")
@@ -703,34 +736,34 @@ class CDFreactor:
         # Make temporal figures
         self.axchi_et = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axchi_et, self.chi_e_TGLF, rho_tor_aims)
-        self.axchi_et.set_ylabel("TGLF (m^2/s)")
+        self.axchi_et.set_ylabel("TGLF ($m^2/s$)")
 
         self.axchi_e_smoothedt = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(
             self.axchi_e_smoothedt, self.chi_e_TGLF_smoothed, rho_tor_aims
         )
-        self.axchi_e_smoothedt.set_ylabel("Smoothed (m^2/s)")
+        self.axchi_e_smoothedt.set_ylabel("Smoothed ($m^2/s$)")
 
         self.axHEt = fig.add_subplot(2, 3, 3)
         self.make_temporal_plots(self.axHEt, self.HE, rho_tor_aims)
-        self.axHEt.set_ylabel("ASTRA (m^2/s)")
+        self.axHEt.set_ylabel("ASTRA ($m^2/s$)")
         plt.legend(title="Times [s]")
 
         # Make radial figures
         self.axchi_er = fig.add_subplot(2, 3, 4)
         self.make_radial_plots(self.axchi_er, self.chi_e_TGLF, time_aims)
-        self.axchi_er.set_ylabel("TGLF (m^2/s)")
+        self.axchi_er.set_ylabel("TGLF ($m^2/s$)")
         plt.legend(title=r"$\rho_{tor}$")
 
         self.axchi_e_smoothedr = fig.add_subplot(2, 3, 5)
         self.make_radial_plots(
             self.axchi_e_smoothedr, self.chi_e_TGLF_smoothed, time_aims
         )
-        self.axchi_e_smoothedr.set_ylabel("Smoothed (m^2/s)")
+        self.axchi_e_smoothedr.set_ylabel("Smoothed ($m^2/s$)")
 
         self.axHEr = fig.add_subplot(2, 3, 6)
         self.make_radial_plots(self.axHEr, self.HE, time_aims)
-        self.axHEr.set_ylabel("ASTRA (m^2/s)")
+        self.axHEr.set_ylabel("ASTRA ($m^2/s$)")
 
     def plot_chi_i(self, time_aims, rho_tor_aims=[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]):
         fig = self.fn.add_figure(label="Chi_i")
@@ -738,34 +771,34 @@ class CDFreactor:
         # Make temporal figures
         self.axchi_it = fig.add_subplot(2, 3, 1)
         self.make_temporal_plots(self.axchi_it, self.chi_i_TGLF, rho_tor_aims)
-        self.axchi_it.set_ylabel("TGLF (m^2/s)")
+        self.axchi_it.set_ylabel("TGLF ($m^2/s$)")
 
         self.axchi_i_smoothedt = fig.add_subplot(2, 3, 2)
         self.make_temporal_plots(
             self.axchi_i_smoothedt, self.chi_i_TGLF_smoothed, rho_tor_aims
         )
-        self.axchi_i_smoothedt.set_ylabel("Smoothed (m^2/s)")
+        self.axchi_i_smoothedt.set_ylabel("Smoothed ($m^2/s$)")
 
         self.axXIt = fig.add_subplot(2, 3, 3)
         self.make_temporal_plots(self.axXIt, self.XI, rho_tor_aims)
-        self.axXIt.set_ylabel("ASTRA (m^2/s)")
+        self.axXIt.set_ylabel("ASTRA ($m^2/s$)")
         plt.legend(title="Times [s]")
 
         # Make radial figures
         self.axchi_ir = fig.add_subplot(2, 3, 4)
         self.make_radial_plots(self.axchi_ir, self.chi_i_TGLF, time_aims)
-        self.axchi_ir.set_ylabel("TGLF (m^2/s)")
+        self.axchi_ir.set_ylabel("TGLF ($m^2/s$)")
         plt.legend(title=r"$\rho_{tor}$")
 
         self.axchi_i_smoothedr = fig.add_subplot(2, 3, 5)
         self.make_radial_plots(
             self.axchi_i_smoothedr, self.chi_i_TGLF_smoothed, time_aims
         )
-        self.axchi_i_smoothedr.set_ylabel("Smoothed (m^2/s)")
+        self.axchi_i_smoothedr.set_ylabel("Smoothed ($m^2/s$)")
 
         self.axXIr = fig.add_subplot(2, 3, 6)
         self.make_radial_plots(self.axXIr, self.XI, time_aims)
-        self.axXIr.set_ylabel("ASTRA (m^2/s)")
+        self.axXIr.set_ylabel("ASTRA ($m^2/s$)")
 
     def plot_heat_fluxes(
         self, time_aims, rho_tor_aims=[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
@@ -786,7 +819,7 @@ class CDFreactor:
         # Make radial figures
 
         self.axQer = fig.add_subplot(2, 2, 3)
-        self.axQer.set_ylabel("Qe(MW)")
+        self.axQer.set_ylabel("Qe (MW)")
         self.make_radial_plots(self.axQer, self.Qe, time_aims)
 
         self.axQir = fig.add_subplot(2, 2, 4)
@@ -866,20 +899,221 @@ class CDFreactor:
     ):
         fig = self.fn.add_figure(label="Pulse")
 
-        ## Make temporal figures ##
+        ## plot performance
 
-        self.axCAR53t = fig.add_subplot(2, 2, 1)
-        self.make_temporal_plots(self.axCAR53t, self.CAR53, rho_tor_aims)
-        self.axCAR53t.set_ylabel("Pulse [MW/m^3]")
-        plt.legend(title=r"$\rho_{tor}$")
+        '''
+        self.axQ = fig.add_subplot(2, 3, 1)
+        self.axQ.plot(self.t, self.Pfus[:,-1],label="$P_{fus}$ (MW)")
+        self.axQ.plot(self.t, self.Q,label="Q")
+        self.axQ.set_yscale('log')
+        self.axQ.set_ylabel("performance parameters")
+        self.axQ.set_xlabel("time (s)")
+        plt.legend()
+        '''
 
-        ## Make radial figures
+        ## plot EPED stuff
 
-        self.axCAR53r = fig.add_subplot(2, 2, 3)
-        self.make_radial_plots(self.axCAR53r, self.CAR53, time_aims)
-        self.axCAR53r.set_ylabel("Pulse [MW/m^3]")
-        plt.legend(title="Times")
+        self.axEPED = fig.add_subplot(2, 3, 1)
+        self.axEPED.plot(self.t, self.ZRD50/10,label="$n_{e,top}$ ($10^{20}m^{-3}$)")
+        self.axEPED.plot(self.t, self.ZRD49/1.e3,label="$p_{top}$ (MPa)")
+        self.axEPED.set_ylabel("EPED values")
+        self.axEPED.set_xlabel("time (s)")
+        plt.legend()
 
+        ## plot confinement
+
+        self.axtau = fig.add_subplot(2, 3, 3)
+        self.axtau.plot(self.t, self.tauE[:,-1],label="$\\tau_{e}$ (s)")
+        self.axtau.plot(self.t, self.H98,label="H98")
+        self.axtau.set_ylabel("performance parameters")
+        self.axtau.set_xlabel("time (s)")
+        plt.legend()
+
+        ## plot shaping values
+
+        self.axq = fig.add_subplot(2, 3, 2)
+        self.axq.plot(self.t, self.kappa95, label='$k_{95}$')
+        self.axq.plot(self.t, self.delta95, label='$\\delta_{95}$')
+        self.axq.plot(self.t, self.trian, label='$\\delta_{sep}$')
+        self.axq.plot(self.t, self.elong, label='$k_{sep}$')
+        self.axq.set_ylabel("shaping")
+        self.axq.set_xlabel("time (s)")
+        plt.legend()
+
+       ## plot beta and averaged kinetic profiles
+
+        self.axglob = fig.add_subplot(2, 3, 4)
+        self.axglob.plot(self.t, self.betaN,label="$\\beta_N$")
+        self.axglob.plot(self.t, self.q95, label='$q_{95}$')
+        self.axglob.plot(self.t, self.q_onaxis, label='q0')
+        self.axglob.plot(self.t, self.ne_avg/self.ne_avg[0],label="$n_{e,avg} normalized$")
+        self.axglob.plot(self.t, self.Te_avg/self.Te_avg[0],label="$T_{e,avg} normalized$")
+        self.axglob.plot(self.t, self.Ti_avg/self.Ti_avg[0],label="$T_{i,avg} normalized$")
+        self.axglob.set_ylabel("global parameters")
+        self.axglob.set_xlabel("time (s)")
+        plt.legend()
+
+        ## plot Hmode parameters
+        
+        self.axPLH = fig.add_subplot(2, 3, 5)
+        self.axPLH.plot(self.t, self.PLH_perc,label="Martin")
+        self.axPLH.plot(self.t, self.PLH_schmidt_perc,label="Schmidtmayr")
+        self.axPLH.set_ylabel("$P_{sep}/P_{LH}$")
+        self.axPLH.set_xlabel("time (s)")
+        plt.legend()
+
+        ## plot total powers
+        
+        self.axP = fig.add_subplot(2, 3, 6)
+        self.axP.plot(self.t, self.QDT[:,-1]*5,label="fusion")
+        self.axP.plot(self.t, self.QICRH[:,-1],label="ICRH")
+        self.axP.plot(self.t, self.QECRH[:,-1],label="ECRH")
+        self.axP.plot(self.t, self.QNBI[:,-1],label="NBI")
+        self.axP.plot(self.t, self.QRAD[:,-1],label="radiation")
+        self.axP.plot(self.t, self.QOH[:,-1],label="ohmic")
+        self.axP.plot(self.t, self.QETOT[:,-1],label="electron total")
+        self.axP.plot(self.t, self.QITOT[:,-1],label="ion total")
+        self.axP.set_ylabel("P (MW)")
+        self.axP.set_xlabel("time (s)")
+        plt.legend()
+
+    def plot_2_pulses(
+        self,second_pulse,
+        time_aims=[10.20, 10.201, 10.2015, 10.202, 10.210, 10.212],
+        rho_tor_aims=[0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6],
+    ):
+        self.getProfiles()
+        second_pulse.getProfiles()
+        # time_index  = time_index(time)
+        name = "ASTRA CDF Viewer"
+        self.fn = FigureNotebook(name,vertical=False)
+        fig = self.fn.add_figure(label="Pulses: dashed = V2B baseline, solid = higher Zeff and k V2B")
+
+        ## plot performance
+
+        '''
+        self.axQ = fig.add_subplot(2, 3, 1)
+        self.axQ.plot(self.t, self.Pfus[:,-1],label="$P_{fus}$ (MW)")
+        self.axQ.plot(self.t, self.Q,label="Q")
+        self.axQ.set_yscale('log')
+        self.axQ.set_ylabel("performance parameters")
+        self.axQ.set_xlabel("time (s)")
+        plt.legend()
+        '''
+
+        ## plot EPED stuff
+
+        self.axEPED = fig.add_subplot(2, 3, 1)
+        self.axEPED.plot(self.t, self.ZRD50/10,label="$n_{e,top}$ ($10^{20}m^{-3}$)",c='b')
+        self.axEPED.plot(self.t, self.ZRD49/1.e3,label="$p_{top}$ (MPa)",c='r')
+        self.axEPED.plot(second_pulse.t, second_pulse.ZRD50/10,c='b',linestyle='--')
+        self.axEPED.plot(second_pulse.t, second_pulse.ZRD49/1.e3,c='r',linestyle='--')
+        self.axEPED.set_ylabel("EPED values")
+        self.axEPED.set_xlabel("time (s)")
+        plt.legend()
+
+        ## plot confinement
+
+        self.axtau = fig.add_subplot(2, 3, 3)
+        self.axtau.plot(self.t, self.tauE[:,-1],label="$\\tau_{e}$ (s)",c='b')
+        self.axtau.plot(self.t, self.H98,label="H98",c='r')
+        self.axtau.plot(second_pulse.t, second_pulse.tauE[:,-1],linestyle='--')
+        self.axtau.plot(second_pulse.t, second_pulse.H98,c='r',linestyle='--')
+        self.axtau.set_ylabel("performance parameters")
+        self.axtau.set_xlabel("time (s)")
+        self.axtau.axhline(y=1.0, ls='-.',c='k')
+        self.axtau.set_ylim(bottom=0)
+        plt.legend()
+
+        ## plot shaping values
+
+        self.axq = fig.add_subplot(2, 3, 2)
+        self.axq.plot(self.t, self.kappa95, label='$k_{95}$',c='b')
+        self.axq.plot(self.t, self.delta95, label='$\\delta_{95}$',c='r')
+        self.axq.plot(self.t, self.trian, label='$\\delta_{sep}$',c='g')
+        self.axq.plot(self.t, self.elong, label='$k_{sep}$',c='k')
+        self.axq.plot(second_pulse.t, second_pulse.kappa95,c='b',linestyle='--')
+        self.axq.plot(second_pulse.t, second_pulse.delta95,c='r',linestyle='--')
+        self.axq.plot(second_pulse.t, second_pulse.trian,c='g',linestyle='--')
+        self.axq.plot(second_pulse.t, second_pulse.elong,c='k',linestyle='--')
+        self.axq.set_ylabel("shaping")
+        self.axq.set_xlabel("time (s)")
+        plt.legend()
+
+       ## plot beta and averaged kinetic profiles
+
+        self.axglob = fig.add_subplot(2, 3, 4)
+        self.axglob.plot(self.t, self.betaN,label="$\\beta_N$",c='b')
+        self.axglob.plot(self.t, self.q95, label='$q_{95}$',c='r')
+        self.axglob.plot(self.t, self.q_onaxis, label='q0',c='g')
+        self.axglob.plot(self.t, self.ne_avg,label="$n_{e,avg}$",c='k')
+        self.axglob.plot(self.t, self.Te_avg,label="$T_{e,avg}$",c='y')
+        self.axglob.plot(self.t, self.Ti_avg,label="$T_{i,avg}$",c='orange')
+        self.axglob.plot(self.t, self.ne[:,int(0.2*self.na1[-1])]/self.ne_avg,label="$\\nu_{n_e}$",c='purple')
+        self.axglob.plot(second_pulse.t, second_pulse.betaN,c='b',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.q95,c='r',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.q_onaxis,c='g',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.ne_avg,c='k',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.Te_avg,c='y',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.Ti_avg,c='orange',linestyle='--')
+        self.axglob.plot(second_pulse.t, second_pulse.ne[:,int(0.2*second_pulse.na1[-1])]/second_pulse.ne_avg,c='purple',linestyle='--')
+        self.axglob.set_ylabel("global parameters")
+        self.axglob.set_xlabel("time (s)")
+        self.axglob.set_yscale('log')
+        plt.legend()
+
+        ## plot Hmode parameters
+        
+        self.axPLH = fig.add_subplot(2, 3, 5)
+        self.axPLH.plot(self.t, self.PLH_perc,label="Martin",c='b')
+        self.axPLH.plot(self.t, self.PLH_schmidt_perc,label="Schmidtmayr",c='r')
+        self.axPLH.plot(second_pulse.t, second_pulse.PLH_perc,c='b',linestyle='--')
+        self.axPLH.plot(second_pulse.t, second_pulse.PLH_schmidt_perc,c='r',linestyle='--')
+        self.axPLH.set_ylabel("$P_{sep}/P_{LH}$")
+        self.axPLH.set_xlabel("time (s)")
+        self.axPLH.axhline(y=1.0, ls='-.',c='k')
+        self.axPLH.set_ylim(bottom=0)
+        plt.legend()
+
+        ## plot total powers
+        
+        self.axP = fig.add_subplot(2, 3, 6)
+        self.axP.plot(self.t, self.QDT[:,-1]*5,label="fusion",c='b')
+        self.axP.plot(self.t, self.QICRH[:,-1],label="ICRH",c='r')
+        self.axP.plot(self.t, self.QECRH[:,-1],label="ECRH",c='g')
+        self.axP.plot(self.t, self.QNBI[:,-1],label="NBI",c='k')
+        self.axP.plot(self.t, self.QRAD[:,-1],label="radiation",c='y')
+        self.axP.plot(self.t, self.QOH[:,-1],label="ohmic",c='orange')
+        self.axP.plot(self.t, self.QETOT[:,-1],label="electron total",c='purple')
+        self.axP.plot(self.t, self.QITOT[:,-1],label="ion total",c='cyan')
+        self.axP.plot(second_pulse.t, second_pulse.QDT[:,-1]*5,c='b',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QICRH[:,-1],c='r',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QECRH[:,-1],c='g',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QNBI[:,-1],c='k',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QRAD[:,-1],c='y',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QOH[:,-1],c='orange',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QETOT[:,-1],c='purple',linestyle='--')
+        self.axP.plot(second_pulse.t, second_pulse.QITOT[:,-1],c='cyan',linestyle='--')
+        self.axP.set_ylabel("P (MW)")
+        self.axP.set_xlabel("time (s)")
+        self.axP.axhline(y=500, ls='-.',c='k')
+        self.axP.axhline(y=1000, ls='-.',c='k')
+        #self.axP.set_yscale('log')
+        plt.legend()
+
+        GRAPHICStools.addDenseAxis(self.axP)
+        GRAPHICStools.addDenseAxis(self.axtau)
+        GRAPHICStools.addDenseAxis(self.axglob)
+        GRAPHICStools.addDenseAxis(self.axPLH)
+        GRAPHICStools.addDenseAxis(self.axq)
+        GRAPHICStools.addDenseAxis(self.axEPED)
+
+        GRAPHICStools.addLegendApart(self.axP)
+        GRAPHICStools.addLegendApart(self.axtau)
+        GRAPHICStools.addLegendApart(self.axglob)
+        GRAPHICStools.addLegendApart(self.axPLH)
+        GRAPHICStools.addLegendApart(self.axq)
+        GRAPHICStools.addLegendApart(self.axEPED)
 
 ### Operations: Not part of the CDF class ###
 def gradNorm(CDFc, varData, specialDerivative=None):
