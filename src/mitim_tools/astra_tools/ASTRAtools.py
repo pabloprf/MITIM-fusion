@@ -10,7 +10,8 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'): 
+    #def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO_MIT.tar'):
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -21,20 +22,22 @@ class ASTRA():
         IOtools.askNewFolder(self.folder)
 
         # Move files
-        os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO.tar.gz')
+        os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO_MIT.tar')
 
         # untar
         with tarfile.open(
-            os.path.join(self.folder, "ASTRA8_REPO.tar.gz"), "r"
+            os.path.join(self.folder, "ASTRA8_REPO_MIT.tar"), "r"
         ) as tar:
             tar.extractall(path=self.folder)
 
         #os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_as}/')
-        os.remove(os.path.join(self.folder, "ASTRA8_REPO.tar.gz"))
+        os.remove(os.path.join(self.folder, "ASTRA8_REPO_MIT.tar"))
 
         # Define basic controls
-        self.equfile = 'fluxes'
-        self.expfile = 'aug34954'
+        #self.equfile = 'fluxes'
+        #self.expfile = 'aug34954'
+        self.equfile = 'V2B'
+        self.expfile = 'V2B'
 
     def run(self,
             t_ini,
@@ -49,7 +52,7 @@ class ASTRA():
 
         self.folder_astra = f'{self.folder}/{name}/'
         IOtools.askNewFolder(self.folder_astra)
-        os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_astra}/')
+        os.system(f'cp -r {self.folder}/ASTRA8_REPO_MIT/* {self.folder_astra}/')
 
         astra_name = f'mitim_astra_{name}'
 
@@ -73,7 +76,7 @@ exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -
         # Execute
         # ---------------------------------------------
 
-        self.output_folder = f'{name}/.res/ncdf/'
+        self.output_folder = f'{name}/ncdf_out/'
 
         self.astra_job.prep(
             self.command_to_run_astra,
