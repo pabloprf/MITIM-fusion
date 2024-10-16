@@ -254,7 +254,6 @@ class UFILEtransp:
                 else:
                     Zall = (
                         self.Variables["Z"]
-                        .transpose()
                         .reshape(self.numX * self.numY, order=orderZvariable)
                     )
                 timepoints = len(self.Variables["Y"])
