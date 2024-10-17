@@ -36,7 +36,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
     def __init__(self, file):
-        self.file = Path(file)
+        self.file = Path(file).expanduser()
 
     def __enter__(self):
         
@@ -147,7 +147,7 @@ def page(url):
 
 def get_git_info(repo_path):
     
-    repopath = str(repo_path.resolve()) if isinstance(repo_path, Path) else repo_path
+    repopath = f"{repo_path.expanduser().resolve()}" if isinstance(repo_path, Path) else expandPath(repo_path)
 
     # Get branch
     result = subprocess.run(['git', '-C', repopath, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -174,7 +174,7 @@ def createCDF_simple(file, zvals, names):
 
     import netCDF4  # Importing here because some machines require netCDF4 libraries
 
-    fpath = Path(file)
+    fpath = Path(file).expanduser()
     ncfile = netCDF4.Dataset(fpath, mode="w", format="NETCDF4_CLASSIC")
 
     x = ncfile.createDimension("xdim", zvals.shape[1])
@@ -244,8 +244,8 @@ def randomWait(dakNumUnit, multiplierMin=1):
 
 
 def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch/"):
-    ziptargetpath = Path(FolderToZip)
-    zipdir = Path(locationZipped)
+    ziptargetpath = Path(FolderToZip).expanduser()
+    zipdir = Path(locationZipped).expanduser()
     f1 = moveRecursive(
         check=1,
         commonprefix=NameZippedFile + "_",
@@ -258,7 +258,7 @@ def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
-    zpath = Path(FolderToZip)
+    zpath = Path(FolderToZip).expanduser()
     zipitems = zpath.glob('**/*')
     with zipfile.ZipFile(ZippedFile, "w", zipfile.ZIP_DEFLATED) as zipf:
         for itempath in zipitems:
@@ -271,7 +271,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
     Shifts all existing file numbers up by one, keeping only a limited number due to memory requirements
     '''
 
-    root_current = Path(rootFolder)
+    root_current = Path(rootFolder).expanduser()
     file_current = root_current / f"{commonprefix}{check}{commonsuffix}"
 
     if file_current.exists():
@@ -359,13 +359,13 @@ def calculate_size_pickle(file):
 
     import pickle
     
-    ifile = Path(file)
+    ifile = Path(file).expanduser()
     with open(ifile, 'rb') as f:
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
 def read_mitim_nml(json_file):
-    jpath = Path(json_file)
+    jpath = Path(json_file).expanduser()
     with open(jpath, 'r') as file:
         data = json.load(file)
 
@@ -381,7 +381,7 @@ def getpythonversion():
     ]
 
 def zipFiles(files, outputFolder, name="info"):
-    odir = Path(outputFolder)
+    odir = Path(outputFolder).expanduser()
     opath = odir / name
     if not opath.is_dir():
         opath.mkdir(parents=True)
@@ -392,8 +392,8 @@ def zipFiles(files, outputFolder, name="info"):
 
 
 def unzipFiles(file, destinyFolder, clear=True):
-    zpath = Path(file)
-    odir = Path(destinyFolder)
+    zpath = Path(file).expanduser()
+    odir = Path(destinyFolder).expanduser()
     shutil.unpack_archive(f"{zpath}", f"{odir}")
     if clear:
         os.system("rm {zpath.resolve()}")
@@ -401,7 +401,7 @@ def unzipFiles(file, destinyFolder, clear=True):
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
 
-    ifile = Path(file)
+    ifile = Path(file).expanduser()
     df = pandas.read_excel(ifile, sheet_name=sheet_name)
 
     rho = getVar_ExcelColumn(df, df.keys()[fromColumn + 0], fromRow=fromRow)
@@ -430,7 +430,7 @@ def getVar_ExcelColumn(df, columnName, fromRow=4):
 
 def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, fromRow=4):
 
-    ofile = Path(file)
+    ofile = Path(file).expanduser()
     if ofile.exists():
         os.system(f"rm {ofile}")
 
@@ -448,7 +448,7 @@ def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, from
 
 
 def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
-    ofile = Path(file)
+    ofile = Path(file).expanduser()
     df = pandas.DataFrame(dictExcel)
     writer = pandas.ExcelWriter(ofile, engine="xlsxwriter")
     df.to_excel(
@@ -477,7 +477,7 @@ def createExcelRow(dataSet_dict, row_name="row 1"):
 
 def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True):
 
-    fpath = Path(file)
+    fpath = Path(file).expanduser()
     df = createExcelRow(dataSet_dict, row_name=row_name)
 
     if fpath.is_file():
@@ -502,7 +502,7 @@ def correctNML(BaseFile):
     simply apply the command-line "tr -d '\r' < file_in > file_out". Example:
     """
 
-    fpath = Path(BaseFile)
+    fpath = Path(BaseFile).expanduser()
     if fpath.is_file():
         os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
@@ -541,7 +541,7 @@ def getStringFromTime(object_time=None):
 
 
 def loopFileBackUp(file):
-    fpath = Path(file)
+    fpath = Path(file).expanduser()
     if fpath.is_file():
         copyToPath = fpath.parent / (fpath.name + "_0")
         if copyToPath.exists():
@@ -596,7 +596,7 @@ def createTimeTXT(duration_in_s, until=3):
 
 
 def renameCommand(ini, fin, folder="~/"):
-    ipath = Path(folder)
+    ipath = Path(folder).expanduser()
     if ini is not None:
         if "mfe" in socket.gethostname():
             os.system(f'cd {ipath.resolve()} && rename "s/{ini}/{fin}/" *')
@@ -609,7 +609,7 @@ def renameCommand(ini, fin, folder="~/"):
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
-    fpath = Path(folderExecution)
+    fpath = Path(folderExecution).expanduser()
     x = []
     for i in np.arange(nums[0], nums[1] + 1, 1):
         params = generateDictionaries(
@@ -628,7 +628,7 @@ def readExecutionParams(folderExecution, nums=[0, 9]):
 
 
 def askNewFolder(folderWork, force=False, move=None):
-    workpath = Path(folderWork)
+    workpath = Path(folderWork).expanduser()
     if workpath.exists():
         if force:
             os.system(f"rm -r {workpath}")
@@ -676,7 +676,7 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 
 def getLocInfo(locFile, removeSpaces=True):
-    ipath = Path(locFile)
+    ipath = Path(locFile).expanduser()
     return f"{ipath.parent}", f"{ipath.stem}"
 
 
@@ -687,8 +687,7 @@ def findFileByExtension(
     Retrieves the file without folder and extension
     """
 
-    fpath = Path(folder)
-    #fpath = expandPath(fpath, fixSpaces=fixSpaces)
+    fpath = Path(folder).expanduser()
 
     retpath = None
     if fpath.exists():
@@ -725,7 +724,7 @@ def findFileByExtension(
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
-    fpath = Path(folder)
+    fpath = Path(folder).expanduser()
     allfiles = []
     for filepath in fpath.glob("*"):
         if filepath.is_file():
@@ -743,7 +742,7 @@ def writeOFs(resultsFile, dictOFs, dictErrors=None):
     By PRF's convention, error here refers to the standard deviation
     """
 
-    rpath = Path(resultsFile)
+    rpath = Path(resultsFile).expanduser()
     for iOF in dictOFs:
         if "error" not in dictOFs[iOF]:
             dictOFs[iOF]["error"] = 0.0
@@ -758,11 +757,11 @@ def writeOFs(resultsFile, dictOFs, dictErrors=None):
 
 
 def generateDictionaries(InputsFile):
-    #dictDVs, dictOFs = OrderedDict(), OrderedDict()
+
     dictDVs = {}
     dictOFs = {}
 
-    ipath = Path(InputsFile)
+    ipath = Path(InputsFile).expanduser()
     with open(ipath, "r") as f:
         numvar = int(f.readline().split()[0])
 
@@ -800,7 +799,7 @@ def findValue(
     upper, lower agnostic
     """
 
-    fpath = Path(FilePath)
+    fpath = Path(FilePath).expanduser()
     with open(fpath, "r") as f:
 
         for line in f:
@@ -880,8 +879,8 @@ def changeValue(
         AddTextToChangedParam = ""
         separator_space = ""
 
-    fpath1 = Path(FilePath)
-    fpath2 = Path(str(FilePath) + "_new")
+    fpath1 = Path(FilePath).expanduser()
+    fpath2 = Path(f"{fpath1}_new").expanduser()
     #f1, f2 = open(fpath1, "r"), open(fpath2, "w")
 
     FoundAtLeastOnce = False
@@ -943,7 +942,6 @@ def changeValue(
 
                 f2.write(line)
 
-    #os.rename(FilePath + "_new", FilePath)
     os.system(f"mv {fpath2.resolve()} {fpath1.resolve()}")
 
     # If not found at least once, then write it, but make sure it is after the updates flag
@@ -1022,7 +1020,7 @@ def changeValue(
 
 
 def writeQuickParams(folder, num=1):
-    fdir = Path(folder)
+    fdir = Path(folder).expanduser()
     fpath = fdir / f"params.in.{num}"
     txt = [
         "                                          1 variables",
@@ -1038,7 +1036,7 @@ def writeQuickParams(folder, num=1):
 
 
 def readValueinFile(filename, variable, positionReturn=0):
-    fpath = Path(filename)
+    fpath = Path(filename).expanduser()
     with open(fpath, "r") as f:
 
         for line in f:
@@ -1059,7 +1057,7 @@ def readValueinFile(filename, variable, positionReturn=0):
 
 
 def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
-    opath = Path(resespec)
+    opath = Path(resespec).expanduser()
     with open(opath, typeF) as outfile:
         if isnum(final_results):
             outfile.write(
@@ -1070,7 +1068,7 @@ def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
 
 
 def readresults(fileresults):
-    ipath = Path(fileresults)
+    ipath = Path(fileresults).expanduser()
     with open(ipath, "r") as outfile:
         aux = outfile.readlines()
 
@@ -1090,7 +1088,7 @@ def readresults(fileresults):
 
 
 def writeparams(x, fileparams, inputs, outputs, numEval):
-    ofile = Path(fileparams)
+    ofile = Path(fileparams).expanduser()
     with open(ofile, "w") as outfile:
         outfile.write(
             f"                                          {len(inputs)} variables\n"
@@ -1122,7 +1120,7 @@ class CaseInsensitiveDict(OrderedDict):
 
 
 def getLinesNamelist(filename, commentCommand, separator, boolLower=None):
-    fpath = Path(filename)
+    fpath = Path(filename).expanduser()
     with open(fpath, "r") as f:
         allLines = f.readlines()
     allLines_clean = []
@@ -1273,8 +1271,7 @@ def false(par):
 def generateMITIMNamelist(
     orig, commentCommand="#", separator="=", WriteNew=None, caseInsensitive=True
 ):
-    #orig = expandPath(orig)
-    origpath = Path(orig)
+    origpath = Path(orig).expanduser()
 
     # Read values from namelist
 
@@ -1291,7 +1288,7 @@ def generateMITIMNamelist(
     )
 
     if WriteNew is not None:
-        opath = Path(WriteNew)
+        opath = Path(WriteNew).expanduser()
         with open(opath, "w") as f:
             for i in dictParams:
                 f.write(i + "=" + str(dictParams[i]) + "\n")
@@ -1300,8 +1297,8 @@ def generateMITIMNamelist(
 
 
 def obtainGeneralParams(inputFile, resultsFile):
-    ipath = Path(inputFile)
-    rpath = Path(resultsFile)
+    ipath = Path(inputFile).expanduser()
+    rpath = Path(resultsFile).expanduser()
     FolderEvaluation = ipath.parent if not ipath.is_dir() else ipath
 
     # In case
@@ -1333,29 +1330,29 @@ def ArrayToString(ll):
 
 
 def expandPath(path, fixSpaces=False, ensurePathValid=False):
-    npath = Path(path)
+    npath = Path(path).expanduser()
     if ensurePathValid:
         assert npath.exists()
     return f"{npath.resolve()}"
 
 
 def cleanPath(path, isItFile):
-    npath = Path(path)
+    npath = Path(path).expanduser()
     return f"{npath.resolve()}"
 
 
 def reducePathLevel(path, level=1, isItFile=False):
-    npath = Path(path)
+    npath = Path(path).expanduser()
     npath_before = npath
     if len(npath.parents) > level:
         npath_before = npath.parents[level - 1]
-    path_before = str(npath_before)
+    path_before = f"{npath_before}"
     if level > 0:
         path_before += "/"
-    path_after = str(npath)
+    path_after = f"{npath}"
     if path_before in path_after:
         path_after = path_after.replace(path_before, "")
-    return f"{path_before}", f"{path_after}"
+    return path_before, path_after
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
@@ -1363,7 +1360,7 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
     Method to parse p-files for pedestal modeling.
     sciortino, 2020
     """
-    fpath = Path(filepath)
+    fpath = Path(filepath).expanduser()
     with open(fpath, "r") as f:
         contents = f.readlines()
 
@@ -1449,7 +1446,7 @@ class hdf5figurefile(object):
         fname = str(filename)
         if not fname.endswith(".hdf5"):
             fname += ".hdf5"
-        self.fpath = Path(fname)
+        self.fpath = Path(fname).expanduser()
         self.fig = h5py.File(self.fpath, "w")
 
     def makeHDF5group(
@@ -1597,7 +1594,7 @@ def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
     fname = filename
     if not fname.endswith(".hdf5"):
         fname += ".hdf5"
-    fpath = Path(fname)
+    fpath = Path(fname).expanduser()
     h5file = hdf5figurefile(fpath)
 
     for ikey in axesarray_dict:
