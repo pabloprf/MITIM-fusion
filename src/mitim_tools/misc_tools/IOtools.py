@@ -36,7 +36,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
     def __init__(self, file):
-        #self.file = file
         self.file = Path(file)
 
     def __enter__(self):
@@ -247,40 +246,26 @@ def randomWait(dakNumUnit, multiplierMin=1):
 def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch/"):
     ziptargetpath = Path(FolderToZip)
     zipdir = Path(locationZipped)
-    zippath = zipdir / NameZippedFile
-    #f1 = moveRecursive(
-    #    check=1,
-    #    commonpreffix=expandPath(locationZipped) + NameZippedFile + "_",
-    #    commonsuffix=".zip",
-    #    eliminateAfter=5,
-    #)
     f1 = moveRecursive(
         check=1,
-        commonprefix=NameZippedFile + "_", #Oof
+        commonprefix=NameZippedFile + "_",
         commonsuffix=".zip",
         eliminateAfter=5,
+        rootFolder=zipdir
     )
     zipFolder(ziptargetpath, ZippedFile=f1)
-    #print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
     print(f" --> Most current {ziptargetpath.resolve()} folder zipped to {f1}")
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
-    #def zipdir(path, ziph):
-    #    # ziph is zipfile handle
-    #    for root, dirs, files in os.walk(path):
-    #        for file in files:
-    #            ziph.write(os.path.join(root, file))
     zpath = Path(FolderToZip)
     zipitems = zpath.glob('**/*')
     with zipfile.ZipFile(ZippedFile, "w", zipfile.ZIP_DEFLATED) as zipf:
-        #zipdir(FolderToZip, zipf)
         for itempath in zipitems:
             if itempath.is_file():
                 zipf.write(itempath)
 
 
-# Need global root scratch path... use config?
 def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", eliminateAfter=5, rootFolder="~"):
     '''
     Shifts all existing file numbers up by one, keeping only a limited number due to memory requirements
@@ -289,13 +274,11 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
     root_current = Path(rootFolder)
     file_current = root_current / f"{commonprefix}{check}{commonsuffix}"
 
-    #if os.path.exists(file_current):
     if file_current.exists():
         if check >= eliminateAfter:
             os.system(f"rm {file_current.resolve()}")
         else:
             file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
-            #if os.path.exists(file_next):
             if file_next.exists():
                 moveRecursive(
                     check=check + 1,
@@ -374,9 +357,10 @@ def calculate_size_pickle(file):
     Calculate the size of the object stored in a pickle file.
     '''
 
-    import pickle  
-
-    with open(file, 'rb') as f:
+    import pickle
+    
+    ifile = Path(file)
+    with open(ifile, 'rb') as f:
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
@@ -397,29 +381,20 @@ def getpythonversion():
     ]
 
 def zipFiles(files, outputFolder, name="info"):
-    #os.makedirs(os.path.join(outputFolder, name), exist_ok=True)
     odir = Path(outputFolder)
     opath = odir / name
     if not opath.is_dir():
         opath.mkdir(parents=True)
-
     for i in files:
-        #os.system(f"cp {i} {outputFolder}/{name}/")
         os.system(f"cp {i} {opath}")
-
-    #shutil.make_archive(f"{outputFolder}/{name}", "zip", outputFolder)
     shutil.make_archive(f"{opath}", "zip", odir)
-
-    #os.system(f"rm -r {outputFolder}/{name}")
     os.system(f"rm -r {opath}")
 
 
 def unzipFiles(file, destinyFolder, clear=True):
     zpath = Path(file)
     odir = Path(destinyFolder)
-    #shutil.unpack_archive(file, destinyFolder + "/")
     shutil.unpack_archive(f"{zpath}", f"{odir}")
-
     if clear:
         os.system("rm {zpath.resolve()}")
 
@@ -505,9 +480,7 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     fpath = Path(file)
     df = createExcelRow(dataSet_dict, row_name=row_name)
 
-    #if os.path.exists(file):
     if fpath.is_file():
-        #df_orig = pandas.read_excel(file, index_col=0)
         df_orig = pandas.read_excel(fpath, index_col=0)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
@@ -518,7 +491,6 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     else:
         df_new = df
 
-    #with pandas.ExcelWriter(file, mode="w") as writer:
     with pandas.ExcelWriter(fpath, mode="w") as writer:
         df_new.to_excel(writer, sheet_name="Sheet1")
 
@@ -569,11 +541,6 @@ def getStringFromTime(object_time=None):
 
 
 def loopFileBackUp(file):
-    #if os.path.exists(file):
-    #    copyToFile = f"{file}_0"
-    #    if os.path.exists(copyToFile):
-    #        loopFileBackUp(copyToFile)
-    #    os.system(f"mv {file} {copyToFile}")
     fpath = Path(file)
     if fpath.is_file():
         copyToPath = fpath.parent / (fpath.name + "_0")
@@ -630,27 +597,23 @@ def createTimeTXT(duration_in_s, until=3):
 
 def renameCommand(ini, fin, folder="~/"):
     ipath = Path(folder)
-    #folder = expandPath(folder)
     if ini is not None:
         if "mfe" in socket.gethostname():
             os.system(f'cd {ipath.resolve()} && rename "s/{ini}/{fin}/" *')
         else:
-            #for filename in os.listdir(folder):
-            #    if ini in filename:
-            #        newname = filename.split(ini)[0] + fin + filename.split(ini)[-1]
-            #        os.system("mv {0}/{1} {0}/{2}".format(folder, filename, newname))
-            for filename in ipath.glob(str(ini)):
-                newname = filename.name
+            for filepath in ipath.glob(f"*{ini}*"):
+                newname = filepath.name
                 newname = newname.sub(f"{ini}", f"{fin}")
-                opath = ipath.parent / newname
-                os.system(f"mv {ipath.resolve()} {opath.resolve()}")
+                opath = filepath.parent / newname
+                os.system(f"mv {filepath.resolve()} {opath.resolve()}")
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
+    fpath = Path(folderExecution)
     x = []
     for i in np.arange(nums[0], nums[1] + 1, 1):
         params = generateDictionaries(
-            folderExecution + "Execution/Evaluation.{0}/params.in.{0}".format(i)
+            fpath / f"Execution" / f"Evaluation.{i}" / f"params.in.{i}"
         )
 
         dictDVs = params["dictDVs"]
@@ -665,43 +628,27 @@ def readExecutionParams(folderExecution, nums=[0, 9]):
 
 
 def askNewFolder(folderWork, force=False, move=None):
-    #if os.path.exists(folderWork):
-    #    if force:
-    #        os.system(f"rm -r {folderWork}")
-    #    else:
-    #        if move is not None:
-    #            os.system(f"mv {folderWork[:-1]}/ {folderWork[:-1]}_{move}")
-    #        else:
-    #            print(
-    #                f"You are about to erase the content of {folderWork}", typeMsg="q"
-    #            )
-    #            os.system(f"rm -r {folderWork}")
-
-    #os.makedirs(folderWork, exist_ok=True)
-
-    #if os.path.exists(folderWork):
-    #    print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
-    #else:
-    #    fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
-    #    askNewFolder(fo, force=False, move=None)
-    #    askNewFolder(folderWork, force=False, move=None)
-
     workpath = Path(folderWork)
     if workpath.exists():
         if force:
             os.system(f"rm -r {workpath}")
         else:
             if move is not None:
-                os.system
+                os.system(f"mv {workpath} {workpath}_{move}")
+            else:
+                printMsg(
+                    f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
+                )
+                os.system(f"rm -r {workpath}")
     if not workpath.exists():
         workpath.mkdir(parents=True)
     if workpath.is_dir():
-        print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
+        fstr = clipstr(f"{workpath.resolve()}")
+        print(f" \t\t~ Folder ...{fstr} created")
     else:  # What is this?
-        fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
+        fo = reducePathLevel(workpath, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
         askNewFolder(folderWork, force=False, move=None)
-
 
 
 def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
@@ -730,15 +677,6 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 def getLocInfo(locFile, removeSpaces=True):
     ipath = Path(locFile)
-
-    #locFile = expandPath(locFile)
-    #folderWork = "/".join(locFile.split("/")[:-1]) + "/"
-    #nameRunid = locFile.split("/")[-1].split(".")[0]
-
-    # if removeSpaces:
-    #     embed()
-    #     folderWork.replace(' ','\ ')
-    #return folderWork, nameRunid
     return ipath.parent, ipath.stem
 
 
@@ -749,10 +687,11 @@ def findFileByExtension(
     Retrieves the file without folder and extension
     """
 
-    folder = expandPath(folder, fixSpaces=fixSpaces)
+    fpath = Path(folder)
+    #fpath = expandPath(fpath, fixSpaces=fixSpaces)
 
-    if os.path.exists(folder):
-        allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
+    if fpath.exists():
+        allfiles = findExistingFiles(fpath, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
             # print(allfiles)
@@ -762,35 +701,39 @@ def findFileByExtension(
                 allfiles = [allfiles[0]]
 
         if len(allfiles) == 1:
-            fileReturn = allfiles[0].split(extension)[0].split(prefix)[-1]
+            fileReturn = allfiles[0]
         else:
             print(
-                f"\t\t~ File with extension {extension} not found in {clipstr(folder)}, returning None"
+                f"\t\t~ File with extension {extension} not found in {fpath}, returning None"
             )
             fileReturn = None
-    else:        
+    else:
+        fstr = clipstr(f"{fpath}")
         print(
-            f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
+            f"\t\t\t~ Folder ...{fstr} does not exist, returning None",
         )
         fileReturn = None
 
-    if provide_full_path and fileReturn is not None:
-        fileReturn = folder + fileReturn + extension
+    #if provide_full_path and fileReturn is not None:
+    #    fileReturn = folder + fileReturn + extension
+    # TODO: We really should not change return type
+    if fileReturn is not None and not provide_full_path:
+        fileReturn = fileReturn.stem
 
     return fileReturn
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
+    fpath = Path(folder)
     allfiles = []
-    for file in os.listdir(folder):
-
-        if not agnostic_to_case:
-            if file.endswith(extension):
-                allfiles.append(file)
-        else:
-            if file.lower().endswith(extension.lower()):
-                allfiles.append(file)
-
+    for filepath in fpath.glob("*"):
+        if filepath.is_file():
+            if not agnostic_to_case:
+                if filepath.suffix.endswith(extension):
+                    allfiles.append(filepath)
+            else:
+                if filepath.suffix.lower().endswith(extension.lower()):
+                    allfiles.append(filepath)
     return allfiles
 
 
@@ -799,6 +742,7 @@ def writeOFs(resultsFile, dictOFs, dictErrors=None):
     By PRF's convention, error here refers to the standard deviation
     """
 
+    rpath = Path(resultsFile)
     for iOF in dictOFs:
         if "error" not in dictOFs[iOF]:
             dictOFs[iOF]["error"] = 0.0
@@ -807,15 +751,18 @@ def writeOFs(resultsFile, dictOFs, dictErrors=None):
 
     for cont, iOF in enumerate(dictOFs):
         writeresults(
-            resultsFile, dictOFs[iOF]["value"], dictOFs[iOF]["error"], iOF, typeF=typeF
+            rpath, dictOFs[iOF]["value"], dictOFs[iOF]["error"], iOF, typeF=typeF
         )
         typeF = "a"
 
 
 def generateDictionaries(InputsFile):
-    dictDVs, dictOFs = OrderedDict(), OrderedDict()
+    #dictDVs, dictOFs = OrderedDict(), OrderedDict()
+    dictDVs = {}
+    dictOFs = {}
 
-    with open(InputsFile, "r") as f:
+    ipath = Path(InputsFile)
+    with open(ipath, "r") as f:
         numvar = int(f.readline().split()[0])
 
         for i in range(numvar):
@@ -852,43 +799,42 @@ def findValue(
     upper, lower agnostic
     """
 
-    f = open(FilePath, "r")
+    fpath = Path(FilePath)
+    with open(fpath, "r") as f
 
-    for line in f:
-        # If line contain that variable name, let's grab it!
-        if ParamToFind.upper() in line.upper():
-            if avoidIfStartsWith is not None:
-                if line.strip()[0] == avoidIfStartsWith:
-                    continue
-
-            try:
-                # Assume first that it's just a float
-                val = float(line.split(SplittingChar)[1].split()[0])
-            except:
-                if not isitArray:
-                    # If not float, and no array, maybe it's just a string
-                    try:
-                        val = str(line.split(SplittingChar)[1].split()[0])
-                    # If not float, no array, and no string, keep looking, something is wrong
-                    except:
+        for line in f:
+            # If line contain that variable name, let's grab it!
+            if ParamToFind.upper() in line.upper():
+                if avoidIfStartsWith is not None:
+                    if line.strip()[0] == avoidIfStartsWith:
                         continue
-                else:
-                    # If it is array
-                    val = str(line.split(SplittingChar)[1])
 
-            # Have I really found it? (checking that it's not commented)
-            if line.split(SplittingChar)[0].upper().split()[0] == ParamToFind.upper():
-                val_final = val
-                if not findOnlyLast:
-                    break
+                try:
+                    # Assume first that it's just a float
+                    val = float(line.split(SplittingChar)[1].split()[0])
+                except:
+                    if not isitArray:
+                        # If not float, and no array, maybe it's just a string
+                        try:
+                            val = str(line.split(SplittingChar)[1].split()[0])
+                        # If not float, no array, and no string, keep looking, something is wrong
+                        except:
+                            continue
+                    else:
+                        # If it is array
+                        val = str(line.split(SplittingChar)[1])
 
-    f.close()
+                # Have I really found it? (checking that it's not commented)
+                if line.split(SplittingChar)[0].upper().split()[0] == ParamToFind.upper():
+                    val_final = val
+                    if not findOnlyLast:
+                        break
 
     try:
         return val
     except:
         if raiseException:
-            raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
+            raise Exception(f"{ParamToFind} Value not found in namelist {fpath}")
         else:
             # print('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath)) #,typeMsg='w')
             return None
@@ -933,71 +879,71 @@ def changeValue(
         AddTextToChangedParam = ""
         separator_space = ""
 
-    f1, f2 = open(FilePath, "r"), open(FilePath + "_new", "w")
+    fpath1 = Path(FilePath)
+    fpath2 = Path(str(FilePath) + "_new")
+    #f1, f2 = open(fpath1, "r"), open(fpath2, "w")
 
     FoundAtLeastOnce = False
-    for line in f1:
-        lineSep = line.upper().split()
-        if len(lineSep) > 0:
-            # Allowing for possibility that the '=' is not separated by spaces
-            if SplittingChar in lineSep[0]:
-                lineCheck = lineSep[0].upper().split(SplittingChar)[0]
-            else:
-                lineCheck = lineSep[0].upper()
-
-            varFound = ParamToChange.upper() == lineCheck
-
-        else:
-            varFound = False
-
-        # ~~~~~~ Modification if it has been found
-        if varFound:
-            # Cases that the TRANSP namelist may be picky about (in terms of spaces and comments)
-            if ParamToChange.lower() == "nshot" or "_pserve" in ParamToChange.lower():
-                if Value is None and NoneMeansRemove:
-                    line = ""
+    with open(fpath1, "r") as f1:
+        with open(fpath2, "w") as f2:
+            for line in f1:
+                lineSep = line.upper().split()
+                if len(lineSep) > 0:
+                    # Allowing for possibility that the '=' is not separated by spaces
+                    if SplittingChar in lineSep[0]:
+                        lineCheck = lineSep[0].upper().split(SplittingChar)[0]
+                    else:
+                        lineCheck = lineSep[0].upper()
+                    varFound = ParamToChange.upper() == lineCheck
                 else:
-                    line = f"{line.split(SplittingChar)[0]}{SplittingChar}{Value}\n"
+                    varFound = False
 
-            # General cases
-            else:
-                # Do I keep original comments?
-                possibleComment = ""
-                if CommentChar is not None and MaintainComments:
-                    try:
-                        if line.split(SplittingChar)[1].split()[1] == CommentChar:
+                # ~~~~~~ Modification if it has been found
+                if varFound:
+                    # Cases that the TRANSP namelist may be picky about (in terms of spaces and comments)
+                    if ParamToChange.lower() == "nshot" or "_pserve" in ParamToChange.lower():
+                        if Value is None and NoneMeansRemove:
+                            line = ""
+                        else:
+                            line = f"{line.split(SplittingChar)[0]}{SplittingChar}{Value}\n"
+
+                    # General cases
+                    else:
+                        # Do I keep original comments?
+                        possibleComment = ""
+                        if CommentChar is not None and MaintainComments:
                             try:
-                                possibleComment = " ".join(
-                                    line.split(SplittingChar)[1].split()[1:]
-                                ).split(AddTextToChangedParam)[0]
+                                if line.split(SplittingChar)[1].split()[1] == CommentChar:
+                                    try:
+                                        possibleComment = " ".join(
+                                            line.split(SplittingChar)[1].split()[1:]
+                                        ).split(AddTextToChangedParam)[0]
+                                    except:
+                                        possibleComment = " ".join(
+                                            line.split(SplittingChar)[1].split()[1:]
+                                        )
                             except:
-                                possibleComment = " ".join(
-                                    line.split(SplittingChar)[1].split()[1:]
-                                )
-                    except:
-                        pass
-                    AddTextToChangedParam = ""
+                                pass
+                            AddTextToChangedParam = ""
 
-                if Value is None and NoneMeansRemove:
-                    line = ""
-                else:
-                    line = "{0}{5}{1}{5}{2}{5}{3}{5}{4}\n".format(
-                        line.split(SplittingChar)[0],
-                        SplittingChar,
-                        Value,
-                        possibleComment,
-                        AddTextToChangedParam,
-                        separator_space,
-                    )
+                        if Value is None and NoneMeansRemove:
+                            line = ""
+                        else:
+                            line = "{0}{5}{1}{5}{2}{5}{3}{5}{4}\n".format(
+                                line.split(SplittingChar)[0],
+                                SplittingChar,
+                                Value,
+                                possibleComment,
+                                AddTextToChangedParam,
+                                separator_space,
+                            )
 
-            FoundAtLeastOnce = True
+                    FoundAtLeastOnce = True
 
-        f2.write(line)
+                f2.write(line)
 
-    f1.close()
-    f2.close()
-
-    os.rename(FilePath + "_new", FilePath)
+    #os.rename(FilePath + "_new", FilePath)
+    os.system(f"mv {fpath2.resolve()} {fpath1.resolve()}")
 
     # If not found at least once, then write it, but make sure it is after the updates flag
     if not FoundAtLeastOnce and Value is not None:
@@ -1009,7 +955,7 @@ def changeValue(
             ParamToChange, SplittingChar, Value, extt, separator_space
         )
 
-        with open(FilePath, "r") as f:
+        with open(fpath1, "r") as f:
             lines = f.readlines()
         done, lines_n = False, ""
         for i in lines:
@@ -1019,7 +965,7 @@ def changeValue(
             lines_n += i
         if not done:
             lines_n += lines_add
-        with open(FilePath, "w") as f:
+        with open(fpath1, "w") as f:
             f.write(lines_n)
     # ------------------
 
@@ -1034,7 +980,7 @@ def changeValue(
         except:
             if TryAgain:
                 changeValue(
-                    FilePath,
+                    fpath1,
                     ParamToChange.upper(),
                     Value,
                     None,
@@ -1058,7 +1004,7 @@ def changeValue(
         except:
             if TryAgain:
                 InfoCommand = changeValue(
-                    FilePath,
+                    fpath1,
                     ParamToChange.upper(),
                     Value,
                     InfoCommand,
@@ -1086,36 +1032,34 @@ def writeQuickParams(folder, num=1):
         "                                          0 analysis_components",
         "                                          1 eval_id",
     ]
-
-    #with open(folder + f"/params.in.{num}", "w") as f:
     with open(fpath, "w") as f:
         f.write("\n".join(txt))
 
 
-def readValueinFile(file, variable, positionReturn=0):
-    f = open(file, "r")
+def readValueinFile(filename, variable, positionReturn=0):
+    fpath = Path(filename)
+    with open(fpath, "r") as f:
 
-    for line in f:
-        if line.split()[1] == variable:
-            varAux = line.split()[positionReturn]
-            try:
-                var = float(varAux)
-            except:
-                var = varAux
+        for line in f:
+            if line.split()[1] == variable:
+                varAux = line.split()[positionReturn]
+                try:
+                    var = float(varAux)
+                except:
+                    var = varAux
 
-        # For the case of array (e.g. fast species)
-        elif line.split()[-1] == variable:
-            var = line.split()[positionReturn]
-            for i in range(len(line.split()) - positionReturn - 2):
-                var = var + line.split()[positionReturn + i + 1]
-
-    f.close()
+            # For the case of array (e.g. fast species)
+            elif line.split()[-1] == variable:
+                var = line.split()[positionReturn]
+                for i in range(len(line.split()) - positionReturn - 2):
+                    var = var + line.split()[positionReturn + i + 1]
 
     return var
 
 
 def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
-    with open(resespec, typeF) as outfile:
+    opath = Path(resespec)
+    with open(opath, typeF) as outfile:
         if isnum(final_results):
             outfile.write(
                 f"{vartag:15s}: {final_results:1.15e},   {final_errors:1.15e}\n"
@@ -1125,7 +1069,8 @@ def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
 
 
 def readresults(fileresults):
-    with open(fileresults, "r") as outfile:
+    ipath = Path(fileresults)
+    with open(ipath, "r") as outfile:
         aux = outfile.readlines()
 
     y, yE = [], []
@@ -1144,7 +1089,8 @@ def readresults(fileresults):
 
 
 def writeparams(x, fileparams, inputs, outputs, numEval):
-    with open(fileparams, "w") as outfile:
+    ofile = Path(fileparams)
+    with open(ofile, "w") as outfile:
         outfile.write(
             f"                                          {len(inputs)} variables\n"
         )
@@ -1175,7 +1121,8 @@ class CaseInsensitiveDict(OrderedDict):
 
 
 def getLinesNamelist(filename, commentCommand, separator, boolLower=None):
-    with open(filename, "r") as f:
+    fpath = Path(filename)
+    with open(fpath, "r") as f:
         allLines = f.readlines()
     allLines_clean = []
     for i in range(len(allLines)):
@@ -1325,7 +1272,8 @@ def false(par):
 def generateMITIMNamelist(
     orig, commentCommand="#", separator="=", WriteNew=None, caseInsensitive=True
 ):
-    orig = expandPath(orig)
+    #orig = expandPath(orig)
+    origpath = Path(orig)
 
     # Read values from namelist
 
@@ -1335,14 +1283,15 @@ def generateMITIMNamelist(
         boolLower = false
 
     allLines_clean = getLinesNamelist(
-        orig, commentCommand, separator, boolLower=boolLower
+        origpath, commentCommand, separator, boolLower=boolLower
     )
     dictParams = getDictionaryNamelist(
         allLines_clean, separator, caseInsensitive=caseInsensitive
     )
 
     if WriteNew is not None:
-        with open(WriteNew, "w") as f:
+        opath = Path(WriteNew)
+        with open(opath, "w") as f:
             for i in dictParams:
                 f.write(i + "=" + str(dictParams[i]) + "\n")
 
@@ -1350,22 +1299,17 @@ def generateMITIMNamelist(
 
 
 def obtainGeneralParams(inputFile, resultsFile):
-    FolderEvaluation = "/".join(os.path.realpath(inputFile).split("/")[:-1]) + "/"
-
-    if FolderEvaluation[0] != "/":
-        FolderEvaluation = "/home/" + FolderEvaluation
+    ipath = Path(inputFile)
+    rpath = Path(resultsFile)
+    FolderEvaluation = ipath.parent if not ipath.is_dir() else ipath
 
     # In case
-    inputFile, resultsFile = inputFile.split("/")[-1], resultsFile.split("/")[-1]
+    iname = ipath.name
+    rname = rpath.name
 
-    numDakota = inputFile.split(".")[2]
+    numDakota = iname.split(".")[2]
 
-    inputFilePath, outputFilePath = (
-        FolderEvaluation + inputFile,
-        FolderEvaluation + resultsFile,
-    )
-
-    return FolderEvaluation, numDakota, inputFilePath, outputFilePath
+    return FolderEvaluation, numDakota, ipath, rpath
 
 
 def isNumber(val):
@@ -1387,30 +1331,6 @@ def ArrayToString(ll):
     return ",".join(nn)
 
 
-# This is no longer needed with Path.resolve()
-def old_expandPath(txt, fixSpaces=False, ensurePathValid=False):
-    while txt[-2:] == "//":
-        txt = txt[:-1]
-
-    if txt[0] == ".":
-        if (len(txt) == 1) or (len(txt) == 2 and txt[-1] == "/"):
-            txt = os.path.realpath(txt) + "/"
-        else:
-            txt = os.path.realpath(txt)
-
-    if ensurePathValid and (txt[0] not in ["~", "/"]):
-        txt = os.path.realpath("./" + txt + "/")
-
-    pathn = os.path.expanduser(os.path.expandvars(txt))
-
-    if fixSpaces:
-        pathn = pathn.replace(" ", r"\ ")
-        pathn = pathn.replace("(", r"\(")
-        pathn = pathn.replace(")", r"\)")
-
-    return pathn
-
-
 def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(path)
     if ensurePathValid:
@@ -1418,45 +1338,9 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     return str(npath.resolve())
 
 
-# This is no longer needed with pathlib in general
-def old_cleanPath(txt, isItFile=False):
-    txt = expandPath(txt, ensurePathValid=True).split("/")
-    aux = []
-    for i in txt:
-        if len(i) > 0:
-            aux.append(i)
-
-    txt = "/".join(aux) + "/"
-
-    if txt[0] != "/":
-        txt = "/" + txt
-
-    if not isItFile and txt[-1] != "/":
-        txt = txt + "/"
-    if isItFile and txt[-1] == "/":
-        txt = txt[:-1]
-
-    return txt
-
-
 def cleanPath(path, isItFile):
     npath = Path(path)
     return str(npath.resolve())
-
-
-# This is no longer needed with Path.parent
-def old_reducePathLevel(txt, level=1, isItFile=False):
-    txt = cleanPath(txt, isItFile=isItFile)
-    if isItFile:
-        level += -1
-
-    sep1 = "/".join(txt.split("/")[: -(level + 1)]) + "/"
-    sep2 = txt.split("/".join(txt.split("/")[: -(level + 1)]))[-1][1:]
-
-    if not isItFile and sep2[-1] == "/":
-        sep2 = sep2[:-1]
-
-    return sep1, sep2
 
 
 def reducePathLevel(path, level=1, isItFile=False):
@@ -1478,7 +1362,8 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
     Method to parse p-files for pedestal modeling.
     sciortino, 2020
     """
-    with open(filepath, "r") as f:
+    fpath = Path(filepath)
+    with open(fpath, "r") as f:
         contents = f.readlines()
 
     # find end of header
@@ -1560,7 +1445,11 @@ Example use:
 
 class hdf5figurefile(object):
     def __init__(self, filename):
-        self.fig = h5py.File(filename + ".hdf5", "w")
+        fname = str(filename)
+        if not fname.endswith(".hdf5"):
+            fname += ".hdf5"
+        self.fpath = Path(fname)
+        self.fig = h5py.File(fpath, "w")
 
     def makeHDF5group(
         self,
@@ -1704,20 +1593,25 @@ class hdf5figurefile(object):
 
 
 def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
-    h5file = hdf5figurefile(filename)
+    fname = filename
+    if not fname.endswith(".hdf5"):
+        fname += ".hdf5"
+    fpath = Path(fname)
+    h5file = hdf5figurefile(fpath)
 
     for ikey in axesarray_dict:
         name = ikey
         ax = axesarray_dict[name]
         h5file.subplotToHDF5(ax, name=name)
 
-    print(" --> Written " + filename)
+    print(f" --> Written {h5file.fpath}")
 
     if check:
         # Check
-        f = h5py.File(filename + ".hdf5", "r")
+        f = h5py.File(fpath, "r")
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
+
 
 # chatGPT 4o (08/31/2024)
 def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch
