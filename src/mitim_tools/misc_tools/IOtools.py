@@ -14,6 +14,7 @@ import json
 import functools
 import hashlib
 from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,7 +36,8 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
     def __init__(self, file):
-        self.file = file
+        #self.file = file
+        self.file = Path(file)
 
     def __enter__(self):
         
@@ -145,15 +147,18 @@ def page(url):
     return the_page
 
 def get_git_info(repo_path):
+    
+    repopath = str(repo_path.resolve()) if isinstance(repo_path, Path) else repo_path
+
     # Get branch
-    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(['git', '-C', repopath, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
         branch = result.stdout.strip()
     else:
         branch = None
 
     # Get hash
-    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(['git', '-C', repopath, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
         commit_hash = result.stdout.strip()
     else:
@@ -170,7 +175,8 @@ def createCDF_simple(file, zvals, names):
 
     import netCDF4  # Importing here because some machines require netCDF4 libraries
 
-    ncfile = netCDF4.Dataset(file, mode="w", format="NETCDF4_CLASSIC")
+    fpath = Path(file)
+    ncfile = netCDF4.Dataset(fpath, mode="w", format="NETCDF4_CLASSIC")
 
     x = ncfile.createDimension("xdim", zvals.shape[1])
 
@@ -239,43 +245,66 @@ def randomWait(dakNumUnit, multiplierMin=1):
 
 
 def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch/"):
+    ziptargetpath = Path(FolderToZip)
+    zipdir = Path(locationZipped)
+    zippath = zipdir / NameZippedFile
+    #f1 = moveRecursive(
+    #    check=1,
+    #    commonpreffix=expandPath(locationZipped) + NameZippedFile + "_",
+    #    commonsuffix=".zip",
+    #    eliminateAfter=5,
+    #)
     f1 = moveRecursive(
         check=1,
-        commonpreffix=expandPath(locationZipped) + NameZippedFile + "_",
+        commonprefix=NameZippedFile + "_", #Oof
         commonsuffix=".zip",
         eliminateAfter=5,
     )
-    zipFolder(FolderToZip, ZippedFile=f1)
-    print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
+    zipFolder(ziptargetpath, ZippedFile=f1)
+    #print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
+    print(f" --> Most current {ziptargetpath.resolve()} folder zipped to {f1}")
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
-    def zipdir(path, ziph):
-        # ziph is zipfile handle
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                ziph.write(os.path.join(root, file))
-
+    #def zipdir(path, ziph):
+    #    # ziph is zipfile handle
+    #    for root, dirs, files in os.walk(path):
+    #        for file in files:
+    #            ziph.write(os.path.join(root, file))
+    zpath = Path(FolderToZip)
+    zipitems = zpath.glob('**/*')
     with zipfile.ZipFile(ZippedFile, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipdir(FolderToZip, zipf)
+        #zipdir(FolderToZip, zipf)
+        for itempath in zipitems:
+            if itempath.is_file():
+                zipf.write(itempath)
 
 
-def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5):
-    file_current = f"{commonpreffix}{check}{commonsuffix}"
+# Need global root scratch path... use config?
+def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", eliminateAfter=5, rootFolder="~"):
+    '''
+    Shifts all existing file numbers up by one, keeping only a limited number due to memory requirements
+    '''
 
-    if os.path.exists(file_current):
+    root_current = Path(rootFolder)
+    file_current = root_current / f"{commonprefix}{check}{commonsuffix}"
+
+    #if os.path.exists(file_current):
+    if file_current.exists():
         if check >= eliminateAfter:
-            os.system("rm " + file_current)
+            os.system(f"rm {file_current.resolve()}")
         else:
-            file_next = f"{commonpreffix}{check + 1}{commonsuffix}"
-            if os.path.exists(file_next):
+            file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
+            #if os.path.exists(file_next):
+            if file_next.exists():
                 moveRecursive(
                     check=check + 1,
-                    commonpreffix=commonpreffix,
+                    commonprefix=commonprefix,
                     commonsuffix=commonsuffix,
                     eliminateAfter=eliminateAfter,
+                    rootFolder=root_current,
                 )
-            os.system(f"mv {file_current} {file_next}")
+            os.system(f"mv {file_current.resolve()} {file_next.resolve()}")
 
     return file_current
 
@@ -339,7 +368,7 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
             parent_name = list(sorted_sizes.items())[0][0]
             child_obj = getattr(obj,parent_name)
         calculate_sizes_obj_recursive(child_obj, N, recursion = recursion - 1, parent_name=parent_name)
-        
+
 def calculate_size_pickle(file):
     '''
     Calculate the size of the object stored in a pickle file.
@@ -352,7 +381,8 @@ def calculate_size_pickle(file):
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
 def read_mitim_nml(json_file):
-    with open(json_file, 'r') as file:
+    jpath = Path(json_file)
+    with open(jpath, 'r') as file:
         data = json.load(file)
 
     optimization_options = data["optimization"]
@@ -367,24 +397,37 @@ def getpythonversion():
     ]
 
 def zipFiles(files, outputFolder, name="info"):
-    os.makedirs(os.path.join(outputFolder, name), exist_ok=True)
+    #os.makedirs(os.path.join(outputFolder, name), exist_ok=True)
+    odir = Path(outputFolder)
+    opath = odir / name
+    if not opath.is_dir():
+        opath.mkdir(parents=True)
+
     for i in files:
-        os.system(f"cp {i} {outputFolder}/{name}/")
+        #os.system(f"cp {i} {outputFolder}/{name}/")
+        os.system(f"cp {i} {opath}")
 
-    shutil.make_archive(f"{outputFolder}/{name}", "zip", outputFolder)
+    #shutil.make_archive(f"{outputFolder}/{name}", "zip", outputFolder)
+    shutil.make_archive(f"{opath}", "zip", odir)
 
-    os.system(f"rm -r {outputFolder}/{name}")
+    #os.system(f"rm -r {outputFolder}/{name}")
+    os.system(f"rm -r {opath}")
 
 
 def unzipFiles(file, destinyFolder, clear=True):
-    shutil.unpack_archive(file, destinyFolder + "/")
+    zpath = Path(file)
+    odir = Path(destinyFolder)
+    #shutil.unpack_archive(file, destinyFolder + "/")
+    shutil.unpack_archive(f"{zpath}", f"{odir}")
 
     if clear:
-        os.system("rm " + file)
+        os.system("rm {zpath.resolve()}")
 
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
-    df = pandas.read_excel(file, sheet_name=sheet_name)
+
+    ifile = Path(file)
+    df = pandas.read_excel(ifile, sheet_name=sheet_name)
 
     rho = getVar_ExcelColumn(df, df.keys()[fromColumn + 0], fromRow=fromRow)
     Te = getVar_ExcelColumn(df, df.keys()[fromColumn + 1], fromRow=fromRow) * 1e-3
@@ -401,18 +444,20 @@ def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_
     return rho, Te, Ti, q, ne
 
 
-def getVar_ExcelColumn(pandafile, columnName, fromRow=4):
-    var0 = np.array(pandafile[columnName].values)[fromRow:]
+def getVar_ExcelColumn(df, columnName, fromRow=4):
+    var0 = np.array(df[columnName].values)[fromRow:]
     var = []
     for i in var0:
         if not np.isnan(float(i)):
             var.append(float(i))
-
     return np.array(var)
 
 
 def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, fromRow=4):
-    os.system(f"rm {file}")
+
+    ofile = Path(file)
+    if ofile.exists():
+        os.system(f"rm {ofile}")
 
     if Ti is None:
         Ti = Te
@@ -424,12 +469,13 @@ def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, from
     dictExcel["q"] = q
     dictExcel["ne"] = ne
 
-    writeExcel_fromDict(dictExcel, file, fromColumn=fromColumn, fromRow=fromRow)
+    writeExcel_fromDict(dictExcel, ofile, fromColumn=fromColumn, fromRow=fromRow)
 
 
 def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
+    ofile = Path(file)
     df = pandas.DataFrame(dictExcel)
-    writer = pandas.ExcelWriter(file, engine="xlsxwriter")
+    writer = pandas.ExcelWriter(ofile, engine="xlsxwriter")
     df.to_excel(
         writer,
         sheet_name="Sheet1",
@@ -442,6 +488,7 @@ def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
 
 
 def createExcelRow(dataSet_dict, row_name="row 1"):
+
     columns, data = [], []
     for i in dataSet_dict:
         columns.append(i)
@@ -454,10 +501,14 @@ def createExcelRow(dataSet_dict, row_name="row 1"):
 
 
 def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True):
+
+    fpath = Path(file)
     df = createExcelRow(dataSet_dict, row_name=row_name)
 
-    if os.path.exists(file):
-        df_orig = pandas.read_excel(file, index_col=0)
+    #if os.path.exists(file):
+    if fpath.is_file():
+        #df_orig = pandas.read_excel(file, index_col=0)
+        df_orig = pandas.read_excel(fpath, index_col=0)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
             df_new = df_new.drop(df.index[0])
@@ -467,7 +518,8 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     else:
         df_new = df
 
-    with pandas.ExcelWriter(file, mode="w") as writer:
+    #with pandas.ExcelWriter(file, mode="w") as writer:
+    with pandas.ExcelWriter(fpath, mode="w") as writer:
         df_new.to_excel(writer, sheet_name="Sheet1")
 
 
@@ -478,7 +530,9 @@ def correctNML(BaseFile):
     simply apply the command-line "tr -d '\r' < file_in > file_out". Example:
     """
 
-    os.system("tr -d '\r' < {0} > {0}_new && mv {0}_new {0}".format(BaseFile))
+    fpath = Path(Basefile)
+    if fpath.is_file():
+        os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
 
 def getTimeDifference(previousTime, newTime=None, niceText=True, factor=1):
@@ -515,11 +569,17 @@ def getStringFromTime(object_time=None):
 
 
 def loopFileBackUp(file):
-    if os.path.exists(file):
-        copyToFile = f"{file}_0"
-        if os.path.exists(copyToFile):
-            loopFileBackUp(copyToFile)
-        os.system(f"mv {file} {copyToFile}")
+    #if os.path.exists(file):
+    #    copyToFile = f"{file}_0"
+    #    if os.path.exists(copyToFile):
+    #        loopFileBackUp(copyToFile)
+    #    os.system(f"mv {file} {copyToFile}")
+    fpath = Path(file)
+    if fpath.is_file():
+        copyToPath = fpath.parent / (fpath.name + "_0")
+        if copyToPath.exists():
+            loopFileBackUp(copyToPath)
+        os.system(f"mv {fpath} {copyToPath}")
 
 
 def createTimeTXT(duration_in_s, until=3):
@@ -569,16 +629,21 @@ def createTimeTXT(duration_in_s, until=3):
 
 
 def renameCommand(ini, fin, folder="~/"):
-    folder = expandPath(folder)
-
+    ipath = Path(folder)
+    #folder = expandPath(folder)
     if ini is not None:
         if "mfe" in socket.gethostname():
-            os.system(f'cd {folder} && rename "s/{ini}/{fin}/" *')
+            os.system(f'cd {ipath.resolve()} && rename "s/{ini}/{fin}/" *')
         else:
-            for filename in os.listdir(folder):
-                if ini in filename:
-                    newname = filename.split(ini)[0] + fin + filename.split(ini)[-1]
-                    os.system("mv {0}/{1} {0}/{2}".format(folder, filename, newname))
+            #for filename in os.listdir(folder):
+            #    if ini in filename:
+            #        newname = filename.split(ini)[0] + fin + filename.split(ini)[-1]
+            #        os.system("mv {0}/{1} {0}/{2}".format(folder, filename, newname))
+            for filename in ipath.glob(str(ini)):
+                newname = filename.name
+                newname = newname.sub(f"{ini}", f"{fin}")
+                opath = ipath.parent / newname
+                os.system(f"mv {ipath.resolve()} {opath.resolve()}")
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
@@ -600,26 +665,43 @@ def readExecutionParams(folderExecution, nums=[0, 9]):
 
 
 def askNewFolder(folderWork, force=False, move=None):
-    if os.path.exists(folderWork):
+    #if os.path.exists(folderWork):
+    #    if force:
+    #        os.system(f"rm -r {folderWork}")
+    #    else:
+    #        if move is not None:
+    #            os.system(f"mv {folderWork[:-1]}/ {folderWork[:-1]}_{move}")
+    #        else:
+    #            print(
+    #                f"You are about to erase the content of {folderWork}", typeMsg="q"
+    #            )
+    #            os.system(f"rm -r {folderWork}")
+
+    #os.makedirs(folderWork, exist_ok=True)
+
+    #if os.path.exists(folderWork):
+    #    print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
+    #else:
+    #    fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
+    #    askNewFolder(fo, force=False, move=None)
+    #    askNewFolder(folderWork, force=False, move=None)
+
+    workpath = Path(folderWork)
+    if workpath.exists():
         if force:
-            os.system(f"rm -r {folderWork}")
+            os.system(f"rm -r {workpath}")
         else:
             if move is not None:
-                os.system(f"mv {folderWork[:-1]}/ {folderWork[:-1]}_{move}")
-            else:
-                print(
-                    f"You are about to erase the content of {folderWork}", typeMsg="q"
-                )
-                os.system(f"rm -r {folderWork}")
-
-    os.makedirs(folderWork, exist_ok=True)
-
-    if os.path.exists(folderWork):
+                os.system
+    if not workpath.exists():
+        workpath.mkdir(parents=True)
+    if workpath.is_dir():
         print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
-    else:
+    else:  # What is this?
         fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
         askNewFolder(folderWork, force=False, move=None)
+
 
 
 def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
@@ -647,15 +729,17 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 
 def getLocInfo(locFile, removeSpaces=True):
-    locFile = expandPath(locFile)
+    ipath = Path(locFile)
 
-    folderWork = "/".join(locFile.split("/")[:-1]) + "/"
-    nameRunid = locFile.split("/")[-1].split(".")[0]
+    #locFile = expandPath(locFile)
+    #folderWork = "/".join(locFile.split("/")[:-1]) + "/"
+    #nameRunid = locFile.split("/")[-1].split(".")[0]
 
     # if removeSpaces:
     #     embed()
     #     folderWork.replace(' ','\ ')
-    return folderWork, nameRunid
+    #return folderWork, nameRunid
+    return ipath.parent, ipath.stem
 
 
 def findFileByExtension(
@@ -695,6 +779,7 @@ def findFileByExtension(
 
     return fileReturn
 
+
 def findExistingFiles(folder, extension, agnostic_to_case=False):
     allfiles = []
     for file in os.listdir(folder):
@@ -707,6 +792,7 @@ def findExistingFiles(folder, extension, agnostic_to_case=False):
                 allfiles.append(file)
 
     return allfiles
+
 
 def writeOFs(resultsFile, dictOFs, dictErrors=None):
     """
@@ -989,6 +1075,8 @@ def changeValue(
 
 
 def writeQuickParams(folder, num=1):
+    fdir = Path(folder)
+    fpath = fdir / f"params.in.{num}"
     txt = [
         "                                          1 variables",
         "                      1.000000000000000e+00 factor_ped_degr",
@@ -999,7 +1087,8 @@ def writeQuickParams(folder, num=1):
         "                                          1 eval_id",
     ]
 
-    with open(folder + f"/params.in.{num}", "w") as f:
+    #with open(folder + f"/params.in.{num}", "w") as f:
+    with open(fpath, "w") as f:
         f.write("\n".join(txt))
 
 
@@ -1298,7 +1387,8 @@ def ArrayToString(ll):
     return ",".join(nn)
 
 
-def expandPath(txt, fixSpaces=False, ensurePathValid=False):
+# This is no longer needed with Path.resolve()
+def old_expandPath(txt, fixSpaces=False, ensurePathValid=False):
     while txt[-2:] == "//":
         txt = txt[:-1]
 
@@ -1321,7 +1411,15 @@ def expandPath(txt, fixSpaces=False, ensurePathValid=False):
     return pathn
 
 
-def cleanPath(txt, isItFile=False):
+def expandPath(path, fixSpaces=False, ensurePathValid=False):
+    npath = Path(path)
+    if ensurePathValid:
+        assert npath.exists()
+    return str(npath.resolve())
+
+
+# This is no longer needed with pathlib in general
+def old_cleanPath(txt, isItFile=False):
     txt = expandPath(txt, ensurePathValid=True).split("/")
     aux = []
     for i in txt:
@@ -1341,7 +1439,13 @@ def cleanPath(txt, isItFile=False):
     return txt
 
 
-def reducePathLevel(txt, level=1, isItFile=False):
+def cleanPath(path, isItFile):
+    npath = Path(path)
+    return str(npath.resolve())
+
+
+# This is no longer needed with Path.parent
+def old_reducePathLevel(txt, level=1, isItFile=False):
     txt = cleanPath(txt, isItFile=isItFile)
     if isItFile:
         level += -1
@@ -1353,6 +1457,20 @@ def reducePathLevel(txt, level=1, isItFile=False):
         sep2 = sep2[:-1]
 
     return sep1, sep2
+
+
+def reducePathLevel(path, level=1, isItFile=False):
+    npath = Path(path)
+    npath_before = npath
+    if len(npath.parents) > level:
+        npath_before = npath.parents[level - 1]
+    path_before = str(npath_before)
+    if level > 0:
+        path_before += "/"
+    path_after = str(npath)
+    if path_before in path_after:
+        path_after = path_after.replace(path_before, "")
+    return path_before, path_after
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
