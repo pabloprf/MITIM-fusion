@@ -800,7 +800,7 @@ def findValue(
     """
 
     fpath = Path(FilePath)
-    with open(fpath, "r") as f
+    with open(fpath, "r") as f:
 
         for line in f:
             # If line contain that variable name, let's grab it!
