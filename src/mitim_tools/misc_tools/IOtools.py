@@ -729,11 +729,11 @@ def findExistingFiles(folder, extension, agnostic_to_case=False):
     for filepath in fpath.glob("*"):
         if filepath.is_file():
             if not agnostic_to_case:
-                if filepath.suffix.endswith(extension):
-                    allfiles.append(filepath)
+                if f"{filepath.resolve()}".endswith(extension):
+                    allfiles.append(filepath.resolve())
             else:
-                if filepath.suffix.lower().endswith(extension.lower()):
-                    allfiles.append(filepath)
+                if f"{filepath.resolve()}".lower().endswith(extension.lower()):
+                    allfiles.append(filepath.resolve())
     return allfiles
 
 
