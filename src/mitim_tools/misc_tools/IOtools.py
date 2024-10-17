@@ -690,6 +690,7 @@ def findFileByExtension(
     fpath = Path(folder)
     #fpath = expandPath(fpath, fixSpaces=fixSpaces)
 
+    retpath = None
     if fpath.exists():
         allfiles = findExistingFiles(fpath, extension, agnostic_to_case = agnostic_to_case)
 
@@ -701,26 +702,26 @@ def findFileByExtension(
                 allfiles = [allfiles[0]]
 
         if len(allfiles) == 1:
-            fileReturn = allfiles[0]
+            retpath = allfiles[0]
         else:
             print(
                 f"\t\t~ File with extension {extension} not found in {fpath}, returning None"
             )
-            fileReturn = None
     else:
         fstr = clipstr(f"{fpath}")
         print(
             f"\t\t\t~ Folder ...{fstr} does not exist, returning None",
         )
-        fileReturn = None
 
-    #if provide_full_path and fileReturn is not None:
-    #    fileReturn = folder + fileReturn + extension
     # TODO: We really should not change return type
-    if fileReturn is not None and not provide_full_path:
-        fileReturn = fileReturn.stem
+    retval = None
+    if retpath is not None:
+        if not provide_full_path:
+            retval = f"{retpath.stem}"
+        else:
+            retval = f"{retpath}"
 
-    return f"{fileReturn}"
+    return retval
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
