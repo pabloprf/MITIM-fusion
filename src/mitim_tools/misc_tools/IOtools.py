@@ -289,7 +289,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
                 )
             os.system(f"mv {file_current.resolve()} {file_next.resolve()}")
 
-    return file_current
+    return f"{file_current}"
 
 def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     '''
@@ -677,7 +677,7 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 def getLocInfo(locFile, removeSpaces=True):
     ipath = Path(locFile)
-    return ipath.parent, ipath.stem
+    return f"{ipath.parent}", f"{ipath.stem}"
 
 
 def findFileByExtension(
@@ -720,7 +720,7 @@ def findFileByExtension(
     if fileReturn is not None and not provide_full_path:
         fileReturn = fileReturn.stem
 
-    return fileReturn
+    return f"{fileReturn}"
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
@@ -1309,7 +1309,7 @@ def obtainGeneralParams(inputFile, resultsFile):
 
     numDakota = iname.split(".")[2]
 
-    return FolderEvaluation, numDakota, ipath, rpath
+    return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
 
 
 def isNumber(val):
@@ -1335,12 +1335,12 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(path)
     if ensurePathValid:
         assert npath.exists()
-    return str(npath.resolve())
+    return f"{npath.resolve()}"
 
 
 def cleanPath(path, isItFile):
     npath = Path(path)
-    return str(npath.resolve())
+    return f"{npath.resolve()}"
 
 
 def reducePathLevel(path, level=1, isItFile=False):
@@ -1354,7 +1354,7 @@ def reducePathLevel(path, level=1, isItFile=False):
     path_after = str(npath)
     if path_before in path_after:
         path_after = path_after.replace(path_before, "")
-    return path_before, path_after
+    return f"{path_before}", f"{path_after}"
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
