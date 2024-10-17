@@ -502,7 +502,7 @@ def correctNML(BaseFile):
     simply apply the command-line "tr -d '\r' < file_in > file_out". Example:
     """
 
-    fpath = Path(Basefile)
+    fpath = Path(BaseFile)
     if fpath.is_file():
         os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
@@ -636,7 +636,7 @@ def askNewFolder(folderWork, force=False, move=None):
             if move is not None:
                 os.system(f"mv {workpath} {workpath}_{move}")
             else:
-                printMsg(
+                print(
                     f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
                 os.system(f"rm -r {workpath}")
@@ -1449,7 +1449,7 @@ class hdf5figurefile(object):
         if not fname.endswith(".hdf5"):
             fname += ".hdf5"
         self.fpath = Path(fname)
-        self.fig = h5py.File(fpath, "w")
+        self.fig = h5py.File(self.fpath, "w")
 
     def makeHDF5group(
         self,
