@@ -67,7 +67,7 @@ def initializeProblem(
 
     initialization_file = f"{FolderInitialization}/input.gacode"
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
-
+        
     # About radial locations
     if portals_fun.MODELparameters["RoaLocations"] is not None:
         roa = portals_fun.MODELparameters["RoaLocations"]
