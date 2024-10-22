@@ -1,6 +1,6 @@
 import torch
 from mitim_tools.misc_tools import PLASMAtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ------------------------------------------------------------------
@@ -179,7 +179,7 @@ class power_targets:
         variables_to_error = ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
 
         for i in variables_to_error:
-            self.powerstate.plasma[i + "_stds"] = self.powerstate.plasma[i] * assumedPercentError / 100 
+            self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * assumedPercentError / 100 
 
         """
 		**************************************************************************************************

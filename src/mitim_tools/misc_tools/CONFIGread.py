@@ -1,12 +1,9 @@
 import os
-import sys
 import json
 import socket
-import warnings
-import logging
 import getpass
-from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools import IOtools, LOGtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -63,7 +60,7 @@ def read_verbose_level():
 
     # Ignore warnings automatically if low level of verbose
     if verbose in [1, 2]:
-        ignoreWarnings()
+        LOGtools.ignoreWarnings()
 
     return verbose
 
@@ -76,55 +73,6 @@ def read_dpi():
         dpi = 100
 
     return dpi
-
-
-def ignoreWarnings(module=None):
-    if module is None:
-        warnings.filterwarnings("ignore")
-        logging.getLogger().setLevel(logging.CRITICAL)
-    else:
-        warnings.filterwarnings("ignore", module=module)  # "matplotlib\..*" )
-
-
-class redirect_all_output_to_file:
-    def __init__(self, logfile_path):
-        self.logfile_path = logfile_path
-        self.stdout_fd = None
-        self.stderr_fd = None
-        self.saved_stdout_fd = None
-        self.saved_stderr_fd = None
-        self.logfile = None
-
-    def __enter__(self):
-        # Save the actual stdout and stderr file descriptors.
-        self.stdout_fd = sys.__stdout__.fileno()
-        self.stderr_fd = sys.__stderr__.fileno()
-
-        # Save a copy of the original file descriptors.
-        self.saved_stdout_fd = os.dup(self.stdout_fd)
-        self.saved_stderr_fd = os.dup(self.stderr_fd)
-
-        # Open the log file.
-        self.logfile = open(self.logfile_path, 'w')
-
-        # Redirect stdout and stderr to the log file.
-        os.dup2(self.logfile.fileno(), self.stdout_fd)
-        os.dup2(self.logfile.fileno(), self.stderr_fd)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Restore stdout and stderr from the saved file descriptors.
-        os.dup2(self.saved_stdout_fd, self.stdout_fd)
-        os.dup2(self.saved_stderr_fd, self.stderr_fd)
-
-        # Close the duplicated file descriptors.
-        os.close(self.saved_stdout_fd)
-        os.close(self.saved_stderr_fd)
-
-        # Close the log file.
-        if self.logfile:
-            self.logfile.close()
-
-
 
 def isThisEngaging():
     try:

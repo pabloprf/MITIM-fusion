@@ -2,7 +2,7 @@ import os
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 

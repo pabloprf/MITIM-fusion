@@ -5,7 +5,7 @@ import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.utils import PORTALScgyro
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class power_transport:
@@ -353,10 +353,20 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
         if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+1}')
         if i == 'w0': 
             raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
+
+    #TODO: Only if that parameter is changing at that location
+    if 'te' in profiles or 'ti' in profiles:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('XNUE')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('BETAE')
     
     relative_scan = [1-delta, 1+delta]
 
     name = 'turb_drives'
+
+    tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
 
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = f'{name}/',
@@ -400,6 +410,9 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
         print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+        print(f"\t\t* Maximum error in Qe = {Qe_err.max()*100:.2f}% (QeGB at max location = {tgyro.results[label].QeGB_sim_turb[0,1+Qe_err.argmax()]:.1e})")
+        print(f"\t\t* Maximum error in Qi = {Qi_err.max()*100:.2f}% (QiGB at max location = {tgyro.results[label].QiGBIons_sim_turb[0,1+Qi_err.argmax()]:.1e})")
+        print(f"\t\t* Maximum error in Ge = {Ge_err.max()*100:.2f}% (GeGB at max location = {tgyro.results[label].GeGB_sim_turb[0,1+Ge_err.argmax()]:.1e})")
     else:
         print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
     # ----------------------------------------------------

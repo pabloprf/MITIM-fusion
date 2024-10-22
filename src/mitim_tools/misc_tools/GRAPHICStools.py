@@ -710,7 +710,7 @@ def listColors():
         "dimgrey",
         "indianred",
     ]
-    for i in range(5):
+    for i in range(10):
         col.extend(col)
 
     return col

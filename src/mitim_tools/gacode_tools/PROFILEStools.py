@@ -2,11 +2,9 @@ import copy
 import os
 import torch
 import csv
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
-from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
@@ -14,10 +12,9 @@ from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
-
+from IPython import embed
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
 except ImportError:
@@ -25,9 +22,6 @@ except ImportError:
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
     )
-
-# Suppress only the "divide by zero" warning
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode

@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools.utils import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def runTGYRO(

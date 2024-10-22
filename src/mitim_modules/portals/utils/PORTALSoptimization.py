@@ -6,7 +6,7 @@ from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.powertorch import STATEtools
 from mitim_tools.opt_tools.utils import BOgraphics
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """

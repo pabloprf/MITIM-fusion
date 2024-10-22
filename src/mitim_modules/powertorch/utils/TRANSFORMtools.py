@@ -3,8 +3,8 @@ import torch
 import numpy as np
 import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools import LOGtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -138,7 +138,7 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
     # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
     extra_points = 2  # If I don't allow this, it will fail
     rhoy = profiles.profiles["rho(-)"][1:-extra_points]
-    with IOtools.HiddenPrints():
+    with LOGtools.HiddenPrints():
         state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
     state_temp.calculateProfileFunctions()
     state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"

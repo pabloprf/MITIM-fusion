@@ -5,7 +5,7 @@ extensively by PRF.
 
 import sys
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 try:
     # ----------- PyQt -----------

@@ -5,7 +5,7 @@ from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtool
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ----------------------------------------------------------------------------------------------------------
@@ -454,7 +454,7 @@ class transp_run:
         plt.show()
 
 
-def prepare_RZsep_for_TRANSP(Ro,Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 100, endpoint=True)):
+def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 100, endpoint=True), plotYN = False):
     '''
     TRANSP tends to give troubles with kinks, curvatures and loops in the boundary files.
     This method developed in MITIM helps to smooth the boundary and avoid these issues.
@@ -465,6 +465,17 @@ def prepare_RZsep_for_TRANSP(Ro,Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 
     surfaces.reconstruct_from_RZ(Ro,Zo)
     surfaces._to_mxh(n_coeff=n_coeff)
     surfaces._from_mxh(thetas = thetas)
+
+    if plotYN:
+        fig, ax = plt.subplots()
+        ax.plot(Ro, Zo, 'o', label='Original')
+        ax.plot(surfaces.R[0], surfaces.Z[0], label='Smoothed')
+        ax.legend(loc='best')
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        plt.show()
+        embed()
 
     return thetas, surfaces.R[0], surfaces.Z[0]
 

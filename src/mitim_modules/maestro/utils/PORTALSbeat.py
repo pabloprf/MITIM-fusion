@@ -6,7 +6,7 @@ from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
 
@@ -18,6 +18,7 @@ class portals_beat(beat):
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,
+            try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
             additional_params_in_surrogate = [],
             exploration_ranges = {
@@ -45,7 +46,7 @@ class portals_beat(beat):
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
-        self.try_flux_match_only_for_first_point = True
+        self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
 
         self._inform(use_previous_residual = use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
@@ -92,9 +93,7 @@ class portals_beat(beat):
 
         portals_fun.prep(
             self.fileGACODE,
-            ymax_rel = self.exploration_ranges['ymax_rel'],
-            ymin_rel = self.exploration_ranges['ymin_rel'],
-            hardGradientLimits = self.exploration_ranges['hardGradientLimits']
+            **self.exploration_ranges,
             )
 
         self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
@@ -210,7 +209,7 @@ class portals_beat(beat):
 
         if full_plot:
             opt_fun.fn = fn
-            opt_fun.plot_optimization_results(analysis_level=4, tab_color=counter)
+            opt_fun.plot_optimization_results(analysis_level=4, tabs_colors=counter)
         else:
             if len(opt_fun.powerstates)>0:
                 fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)

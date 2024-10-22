@@ -4,7 +4,7 @@ import numpy as np
 from mitim_tools.opt_tools 	 	import STRATEGYtools
 from mitim_tools.misc_tools import PLASMAtools
 from collections import OrderedDict
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):

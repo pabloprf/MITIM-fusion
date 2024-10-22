@@ -17,7 +17,7 @@ from mitim_modules.portals.utils import (
 from mitim_modules.powertorch.physics import TRANSPORTtools, TARGETStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import BOgraphics
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -56,7 +56,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options['stopping_criteria_parameters'] =  {
                 "maximum_value": 5e-3,  # Reducing residual by 200x is enough
                 "maximum_value_is_rel": True,
-                "minimum_dvs_variation": [10, 3, 0.01],  # After iteration 10, Check if 3 consecutive DVs are varying less than 0.1% from the rest I have! (stiff behavior?)
+                "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
                 "ricci_value": 0.15,
                 "ricci_d0": 2.0,
                 "ricci_lambda": 1.0,
@@ -66,15 +66,11 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
         PORTALStools.selectSurrogate, CGYROrun=CGYROrun
     )
-    # optimization_options['surrogateOptions']['MinimumRelativeNoise']   = 1E-3  # Minimum error bar (std) of 0.1% of maximum value of each output (untransformed! so careful with far away initial condition)
 
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
     # Acquisition
     optimization_options["acquisition_type"] = "posterior_mean"
-
-    # Do not allow excursions 
-    optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.0, 0.0]
 
     if CGYROrun:
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
@@ -226,20 +222,14 @@ class portals(STRATEGYtools.opt_evaluator):
             "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
             "surrogateForTurbExch": False,  # Run turbulent exchange as surrogate?
             "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes (only CGYRO so far)
-            "Pseudo_multipliers": [
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ],  # [Qe,Qi,Ge] multipliers to calculate pseudo
+            "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": None,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
         }
 
         for key in self.PORTALSparameters.keys():
@@ -251,9 +241,10 @@ class portals(STRATEGYtools.opt_evaluator):
         restartYN=False,
         ymax_rel=1.0,
         ymin_rel=1.0,
-        dvs_fixed=None,
         limitsAreRelative=True,
+        dvs_fixed=None,
         hardGradientLimits=None,
+        enforceFiniteTemperatureGradients=None,
         define_ranges_from_profiles=None,
         start_from_folder=None,
         reevaluateTargets=0,
@@ -262,15 +253,17 @@ class portals(STRATEGYtools.opt_evaluator):
         ModelOptions=None,
     ):
         """
-        start_from_folder is a folder from which to grab optimization_data and optimization_extra
+        Notes:
+            - ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the dictionary directly, e.g.:
+                    ymax_rel = {
+                        'te': [1.0, 0.5, 0.5, 0.5],
+                        'ti': [0.5, 0.5, 0.5, 0.5],
+                        'ne': [1.0, 0.5, 0.5, 0.5]
+                    }
+            - enforceFiniteTemperatureGradients is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforceFiniteTemperatureGradients = 0.95
+            - start_from_folder is a folder from which to grab optimization_data and optimization_extra
                 (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
-
-        ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the array directly, e.g.:
-                ymax_rel = np.array([   [1.0, 0.5, 0.5, 0.5],
-                                        [0.5, 0.5, 0.5, 0.5],
-                                        [1.0, 0.5, 0.5, 0.5]    ])
-
-        seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
+            - seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -288,15 +281,23 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if IOtools.isfloat(ymax_rel):
-            ymax_rel = np.array(
-                [ymax_rel * np.ones(len(self.MODELparameters[key_rhos]))]
-                * len(self.MODELparameters["ProfilesPredicted"])
-            )
+            ymax_rel0 = copy.deepcopy(ymax_rel)
+
+            ymax_rel = {}
+            for prof in self.MODELparameters["ProfilesPredicted"]:
+                ymax_rel[prof] = np.array( [ymax_rel0] * len(self.MODELparameters[key_rhos]) )
+        
         if IOtools.isfloat(ymin_rel):
-            ymin_rel = np.array(
-                [ymin_rel * np.ones(len(self.MODELparameters[key_rhos]))]
-                * len(self.MODELparameters["ProfilesPredicted"])
-            )
+            ymin_rel0 = copy.deepcopy(ymin_rel)
+
+            ymin_rel = {}
+            for prof in self.MODELparameters["ProfilesPredicted"]:
+                ymin_rel[prof] = np.array( [ymin_rel0] * len(self.MODELparameters[key_rhos]) )
+
+        if enforceFiniteTemperatureGradients is not None:
+            for prof in ['te', 'ti']:
+                if prof in ymin_rel:
+                    ymin_rel[prof] = ymin_rel[prof].clip(enforceFiniteTemperatureGradients)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
@@ -398,7 +399,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         if self.optimization_extra is not None:
             with open(self.optimization_extra, "rb") as handle:
-                dictStore = pickle_dill.load(handle)
+                dictStore = pickle_dill.load(handle)                            #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
                 f"{self.folder}/Initialization/input.gacode_modified"

@@ -26,7 +26,7 @@ from mitim_tools.transp_tools.utils import (
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools.GUItools import FigureNotebook
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def read_cdf_transp(cdf_file):
@@ -15245,7 +15245,7 @@ class transp_output:
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
         print("\t\t* Warning: not time averaging yet",typeMsg='w')
 
-        # TODO: I should be looking at the extrapolated quantities in TRANSP?
+        #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
 
         # -------------------------------------------------------------------------------------------------------

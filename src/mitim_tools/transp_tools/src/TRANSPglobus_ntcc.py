@@ -4,7 +4,7 @@ from IPython import embed
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.transp_tools import NMLtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 retrieveTerminalOutput = True
 

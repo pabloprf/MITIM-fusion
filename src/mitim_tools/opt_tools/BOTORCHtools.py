@@ -8,8 +8,8 @@ import torch
 import botorch
 import gpytorch
 from IPython import embed
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
@@ -108,14 +108,15 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
 
         if FixedNoise:
             # Noise not inferred, given by data
-
+            
             likelihood = (
                 gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
-                    noise=train_Yvar_usedToTrain,
+                    noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
                     batch_shape=self._aug_batch_shape,
                     learn_additional_noise=learn_additional_noise,
                 )
             )
+
         else:
             # Infer Noise
 
@@ -525,7 +526,6 @@ class ChainedOutcomeTransform(
 # Mean acquisition function in botorch doesn't allow objectives because it's analytic
 # ----------------------------------------------------------------------------------------------------------------------------
 
-
 class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def __init__(
         self,
@@ -551,6 +551,7 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
                 - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
         """
 
+        # Posterior distribution
         posterior = self.model.posterior(
             X=X, posterior_transform=self.posterior_transform
         )
@@ -566,45 +567,58 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
 
         return acq
 
+class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
+    def __init__(
+        self,
+        model,
+        sampler=None,
+        objective=None,
+        posterior_transform=None,
+        X_pending=None,
+    ):
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=objective,
+            posterior_transform=posterior_transform,
+            X_pending=X_pending,
+        )
 
-# ----------------------------------------------------------------------------------------------------------------------------
-# My own IC generator that uses previous points too
-# ----------------------------------------------------------------------------------------------------------------------------
+        self.samples_posterior = 2**9 # 512
 
+    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
+    def forward(self, X):
+        """
+        Notes:
+                - X in the form of [batch,restarts,q,dim]
+                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
+        """
 
-def ic_generator_wrapper(batch_initial_conditions):
-    def ic_generator(acq_function, bounds, q, num_restarts, raw_samples, **kwargs):
-        if q > 1:
-            raise NotImplementedError(
-                "[MITIM] This situation has not been implemented yet"
-            )
+        # Posterior distribution
+        posterior = self.model.posterior(
+            X=X, posterior_transform=self.posterior_transform
+        )
 
-        # Points already provided
-        provided_points = batch_initial_conditions.unsqueeze(1)
+        # samples as [samples,batch1...N,q,dimY]
+        self._default_sample_shape = torch.Size([self.samples_posterior])
+        samples = self.get_posterior_samples(posterior)
 
-        # Only generate the rest
-        num_restarts_new = num_restarts - provided_points.shape[0]
+        # objective [samples,batch1...N,q]
+        obj = self.objective(samples=samples)
 
-        if num_restarts_new < 1:
-            print(
-                f"\t- More or same points provided than num_restarts ({provided_points.shape[0]} vs {num_restarts}), clipping...",
-                typeMsg="w",
-            )
-            return provided_points[provided_points.shape[0] - num_restarts :, ...]
-        else:
-            new_points = botorch.optim.initializers.gen_batch_initial_conditions(
-                acq_function, bounds, q, num_restarts_new, raw_samples, **kwargs
-            )
+        # mean over samples [batch1...N,q]
+        obj_mean = obj.mean(axis=0)
+        
+        # max over q
+        acq = obj_mean.max(axis=-1)[0]
 
-            return torch.cat([provided_points, new_points], dim=0)
+        #print(f'\t X shape {samples.shape}, samples shape: {samples.shape}, obj shape: {obj.shape}, obj_mean shape: {obj_mean.shape}, acq shape: {acq.shape}')
 
-    return ic_generator
-
+        return acq
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom kernels
 # ----------------------------------------------------------------------------------------------------------------------------
-
 
 class PRF_NNKernel(gpytorch.kernels.Kernel):
     has_lengthscale, is_stationary = True, False
@@ -727,7 +741,6 @@ class PRF_ConstantKernel(gpytorch.kernels.Kernel):
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom means
 # ----------------------------------------------------------------------------------------------------------------------------
-
 
 # mitim application: If a variable is a gradient, do linear, if not, do just bias
 class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):

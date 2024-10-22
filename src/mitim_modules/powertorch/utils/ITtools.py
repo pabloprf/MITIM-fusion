@@ -3,7 +3,7 @@ import copy
 import os
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.physics import TRANSPORTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def fluxMatchRoot(self, algorithmOptions={}):

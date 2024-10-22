@@ -8,7 +8,7 @@ from collections import OrderedDict
 from scipy.interpolate import interp1d
 from mitim_modules.freegsu.utils import FREEGSUplotting, FREEGSUparams
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def evaluator(

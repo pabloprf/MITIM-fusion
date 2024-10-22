@@ -2,9 +2,9 @@ import os
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import LOGtools, GRAPHICStools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
@@ -14,7 +14,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 MARKERSIZE = 1
 LW = 1.0
 
-def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
+def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
     folder_beats = f'{folder}/Beats/'
@@ -45,7 +45,7 @@ def plotMAESTRO(folder, num_beats = 2, only_beats = None, full_plot = True):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
 
     # Plot
-    m.plot(num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
+    m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
 
     return m
 
@@ -92,7 +92,7 @@ def plot_results(self, fn):
         # Plot profiles
         figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
-        with IOtools.conditional_log_to_file(log_file=log_file):
+        with LOGtools.conditional_log_to_file(log_file=log_file):
             PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
     for p,pl in zip(ps,ps_lab):

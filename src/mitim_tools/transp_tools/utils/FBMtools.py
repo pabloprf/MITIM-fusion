@@ -10,7 +10,7 @@ except:
 
 from IPython import embed
 
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 class fbmCDF:

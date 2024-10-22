@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # These import are usually needed if they are called within the pickling object
 import torch  
@@ -48,7 +48,6 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     colors = GRAPHICStools.listColors()
 
     plt.close("all")
-    plt.ion()
     fig = plt.figure(figsize=(16, 10))
     grid = plt.GridSpec(3, 2, hspace=0.2, wspace=0.1)
     ax0 = fig.add_subplot(grid[0, 0])
@@ -167,7 +166,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
 
         plotAllmembers = len(folderWorks) <= 3
         xe, yCummMean = res.plotImprovement(
-            axs=[ax0, ax1, ax1i],
+            axs=[ax0, ax1, ax1i, None],
             color=color,
             extralab=name + " ",
             plotAllmembers=plotAllmembers,
@@ -176,9 +175,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         if xe[-1] > maxEv:
             maxEv = xe[-1]
 
-        compared = -yCummMean[0] * conv if conv < 0 else conv
-
-        ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
+        #compared = -yCummMean[0] * conv if conv < 0 else conv
+        #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
         if log_class is not None:
             log_class.plot(
@@ -218,6 +216,7 @@ def main():
     parser.add_argument("--resolution", type=int, required=False, default=50)
     parser.add_argument("--save", type=str, required=False, default=None)
     parser.add_argument("--conv", type=float, required=False, default=-1e-2)
+    parser.add_argument("--its", type=int, nargs="*", required=False, default=None)
 
     args = parser.parse_args()
 
@@ -228,6 +227,7 @@ def main():
     resolution = args.resolution
     save_folder = args.save
     conv = args.conv
+    rangePlot = args.its
 
 # -----------------------------------------
 
@@ -284,6 +284,7 @@ def main():
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
             save_folder=save_folder,
+            rangesPlot=rangePlot,
         )
     else:
         opt_funs = []
@@ -295,6 +296,7 @@ def main():
                     folderRemote=folderRemote,
                     retrieval_level=retrieval_level,
                     save_folder=save_folder,
+                    rangesPlot=rangePlot,
                 )
             except:
                 print(f"Could not retrieve #{folderWork}", typeMsg="w")
@@ -334,7 +336,10 @@ def main():
                 f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
                 typeMsg="w",
             )
-    opt_fun.fn.show()
+    if opt_fun.fn is not None:
+        opt_fun.fn.show()
+    else:
+        plt.show()
 
     embed()
 

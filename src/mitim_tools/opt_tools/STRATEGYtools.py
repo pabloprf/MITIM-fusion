@@ -9,7 +9,7 @@ from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -18,8 +18,7 @@ from mitim_tools.opt_tools.utils import (
     EVALUATORtools,
     SAMPLINGtools,
 )
-from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
 UseCUDAifAvailable = True
@@ -203,9 +202,10 @@ class opt_evaluator:
         folderRemote=None,
         analysis_level=0,
         pointsEvaluateEachGPdimension=50,
+        rangePlot=None,
     ):
         with np.errstate(all="ignore"):
-            CONFIGread.ignoreWarnings()
+            LOGtools.ignoreWarnings()
             (
                 self.fn,
                 self.res,
@@ -219,6 +219,7 @@ class opt_evaluator:
                 plotFN=plotFN,
                 folderRemote=folderRemote,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot=rangePlot,
             )
 
         # Make folders local
@@ -270,6 +271,7 @@ class opt_evaluator:
         retrieval_level=None,
         plotYN=True,
         pointsEvaluateEachGPdimension=50,
+        rangesPlot=None,
         save_folder=None,
         tabs_colors=0,
     ):
@@ -299,6 +301,7 @@ class opt_evaluator:
                 retrieval_level if (retrieval_level is not None) else analysis_level
             ),
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+            rangePlot=rangesPlot,
         )
 
         self_complete = None
@@ -927,7 +930,7 @@ class PRF_BO:
             try:
                 pickle_dill.dump(copyClass, handle)
             except:
-                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables with the variables you think cannot be pickled", typeMsg="w")
+                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables = ['variable1', 'variable2'] with the variables you think cannot be pickled", typeMsg="w")
                 del copyClass.optimization_object
                 pickle_dill.dump(copyClass, handle)
 
@@ -1429,6 +1432,7 @@ class PRF_BO:
         number_of_models_per_tab=5,
         stds=2,
         pointsEvaluateEachGPdimension=50,
+        rangePlot_force=None,
     ):
         print(
             "\n ***************************************************************************"
@@ -1460,12 +1464,15 @@ class PRF_BO:
         number_of_models_per_tab = np.min([number_of_models_per_tab, len(self.outputs)])
         Tabs_needed = int(np.ceil(len(self.outputs) / number_of_models_per_tab))
 
-        if len(GPs) == 1:
-            rangePlot = [0]
-        elif len(GPs) == 2:
-            rangePlot = range(len(GPs))
+        if rangePlot_force is not None:
+            rangePlot = rangePlot_force[:len(GPs)]
         else:
-            rangePlot = [len(GPs) - 2, len(GPs) - 1]
+            if len(GPs) == 1:
+                rangePlot = [0]
+            elif len(GPs) == 2:
+                rangePlot = range(len(GPs))
+            else:
+                rangePlot = [len(GPs) - 2, len(GPs) - 1]
 
         for ck, k in enumerate(rangePlot):
             print(

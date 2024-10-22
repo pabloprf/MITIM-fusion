@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.GUItools import FigureNotebook
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 

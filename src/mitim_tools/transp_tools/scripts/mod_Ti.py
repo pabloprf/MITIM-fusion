@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import UFILEStools, CDFtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 merge_location = float(sys.argv[1])  # 0.85

@@ -7,7 +7,7 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools import SURROGATEtools, OPTtools, BOTORCHtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -329,7 +329,7 @@ class OPTstep:
         # **************************************************************************************************
 
         # Build function to pass to acquisition
-        def residual(Y):
+        def residual(Y, X = None):
             return scalarized_objective(Y)[2]
 
         self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
@@ -340,12 +340,20 @@ class OPTstep:
         # Acquisition functions (Maximization problem in MITIM)
         # **************************************************************************************************
 
+        # Some acquisition functions require the best value of the objective found so far
         best_f = self.evaluators["objective"](
             self.evaluators["GP"].train_Y.unsqueeze(1)
         ).max()
 
+        sample_size = torch.Size([512]) # Default sample size in botorch, acquisition.py
+
         if self.acquisition_type == "posterior_mean":
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
+                self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
+            )
+
+        elif self.acquisition_type == "posterior_mean_mc":
+            self.evaluators["acq_function"] = BOTORCHtools.PosteriorMeanMC(
                 self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
             )
 
@@ -375,12 +383,14 @@ class OPTstep:
                 )
             )
 
+        self.evaluators["acq_function"]._default_sample_shape = sample_size
+
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
         # **************************************************************************************************
 
         def residual_function(x, outputComponents=False):
-            mean, _, _, _ = self.evaluators["GP"].predict(x)
+            mean, _, _, _ = self.evaluators["GP"].predict(x) #TODO: make the predict method simply the callable of my GP
             yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
 
             return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut

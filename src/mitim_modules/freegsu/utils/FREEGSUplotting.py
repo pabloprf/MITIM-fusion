@@ -11,7 +11,7 @@ from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from mitim_tools.misc_tools import IOtools
 
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 from IPython import embed
 

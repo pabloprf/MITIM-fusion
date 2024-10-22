@@ -11,7 +11,7 @@ from shapely.geometry import LineString
 from scipy.integrate import quad
 import freegs
 from freegs import geqdsk
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """
@@ -696,21 +696,20 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
     theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
 
     theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
-    
+
     # Fourier decompose to find coefficients
+
     c, s = np.zeros(n_coeff), np.zeros(n_coeff)
+
     def f_theta_r(theta):
         return np.interp(theta, theta_cont, theta_r_cont)
     
     for i in np.arange(n_coeff):
-        def integrand_sin(theta):
-            return np.sin(i*theta)*(f_theta_r(theta))
-        def integrand_cos(theta):
-            return np.cos(i*theta)*(f_theta_r(theta))
+        s[i] = quad(f_theta_r,0,2*np.pi, weight="sin", wvar=i)[0]/np.pi
+        c[i] = quad(f_theta_r,0,2*np.pi, weight="cos", wvar=i)[0]/np.pi
+    
+    c[0] /= 2
 
-        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
-        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
-        
     return c, s, bbox
 
 def from_mxh_to_RZ(R0, a, kappa, Z0, cn, sn, thetas = None):
@@ -1175,6 +1174,8 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
+        if not os.path.exists(scratch_folder):
+            os.makedirs(scratch_folder)
         file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)

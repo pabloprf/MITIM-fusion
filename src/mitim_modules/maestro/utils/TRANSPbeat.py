@@ -1,10 +1,9 @@
 import os
 import copy
-import numpy as np
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
 
@@ -37,18 +36,14 @@ class transp_beat(beat):
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
-
-        if extractAC:
-            self.timeAC = self.time_end - 0.001                              # Time to extract TORIC and NUBEAM files
-        else:
-            self.timeAC = None
+        self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
 
         if shot is None:
             folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
             shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
-            username = IOtools.expandPath('$USER')
+            username = os.path.expandvars('$USER')
             letter = username[0].upper()
             if letter == '$':
                 letter = 'A'
@@ -84,7 +79,7 @@ class transp_beat(beat):
         if 'Ufiles' in transp_namelist_mod:
             raise ValueError('Cannot define UFILES in MAESTRO transp_namelist')
         else:
-            transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]#,"mry"]
+            transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)

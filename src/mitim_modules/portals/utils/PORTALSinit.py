@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -42,7 +42,7 @@ def initializeProblem(
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
 
-    FolderInitialization = folderWork + "Initialization"
+    FolderInitialization = folderWork + "/Initialization"
 
     if (restartYN) or (not os.path.exists(folderWork)):
         IOtools.askNewFolder(folderWork, force=restartYN)
@@ -240,16 +240,14 @@ def initializeProblem(
     thr = 1E-5
 
     dictDVs = OrderedDict()
-    for cont, var in enumerate(dictCPs_base):
+    for var in dictCPs_base:
         for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
             if limitsAreRelative:
-                y1 = dictCPs_base[var][i] * (1 - RelVar_y_min[cont][conti])
-                y2 = dictCPs_base[var][i] * (1 + RelVar_y_max[cont][conti])
+                y1 = dictCPs_base[var][i] * (1 - RelVar_y_min[var][conti])
+                y2 = dictCPs_base[var][i] * (1 + RelVar_y_max[var][conti])
             else:
-                # y1 = dictCPs_base[var][i] - RelVar_y_min[cont][conti]
-                # y2 = dictCPs_base[var][i] + RelVar_y_max[cont][conti]
-                y1 = torch.tensor(RelVar_y_min[cont][conti]).to(dfT)
-                y2 = torch.tensor(RelVar_y_max[cont][conti]).to(dfT)
+                y1 = torch.tensor(RelVar_y_min[var][conti]).to(dfT)
+                y2 = torch.tensor(RelVar_y_max[var][conti]).to(dfT)
 
             if hardGradientLimits is not None:
                 if hardGradientLimits[0] is not None:

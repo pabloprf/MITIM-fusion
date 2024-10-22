@@ -1,7 +1,6 @@
 import os
 import copy
 import torch
-import datetime
 import sys
 import pandas as pd
 import dill as pickle_dill
@@ -10,10 +9,10 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
 from IPython import embed
@@ -85,9 +84,12 @@ def plot_surrogate_model(
 
     newLabels = self.variables if plotFundamental else [ikey for ikey in self.bounds]
     if newLabels is None or self.gpmodel.ard_num_dims > len(newLabels):
-        newLabels = [
-            ikey for ikey in self.bounds
-        ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        if self.bounds is not None:
+            newLabels = [
+                ikey for ikey in self.bounds
+            ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        else:
+            newLabels = [f"Variable {i}" for i in range(self.gpmodel.ard_num_dims)]
 
     """
 	------------------------------------------------------------------------------------------------------------
@@ -822,6 +824,7 @@ def retrieveResults(
     doNotShow=False,
     plotFN=None,
     pointsEvaluateEachGPdimension=50,
+    rangePlot = None
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Grab remote results optimization
@@ -896,6 +899,7 @@ def retrieveResults(
                 doNotShow=doNotShow,
                 fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot_force=rangePlot,
             )
 
     # If no pickle, plot only the contents of optimization_results
@@ -907,43 +911,13 @@ def retrieveResults(
     return fn, res, prfs_model, log, data_df
 
 
-class Logger(object):
-    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
-        self.logFile = logFile
-        self.writeAlsoTerminal = writeAlsoTerminal
-
-        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        print(f"- Creating log file: {logFile}")
-
-        if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
-        else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
-                )
-
-    def write(self, message):
-        if self.writeAlsoTerminal:
-            self.terminal.write(message)
-
-        with open(self.logFile, "a") as self.log:
-            self.log.write(IOtools.strip_ansi_codes(message))
-
-    # For python 3 compatibility:
-    def flush(self):
-        pass
-
 
 class LogFile:
     def __init__(self, file):
         self.file = file
 
     def activate(self, writeAlsoTerminal=True):
-        sys.stdout = Logger(
+        sys.stdout = LOGtools.Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 
@@ -1298,10 +1272,13 @@ class optimization_data:
                 else:
                     data_point['maximization_objective'] = np.nan
 
-                # Check if data_point has any non-NA values
+                # Check if both data_point and data_new have any non-NA values
                 if not pd.DataFrame([data_point]).isna().all().all():
-                    data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
-                    
+                    if not data_new.isna().all().all():  # Ensure data_new is not all-NA
+                        data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
+                    else:
+                        data_new = pd.DataFrame([data_point])  # Initialize if data_new is all-NA
+
         self.data = data_new
         self.data.to_csv(self.file, index=False)
 
@@ -1841,8 +1818,8 @@ Workflow start time: {IOtools.getStringFromTime()}
         leg=True,
         colorsS=None,
     ):
-        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * 100
-        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * 100
+        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * np.max([100,len(self.OF_labels)])
+        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * np.max([100,len(self.OF_labels)])
 
         if axs is None:
             plt.ion()
