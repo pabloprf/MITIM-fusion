@@ -42,7 +42,7 @@ def initializeProblem(
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
 
-    FolderInitialization = folderWork + "Initialization"
+    FolderInitialization = folderWork + "/Initialization"
 
     if (restartYN) or (not os.path.exists(folderWork)):
         IOtools.askNewFolder(folderWork, force=restartYN)

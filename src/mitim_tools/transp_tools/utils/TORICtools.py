@@ -50,8 +50,7 @@ def getTORICfromTRANSP(folderWork, nameRunid):
             nameFI, folderWork=folderWork, checkExtension="cdf"
         )
 
-        fileN_FI = folder_FI.replace("\\", "") + f"{nameRunid}_fpp_curstate.cdf"
-
+        fileN_FI = folder_FI.replace("\\", "") + f"/{nameRunid}_fpp_curstate.cdf"
         cdf_FI = netCDF4.Dataset(fileN_FI).variables
 
         print(f"\t\t\t- FI file found")
@@ -70,9 +69,9 @@ class toricCDF:
 
         name, _, numTOR = numTOR.split("_")
 
-        fileN = folderWorkN.replace("\\", "") + f"{name}_{antenna}_{numTOR}_toric.ncdf"
+        fileN = folderWorkN.replace("\\", "") + f"/{name}_{antenna}_{numTOR}_toric.ncdf"
         fileN_msg = (
-            folderWorkN.replace("\\", "") + f"{name}_{antenna}_{numTOR}_toric5.msgs"
+            folderWorkN.replace("\\", "") + f"/{name}_{antenna}_{numTOR}_toric5.msgs"
         )
 
         self.simulation = None

@@ -1174,6 +1174,8 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
+        if not os.path.exists(scratch_folder):
+            os.makedirs(scratch_folder)
         file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
