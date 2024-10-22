@@ -43,7 +43,7 @@ class transp_beat(beat):
             shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
-            username = IOtools.expandPath('$USER')
+            username = os.path.expandvars('$USER')
             letter = username[0].upper()
             if letter == '$':
                 letter = 'A'
