@@ -716,7 +716,7 @@ def findFileByExtension(
     retval = None
     if retpath is not None:
         if not provide_full_path:
-            retval = f"{retpath.stem}"
+            retval = f"{retpath.name}".replace(extension, "")
         else:
             retval = f"{retpath}"
 
