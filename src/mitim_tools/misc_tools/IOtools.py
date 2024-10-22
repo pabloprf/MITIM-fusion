@@ -1330,7 +1330,7 @@ def ArrayToString(ll):
 
 
 def expandPath(path, fixSpaces=False, ensurePathValid=False):
-    npath = Path(path).expanduser()
+    npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
         assert npath.exists()
     return f"{npath.resolve()}"
