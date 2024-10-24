@@ -479,7 +479,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 )
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
-        if (self.PORTALSparameters["transport_evaluator"] != TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
+        if not issubclass(self.PORTALSparameters["transport_evaluator"], TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
             print(
                 "\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",
                 typeMsg="w",
