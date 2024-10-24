@@ -3,7 +3,7 @@ import json
 import socket
 import getpass
 from mitim_tools.misc_tools import IOtools, LOGtools
-from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -23,18 +23,21 @@ class ConfigManager:
         return cls._instance
 
     def set(self, path: str):
-        print(f"MITIM > Setting configuration file to: {path}")
+        if self._config_file_path is not None:
+            printMsg(f"MITIM > Setting configuration file to: {path}")
+        else:
+            print(f"MITIM > Setting configuration file to: {path}")
         self._config_file_path = path
 
     def get(self):
         if self._config_file_path is None:
             self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
             if os.path.exists(self._config_file_path):
-                print(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
+                printMsg(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
                 self._config_file_path = __mitimroot__ + "/templates/config_user.json"
-                print(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
+                printMsg(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
 config_manager = ConfigManager()

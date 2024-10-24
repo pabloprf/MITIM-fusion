@@ -270,6 +270,10 @@ class powerstate:
 
         return state_temp
 
+    def to_cpu_tensors(self):
+        self._cpu_tensors()
+        return self
+
     # ------------------------------------------------------------------
     # Flux-matching and iteration tools
     # ------------------------------------------------------------------
@@ -458,6 +462,18 @@ class powerstate:
 
         # New batch size
         self.batch_size = batch_size
+
+    def _cpu_tensors(self):
+        self._detach_tensors()
+        self.plasma = {key: tensor.cpu() for key, tensor in self.plasma.items() if isinstance(tensor, torch.Tensor)}
+        if self.plasma_fine is not None:
+            self.plasma_fine = {key: tensor.cpu() for key, tensor in self.plasma_fine.items() if isinstance(tensor, torch.Tensor)}
+        if hasattr(self, 'Xcurrent') and self.Xcurrent is not None and isinstance(self.Xcurrent, torch.Tensor):
+            self.Xcurrent = self.Xcurrent.cpu()
+        if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and isinstance(self.FluxMatch_Yopt, torch.Tensor):
+            self.FluxMatch_Yopt = self.FluxMatch_Yopt.cpu()
+        if hasattr(self, 'profiles'):
+            self.profiles.toNumpyArrays()
 
     def update_var(self, name, var=None, specific_deparametrizer=None):
         """

@@ -84,7 +84,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}{cont}"
         folder = f"{MainFolder}/{nameRun}/"
-        if self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model:
+        if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             os.makedirs(os.path.join(folder, "model_complete/"), exist_ok=True)
 
         # ***************************************************************************************************************
@@ -98,7 +98,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
         )
 
         # Save state so that I can check initializations
-        if self.TransportOptions["transport_evaluator"] == TRANSPORTtools.tgyro_model:
+        if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             self.save(f"{folder}/powerstate.pkl")
             os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
 
