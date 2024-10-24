@@ -1423,6 +1423,10 @@ class PROFILES_GACODE:
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
+    def toNumpyArrays(self):
+        self.profiles.update({key: tensor.cpu().detach().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
+        self.derived.update({key: tensor.cpu().detach().numpy() for key, tensor in self.derived.items() if isinstance(tensor, torch.Tensor)})
+
     def writeCurrentStatus(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
 
