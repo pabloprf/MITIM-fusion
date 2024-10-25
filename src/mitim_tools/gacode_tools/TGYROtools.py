@@ -112,8 +112,8 @@ class TGYRO:
 
         """
 
-        self.FolderGACODE = IOtools.expandPath(FolderGACODE) + "/"
-        self.FolderGACODE_tmp = self.FolderGACODE + subfolder + "/"
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+        self.FolderGACODE_tmp = self.FolderGACODE / subfolder
 
         # Define name
         _, self.nameRuns_default = IOtools.reducePathLevel(self.FolderGACODE, level=1)
@@ -252,9 +252,9 @@ class TGYRO:
 
         Tepred, Tipred, nepred = PredictionSet
 
-        self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE + subFolderTGYRO + "/")
+        self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE / subFolderTGYRO)
         self.FolderTGYRO_tmp = (
-            self.FolderTGYRO + "/tmp_tgyro_run/"
+            self.FolderTGYRO / "tmp_tgyro_run"
         )  # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
 
         inputclass_TGYRO = TGYROinput(
@@ -375,7 +375,7 @@ class TGYRO:
             IOtools.askNewFolder(self.FolderTGYRO_tmp)
 
         print(
-            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(self.FolderTGYRO_tmp)}input.tglf"
+            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = GACODErun.modifyInputs(
@@ -385,7 +385,7 @@ class TGYRO:
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
         )
-        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp + "input.tglf")
+        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tglf")
 
         # -----------------------------------
         # ------ Write input profiles
@@ -400,7 +400,7 @@ class TGYRO:
             )
             self.profiles.profiles['rho(-)'][0] = 0.0
 
-        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp + fil)
+        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / fil)
 
         # -----------------------------------
         # ------ Create TGYRO file
@@ -419,7 +419,7 @@ class TGYRO:
             special_radii=special_radii_mod,
         )
 
-        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp + "input.tgyro")
+        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tgyro")
 
         # -----------------------------------
         # ------ Check density for problems
