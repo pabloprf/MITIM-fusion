@@ -1,4 +1,10 @@
 import os
+from pathlib import Path
+
+from mitim_tools.misc_tools.CONFIGread import config_manager
+configpath = Path('../../config/mitim_config_user.json')
+config_manager.set(f'{configpath.resolve()}')
+
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
@@ -9,13 +15,14 @@ To run: python3  tests/TGYRO_workflow.py
 
 restart = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+rundir = __mitimroot__ / "tests" / "scratch/"
+rundir.mkdir(parents=True, exist_ok=True)
 
-gacode_file = __mitimroot__ + "/tests/data/input.gacode"
-folder = __mitimroot__ + "/tests/scratch/tgyro_test/"
+gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" /" tgyro_test"
 
-if restart and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+if restart and folder.exists():
+    os.system(f"rm -r {folder.resolve()}")
 
 profiles = PROFILEStools.PROFILES_GACODE(gacode_file)
 tgyro = TGYROtools.TGYRO()
@@ -33,7 +40,7 @@ solver = {
 physics_options = {"TypeTarget": 2}
 
 tgyro.run(
-    subFolderTGYRO="run1/",
+    subFolderTGYRO="run1",
     iterations=3,
     restart=True,
     forceIfRestart=True,
