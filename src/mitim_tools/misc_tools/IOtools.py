@@ -677,6 +677,7 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 
 def getLocInfo(locFile, removeSpaces=True):
+    # First return value is a pathlib.Path object, second return value is a string
     ipath = Path(locFile).expanduser()
     return ipath.parent, ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
 
