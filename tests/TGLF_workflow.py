@@ -8,8 +8,8 @@ restart = True
 
 (__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
-folder = __mitimroot__ / "/tests/scratch/tglf_test/"
-input_tglf = __mitimroot__ / "/tests/data/input.tglf"
+folder = __mitimroot__ / "tests" / "scratch" / "tglf_test"
+input_tglf = __mitimroot__ / "tests" / "data" / "input.tglf"
 
 if restart and folder.exists():
     os.system(f"rm -r {folder.resolve()}")

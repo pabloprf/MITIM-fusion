@@ -654,8 +654,7 @@ class TGLF:
             rhos = self.rhos
 
         inputs = copy.deepcopy(self.inputsTGLF)
-
-        FolderTGLF = IOtools.expandPath(self.FolderGACODE + subFolderTGLF + "/")
+        FolderTGLF = self.FolderGACODE / subFolderTGLF
 
         ResultsFiles_new = []
         for i in self.ResultsFiles:
@@ -883,8 +882,7 @@ class TGLF:
         # If no specified folder, check the last one
         if folder is None:
             folder = self.FolderTGLFlast
-        if folder[-1] != "/":
-            folder += "/"
+
 
         # -----------------------------------------
         # ~~~~~~~ Read results
@@ -3924,7 +3922,6 @@ class TGLFinput:
             file_txt = "".join(lines)
         else:
             file_txt = ""
-
         input_dict = GACODErun.buildDictFromInput(file_txt)
 
         self.process(input_dict)
@@ -4591,9 +4588,8 @@ class TGLFoutput:
         # ------------------------------------------------------------------------
         # Fluxes
         # ------------------------------------------------------------------------
-
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.gbflux" + self.suffix,
+            self.FolderGACODE / ("out.tglf.gbflux" + self.suffix),
             blocks=1,
             columns=1,
             numky=None,
@@ -4620,7 +4616,7 @@ class TGLFoutput:
 
         # Wavenumber grid
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.ky_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.ky_spectrum" + self.suffix),
             blocks=1,
             columns=1,
             numky=None,
@@ -4631,7 +4627,7 @@ class TGLFoutput:
 
         # Linear stability
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.eigenvalue_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.eigenvalue_spectrum" + self.suffix),
             blocks=1,
             columns=None,
             numky=self.num_ky,
@@ -4654,19 +4650,19 @@ class TGLFoutput:
         # ------------------------------------------------------------------------
 
         width = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.width_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.width_spectrum" + self.suffix),
             blocks=1,
             columns=1,
             numky=None,
         )
         spectral_shift = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.spectral_shift_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.spectral_shift_spectrum" + self.suffix),
             blocks=1,
             columns=1,
             numky=None,
         )
         ave_p0 = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.ave_p0_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.ave_p0_spectrum" + self.suffix),
             blocks=1,
             columns=1,
             numky=None,
@@ -4683,13 +4679,13 @@ class TGLFoutput:
         # ------------------------------------------------------------------------
 
         dataT = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.temperature_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.temperature_spectrum" + self.suffix),
             blocks=1,
             columns=None,
             numky=self.num_ky,
         )
         datan = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.density_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.density_spectrum" + self.suffix),
             blocks=1,
             columns=None,
             numky=self.num_ky,
@@ -4711,7 +4707,7 @@ class TGLFoutput:
         # ------------------------------------------------------------------------
 
         datanT = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.nsts_crossphase_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.nsts_crossphase_spectrum" + self.suffix),
             blocks=self.num_species,
             columns=None,
             numky=self.num_ky,
@@ -4729,7 +4725,7 @@ class TGLFoutput:
 
         # phi*nmodes, apar*nmods, aper*nmodes
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.field_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix),
             blocks=1,
             columns=None,
             numky=self.num_ky,
@@ -4750,7 +4746,7 @@ class TGLFoutput:
         self.a_per_spectrum = self.FieldSpectrum[3, :, :]
 
         with open(
-            self.FolderGACODE + "out.tglf.field_spectrum" + self.suffix, "r"
+            self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix), "r"
         ) as f:
             aux = f.readlines()
         self.fields = ["phi"]
@@ -4771,7 +4767,7 @@ class TGLFoutput:
             5  # particle flux,energy flux,toroidal stress,parallel stress,exchange
         )
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.sum_flux_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.sum_flux_spectrum" + self.suffix),
             blocks=None,
             columns=num_quantities,
             numky=self.num_ky,
@@ -4839,7 +4835,7 @@ class TGLFoutput:
 
         # particle flux,energy flux,toroidal stress,parallel stress,exchange (?)
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.QL_flux_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.QL_flux_spectrum" + self.suffix),
             blocks=self.num_species * self.num_fields * self.num_nmodes,
             columns=None,
             numky=self.num_ky,
@@ -4933,7 +4929,7 @@ class TGLFoutput:
         # ------------------------------------------------------------------------
 
         data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE + "out.tglf.intensity_spectrum" + self.suffix,
+            self.FolderGACODE / ("out.tglf.intensity_spectrum" + self.suffix),
             blocks=1,
             columns=None,
             numky=self.num_ky,
@@ -4958,7 +4954,7 @@ class TGLFoutput:
         # TGLF input file
         # ------------------------------------------------------------------------
 
-        with open(self.FolderGACODE + "input.tglf" + self.suffix, "r") as fi:
+        with open(self.FolderGACODE / ("input.tglf" + self.suffix), "r") as fi:
             lines = fi.readlines()
         self.inputFileTGLF = "".join(lines)
 
