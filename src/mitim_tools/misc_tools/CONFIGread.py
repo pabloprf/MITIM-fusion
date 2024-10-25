@@ -5,6 +5,7 @@ import getpass
 from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
+from pathlib import Path
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Configuration file
@@ -31,12 +32,13 @@ class ConfigManager:
 
     def get(self):
         if self._config_file_path is None:
-            self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
-            if os.path.exists(self._config_file_path):
+            self._config_file_path = Path(os.environ("MITIM_CONFIG")).expanduser()
+
+            if self._config_file_path.exists():
                 printMsg(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
-                self._config_file_path = __mitimroot__ + "/templates/config_user.json"
+                self._config_file_path = __mitimroot__ / "templates" / "config_user.json"
                 printMsg(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
