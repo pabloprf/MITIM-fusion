@@ -33,7 +33,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     # Define every flag
     else:
         TGLFoptions = IOtools.generateMITIMNamelist(
-            __mitimroot__ +"/templates/input.tglf.controls", caseInsensitive=False
+            __mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False
         )
         TGLFoptions["NMODES"] = NS + 2
 
@@ -45,7 +45,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 	"""
 
     with open(
-        __mitimroot__ + "/templates/input.tglf.models.json", "r"
+        __mitimroot__ / "templates" / "input.tglf.models.json", "r"
     ) as f:
         settings = json.load(f)
 
@@ -423,7 +423,7 @@ def convolution_CECE(d_perp_dict, dRdx=1.0):
 def review_controls(TGLFoptions):
 
     TGLFoptions_check = IOtools.generateMITIMNamelist(
-        __mitimroot__ + "/templates/input.tglf.controls", caseInsensitive=False
+        __mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False
     )
 
     # Add plasma too
