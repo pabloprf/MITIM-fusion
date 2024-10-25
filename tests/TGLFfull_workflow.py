@@ -10,7 +10,6 @@ from mitim_tools import __mitimroot__
 restart = True
 
 (__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
-# os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
 
 cdf_file = __mitimroot__ / "tests" / "data" / "12345.CDF"
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_full_test"

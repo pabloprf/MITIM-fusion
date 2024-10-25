@@ -5,10 +5,10 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
-folder = __mitimroot__ + "/tests/scratch/tglfscan_test/"
-input_gacode = __mitimroot__ + "/tests/data/input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" / "tglfscan_test"
+input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
