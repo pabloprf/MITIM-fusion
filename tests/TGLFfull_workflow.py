@@ -9,10 +9,10 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
-cdf_file = __mitimroot__ + "/tests/data/12345.CDF"
-folder = __mitimroot__ + "/tests/scratch/tglf_full_test/"
+cdf_file = __mitimroot__ / "tests" / "data" / "12345.CDF"
+folder = __mitimroot__ / "tests" / "scratch" / "tglf_full_test"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
