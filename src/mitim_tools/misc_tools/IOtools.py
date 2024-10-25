@@ -288,7 +288,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
                 )
             os.system(f"mv {file_current.resolve()} {file_next.resolve()}")
 
-    return f"{file_current}"
+    return file_current #f"{file_current}"
 
 def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     '''
@@ -676,11 +676,11 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
 
 def getLocInfo(locFile, removeSpaces=True):
     ipath = Path(locFile).expanduser()
-    return f"{ipath.parent}", f"{ipath.stem}"
+    return ipath.parent, ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, provide_full_path=False
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False
     ):
     """
     Retrieves the file without folder and extension
@@ -712,14 +712,14 @@ def findFileByExtension(
         )
 
     # TODO: We really should not change return type
-    retval = None
-    if retpath is not None:
-        if not provide_full_path:
-            retval = f"{retpath.name}".replace(extension, "")
-        else:
-            retval = f"{retpath}"
+    #retval = None
+    #if retpath is not None:
+    #    if not provide_full_path:
+    #        retval = f"{retpath.name}".replace(extension, "")
+    #    else:
+    #        retval = f"{retpath}"
 
-    return retval
+    return retpath
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
@@ -1306,7 +1306,8 @@ def obtainGeneralParams(inputFile, resultsFile):
 
     numDakota = iname.split(".")[2]
 
-    return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
+    #return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
+    return FolderEvaluation, numDakota, ipath, rpath
 
 
 def isNumber(val):
@@ -1332,7 +1333,7 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
         assert npath.exists()
-    return f"{npath.resolve()}" + "/" if npath.is_dir() else f"{npath.resolve()}"
+    return npath #f"{npath.resolve()}" + "/" if npath.is_dir() else f"{npath.resolve()}"
 
 
 def reducePathLevel(path, level=1, isItFile=False):
@@ -1340,13 +1341,14 @@ def reducePathLevel(path, level=1, isItFile=False):
     npath_before = npath
     if len(npath.parents) > level:
         npath_before = npath.parents[level - 1]
-    path_before = f"{npath_before}"
-    if level > 0:
-        path_before += "/"
-    path_after = f"{npath}"
-    if path_before in path_after:
-        path_after = path_after.replace(path_before, "")
-    return path_before, path_after
+    #path_before = f"{npath_before}"
+    #if level > 0:
+    #    path_before += "/"
+    #path_after = f"{npath}"
+    #if path_before in path_after:
+    #    path_after = path_after.replace(path_before, "")
+    #return path_before, path_after
+    return npath_before, npath
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
