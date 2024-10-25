@@ -95,6 +95,8 @@ def mitim_timer(name="\t* Script"):
     return decorator_timer
 
 def clipstr(txt, chars=40):
+    if not isinstance(txt, str):
+        txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
 def receiveWebsite(url, data=None):
