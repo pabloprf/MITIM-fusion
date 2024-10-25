@@ -31,7 +31,7 @@ def runTGYRO(
 
     tgyro_job.define_machine(
         "tgyro",
-        f"mitim_{nameRunid}/",
+        f"mitim_{nameRunid}",
         launchSlurm=launchSlurm,
         slurm_settings={
             "minutes": minutes,
@@ -43,9 +43,9 @@ def runTGYRO(
 
     # ------ Run TGYRO
 
-    inputFiles.append(folderWork + "input.tglf")
-    inputFiles.append(folderWork + "input.tgyro")
-    inputFiles.append(folderWork + "input.gacode")
+    inputFiles.append(folderWork / "input.tglf")
+    inputFiles.append(folderWork / "input.tgyro")
+    inputFiles.append(folderWork / "input.gacode")
 
     # ---------------
     # Execution command
