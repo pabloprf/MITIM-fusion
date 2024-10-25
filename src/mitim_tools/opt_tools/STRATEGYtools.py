@@ -85,14 +85,11 @@ class opt_evaluator:
 
         if self.folder is not None:
 
-            if self.folder[-1] != "/":
-                self.folder += "/"
-
             self.folder = IOtools.expandPath(self.folder)
-            if not os.path.exists(self.folder):
+            if not self.folder.exists():
                 IOtools.askNewFolder(self.folder)
-            if not os.path.exists(self.folder + "/Outputs/"):
-                IOtools.askNewFolder(self.folder + "/Outputs/")
+            if not (self.folder / "Outputs").exists():
+                IOtools.askNewFolder(self.folder / "Outputs")
 
         if namelist is not None:
             print(f"\t- Namelist provided: {namelist}", typeMsg="i")
@@ -105,7 +102,7 @@ class opt_evaluator:
                 typeMsg="i",
             )
 
-            namelist = __mitimroot__ +"/templates/main.namelist.json"
+            namelist = __mitimroot__ / "templates" / "main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
             self.optimization_options = default_namelist_function(self.optimization_options)
@@ -397,7 +394,7 @@ class PRF_BO:
             else ""
         )
 
-        self.folderOutputs = self.folderExecution + "/Outputs/"
+        self.folderOutputs = self.folderExecution / "Outputs"
 
         if optimization_object.optimization_options is not None:
             if not os.path.exists(self.folderOutputs):
@@ -459,7 +456,7 @@ class PRF_BO:
 
         # Check if the variables are expected
         if self.optimization_options is not None:
-            namelist = __mitimroot__ +"/templates/main.namelist.json"
+            namelist = __mitimroot__ / "templates" / "main.namelist.json"
             Optim_potential = IOtools.read_mitim_nml(namelist)
             for ikey in self.optimization_options:
                 if ikey not in Optim_potential:
@@ -485,7 +482,7 @@ class PRF_BO:
 			"""
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs + "optimization_log.txt")
+            self.logFile = BOgraphics.LogFile(self.folderOutputs / "optimization_log.txt")
             self.logFile.activate()
 
             # Meta
@@ -608,11 +605,11 @@ class PRF_BO:
             self.optimization_data = BOgraphics.optimization_data(
                 inputs,
                 self.outputs,
-                file=self.folderOutputs + "/optimization_data.csv",
+                file=self.folderOutputs / "optimization_data.csv",
                 forceNew=forceNewTabulars,
             )
 
-            res_file = self.folderOutputs + "/optimization_results.out"
+            res_file = self.folderOutputs / "optimization_results.out"
 
             """
 			------------------------------------------------------------------------------
