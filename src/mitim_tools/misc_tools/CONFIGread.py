@@ -32,9 +32,10 @@ class ConfigManager:
 
     def get(self):
         if self._config_file_path is None:
-            self._config_file_path = Path(os.environ("MITIM_CONFIG")).expanduser()
-
-            if self._config_file_path.exists():
+            if "MITIM_CONFIG" in os.environ:
+                self._config_file_path = Path(os.environ["MITIM_CONFIG"]).expanduser()
+            
+            if self._config_file_path is not None and self._config_file_path.exists():
                 printMsg(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
