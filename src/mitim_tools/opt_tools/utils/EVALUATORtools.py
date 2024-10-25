@@ -119,9 +119,9 @@ def mitimRun(
     restartYN=True,
     lock=None,
 ):
-    folderEvaluation = folderExecution + f"/Execution/Evaluation.{numEval}/"
-    paramsfile = f"{folderEvaluation}/params.in.{numEval}"
-    resultsfile = f"{folderEvaluation}/results.out.{numEval}"
+    folderEvaluation = folderExecution / "Execution" / f"Evaluation.{numEval}"
+    paramsfile = folderEvaluation / f"params.in.{numEval}"
+    resultsfile = folderEvaluation / f"results.out.{numEval}"
 
     optimization_object.lock = lock
 
