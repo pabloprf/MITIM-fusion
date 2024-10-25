@@ -18,32 +18,30 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+scratch_folder = __mitimroot__ / 'tests/scratch'
+scratch_folder.mkdir(exist_ok=True)
 
 # ------------------------------------------------------------------------------------
 # 	Input data
 # ------------------------------------------------------------------------------------
 
-folderInput = __mitimroot__ + "/tests/data/FolderTRANSP/"
+folderInput = __mitimroot__ / "tests" / "data" / "FolderTRANSP"
 
 # ------------------------------------------------------------------------------------
 # 	Workflow
 # ------------------------------------------------------------------------------------
 
-folder = __mitimroot__ + "/tests/scratch/transp_test/"
+folder = __mitimroot__ / "tests" / "scratch" / "transp_test"
 
-if restart and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+if restart and folder.exists():
+    os.system(f"rm -r {folder.resolve()}")
 
 runid = 'Z99'
 
 # ---- Prepare NML and UFILES
-if os.path.exists(folder):
-    os.system(f"rm -r {folder}")
 os.system(f"cp -r {folderInput} {folder}")
-os.system(f"mv {folder}/12345X01TR.DAT {folder}/12345{runid}TR.DAT")
+os.system(f"mv {folder / '12345X01TR.DAT'} {folder / f'12345{runid}TR.DAT'}")
 # ---------------------------
-
 
 # Define TRANSP class and where it is run
 t = TRANSPtools.TRANSP(folder, "CMOD")

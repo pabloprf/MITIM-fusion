@@ -26,7 +26,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         # Store folderExecution for later use
         machineSettings = CONFIGread.machineSettings(
-            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}/"
+            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}"
         )
         self.folderExecution = machineSettings["folderWork"]
 
@@ -307,14 +307,14 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
         # ------------------------------------------------------------
-        if os.path.exists("{folderWork}/tmp_inputs"):
-            os.system(f"rm -r {folderWork}/tmp_inputs")
+        folder_inputs = folderWork / "tmp_inputs"
+        if folder_inputs.exists():
+            os.system(f"rm -r {folder_inputs}")
         
-        
-        IOtools.askNewFolder(folderWork + "/tmp_inputs/", force=True)
-        os.system(f"cp -r {folderWork}/* {folderWork}/tmp_inputs/")
+        IOtools.askNewFolder(folder_inputs, force=True)
+        os.system(f"cp -r {folderWork}/* {folder_inputs}")
 
-        inputFolders = [folderWork + "/tmp_inputs/"]
+        inputFolders = [folderWork / "tmp_inputs"]
 
         shellPreCommands = ["cp ./tmp_inputs/* ."]
 
@@ -323,7 +323,7 @@ def runSINGULARITY(
         # ------------------------------------------------------------
 
         # ENV
-        file = folderWork + "/env_prf"
+        file = folderWork / "env_prf"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write(
@@ -331,7 +331,7 @@ def runSINGULARITY(
             )
 
         # Direct env (dirty fix until Jai fixes the env app)
-        file = folderWork + "/transp-bashrc"
+        file = folderWork / "transp-bashrc"
         inputFiles.append(file)
         ENVcommand = f"""
 export WORKDIR=./
@@ -353,7 +353,7 @@ export NCQL3D_NPROCS=0
             f.write(ENVcommand)
 
         # PRE
-        file = folderWork + "/pre_prf"
+        file = folderWork / "pre_prf"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write("00\nY\nLaunched by MITIM\nx\n")
@@ -392,13 +392,13 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ------------------
 
     if TRANSPcommand_prep is not None:
-        if os.path.exists(f"{folderWork}/{runid}tr_dat.log"):
-            os.system(f"rm {folderWork}/{runid}tr_dat.log")
+        if (folderWork / f'{runid}tr_dat.log').exists():
+            os.system(f"rm { folderWork / f'{runid}tr_dat.log'}")
 
         # Run first the prep (with tr_dat)
-        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if (folderWork / f'{runid}mitim_bash.src').exists():
+            os.system(f"rm { folderWork / f'{runid}mitim_bash.src'}")
+            os.system(f"rm { folderWork / f'{runid}mitim_shell_executor.sh'}")
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -417,12 +417,12 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         transp_job.launchSlurm = lS  # Back to original
 
         # Interpret
-        TRANSPhelpers.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
+        TRANSPhelpers.interpret_trdat( folderWork / f'{runid}tr_dat.log')
 
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        if (folderWork / 'tmp_inputs' / 'mitim_bash.src').exists():
+            os.system(f"rm {folderWork / 'tmp_inputs' / 'mitim_bash.src'}")
+            os.system(f"rm {folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh'}")
 
     # ---------------
     # Execute Full
@@ -437,7 +437,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     transp_job.run(waitYN=False)
 
-    os.system(f"rm -r {folderWork}/tmp_inputs")
+    os.system(f"rm -r {folderWork / 'tmp_inputs'}")
 
 
 def interpretRun(infoSLURM, log_file):
@@ -612,7 +612,7 @@ def organizeACfiles(
 ):
 
     for ff in ["NUBEAM_folder", "TORIC_folder", "TORBEAM_folder", "FI_folder"]:
-        os.makedirs(os.path.join(FolderTRANSP, ff), exist_ok=True)
+        (FolderTRANSP / ff).mkdir(exist_ok=True)
 
     if NUBEAM:
         for i in range(nummax):

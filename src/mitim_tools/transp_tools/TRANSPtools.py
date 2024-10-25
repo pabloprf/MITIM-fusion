@@ -72,7 +72,7 @@ Note that this is a parent class, and the run command must be specified dependin
 
 class TRANSPgeneric:
     def __init__(self, FolderTRANSP, tokamak):
-        self.FolderTRANSP = IOtools.expandPath(FolderTRANSP)
+        self.FolderTRANSP = FolderTRANSP.expanduser()
         self.tok = tokamak
         self.cdfs = {}
 
@@ -120,10 +120,10 @@ class TRANSPgeneric:
         self.shotnumberReal = shotNumberReal
 
         # Namelist location
-        self.nml_file = f"{self.FolderTRANSP}/{self.runid}TR.DAT"
-        self.nml_file_ptsolver = f"{self.FolderTRANSP}/ptsolver_namelist.dat"
-        self.nml_file_glf23 = f"{self.FolderTRANSP}/glf23_namelist.dat"
-        self.nml_file_tglf = f"{self.FolderTRANSP}/tglf_namelist.dat"
+        self.nml_file = self.FolderTRANSP / f"{self.runid}TR.DAT"
+        self.nml_file_ptsolver = self.FolderTRANSP / "ptsolver_namelist.dat"
+        self.nml_file_glf23 = self.FolderTRANSP / "glf23_namelist.dat"
+        self.nml_file_tglf = self.FolderTRANSP / "tglf_namelist.dat"
 
         """
 		Make sure that the namelists end with \
@@ -131,7 +131,7 @@ class TRANSPgeneric:
 		"""
 
         for file in [self.nml_file_ptsolver, self.nml_file_glf23, self.nml_file_tglf]:
-            if os.path.exists(file):
+            if file.exists():
                 with open(file, "a") as f:
                     f.write("\n/\n")
 
@@ -311,7 +311,6 @@ class TRANSPgeneric:
         # ------------------------------------------------------------------------------------------------------------------
         # TORIC
         # ------------------------------------------------------------------------------------------------------------------
-
         nlicrf = IOtools.findValue(
             self.nml_file, "nlicrf", "=", raiseException=False, avoidIfStartsWith="!"
         )
