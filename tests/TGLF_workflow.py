@@ -1,16 +1,18 @@
 import os
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
+from pathlib import Path
+from IPython import embed
 
 restart = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
-folder = __mitimroot__ + "/tests/scratch/tglf_test/"
-input_tglf = __mitimroot__ + "/tests/data/input.tglf"
+folder = __mitimroot__ / "/tests/scratch/tglf_test/"
+input_tglf = __mitimroot__ / "/tests/data/input.tglf"
 
-if restart and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+if restart and folder.exists():
+    os.system(f"rm -r {folder.resolve()}")
 
 tglf = TGLFtools.TGLF()
 tglf.prep_from_tglf(folder, input_tglf)
