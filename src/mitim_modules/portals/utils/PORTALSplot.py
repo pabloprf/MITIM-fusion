@@ -3201,6 +3201,7 @@ def plotFluxComparison(
             if axTe_f is not None:
                 Qmax = QeBest_max
                 Qmax += np.abs(Qmax) * 0.5
+                Qmax = max(0.1, Qmax)
                 Qmin = QeBest_min
                 Qmin -= np.abs(Qmin) * 0.5
                 axTe_f.set_ylim([0, Qmax])
@@ -3208,6 +3209,7 @@ def plotFluxComparison(
             if axTi_f is not None:
                 Qmax = QiBest_max
                 Qmax += np.abs(Qmax) * 0.5
+                Qmax = max(0.1, Qmax)
                 Qmin = QiBest_min
                 Qmin -= np.abs(Qmin) * 0.5
                 axTi_f.set_ylim([0, Qmax])
@@ -3215,6 +3217,7 @@ def plotFluxComparison(
             if axne_f is not None:
                 Qmax = GeBest_max
                 Qmax += np.abs(Qmax) * 0.5
+                Qmax = max(0.1, Qmax)
                 Qmin = GeBest_min
                 Qmin -= np.abs(Qmin) * 0.5
                 Q = np.max([np.abs(Qmin), np.abs(Qmax)])
