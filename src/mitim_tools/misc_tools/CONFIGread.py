@@ -129,7 +129,7 @@ def machineSettings(
         "tunnel": None,
         "port": None,
         "identity": None,
-        "modules": "source ~/.bashrc",
+        "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
         "slurm": {},
         "isTunnelSameMachine": (
