@@ -119,7 +119,7 @@ class TGYRO:
         _, self.nameRuns_default = IOtools.reducePathLevel(self.FolderGACODE, level=1)
         # -----------
 
-        if (not os.path.exists(self.FolderGACODE)) or restart:
+        if (not self.FolderGACODE.exists()) or restart:
             print(
                 f"\t- Folder {FolderGACODE} does not exist, or restart has been requested... creating folder to store"
             )
@@ -127,7 +127,7 @@ class TGYRO:
                 self.FolderGACODE, force=forceIfRestart or (not restart)
             )
 
-        if (not os.path.exists(self.FolderGACODE_tmp)) or restart:
+        if (not self.FolderGACODE_tmp.exists()) or restart:
             IOtools.askNewFolder(
                 self.FolderGACODE_tmp, force=forceIfRestart or (not restart)
             )
@@ -146,7 +146,7 @@ class TGYRO:
                 includeGEQ=includeGEQ,
             )
 
-            self.file_input_profiles = f"{self.FolderGACODE}/input.gacode"
+            self.file_input_profiles = self.FolderGACODE / "input.gacode"
             self.profiles = PROFILEStools.PROFILES_GACODE(self.file_input_profiles)
 
             if correctPROFILES:
@@ -166,7 +166,7 @@ class TGYRO:
 
     def run(
         self,
-        subFolderTGYRO="tgyro1/",
+        subFolderTGYRO="tgyro1",
         restart=False,
         vectorRange=[0.2, 0.8, 10],
         special_radii=None,
@@ -478,7 +478,7 @@ class TGYRO:
                 )
 
                 inputgacode_new = PROFILEStools.PROFILES_GACODE(
-                    self.FolderTGYRO_tmp + "input.gacode.new"
+                    self.FolderTGYRO_tmp / "input.gacode.new"
                 )
 
                 if TGYRO_physics_options["TypeTarget"] < 3:
@@ -520,18 +520,21 @@ class TGYRO:
 
             # Copy those files that I'm interested in, plus the extra file, into the main folder
             for file in self.outputFiles + ["input.tgyro"]:
-                os.system(f"cp {self.FolderTGYRO_tmp}/{file} {self.FolderTGYRO}/{file}")
+                os.system(f"cp {self.FolderTGYRO_tmp / file} {self.FolderTGYRO / file}")
 
             # Rename the input.tglf.news to the actual rho they where at
             for cont, i in enumerate(self.rhosToSimulate):
+                oldfile = f"input.tglf.new{cont + 1}"
+                newfile = f"input.tglf_{i:.4f}"
                 os.system(
-                    f"cp {self.FolderTGYRO}/input.tglf.new{cont + 1} {self.FolderTGYRO}/input.tglf_{i:.4f}"
+                    f"cp {self.FolderTGYRO / oldfile} {self.FolderTGYRO / newfile}"
                 )
 
             # If I have run TGYRO with the goal of generating inputs, move them to the GACODE folder
             for rho in rhosCopy:
+                file = f"input.tglf_{rho:.4f}"
                 os.system(
-                    f"cp {self.FolderTGYRO}/input.tglf_{rho:.4f} {self.FolderGACODE}/."
+                    f"cp {self.FolderTGYRO / file} {self.FolderGACODE}"
                 )
 
             # Remove temporary folder
@@ -542,13 +545,12 @@ class TGYRO:
 
     def read(self, label="tgyro1", folder=None, file_input_profiles=None):
         # If no specified folder, check the last one
-        if folder is None:
+        if not isinstance(folder, (str, Path)):
             folder = self.FolderTGYRO
+        else:
+            folder = IOtools.expandPath(folder)
 
-        if folder[-1] != "/":
-            folder += "/"
-
-        if file_input_profiles is None:
+        if not isinstance(file_input_profiles, (str, Path)):
             if "profiles" not in self.__dict__:
                 prof = None
             else:
