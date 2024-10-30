@@ -350,10 +350,10 @@ class mitim_job:
 
             if key_jump is not None:
                 key_jump = IOtools.expandPath(key_jump)
-                if not os.path.exists(key_jump):
+                if not key_jump.exists():
                     if print(
                         'Key file "'
-                        + key_jump
+                        + f'{key_jump}'
                         + '" does not exist, continue without key',
                         typeMsg="q",
                     ):
@@ -401,10 +401,10 @@ class mitim_job:
 
             if self.key_filename is not None:
                 self.key_filename = IOtools.expandPath(self.key_filename)
-                if not os.path.exists(self.key_filename):
+                if not self.key_filename.exists():
                     if print(
                         'Key file "'
-                        + self.key_filename
+                        + f'{self.key_filename}'
                         + '" does not exist, continue without key',
                         typeMsg="q",
                     ):
@@ -414,7 +414,7 @@ class mitim_job:
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f"\t\t{self.folderExecution}")
 
-        command = "mkdir -p " + self.folderExecution
+        command = f"mkdir -p {self.folderExecution}"
 
         output, error = self.execute(command)
 
@@ -446,30 +446,30 @@ class mitim_job:
             ) as t:
                 self.sftp.put(
                     self.folder_local / "mitim_send.tar.gz",
-                    os.path.join(self.folderExecution, "mitim_send.tar.gz"),
+                    self.folderExecution / "mitim_send.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
             os.system(
                 "cp "
-                + self.folder_local / "mitim_send.tar.gz"
+                + f'{self.folder_local / "mitim_send.tar.gz"}'
                 + " "
-                + self.folderExecution / "mitim_send.tar.gz"
+                + f'{self.folderExecution / "mitim_send.tar.gz"}'
             )
 
         # Extract it
         print("\t\t- Extracting tarball")
         self.execute(
             "tar -xzf "
-            + self.folderExecution + "mitim_send.tar.gz"
+            + f'{self.folderExecution / "mitim_send.tar.gz"}'
             + " -C "
-            + self.folderExecution
+            + f'{self.folderExecution}'
         )
 
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(self.folder_local / "mitim_send.tar.gz")
-        self.execute("rm " + os.path.join(self.folderExecution, "mitim_send.tar.gz"))
+        self.execute("rm " + f'{self.folderExecution / "mitim_send.tar.gz"}')
 
     def execute(self, command_str, **kwargs):
 
@@ -538,9 +538,9 @@ class mitim_job:
         print("\t\t- Tarballing (remotely)")
         self.execute(
             "tar -czf "
-            + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
+            + f'{self.folderExecution / "mitim_receive.tar.gz"}'
             + " -C "
-            + self.folderExecution
+            + f'{self.folderExecution}'
             + " "
             + " ".join(self.output_files + self.output_folders)
         )
@@ -557,17 +557,18 @@ class mitim_job:
                 + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             ) as t:
                 self.sftp.get(
-                    os.path.join(self.folderExecution, "mitim_receive.tar.gz"),
+                    self.folderExecution / "mitim_receive.tar.gz",
                     self.folder_local / "mitim_receive.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
             os.system(
                 "cp "
-                + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
+                + f'{self.folderExecution / "mitim_receive.tar.gz"}'
                 + " "
-                + self.folder_local / "mitim_receive.tar.gz"
+                + f'{self.folder_local / "mitim_receive.tar.gz"}'
             )
+        print(self.folderExecution, self.folder_local)
 
         # Extract the tarball locally
         print("\t\t- Extracting tarball")
@@ -579,7 +580,7 @@ class mitim_job:
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(self.folder_local / "mitim_receive.tar.gz")
-        self.execute("rm " + os.path.join(self.folderExecution, "mitim_receive.tar.gz"))
+        self.execute("rm " + f'{self.folderExecution / "mitim_receive.tar.gz"}')
 
         # Check if all files were received
         if check_if_files_received:
@@ -603,7 +604,7 @@ class mitim_job:
     def remove_scratch_folder(self):
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
-        output, error = self.execute("rm -rf " + self.folderExecution)
+        output, error = self.execute(f"rm -rf {self.folderExecution}")
 
         return output, error
 
