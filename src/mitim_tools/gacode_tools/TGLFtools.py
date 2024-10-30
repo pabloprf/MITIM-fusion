@@ -422,9 +422,9 @@ class TGLF:
         
         self.tgyro_results  = tgyro_results
 
-        self.FolderGACODE = FolderGACODE
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
         
-        if restart or not os.path.exists(self.FolderGACODE):
+        if restart or not self.FolderGACODE.exists():
             IOtools.askNewFolder(self.FolderGACODE, force=forceIfRestart)
 
         for rho in self.inputsTGLF:
