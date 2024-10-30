@@ -34,9 +34,9 @@ class mitim_nn:
         print('Evaluating NN with inputs: ', inputs)
 
         if self.normalization is not None:
-            return self.model.predict(inputs)[0]*self.normalization
+            return self.model.predict(np.expand_dims(inputs, axis=0))[0]*self.normalization
         else:
-            return self.model.predict(inputs)[0]
+            return self.model.predict(np.expand_dims(inputs, axis=0))[0]
 
 '''
 ---------------------------------------------------------------------------------------------
