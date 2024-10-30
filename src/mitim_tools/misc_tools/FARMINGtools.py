@@ -59,7 +59,9 @@ New handling of jobs in remote or local clusters. Example use:
 
 class mitim_job:
     def __init__(self, folder_local):
-        self.folder_local = folder_local
+        if not isinstance(folder_local, (str, Path)):
+            raise TypeError('MITIM job folder must be a valid string or pathlib.Path object to a local directory')
+        self.folder_local = IOtools.expandPath(folder_local)
         self.jobid = None
 
     def define_machine(
@@ -964,12 +966,10 @@ def create_slurm_execution_files(
     label_log_files="",
     wait_until_sbatch=True,
 ):
-    if folder_local is None:
-        folder_local = folder_remote
     if isinstance(command, str):
         command = [command]
 
-    folderExecution = IOtools.expandPath(folder_remote)
+    folderExecution = folder_remote
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
     fileSBATCH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
