@@ -307,6 +307,7 @@ class transp_output:
         self.HRO = self.f["HRO"][:]
         self.PBPER = self.f['PBPER'][:]
         self.PBLON = self.f['PBLON'][:]
+        self.SNEBM = self.f['SNEBM'][:]
 
         self.CC = self.f["CC"][:]
         self.ULON = self.f["ULON"][:]
@@ -320,6 +321,12 @@ class transp_output:
         self.PIDT = self.f["CAR4"][:]
         self.PEICL = self.f["CAR5"][:]
         self.POH = self.f["CAR6"][:]
+        self.beta = np.zeros(len(self.PEDT[:,-1]))
+        self.betaN = np.zeros(len(self.PEDT[:,-1]))
+        for kk in range(0,len(self.PEDT[:,-1])):
+            self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)
+            self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
+        
         self.QIDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.QEDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
         self.QDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
@@ -346,6 +353,8 @@ class transp_output:
         self.q95 = np.zeros(len(self.PEICR[:,-1]))
         self.delta95 = np.zeros(len(self.PEICR[:,-1]))
         self.kappa95 = np.zeros(len(self.PEICR[:,-1]))
+        self.n_Angioni = np.zeros(len(self.PEICR[:,-1]))
+        self.SNEBM_tot = np.zeros(len(self.PEICR[:,-1]))
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
@@ -370,11 +379,13 @@ class transp_output:
              self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
+             self.SNEBM_tot[kk] = np.cumsum(self.SNEBM[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*(self.ne_avg[kk])**0.41*(self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
              self.q95position[kk] = np.abs(self.FP_norm[kk] - 0.95).argmin()
              self.q95[kk] = 1/self.Mu[kk,self.q95position[kk]]
              self.delta95[kk] = self.tria[kk,self.q95position[kk]]
              self.kappa95[kk] = self.elon[kk,self.q95position[kk]]
+             self.n_Angioni[kk] = 1.347-0.117*math.log(0.2*self.ne_avg[kk]*self.RTOR[kk]*self.Te_avg[kk]**(-2))+1.331*self.SNEBM_tot[kk]-4.03*self.beta[kk]
 
         self.f_Gr = self.ne_avg/10/self.n_Gr
         # self.QNTOT  = self.f['CAR8'][:]
@@ -419,9 +430,6 @@ class transp_output:
         ##  some global and performance parameters
         self.Q = (self.QDT[:,-1]/(self.QICRH[:,-1]+self.QOH[:,-1]))/0.2    ## in teh D+T fusion reactions 20% goes to He and 80% to neutrons
         self.Pfus = self.QDT/0.2
-        self.betaN = np.zeros(len(self.PEDT[:,-1]))
-        for kk in range(0,len(self.PEDT[:,-1])):
-             self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
         self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941*(2/self.AMAIN[:,-1])
         self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922*(2/self.AMAIN[:,-1])
         self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96*(2/self.AMAIN[:,-1])
