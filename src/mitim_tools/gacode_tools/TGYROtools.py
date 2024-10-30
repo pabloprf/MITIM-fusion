@@ -2,6 +2,7 @@ import os
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mitim_tools.misc_tools import (
     IOtools,
     GRAPHICStools,
@@ -371,7 +372,7 @@ class TGYRO:
 		 	-----------------------------------
 		"""
 
-        if not os.path.exists(self.FolderTGYRO_tmp):
+        if not self.FolderTGYRO_tmp.exists():
             IOtools.askNewFolder(self.FolderTGYRO_tmp)
 
         print(
@@ -589,7 +590,7 @@ class TGYRO:
         solver = {"tgyro_method": 6, "step_max": 0.2, "relax_param": 0.2}
         self.run(
             TGYROcontinue=None,
-            subFolderTGYRO=f"{self.nameRuns_default}_1/",
+            subFolderTGYRO=f"{self.nameRuns_default}_1",
             iterations=iterations,
             restart=restart,
             forceIfRestart=forceIfRestart,
@@ -640,7 +641,7 @@ class TGYRO:
 		"""
         self.read(label="conv")
 
-    def grab_tglf_objects(self, subfolder = "tglf_runs/",fromlabel="tgyro1", rhos=None):
+    def grab_tglf_objects(self, subfolder="tglf_runs", fromlabel="tgyro1", rhos=None):
 
         if rhos is None:
             rhos = self.rhosToSimulate
@@ -648,15 +649,15 @@ class TGYRO:
         # Create class of inputs to TGLF
         inputsTGLF = {}
         for cont, rho in enumerate(rhos):
-            fileN = f"{self.FolderTGYRO}/input.tglf_{rho:.4f}"
+            fileN = self.FolderTGYRO / f"input.tglf_{rho:4f}"
             inputclass = TGLFtools.TGLFinput(file=fileN)
             inputsTGLF[rho] = inputclass
 
         tglf = TGLFtools.TGLF(rhos=rhos)
         tglf.prep(
-            self.FolderGACODE + subfolder,
+            self.FolderGACODE / subfolder,
             specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode",
+            inputgacode=self.FolderTGYRO / "input.gacode",
             tgyro_results=self.results[fromlabel],
         )
 
@@ -665,7 +666,7 @@ class TGYRO:
 
     def runTGLF(self, fromlabel="tgyro1", rhos=None, restart=False):
         """
-        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization)
+        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization
 
         Doesn't work with specific inputs now
         """
@@ -679,7 +680,7 @@ class TGYRO:
         label = f"{self.nameRuns_default}_tglf1"
 
         self.tglf[fromlabel].run(
-            subFolderTGLF=f"{label}/",
+            subFolderTGLF=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
             restart=restart,
@@ -696,19 +697,19 @@ class TGYRO:
 
         # Create class of inputs to TGLF
         inputsTGLF = {
-            rho: TGLFtools.TGLFinput(file=f"{self.FolderTGYRO}/input.tglf_{rho:.4f}")
+            rho: TGLFtools.TGLFinput(file=self.FolderTGYRO / f"input.tglf_{rho:.4f}")
         }
 
         self.tglf[fromlabel] = TGLFtools.TGLF(rhos=[rho])
         self.tglf[fromlabel].prep(
-            "tglf_runs/",
+            "tglf_runs",
             specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode.new",
+            inputgacode=self.FolderTGYRO / "input.gacode.new",
             tgyro_results=self.results[fromlabel],
         )
 
         self.tglf[fromlabel].runScanTurbulenceDrives(
-            subFolderTGLF=f"{self.nameRuns_default}_tglf/",
+            subFolderTGLF=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
             restart=restart,
@@ -722,7 +723,7 @@ class TGYRO:
         rhos=[0.4, 0.6],
         onlyThermal=False,
         quasineutrality=[],
-        subFolderTGYRO="tmp_tgyro_scans/",
+        subFolderTGYRO="tmp_tgyro_scans",
         restart=False,
         label="tgyro1",
         donotrun=False,
@@ -777,7 +778,7 @@ class TGYRO:
         try:
             self.read(
                 label=label,
-                folder=IOtools.expandPath(self.FolderGACODE + subFolderTGYRO + "/"),
+                folder=IOtools.expandPath(self.FolderGACODE / subFolderTGYRO),
             )
             res = self.results[label]
         except:
