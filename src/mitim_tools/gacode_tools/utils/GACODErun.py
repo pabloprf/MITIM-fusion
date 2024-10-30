@@ -928,7 +928,7 @@ def runTGLF(
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    tmpFolder = f"{FolderGACODE}/tmp_tglf/"
+    tmpFolder = FolderGACODE / "tmp_tglf"
     IOtools.askNewFolder(tmpFolder, force=True)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
@@ -950,13 +950,13 @@ def runTGLF(
         for i, rho in enumerate(rhos):
             print(f"\t- Preparing TGLF ({subFolderTGLF}) at rho={rho:.4f}")
 
-            folderTGLF_this = f"{tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}"
+            folderTGLF_this = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}"
             folders.append(folderTGLF_this)
-            folders_red.append(f"{subFolderTGLF}/rho_{rho:.4f}")
+            folders_red.append(f"{folderTGLF_this.relative_to(tmpFolder)}")
 
-            os.makedirs(folderTGLF_this, exist_ok=True)
+            folderTGLF_this.mkdir(parents=True, exist_ok=True)
 
-            fileTGLF = f"{folderTGLF_this}/input.tglf"
+            fileTGLF = folderTGLF_this / "input.tglf"
             with open(fileTGLF, "w") as f:
                 f.write(tglf_executor[subFolderTGLF][rho]["inputs"])
 
@@ -975,7 +975,7 @@ def runTGLF(
         TGLFcommand = ""
         for folder in folders_red:
             TGLFcommand += (
-                f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
+                f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
             )
 
         TGLFcommand += (
@@ -994,7 +994,7 @@ def runTGLF(
         )
 
         rho_array = ",".join([f"{int(rho*1E4)}" for rho in rhos])
-        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID"/ -n {cores_tglf} -p {tglf_job.folderExecution}/ 1> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
+        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID" -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
 
         ntasks = 1
         cpuspertask = cores_tglf
@@ -1005,7 +1005,7 @@ def runTGLF(
 
     tglf_job.define_machine(
         "tglf",
-        f"mitim_{name}/",
+        f"mitim_{name}",
         launchSlurm=launchSlurm,
         slurm_settings={
             "minutes": minutes,
