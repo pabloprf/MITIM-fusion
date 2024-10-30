@@ -15,6 +15,7 @@ import copy
 import tarfile
 import paramiko
 import numpy as np
+from pathlib import Path
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -114,6 +115,7 @@ class mitim_job:
             code=code,
             nameScratch=nameScratch,
         )
+        # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
 
     def prep(
@@ -1077,9 +1079,9 @@ def create_slurm_execution_files(
 
     wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
-        comm, launch = commandSBATCH, "sbatch" + wait_txt
+        comm, launch = commandSBATCH, "sbatch" + wait_txt + " "
     else:
-        comm, launch = full_command, "bash"
+        comm, launch = ["#!/bin/bash -l"] + full_command, "" #"bash "
 
     if fileSBATCH.exists():
         os.system(f"rm {fileSBATCH}")
@@ -1092,7 +1094,8 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    commandSHELL = copy.deepcopy(shellPreCommands)
+    commandSHELL = ["#!/bin/bash -l"]
+    commandSHELL.extend(copy.deepcopy(shellPreCommands))
     commandSHELL.append("")
     if modules_remote is not None:
         commandSHELL.append(modules_remote)
@@ -1112,7 +1115,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && bash mitim_shell_executor{label_log_files}.sh > mitim.out"
+    comm = f"cd {folder_remote} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBATCH, fileSHELL
 
