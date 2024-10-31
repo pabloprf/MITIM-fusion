@@ -165,7 +165,7 @@ class surrogate_model:
 
             self.train_X_added = (
                 self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
-            )
+            ).to(self.dfT)
 
         else:
             if self.fileTraining is not None:
@@ -186,10 +186,10 @@ class surrogate_model:
             input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y = self._define_physics_transformation()
             # ------------------------------------------------------------------------------------------------------------
 
-            self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full))
-            self.train_X_added = torch.empty((0, dimTransformedDV_x))
-            self.train_Y_added = torch.empty((0, dimTransformedDV_y))
-            self.train_Yvar_added = torch.empty((0, dimTransformedDV_y))
+            self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full)).to(self.dfT)
+            self.train_X_added = torch.empty((0, dimTransformedDV_x)).to(self.dfT)
+            self.train_Y_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
+            self.train_Yvar_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
 
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
@@ -233,10 +233,10 @@ class surrogate_model:
 
         input_transform_normalization = botorch.models.transforms.input.Normalize(
             dimTransformedDV_x, bounds=None
-        )
+        ).to(self.dfT)
         output_transformed_standardization = (
             botorch.models.transforms.outcome.Standardize((dimTransformedDV_y))
-        )
+        ).to(self.dfT)
 
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
         self.normalization_pass(
@@ -252,11 +252,11 @@ class surrogate_model:
 
         input_transform = botorch.models.transforms.input.ChainedInputTransform(
             tf1=input_transform_physics, tf2=input_transform_normalization
-        )
+        ).to(self.dfT)
 
         outcome_transform = BOTORCHtools.ChainedOutcomeTransform(
             tf1=outcome_transform_physics, tf2=output_transformed_standardization
-        )
+        ).to(self.dfT)
 
         self.variables = (
             self.surrogate_transformation_variables[self.output]
@@ -301,10 +301,10 @@ class surrogate_model:
         dimY = self.train_Y.shape[-1]
         input_transform_physics = BOTORCHtools.Transformation_Inputs(
             self.output, self.surrogate_parameters, self.surrogate_transformation_variables
-        )
+        ).to(self.dfT)
         outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
             dimY, self.output, self.surrogate_parameters
-        )
+        ).to(self.dfT)
 
         dimTransformedDV_x = input_transform_physics(self.train_X).shape[-1]
         dimTransformedDV_y = dimY
@@ -634,7 +634,7 @@ class surrogate_model:
 
         yPredicted, yU, yL, _ = self.predict(xT)
 
-        y = y.cpu().numpy()
+        y = y.detach().cpu().numpy()
         yPredicted = yPredicted.detach().cpu().numpy()
         yL = yL.detach().cpu().numpy()
         yU = yU.detach().cpu().numpy()
@@ -642,7 +642,7 @@ class surrogate_model:
         # --- Next points ---
         if x_next is not None:
             yPredicted_next, yU_next, yL_next, _ = self.predict(x_next)
-            x_next = x_next.cpu().numpy()
+            x_next = x_next.detach().cpu().numpy()
             yPredicted_next = yPredicted_next.detach().cpu().numpy()
             yL_next = yL_next.detach().cpu().numpy()
             yU_next = yU_next.detach().cpu().numpy()

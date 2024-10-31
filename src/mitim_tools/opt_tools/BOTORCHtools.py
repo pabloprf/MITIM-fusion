@@ -444,9 +444,9 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
         else:
-            factor = Y.mean(dim=-2, keepdim=True) * 0.0 + 1.0
+            factor = Y.mean(dim=-2, keepdim=True).to(Y.device) * 0.0 + 1.0
 
         self.stdvs = factor
         self.means = self.stdvs * 0.0
@@ -463,7 +463,7 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
