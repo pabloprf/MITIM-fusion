@@ -450,7 +450,7 @@ class mitim_job:
             ) as t:
                 self.sftp.put(
                     self.folder_local / "mitim_send.tar.gz",
-                    self.folderExecution / "mitim_send.tar.gz",
+                    f"{self.folderExecution}/mitim_send.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
@@ -458,14 +458,14 @@ class mitim_job:
                 "cp "
                 + f'{self.folder_local / "mitim_send.tar.gz"}'
                 + " "
-                + f'{self.folderExecution / "mitim_send.tar.gz"}'
+                + f'{self.folderExecution}/mitim_send.tar.gz'
             )
 
         # Extract it
         print("\t\t- Extracting tarball")
         self.execute(
             "tar -xzf "
-            + f'{self.folderExecution / "mitim_send.tar.gz"}'
+            + f'{self.folderExecution}/mitim_send.tar.gz'
             + " -C "
             + f'{self.folderExecution}'
         )
@@ -473,7 +473,7 @@ class mitim_job:
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(self.folder_local / "mitim_send.tar.gz")
-        self.execute("rm " + f'{self.folderExecution / "mitim_send.tar.gz"}')
+        self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, **kwargs):
 
@@ -542,7 +542,7 @@ class mitim_job:
         print("\t\t- Tarballing (remotely)")
         self.execute(
             "tar -czf "
-            + f'{self.folderExecution / "mitim_receive.tar.gz"}'
+            + f'{self.folderExecution}/mitim_receive.tar.gz'
             + " -C "
             + f'{self.folderExecution}'
             + " "
@@ -561,14 +561,14 @@ class mitim_job:
                 + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             ) as t:
                 self.sftp.get(
-                    self.folderExecution / "mitim_receive.tar.gz",
+                    f"{self.folderExecution}/mitim_receive.tar.gz",
                     self.folder_local / "mitim_receive.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
             os.system(
                 "cp "
-                + f'{self.folderExecution / "mitim_receive.tar.gz"}'
+                + f'{self.folderExecution}/mitim_receive.tar.gz'
                 + " "
                 + f'{self.folder_local / "mitim_receive.tar.gz"}'
             )
@@ -584,7 +584,7 @@ class mitim_job:
         # Remove tarballs
         print("\t\t- Removing tarballs")
         os.remove(self.folder_local / "mitim_receive.tar.gz")
-        self.execute("rm " + f'{self.folderExecution / "mitim_receive.tar.gz"}')
+        self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
         # Check if all files were received
         if check_if_files_received:
@@ -974,7 +974,7 @@ def create_slurm_execution_files(
     folderExecution = folder_remote
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
-    fileSBATCH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
+    fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
 
     minutes = int(minutes)
 
