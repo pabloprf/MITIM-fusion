@@ -123,7 +123,7 @@ class transp_output:
 
         if ssh is None:
             print(
-                f"\n>> Analyzing netCDF file locally: ...{netCDFfile[np.max([-40,-len(netCDFfile)]):]}"
+                f"\n>> Analyzing netCDF file locally: ...{IOtools.clipstr(netCDFfile)}"
             )
         else:
             print(f">> Analyzing netCDF file remotely by opening {netCDFfile} in {ssh}")
@@ -143,9 +143,7 @@ class transp_output:
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
-        self.FolderCDF = (
-            "/".join(os.path.abspath(self.LocationCDF).split("/")[:-1]) + "/"
-        )
+        self.FolderCDF = self.LocationCDF.resolve().parent
 
         self.FolderEvaluation, _ = IOtools.reducePathLevel(
             self.FolderCDF, level=1, isItFile=False
@@ -154,7 +152,7 @@ class transp_output:
         self.folderWork, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
 
         print(
-            f"\t- INFO - runid: {self.nameRunid}; folder: ...{self.folderWork[np.max([-40,-len(self.folderWork)]):]}"
+            f"\t- INFO - runid: {self.nameRunid}; folder: ...{IOtools.clipstr(netCDFfile)}"
         )
 
         self.eps00 = 1e-14
@@ -14757,7 +14755,7 @@ class transp_output:
         print("\t- Looking for equilibrium file in CDF folder...")
         for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
             for folder in ["EQ_folder/", ""]:
-                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension, ForceFirst=True)
+                gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
                     self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
@@ -14769,9 +14767,9 @@ class transp_output:
             )
 
         # Try to read boundary too
-        if os.path.exists(self.FolderCDF + "/PRF12345.RFS"):
+        if os.path.exists(self.FolderCDF / "PRF12345.RFS"):
             self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
-                self.FolderCDF + "/PRF12345.RFS", self.FolderCDF + "/PRF12345.ZFS"
+                self.FolderCDF / "PRF12345.RFS", self.FolderCDF / "PRF12345.ZFS"
             )
 
     def getICRFantennas(self, namelist):
@@ -14916,7 +14914,7 @@ class transp_output:
             NML = IOtools.findFileByExtension(self.FolderCDF, "TR.DAT", ForceFirst=True)
 
         if NML is not None:
-            namelist = self.FolderCDF + NML + "TR.DAT"
+            namelist = NML
 
             if np.sum(self.PichT) > 0.0 + self.eps00 * (1 + len(self.t)):
                 self.getICRFantennas(namelist)
