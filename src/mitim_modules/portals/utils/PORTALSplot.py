@@ -22,7 +22,7 @@ def PORTALSanalyzer_plotMetrics(
     fig=None,
     indexToMaximize=None,
     plotAllFluxes=False,
-    indeces_extra=[],
+    indeces_extra=None,
     stds=2,
     plotFlows=True,
     fontsize_leg=5,
@@ -32,7 +32,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
     print("- Plotting PORTALS Metrics")
 
-    self.iextra = indeces_extra
+    self.iextra = indeces_extra if indeces_extra is not None else []
 
     if fig is None:
         plt.ion()

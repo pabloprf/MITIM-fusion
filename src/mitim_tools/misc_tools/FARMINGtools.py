@@ -121,13 +121,13 @@ class mitim_job:
     def prep(
         self,
         command,
-        input_files=[],
-        input_folders=[],
-        output_files=[],
-        output_folders=[],
+        input_files=None,
+        input_folders=None,
+        output_files=None,
+        output_folders=None,
         check_files_in_folder={},
-        shellPreCommands=[],
-        shellPostCommands=[],
+        shellPreCommands=None,
+        shellPostCommands=None,
         label_log_files="",
     ):
         """
@@ -142,14 +142,14 @@ class mitim_job:
 
         # Pass to class
         self.command = command
-        self.input_files = input_files
-        self.input_folders = input_folders
-        self.output_files = output_files
-        self.output_folders = output_folders
+        self.input_files = input_files if isinstance(input_files, list) else []
+        self.input_folders = input_folders if isinstance(input_folders, list) else []
+        self.output_files = output_files if isinstance(output_files, list) else []
+        self.output_folders = output_folders if isinstance(output_folders, list) else []
         self.check_files_in_folder = check_files_in_folder
 
-        self.shellPreCommands = shellPreCommands
-        self.shellPostCommands = shellPostCommands
+        self.shellPreCommands = shellPreCommands if isinstance(shellPreCommands, list) else []
+        self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
     def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
@@ -955,8 +955,8 @@ def create_slurm_execution_files(
     modules_remote,
     slurm={},
     folder_local=None,
-    shellPreCommands=[],
-    shellPostCommands=[],
+    shellPreCommands=None,
+    shellPostCommands=None,
     launchSlurm=True,
     nameJob="test",
     minutes=5,
@@ -970,6 +970,12 @@ def create_slurm_execution_files(
 ):
     if isinstance(command, str):
         command = [command]
+
+    if shellPostCommands is None:
+        shellPostCommands = []
+
+    if shellPreCommands is None:
+        shellPreCommands = []
 
     folderExecution = folder_remote
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"

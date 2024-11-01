@@ -94,13 +94,17 @@ def plotRange(
     it1=0,
     it2=-1,
     howmany=None,
-    itBig=[],
+    itBig=None,
     lw=0.2,
     colors=["r", "b"],
     colorsBig=["r", "b"],
     legend=True,
     alpha=1.0,
 ):
+
+    if itBig is None: 
+        itBig = []
+
     if ax is None:
         fig, ax = plt.subplots()
 
@@ -796,7 +800,7 @@ def addColorbarSubplot(
     fontsize=10,
     fontsizeTitle=None,
     ylabel="",
-    ticks=[],
+    ticks=None,
     ticklabels=None,
     orientation="horizontal",
     drawedges=False,
@@ -808,6 +812,9 @@ def addColorbarSubplot(
     Note that the figure that I apply this to has to be the last one open. Otherwise the axes are messed up.
     To solve this, pass the figure as kwarg
     """
+
+    if ticks is None:
+        ticks = []
 
     # cs is contour
 

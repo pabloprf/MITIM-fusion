@@ -2916,11 +2916,14 @@ class PROFILES_GACODE:
         ms=2,
         alpha=1.0,
         useRoa=False,
-        RhoLocationsPlot=[],
+        RhoLocationsPlot=None,
         plotImpurity=None,
         plotRotation=False,
         autoscale=True,
         ):
+
+        if RhoLocationsPlot is None: RhoLocationsPlot=[]
+
         if axs4 is None:
             plt.ion()
             fig, axs = plt.subplots(

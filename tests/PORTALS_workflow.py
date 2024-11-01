@@ -3,16 +3,16 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_tools import __mitimroot__
 
-restart = True
+restart = False
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 # Inputs
-inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folderWork = __mitimroot__ + "/tests/scratch/portals_test/"
+inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
-if restart and os.path.exists(folderWork):
-    os.system(f"rm -r {folderWork}")
+if restart and folderWork.exists():
+    os.system(f"rm -r {folderWork.resolve()}")
 
 # --------------------------------------------------------------------------------------------
 # Optimization Class

@@ -363,10 +363,13 @@ class MITIMpopcon:
              plot_template=None,
              plot_options={}, 
              use_result=True,
-             points=[],
+             points=None,
              title="POPCON Results"
             ):
         
+        if points is None:
+            points = []
+
         fig, ax = plt.subplots(dpi=200)
 
         if dataset_2D is None:
