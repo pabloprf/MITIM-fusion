@@ -425,19 +425,19 @@ def runTRXPL(
     commandTRXPL = "P\n10000\nA\n{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\nY\nX\nH\nW\n10001\nQ\nQ\nQ".format(
         timeRun, avTime, grids[0], grids[1], grids[2], BtDir, IpDir
     )
-    with open(FolderTRXPL + "trxpl.in", "w") as f:
+    with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
     if sendState:
         inputFiles = [
-            FolderTRXPL + "trxpl.in",
-            FolderTRXPL + f"{nameFiles}TR.DAT",
-            FolderTRXPL + f"{nameFiles}.CDF",
+            FolderTRXPL / "trxpl.in",
+            FolderTRXPL / f"{nameFiles}TR.DAT",
+            FolderTRXPL / f"{nameFiles}.CDF",
         ]
     else:
         inputFiles = [
-            FolderTRXPL + "trxpl.in",
-            FolderTRXPL + f"{nameFiles}TR.DAT",
+            FolderTRXPL / "trxpl.in",
+            FolderTRXPL / f"{nameFiles}TR.DAT",
         ]
 
     if grids[0] > 301:
@@ -453,7 +453,7 @@ def runTRXPL(
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
         "trxpl",
-        f"mitim_trxpl_{nameOutputs}/",
+        f"mitim_trxpl_{nameOutputs}",
     )
 
     command = "trxpl < trxpl.in"
