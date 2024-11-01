@@ -6345,7 +6345,7 @@ def restart_checker(
         for ir in rhos:
             existsRho = True
             for j in ResultsFiles:
-                ffi = f"{FolderTGLF}{j}_{ir:.4f}"
+                ffi = FolderTGLF / f"{j}_{ir:.4f}"
                 existsThis = os.path.exists(ffi)
                 existsRho = existsRho and existsThis
                 if not existsThis:

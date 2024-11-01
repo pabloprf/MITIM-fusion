@@ -4714,9 +4714,9 @@ def produceInputs_TGYROworkflow(
     BtIp_dirs=[0, 0],
     gridsTRXPL=[151, 101, 101],
 ):
-    folderWork = IOtools.expandPath(tmpFolder) + "/"
+    folderWork = IOtools.expandPath(tmpFolder)
     try:
-        nameRunid = LocationCDF.split("/")[-1].split(".")[0]
+        nameRunid = LocationCDF.stem
     except:
         # This is in case I have given a None to the location of the cdf because I just want
         # to prep() from .cdf and .geq directly
@@ -4733,24 +4733,25 @@ def produceInputs_TGYROworkflow(
 
     file_to_look = files_to_look[0]
     print("\t- Testing... do TGYRO files already exist?")
-    if os.path.exists(f"{finalFolder}/{file_to_look}"):
+    lookfile = finalFolder / f"{file_to_look}"
+    if lookfile.exists():
         ProfilesGenerated, StateGenerated = True, True
-        print(f"\t\t+++++++ {IOtools.clipstr(file_to_look)} already generated")
+        print(f"\t\t+++++++ {IOtools.clipstr(lookfile)} already generated")
     else:
         print(
-            f"\t\t+++++++ {IOtools.clipstr(f'{finalFolder}/{file_to_look}')} file not found"
+            f"\t\t+++++++ {IOtools.clipstr(lookfile)} file not found"
         )
         ProfilesGenerated = False
-        if os.path.exists(finalFolder + "/10001.cdf"):
+        if (finalFolder / "10001.cdf").exists():
             StateGenerated = True
             print(
                 "\t\t+++++++ .cdf plasma-state file already generated, I need to run profiles_gen"
             )
             # Copying them to tmp folder in case there are not there and restarting from .cdf and .geq in final folder
-            os.system(f"cp {finalFolder}/10001.cdf {folderWork}/")
-            os.system(f"cp {finalFolder}/10001.geq {folderWork}/")
+            os.system(f"cp {finalFolder / '10001.cdf'} {folderWork}")
+            os.system(f"cp {finalFolder / '10001.geq'} {folderWork}")
         else:
-            print(f"\t\t+++++++ {finalFolder + '/10001.cdf'} file not found")
+            print(f"\t\t+++++++ {finalFolder / '10001.cdf'} file not found")
             StateGenerated = False
             print(
                 "\t\t+++++++ Workflow needs to be restarted completely, no files found"
@@ -4795,10 +4796,10 @@ def produceInputs_TGYROworkflow(
         # Pass files
         # ---------------------------------------------------------------------------------------------------------------
 
-        os.system(f"cp {tmpFolder}/10001.cdf {finalFolder}")
-        os.system(f"cp {tmpFolder}/10001.geq {finalFolder}")
+        os.system(f"cp {tmpFolder / '10001.cdf'} {finalFolder}")
+        os.system(f"cp {tmpFolder / '10001.geq'} {finalFolder}")
         for file_to_look in files_to_look:
-            os.system(f"cp {tmpFolder}/{file_to_look}* {finalFolder}")
+            os.system(f"cp {tmpFolder / file_to_look}* {finalFolder}")
 
     else:
         print(
