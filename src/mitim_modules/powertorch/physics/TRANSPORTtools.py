@@ -78,7 +78,7 @@ class power_transport:
         )
 
         # Write this updated profiles class (with parameterized profiles and target powers)
-        self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
+        self.file_profs = IOtools.expandPath(self.folder) / "input.gacode"
         self.powerstate.profiles = self.powerstate.to_gacode(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
@@ -355,7 +355,7 @@ def tglf_scan_trick(
 
     # Prepare scan 
 
-    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations/')
+    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
 
     variables_to_scan = []
     for i in profiles:
@@ -381,7 +381,7 @@ def tglf_scan_trick(
     tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = f'{name}/',
+                    subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     TGLFsettings = None,
@@ -717,7 +717,7 @@ def curateTGYROfiles(
 def profilesToShare(self):
     if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
-            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
+            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles"
         )
         if not os.path.exists(whereFolder):
             IOtools.askNewFolder(whereFolder)
@@ -819,12 +819,13 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
 
     GeneralFolder = IOtools.expandPath(GeneralFolder, ensurePathValid=True)
 
-    subname = GeneralFolder.split("/")[-1]  # run10 (simulation)
-    if len(subname) == 0:
-        subname = GeneralFolder.split("/")[-2]
+    a, subname = IOtools.reducePathLevel(GeneralFolder, level=1, isItFile=False)
 
-    name = FolderEvaluation.split(".")[-1].split("/")[0]  # 0 	(evaluation #)
+    name = f'{FolderEvaluation}'.split(".")[-1].split("/")[0]  # 0 	(evaluation #)
 
-    cdf = f"{FolderEvaluation}/{subname}_ev{name}.CDF"
+    if name == "":
+        name = "0"
+
+    cdf = FolderEvaluation / f"{subname}_ev{name}.CDF"
 
     return cdf

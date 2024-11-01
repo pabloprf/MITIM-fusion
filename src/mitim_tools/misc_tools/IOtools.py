@@ -1353,7 +1353,7 @@ def reducePathLevel(path, level=1, isItFile=False):
     #if path_before in path_after:
     #    path_after = path_after.replace(path_before, "")
     #return path_before, path_after
-    return npath_before, npath
+    return npath_before, npath.relative_to(npath_before)
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):

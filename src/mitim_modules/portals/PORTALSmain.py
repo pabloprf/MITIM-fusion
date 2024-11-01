@@ -524,7 +524,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
         """
 
-        os.makedirs(os.path.join(folderNew, "Outputs/"), exist_ok=True)
+        os.makedirs(folderNew / "Outputs", exist_ok=True)
 
         os.system(f"cp {folderRead}/Outputs/optimization_data.csv {folderNew}/Outputs/.")
         os.system(f"cp {folderRead}/Outputs/optimization_extra.pkl {folderNew}/Outputs/.")
@@ -547,7 +547,7 @@ class portals(STRATEGYtools.opt_evaluator):
         if reevaluateTargets > 0:
             print("- Re-evaluate targets", typeMsg="i")
 
-            os.makedirs(os.path.join(folderNew, "TargetsRecalculate/"), exist_ok=True)
+            os.makedirs(folderNew / "TargetsRecalculate", exist_ok=True)
 
             for numPORTALS in range(len(optimization_data.data)):
 
@@ -627,7 +627,7 @@ def runModelEvaluator(
     # Prep run
     # ---------------------------------------------------------------------------------------------------
 
-    folder_model = FolderEvaluation + "/model_complete/"
+    folder_model = FolderEvaluation / "model_complete"
     os.makedirs(folder_model, exist_ok=True)
 
     # ---------------------------------------------------------------------------------------------------

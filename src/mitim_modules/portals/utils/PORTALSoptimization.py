@@ -25,11 +25,11 @@ def initialization_simple_relax(self):
 
     folderExecution = IOtools.expandPath(self.folderExecution, ensurePathValid=True)
 
-    MainFolder = f"{folderExecution}/Initialization/initialization_simple_relax/"
-    os.makedirs(MainFolder, exist_ok=True)
+    MainFolder = folderExecution / "Initialization" / "initialization_simple_relax"
+    MainFolder.mkdir(parents=True, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    digitized = IOtools.string_to_sequential_number(self.folderExecution, num_digits=10)
+    digitized = IOtools.string_to_sequential_number(f'{self.folderExecution}', num_digits=10)
     namingConvention = f"portals_sr_{b}_ev"
 
     algorithmOptions = {

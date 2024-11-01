@@ -107,7 +107,7 @@ class OPTstep:
         # **** From standard deviation to variance
         self.train_Yvar = self.train_Ystd**2
 
-    def fit_step(self, avoidPoints=[], fitWithTrainingDataIfContains=None):
+    def fit_step(self, avoidPoints=None, fitWithTrainingDataIfContains=None):
         """
         Notes:
             - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
@@ -115,6 +115,9 @@ class OPTstep:
                     PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
                     the fluxes but I do want *new* target calculation
         """
+
+        if avoidPoints is None:
+            avoidPoints = []
 
         """
 		*********************************************************************************************************************

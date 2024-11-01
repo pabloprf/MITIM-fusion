@@ -181,7 +181,7 @@ class TGYRO:
         TGYRO_physics_options={},
         TGYRO_solver_options={},
         TGYROcontinue=None,
-        rhosCopy=[],
+        rhosCopy=None,
         forcedName=None,
         modify_inputgacodenew=True,
     ):
@@ -193,6 +193,9 @@ class TGYRO:
 
         Instead of vectorRange, I can provide special_radii
         """
+
+        if rhosCopy is None:
+            rhosCopy = []
 
         # ------------------------------------------------------------------------
         # Defaults
@@ -649,7 +652,7 @@ class TGYRO:
         # Create class of inputs to TGLF
         inputsTGLF = {}
         for cont, rho in enumerate(rhos):
-            fileN = self.FolderTGYRO / f"input.tglf_{rho:4f}"
+            fileN = self.FolderTGYRO / f"input.tglf_{rho:.4f}"
             inputclass = TGLFtools.TGLFinput(file=fileN)
             inputsTGLF[rho] = inputclass
 
@@ -722,7 +725,7 @@ class TGYRO:
         self,
         rhos=[0.4, 0.6],
         onlyThermal=False,
-        quasineutrality=[],
+        quasineutrality=None,
         subFolderTGYRO="tmp_tgyro_scans",
         restart=False,
         label="tgyro1",
@@ -735,6 +738,9 @@ class TGYRO:
         quasineutrality will adjust the ions densities so that it fulfills quasineutrality. If quasineutrality=[], then
                         don't do anything, so if onlyThermal=True, then the plasma won't be quasineutral in the input.tglf
         """
+
+        if quasineutrality is None:
+            quasineutrality = []
 
         print(
             "\t- Entering in TGLF scans module (running a dummy zero-iteration TGYRO)..."

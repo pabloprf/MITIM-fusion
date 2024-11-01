@@ -355,7 +355,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             Zi.append(input_gacode.profiles["z"][i])
 
             # Grab chebyshev coefficients from file
-            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
+            data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
             
             try:
                 c = data_df[data_df['Ion']==input_gacode.profiles["name"][i]].to_numpy()[0,1:].astype(float)

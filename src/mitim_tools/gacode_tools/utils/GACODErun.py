@@ -10,12 +10,12 @@ from IPython import embed
 
 def runTGYRO(
     folderWork,
-    outputFiles=[],
+    outputFiles=None,
     nameRunid="",
     nameJob="tgyro_prf",
     nparallel=8,
     minutes=30,
-    inputFiles=[],
+    inputFiles=None,
     launchSlurm=True,
 ):
     """
@@ -24,6 +24,12 @@ def runTGYRO(
     launchSlurm = True 	-> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
+
+    if outputFiles is None:
+        outputFiles = []
+    
+    if inputFiles is None:
+        inputFiles = []
 
     # This routine assumes that folderWork contains input.profiles and input.tgyro already
 

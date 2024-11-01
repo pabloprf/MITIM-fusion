@@ -44,8 +44,12 @@ class Plasmastate:
         CDFfile_new,
         shotNumber=12345,
         RemoveFusionIons=["He3_fusn", "H_fusn", "T_fusn"],
-        RemoveTHERMALIons=[],
+        RemoveTHERMALIons=None,
     ):
+
+        if RemoveTHERMALIons is None:
+            RemoveTHERMALIons = []
+
         self.CDFfile_new = CDFfile_new
 
         print(f"\t- Modifying {self.CDFfile} Plasmastate file...")
