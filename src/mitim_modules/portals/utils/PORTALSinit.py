@@ -42,7 +42,7 @@ def initializeProblem(
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
 
-    FolderInitialization = folderWork + "/Initialization"
+    FolderInitialization = folderWork / "Initialization"
 
     if (restartYN) or (not os.path.exists(folderWork)):
         IOtools.askNewFolder(folderWork, force=restartYN)
@@ -65,7 +65,7 @@ def initializeProblem(
 
     # ---- Initialize file to modify and increase resolution
 
-    initialization_file = f"{FolderInitialization}/input.gacode"
+    initialization_file = FolderInitialization / "input.gacode"
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
 
     # About radial locations
@@ -90,7 +90,7 @@ def initializeProblem(
     defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_modified")
+    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
         portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
@@ -109,7 +109,7 @@ def initializeProblem(
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
+            data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
             if not (data_df['Ion']==profiles.Species[i]["N"]).any():
                 speciesNotFound.append(profiles.Species[i]["N"])
         if len(speciesNotFound) > 0:
@@ -199,7 +199,7 @@ def initializeProblem(
 
     # Write this updated profiles class (with parameterized profiles)
     _ = portals_fun.powerstate.to_gacode(
-        write_input_gacode=f"{FolderInitialization}/input.gacode",
+        write_input_gacode=FolderInitialization / "input.gacode",
         postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
     )
 

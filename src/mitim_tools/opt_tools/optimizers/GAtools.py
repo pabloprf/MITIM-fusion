@@ -154,7 +154,7 @@ class PRF_GA:
         max_gens=[1000],
         mut_probs=[0.2],
         co_probs=[0.7],
-        xGuesses=[],
+        xGuesses=None,
         parallel_evaluations_inner=1,
         seed=0,
         stepSettings={},
@@ -163,6 +163,9 @@ class PRF_GA:
         """
         If residual_function gives y to be maximized (should be in MITIM), then weights must be positive
         """
+
+        if xGuesses is None:
+            xGuesses = []
 
         if weights is None:
             weights = tuple(
@@ -295,10 +298,14 @@ class PRF_GA:
         max_gen,
         mut_prob,
         co_prob,
-        xGuesses=[],
+        xGuesses=None,
         experiment_name="Trial",
         eta=10.0,
     ):
+
+        if xGuesses is None:
+            xGuesses = []
+
         toolbox.register("attr_float", EAuniform, self.lower, self.upper, self.dim)
         toolbox.register(
             "individual", deap.tools.initIterate, creator.Individual, toolbox.attr_float

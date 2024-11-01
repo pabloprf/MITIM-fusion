@@ -1203,13 +1203,16 @@ def populateFromMDS(self, runidMDS):
         shotnumber=self.shotnumberReal,
     )
 
-def defaultbasedMDS(self, outtims=[], PRFmodified=False):
+def defaultbasedMDS(self, outtims=None, PRFmodified=False):
     """
     This routine creates a default nml for the given tokamak, and modifies it according to an
     existing nml that, e.g. has come from MDS+
 
     PRFmodified = True doesn't care about original model settings, I use mine
     """
+
+    if outtims is None:
+        outtims = []
 
     if self.tok == "CMOD":
         from mitim_tools.experiment_tools.CMODtools import updateTRANSPfromNML
