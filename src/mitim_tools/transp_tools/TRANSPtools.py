@@ -425,22 +425,22 @@ def storeCDF(FolderTRANSP, runid, retrieveAC=False):
     else:
         readFBM = readTORIC = False
 
-    try:
-        c = CDFtools.transp_output(
-            netCDFfile,
-            readTGLF=True,
-            readStructures=True,
-            readGFILE=True,
-            readGEQDSK=True,
-            readFBM=readFBM,
-            readTORIC=readTORIC,
-        )
-    except:
-        print(
-            "\t- CDF file could not be processed as transp_output, possibly corrupted",
-            typeMsg="w",
-        )
-        c = None
+    # try:
+    c = CDFtools.transp_output(
+        netCDFfile,
+        readTGLF=True,
+        readStructures=True,
+        readGFILE=True,
+        readGEQDSK=True,
+        readFBM=readFBM,
+        readTORIC=readTORIC,
+    )
+    # except:
+    #     print(
+    #         "\t- CDF file could not be processed as transp_output, possibly corrupted",
+    #         typeMsg="w",
+    #     )
+    #     c = None
 
     return c
 
