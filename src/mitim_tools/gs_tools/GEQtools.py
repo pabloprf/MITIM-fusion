@@ -53,6 +53,7 @@ def fix_file(filename):
     filename = noCoils_file
 
     return filename
+
 class MITIMgeqdsk:
     def __init__(self, filename):
 
@@ -434,11 +435,11 @@ class MITIMgeqdsk:
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder = IOtools.expandPath(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
-        p.writeCurrentStatus(f'{folder}/input.gacode')
+        p.writeCurrentStatus(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
 
@@ -1150,7 +1151,7 @@ class freegs_millerized:
     # Writing
     # --------------------------------------------------------------
 
-    def write(self, filename = "mitim_freegs.geqdsk"):
+    def write(self, filename):
 
         print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
 
@@ -1161,7 +1162,7 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(scratch_folder)
-        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
@@ -1174,9 +1175,8 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
-        if not os.path.exists(scratch_folder):
-            os.makedirs(scratch_folder)
-        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        scratch_folder.mkdir(parents=True, exist_ok=True)
+        file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
