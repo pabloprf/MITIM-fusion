@@ -18,7 +18,7 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,file_repo = __mitimroot__ + '/templates/ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -32,13 +32,11 @@ class ASTRA():
         os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO.tar.gz')
 
         # untar
-        with tarfile.open(
-            os.path.join(self.folder, "ASTRA8_REPO.tar.gz"), "r"
-        ) as tar:
+        with tarfile.open( self.folder / "ASTRA8_REPO.tar.gz", "r") as tar:
             tar.extractall(path=self.folder)
 
         #os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_as}/')
-        os.remove(os.path.join(self.folder, "ASTRA8_REPO.tar.gz"))
+        os.remove(self.folder / "ASTRA8_REPO.tar.gz")
 
         # Define basic controls
         self.equfile = 'fluxes'
