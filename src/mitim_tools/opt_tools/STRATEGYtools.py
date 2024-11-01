@@ -4,6 +4,7 @@ import datetime
 import array
 import traceback
 import torch
+from pathlib import Path
 from collections import OrderedDict
 from IPython import embed
 import dill as pickle_dill
@@ -391,7 +392,7 @@ class PRF_BO:
         self.folderExecution = (
             IOtools.expandPath(self.optimization_object.folder)
             if (self.optimization_object.folder is not None)
-            else ""
+            else Path("")
         )
 
         self.folderOutputs = self.folderExecution / "Outputs"

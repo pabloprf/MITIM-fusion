@@ -853,7 +853,7 @@ def retrieveResults(
     # ----------------------------------------------------------------------------------------------------------------
 
     print("\t\t--> Opening optimization_object.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
+    prfs_model = STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
 
     if "timeStamp" in prfs_model.__dict__:
         print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
@@ -861,13 +861,13 @@ def retrieveResults(
         print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
     # ---------------- Read optimization_results
-    fileOutputs = folderWork + "/Outputs/optimization_results.out"
+    fileOutputs = folderWork / "Outputs" / "optimization_results.out"
     res = optimization_results(file=fileOutputs)
     res.readClass(prfs_model)
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork + "/Outputs/optimization_log.txt")
+    log = LogFile(folderWork / "Outputs" / "optimization_log.txt")
     try:
         log.interpret()
     except:
@@ -876,7 +876,7 @@ def retrieveResults(
 
     # ---------------- Read Tabular
     if analysis_level >= 0:
-        data_df = pd.read_csv(folderWork + "/Outputs/optimization_data.csv")
+        data_df = pd.read_csv(folderWork / "Outputs" / "optimization_data.csv")
     else:
         data_df = None
 
@@ -885,7 +885,7 @@ def retrieveResults(
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork}/Outputs/optimization_extra.pkl", "rb") as handle:
+            with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
                 prfs_model.dictStore = pickle_dill.load(handle)
         except:
             print("Could not load optimization_extra", typeMsg="w")
