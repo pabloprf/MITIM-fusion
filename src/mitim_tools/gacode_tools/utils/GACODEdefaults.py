@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools import __mitimroot__
@@ -137,7 +138,7 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
 def addCGYROcontrol(Settings, rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
-        __mitimroot__ + "/templates/input.cgyro.controls", caseInsensitive=False
+        __mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False
     )
 
     """
@@ -148,7 +149,7 @@ def addCGYROcontrol(Settings, rmin):
 	"""
 
     with open(
-        __mitimroot__ + "/templates/input.cgyro.models.json", "r"
+        __mitimroot__ / "templates" / "input.cgyro.models.json", "r"
     ) as f:
         settings = json.load(f)
 
