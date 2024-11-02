@@ -22,7 +22,7 @@ import math
 verbose_level = read_verbose_level()
 
 
-class CDFreactor:
+class transp_output:
     """
     Some variables are model-specific, because the formulas are not automatically saved in every astra run.
     In particular be careful when dealing with variables defined through dummy variables, whose names are not
