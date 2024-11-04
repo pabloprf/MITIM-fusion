@@ -30,7 +30,7 @@ def initialization_simple_relax(self):
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     digitized = IOtools.string_to_sequential_number(self.folderExecution, num_digits=10)
-    namingConvention = f"portals_{b}_{digitized}_ev"
+    namingConvention = f"portals_sr_{b}_ev"
 
     algorithmOptions = {
         "tol": 1e-6,
@@ -41,6 +41,7 @@ def initialization_simple_relax(self):
         "MainFolder": MainFolder,
         "storeValues": True,
         "namingConvention": namingConvention,
+        "id": digitized,
     }
 
     # Trick to actually start from different gradients than those in the initial_input_gacode
