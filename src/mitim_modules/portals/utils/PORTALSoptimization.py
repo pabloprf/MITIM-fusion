@@ -67,7 +67,7 @@ def initialization_simple_relax(self):
         ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
         os.makedirs(ff, exist_ok=True)
         os.system(
-            f"cp -r {MainFolder}/{namingConvention}{i}/model_complete {ff}/model_complete"
+            f"cp -r {MainFolder}/{namingConvention}_{i}/model_complete {ff}/model_complete"
         )
 
     return Xopt.cpu().numpy()
