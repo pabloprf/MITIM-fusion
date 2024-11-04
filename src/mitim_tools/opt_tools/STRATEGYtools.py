@@ -655,7 +655,10 @@ class PRF_BO:
         converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
-            self.numIterations = -1
+            self.numIterations = 0
+
+        if self.numIterations == 0:
+            print("- No iterations requested, stopping",typeMsg="i")
             self.hard_finish = True
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -665,7 +668,7 @@ class PRF_BO:
         self.StrategyOptions_use = self.StrategyOptions
 
         self.steps, self.resultsSet = [], []
-        for self.currentIteration in range(self.numIterations + 1):
+        for self.currentIteration in range(self.numIterations):
             timeBeginningThis = datetime.datetime.now()
 
             print("\n------------------------------------------------------------")
@@ -854,7 +857,7 @@ class PRF_BO:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if not self.hard_finish:
-            print("\n\n------------------------------------------------------------")
+            print("\n\n ------------------------------------------------------------")
             print(" Final evaluation of optima predicted at last MITIM step")
             print("------------------------------------------------------------\n\n")
 
