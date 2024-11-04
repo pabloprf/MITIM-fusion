@@ -241,7 +241,7 @@ class OPTstep:
                 self.surrogate_parameters,
                 bounds=self.bounds,
                 output=outi,
-                output_transformed=outi_transformed,
+                name_output_transformed=outi_transformed,
                 avoidPoints=self.avoidPoints,
                 dfT=self.dfT,
                 surrogateOptions=surrogateOptions,

@@ -40,7 +40,7 @@ class surrogate_model:
         Yvaror,
         surrogate_parameters,
         output=None,
-        output_transformed=None,
+        name_output_transformed=None,
         bounds=None,
         avoidPoints=[],
         dfT=None,
@@ -56,7 +56,7 @@ class surrogate_model:
 
         self.avoidPoints = avoidPoints
         self.output = output
-        self.output_transformed = output_transformed
+        self.name_output_transformed = name_output_transformed
         self.surrogateOptions = surrogateOptions
         self.dfT = dfT
         self.surrogate_parameters = surrogate_parameters
@@ -273,7 +273,7 @@ class surrogate_model:
         # *************************************************************************************
 
         print(
-            f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
+            f'\t- Initializing model{" for "+self.name_output_transformed if (self.name_output_transformed is not None) else ""}',
         )
 
         """
@@ -723,7 +723,6 @@ class surrogate_model:
                 ax.set_ylabel(
                     f'{ylabels[j] if ylabels is not None else f"y({j})"} predicted'
                 )
-                # ax.set_title(f'y({j}) Training set, {self.output_transformed}')
 
                 colorError = (
                     "r" if maxError[j] > 2.5 else "k" if maxError[j] > 0.25 else "g"

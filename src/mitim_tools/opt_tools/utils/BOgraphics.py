@@ -78,7 +78,7 @@ def plot_surrogate_model(
         [ax, ax2, axL] = axs
 
     if plotFundamental:
-        ax.set_title(self.output_transformed)
+        ax.set_title(self.name_output_transformed)
     else:
         ax.set_title(self.output)
 
@@ -681,7 +681,7 @@ def plotTraining_surrogate_model(
         markersize=3,
     )  # 2*std, confidence bounds
 
-    ax0.set_title(self.output_transformed)
+    ax0.set_title(self.name_output_transformed)
     ax0.legend()
     GRAPHICStools.addDenseAxis(ax0)
     ax0.set_xlim(left=0)
