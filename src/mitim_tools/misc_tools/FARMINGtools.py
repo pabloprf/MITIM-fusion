@@ -156,7 +156,7 @@ class mitim_job:
         command_str_mod = [f"cd {self.folderExecution}", f"{self.command}"]
 
         # ****** Prepare SLURM job *****************************
-        comm, fileSBTACH, fileSHELL = create_slurm_execution_files(
+        comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
             command_str_mod,
             self.folderExecution,
             self.machineSettings["modules"],
@@ -177,8 +177,8 @@ class mitim_job:
         )
         # ******************************************************
 
-        if fileSBTACH not in self.input_files:
-            self.input_files.append(fileSBTACH)
+        if fileSBATCH not in self.input_files:
+            self.input_files.append(fileSBATCH)
         if fileSHELL not in self.input_files:
             self.input_files.append(fileSHELL)
 
@@ -971,9 +971,9 @@ def create_slurm_execution_files(
         command = [command]
 
     folderExecution = IOtools.expandPath(folder_remote)
-    fileSBTACH = f"{folder_local}/mitim_bash{label_log_files}.src"
+    fileSBATCH = f"{folder_local}/mitim_bash{label_log_files}.src"
     fileSHELL = f"{folder_local}/mitim_shell_executor{label_log_files}.sh"
-    fileSBTACH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
+    fileSBATCH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
 
     minutes = int(minutes)
 
@@ -983,6 +983,7 @@ def create_slurm_execution_files(
     account = slurm.setdefault("account", None)
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
+    request_exclusive_node = slurm.setdefault("exclusive", False)
 
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
@@ -1030,10 +1031,10 @@ def create_slurm_execution_files(
 
     commandSBATCH.append(f"#SBATCH --time {time_com}")
 
-    if job_array is None:
-        commandSBATCH.append("#SBATCH --exclusive")
-    else:
+    if job_array is not None:
         commandSBATCH.append(f"#SBATCH --array={job_array}")
+    elif request_exclusive_node:
+        commandSBATCH.append("#SBATCH --exclusive")
 
     # ******* CPU setup
     if nodes is not None:
@@ -1081,9 +1082,9 @@ def create_slurm_execution_files(
     else:
         comm, launch = full_command, "bash"
 
-    if os.path.exists(fileSBTACH):
-        os.system(f"rm {fileSBTACH}")
-    with open(fileSBTACH, "w") as f:
+    if os.path.exists(fileSBATCH):
+        os.system(f"rm {fileSBATCH}")
+    with open(fileSBATCH, "w") as f:
         f.write("\n".join(comm))
 
     """
@@ -1096,7 +1097,7 @@ def create_slurm_execution_files(
     commandSHELL.append("")
     if modules_remote is not None:
         commandSHELL.append(modules_remote)
-    commandSHELL.append(f"{launch} {fileSBTACH_remote}")
+    commandSHELL.append(f"{launch} {fileSBATCH_remote}")
     commandSHELL.append("")
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
@@ -1114,7 +1115,7 @@ def create_slurm_execution_files(
 
     comm = f"cd {folder_remote} && bash mitim_shell_executor{label_log_files}.sh > mitim.out"
 
-    return comm, fileSBTACH, fileSHELL
+    return comm, fileSBATCH, fileSHELL
 
 
 def curateOutFiles(outputFiles):

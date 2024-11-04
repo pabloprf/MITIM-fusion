@@ -31,6 +31,7 @@
             "partition":    "debug",
             "constraint":   "gpu",
             "mem":          "4GB",
+            "exclusive":    false,
             "email":      "optional@email"
         }
     },
@@ -38,7 +39,8 @@
         "machine":          "eofe7.mit.edu", 
         "username":         "exampleusername",
         "slurm": {
-            "partition":    "sched_mit_psfc"
+            "partition":    "sched_mit_psfc",
+            "exclusive":    true
         },
         "scratch":          "/nobackup1/exampleusername/",
         "modules":    ""
