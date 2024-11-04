@@ -14,7 +14,7 @@ def default_namelist(optimization_options):
 
     optimization_options["initial_training"] = 8
     optimization_options["BO_iterations"] = 20
-    optimization_options["newPoints"] = 4
+    optimization_options["points_per_step"] = 4
     optimization_options["parallel_evaluations"] = (
         4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )

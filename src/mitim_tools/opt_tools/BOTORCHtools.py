@@ -9,7 +9,6 @@ import botorch
 import gpytorch
 from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
@@ -273,7 +272,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         posterior_transform=None,
         **kwargs,
     ):
-        self.eval()
+        self.eval()  # make sure model is in eval mode
+        # input transforms are applied at `posterior` in `eval` mode, and at
+        # `model.forward()` at the training time
         Xtr = self.transform_inputs(X)
         with botorch.models.utils.gpt_posterior_settings():
             # insert a dimension for the output dimension
@@ -281,25 +282,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 Xtr, output_dim_idx = botorch.models.utils.add_output_dim(
                     X=Xtr, original_batch_shape=self._input_batch_shape
                 )
+            # NOTE: BoTorch's GPyTorchModels also inherit from GPyTorch's ExactGP, thus
+            # self(X) calls GPyTorch's ExactGP's __call__, which computes the posterior,
+            # rather than e.g. SingleTaskGP's forward, which computes the prior.
             mvn = self(Xtr)
-            if observation_noise is not False:
-                if torch.is_tensor(observation_noise):
-                    #TODO: Validate noise shape
-                    # make observation_noise `batch_shape x q x n`
-                    if self.num_outputs > 1:
-                        obs_noise = observation_noise.transpose(-1, -2)
-                    else:
-                        obs_noise = observation_noise.squeeze(-1)
-                    mvn = self.likelihood(mvn, Xtr, noise=obs_noise)
-                elif isinstance(
-                    self.likelihood,
-                    gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood,
-                ):
-                    # Use the mean of the previous noise values (TODO: be smarter here).
-                    noise = self.likelihood.noise.mean().expand(X.shape[:-1])
-                    mvn = self.likelihood(mvn, Xtr, noise=noise)
-                else:
-                    mvn = self.likelihood(mvn, Xtr)
+            mvn = self._apply_noise(X=Xtr, mvn=mvn, observation_noise=observation_noise)
             if self._num_outputs > 1:
                 mean_x = mvn.mean
                 covar_x = mvn.lazy_covariance_matrix
@@ -311,9 +298,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                     )
                     for t in output_indices
                 ]
-                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(
-                    mvns=mvns
-                )
+                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
 
         posterior = botorch.posteriors.gpytorch.GPyTorchPosterior(distribution=mvn)
         if hasattr(self, "outcome_transform"):
@@ -321,7 +306,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         if posterior_transform is not None:
             return posterior_transform(posterior)
         return posterior
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # ModelListGP needs to be modified to allow me to have "common" parameters to models, to not run at every transformation again
@@ -559,60 +543,11 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
         # mean as [batch1...N,q,dimY]
         mean = posterior.mean
 
-        # objective [batch1...N,q]
+        # objective [batch1...N,q] -> This assumes the nonlinearity of the objective is not significant, so obj(mean) = mean(obj)
         obj = self.objective(mean)
 
         # max over q
         acq = obj.max(dim=1)[0]
-
-        return acq
-
-class PosteriorMeanMC(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
-    def __init__(
-        self,
-        model,
-        sampler=None,
-        objective=None,
-        posterior_transform=None,
-        X_pending=None,
-    ):
-        super().__init__(
-            model=model,
-            sampler=sampler,
-            objective=objective,
-            posterior_transform=posterior_transform,
-            X_pending=X_pending,
-        )
-
-        self.samples_posterior = 2**9 # 512
-
-    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
-    def forward(self, X):
-        """
-        Notes:
-                - X in the form of [batch,restarts,q,dim]
-                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
-        """
-
-        # Posterior distribution
-        posterior = self.model.posterior(
-            X=X, posterior_transform=self.posterior_transform
-        )
-
-        # samples as [samples,batch1...N,q,dimY]
-        self._default_sample_shape = torch.Size([self.samples_posterior])
-        samples = self.get_posterior_samples(posterior)
-
-        # objective [samples,batch1...N,q]
-        obj = self.objective(samples=samples)
-
-        # mean over samples [batch1...N,q]
-        obj_mean = obj.mean(axis=0)
-        
-        # max over q
-        acq = obj_mean.max(axis=-1)[0]
-
-        #print(f'\t X shape {samples.shape}, samples shape: {samples.shape}, obj shape: {obj.shape}, obj_mean shape: {obj_mean.shape}, acq shape: {acq.shape}')
 
         return acq
 

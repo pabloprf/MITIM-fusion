@@ -54,10 +54,10 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["BO_iterations"] = 50
     optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
     optimization_options['stopping_criteria_parameters'] =  {
-                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
+                "maximum_value": 1e-3,  # Reducing residual by 1000x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.15,
+                "ricci_value": 0.05,
                 "ricci_d0": 2.0,
                 "ricci_lambda": 1.0,
             }
@@ -69,13 +69,14 @@ def default_namelist(optimization_options, CGYROrun=False):
 
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
-    # Acquisition
-    optimization_options["acquisition_type"] = "posterior_mean"
-
     if CGYROrun:
+        optimization_options["acquisition_type"] = "posterior_mean"
         optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
+        optimization_options["points_per_step"] = 1
     else:
+        optimization_options["acquisition_type"] = "noisy_logei_mc"
         optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
+        optimization_options["points_per_step"] = 1
 
     return optimization_options
 
@@ -229,7 +230,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.01,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
         }
 
         for key in self.PORTALSparameters.keys():
@@ -297,7 +298,7 @@ class portals(STRATEGYtools.opt_evaluator):
         if enforceFiniteTemperatureGradients is not None:
             for prof in ['te', 'ti']:
                 if prof in ymin_rel:
-                    ymin_rel[prof] = ymin_rel[prof].clip(enforceFiniteTemperatureGradients)
+                    ymin_rel[prof] = np.array(ymin_rel[prof]).clip(min=None,max=enforceFiniteTemperatureGradients)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
@@ -618,6 +619,7 @@ def runModelEvaluator(
     numPORTALS=0,
     dictOFs=None,
     ):
+
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
 
@@ -641,6 +643,9 @@ def runModelEvaluator(
             X[cont] = dictDVs[f"aL{ikey}_{ix+1}"]["value"]
             cont += 1
     X = X.unsqueeze(0)
+
+    # Ensure that the powerstate has the right dimensions
+    powerstate._repeat_tensors(batch_size=X.shape[0])
 
     # ---------------------------------------------------------------------------------------------------
     # Run model through powerstate

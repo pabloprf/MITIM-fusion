@@ -18,7 +18,7 @@ from IPython import embed
 
 
 
-def findOptima(fun, writeTrajectory=False):
+def findOptima(fun, writeTrajectory=False, **kwargs):
     print("- GA optimization techniques used to maximize acquisition")
 
     random.seed(fun.seed)

@@ -1,5 +1,5 @@
 import torch
-import datetime
+import types
 import botorch
 import random
 from mitim_tools.opt_tools import OPTtools
@@ -8,7 +8,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-def findOptima(fun, writeTrajectory=False):
+def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     print("\t--> BOTORCH optimization techniques used to maximize acquisition")
 
     # Seeds
@@ -19,25 +19,21 @@ def findOptima(fun, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Preparation: Optimizer Options
     ------------------------------
-    The way botorch.optim.optimize_acqf works is as follows:
-        - To start the workflow it needs initial conditions [num_restarts,q,dim] that can be provided via:
-            * batch_initial_conditions (directly by the user)
-            * raw_samples. This is used to randomly explore the parameter space and select the best.
-        - It will optimize to look for a q-number of optimized points from num_restart initial conditions
     Options are:
         - q, number of candidates to produce
         - raw_samples, number of random points to evaluate the acquisition function initially, to select
             the best points ("num_restarts" points) to initialize the scipy optimization.
+            Note: Only evaluated once, it's fine that it's a large number
         - num_restarts number of starting points for multistart acquisition function optimization
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    q = fun.number_optimized_points
-    raw_samples = 2**15  # ~32k (only evaluated once, it's fine that it's a large number)
-    num_restarts = 2**6  # 64
+    raw_samples = optimization_params["raw_samples"]
+    num_restarts = optimization_params["num_restarts"]
 
+    q = fun.number_optimized_points
+    sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
-        "maxiter": 1000,
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
@@ -49,29 +45,28 @@ def findOptima(fun, writeTrajectory=False):
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	"""
 
+    fun_opt = fun.evaluators["acq_function"]
+
     acq_evaluated = []
     if writeTrajectory:
-        def fun_opt(x, v=acq_evaluated):
-            f = fun.evaluators["acq_function"](x)
+        def new_call(self, x, *args, v=acq_evaluated, **kwargs):
+            f = fun_opt(x, *args, **kwargs)
             v.append(f.max().item())
             return f
-    else:
-        fun_opt = fun.evaluators["acq_function"]
+        fun_opt.__call__ = types.MethodType(new_call, fun_opt)
 
-    time1 = datetime.datetime.now()
-    print(f'\t\t- Time: {time1.strftime("%Y-%m-%d %H:%M:%S")}')
-    print(
-        f"\t\t- Optimizing to find {q} point(s) with {num_restarts} restarts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
-    )
+    print(f"\t\t- Optimizing using optimize_acqf: {q = } {f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''}, {num_restarts = }, {raw_samples = }")
 
-    x_opt, _ = botorch.optim.optimize_acqf(
-        acq_function=fun_opt,
-        bounds=fun.bounds_mod,
-        raw_samples=raw_samples,
-        q=q,
-        num_restarts=num_restarts,
-        options=options,
-    )
+    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
+        x_opt, _ = botorch.optim.optimize_acqf(
+            acq_function=fun_opt,
+            bounds=fun.bounds_mod,
+            raw_samples=raw_samples,
+            q=q,
+            sequential=sequential_q,
+            num_restarts=num_restarts,
+            options=options,
+        )
 
     acq_evaluated = torch.Tensor(acq_evaluated)
 
@@ -82,10 +77,6 @@ def findOptima(fun, writeTrajectory=False):
 	"""
 
     x_opt = x_opt.flatten(start_dim=0, end_dim=-2) if len(x_opt.shape) > 2 else ( x_opt.unsqueeze(0) if len(x_opt.shape) == 1 else x_opt )
-
-    print(
-        f"\n\t- Optimization took {IOtools.getTimeDifference(time1)}, and it found {x_opt.shape[0]} optima"
-    )
 
     # Summarize
     y_res = OPTtools.summarizeSituation(fun.xGuesses, fun, x_opt)

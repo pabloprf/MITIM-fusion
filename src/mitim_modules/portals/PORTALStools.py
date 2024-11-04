@@ -112,6 +112,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
+
     powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """

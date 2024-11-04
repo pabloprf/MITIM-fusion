@@ -330,7 +330,19 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
-def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPosition=1, includeFast=False,  delta=0.02, restart=False, check_coincidence_thr=1E-2, extra_name="", remove_folders_out = False):
+def tglf_scan_trick(
+    fluxesTGYRO, 
+    tgyro, 
+    label, 
+    RadiisToRun, 
+    profiles, 
+    impurityPosition=1, includeFast=False,  
+    delta=0.02, 
+    restart=False, 
+    check_coincidence_thr=1E-2, 
+    extra_name="", 
+    remove_folders_out = False
+    ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
@@ -410,9 +422,6 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
         print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
-        print(f"\t\t* Maximum error in Qe = {Qe_err.max()*100:.2f}% (QeGB at max location = {tgyro.results[label].QeGB_sim_turb[0,1+Qe_err.argmax()]:.1e})")
-        print(f"\t\t* Maximum error in Qi = {Qi_err.max()*100:.2f}% (QiGB at max location = {tgyro.results[label].QiGBIons_sim_turb[0,1+Qi_err.argmax()]:.1e})")
-        print(f"\t\t* Maximum error in Ge = {Ge_err.max()*100:.2f}% (GeGB at max location = {tgyro.results[label].GeGB_sim_turb[0,1+Ge_err.argmax()]:.1e})")
     else:
         print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
     # ----------------------------------------------------
@@ -422,11 +431,11 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
     def calculate_mean_std(Q):
         # Assumes Q is [radii, points], with [radii, 0] being the baseline
 
-        #Qm = Q[:,0]
-        #Qstd = np.std(Q, axis=1)
+        Qm = Q[:,0]
+        Qstd = np.std(Q, axis=1)
 
-        Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
-        Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
 
         return  Qm, Qstd
 
@@ -585,7 +594,16 @@ def curateTGYROfiles(
             restart=restart,
             extra_name=extra_name
             )
-    
+
+        min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum
+
+        QeE = QeE.clip(abs(Qe)*min_relative_error)
+        QiE = QiE.clip(abs(Qi)*min_relative_error)
+        GeE = GeE.clip(abs(Ge)*min_relative_error)
+        GZE = GZE.clip(abs(GZ)*min_relative_error)
+        MtE = MtE.clip(abs(Mt)*min_relative_error)
+        PexchE = PexchE.clip(abs(Pexch)*min_relative_error)
+
     else:
 
         # --------------------------------------------------------------
