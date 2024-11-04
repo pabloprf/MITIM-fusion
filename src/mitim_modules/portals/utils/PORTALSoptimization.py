@@ -66,6 +66,8 @@ def initialization_simple_relax(self):
     for i in range(self.Originalinitial_training):
         ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
         os.makedirs(ff, exist_ok=True)
+        if os.path.exists(f"{ff}/model_complete"):
+            os.system(f"rm -r {ff}/model_complete")
         os.system(
             f"cp -r {MainFolder}/{namingConvention}_{i}/model_complete {ff}/model_complete"
         )
