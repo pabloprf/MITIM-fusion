@@ -1453,9 +1453,7 @@ class PRF_BO:
         if fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            geometry = (
-                "1200x1000" if len(GPs[0].GP["individual_models"]) == 1 else "1700x1000"
-            )
+            geometry = "1700x1000"
             fn = FigureNotebook("MITIM BO Strategy", geometry=geometry)
 
         """
