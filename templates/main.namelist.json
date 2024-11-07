@@ -24,8 +24,8 @@
         "acquisition_params" : {
             "mc_samples": 1024,
             "acquisition_optimization" : {
-                "num_restarts": 10,
-                "raw_samples": 100
+                "num_restarts": 64,
+                "raw_samples": 1024
             }
         },
         "optimizers": "botorch",
