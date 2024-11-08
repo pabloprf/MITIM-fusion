@@ -64,7 +64,7 @@ if test == 1:
     timeout_sec = None
     its = 100
 
-    num_cold_starts_cases = np.array([nr])
+    num_restarts_cases = np.array([nr])
     iterations_cases = np.array([its])
     raw_samples_cases = np.array([rws])
 
@@ -78,7 +78,7 @@ elif test == 2:
     timeout_sec = 30
     its = None
 
-    num_cold_starts_cases = 2 ** np.linspace(
+    num_restarts_cases = 2 ** np.linspace(
         3, rws_exponent, numVariations
     )  # max number of cold_starts has to be the raw_samples
     iterations_cases = np.array([its] * numVariations)
@@ -92,12 +92,12 @@ elif test == 3:
     timeout_sec = None
     its = 20
 
-    print(f"Testing raw_samples with num_cold_starts = {nr}, iterations = {its}")
+    print(f"Testing raw_samples with num_restarts = {nr}, iterations = {its}")
     raw_samples_cases = 2 ** np.linspace(nr_exponent, 14, numVariations)
-    num_cold_starts_cases = np.ones(numVariations) * nr
+    num_restarts_cases = np.ones(numVariations) * nr
     iterations_cases = np.ones(numVariations) * its
 
-    title = f"{int(numVariations)} cases ({int(numSeeds)} seeds): num_cold_starts = {nr}, iterations = {its}"
+    title = f"{int(numVariations)} cases ({int(numSeeds)} seeds): num_restarts = {nr}, iterations = {its}"
 
 print(
     "\n*************************************\n",
@@ -116,8 +116,8 @@ ic_generator = BOTORCHtools.ic_generator_wrapper(batch_initial_conditions)
 times = []
 yacq = []
 traj = []
-for i, (num_cold_starts, iterations, raw_samples) in enumerate(
-    zip(num_cold_starts_cases, iterations_cases, raw_samples_cases)
+for i, (num_restarts, iterations, raw_samples) in enumerate(
+    zip(num_restarts_cases, iterations_cases, raw_samples_cases)
 ):
     times0 = []
     yacq0 = []
@@ -145,7 +145,7 @@ for i, (num_cold_starts, iterations, raw_samples) in enumerate(
             ic_generator=None,  # ic_generator,
             batch_initial_conditions=None,
             q=1,
-            num_cold_starts=int(num_cold_starts),
+            num_restarts=int(num_restarts),
             return_best_only=True,
             timeout_sec=timeout_sec,
         )
@@ -162,7 +162,7 @@ for i, (num_cold_starts, iterations, raw_samples) in enumerate(
     traj.append(traj0)
 
     print(
-        f"\nnum_cold_starts = {num_cold_starts}, raw_samples = {raw_samples} time = {time:.1f}, acq = {y_res:.3e}"
+        f"\nnum_restarts = {num_restarts}, raw_samples = {raw_samples} time = {time:.1f}, acq = {y_res:.3e}"
     )
 
 # ***************************************************************************************************
@@ -191,12 +191,12 @@ plt.close("all")
 plt.ion()
 fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(15, 10))
 cols, _ = GRAPHICStools.colorTableFade(
-    len(num_cold_starts_cases), startcolor="b", endcolor="r"
+    len(num_restarts_cases), startcolor="b", endcolor="r"
 )
 
 ax = axs[0, 0]
 if test in [1, 2]:
-    x, tit = num_cold_starts_cases, "Number of cold_starts"
+    x, tit = num_restarts_cases, "Number of cold_starts"
 else:
     x, tit = raw_samples_cases, "Raw Samples"
 
@@ -223,7 +223,7 @@ ax.set_title(title)
 
 ax = axs[1, 0]
 if test in [1, 2]:
-    x, tit = num_cold_starts_cases, "Number of cold_starts"
+    x, tit = num_restarts_cases, "Number of cold_starts"
 else:
     x, tit = raw_samples_cases, "Raw Samples"
 
@@ -249,7 +249,7 @@ GRAPHICStools.addDenseAxis(ax)
 
 for i in range(numVariations):
     label = (
-        f"num_cold_starts = {int(num_cold_starts_cases[i])}"
+        f"num_restarts = {int(num_restarts_cases[i])}"
         if test == 2
         else f"raw_samples = {int(raw_samples_cases[i])}" if test == 3 else ""
     )
