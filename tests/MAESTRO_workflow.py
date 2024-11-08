@@ -6,12 +6,12 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-folder = os.path.join(__mitimroot__, "tests/scratch/maestro_test/")
+folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+folder.mkdir(parents=True, exist_ok=True)
 
 params = {'Ip_MA': 1.15, 'B_T': 2.1, 'Zeff': 2.0, 'PichT_MW': 2.2}
 geometry = {'R': 1.675, 'a': 0.67, 'kappa_sep': 1.8, 'delta_sep': 0.237, 'zeta_sep': 0.0, 'z0': 0.0}
