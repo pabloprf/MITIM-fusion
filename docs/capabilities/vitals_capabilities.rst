@@ -137,11 +137,11 @@ We are now ready to prepare the VITALS class. Here we have two options:
 	# Option 2. Pass the tglf pickled file
 	vitals_fun.prep( tglf_file, rho, ofs, dvs, dvs_min, dvs_max, classLoaded = False )
 
-Now we can create and launch the MITIM optimization process from the beginning (i.e. ``restart = True``):
+Now we can create and launch the MITIM optimization process from the beginning (i.e. ``cold_start = True``):
 
 .. code-block:: python
 
-	mitim_bo = STRATEGYtools.PRF_BO(vitals_fun, restartYN = True )
+	mitim_bo = STRATEGYtools.PRF_BO(vitals_fun, cold_start = True )
 	mitim_bo.run()
 
 .. note::

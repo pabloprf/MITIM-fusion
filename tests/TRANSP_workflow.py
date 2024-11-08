@@ -16,7 +16,7 @@ import os
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
 scratch_folder = __mitimroot__ / 'tests/scratch'
 scratch_folder.mkdir(exist_ok=True)
@@ -33,7 +33,7 @@ folderInput = __mitimroot__ / "tests" / "data" / "FolderTRANSP"
 
 folder = __mitimroot__ / "tests" / "scratch" / "transp_test"
 
-if restart and folder.exists():
+if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 runid = 'Z99'

@@ -187,7 +187,7 @@ class PROFILES_GACODE:
         name="vgen1",
         includeAll=False,
         write_new_file=None,
-        restart=False,
+        cold_start=False,
         ):
         profiles = copy.deepcopy(self)
 
@@ -199,7 +199,7 @@ class PROFILES_GACODE:
 
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
-        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, restart=restart)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, cold_start=cold_start)
 
         profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
         if resol_changed:

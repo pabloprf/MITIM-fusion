@@ -36,7 +36,7 @@ methods = args.methods
 parallel_calls = args.parallel_calls
 params = args.params
 
-restart = False
+cold_start = False
 
 # ------------------------------------------------------------------------------------------
 # Preparation
@@ -46,7 +46,7 @@ portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderO)
 
 folder = IOtools.expandPath(folderO + "/tgyro_std_analysis/")
 tgyro, rhos, PredictionSet, TGLFsettings, extraOptionsTGLF = portals.extractTGYRO(
-    folder=folder, restart=restart, evaluation=0
+    folder=folder, cold_start=cold_start, evaluation=0
 )
 
 # ------------------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ def run_tgyro_parallel(Params, cont):
     )  # Wait a bit to avoid bandwidth problems of ssh or scp connections
 
     # Grab data
-    restartTGYRO = Params["restart"] if "restart" in Params else restart
+    cold_startTGYRO = Params["cold_start"] if "cold_start" in Params else cold_start
     tgyro_here = Params["tgyro"] if "tgyro" in Params else copy.deepcopy(tgyro)
     method = Params["method"]
     iterations = Params["iterations"]
@@ -80,8 +80,8 @@ def run_tgyro_parallel(Params, cont):
         subFolderTGYRO=name + "/",
         TGYRO_solver_options=TGYRO_solver_options,
         iterations=iterations,
-        restart=restartTGYRO,
-        forceIfRestart=True,
+        cold_start=cold_startTGYRO,
+        forceIfcold_start=True,
         special_radii=rhos,
         PredictionSet=PredictionSet,
         minutesJob=120,
@@ -165,7 +165,7 @@ for method in methods:
                     "iterations": iterations,
                     "tgyro": tgyro,
                     "seconds_sleep": 0,
-                    "restart": False,
+                    "cold_start": False,
                     "scan": scan,
                 },
                 cont,

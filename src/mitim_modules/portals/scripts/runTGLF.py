@@ -26,7 +26,7 @@ parser.add_argument(
 )  # Variation in inputs (5% default)
 parser.add_argument("--num", type=int, required=False, default=10)
 parser.add_argument(
-    "--restart", "-r", required=False, default=False, action="store_true"
+    "--cold_start", "-r", required=False, default=False, action="store_true"
 )
 parser.add_argument("--drives", required=False, default=False, action="store_true")
 
@@ -37,7 +37,7 @@ params = args.params
 pos = args.pos
 wf = args.wf
 var = args.var
-restart = args.restart
+cold_start = args.cold_start
 drives = args.drives
 num = args.num
 
@@ -57,7 +57,7 @@ if not drives:
             varUpDown=varUpDown,
             TGLFsettings=TGLFsettings,
             extraOptions=extraOptions,
-            restart=restart,
+            cold_start=cold_start,
             runWaveForms=wf,
         )
 
@@ -76,7 +76,7 @@ else:
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
         TGLFsettings=TGLFsettings,
         extraOptions=extraOptions,
-        restart=restart,
+        cold_start=cold_start,
         runWaveForms=wf,
     )
 

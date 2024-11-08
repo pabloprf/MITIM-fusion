@@ -8,7 +8,7 @@ import torch
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
@@ -65,7 +65,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 namelist = __mitimroot__ / "templates" / "main.namelist.json"
 folderWork = __mitimroot__ / "tests" / "scratch" / "opt_test"
 
-if restart and os.path.exists(folderWork):
+if cold_start and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
 
 # -----------------------------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ opt_fun1D = opt_class(folderWork, namelist)
 opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework
-PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)
+PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, cold_start=cold_start, askQuestions=False)
 
 # Run BO framework
 PRF_BO.run()

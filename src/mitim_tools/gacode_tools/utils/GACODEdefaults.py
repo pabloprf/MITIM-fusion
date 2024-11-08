@@ -190,7 +190,7 @@ def addTGYROcontrol(
     Erpred=0,
     physics_options={},
     solver_options={},
-    restart=False,
+    cold_start=False,
     special_radii=None,
 ):
     """
@@ -241,7 +241,7 @@ def addTGYROcontrol(
 
     TGYROoptions["TGYRO_MODE"] = "1"  # 1: Transport code, 3: multi-job generator
     TGYROoptions["LOC_RESTART_FLAG"] = (
-        f"{int(restart)}"  # 0: Start from beginning, 1: Continue from last iteration
+        f"{int(cold_start)}"  # 0: Start from beginning, 1: Continue from last iteration
     )
     TGYROoptions["TGYRO_RELAX_ITERATIONS"] = f"{num_it}"  # Number of iterations
     TGYROoptions["TGYRO_WRITE_PROFILES_FLAG"] = (

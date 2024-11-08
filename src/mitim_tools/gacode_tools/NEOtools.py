@@ -16,7 +16,7 @@ class NEO:
 
         os.makedirs(self.folder, exist_ok=True)
 
-    def run_vgen(self, subfolder="vgen1", vgenOptions={}, restart=False):
+    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
         while subfolder[-1] == "/":
             subfolder = subfolder[:-1]
 
@@ -44,9 +44,9 @@ class NEO:
             ],
         )
 
-        if (not runThisCase) and restart:
+        if (not runThisCase) and cold_start:
             runThisCase = print(
-                "\t- Files found in folder, but restart requested. Are you sure?",
+                "\t- Files found in folder, but cold_start requested. Are you sure?",
                 typeMsg="q",
             )
 

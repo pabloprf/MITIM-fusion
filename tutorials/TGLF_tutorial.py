@@ -10,7 +10,7 @@ folder = __mitimroot__+"/tests/scratch/tglf_tut/"
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 
 # Prepare the TGLF class
-cdf = tglf.prep(folder, inputgacode=inputgacode_file, restart=False)
+cdf = tglf.prep(folder, inputgacode=inputgacode_file, cold_start=False)
 
 '''
 ***************************************************************************
@@ -23,7 +23,7 @@ tglf.run(
     subFolderTGLF="yes_em_folder/",
     TGLFsettings=5,
     extraOptions={},
-    restart=False
+    cold_start=False
     )
 
 # Read results of previous run and store them in results dictionary
@@ -34,7 +34,7 @@ tglf.run(
     subFolderTGLF="no_em_folder/",
     TGLFsettings=5,
     extraOptions={"USE_BPER": False},
-    restart=False,
+    cold_start=False,
 )
 
 # Read results of previous run and store them in results dictionary
@@ -51,7 +51,7 @@ Run TGLF scan
 
 tglf.runScan(	subFolderTGLF = 'scan1/',
                 TGLFsettings  = 5,
-                restart       = False,
+                cold_start       = False,
                 variable      = 'RLTS_1',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
 tglf.readScan(label='scan1',variable = 'RLTS_1')
@@ -59,7 +59,7 @@ tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 tglf.runScan(	subFolderTGLF = 'scan2/',
                 TGLFsettings  = 5,
-                restart       = False,
+                cold_start       = False,
                 variable      = 'RLTS_2',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
 tglf.readScan(label='scan2',variable = 'RLTS_2')
@@ -76,7 +76,7 @@ Automatic scan of turbulence drives
 tglf.runScanTurbulenceDrives(	
                 subFolderTGLF = 'turb_drives/',
                 TGLFsettings  = 5,
-                restart       = False)
+                cold_start       = False)
 
 tglf.plotScanTurbulenceDrives(label='turb_drives')
 
@@ -90,7 +90,7 @@ tglf.runAnalysis(
             subFolderTGLF 	= 'chi_e/',
             analysisType  	= 'chi_e',
             TGLFsettings  	= 5,
-            restart 		= False,
+            cold_start 		= False,
             label 			= 'chi_eu')
 
 tglf.plotAnalysis(labels=['chi_eu'],analysisType='chi_e')
@@ -106,7 +106,7 @@ for i in[1,2,3,4,5,6]:
         subFolderTGLF = f'settings{i}/',
         runWaveForms  = [0.67],
         TGLFsettings  = i,
-        restart       = False)
+        cold_start       = False)
     tglf.read(label=f'settings{i}')
 
 tglf.plot(labels=[f'settings{i}' for i in range(1,6)])
