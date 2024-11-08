@@ -20,21 +20,21 @@ def findOptima(fun, writeTrajectory=False):
     Preparation: Optimizer Options
     ------------------------------
     The way botorch.optim.optimize_acqf works is as follows:
-        - To start the workflow it needs initial conditions [num_cold_starts,q,dim] that can be provided via:
+        - To start the workflow it needs initial conditions [num_restarts,q,dim] that can be provided via:
             * batch_initial_conditions (directly by the user)
             * raw_samples. This is used to randomly explore the parameter space and select the best.
         - It will optimize to look for a q-number of optimized points from num_cold_start initial conditions
     Options are:
         - q, number of candidates to produce
         - raw_samples, number of random points to evaluate the acquisition function initially, to select
-            the best points ("num_cold_starts" points) to initialize the scipy optimization.
-        - num_cold_starts number of starting points for multistart acquisition function optimization
+            the best points ("num_restarts" points) to initialize the scipy optimization.
+        - num_restarts number of starting points for multistart acquisition function optimization
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
     q = fun.number_optimized_points
     raw_samples = 2**15  # ~32k (only evaluated once, it's fine that it's a large number)
-    num_cold_starts = 2**6  # 64
+    num_restarts = 2**6  # 64
 
     options = {
         "maxiter": 1000,
@@ -61,7 +61,7 @@ def findOptima(fun, writeTrajectory=False):
     time1 = datetime.datetime.now()
     print(f'\t\t- Time: {time1.strftime("%Y-%m-%d %H:%M:%S")}')
     print(
-        f"\t\t- Optimizing to find {q} point(s) with {num_cold_starts} cold_starts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
+        f"\t\t- Optimizing to find {q} point(s) with {num_restarts} cold_starts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
     )
 
     x_opt, _ = botorch.optim.optimize_acqf(
@@ -69,7 +69,7 @@ def findOptima(fun, writeTrajectory=False):
         bounds=fun.bounds_mod,
         raw_samples=raw_samples,
         q=q,
-        num_cold_starts=num_cold_starts,
+        num_restarts=num_restarts,
         options=options,
     )
 
