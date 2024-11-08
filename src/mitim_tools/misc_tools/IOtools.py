@@ -676,10 +676,10 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
     return r, z
 
 
-def getLocInfo(locFile, removeSpaces=True):
+def getLocInfo(locFile, with_extension=False):
     # First return value is a pathlib.Path object, second return value is a string
     ipath = Path(locFile).expanduser()
-    return ipath.parent, ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
+    return ipath.parent, ipath.name if with_extension else ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
 
 
 def findFileByExtension(
