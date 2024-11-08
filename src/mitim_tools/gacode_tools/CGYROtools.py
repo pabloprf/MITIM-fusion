@@ -204,7 +204,7 @@ class CGYRO:
                 True
             ):  # print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
                 os.system(f"cd {folder} && cgyro -t")
-            self.results[label] = cgyrodata_plot(f"{folder.resolve()}/")
+            self.results[label] = cgyrodata_plot(f"{folder.resolve()}")
 
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]

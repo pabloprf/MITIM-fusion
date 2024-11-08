@@ -361,12 +361,10 @@ class TGYRO:
                     "\n\n~~ Option to cold_start from previous TGYRO iteration selected\n\n"
                 )
 
-                self.FolderTGYRO_cold_started = IOtools.expandPath(
-                    self.FolderGACODE + TGYROcontinue + "/"
-                )
+                self.FolderTGYRO_cold_started = self.FolderGACODE / TGYROcontinue
 
                 for i in self.outputFiles:
-                    inputFiles_TGYRO.append(self.FolderTGYRO_cold_started + i)
+                    inputFiles_TGYRO.append(self.FolderTGYRO_restarted / i)
 
         """ -----------------------------------
 		 	Create TGLF file (only control info, no species)
@@ -1223,9 +1221,9 @@ class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
         self.FolderTGYRO = FolderTGYRO
 
-        if (profiles is None) and os.path.exists(FolderTGYRO + "input.gacode"):
+        if (profiles is None) and (FolderTGYRO / f"input.gacode").exists():
             profiles = PROFILEStools.PROFILES_GACODE(
-                FolderTGYRO + "input.gacode", calculateDerived=False
+                FolderTGYRO / f"input.gacode", calculateDerived=False
             )
 
         self.profiles = profiles
@@ -1241,7 +1239,7 @@ class TGYROoutput:
         calculateDerived = True
         try:
             self.profiles_final = PROFILEStools.PROFILES_GACODE(
-                f"{self.FolderTGYRO}/input.gacode.new",
+                self.FolderTGYRO / f"input.gacode.new",
                 calculateDerived=calculateDerived,
             )
         except:
@@ -1256,7 +1254,7 @@ class TGYROoutput:
         return var[self.norepeats, :]
 
     def readResidual(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.residual"
+        file = self.FolderTGYRO / f"out.tgyro.residual"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -1299,7 +1297,7 @@ class TGYROoutput:
         self.residual = self.maskp(np.transpose(np.atleast_2d(self.residual)))[:, -1]
 
     def readFluxes(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.run"
+        file = self.FolderTGYRO / f"out.tgyro.run"
         with open(file, "r") as f:
             aux = f.readlines()
         for i in aux:
@@ -1312,7 +1310,7 @@ class TGYROoutput:
             if "TGYRO_DEN_METHOD0" in i:
                 self.ne_predicted = i.split()[-1] != "fixed"
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_te"
+        file = self.FolderTGYRO / f"out.tgyro.evo_te"
         if os.path.exists(file):
             self.roa, self.QeGB_sim, self.QeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
@@ -1320,7 +1318,7 @@ class TGYROoutput:
         else:
             self.QeGB_sim, self.QeGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_ti"
+        file = self.FolderTGYRO / f"out.tgyro.evo_ti"
         if os.path.exists(file):
             self.roa, self.QiGB_sim, self.QiGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
@@ -1328,7 +1326,7 @@ class TGYROoutput:
         else:
             self.QiGB_sim, self.QiGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_ne"
+        file = self.FolderTGYRO / f"out.tgyro.evo_ne"
         if os.path.exists(file):
             self.roa, self.GeGB_sim, self.GeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
@@ -1336,7 +1334,7 @@ class TGYROoutput:
         else:
             self.GeGB_sim, self.GeGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_er"
+        file = self.FolderTGYRO / f"out.tgyro.evo_er"
         if os.path.exists(file):
             self.roa, self.MtGB_sim, self.MtGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
@@ -1347,7 +1345,7 @@ class TGYROoutput:
         self.GiGB_sim, self.GiGB_tar = [], []
 
         for i in range(10):
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_n{i + 1}"
+            file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}"
             if os.path.exists(file):
                 _, GiGB_sim, GiGB_tar = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
@@ -1385,7 +1383,7 @@ class TGYROoutput:
         # Fluxes
         # ***************************************************************
 
-        file = f"{self.FolderTGYRO}/out.tgyro.flux_e"
+        file = self.FolderTGYRO / f"out.tgyro.flux_e"
         (
             _,
             self.GeGB_sim_neo,
@@ -1412,7 +1410,7 @@ class TGYROoutput:
         self.EXiGB_sim = self.EXiGB_sim_turb
 
         for i in range(10):
-            file = f"{self.FolderTGYRO}/out.tgyro.flux_i{i + 1}"
+            file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}"
             if os.path.exists(file):
                 (
                     _,
@@ -1452,14 +1450,14 @@ class TGYROoutput:
         # Errors - Constructed outside of TGYRO call (e.g. powerstate)
         # ***************************************************************
 
-        if not os.path.exists(f"{self.FolderTGYRO}/out.tgyro.flux_e_stds"):
+        if not (self.FolderTGYRO / f"out.tgyro.flux_e_stds").exists():
             self.tgyro_stds = False
 
         else:
             print("\t- Errors in TGYRO fluxes and targets found, adding to class")
             self.tgyro_stds = True
 
-            file = f"{self.FolderTGYRO}/out.tgyro.flux_e_stds"
+            file = self.FolderTGYRO / f"out.tgyro.flux_e_stds"
             (
                 _,
                 self.GeGB_sim_neo_stds,
@@ -1486,7 +1484,7 @@ class TGYROoutput:
             self.EXiGB_sim_stds = self.EXiGB_sim_turb_stds
 
             for i in range(10):
-                file = f"{self.FolderTGYRO}/out.tgyro.flux_i{i + 1}_stds"
+                file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}_stds"
                 if os.path.exists(file):
                     (
                         _,
@@ -1527,7 +1525,7 @@ class TGYROoutput:
             )
 
             # Targets
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_te_stds"
+            file = self.FolderTGYRO / f"out.tgyro.evo_te_stds"
             if os.path.exists(file):
                 _, _, self.QeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
@@ -1535,7 +1533,7 @@ class TGYROoutput:
             else:
                 self.QeGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_ti_stds"
+            file = self.FolderTGYRO / f"out.tgyro.evo_ti_stds"
             if os.path.exists(file):
                 _, _, self.QiGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
@@ -1543,7 +1541,7 @@ class TGYROoutput:
             else:
                 self.QiGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_ne_stds"
+            file = self.FolderTGYRO / f"out.tgyro.evo_ne_stds"
             if os.path.exists(file):
                 _, _, self.GeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
@@ -1551,7 +1549,7 @@ class TGYROoutput:
             else:
                 self.GeGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_er_stds"
+            file = self.FolderTGYRO / f"out.tgyro.evo_er_stds"
             if os.path.exists(file):
                 _, _, self.MtGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
@@ -1561,7 +1559,7 @@ class TGYROoutput:
 
             self.GiGB_tar_stds = []
             for i in range(10):
-                file = f"{self.FolderTGYRO}/out.tgyro.evo_n{i + 1}_stds"
+                file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}_stds"
                 if os.path.exists(file):
                     _, _, GiGB_tar = GACODEinterpret.readGeneral(
                         file, numcols=3, maskfun=self.maskp
@@ -1575,7 +1573,7 @@ class TGYROoutput:
         # Powers
         # ***************************************************************
 
-        file = f"{self.FolderTGYRO}/out.tgyro.power_e"
+        file = self.FolderTGYRO / f"out.tgyro.power_e"
         try:
             (
                 _,
@@ -1613,7 +1611,7 @@ class TGYROoutput:
 
         self.Qe_tarMW_rad = self.Qe_tarMW_brem + self.Qe_tarMW_sync + self.Qe_tarMW_line
 
-        file = f"{self.FolderTGYRO}/out.tgyro.power_i"
+        file = self.FolderTGYRO / f"out.tgyro.power_i"
         (
             _,
             self.Qi_tarMW_fus,
@@ -1624,7 +1622,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file, numcols=6, maskfun=self.maskp)
 
     def readNormalization(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.gyrobohm"
+        file = self.FolderTGYRO / f"out.tgyro.gyrobohm"
 
         (
             roa,
@@ -1705,7 +1703,7 @@ class TGYROoutput:
         )
 
     def readProfiles(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.profile_e"
+        file = self.FolderTGYRO / f"out.tgyro.profile_e"
         (
             roa,
             self.ne,
@@ -1719,13 +1717,13 @@ class TGYROoutput:
         self.ni, self.aLni, self.Ti, self.aLti, self.betai_unit = [], [], [], [], []
 
         cont = 1
-        file = f"{self.FolderTGYRO}/out.tgyro.profile_i{cont}"
+        file = self.FolderTGYRO / f"out.tgyro.profile_i{cont}"
         while os.path.exists(file):
             _, ni, aLni, Ti, aLti, betai_unit = GACODEinterpret.readGeneral(
                 file, numcols=6, maskfun=self.maskp
             )
             cont += 1
-            file = f"{self.FolderTGYRO}/out.tgyro.profile_i{cont}"
+            file = self.FolderTGYRO / f"out.tgyro.profile_i{cont}"
 
             self.ni.append(ni)
             self.aLni.append(aLni)
@@ -1743,8 +1741,8 @@ class TGYROoutput:
         self.betai_unit = np.transpose(np.array(self.betai_unit), axes=(1, 0, 2))
 
     def readGeo(self):
-        file1 = f"{self.FolderTGYRO}/out.tgyro.geometry.1"
-        file2 = f"{self.FolderTGYRO}/out.tgyro.geometry.2"
+        file1 = self.FolderTGYRO / f"out.tgyro.geometry.1"
+        file2 = self.FolderTGYRO / f"out.tgyro.geometry.2"
 
         (
             _,
@@ -1772,7 +1770,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file2, numcols=9, maskfun=self.maskp)
 
     def readNu(self):
-        file1 = f"{self.FolderTGYRO}/out.tgyro.nu_rho"
+        file1 = self.FolderTGYRO / f"out.tgyro.nu_rho"
         (
             roa,
             self.nui,
@@ -1785,7 +1783,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file1, numcols=8, maskfun=self.maskp)
 
     def readprocess(self):
-        file = f"{self.FolderTGYRO}/input.tgyro.gen"
+        file = self.FolderTGYRO / f"input.tgyro.gen"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -1796,7 +1794,7 @@ class TGYROoutput:
             else:
                 break
 
-        file = f"{self.FolderTGYRO}/out.tgyro.iterate"
+        file = self.FolderTGYRO / f"out.tgyro.iterate"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -4334,7 +4332,7 @@ class TGYROoutput:
 
         ax.set_xlabel("Iterations")
         ax.set_xlim(left=0)
-        # ax.set_ylabel('Greenwald Fraction'); ax.set_ylim([0,1.2])
+        # ax.set_ylabel(r'Greenwald Fraction'); ax.set_ylim([0,1.2])
         ax.set_title("Volume average density")
         ax.set_ylabel("$<n_e>$ ($10^{20}m^{-3}$)")
         # ax.set_ylim(bottom=0)

@@ -266,7 +266,7 @@ class TGLF:
             exists = not cold_start
             for j in self.rhos:
                 fii = self.FolderGACODE / f"input.tglf_{j:.4f}"
-                if os.path.exists(fii):
+                if fii.exists():
                     print(f"\t\t- Testing {fii}")
                     inp = TGLFinput(fii)
                     exists = exists and not inp.onlyControl
@@ -429,7 +429,7 @@ class TGLF:
             IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
 
         for rho in self.inputsTGLF:
-            self.inputsTGLF[rho].file = f'{self.FolderGACODE}/input.tglf_{rho:.4f}'
+            self.inputsTGLF[rho].file = self.FolderGACODE / f'input.tglf_{rho:.4f}'
             self.inputsTGLF[rho].writeCurrentStatus()
 
         """
@@ -762,7 +762,7 @@ class TGLF:
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
                         FolderTGLF_old
-                    ] = f"{FolderTGLF_old}/ky{ky_single0}/"
+                    ] = FolderTGLF_old / f"ky{ky_single0}"
 
                     ky_singles = []
                     for i, ir in enumerate(self.rhos):
@@ -828,7 +828,7 @@ class TGLF:
                     )
 
                     tglf_executorWF, _, _ = self._prepare_run_radii(
-                        f"{subFolderTGLF}/ky{ky_single0}",
+                        (FolderTGLF_old / f"ky{ky_single0}").relative_to(FolderTGLF_old.parent),
                         tglf_executor=tglf_executorWF,
                         extraOptions=extraOptions_WF,
                         multipliers=multipliers_WF,
@@ -937,8 +937,8 @@ class TGLF:
 
                     self.results[label]["wavefunction"][f"ky{ky_single0}"][ir] = (
                         GACODEinterpret.Waveform_read(
-                            f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.wavefunction{suffix0}",
-                            f"{self.FoldersTGLF_WF[f'ky{ky_single0}'][folder]}/out.tglf.run{suffix0}",
+                            self.FoldersTGLF_WF[f'ky{ky_single0}'][folder] / f"out.tglf.wavefunction{suffix0}",
+                            self.FoldersTGLF_WF[f'ky{ky_single0}'][folder] / f"out.tglf.run{suffix0}",
                         )
                     )
 
@@ -2019,7 +2019,7 @@ class TGLF:
                         self.results[label]["TGLFout"][irho].AmplitudeSpectrum_ne_level
                     )
                     NT.append(self.results[label]["TGLFout"][irho].neTeSpectrum_level)
-                    TL.append(labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$")
+                    TL.append(f"{labZX}$\\rho_N={self.rhos[irho_cont]:.4f}$")
                     C.append(colors[cont])
                     cont += 1
 
@@ -2177,7 +2177,7 @@ class TGLF:
                             markers[0],
                             markersize=7,
                             color=colors[cont],
-                            label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$",
+                            label=f"{labZX}$\\rho_N={self.rhos[irho_cont]:.4f}$",
                         )
                         ax10.plot(
                             [wf["ky"][0]],
@@ -2211,8 +2211,7 @@ class TGLF:
                                     markers[i + 1],
                                     markersize=2,
                                     color=colors[cont],
-                                    label=labZX
-                                    + f"$\\rho_N={self.rhos[irho_cont]:.4f}$ (mode {i+2})",
+                                    label=f"{labZX}$\rho_N={self.rhos[irho_cont]:.4f}$ (mode {i+2})",
                                 )
                                 ax10.plot(
                                     [wf["ky"][1 + i]],
@@ -2275,7 +2274,7 @@ class TGLF:
 
                 ax = ax11
                 ax.set_ylabel("Electric potential $\\delta\\phi$")
-                ax.set_title("Imaginay component $\\delta\\phi$")
+                ax.set_title("Imaginary component $\\delta\\phi$")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax02
@@ -2288,7 +2287,7 @@ class TGLF:
                 ax = ax12
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
                 ax.set_title(
-                    "Imaginay component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
+                    "Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
                 )
                 GRAPHICStools.addDenseAxis(ax)
 
@@ -2303,7 +2302,7 @@ class TGLF:
                 ax = ax13
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
                 ax.set_title(
-                    "Imaginay component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
+                    "Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
                 )
                 GRAPHICStools.addDenseAxis(ax)
 
@@ -2455,9 +2454,6 @@ class TGLF:
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
     ):
-
-        while self.subFolderTGLF_scan[-1] == "/":
-            self.subFolderTGLF_scan = self.subFolderTGLF_scan[:-1]
 
         if subFolderTGLF is None:
             subFolderTGLF = self.subFolderTGLF_scan
@@ -3264,7 +3260,7 @@ class TGLF:
 
     def runAnalysis(
         self,
-        subFolderTGLF="analysis1/",
+        subFolderTGLF="analysis1",
         label="analysis1",
         analysisType="chi_e",
         trace=[50.0, 174.0],
@@ -3274,9 +3270,6 @@ class TGLF:
             raise Exception(
                 "MITIM Exception: No normalizations provided, but runAnalysis will require it!"
             )
-
-        if subFolderTGLF[-1] != "/":
-            subFolderTGLF += "/"
 
         # ------------------------------------------
         # Electron thermal incremental diffusivity
@@ -3848,7 +3841,7 @@ def changeANDwrite_TGLF(
             NS=NS,
         )
 
-        newfile = f"{FolderTGLF}/input.tglf_{rho:.4f}"
+        newfile = FolderTGLF / f"input.tglf_{rho:.4f}"
 
         if TGLFsettings is not None:
             # Apply corrections
@@ -4477,7 +4470,7 @@ def inputToVariable(finalFolder, rhos):
 
     inputFilesTGLF = {}
     for cont, rho in enumerate(rhos):
-        fileN = f"{finalFolder}/input.tglf_{rho:.4f}"
+        fileN = finalFolder / f"input.tglf_{rho:.4f}"
 
         with open(fileN, "r") as f:
             lines = f.readlines()
@@ -4542,7 +4535,7 @@ class TGLFoutput:
                 f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
             )
 
-        self.inputclass = TGLFinput(file=f"{self.FolderGACODE}/input.tglf{self.suffix}")
+        self.inputclass = TGLFinput(file=self.FolderGACODE / f"input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
 
         self.read()
@@ -6346,7 +6339,7 @@ def cold_start_checker(
             existsRho = True
             for j in ResultsFiles:
                 ffi = FolderTGLF / f"{j}_{ir:.4f}"
-                existsThis = os.path.exists(ffi)
+                existsThis = ffi.exists()
                 existsRho = existsRho and existsThis
                 if not existsThis:
                     print(f"\t* {ffi} does not exist")
