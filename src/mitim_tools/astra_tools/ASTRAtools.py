@@ -1,24 +1,20 @@
 import os
 import tarfile
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools,FARMINGtools
+from mitim_tools.misc_tools import IOtools,FARMINGtools, GUItools, GRAPHICStools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
 from mitim_tools import __mitimroot__
 from IPython import embed
-from mitim_tools.surrogate_tools import NNtools
-
 class ASTRA():
 
     def __init__(self):
 
         pass
 
-    def prep(self,folder,file_repo = __mitimroot__ + '/templates/ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -29,16 +25,15 @@ class ASTRA():
         IOtools.askNewFolder(self.folder)
 
         # Move files
-        os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO.tar.gz')
+        os.system(f'cp {self.file_repo} {self.folder / "ASTRA8_REPO.tar.gz"}')
 
         # untar
         with tarfile.open(
-            os.path.join(self.folder, "ASTRA8_REPO.tar.gz"), "r"
+            self.folder / "ASTRA8_REPO.tar.gz", "r"
         ) as tar:
             tar.extractall(path=self.folder)
 
-        #os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_as}/')
-        os.remove(os.path.join(self.folder, "ASTRA8_REPO.tar.gz"))
+        os.remove(self.folder / "ASTRA8_REPO.tar.gz")
 
         # Define basic controls
         self.equfile = 'fluxes'
@@ -55,9 +50,9 @@ class ASTRA():
         self.t_ini = t_ini
         self.t_end = t_end
 
-        self.folder_astra = f'{self.folder}/{name}/'
+        self.folder_astra = self.folder /  name
         IOtools.askNewFolder(self.folder_astra)
-        os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_astra}/')
+        os.system(f'cp -r {self.folder / "ASTRA8_REPO"}* {self.folder_astra}')
 
         astra_name = f'mitim_astra_{name}'
 
@@ -65,7 +60,7 @@ class ASTRA():
 
         self.astra_job.define_machine(
             "astra",
-            f"{astra_name}/",
+            f"{astra_name}",
             launchSlurm=False,
         )
 
@@ -81,7 +76,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
         # Execute
         # ---------------------------------------------
 
-        self.output_folder = f'{name}/.res/ncdf/'
+        self.output_folder = name / '.res' / 'ncdf'
 
         self.astra_job.prep(
             self.command_to_run_astra,
@@ -95,9 +90,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
 
     def read(self):
 
-        self.cdf_file = f'{self.output_folder}/'
-
-        self.cdf = ASTRA_CDFtools.transp_output(self.cdf_file)
+        self.cdf = ASTRA_CDFtools.transp_output(self.output_folder)
 
     def plot(self):
 
@@ -118,13 +111,13 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
-    template_path = __mitimroot__ + "/tests/data/input.gacode"
+    template_path = __mitimroot__ / "tests" / "data "/ "input.gacode"
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
     # Extract CDF file
     cdf_file = None
-    astra_results_dir = os.path.join(astra_root, "ncdf_out")
+    astra_results_dir = astra_root / "ncdf_out"
     for file in os.listdir(astra_results_dir):
         if file.endswith(".CDF"):
             cdf_file = os.path.join(astra_results_dir, file)

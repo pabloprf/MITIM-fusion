@@ -5,7 +5,6 @@ To run: python3  tests/MITIM_workflow.py
 
 import os
 import torch
-from pathlib import Path
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools import __mitimroot__
 

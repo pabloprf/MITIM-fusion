@@ -465,7 +465,7 @@ class mitim_job:
         print("\t\t- Extracting tarball")
         self.execute(
             "tar -xzf "
-            + f'{self.folderExecution}/mitim_send.tar.gz'
+            + f'{self.folderExecution / "mitim_send.tar.gz"}'
             + " -C "
             + f'{self.folderExecution}'
         )
@@ -567,10 +567,9 @@ class mitim_job:
                 )
         else:
             os.system(
-                "cp "
-                + f'{self.folderExecution}/mitim_receive.tar.gz'
+                f"cp {self.folderExecution / 'mitim_receive.tar.gz'}"
                 + " "
-                + f'{self.folder_local / "mitim_receive.tar.gz"}'
+                + f"{self.folder_local / 'mitim_receive.tar.gz'}"
             )
         print(self.folderExecution, self.folder_local)
 
