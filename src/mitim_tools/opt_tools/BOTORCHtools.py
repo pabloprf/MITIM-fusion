@@ -585,7 +585,6 @@ class PRF_NNKernel(gpytorch.kernels.Kernel):
                 lambda m, v: m._set_length(v),
             )
 
-    # now set up the 'individual_models' paramter
     @property
     def tau(self):
         # when accessing the parameter, apply the constraint transform
