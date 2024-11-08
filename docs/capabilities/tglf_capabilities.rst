@@ -48,14 +48,15 @@ For this tutorial we will need the following modules:
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
 Select the location of the input.gacode file to start the simulation from. You should also select the folder where the simulation will be run:
 
 .. code-block:: python
 
-    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
-    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
+    inputgacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+    folder           = Path('MITIM-fusion/tests/scratch/tglf_tut')
 
 The TGLF class can be initialized by providing the radial location (in square root of normalized toroidal flux, ``rho``) to run. Note that the values are given as a list, and several radial locations can be run at once:
 
@@ -82,14 +83,14 @@ For example, the following two commands will run TGLF with saturation rule numbe
 
 .. code-block:: python
 
-    tglf.run( subFolderTGLF = 'yes_em_folder/', 
+    tglf.run( subFolderTGLF = 'yes_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {},
               cold_start       = False )
 
     tglf.read( label = 'yes_em' )
 
-    tglf.run( subFolderTGLF = 'no_em_folder/', 
+    tglf.run( subFolderTGLF = 'no_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {'USE_BPER':False},
               cold_start       = False )
@@ -123,10 +124,11 @@ If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and wa
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
-    cdf_file = 'MITIM-fusion/tests/data/12345.CDF'
-    folder   = 'MITIM-fusion/tests/scratch/tglf_tut/'
+    cdf_file = Path('MITIM-fusion/tests/data/12345.CDF')
+    folder   = Path('MITIM-fusion/tests/scratch/tglf_tut')
 
     tglf     = TGLFtools.TGLF( cdf    = cdf_file,
                                 hos   = [0.5,0.7],
@@ -158,11 +160,12 @@ If you have a input.tglf file already, you can still use this script to run it.
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
-    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
-    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
-    inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
+    inputgacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+    folder           = Path('MITIM-fusion/tests/scratch/tglf_tut')
+    inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
@@ -180,10 +183,11 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
 
     .. code-block:: python
 
+        from pathlib import Path
         from mitim_tools.gacode_tools import TGLFtools
 
-        folder           = 'MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder/'
-        inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
+        folder           = Path('MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder')
+        inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
         tglf = TGLFtools.TGLF()
         tglf.prep_from_tglf( folder, inputtglf_file )
