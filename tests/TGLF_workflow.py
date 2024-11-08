@@ -1,8 +1,6 @@
 import os
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
-from pathlib import Path
-from IPython import embed
 
 restart = True
 

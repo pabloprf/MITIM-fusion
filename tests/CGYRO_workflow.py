@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools import __mitimroot__
 

@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools import __mitimroot__
 from matplotlib import pyplot as plt

@@ -4,7 +4,6 @@ To run: python3  tests/TGLF_workflow.py
 """
 import os
 import numpy as np
-from pathlib import Path
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
 
