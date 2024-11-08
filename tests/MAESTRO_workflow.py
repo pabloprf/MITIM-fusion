@@ -6,7 +6,7 @@ from mitim_tools import __mitimroot__
 
 restart = True
 
-folder = __mitimroot__ + "tests" / "scratch" / "maestro_test"
+folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 
 if restart and os.path.exists(folder):
     os.system(f"rm -r {folder}")
