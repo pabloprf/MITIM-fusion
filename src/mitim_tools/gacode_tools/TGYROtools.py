@@ -87,8 +87,8 @@ class TGYRO:
         self,
         FolderGACODE,
         profilesclass_custom=None,
-        restart=False,
-        forceIfRestart=False,
+        cold_start=False,
+        forceIfcold_start=False,
         subfolder="prep_tgyro",
         BtIp_dirs=[0, 0],
         gridsTRXPL=[151, 101, 101],
@@ -97,7 +97,7 @@ class TGYRO:
         correctPROFILES=False,
     ):
         """
-        Run workflow to prepare TGYRO, but pass the restart flag. Checks will happen inside.
+        Run workflow to prepare TGYRO, but pass the cold_start flag. Checks will happen inside.
         Include all species, including fast,
 
         Goal of this step is to get a input.gacode class stored in self.profiles
@@ -120,17 +120,17 @@ class TGYRO:
         _, self.nameRuns_default = IOtools.reducePathLevel(self.FolderGACODE, level=1)
         # -----------
 
-        if (not self.FolderGACODE.exists()) or restart:
+        if (not self.FolderGACODE.exists()) or cold_start:
             print(
-                f"\t- Folder {FolderGACODE} does not exist, or restart has been requested... creating folder to store"
+                f"\t- Folder {FolderGACODE} does not exist, or cold_start has been requested... creating folder to store"
             )
             IOtools.askNewFolder(
-                self.FolderGACODE, force=forceIfRestart or (not restart)
+                self.FolderGACODE, force=forceIfcold_start or (not cold_start)
             )
 
-        if (not self.FolderGACODE_tmp.exists()) or restart:
+        if (not self.FolderGACODE_tmp.exists()) or cold_start:
             IOtools.askNewFolder(
-                self.FolderGACODE_tmp, force=forceIfRestart or (not restart)
+                self.FolderGACODE_tmp, force=forceIfcold_start or (not cold_start)
             )
 
         if profilesclass_custom is None:
@@ -141,7 +141,7 @@ class TGYRO:
                 self.FolderGACODE_tmp,
                 self.LocationCDF,
                 avTime=self.avTime,
-                forceEntireWorkflow=restart,
+                forceEntireWorkflow=cold_start,
                 BtIp_dirs=BtIp_dirs,
                 gridsTRXPL=gridsTRXPL,
                 includeGEQ=includeGEQ,
@@ -168,14 +168,14 @@ class TGYRO:
     def run(
         self,
         subFolderTGYRO="tgyro1",
-        restart=False,
+        cold_start=False,
         vectorRange=[0.2, 0.8, 10],
         special_radii=None,
         iterations=0,
         PredictionSet=[1, 1, 0],
         TGLFsettings=0,
         extraOptionsTGLF={},
-        forceIfRestart=False,
+        forceIfcold_start=False,
         minutesJob=30,
         launchSlurm=True,
         TGYRO_physics_options={},
@@ -329,7 +329,7 @@ class TGYRO:
         inputFiles_TGYRO = []
 
         # Do the required files exist?
-        exists = not restart
+        exists = not cold_start
 
         txt_nonexist = ""
         if exists:
@@ -351,22 +351,22 @@ class TGYRO:
         # ----------------------------------------------------------------
 
         if not exists:
-            IOtools.askNewFolder(self.FolderTGYRO, force=forceIfRestart)
+            IOtools.askNewFolder(self.FolderTGYRO, force=forceIfcold_start)
 
             # ----------------------------------------------------------------
-            # Restarted
+            # cold_started
             # ----------------------------------------------------------------
             if TGYROcontinue is not None:
                 print(
-                    "\n\n~~ Option to restart from previous TGYRO iteration selected\n\n"
+                    "\n\n~~ Option to cold_start from previous TGYRO iteration selected\n\n"
                 )
 
-                self.FolderTGYRO_restarted = IOtools.expandPath(
+                self.FolderTGYRO_cold_started = IOtools.expandPath(
                     self.FolderGACODE + TGYROcontinue + "/"
                 )
 
                 for i in self.outputFiles:
-                    inputFiles_TGYRO.append(self.FolderTGYRO_restarted + i)
+                    inputFiles_TGYRO.append(self.FolderTGYRO_cold_started + i)
 
         """ -----------------------------------
 		 	Create TGLF file (only control info, no species)
@@ -567,13 +567,13 @@ class TGYRO:
     def converge(
         self,
         factor_reduction=1e-2,
-        restart=False,
+        cold_start=False,
         vectorRange=[0.2, 0.8, 10],
         special_radii=None,
         PredictionSet=[1, 1, 0],
         TGLFsettings=0,
         extraOptionsTGLF={},
-        forceIfRestart=False,
+        forceIfcold_start=False,
         launchSlurm=True,
         TGYRO_physics_options={},
         TGYRO_solver_options={},
@@ -595,8 +595,8 @@ class TGYRO:
             TGYROcontinue=None,
             subFolderTGYRO=f"{self.nameRuns_default}_1",
             iterations=iterations,
-            restart=restart,
-            forceIfRestart=forceIfRestart,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
             special_radii=special_radii,
             vectorRange=vectorRange,
             PredictionSet=PredictionSet,
@@ -613,7 +613,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           =  { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # self.run(TGYROcontinue = None,
-        # 	subFolderTGYRO=f'{self.nameRuns_default}_1/',iterations=iterations,restart=restart,forceIfRestart=forceIfRestart,
+        # 	subFolderTGYRO=f'{self.nameRuns_default}_1/',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=special_radii,vectorRange=vectorRange,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -630,7 +630,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           = { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # tgyro.run(TGYROcontinue = 'run1',
-        # 	subFolderTGYRO='run2/',iterations=iterations,restart=restart,forceIfRestart=forceIfRestart,
+        # 	subFolderTGYRO='run2/',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=rhos,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -667,7 +667,7 @@ class TGYRO:
         return tglf
 
 
-    def runTGLF(self, fromlabel="tgyro1", rhos=None, restart=False):
+    def runTGLF(self, fromlabel="tgyro1", rhos=None, cold_start=False):
         """
         This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization
 
@@ -686,11 +686,11 @@ class TGYRO:
             subFolderTGLF=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
-            restart=restart,
+            cold_start=cold_start,
         )
         self.tglf[fromlabel].read(label=label)
 
-    def runTGLFsensitivities(self, fromlabel="tgyro1", rho=0.5, restart=False):
+    def runTGLFsensitivities(self, fromlabel="tgyro1", rho=0.5, cold_start=False):
         """
         This runs TGLF scans at the final point
 
@@ -715,7 +715,7 @@ class TGYRO:
             subFolderTGLF=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
-            restart=restart,
+            cold_start=cold_start,
             specificInputs=inputsTGLF,
         )
 
@@ -727,7 +727,7 @@ class TGYRO:
         onlyThermal=False,
         quasineutrality=None,
         subFolderTGYRO="tmp_tgyro_scans",
-        restart=False,
+        cold_start=False,
         label="tgyro1",
         donotrun=False,
         recalculatePTOT=True,
@@ -772,8 +772,8 @@ class TGYRO:
                 TGLFsettings=TGLFsettings,
                 TGYRO_physics_options=TGYRO_physics_options,
                 iterations=0,
-                restart=restart,
-                forceIfRestart=True,
+                cold_start=cold_start,
+                forceIfcold_start=True,
                 minutesJob=minutesJob,
                 rhosCopy=rhos,
                 special_radii=rhos,
@@ -1271,7 +1271,7 @@ class TGYROoutput:
         self.residual = np.array(self.residual)
         self.calls_solver = np.array(self.calls_solver)
 
-        # calls_solvers for restarting cases is not straight=forward
+        # calls_solvers for cold_starting cases is not straight=forward
         calls_solver_corrected = copy.deepcopy(self.calls_solver)
         for i in range(len(calls_solver_corrected) - 1):
             if (calls_solver_corrected[i + 1] - calls_solver_corrected[i]) < 0:
@@ -4688,7 +4688,7 @@ def modifyInputToTGYRO(
         nepred=nepred,
         physics_options=TGYRO_physics_options,
         solver_options=solver_options,
-        restart=TGYROcontinue,
+        cold_start=TGYROcontinue,
         special_radii=special_radii,
     )
 
@@ -4724,7 +4724,7 @@ def produceInputs_TGYROworkflow(
         nameRunid = "10001"
 
     # ---------------------------------------------------------------------------------------------------------------
-    # Restarting options
+    # cold_starting options
     # ---------------------------------------------------------------------------------------------------------------
 
     files_to_look = ["input.gacode"]
@@ -4747,14 +4747,14 @@ def produceInputs_TGYROworkflow(
             print(
                 "\t\t+++++++ .cdf plasma-state file already generated, I need to run profiles_gen"
             )
-            # Copying them to tmp folder in case there are not there and restarting from .cdf and .geq in final folder
+            # Copying them to tmp folder in case there are not there and cold_starting from .cdf and .geq in final folder
             os.system(f"cp {finalFolder / '10001.cdf'} {folderWork}")
             os.system(f"cp {finalFolder / '10001.geq'} {folderWork}")
         else:
             print(f"\t\t+++++++ {finalFolder / '10001.cdf'} file not found")
             StateGenerated = False
             print(
-                "\t\t+++++++ Workflow needs to be restarted completely, no files found"
+                "\t\t+++++++ Workflow needs to be cold_started completely, no files found"
             )
 
     if not ProfilesGenerated or forceEntireWorkflow:

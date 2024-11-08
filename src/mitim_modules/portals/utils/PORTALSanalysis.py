@@ -143,7 +143,7 @@ class PORTALSanalyzer:
             self.iextra = self.ilast
 
         if self.mitim_runs[0] is None:
-            print("* Issue with reading mitim_run 0, likely due to a restart of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
+            print("* Issue with reading mitim_run 0, likely due to a cold_start of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
             print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
 
         # Store setup of TGYRO run
@@ -516,7 +516,7 @@ class PORTALSanalyzer:
 
         return portals_fun, fileGACODE, folder
 
-    def extractTGYRO(self, folder=None, restart=False, evaluation=0):
+    def extractTGYRO(self, folder=None, cold_start=False, evaluation=0):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -534,7 +534,7 @@ class PORTALSanalyzer:
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(
-            folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True
+            folder, profilesclass_custom=profiles, cold_start=cold_start, forceIfcold_start=True
         )
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
@@ -547,7 +547,7 @@ class PORTALSanalyzer:
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self, folder=None, positions=None, evaluation=None, restart=False):
+    def extractTGLF(self, folder=None, positions=None, evaluation=None, cold_start=False):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -586,7 +586,7 @@ class PORTALSanalyzer:
         p.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
+        _ = tglf.prep(folder, cold_start=cold_start, inputgacode=inputgacode)
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
         extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
@@ -600,7 +600,7 @@ class PORTALSanalyzer:
     def runTGLFfull(
         self,
         folder=None,
-        restart=False,
+        cold_start=False,
         label="default",
         tglf_object=None,
         onlyBest=False,
@@ -624,7 +624,7 @@ class PORTALSanalyzer:
 
         for ev in ranges:
             tglf, TGLFsettings, extraOptions = self.extractTGLF(
-                folder=f"{folder}/Evaluation.{ev}/", evaluation=ev, restart=restart
+                folder=f"{folder}/Evaluation.{ev}/", evaluation=ev, cold_start=cold_start
             )
 
             kwargsTGLF_this = copy.deepcopy(kwargsTGLF)
@@ -634,7 +634,7 @@ class PORTALSanalyzer:
             if "extraOptions" not in kwargsTGLF_this:
                 kwargsTGLF_this["extraOptions"] = extraOptions
 
-            tglf.run(subFolderTGLF=f"tglf_{label}/", restart=restart, **kwargsTGLF_this)
+            tglf.run(subFolderTGLF=f"tglf_{label}/", cold_start=cold_start, **kwargsTGLF_this)
 
         # Read all previously run cases into a single class
         if tglf_object is None:
@@ -648,7 +648,7 @@ class PORTALSanalyzer:
 
         return tglf_object
 
-    def runCases(self, onlyBest=False, restart=False, fn=None):
+    def runCases(self, onlyBest=False, cold_start=False, fn=None):
         from mitim_modules.portals.PORTALSmain import runModelEvaluator
 
         variations_best = self.opt_fun.res.best_absolute_full["x"]
@@ -673,7 +673,7 @@ class PORTALSanalyzer:
                 FolderEvaluation,
                 dictDVs,
                 name0,
-                restart=restart,
+                cold_start=cold_start,
             )
 
         print(f"\t- Running best case #{self.opt_fun.res.best_absolute_index}")
@@ -693,7 +693,7 @@ class PORTALSanalyzer:
             FolderEvaluation,
             dictDVs,
             name,
-            restart=restart,
+            cold_start=cold_start,
         )
 
         # Plot

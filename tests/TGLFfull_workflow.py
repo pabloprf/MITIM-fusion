@@ -7,25 +7,25 @@ import numpy as np
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
 (__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
 cdf_file = __mitimroot__ / "tests" / "data" / "12345.CDF"
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_full_test"
 
-if restart and folder.exists():
+if cold_start and folder.exists():
     os.system(f"rm -r {folder}")
 
 tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0.8]))
-_ = tglf.prep(folder, restart=restart)
+_ = tglf.prep(folder, cold_start=cold_start)
 
 tglf.run(
     subFolderTGLF="runSAT2",
     TGLFsettings=5,
     runWaveForms=[0.1,0.3],
-    restart=restart,
-    forceIfRestart=True,
+    cold_start=cold_start,
+    forceIfcold_start=True,
 )
 tglf.read(label="runSAT2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
@@ -33,8 +33,8 @@ tglf.run(
     subFolderTGLF="runSAT0",
     TGLFsettings=2,
     runWaveForms=[0.5],
-    restart=restart,
-    forceIfRestart=True,
+    cold_start=cold_start,
+    forceIfcold_start=True,
 )
 tglf.read(label="runSAT0", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
@@ -42,8 +42,8 @@ tglf.run(
     subFolderTGLF="runSAT3",
     TGLFsettings=6,
     runWaveForms=[0.5],
-    restart=restart,
-    forceIfRestart=True,
+    cold_start=cold_start,
+    forceIfcold_start=True,
 )
 tglf.read(label="runSAT3", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 

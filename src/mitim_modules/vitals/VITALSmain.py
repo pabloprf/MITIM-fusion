@@ -230,13 +230,13 @@ class vitals(STRATEGYtools.opt_evaluator):
         self.write(dictOFs, resultsfile)
 
     def analyze_results(
-        self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2
+        self, plotYN=True, fn=None, cold_start=False, storeResults=True, analysis_level=2
     ):
         analyze_results(
             self,
             plotYN=plotYN,
             fn=fn,
-            restart=restart,
+            cold_start=cold_start,
             storeResults=storeResults,
             analysis_level=analysis_level,
         )
@@ -280,7 +280,7 @@ def runTGLF(
     folder_label=None,
     launchSlurm=True,
     evNum=1,
-    restart=True,
+    cold_start=True,
 ):
     # Change folder
     initializationFolder = copy.deepcopy(tglf.FolderGACODE)
@@ -306,9 +306,9 @@ def runTGLF(
 
     tglf.run(
         subFolderTGLF=f"{folder_label}/",
-        restart=restart,
+        cold_start=cold_start,
         TGLFsettings=self.TGLFparameters["TGLFsettings"],
-        forceIfRestart=True,
+        forceIfcold_start=True,
         extraOptions=extraOptions,
         multipliers=multipliers,
         extra_name=f"{numSim}_{evNum}",
@@ -318,7 +318,7 @@ def runTGLF(
 
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2, **kwargs
+    self, plotYN=True, fn=None, cold_start=False, storeResults=True, analysis_level=2, **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff
@@ -349,7 +349,7 @@ def analyze_results(
             label="Original",
             launchSlurm=launchSlurm,
             evNum=0,
-            restart=restart,
+            cold_start=cold_start,
         )
         print(f"\t- Running best case #{self.res.best_absolute_index}")
         runTGLF(
@@ -361,7 +361,7 @@ def analyze_results(
             folder_label=f"VITALS_{self.res.best_absolute_index}",
             launchSlurm=launchSlurm,
             evNum=self.res.best_absolute_index,
-            restart=restart,
+            cold_start=cold_start,
         )
 
         # ----------------------------------------------------------------------------------------------------------------

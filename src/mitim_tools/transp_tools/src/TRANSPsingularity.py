@@ -58,14 +58,14 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             },
         )
 
-    def run(self, restartFromPrevious=False, **kwargs):
+    def run(self, cold_startFromPrevious=False, **kwargs):
         runSINGULARITY(
             self.job,
             self.runid,
             self.shotnumber,
             self.tok,
             self.mpisettings,
-            restartFromPrevious=restartFromPrevious,
+            cold_startFromPrevious=cold_startFromPrevious,
         )
 
         self.jobid = self.job.jobid
@@ -173,7 +173,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         **kwargs,
         ):
         # Launch run
-        self.run(restartFromPrevious=False)
+        self.run(cold_startFromPrevious=False)
 
         self.statusStop = -1
 
@@ -212,7 +212,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             # ~~~~~ Re-launch because of timelimit
-            # self.run(restartFromPrevious=True)
+            # self.run(cold_startFromPrevious=True)
 
         # ---------------------------------------------------------------------------
         # Post-TRANSP
@@ -273,7 +273,7 @@ def runSINGULARITY(
     shotnumber,
     tok,
     mpis,
-    restartFromPrevious=False,
+    cold_startFromPrevious=False,
 ):
     folderWork = transp_job.folder_local
     nparallel = transp_job.slurm_settings["ntasks"]
@@ -303,7 +303,7 @@ def runSINGULARITY(
 
     # ********** Standard run, from the beginning
 
-    if not restartFromPrevious:
+    if not cold_startFromPrevious:
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
         # ------------------------------------------------------------
@@ -379,7 +379,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
     # ********** Start from previous
 
     else:
-        print("Launch restart request")
+        print("Launch cold_start request")
 
         TRANSPcommand_prep = None
 

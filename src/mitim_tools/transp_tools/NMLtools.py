@@ -224,7 +224,7 @@ class transp_nml:
             "",
             f"NSHOT={self.shotnum}",
             "",
-            "mrstrt = -120     ! Frequency of restart records (-, means x wall clock min)",
+            "mrstrt = -120     ! Frequency of cold_start records (-, means x wall clock min)",
             "",
         ]
 

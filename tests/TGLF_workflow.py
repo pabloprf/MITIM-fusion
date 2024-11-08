@@ -2,14 +2,14 @@ import os
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
 (__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_test"
 input_tglf = __mitimroot__ / "tests" / "data" / "input.tglf"
 
-if restart and folder.exists():
+if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 tglf = TGLFtools.TGLF()
@@ -18,8 +18,8 @@ tglf.prep_from_tglf(folder, input_tglf)
 tglf.run(
     subFolderTGLF="run1/",
     TGLFsettings=None,
-    restart=restart,
-    forceIfRestart=True,
+    cold_start=cold_start,
+    forceIfcold_start=True,
     extraOptions={"USE_BPER": False, "USE_BPAR": False},
     slurm_setup={"cores": 4, "minutes": 1},
 )
@@ -27,10 +27,10 @@ tglf.run(
 tglf.read(label="ES")
 
 tglf.run(
-    subFolderTGLF="run1/",
+    subFolderTGLF="run2/",
     TGLFsettings=None,
-    restart=restart,
-    forceIfRestart=True,
+    cold_start=cold_start,
+    forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
     slurm_setup={"cores": 4, "minutes": 1},
 )

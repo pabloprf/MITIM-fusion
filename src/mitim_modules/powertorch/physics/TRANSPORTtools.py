@@ -125,7 +125,7 @@ class tgyro_model(power_transport):
         useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
         UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
         launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
-        restart = ModelOptions.get("restart", False)
+        cold_start = ModelOptions.get("cold_start", False)
         provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
         profiles_postprocessing_fun = ModelOptions.get("profiles_postprocessing_fun", None)
         OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
@@ -152,8 +152,8 @@ class tgyro_model(power_transport):
 
         tgyro.run(
             subFolderTGYRO="tglf_neo_original/",
-            restart=restart,
-            forceIfRestart=True,
+            cold_start=cold_start,
+            forceIfcold_start=True,
             special_radii=RadiisToRun,
             iterations=0,
             PredictionSet=[
@@ -197,7 +197,7 @@ class tgyro_model(power_transport):
             includeFast=includeFast,
             provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
-            restart=restart,
+            cold_start=cold_start,
             extra_name = self.name,
         )
 
@@ -214,13 +214,13 @@ class tgyro_model(power_transport):
         #     self.folder+'/stds/',
         #     inputgacode=self.file_profs,
         #     recalculatePTOT=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-        #     restart=restart)
+        #     cold_start=cold_start)
 
         # tglf.run(
         #     subFolderTGLF="tglf_neo_original/",
         #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-        #     restart=restart,
-        #     forceIfRestart=True,
+        #     cold_start=cold_start,
+        #     forceIfcold_start=True,
         #     extraOptions=MODELparameters["transport_model"]["extraOptionsTGLF"],
         #     launchSlurm=launchMODELviaSlurm,
         #     slurm_setup={"cores": 4, "minutes": 1},
@@ -338,7 +338,7 @@ def tglf_scan_trick(
     profiles, 
     impurityPosition=1, includeFast=False,  
     delta=0.02, 
-    restart=False, 
+    cold_start=False, 
     check_coincidence_thr=1E-2, 
     extra_name="", 
     remove_folders_out = False
@@ -387,8 +387,8 @@ def tglf_scan_trick(
                     TGLFsettings = None,
                     ApplyCorrections = False,
                     add_baseline_to = 'first',
-                    restart=restart,
-                    forceIfRestart=True,
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
                     slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x (Nv=3 x Nd=2 + 1) = 35 TGLFs at once
                     extra_name = f'{extra_name}_{name}',
                     )
@@ -550,7 +550,7 @@ def curateTGYROfiles(
     impurityPosition=1,
     includeFast=False,
     use_tglf_scan_trick=None,
-    restart=False,
+    cold_start=False,
     extra_name="",
     ):
 
@@ -591,7 +591,7 @@ def curateTGYROfiles(
             impurityPosition=impurityPosition, 
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
-            restart=restart,
+            cold_start=cold_start,
             extra_name=extra_name
             )
 

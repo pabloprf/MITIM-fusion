@@ -55,7 +55,7 @@ class portals_beat(beat):
 
     def run(self, **kwargs):
 
-        restart = kwargs.get('restart', False)
+        cold_start = kwargs.get('cold_start', False)
 
         portals_fun  = PORTALSmain.portals(self.folder, additional_params_in_surrogate = self.additional_params_in_surrogate)
 
@@ -96,7 +96,7 @@ class portals_beat(beat):
             **self.exploration_ranges,
             )
 
-        self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN = restart, askQuestions = False)
+        self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
         self.prf_bo.run()
 

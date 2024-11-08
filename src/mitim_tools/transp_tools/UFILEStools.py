@@ -695,7 +695,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = tlastsaws[-1] - extratim
             ind = np.argmin(np.abs(f["TIME"][:] - (timer)))
             print(
-                ">> Restarting {0} from top of last sawtooth ({1}ms before), t={2:.3f}s".format(
+                ">> cold_starting {0} from top of last sawtooth ({1}ms before), t={2:.3f}s".format(
                     varCDF, extratim * 1000.0, timer
                 )
             )
@@ -704,7 +704,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             ind = -1
 
     elif timeExtract == -2:
-        print(f">> Restarting {varCDF} from last time, t={f['TIME'][:][-1]:.3f}s")
+        print(f">> cold_starting {varCDF} from last time, t={f['TIME'][:][-1]:.3f}s")
         ind = -1
 
     elif timeExtract == -3:
@@ -713,7 +713,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = (tlastsaws[lastindex] + tlastsaws[lastindex - 1]) / 2.0
             ind = np.argmin(np.abs(f["TIME"][:] - timer))
             print(
-                f">> Restarting {varCDF} from middle of last sawteeth, t={timer:.3f}s"
+                f">> cold_starting {varCDF} from middle of last sawteeth, t={timer:.3f}s"
             )
 
         except:
@@ -730,7 +730,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = tlastsaws[-1] + timeExtract * 1e-3
             ind = np.argmin(np.abs(f["TIME"][:] - timer))
             print(
-                f">> Restarting {-timeExtract}ms before last sawteeth, t={timer:.3f}s"
+                f">> cold_starting {-timeExtract}ms before last sawteeth, t={timer:.3f}s"
             )
 
         except:
@@ -742,7 +742,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             ind = -1
 
     else:
-        print(f">> Restarting {varCDF} from t={timeExtract:.3f}s")
+        print(f">> cold_starting {varCDF} from t={timeExtract:.3f}s")
         ind = np.argmin(np.abs(f["TIME"][:] - timeExtract))
 
     # Selection of rho_tor coordinate

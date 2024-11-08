@@ -22,7 +22,7 @@ def initializeProblem(
     RelVar_y_min,
     limitsAreRelative=True,
     hardGradientLimits=None,
-    restartYN=False,
+    cold_start=False,
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
@@ -34,7 +34,7 @@ def initializeProblem(
     """
     Notes:
         - Specification of points occur in rho coordinate, although internally the work is r/a
-            restartYN = True if restart from beginning
+            cold_start = True if cold_start from beginning
         - I can give ModelOptions directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
@@ -44,8 +44,8 @@ def initializeProblem(
 
     FolderInitialization = folderWork / "Initialization"
 
-    if (restartYN) or (not os.path.exists(folderWork)):
-        IOtools.askNewFolder(folderWork, force=restartYN)
+    if (cold_start) or (not os.path.exists(folderWork)):
+        IOtools.askNewFolder(folderWork, force=cold_start)
 
     os.makedirs(FolderInitialization, exist_ok=True)
 
@@ -126,7 +126,7 @@ def initializeProblem(
 
     if ModelOptions is None:
         ModelOptions = {
-            "restart": False,
+            "cold_start": False,
             "launchMODELviaSlurm": portals_fun.PORTALSparameters[
                 "launchEvaluationsAsSlurmJobs"
             ],

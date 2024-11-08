@@ -189,7 +189,7 @@ class TRANSPgeneric:
             except:
                 pass
 
-            # Check if it has been restarted by mistake, to avoid overwritting my CDF_prev file at next time step!
+            # Check if it has been cold_started by mistake, to avoid overwritting my CDF_prev file at next time step!
             try:
                 if lastTime > self.cdfs["r1"].t[-1]:
                     print(

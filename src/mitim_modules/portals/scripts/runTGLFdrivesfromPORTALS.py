@@ -29,7 +29,7 @@ ev = args.ev
 pos = args.pos
 wf = args.wf
 var = args.var
-restart = args.r
+cold_start = args.r
 
 # --- Workflow
 
@@ -43,7 +43,7 @@ tglf.runScanTurbulenceDrives(
     variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
     TGLFsettings=TGLFsettings,
     extraOptions=extraOptions,
-    restart=restart,
+    cold_start=cold_start,
     runWaveForms=wf,
 )
 

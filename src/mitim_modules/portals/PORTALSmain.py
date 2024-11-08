@@ -239,7 +239,7 @@ class portals(STRATEGYtools.opt_evaluator):
     def prep(
         self,
         fileGACODE,
-        restartYN=False,
+        cold_start=False,
         ymax_rel=1.0,
         ymin_rel=1.0,
         limitsAreRelative=True,
@@ -274,8 +274,8 @@ class portals(STRATEGYtools.opt_evaluator):
         key_rhos = self.check_flags()
 
         # TO BE REMOVED IN FUTURE
-        if not isinstance(restartYN, bool):
-            raise Exception("restartYN must be a boolean")
+        if not isinstance(cold_start, bool):
+            raise Exception("cold_start must be a boolean")
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
@@ -313,7 +313,7 @@ class portals(STRATEGYtools.opt_evaluator):
             define_ranges_from_profiles=define_ranges_from_profiles,
             dvs_fixed=dvs_fixed,
             limitsAreRelative=limitsAreRelative,
-            restartYN=restartYN,
+            cold_start=cold_start,
             hardGradientLimits=hardGradientLimits,
             dfT=self.dfT,
             seedInitial=seedInitial,
@@ -323,7 +323,7 @@ class portals(STRATEGYtools.opt_evaluator):
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Option to restart
+        # Option to cold_start
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if start_from_folder is not None:
@@ -449,13 +449,13 @@ class portals(STRATEGYtools.opt_evaluator):
 
         return of, cal, res
 
-    def analyze_results(self, plotYN=True, fn=None, restart=False, analysis_level=2):
+    def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2):
         """
         analysis_level = 2: Standard as other classes. Run best case, plot transport model analysis
         analysis_level = 3: Read from Execution and also calculate metrics (4: full metrics)
         """
         return analyze_results(
-            self, plotYN=plotYN, fn=fn, restart=restart, analysis_level=analysis_level
+            self, plotYN=plotYN, fn=fn, cold_start=cold_start, analysis_level=analysis_level
         )
 
     def check_flags(self):
@@ -516,7 +516,7 @@ class portals(STRATEGYtools.opt_evaluator):
         return key_rhos
 
     def reuseTrainingTabular(
-        self, folderRead, folderNew, reevaluateTargets=0, restartIfExists=False):
+        self, folderRead, folderNew, reevaluateTargets=0, cold_startIfExists=False):
         """
         reevaluateTargets:
                 0: No
@@ -589,7 +589,7 @@ class portals(STRATEGYtools.opt_evaluator):
                     FolderEvaluation,
                     dictDVs,
                     name,
-                    restart=restartIfExists,
+                    cold_start=cold_startIfExists,
                     dictOFs=dictOFs,
                 )
 
@@ -615,7 +615,7 @@ def runModelEvaluator(
     FolderEvaluation,
     dictDVs,
     name,
-    restart=False,
+    cold_start=False,
     numPORTALS=0,
     dictOFs=None,
     ):
@@ -651,8 +651,8 @@ def runModelEvaluator(
     # Run model through powerstate
     # ---------------------------------------------------------------------------------------------------
 
-    # In certain cases, I want to restart the model directly from the PORTALS call instead of powerstate
-    powerstate.TransportOptions["ModelOptions"]["restart"] = restart
+    # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
+    powerstate.TransportOptions["ModelOptions"]["cold_start"] = cold_start
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(
@@ -734,7 +734,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
     return dictOFs
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, analysis_level=2, onlyBest=False, tabs_colors=0,
+    self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,
     ):
     if plotYN:
         print("\n *****************************************************")
@@ -760,6 +760,6 @@ def analyze_results(
     # ----------------------------------------------------------------------------------------------------------------
 
     if analysis_level in [2, 5]:
-        portals_full.runCases(onlyBest=onlyBest, restart=restart, fn=fn)
+        portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.prfs_model.optimization_object

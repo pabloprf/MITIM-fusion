@@ -308,7 +308,7 @@ class Logger(object):
         else:
             with open(self.logFile, "a") as f:
                 f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
+                    f"\n\n\n\n\n\t ~~~~~ Run cold_started ({currentime})~~~~~ \n\n\n\n\n"
                 )
 
     def write(self, message):

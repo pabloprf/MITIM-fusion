@@ -13859,7 +13859,7 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Final Convergence
         # 	Note:   Even if variables have not converged,
-        # 			but always having covered at least two sawteeth, to avoid that next restarted run starts again from the beginning!
+        # 			but always having covered at least two sawteeth, to avoid that next cold_started run starts again from the beginning!
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         ConvergedRun = (Conv_minTime and Conv_variables) and numSaw > 1
@@ -13993,11 +13993,11 @@ class transp_output:
         time=None,
         avTime=0.0,
         rhos=np.linspace(0.3, 0.9, 11),
-        restartPreparation=False,
+        cold_startPreparation=False,
         plotCompare=True,
         extraflag="",
         onlyThermal_TGYRO=False,
-        forceIfRestart=True,
+        forceIfcold_start=True,
         **kwargs_TGLFrun,
     ):
         """
@@ -14032,17 +14032,17 @@ class transp_output:
 
         cdf = self.TGLFstd[nameF].prep(
             folderGACODE,
-            restart=restartPreparation,
+            cold_start=cold_startPreparation,
             onlyThermal_TGYRO=onlyThermal_TGYRO,
             cdf_open=self,
-            forceIfRestart=forceIfRestart,
+            forceIfcold_start=forceIfcold_start,
         )
 
         labelTGLF = kwargs_TGLFrun.get("label", "tglf1")
 
         self.TGLFstd[nameF].run(
             subFolderTGLF=labelTGLF + "/",
-            forceIfRestart=forceIfRestart,
+            forceIfcold_start=forceIfcold_start,
             **kwargs_TGLFrun,
         )
 
@@ -14130,7 +14130,7 @@ class transp_output:
             self.TGLFstd[int(time * 1000)].run(
                 subFolderTGLF="fluctuations/",
                 TGLFsettings=TGLFsettings,
-                forceIfRestart=True,
+                forceIfcold_start=True,
             )
 
             self.TGLFstd[int(time * 1000)].read(
@@ -14632,7 +14632,7 @@ class transp_output:
         rhoRange=[0.4, 0.8],
         timeRange=0.5,
         TGLFsettings=1,
-        restart=False,
+        cold_start=False,
         plotYN=True,
     ):
         if time is None:
@@ -14650,13 +14650,13 @@ class transp_output:
         rhos = np.linspace(rhoRange[0], rhoRange[1], num)
 
         self.ChiPert_tglf = TGLFtools.TGLF(cdf=self.LocationCDF, time=time, rhos=rhos)
-        self.ChiPert_tglf.prep(self.FolderCDF + "chi_per_calc/", restart=restart)
+        self.ChiPert_tglf.prep(self.FolderCDF + "chi_per_calc/", cold_start=cold_start)
         self.ChiPert_tglf.runAnalysis(
             subFolderTGLF="chi_per/",
             label="chi_pert",
             analysisType="e",
             TGLFsettings=TGLFsettings,
-            restart=restart,
+            cold_start=cold_start,
             cdf_open=self,
         )
 
@@ -15158,7 +15158,7 @@ class transp_output:
 
         self.tgyro = TGYROtools.TGYRO(self.LocationCDF, time=time, avTime=avTime)
         self.tgyro.prep(
-            folderWork, restart=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
+            folderWork, cold_start=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
         )
 
     def writeOutput(self, folderWork=None, time=-0.06, avTime=0.05):

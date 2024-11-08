@@ -23,7 +23,7 @@ MAESTRO:
 
 class maestro:
 
-    def __init__(self, folder, terminal_outputs = False, master_restart = False):
+    def __init__(self, folder, terminal_outputs = False, master_cold_start = False):
         '''
         Inputs:
             - folder: Main folder where all the beats will be saved
@@ -31,7 +31,7 @@ class maestro:
         '''
 
         self.terminal_outputs = terminal_outputs
-        self.master_restart = master_restart        # If True, all beats will be restarted
+        self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
 
         # --------------------------------------------------------------------------------------------
         # Prepare folders
@@ -75,7 +75,7 @@ class maestro:
         '''
         self.parameters_trans_beat = {} 
 
-    def define_beat(self, beat, initializer = None, restart = False):
+    def define_beat(self, beat, initializer = None, cold_start = False):
 
         timeBeginning = datetime.datetime.now()
 
@@ -97,7 +97,7 @@ class maestro:
         self.beat.define_initializer(initializer)
 
         # Check here if the beat has already been performed
-        self.check(restart = restart or self.master_restart )
+        self.check(cold_start = cold_start or self.master_cold_start )
 
     def define_creator(self, method, **kwargs):
         '''
@@ -117,7 +117,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer('\t\t* Checker')
-    def check(self, beat_check = None, restart = False, **kwargs):
+    def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
             After each beat, the results are passed to an output folder.
@@ -134,20 +134,20 @@ class maestro:
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             output_file = None
-            if not restart:
+            if not cold_start:
                 output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
                 if output_file is not None:
                     print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
             else:
-                print('\t\t- Forced restarting of beat', typeMsg = 'i')
+                print('\t\t- Forced cold_starting of beat', typeMsg = 'i')
 
             self.beat.run_flag = output_file is None
 
-        # If this beat is restarted, all next beats will be restarted
+        # If this beat is cold_started, all next beats will be cold_started
         if self.beat.run_flag:
-            if not self.master_restart:
+            if not self.master_cold_start:
                 print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
-            self.master_restart = True
+            self.master_cold_start = True
 
         return output_file is not None
 
