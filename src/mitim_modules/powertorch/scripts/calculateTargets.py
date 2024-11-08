@@ -16,7 +16,7 @@ def calculator(
     typeCalculation=2,
     TypeTarget=3,
     folder="~/scratch/",
-    restart=True,
+    cold_start=True,
     rho_vec=np.linspace(0.1, 0.9, 9),
     profProvided=False,
     fineTargetsResolution = None,
@@ -42,7 +42,7 @@ def calculator(
             TransportOptions={
                 "transport_evaluator": TRANSPORTtools.tgyro_model,
                 "ModelOptions": {
-                    "restart": restart,
+                    "cold_start": cold_start,
                     "launchSlurm": True,
                     "MODELparameters": {
                         "Physics_options": {

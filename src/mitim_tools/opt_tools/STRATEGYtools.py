@@ -354,7 +354,7 @@ class PRF_BO:
     def __init__(
         self,
         optimization_object,
-        restartYN=False,
+        cold_start=False,
         storeClass=True,
         onlyInitialize=False,
         seed=0,
@@ -366,21 +366,21 @@ class PRF_BO:
                         with .optimization_options in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_nml))
                         and .folder (Where the function runs)
                         and surrogate_parameters: Parameters to pass to surrogate (e.g. for transformed function), It can be different from function_parameters because of making evaluations fast.
-                - restartYN 	 :  If False, try to find the values from Outputs/optimization_data.csv
-                - storeClass 	 :  If True, write a class pickle for well-behaved restarting
+                - cold_start 	 :  If False, try to find the values from Outputs/optimization_data.csv
+                - storeClass 	 :  If True, write a class pickle for well-behaved cold_starting
                 - askQuestions 	 :  To avoid that a SLURM job gets stop becuase something is asked, set to False
         """
 
         self.optimization_object = optimization_object
-        self.restartYN = restartYN
+        self.cold_start = cold_start
         self.storeClass = storeClass
         self.askQuestions = askQuestions
         self.seed = seed
         self.avoidPoints = []
 
-        if (not self.restartYN) and askQuestions:
+        if (not self.cold_start) and askQuestions:
             if not print(
-                f"\t* Because {restartYN = }, MITIM will try to read existing results from folder",
+                f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",
                 typeMsg="q",
             ):
                 raise Exception("[MITIM] - User requested to stop")
@@ -568,7 +568,7 @@ class PRF_BO:
             if (
                 (self.optimization_options["type_initialization"] == 1)
                 and (os.path.exists(self.folderExecution + "Execution/Evaluation.1/"))
-                and (self.restartYN)
+                and (self.cold_start)
             ):
                 print(
                     "\t--> Random initialization has been requested",
@@ -584,9 +584,9 @@ class PRF_BO:
 			------------------------------------------------------------------------------
 			"""
 
-            if (self.type_initialization == 3) and (self.restartYN):
+            if (self.type_initialization == 3) and (self.cold_start):
                 print(
-                    "\t* Initialization based on Tabular, yet restart has been requested. I am NOT removing the previous optimization_data",
+                    "\t* Initialization based on Tabular, yet cold_start has been requested. I am NOT removing the previous optimization_data",
                     typeMsg="w",
                 )
                 if self.askQuestions:
@@ -597,7 +597,7 @@ class PRF_BO:
                         embed()
                 forceNewTabulars = False
             else:
-                forceNewTabulars = self.restartYN
+                forceNewTabulars = self.cold_start
 
             inputs = [i for i in self.bounds]
 
@@ -681,7 +681,7 @@ class PRF_BO:
                     f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)"
                 )
 
-                # *NOTE*: self.x_next has been updated earlier, either from a restart or from the full workflow
+                # *NOTE*: self.x_next has been updated earlier, either from a cold_start or from the full workflow
                 yN, yNstd = self.updateSet(self.StrategyOptions_use)
 
                 # Stored in previous step
@@ -711,13 +711,13 @@ class PRF_BO:
                 self.optimization_data.data
             )  # Number of points that the Tabular contains
             pointsExpected = len(self.train_X) + self.best_points
-            if not self.restartYN:
+            if not self.cold_start:
                 if not pointsTabular >= pointsExpected:
                     print(
-                        f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling restarting-from-previous from this point on",
+                        f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",
                         typeMsg="w",
                     )
-                    self.restartYN = True
+                    self.cold_start = True
                 else:
                     print(
                         f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",
@@ -725,12 +725,12 @@ class PRF_BO:
                     )
 
             # In the case of starting from previous, do not run BO process.
-            if not self.restartYN:
+            if not self.cold_start:
                 """
-                Philosophy of restarting is:
-                        - Restarting requires that settings are the same (e.g. best_points).
-                        - Restarting requires Tabular data, since I will be grabbing from it.
-                        - The pkl file in restarting is only used to store the "step" data with opt info, but not
+                Philosophy of cold_starting is:
+                        - cold_starting requires that settings are the same (e.g. best_points).
+                        - cold_starting requires Tabular data, since I will be grabbing from it.
+                        - The pkl file in cold_starting is only used to store the "step" data with opt info, but not
                                 required to continue. But here I enforce it anyway. I want to know what I have done.
                         - Later I pass the x_next from the pickle, so I could just trust the pickle if I wanted.
                 """
@@ -740,7 +740,7 @@ class PRF_BO:
 
                 if current_step is None:
                     print(
-                        "\t* Because reading pkl step had problems, disabling restarting-from-previous from this point on",
+                        "\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",
                         typeMsg="w",
                     )
                     print(
@@ -748,9 +748,9 @@ class PRF_BO:
                         typeMsg="q",
                     )
 
-                    self.restartYN = True
+                    self.cold_start = True
 
-            if not self.restartYN:
+            if not self.cold_start:
                 # Read next from Tabular
                 self.x_next, _, _ = self.optimization_data.extract_points(
                     points=np.arange(
@@ -763,29 +763,29 @@ class PRF_BO:
                 if current_step is not None:
                     current_step.x_next = self.x_next
 
-                # If there is any Nan, assume that I cannot restart this step
+                # If there is any Nan, assume that I cannot cold_start this step
                 if IOtools.isAnyNan(self.x_next.cpu()):
                     print(
-                        "\t* Because x_next points have NaNs, disabling restarting-from-previous from this point on",
+                        "\t* Because x_next points have NaNs, disabling cold_starting-from-previous from this point on",
                         typeMsg="w",
                     )
-                    self.restartYN = True
+                    self.cold_start = True
 
                 # Step is valid, append to this current one
-                if not self.restartYN:
+                if not self.cold_start:
                     self.steps.append(current_step)
 
-                # When restarting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
+                # When cold_starting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
                 self.StrategyOptions_use = current_step.StrategyOptions_use
 
-                print("\t* Step successfully restarted from pkl file", typeMsg="i")
+                print("\t* Step successfully cold_started from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
-            if self.restartYN:
+            if self.cold_start:
                 # For standard use, use the actual strategyOptions launched
                 self.StrategyOptions_use = self.StrategyOptions
 
-                # Remove from tabular next points in case they were there. Since I'm not restarting, I don't care about what has come next
+                # Remove from tabular next points in case they were there. Since I'm not cold_starting, I don't care about what has come next
                 self.optimization_data.removePointsAfter(len(self.train_X) - 1)
 
                 """
@@ -844,7 +844,7 @@ class PRF_BO:
             self.x_next = self.steps[-1].x_next
 
             # ~~~~~~~~ Store class now with the next points found (after optimization)
-            if self.storeClass and self.restartYN:
+            if self.storeClass and self.cold_start:
                 self.save()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -871,7 +871,7 @@ class PRF_BO:
         """
 
         # -------------------------------------------------------------------------------------------------
-        # To avoid circularity when restarting, do not store the class in the optimization_results sub-class
+        # To avoid circularity when cold_starting, do not store the class in the optimization_results sub-class
         # -------------------------------------------------------------------------------------------------
 
         del copyClass.optimization_results.PRF_BO
@@ -1038,7 +1038,7 @@ class PRF_BO:
             self.outputs,
             self.optimization_data,
             parallel=self.parallel_evaluations,
-            restartYN=self.restartYN,
+            cold_start=self.cold_start,
             numEval=self.numEval,
         )
         txt_time = IOtools.getTimeDifference(time1)
@@ -1192,10 +1192,10 @@ class PRF_BO:
         # Force certain optimizations depending on existence of folders
         # -----------------------------------------------------------------
 
-        if (not self.restartYN) and (self.optimization_data is not None):
+        if (not self.cold_start) and (self.optimization_data is not None):
             self.type_initialization = 3
             print(
-                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
+                "--> Since cold_start from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
                 typeMsg="i",
             )
 
@@ -1214,7 +1214,7 @@ class PRF_BO:
 
             if not tabExists:
                 print(
-                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and restarting from scratch",
+                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",
                     typeMsg="i",
                 )
                 if self.askQuestions:
@@ -1223,17 +1223,17 @@ class PRF_BO:
                         embed()
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
 
         # -----------------------------------------------------------------
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.restartYN) or self.optimization_options[
+        readCasesFromTabular = (not self.cold_start) or self.optimization_options[
             "read_initial_training_from_csv"
         ]  # Read when starting from previous or forced it
 
-        # Restarted run from previous. Grab DVs of initial set
+        # cold_started run from previous. Grab DVs of initial set
         if readCasesFromTabular:
             try:
                 self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(
@@ -1253,24 +1253,24 @@ class PRF_BO:
 
             except:
                 flagger = print(
-                    "Error reading Tabular. Do you want to continue without restart and do standard initialization instead?",
+                    "Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",
                     typeMsg="q",
                 )
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
                 readCasesFromTabular = False
 
             if readCasesFromTabular and IOtools.isAnyNan(self.train_X):
                 flagger = print(
-                    " --> Restart requires non-nan DVs, doing normal initialization",
+                    " --> cold_start requires non-nan DVs, doing normal initialization",
                     typeMsg="q",
                 )
                 if not flagger:
                     embed()
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
                 readCasesFromTabular = False
 
         # Standard - RUN
@@ -1372,7 +1372,7 @@ class PRF_BO:
             self.outputs,
             self.optimization_data,
             parallel=self.parallel_evaluations,
-            restartYN=(not readCasesFromTabular),
+            cold_start=(not readCasesFromTabular),
             numEval=self.numEval,
         )
 
@@ -1976,16 +1976,16 @@ def avoidClassInitialization(folderWork):
         ) as handle:
             aux = pickle_dill.load(handle)
         opt_fun = aux.optimization_object
-        restart = False
-        print("\t- Restart was successful", typeMsg="i")
+        cold_start = False
+        print("\t- cold_start was successful", typeMsg="i")
     except:
         opt_fun = None
-        restart = True
-        flagger = print("\t- Restart was requested but it didnt work (c)", typeMsg="q")
+        cold_start = True
+        flagger = print("\t- cold_start was requested but it didnt work (c)", typeMsg="q")
         if not flagger:
             embed()
 
-    return opt_fun, restart
+    return opt_fun, cold_start
 
 
 """

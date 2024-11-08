@@ -350,7 +350,7 @@ def correctionsSet(self, StrategyOptions_use):
     #     if self.currentIteration in SwitchIterations:
     #         changesMade += 1
     #         print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-    #         print(' Evaluations: {0}. So I am restarting entire process by reducing bounds by {1}%'.format(self.train_X.shape[0],BoundsReduction*100))
+    #         print(' Evaluations: {0}. So I am cold_starting entire process by reducing bounds by {1}%'.format(self.train_X.shape[0],BoundsReduction*100))
     #         print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
 
     #         atleastone  = modifyTrustRegion(self,BoundsReduction=BoundsReduction,pointsToAdd=None,seed=seed)

@@ -100,11 +100,11 @@ Then, create an object from the previously defined class:
 
    Note that at this point, you can pass any parameter that you want, just changing the ``__init__()`` method as appropriate.
 
-Now we can create and launch the MITIM optimization process from the beginning (i.e. ``restart = True``):
+Now we can create and launch the MITIM optimization process from the beginning (i.e. ``cold_start = True``):
 
 .. code-block:: python
 
-   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, restartYN = True )
+   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, cold_start = True )
    PRF_BO.run()
 
 Once finished, we can plot the results easily with:

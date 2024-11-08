@@ -212,14 +212,14 @@ class TGLF:
     def prep(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        restart=False,  # If True, do not use what it potentially inside the folder, run again
+        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
         recalculatePTOT=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
-        forceIfRestart=False,  # Extra flag
+        forceIfcold_start=False,  # Extra flag
         ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
@@ -244,11 +244,11 @@ class TGLF:
         )
         self.tgyro.prep(
             FolderGACODE,
-            restart=restart,
+            cold_start=cold_start,
             remove_tmp=True,
             subfolder="tmp_tgyro_prep",
             profilesclass_custom=profiles,
-            forceIfRestart=forceIfRestart,
+            forceIfcold_start=forceIfcold_start,
         )
 
         self.FolderGACODE, self.FolderGACODE_tmp = (
@@ -263,7 +263,7 @@ class TGLF:
         if specificInputs is None:
             print("\t- Testing... do TGLF files already exist?")
 
-            exists = not restart
+            exists = not cold_start
             for j in self.rhos:
                 fii = self.FolderGACODE / f"input.tglf_{j:.4f}"
                 if os.path.exists(fii):
@@ -292,7 +292,7 @@ class TGLF:
 
             self.tgyro_results = self.tgyro.run_tglf_scan(
                 rhos=self.rhos,
-                restart=not exists,
+                cold_start=not exists,
                 onlyThermal=onlyThermal_TGYRO,
                 recalculatePTOT=recalculatePTOT,
                 donotrun=donotrun,
@@ -356,14 +356,14 @@ class TGLF:
     def prep_direct_tglf(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        restart=False,  # If True, do not use what it potentially inside the folder, run again
+        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
         onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
         recalculatePTOT=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
         tgyro_results=None,  # *NOTE BELOW*
-        forceIfRestart=False,  # Extra flag
+        forceIfcold_start=False,  # Extra flag
         ):
         """
         * Note on inputgacode, specificInputs and tgyro_results:
@@ -390,11 +390,11 @@ class TGLF:
             )
             self.tgyro.prep(
                 FolderGACODE,
-                restart=restart,
+                cold_start=cold_start,
                 remove_tmp=True,
                 subfolder="tmp_tgyro_prep",
                 profilesclass_custom=self.profiles,
-                forceIfRestart=forceIfRestart,
+                forceIfcold_start=forceIfcold_start,
             )
 
             self.profiles = self.tgyro.profiles
@@ -425,8 +425,8 @@ class TGLF:
 
         self.FolderGACODE = IOtools.expandPath(FolderGACODE)
         
-        if restart or not self.FolderGACODE.exists():
-            IOtools.askNewFolder(self.FolderGACODE, force=forceIfRestart)
+        if cold_start or not self.FolderGACODE.exists():
+            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
 
         for rho in self.inputsTGLF:
             self.inputsTGLF[rho].file = f'{self.FolderGACODE}/input.tglf_{rho:.4f}'
@@ -520,8 +520,8 @@ class TGLF:
         ApplyCorrections=True,  # Removing ions with too low density and that are fast species
         Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
         launchSlurm=True,
-        restart=False,
-        forceIfRestart=False,
+        cold_start=False,
+        forceIfcold_start=False,
         extra_name="exe",
         anticipate_problems=True,
         slurm_setup={
@@ -548,8 +548,8 @@ class TGLF:
             ApplyCorrections=ApplyCorrections,
             Quasineutral=Quasineutral,
             launchSlurm=launchSlurm,
-            restart=restart,
-            forceIfRestart=forceIfRestart,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
             anticipate_problems=anticipate_problems,
@@ -568,8 +568,8 @@ class TGLF:
             ApplyCorrections=ApplyCorrections,
             Quasineutral=Quasineutral,
             launchSlurm=launchSlurm,
-            restart=restart,
-            forceIfRestart=forceIfRestart,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
         )
@@ -639,8 +639,8 @@ class TGLF:
         ApplyCorrections=True,  # Removing ions with too low density and that are fast species
         Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
         launchSlurm=True,
-        restart=False,
-        forceIfRestart=False,
+        cold_start=False,
+        forceIfcold_start=False,
         anticipate_problems=True,
         extra_name="exe",
         slurm_setup={
@@ -666,17 +666,17 @@ class TGLF:
         self.ResultsFiles = ResultsFiles_new
 
         # Do I need to run all radii?
-        rhosEvaluate = restart_checker(
+        rhosEvaluate = cold_start_checker(
             rhos,
             self.ResultsFiles,
             FolderTGLF,
-            restart=restart,
-            forceIfRestart=forceIfRestart,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
         )
 
         if len(rhosEvaluate) == len(rhos):
             # All radii need to be evaluated
-            IOtools.askNewFolder(FolderTGLF, force=forceIfRestart)
+            IOtools.askNewFolder(FolderTGLF, force=forceIfcold_start)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Change this specific run of TGLF
@@ -757,7 +757,7 @@ class TGLF:
                     ]["folder"]
 
                     self.ky_single = None
-                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, restartWF = False)
+                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
                     self.ky_single = kys
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
@@ -853,7 +853,7 @@ class TGLF:
         folder=None,  # If None, search in the previously run folder
         suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
-        restartWF = True, # If this is a "complete" read, I will assign a None
+        cold_startWF = True, # If this is a "complete" read, I will assign a None
     ):
         print("> Reading TGLF results")
 
@@ -928,7 +928,7 @@ class TGLF:
                     continue
 
                 if folder not in self.FoldersTGLF_WF[f'ky{ky_single0}']:
-                    print(f"\t - Results not found for ky={ky_single0}, likely due to a restart with no wavefunction option", typeMsg="w")
+                    print(f"\t - Results not found for ky={ky_single0}, likely due to a cold_start with no wavefunction option", typeMsg="w")
                     continue
 
                 self.results[label]["wavefunction"][f"ky{ky_single0}"] = {}
@@ -943,7 +943,7 @@ class TGLF:
                     )
 
         # After read, go back to no waveforms in case I want to read another case without it
-        if restartWF:
+        if cold_startWF:
             self.ky_single = None
 
     def plot(
@@ -2377,7 +2377,7 @@ class TGLF:
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
             self.read(
-                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult], restartWF = False
+                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult], cold_startWF = False
             )
 
     def _prepare_scan(
@@ -2435,9 +2435,9 @@ class TGLF:
             if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
                 kwargs_TGLFrun["Quasineutral"] = True
 
-            # Only ask the restart in the first round
-            kwargs_TGLFrun["forceIfRestart"] = cont_mult > 0 or (
-                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            # Only ask the cold_start in the first round
+            kwargs_TGLFrun["forceIfcold_start"] = cont_mult > 0 or (
+                "forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"]
             )
 
             tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
@@ -3174,9 +3174,9 @@ class TGLF:
 
         tglf_executor, tglf_executor_full, folders = {}, {}, []
         for cont, variable in enumerate(self.variablesDrives):
-            # Only ask the restart in the first round
-            kwargs_TGLFrun["forceIfRestart"] = cont > 0 or (
-                "forceIfRestart" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfRestart"]
+            # Only ask the cold_start in the first round
+            kwargs_TGLFrun["forceIfcold_start"] = cont > 0 or (
+                "forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"]
             )
 
             scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
@@ -3211,7 +3211,7 @@ class TGLF:
             for mult in varUpDown_dict[variable]:
                 name = f"{variable}_{mult}"
                 self.read(
-                    label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], restartWF = False
+                    label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], cold_startWF = False
                 )
                 cont += 1
 
@@ -6328,17 +6328,17 @@ def createCombinedRuns(tglfs=(), new_names=(), results_names=(), isItScan=False)
     return tglf, normalizations
 
 
-def restart_checker(
+def cold_start_checker(
     rhos,
     ResultsFiles,
     FolderTGLF,
-    restart=False,
-    forceIfRestart=False,
+    cold_start=False,
+    forceIfcold_start=False,
 ):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
     """
-    if restart:
+    if cold_start:
         rhosEvaluate = rhos
     else:
         rhosEvaluate = []

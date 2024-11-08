@@ -1472,8 +1472,8 @@ class optimization_results:
         return f"\n\t y{stry} :\n{xb}", l2, np.array(allY)
 
     def createHeaders(self):
-        if self.PRF_BO.restartYN:
-            txtR = "\n* Restarting capability requested, looking into previous optimization_data.dat"
+        if self.PRF_BO.cold_start:
+            txtR = "\n* cold_starting capability requested, looking into previous optimization_data.dat"
         else:
             txtR = ""
 
@@ -1570,7 +1570,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         self.gatherOptima()
 
-        # Gather base (may not be evaluation #0 if I have restarted from Tabular !!!!)
+        # Gather base (may not be evaluation #0 if I have cold_started from Tabular !!!!)
         self.DVbase = {}
         cont_bug = 0
         for i in range(len(lines)):

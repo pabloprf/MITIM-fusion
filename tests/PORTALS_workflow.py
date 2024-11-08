@@ -3,7 +3,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_tools import __mitimroot__
 
-restart = False
+cold_start = False
 
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
@@ -11,7 +11,7 @@ restart = False
 inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
-if restart and folderWork.exists():
+if cold_start and folderWork.exists():
     os.system(f"rm -r {folderWork.resolve()}")
 
 # --------------------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ portals_fun.prep(inputgacode)
 # --------------------------------------------------------------------------------------------
 
 # Run
-prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=restart, askQuestions=False)
+prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=cold_start, askQuestions=False)
 prf_bo.run()
 
 # Plot

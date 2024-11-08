@@ -4,11 +4,11 @@ from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
 folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 
-if restart and os.path.exists(folder):
+if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
 folder.mkdir(parents=True, exist_ok=True)
@@ -30,7 +30,7 @@ portals_namelist = { "optimization_options": {"BO_iterations": 2 },
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro():
 
-    m = MAESTROmain.maestro(folder, master_restart = restart, terminal_outputs = False)
+    m = MAESTROmain.maestro(folder, master_cold_start = cold_start, terminal_outputs = False)
 
     m.define_beat('transp', initializer='freegs')
     m.define_creator('parameterization', **params_bc, **params_init)

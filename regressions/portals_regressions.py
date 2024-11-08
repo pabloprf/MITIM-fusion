@@ -64,7 +64,7 @@ for test in tests:
             ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
 
             portals_fun.prep(inputgacode, folderWork, ModelOptions=ModelOptions)
-            prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=False, askQuestions=False)
+            prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
             prf_bo.run()
 
         # Checks
@@ -102,7 +102,7 @@ for test in tests:
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
             portals_fun.prep(inputgacode, folderWork)
-            prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=False, askQuestions=False)
+            prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
             prf_bo.run()
 
         # Checks
@@ -142,7 +142,7 @@ for test in tests:
         #     portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
 
         #     portals_fun.prep(inputgacode, folderWork)
-        #     prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=False, askQuestions=False)
+        #     prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
         #     prf_bo.run()
 
         #     with open(prf_bo.optimization_object.optimization_extra, "rb") as f:

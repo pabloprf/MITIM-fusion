@@ -189,12 +189,12 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                 # ---------------------
                 if dictInfo["info"]["status"] != "not found":
                     # ---------------------
-                    # If run is "missing_NBI", it means stopped, but TRANSP team may restart it if they realize
+                    # If run is "missing_NBI", it means stopped, but TRANSP team may cold_start it if they realize
                     # ---------------------
                     NBImissing_wait = 3600 * 2
                     if dictInfo["info"]["status"] == "missing_nbi":
                         print(
-                            '\t- Run {0} is stopped by "time out", wait 3h for TRANSP team to restart'.format(
+                            '\t- Run {0} is stopped by "time out", wait 3h for TRANSP team to cold_start'.format(
                                 self.runid
                             ),
                             typeMsg="w",
@@ -986,13 +986,13 @@ def getGridInformation(runid, project=None, NBImissing_isStopped=True):
             try:
                 time1 = float(
                     infoGrid["info"]["Mark"]
-                    .split("Restart mark set to:")[1]
+                    .split("cold_start mark set to:")[1]
                     .split("(sec)")[0]
                     .split("/")[0]
                 )
                 time2 = float(
                     infoGrid["info"]["Mark"]
-                    .split("Restart mark set to:")[1]
+                    .split("cold_start mark set to:")[1]
                     .split("(sec)")[0]
                     .split("/")[1]
                 )
@@ -1001,7 +1001,7 @@ def getGridInformation(runid, project=None, NBImissing_isStopped=True):
                 time2 = 0.0
 
             dictStatus["cputime"] = cpuTime
-            dictStatus["MarkRestart"] = np.array([time1, time2])
+            dictStatus["Markcold_start"] = np.array([time1, time2])
 
         infoGridInfo = infoGrid["info"]
 
@@ -1338,7 +1338,7 @@ def interpretError(errorinfo):
         extra = ""
 
     else:
-        status = "Run needs to be restarted, probably out of memory."
+        status = "Run needs to be cold_started, probably out of memory."
         recommendation = "Wait for TRANSP team"
         extra = "missing_nbi"
 
