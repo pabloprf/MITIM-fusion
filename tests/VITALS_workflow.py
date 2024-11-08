@@ -11,8 +11,8 @@ restart = True
 # Inputs
 # ********************************************************************************
 
-inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folderWork = __mitimroot__ + "/tests/scratch/vitals_test/"
+inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+folderWork = __mitimroot__ / "tests" / "scratch" / "vitals_test"
 
 if restart and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
@@ -65,7 +65,7 @@ tglf.NormalizationSets["EXP"]["exp_Qi_error"] = [Qi_base * 0.2]
 # Prepare VITALS
 # ********************************************************************************
 
-file = folderWork + "tglf.pkl"
+file = folderWork / "tglf.pkl"
 tglf.save_pkl(file)
 
 vitals_fun = VITALSmain.vitals(folderWork)
