@@ -134,7 +134,7 @@ class transp_output:
 
         # Capability to provide folder and just find the CDF in there
         if self.LocationCDF.is_dir(): 
-            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True, provide_full_path = True)
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
                 raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
