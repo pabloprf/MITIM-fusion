@@ -1,10 +1,4 @@
 import os
-from pathlib import Path
-
-from mitim_tools.misc_tools.CONFIGread import config_manager
-configpath = Path('../../config/mitim_config_user.json')
-config_manager.set(f'{configpath.resolve()}')
-
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
@@ -19,7 +13,7 @@ rundir = __mitimroot__ / "tests" / "scratch/"
 rundir.mkdir(parents=True, exist_ok=True)
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
-folder = __mitimroot__ / "tests" / "scratch" /" tgyro_test"
+folder = __mitimroot__ / "tests" / "scratch" / "tgyro_test"
 
 if restart and folder.exists():
     os.system(f"rm -r {folder.resolve()}")

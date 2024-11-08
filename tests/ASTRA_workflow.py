@@ -1,8 +1,11 @@
-from mitim_tools.astra_tools import ASTRAtools    
+from mitim_tools.astra_tools import ASTRAtools 
+from mitim_tools import __mitimroot__   
 
 astra = ASTRAtools.ASTRA()
 
-astra.prep('~/scratch/testAstra/')
+folder = __mitimroot__ / "tests" / "scratch" / "astra_test"
+
+astra.prep(folder)
 
 #astra.expfile = ''
 
