@@ -177,7 +177,7 @@ class transp_beat(beat):
 
         # Write the pre-merge input.gacode before modifying it
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
+        profiles_output_pre_merge.writeCurrentStatus(file=self.folder_output /"'input.gacode_pre_merge")
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -208,7 +208,7 @@ class transp_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+        self.profiles_output.writeCurrentStatus(file= self.folder_output / "input.gacode")
 
     def grab_output(self):
 
@@ -216,7 +216,7 @@ class transp_beat(beat):
 
         if isitfinished:
             c = CDFtools.transp_output(self.folder_output)
-            profiles = PROFILEStools.PROFILES_GACODE(f'{self.folder_output}/input.gacode')
+            profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode')
         else:
             # Trying to see if there's an intermediate CDF in folder
             print('\t\t- Searching for intermediate CDF in folder')
@@ -241,10 +241,10 @@ class transp_beat(beat):
 
     def finalize_maestro(self):
 
-        cdf = CDFtools.transp_output(f"{self.folder}/{self.transp.shot}{self.transp.runid}.CDF")
+        cdf = CDFtools.transp_output(self.folder / f"{self.transp.shot}{self.transp.runid}.CDF")
         self.maestro_instance.final_p = cdf.to_profiles()
         
-        final_file = f'{self.maestro_instance.folder_output}/input.gacode_final'
+        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
