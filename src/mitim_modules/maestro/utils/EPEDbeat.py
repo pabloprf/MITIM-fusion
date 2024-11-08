@@ -50,7 +50,7 @@ class eped_beat(beat):
         # Save stuff
         # -------------------------------------------------------
 
-        np.save(f'{self.folder_output}/eped_results.npy', eped_results)
+        np.save(self.folder_output / 'eped_results.npy', eped_results)
 
         self.rhotop = eped_results['rhotop']
 
@@ -239,7 +239,7 @@ class eped_beat(beat):
 
         loaded_results, profiles = self.grab_output()
 
-        profiles_current = PROFILEStools.PROFILES_GACODE(f'{self.folder}/input.gacode')
+        profiles_current = PROFILEStools.PROFILES_GACODE(self.folder /'input.gacode')
 
         profiles_current.plotRelevant(axs = axs, color = 'b', label = 'orig')
         
@@ -265,7 +265,7 @@ class eped_beat(beat):
 
         self.maestro_instance.final_p = self.profiles_output
         
-        final_file = f'{self.maestro_instance.folder_output}/input.gacode_final'
+        final_file = self.maestro_instance.folder_output /'input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
