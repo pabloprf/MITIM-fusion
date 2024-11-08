@@ -398,7 +398,7 @@ class PRF_BO:
         self.folderOutputs = self.folderExecution / "Outputs"
 
         if optimization_object.optimization_options is not None:
-            if not os.path.exists(self.folderOutputs):
+            if not self.folderOutputs.exists():
                 IOtools.askNewFolder(self.folderOutputs, force=True)
 
             """
@@ -407,11 +407,11 @@ class PRF_BO:
 			Do not carry out this dictionary through the workflow, just read and write
 			"""
 
-            self.optimization_extra = f"{self.folderOutputs}/optimization_extra.pkl"
+            self.optimization_extra = self.folderOutputs / "optimization_extra.pkl"
 
             # Read if exists
             exists = False
-            if os.path.exists(self.optimization_extra):
+            if self.optimization_extra.exists():
                 try:
                     with open(self.optimization_extra, "rb") as handle:
                         dictStore = pickle_dill.load(handle)
@@ -567,7 +567,7 @@ class PRF_BO:
 
             if (
                 (self.optimization_options["type_initialization"] == 1)
-                and (os.path.exists(self.folderExecution + "Execution/Evaluation.1/"))
+                and ((self.folderExecution / "Execution" / "Evaluation.1").exists())
                 and (self.cold_start)
             ):
                 print(
@@ -912,8 +912,8 @@ class PRF_BO:
 
     def save(self, name="optimization_object.pkl"):
         print("* Proceeding to save new MITIM state pickle file")
-        stateFile = f"{self.folderOutputs}/{name}"
-        stateFile_tmp = f"{self.folderOutputs}/{name}_tmp"
+        stateFile = self.folderOutputs / f"{name}"
+        stateFile_tmp = self.folderOutputs / f"{name}_tmp"
 
         # Do not store certain variables (that cannot even be copied, that's why I do it here)
         saver = {}
@@ -937,8 +937,8 @@ class PRF_BO:
             self.optimization_object.__dict__[ikey] = saver[ikey]
         # -----------------------------------------------------------------------------------
 
-        os.system(
-            f"mv {stateFile_tmp} {stateFile}"
+        os.rename(
+            f"{stateFile_tmp}", f"{stateFile}"
         )  # This way I reduce the risk of getting a mid-creation file
 
         print(
@@ -951,7 +951,7 @@ class PRF_BO:
         iteration = iteration or self.currentIteration
 
         print("- Reading pickle file with optimization_object class")
-        stateFile = file if (file is not None) else f"{self.folderOutputs}/{name}"
+        stateFile = file if (file is not None) else self.folderOutputs / f"{name}"
 
         try:
             # If I don't create an Individual attribute I cannot unpickle GA information
@@ -1309,7 +1309,7 @@ class PRF_BO:
                     raise Exception("Option not implemented yet")
                 elif self.type_initialization == 3:
                     self.train_X = SAMPLINGtools.readInitializationFile(
-                        f"{self.folderExecution}/Outputs/optimization_data.csv",
+                        self.folderExecution / "Outputs" / "optimization_data.csv",
                         self.initial_training,
                         self.stepSettings["optimization_options"]["dvs"],
                     )
@@ -1972,7 +1972,7 @@ def avoidClassInitialization(folderWork):
 
     try:
         with open(
-            f"{IOtools.expandPath(folderWork)}/Outputs/optimization_object.pkl", "rb"
+            IOtools.expandPath(folderWork) / "Outputs" / "optimization_object.pkl", "rb"
         ) as handle:
             aux = pickle_dill.load(handle)
         opt_fun = aux.optimization_object

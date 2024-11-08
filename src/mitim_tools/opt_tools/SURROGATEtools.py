@@ -577,7 +577,7 @@ class surrogate_model:
 
         new_df = create_df_portals(x,y,yvar,dv_names_Complete,self.output)
 
-        if os.path.exists(self.fileTraining):
+        if self.fileTraining.exists():
 
             # Load the existing DataFrame from the HDF5 file
             existing_df = pd.read_csv(self.fileTraining)
