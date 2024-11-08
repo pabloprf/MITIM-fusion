@@ -3,8 +3,8 @@ from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
 
 # Select the input.gacode file to start from and the folder where everything will be stored
-inputgacode_file = __mitimroot__+"/tests/data/input.gacode"
-folder = __mitimroot__+"/tests/scratch/tglf_tut/"
+inputgacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" / "tglf_tut"
 
 # Initialize the TGLF class with the rho (square root of the normalized toroidal flux) values
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
@@ -20,7 +20,7 @@ Run standandalone TGLF
 
 # Run TGLF in subfolder
 tglf.run(
-    subFolderTGLF="yes_em_folder/",
+    subFolderTGLF="yes_em_folder",
     TGLFsettings=5,
     extraOptions={},
     cold_start=False
@@ -31,7 +31,7 @@ tglf.read(label="yes_em")
 
 # Run TGLF in a different subfolder with different settings
 tglf.run(
-    subFolderTGLF="no_em_folder/",
+    subFolderTGLF="no_em_folder",
     TGLFsettings=5,
     extraOptions={"USE_BPER": False},
     cold_start=False,
@@ -49,7 +49,7 @@ Run TGLF scan
 ***************************************************************************
 '''
 
-tglf.runScan(	subFolderTGLF = 'scan1/',
+tglf.runScan(	subFolderTGLF = 'scan1',
                 TGLFsettings  = 5,
                 cold_start       = False,
                 variable      = 'RLTS_1',
@@ -57,7 +57,7 @@ tglf.runScan(	subFolderTGLF = 'scan1/',
 tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 
-tglf.runScan(	subFolderTGLF = 'scan2/',
+tglf.runScan(	subFolderTGLF = 'scan2',
                 TGLFsettings  = 5,
                 cold_start       = False,
                 variable      = 'RLTS_2',
@@ -74,7 +74,7 @@ Automatic scan of turbulence drives
 '''
 
 tglf.runScanTurbulenceDrives(	
-                subFolderTGLF = 'turb_drives/',
+                subFolderTGLF = 'turb_drives',
                 TGLFsettings  = 5,
                 cold_start       = False)
 
@@ -87,7 +87,7 @@ Automatic scan of turbulence drives
 '''
 
 tglf.runAnalysis(
-            subFolderTGLF 	= 'chi_e/',
+            subFolderTGLF 	= 'chi_e',
             analysisType  	= 'chi_e',
             TGLFsettings  	= 5,
             cold_start 		= False,
@@ -103,7 +103,7 @@ Explore all available MITIM settings for TGLF (with waveforms)
 
 for i in[1,2,3,4,5,6]:
     tglf.run(
-        subFolderTGLF = f'settings{i}/',
+        subFolderTGLF = f'settings{i}',
         runWaveForms  = [0.67],
         TGLFsettings  = i,
         cold_start       = False)
