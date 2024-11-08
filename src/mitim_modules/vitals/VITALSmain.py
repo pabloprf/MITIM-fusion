@@ -16,7 +16,7 @@ def default_namelist(optimization_options):
     optimization_options["BO_iterations"] = 20
     optimization_options["points_per_step"] = 4
     optimization_options["parallel_evaluations"] = (
-        4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
+        1  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )
     optimization_options["surrogateOptions"]["TypeMean"] = 2
     optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.1, 0.1]
@@ -192,7 +192,7 @@ class vitals(STRATEGYtools.opt_evaluator):
             variation,
             label="tglf1",
             launchSlurm=launchSlurm,
-            evNum=paramsfile.split(".")[-1],
+            evNum=f'{paramsfile}'.split(".")[-1],
         )
 
         # Evaluate
@@ -286,9 +286,9 @@ def runTGLF(
     initializationFolder = copy.deepcopy(tglf.FolderGACODE)
     tglf.FolderGACODE = FolderEvaluation
 
-    numSim = self.folder.split("/")[-1]
+    numSim = f'{self.folder}'.split("/")[-1]
     if len(numSim) < 1:
-        numSim = self.folder.split("/")[-2]
+        numSim = f'{self.folder}'.split("/")[-2]
 
     variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
 
@@ -305,7 +305,7 @@ def runTGLF(
         folder_label = label
 
     tglf.run(
-        subFolderTGLF=f"{folder_label}/",
+        subFolderTGLF=f"{folder_label}",
         cold_start=cold_start,
         TGLFsettings=self.TGLFparameters["TGLFsettings"],
         forceIfcold_start=True,
@@ -336,7 +336,7 @@ def analyze_results(
         # ----------------------------------------------------------------------------------------------------------------
 
         self.tglf_final = self_complete.tglf
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
+        FolderEvaluation = f"{self.folder}" / "Outputs" / "final_analysis"
         os.makedirs(FolderEvaluation, exist_ok=True)
 
         launchSlurm = True
@@ -376,7 +376,7 @@ def analyze_results(
 
         if storeResults:
             # Save tglf file
-            file = file = f"{self.folder}/Outputs/final_analysis/tglf.pkl"
+            file = file = f"{self.folder}" / "Outputs" / "final_analysis" / "tglf.pkl"
             self.tglf_final.save_pkl(file)
 
             # Store dictionary of results (unfortunately so far the dictionary is created at plotting... I have to improve this)
