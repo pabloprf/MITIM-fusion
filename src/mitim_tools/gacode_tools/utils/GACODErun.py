@@ -245,7 +245,7 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
             f.write(f"nshot = {nameRunid}")
         dummy = True
     else:
-        LocationNML_orig = Folder + NML + "TR.DAT"
+        LocationNML_orig = Folder / NML / "TR.DAT"
         print(
             f"\t\t- Namelist was found: {NML}TR.DAT, copying to ...{LocationNML[np.max([-40,-len(LocationNML)]):]}"
         )
