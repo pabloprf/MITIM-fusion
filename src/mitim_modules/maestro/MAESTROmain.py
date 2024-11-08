@@ -39,9 +39,9 @@ class maestro:
 
         self.folder = IOtools.expandPath(folder)
         
-        self.folder_output = f'{self.folder}/Outputs/'
-        self.folder_logs = f'{self.folder_output}/Logs/'
-        self.folder_beats = f'{self.folder}/Beats/'
+        self.folder_output = self.folder / "Outputs"
+        self.folder_logs = self.folder_output / "Logs"
+        self.folder_beats = self.folder / "Beats"
 
         os.makedirs(self.folder_logs, exist_ok=True)
         os.makedirs(self.folder_beats, exist_ok=True)
