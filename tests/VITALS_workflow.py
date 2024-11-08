@@ -5,7 +5,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.vitals import VITALSmain
 from mitim_tools import __mitimroot__
 
-cold_start = True
+cold_start = False
 
 # ********************************************************************************
 # Inputs
@@ -78,7 +78,7 @@ vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
 # Run VITALS
 # ********************************************************************************
 
-PRF_BO = STRATEGYtools.PRF_BO(vitals_fun, cold_start=False, askQuestions=False)
+PRF_BO = STRATEGYtools.PRF_BO(vitals_fun, cold_start=cold_start, askQuestions=False)
 PRF_BO.run()
 
 vitals_fun.plot_optimization_results(analysis_level=4)

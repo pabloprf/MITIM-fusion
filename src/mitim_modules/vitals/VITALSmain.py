@@ -336,7 +336,7 @@ def analyze_results(
         # ----------------------------------------------------------------------------------------------------------------
 
         self.tglf_final = self_complete.tglf
-        FolderEvaluation = f"{self.folder}" / "Outputs" / "final_analysis"
+        FolderEvaluation = self.folder / "Outputs" / "final_analysis"
         os.makedirs(FolderEvaluation, exist_ok=True)
 
         launchSlurm = True
@@ -376,7 +376,7 @@ def analyze_results(
 
         if storeResults:
             # Save tglf file
-            file = file = f"{self.folder}" / "Outputs" / "final_analysis" / "tglf.pkl"
+            file = file = self.folder / "Outputs" / "final_analysis" / "tglf.pkl"
             self.tglf_final.save_pkl(file)
 
             # Store dictionary of results (unfortunately so far the dictionary is created at plotting... I have to improve this)
