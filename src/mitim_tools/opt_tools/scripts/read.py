@@ -43,8 +43,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     folderWorks = []
     names = []
     for cont, i in enumerate(folders):
-        folderWorks.append(IOtools.expandPath(i + "/"))
-        names.append("run" + folderWorks[-1].replace("/", "").split("run")[-1])
+        folderWorks.append(IOtools.expandPath(i))
+        names.append("run" + f"{folderWorks[-1].name}".replace("/", "").split("run")[-1])
     colors = GRAPHICStools.listColors()
 
     plt.close("all")
@@ -149,14 +149,14 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     logS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
         res = BOgraphics.optimization_results(
-            f"{folderWork}/Outputs/optimization_results.out"
+            folderWork / "Outputs" / "optimization_results.out"
         )
         res.readClass(
-            STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
+            STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
         )
         res.read()
 
-        log_class = BOgraphics.LogFile(folderWork + "/Outputs/optimization_log.txt")
+        log_class = BOgraphics.LogFile(folderWork / "Outputs" / "optimization_log.txt")
 
         try:
             log_class.interpret()

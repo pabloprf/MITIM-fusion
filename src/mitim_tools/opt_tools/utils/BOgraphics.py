@@ -1152,7 +1152,7 @@ class optimization_data:
         self,
         inputs,
         outputs,
-        file="Outputs/optimization_data.dat",
+        file,
         forceNew=False,
     ):
         # If start from scratch, overwrite the tabular, otherwise there's risk of error if not all OFs coincide, that's why forceNew
@@ -1297,7 +1297,7 @@ class optimization_data:
 
 
 class optimization_results:
-    def __init__(self, file="Outputs/optimization_results.out"):
+    def __init__(self, file):
         self.file = file
         self.predictedSofar = 0
 
