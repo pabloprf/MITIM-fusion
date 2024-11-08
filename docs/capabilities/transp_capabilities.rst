@@ -22,6 +22,7 @@ For this tutorial we will need the following modules:
 .. code-block:: python
 
 	import os
+	from pathlib import Path
 	from mitim_tools.transp_tools import TRANSPtools
 
 TRANSP runs are very personal and specific to each tokamak and plasma, as diagnostic availability strongly varies and namelist settings are not standarized.
@@ -29,8 +30,8 @@ For this reason, this workflow assumes that a folder exists with all the plasma 
 
 .. code-block:: python
 
-	folder_original = 'MITIM-fusion/tests/data/FolderTRANSP/'
-	folder 			= "MITIM-fusion/tests/scratch/transp_tut/"
+	folder_original = Path("MITIM-fusion/tests/data/FolderTRANSP/")
+	folder 			= Path("MITIM-fusion/tests/scratch/transp_tut/")
 	os.system(f'rm -r {folder}')
 	os.system(f'cp -r {folder_original} {folder}')
 

@@ -36,14 +36,15 @@ For this tutorial we will need the following modules:
 
    import torch
    import numpy as np
+   from pathlib import Path
    from mitim_tools.opt_tools     import STRATEGYtools
 
 Select the location of the MITIM namelist (see :ref:`Understanding the MITIM namelist` to understand how to construct the namelist file) and the folder to work on:
 
 .. code-block:: python
 
-   folder    = 'MITIM-fusion/tests/scratch/mitim_tut/'
-   namelist  = 'MITIM-fusion/templates/main.namelist.json'
+   folder    = Path('MITIM-fusion/tests/scratch/mitim_tut')
+   namelist  = Path('MITIM-fusion/templates/main.namelist.json')
 
 Then create your custom optimization object as a child of the parent ``STRATEGYtools.opt_evaluator`` class.
 You only need to modify what operations need to occur inside the ``run()`` (where operations/simulations happen) and ``scalarized_objective()`` (to define what is the target to maximize) methods.
@@ -104,7 +105,7 @@ Now we can create and launch the MITIM optimization process from the beginning (
 
 .. code-block:: python
 
-   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, cold_start = True )
+   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, cold_startYN = True )
    PRF_BO.run()
 
 Once finished, we can plot the results easily with:
