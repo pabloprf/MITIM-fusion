@@ -221,7 +221,7 @@ def main():
     args = parser.parse_args()
 
     analysis_level = args.type
-    folders_reduced = args.folders
+    folders_reduced = [IOtools.expandPath(folder) for folder in args.folders]
     folderRemote_reduced = args.remote
     seeds = args.seeds
     resolution = args.resolution
@@ -235,15 +235,12 @@ def main():
 
     if seeds is not None:
         for i in range(len(folders_reduced)):
-            if folders_reduced[i][-1] == "/":
-                folders_reduced[i] = folders_reduced[i][:-1]
-
             aux = [f"{folders_reduced[i]}_s{k}" for k in range(seeds)]
             del folders_reduced[i]
             folders_reduced.extend(aux)
 
     foldersWork = [
-        IOtools.expandPath(folder_reduced + "/", ensurePathValid=True)
+        IOtools.expandPath(folder_reduced, ensurePathValid=True)
         for folder_reduced in folders_reduced
     ]
     reduced_folders = [
