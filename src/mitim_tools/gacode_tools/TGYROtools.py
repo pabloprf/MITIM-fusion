@@ -364,7 +364,7 @@ class TGYRO:
                 self.FolderTGYRO_cold_started = self.FolderGACODE / TGYROcontinue
 
                 for i in self.outputFiles:
-                    inputFiles_TGYRO.append(self.FolderTGYRO_restarted / i)
+                    inputFiles_TGYRO.append(self.FolderTGYRO_cold_started / f"{i}")
 
         """ -----------------------------------
 		 	Create TGLF file (only control info, no species)
@@ -402,7 +402,7 @@ class TGYRO:
             )
             self.profiles.profiles['rho(-)'][0] = 0.0
 
-        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / fil)
+        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / f"{fil}")
 
         # -----------------------------------
         # ------ Create TGYRO file
@@ -611,7 +611,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           =  { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # self.run(TGYROcontinue = None,
-        # 	subFolderTGYRO=f'{self.nameRuns_default}_1/',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
+        # 	subFolderTGYRO=f'{self.nameRuns_default}_1',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=special_radii,vectorRange=vectorRange,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -628,7 +628,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           = { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # tgyro.run(TGYROcontinue = 'run1',
-        # 	subFolderTGYRO='run2/',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
+        # 	subFolderTGYRO='run2',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=rhos,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -698,7 +698,7 @@ class TGYRO:
 
         # Create class of inputs to TGLF
         inputsTGLF = {
-            rho: TGLFtools.TGLFinput(file=self.FolderTGYRO / f"input.tglf_{rho:.4f}")
+            rho: TGLFtools.TGLFinput(file=(self.FolderTGYRO / f"input.tglf_{rho:.4f}"))
         }
 
         self.tglf[fromlabel] = TGLFtools.TGLF(rhos=[rho])
