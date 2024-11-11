@@ -1,13 +1,14 @@
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gs_tools import GEQtools
 
 parser = argparse.ArgumentParser()
 parser.add_argument("file", type=str)
 args = parser.parse_args()
 
-file = args.file
+file = IOtools.expandPath(args.file)
 
 g = GEQtools.MITIMgeqdsk(file)
 
