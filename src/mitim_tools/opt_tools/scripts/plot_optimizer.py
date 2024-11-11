@@ -13,7 +13,7 @@ args = parser.parse_args()
 
 # Inputs
 
-folderWork = args.folder
+folderWork = IOtools.expandPath(args.folder)
 step_from = args.from_step
 step_to = args.to_step
 

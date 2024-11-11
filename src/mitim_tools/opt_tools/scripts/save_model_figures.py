@@ -1,4 +1,5 @@
 import sys, copy, torch, datetime, cProfile, argparse, os
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
@@ -17,9 +18,9 @@ parser.add_argument("--save", type=str, required=True)
 parser.add_argument("--step", type=int, required=False, default=-1)
 args = parser.parse_args()
 
-folderWork = args.folder
+folderWork = IOtools.expandPath(args.folder)
 step_num = args.step
-save = args.save
+save = Path(args.save)
 
 # ***************** Read
 
@@ -34,7 +35,7 @@ gps = step.GP["individual_models"]
 os.makedirs(save, exist_ok=True)
 
 for i in range(len(gps)):
-    name_save = f"{save}/model{i+1}"
+    name_save = save / f"model{i+1}"
 
     print(f"- Plotting and saving {name_save}")
 

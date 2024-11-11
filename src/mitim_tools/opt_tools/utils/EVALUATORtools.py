@@ -61,7 +61,7 @@ def fun(
 
     """
 
-    os.makedirs(os.path.join(folderExecution, "Execution/"), exist_ok=True)
+    (folderExecution / "Execution").mkdir(parents=True, exist_ok=True)
 
     try:
         x = np.atleast_2d(x)

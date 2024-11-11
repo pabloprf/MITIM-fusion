@@ -14,7 +14,7 @@ parser.add_argument("--num", type=int, required=False, default=10000)
 parser.add_argument("--name", type=str, required=False, default="")
 args = parser.parse_args()
 
-folder = IOtools.expandPath(args.folder) + "/"
+folder = IOtools.expandPath(args.folder)
 cases = args.num
 name = args.name
 

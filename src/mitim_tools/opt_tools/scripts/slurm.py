@@ -29,11 +29,11 @@ def commander(
     extra_name="",
     extra=None,
 ):
-    folderWork = folderWork0 + extra_name + "/"
+    folderWork = IOtools.expandPath(folderWork0) / f"{extra_name}"
 
     print(f"* Launching slurm job of MITIM optimization with random seed = {seed}")
 
-    os.makedirs(folderWork, exist_ok=True)
+    folderWork.mkdir(parents=True, exist_ok=True)
 
     if extra is not None:
         extra_str = " ".join([str(e) for e in extra])
@@ -45,7 +45,7 @@ def commander(
         f"python3 {script} {folderWork} {extra_str} --seed {seed}",
     ]
 
-    _, fileSBTACH, _ = FARMINGtools.create_slurm_execution_files(
+    _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
         command,
         folderWork,
         None,
@@ -57,7 +57,7 @@ def commander(
         cpuspertask=n,
     )
 
-    os.system(f"sbatch {fileSBTACH}")
+    os.system(f"sbatch {fileSBATCH}")
 
 
 def run_slurm(
@@ -74,7 +74,7 @@ def run_slurm(
     script = IOtools.expandPath(script)
     folderWork = IOtools.expandPath(folder)
 
-    num = folder.split("/")[-1]
+    num = folderWork.name
 
     if seeds > 1:
         for i in range(seeds):
