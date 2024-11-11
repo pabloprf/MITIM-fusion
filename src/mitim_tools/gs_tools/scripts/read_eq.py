@@ -1,5 +1,6 @@
 import argparse
 from IPython import embed
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gs_tools.utils import GEQplotting
 
@@ -10,7 +11,7 @@ def main():
     parser.add_argument("files", type=str, nargs="*")
     args = parser.parse_args()
 
-    files = args.files
+    files = [IOtools.expandPath(file) for file in args.files]
 
     gs = []
     for file in files:
