@@ -54,12 +54,12 @@ def main():
 # ------------------------------------------------------------------------------
 
     if drives:
-        tglf.runScanTurbulenceDrives(subFolderTGLF="scan_turb/", TGLFsettings=None)
+        tglf.runScanTurbulenceDrives(subFolderTGLF="scan_turb", TGLFsettings=None)
         tglf.plotScanTurbulenceDrives(label="scan_turb")
 
     elif scan is not None:
         tglf.runScan(
-            subFolderTGLF="scan1/",
+            subFolderTGLF="scan1",
             variable=scan,
             varUpDown=np.linspace(0.2, 2.0, 5),
             TGLFsettings=None,
@@ -69,7 +69,7 @@ def main():
         tglf.plotScan(labels=["scan1"], variableLabel=scan)
 
     else:
-        tglf.run(subFolderTGLF="run1/", TGLFsettings=None, cold_start=cold_start)
+        tglf.run(subFolderTGLF="run1", TGLFsettings=None, cold_start=cold_start)
         tglf.read(label="run1")
         tglf.plot(labels=["run1"])
 

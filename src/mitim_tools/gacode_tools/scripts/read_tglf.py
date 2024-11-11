@@ -32,10 +32,10 @@ def main():
 
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf(
-        folders[0], f"{folders[0]}/input.tglf{suffixes[0]}", input_gacode=input_gacode
+        folders[0], folders[0] / f"input.tglf{suffixes[0]}", input_gacode=input_gacode
     )
     for i, folder in enumerate(folders):
-        tglf.read(folder=f"{folder}/", suffix=suffixes[i], label=f"run{i}")
+        tglf.read(folder=folder, suffix=suffixes[i], label=f"run{i}")
 
     tglf.plot(labels=[f"run{i}" for i in range(len(folders))])
 
