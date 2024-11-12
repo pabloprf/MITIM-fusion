@@ -819,7 +819,7 @@ def getSERVERfile(name, FolderSimulation, nameRunTot, tok, server, nameNewFolder
     print(f" >> Retrieving {name} file")
     TRANSPglobus_ntcc.tr_get(name, server, nameRunTot, FolderSimulation, tok)
 
-    localFolder = IOtools.expandPath(FolderSimulation}
+    localFolder = IOtools.expandPath(FolderSimulation)
     localFile = localFolder / f"{name}"
     nfold = localFolder / f"{nameNewFolder}"
 
