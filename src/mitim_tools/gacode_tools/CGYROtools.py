@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import datetime
 import time
@@ -72,7 +73,7 @@ class CGYRO:
         self.folder.mkdir(parents=True, exist_ok=True)
 
         self.inputgacode_file = self.folder / "input.gacode"
-        os.system(f"cp {inputgacode_file.resolve()} {self.inputgacode_file}")
+        shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
 
     def run(
         self,
@@ -94,7 +95,7 @@ class CGYRO:
         inputCGYRO = CGYROinput(file=input_cgyro_file)
 
         inputgacode_file_this = self.folderCGYRO / "input.gacode"
-        os.system(f"cp {self.inputgacode_file.resolve()} {inputgacode_file_this}")
+        shutil.copy2(self.inputgacode_file, inputgacode_file_this)
 
         ResultsFiles_new = []
         for i in self.output_files:
@@ -204,7 +205,8 @@ class CGYRO:
             if (
                 True
             ):  # print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.system(f"cd {folder} && cgyro -t")
+                os.chdir(folder)
+                os.system("cgyro -t")
             self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
 
         # Extra postprocessing

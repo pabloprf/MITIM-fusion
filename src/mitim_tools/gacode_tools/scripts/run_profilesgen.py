@@ -20,4 +20,5 @@ GACODErun.runPROFILES_GEN(
     includeGEQ=True,
 )
 
-os.system(f"mv input.gacode {nameWork}_input.gacode")
+file_gacode = IOtools.expandPath("input.gacode", ensurePathValid=True)
+file_gacode.rename(file_gacode.parent / f"{nameWork}_input.gacode")
