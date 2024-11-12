@@ -268,9 +268,7 @@ class UFILEtransp:
             f.write("".join(self.STR_footer))
 
         print(
-            "\t\t- UFILE written with {1} time points: ...{0}".format(
-                filename[np.max([-40, -len(filename)]) :], timepoints
-            )
+            f"\t\t- UFILE written with {timepoints} time points: ...{IOtools.clipstr(filename)}"
         )
 
     def writeVar(self, f, var, ncols=6):
