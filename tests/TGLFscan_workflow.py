@@ -10,13 +10,13 @@ cold_start = True
 folder = __mitimroot__ / "tests" / "scratch" / "tglfscan_test"
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
-if cold_start and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+if cold_start and folder.exists():
+    os.system(f"rm -r {folder.resolve()}")
 
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 tglf.prep(folder, inputgacode=input_gacode, cold_start=cold_start)
 
-tglf.runScan(	subFolderTGLF = 'scan1/',
+tglf.runScan(	subFolderTGLF = 'scan1',
                 TGLFsettings  = None,
                 cold_start       = cold_start,
                 runWaveForms  = [0.67, 10.0],
@@ -29,7 +29,7 @@ tglf.fn.show()
 tglf.fn.close()
 
 tglf.runScanTurbulenceDrives(	
-                subFolderTGLF = 'turb_drives/',
+                subFolderTGLF = 'turb_drives',
                 TGLFsettings  = None,
                 cold_start       = cold_start)
 
