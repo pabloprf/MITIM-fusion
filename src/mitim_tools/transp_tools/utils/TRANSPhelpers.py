@@ -848,8 +848,8 @@ def generateMRY(
     IpSign=-1,
     name="",
     ):
-    folderEquilibrium = IOtools.expandPath(folderEquilibrium)
-    folderMRY = IOtools.expandPath(FolderMRY)
+    FolderEquilibrium = IOtools.expandPath(FolderEquilibrium)
+    FolderMRY = IOtools.expandPath(FolderMRY)
     filesInput = [FolderEquilibrium / "scrunch_in", FolderEquilibrium / "ga.d"]
 
     if momentsScruncher > 12:
