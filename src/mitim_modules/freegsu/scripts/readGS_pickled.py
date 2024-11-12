@@ -11,9 +11,11 @@ import copy
 import numpy as np
 from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_modules.freegsu import FREEGSUtools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 files = sys.argv[1:]
+files = [IOtools.expandPath(file) for file in files]
 
 # ---------------------------
 # Read pickles, extract prfs
@@ -23,7 +25,7 @@ onlyLast = len(files) > 1
 
 prfs = []
 for file in files:
-    m = pickle.load(open(f"{file}/Outputs/final_analysis/results.pkl", "rb"))
+    m = pickle.load(open(file / "Outputs" / "final_analysis" / "results.pkl", "rb"))
     if onlyLast:
         prfs.extend([m["prfs"][-1]])
     else:
