@@ -14,6 +14,8 @@ import functools
 import hashlib
 from collections import OrderedDict
 from pathlib import Path
+import platform
+import torch
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -1636,3 +1638,61 @@ def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a bet
     
     # Format the number to ensure it has exactly `num_digits` digits
     return f'{final_number:0{num_digits}d}'
+
+def print_machine_info(output_file=None):
+
+    info_lines = []
+
+    # System Information
+    info_lines.append("=== System Information ===")
+    info_lines.append(f"System: {platform.system()}")
+    info_lines.append(f"Node Name: {platform.node()}")
+    info_lines.append(f"Release: {platform.release()}")
+    info_lines.append(f"Version: {platform.version()}")
+    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"Processor: {platform.processor()}")
+
+    # CPU Information
+    info_lines.append("\n=== CPU Information ===")
+    logical_cpus = os.cpu_count()
+    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
+
+    # Attempt to get CPU frequency (limited without external packages)
+    try:
+        if platform.system() == "Windows":
+            import subprocess
+            cmd = 'wmic cpu get MaxClockSpeed'
+            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+            info_lines.append(f"Max Frequency: {max_freq} MHz")
+        elif platform.system() == "Linux":
+            with open('/proc/cpuinfo') as f:
+                cpuinfo = f.read()
+            import re
+            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
+            if matches:
+                current_freq = matches[0]
+                info_lines.append(f"Current Frequency: {current_freq} MHz")
+        else:
+            info_lines.append("CPU Frequency information not available.")
+    except Exception as e:
+        info_lines.append("Error retrieving CPU Frequency information.")
+
+    # PyTorch CPU Information
+    info_lines.append("\n=== PyTorch Information ===")
+    num_threads = torch.get_num_threads()
+    num_interop_threads = torch.get_num_interop_threads()
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled = getattr(torch.backends, 'mkl', None)
+
+    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
+    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
+    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
+    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # Output to screen or file
+    output = '\n'.join(info_lines)
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(output)
+    else:
+        print(output)
