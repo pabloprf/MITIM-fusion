@@ -72,7 +72,7 @@ Note that this is a parent class, and the run command must be specified dependin
 
 class TRANSPgeneric:
     def __init__(self, FolderTRANSP, tokamak):
-        self.FolderTRANSP = FolderTRANSP.expanduser()
+        self.FolderTRANSP = IOtools.expandPath(FolderTRANSP)
         self.tok = tokamak
         self.cdfs = {}
 
@@ -418,7 +418,7 @@ class TRANSPgeneric:
 
 
 def storeCDF(FolderTRANSP, runid, retrieveAC=False):
-    netCDFfile = f"{FolderTRANSP}/{runid}.CDF"
+    netCDFfile = FolderTRANSP / f"{runid}.CDF"
 
     if retrieveAC:
         readFBM = readTORIC = True

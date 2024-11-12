@@ -798,28 +798,28 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
 def updateTypicalFiles(folder_new, cdf_file, timeExtract, shot="12345"):
     _, _ = updateUFILEfromCDF(
         "Q",
-        f"{folder_new}/PRF{shot}.QPR",
+        folder_new / f"PRF{shot}.QPR",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TE",
-        f"{folder_new}/PRF{shot}.TEL",
+        folder_new / f"PRF{shot}.TEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TI",
-        f"{folder_new}/PRF{shot}.TIO",
+        folder_new / f"PRF{shot}.TIO",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "NE",
-        f"{folder_new}/PRF{shot}.NEL",
+        folder_new / f"PRF{shot}.NEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
@@ -928,7 +928,7 @@ def initializeUFILES_MinimalTRANSP(rho, Te, Ti, ne, q, V, location=".", name="12
         quickUFILE(
             rho,
             ufiles[ufn][1],
-            f"{location}/PRF{name}.{ufn}",
+            location / f"PRF{name}.{ufn}",
             typeuf=ufiles[ufn][0],
         )
 

@@ -49,7 +49,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         self.job.define_machine(
             "transp",
-            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}/",
+            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}",
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,
@@ -312,7 +312,7 @@ def runSINGULARITY(
             os.system(f"rm -r {folder_inputs}")
         
         IOtools.askNewFolder(folder_inputs, force=True)
-        os.system(f"cp -r {folderWork}/* {folder_inputs}")
+        os.system(f"cp -r {folderWork / '*'} {folder_inputs}")
 
         inputFolders = [folderWork / "tmp_inputs"]
 
@@ -540,7 +540,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
 
     transp_job.prep(
         TRANSPcommand,
-        output_folders=["results/"],
+        output_folders=["results"],
         output_files=[f"{runid}tr.log"],
         label_log_files="_finish",
     )
@@ -549,7 +549,8 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         removeScratchFolders=False
     )  # Because it needs to read what it was there from run()
 
-    os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
+    odir = folderWork / "results" / f"{tok}.00"
+    os.system(f"cd {folderWork} && cp -r {odir / '*'} .")
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
@@ -579,7 +580,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
     extra_commands = " --delay-updates --ignore-errors --exclude='*_state.cdf' --exclude='*.tmp' --exclude='mitim*'"
 
     TRANSPcommand = f"""
-rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+rsync -av{extra_commands} {folderTRANSP} . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -599,11 +600,11 @@ rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app 
     # Not sure why but the look sometimes just rabndomly (?) fails, so we need to try a few times, outside of the logic of the mitim_job checker
     for i in range(times_retry_look):
         transp_job.run(check_if_files_received=False)
-        if os.path.exists(f"{folderWork}/{runid}.CDF"):
+        if (folderWork / f"{runid}.CDF").exists():
             break
         else:
             print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
-    if not os.path.exists(f"{folderWork}/{runid}.CDF"):
+    if not (folderWork / f"{runid}.CDF").exists():
         print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
 
 
@@ -612,27 +613,27 @@ def organizeACfiles(
 ):
 
     for ff in ["NUBEAM_folder", "TORIC_folder", "TORBEAM_folder", "FI_folder"]:
-        (FolderTRANSP / ff).mkdir(exist_ok=True)
+        (FolderTRANSP / ff).mkdir(parents=True, exist_ok=True)
 
     if NUBEAM:
         for i in range(nummax):
             name = runid + f".DATA{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
+            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
             name = runid + f"_birth.cdf{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
+            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
 
     if ICRF:
         for i in range(nummax):
             name = runid + f"_ICRF_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORIC_folder")
+            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'TORIC_folder'}")
 
             name = runid + f"_FI_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/FI_folder")
+            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'FI_folder'}")
 
         name = runid + "FPPRF.DATA"
-        os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
+        os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
 
     if TORBEAM:
         for i in range(nummax):
             name = runid + f"_TOR_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORBEAM_folder")
+            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'TORBEAM_folder'}")
