@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import shutil
 import time
 import sys
 import subprocess
@@ -454,11 +455,9 @@ class mitim_job:
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                "cp "
-                + f'{self.folder_local / "mitim_send.tar.gz"}'
-                + " "
-                + f'{self.folderExecution}/mitim_send.tar.gz'
+            shutil.copy2(
+                self.folder_local / "mitim_send.tar.gz",
+                f"{self.folderExecution}/mitim_send.tar.gz"
             )
 
         # Extract it
@@ -536,7 +535,7 @@ class mitim_job:
                 os.remove(self.folder_local / file)
         for folder in self.output_folders:
             if (self.folder_local / folder).exists():
-                os.system(f"rm -rf {self.folder_local / folder}")
+                shutil.rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remotely)")
@@ -566,10 +565,9 @@ class mitim_job:
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                f"cp {self.folderExecution}/mitim_receive.tar.gz"
-                + " "
-                + f"{self.folder_local / 'mitim_receive.tar.gz'}"
+            shutil.copy2(
+                f"{self.folderExecution}/mitim_receive.tar.gz",
+                self.folder_local / "mitim_receive.tar.gz"
             )
         print(self.folderExecution, self.folder_local)
 
@@ -1088,7 +1086,7 @@ def create_slurm_execution_files(
         comm, launch = ["#!/bin/bash -l"] + full_command, "" #"bash "
 
     if fileSBATCH.exists():
-        os.system(f"rm {fileSBATCH}")
+        os.remove(fileSBATCH)
     with open(fileSBATCH, "w") as f:
         f.write("\n".join(comm))
 
@@ -1109,7 +1107,7 @@ def create_slurm_execution_files(
         commandSHELL.append(shellPostCommands[i])
 
     if fileSHELL.exists():
-        os.system(f"rm {fileSHELL}")
+        os.remove(fileSHELL)
     with open(fileSHELL, "w") as f:
         f.write("\n".join(commandSHELL))
 
