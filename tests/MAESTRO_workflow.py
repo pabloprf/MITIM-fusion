@@ -30,7 +30,7 @@ portals_namelist = { "optimization_options": {"BO_iterations": 2 },
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro():
 
-    m = MAESTROmain.maestro(folder, master_cold_start = cold_start, terminal_outputs = False)
+    m = MAESTROmain.maestro(folder, master_cold_start = cold_start, terminal_outputs = True)
 
     m.define_beat('transp', initializer='freegs')
     m.define_creator('parameterization', **params_bc, **params_init)
