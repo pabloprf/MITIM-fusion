@@ -1,4 +1,5 @@
 import os
+import shutil
 import torch
 import copy
 import numpy as np
@@ -525,8 +526,8 @@ class portals(STRATEGYtools.opt_evaluator):
 
         (folderNew / "Outputs").mkdir(parents=True, exist_ok=True)
 
-        os.system(f"cp {folderRead / 'Outputs' / 'optimization_data.csv'} {folderNew / 'Outputs'}")
-        os.system(f"cp {folderRead / 'Outputs' / 'optimization_extra.pkl'} {folderNew / 'Outputs'}")
+        shutil.copy2(folderRead / "Outputs" / "optimization_data.csv", folderNew / "Outputs")
+        shutil.copy2(folderRead / "Outputs" / "optimization_extra.pkl", folderNew / "Outputs")
 
         optimization_data = BOgraphics.optimization_data(
             self.optimization_options["dvs"],
