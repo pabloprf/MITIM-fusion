@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
