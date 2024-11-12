@@ -114,7 +114,7 @@ def tr_start(
     # Checker
     # --------------------------------
     request_file = FolderTRANSP / f"{runid}_{tok}.REQUEST"
-    if not os.path.exists(request_file):
+    if not request_file.exists():
         print(
             f"\n\nFile {request_file} was not generated, likely due to a tr_start failure (namelist and UFILES are not correct)",
             typeMsg="w",

@@ -213,8 +213,7 @@ class powerstate:
         # Write input.gacode
         if write_input_gacode is not None:
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
-            if not os.path.exists(os.path.dirname(write_input_gacode)):
-                os.makedirs(os.path.dirname(write_input_gacode))
+            write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused

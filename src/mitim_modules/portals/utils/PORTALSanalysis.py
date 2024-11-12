@@ -55,7 +55,7 @@ class PORTALSanalyzer:
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
-        if os.path.exists(folder) or folderRemote is not None:
+        if folder.exists() or folderRemote is not None:
 
             opt_fun = STRATEGYtools.opt_evaluator(folder)
 
@@ -657,7 +657,7 @@ class PORTALSanalyzer:
         if not onlyBest:
             print("\t- Running original case")
             FolderEvaluation = self.folder / f"final_analysis_original"
-            if not os.path.exists(FolderEvaluation):
+            if not FolderEvaluation.exists():
                 IOtools.askNewFolder(FolderEvaluation, force=True)
 
             dictDVs = {}
@@ -678,7 +678,7 @@ class PORTALSanalyzer:
 
         print(f"\t- Running best case #{self.opt_fun.res.best_absolute_index}")
         FolderEvaluation = self.folder / "Outputs" / "final_analysis_best"
-        if not os.path.exists(FolderEvaluation):
+        if not FolderEvaluation.exists():
             IOtools.askNewFolder(FolderEvaluation, force=True)
 
         dictDVs = {}

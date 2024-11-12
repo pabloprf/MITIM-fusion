@@ -34,15 +34,17 @@ def read_cdf_transp(cdf_file):
     With the support of chatGPT 4o (08/10/2024)
     '''
 
+    cdf_file = IOtools.expandPath(cdf_file)
+    mod_file = cdf_file.parent / f'{cdf_file.name}_mod'
     src = netCDF4.Dataset(cdf_file)
 
     if src['TIME'].shape[0] > src['TIME3'].shape[0]:
         print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
 
         # Create a dataset object to store the modified data
-        if os.path.exists(f'{cdf_file}_mod'):
-            os.remove(f'{cdf_file}_mod')
-        dst = netCDF4.Dataset(f'{cdf_file}_mod', 'w', memory=None)
+        if mod_file.exists():
+            os.remove(f'{mod_file}')
+        dst = netCDF4.Dataset(mod_file, 'w', memory=None)
         
         # Copy global attributes
         dst.setncatts({attr: src.getncattr(attr) for attr in src.ncattrs()})
@@ -104,12 +106,14 @@ class transp_output:
         timeExtract=1.0,
         timeExtract_av=0.1,
         EvaluateExtraAnalysis=None,
-        folderScratch=IOtools.expandPath("~/scratch/"),
+        folderScratch="~/scratch/",
     ):
         """
         calculateAccurateLineAverage = None (=_avol), False (flux surface at one time), True (accurate at each time)
         coincideTime is used when comparing to experiment: first is experiment
         """
+
+        folderScratch = IOtools.expandPath(folderScratch)
 
         self.readGEQDSK = readGEQDSK
 
@@ -235,8 +239,8 @@ class transp_output:
                 self.folderWork / f"NUBEAM_folder" / f"{self.nameRunid}.DATA{datanum}"
             )
 
-            needToConvert = os.path.exists(file_notconverted) and (
-                not os.path.exists(file_converted)
+            needToConvert = file_notconverted.exists() and (
+                not file_converted.exists()
             )
 
             if needToConvert:
@@ -13521,7 +13525,7 @@ class transp_output:
 
         self.gfile_out = None
         fileG = self.folderWork / f"RELEASE_folder" / f"TRANSPrun.geq"
-        if self.readGEQDSK and os.path.exists(fileG):
+        if self.readGEQDSK and fileG.exists():
             try:
                 self.gfile_out = GEQtools.MITIMgeqdsk(fileG)
             except:

@@ -44,10 +44,10 @@ def initializeProblem(
 
     FolderInitialization = folderWork / "Initialization"
 
-    if (cold_start) or (not os.path.exists(folderWork)):
+    if (cold_start) or (not folderWork.exists()):
         IOtools.askNewFolder(folderWork, force=cold_start)
 
-    os.makedirs(FolderInitialization, exist_ok=True)
+    FolderInitialization.mkdir(parents=True, exist_ok=True)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
