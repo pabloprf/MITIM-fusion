@@ -23,7 +23,7 @@ parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--step", required=False, type=int, default=-1)
 args = parser.parse_args()
 
-folder = IOtools.expandPath(args.folder) + "/"
+folder = IOtools.expandPath(args.folder)
 step = args.step
 
 # ***************************************************************************************************

@@ -1,6 +1,5 @@
 import os
 import time
-import os.path
 import datetime
 import re
 import numpy as np
@@ -130,9 +129,6 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
             # LOOP LOOK
             # ------------------------------------------------------------------------------------------------------------------------------
 
-            if self.FolderTRANSP[-1] != "/":
-                self.FolderTRANSP += "/"
-
             NBImissing_isStopped = (
                 False  # If TRANSP grid indicates missing_nbi that means stopped
             )
@@ -145,9 +141,9 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
             # Remove old .CDF file
             # ---------------------
 
-            old_file = f"{self.FolderTRANSP}/{self.runid}.CDF"
-            if os.path.exists(old_file):
-                os.system("mv {0} {0}_prev".format(old_file))
+            old_file = self.FolderTRANSP / f"{self.runid}.CDF"
+            if old_file.exists():
+                os.system(f"mv {old_file} {old_file}_prev")
 
             # ---------------------
             # Send look request (tr_look)
@@ -500,7 +496,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
         if statusStop == 1:
             print(f">> Run {self.runid} has STOPPED", typeMsg="w")
             HasItFailed = True
-            writeErrorInfo(self.runid, self.tok, FolderOutputs + "/ErrorInfo.txt")
+            writeErrorInfo(self.runid, self.tok, FolderOutputs / "ErrorInfo.txt")
 
         # If run has finished running
         elif statusStop == -2:
@@ -706,7 +702,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
 		"""
         if retrieveAC:
             # Determine if run has AC files requested
-            Reactor = CDFtools.transp_output(f"{self.FolderTRANSP}/{file}")
+            Reactor = CDFtools.transp_output(self.FolderTRANSP / f"{file}")
             TORIC, TORBEAM, NUBEAM = self.determineACs(Reactor)
             # Retrieve
             retrieveACfiles(
@@ -823,11 +819,13 @@ def getSERVERfile(name, FolderSimulation, nameRunTot, tok, server, nameNewFolder
     print(f" >> Retrieving {name} file")
     TRANSPglobus_ntcc.tr_get(name, server, nameRunTot, FolderSimulation, tok)
 
-    nfold = f"{FolderSimulation}/{nameNewFolder}"
+    localFolder = IOtools.expandPath(FolderSimulation}
+    localFile = localFolder / f"{name}"
+    nfold = localFolder / f"{nameNewFolder}"
 
     if nameNewFolder is not None:
-        os.makedirs(nfold, exist_ok=True)
-        os.system(f"mv {FolderSimulation}/{name} {nfold}/.")
+        nfold.mkdir(parents=True, exist_ok=True)
+        os.system(f"mv {localFile} {nfold}")
 
 
 def corruptRecover(FolderSimulation, nameRunTot, tok, serverCDF):

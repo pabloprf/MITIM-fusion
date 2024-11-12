@@ -27,7 +27,7 @@ parser.add_argument("--seeds", required=False, type=int, default=1)
 parser.add_argument("--var", required=False, type=int, default=9)
 args = parser.parse_args()
 
-folder = IOtools.expandPath(args.folder) + "/"
+folder = IOtools.expandPath(args.folder)
 test = args.test
 save = args.save
 numSeeds = args.seeds
@@ -280,6 +280,6 @@ GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False, size=7)
 
 
 if save:
-    name = f"{folder}/test{test}_seeds{numSeeds}_variations{numVariations}.pkl"
+    name = folder / f"test{test}_seeds{numSeeds}_variations{numVariations}.pkl"
     with open(name, "wb") as handle:
         pickle_dill.dump({"traj": traj, "ybest": ybest, "timeTotal": timeTotal}, handle)

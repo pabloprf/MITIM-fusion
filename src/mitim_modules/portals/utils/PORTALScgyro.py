@@ -86,8 +86,9 @@ def evaluateCGYRO(
         f"\t- Suggested function call for mitim evaluation {numPORTALS} (lambda for cgyroing):",
         typeMsg="i",
     )
+    cgyropath = IOtools.expandPath(folder, ensurePathValid=True) / 'Outputs' / 'cgyro_results' / f'cgyro_it_{numPORTALS}.txt'
     print(
-        f"\tcgyroing_file('{IOtools.expandPath(folder,ensurePathValid=True)}/Outputs/cgyro_results/cgyro_it_{numPORTALS}.txt')"
+        f"\tcgyroing_file('{cgyropath}')"
     )
 
     print('\t- Then insert "exit" and RETURN', typeMsg="i")
@@ -680,16 +681,16 @@ def modifyEVO(
     MtTGB = MtT / tgyro.Pi_GB[-1, 1:]
 
     modTGYROfile(
-        f"{folder}/out.tgyro.evo_te", QeTGB, pos=positionMod, fileN_suffix=special_label
+        folder / "out.tgyro.evo_te", QeTGB, pos=positionMod, fileN_suffix=special_label
     )
     modTGYROfile(
-        f"{folder}/out.tgyro.evo_ti", QiTGB, pos=positionMod, fileN_suffix=special_label
+        folder / "out.tgyro.evo_ti", QiTGB, pos=positionMod, fileN_suffix=special_label
     )
     modTGYROfile(
-        f"{folder}/out.tgyro.evo_ne", GeTGB, pos=positionMod, fileN_suffix=special_label
+        folder / "out.tgyro.evo_ne", GeTGB, pos=positionMod, fileN_suffix=special_label
     )
     modTGYROfile(
-        f"{folder}/out.tgyro.evo_er", MtTGB, pos=positionMod, fileN_suffix=special_label
+        folder / "out.tgyro.evo_er", MtTGB, pos=positionMod, fileN_suffix=special_label
     )
 
     for i in range(tgyro.Qi_sim_turb.shape[0]):
@@ -698,7 +699,7 @@ def modifyEVO(
         else:
             var = GZTGB * 0.0
         modTGYROfile(
-            f"{folder}/out.tgyro.evo_n{i+1}",
+            folder / f"out.tgyro.evo_n{i+1}",
             var,
             pos=positionMod,
             fileN_suffix=special_label,
@@ -722,6 +723,8 @@ def modifyFLUX(
     impurityPosition=3,
     special_label=None,
 ):
+    folder = IOtools.expandPath(folder)
+
     QeGB = Qe / tgyro.Q_GB[-1, 1:]
     QiGB = Qi / tgyro.Q_GB[-1, 1:]
     GeGB = Ge / tgyro.Gamma_GB[-1, 1:]
@@ -735,34 +738,34 @@ def modifyFLUX(
 
     # Particle flux: Update
 
-    modTGYROfile(f"{folder}/out.tgyro.flux_e", GeGB, pos=2, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.flux_e", GeGB, pos=2, fileN_suffix=special_label)
     if GeNeo is not None:
         GeGB_neo = GeNeo / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(
-            f"{folder}/out.tgyro.flux_e", GeGB_neo, pos=1, fileN_suffix=special_label
+            folder / "out.tgyro.flux_e", GeGB_neo, pos=1, fileN_suffix=special_label
         )
 
     # Energy flux: Update
 
-    modTGYROfile(f"{folder}/out.tgyro.flux_e", QeGB, pos=4, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.flux_e", QeGB, pos=4, fileN_suffix=special_label)
     if QeNeo is not None:
         QeGB_neo = QeNeo / tgyro.Q_GB[-1, 1:]
         modTGYROfile(
-            f"{folder}/out.tgyro.flux_e", QeGB_neo, pos=3, fileN_suffix=special_label
+            folder / "out.tgyro.flux_e", QeGB_neo, pos=3, fileN_suffix=special_label
         )
 
     # Rotation: Remove (it will be sum to the first ion)
 
     modTGYROfile(
-        f"{folder}/out.tgyro.flux_e", GeGB * 0.0, pos=6, fileN_suffix=special_label
+        folder / "out.tgyro.flux_e", GeGB * 0.0, pos=6, fileN_suffix=special_label
     )
     modTGYROfile(
-        f"{folder}/out.tgyro.flux_e", GeGB * 0.0, pos=5, fileN_suffix=special_label
+        folder / "out.tgyro.flux_e", GeGB * 0.0, pos=5, fileN_suffix=special_label
     )
 
     # Energy exchange
 
-    modTGYROfile(f"{folder}/out.tgyro.flux_e", SGB, pos=7, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.flux_e", SGB, pos=7, fileN_suffix=special_label)
 
     # SMW  = S  # S is MW/m^3
     # modTGYROfile(f'{folder}/out.tgyro.power_e',SMW,pos=8,fileN_suffix=special_label)
@@ -774,12 +777,12 @@ def modifyFLUX(
 
     # Energy flux: Update
 
-    modTGYROfile(f"{folder}/out.tgyro.flux_i1", QiGB, pos=4, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.flux_i1", QiGB, pos=4, fileN_suffix=special_label)
 
     if QiNeo is not None:
         QiGB_neo = QiNeo / tgyro.Q_GB[-1, 1:]
         modTGYROfile(
-            f"{folder}/out.tgyro.flux_i1", QiGB_neo, pos=3, fileN_suffix=special_label
+            folder / "out.tgyro.flux_i1", QiGB_neo, pos=3, fileN_suffix=special_label
         )
 
     # Particle flux: Make ion particle fluxes zero, because I don't want to mistake TGLF with CGYRO when looking at tgyro results
@@ -788,18 +791,18 @@ def modifyFLUX(
         if tgyro.profiles.Species[i]["S"] == "therm":
             var = QiGB * 0.0
             modTGYROfile(
-                f"{folder}/out.tgyro.flux_i{i+1}",
+                folder / f"out.tgyro.flux_i{i+1}",
                 var,
                 pos=2,
                 fileN_suffix=special_label,
             )  # Gi_turb
             modTGYROfile(
-                f"{folder}/out.tgyro.evo_n{i+1}", var, pos=1, fileN_suffix=special_label
+                folder / f"out.tgyro.evo_n{i+1}", var, pos=1, fileN_suffix=special_label
             )  # Gi (Gi_sim)
 
             if i + 1 != impurityPosition:
                 modTGYROfile(
-                    f"{folder}/out.tgyro.flux_i{i+1}",
+                    folder / f"out.tgyro.flux_i{i+1}",
                     var,
                     pos=1,
                     fileN_suffix=special_label,
@@ -807,18 +810,18 @@ def modifyFLUX(
 
     # Rotation: Update
 
-    modTGYROfile(f"{folder}/out.tgyro.flux_i1", MtGB, pos=6, fileN_suffix=special_label)
+    modTGYROfile(folder / f"out.tgyro.flux_i1", MtGB, pos=6, fileN_suffix=special_label)
 
     if MtNeo is not None:
         MtGB_neo = MtNeo / tgyro.Pi_GB[-1, 1:]
         modTGYROfile(
-            f"{folder}/out.tgyro.flux_i1", MtGB_neo, pos=5, fileN_suffix=special_label
+            folder / f"out.tgyro.flux_i1", MtGB_neo, pos=5, fileN_suffix=special_label
         )
 
     # Energy exchange: Remove (it will be the electrons one)
 
     modTGYROfile(
-        f"{folder}/out.tgyro.flux_i1", SGB * 0.0, pos=7, fileN_suffix=special_label
+        folder / f"out.tgyro.flux_i1", SGB * 0.0, pos=7, fileN_suffix=special_label
     )
 
     # ******************************************************************************************
@@ -832,7 +835,7 @@ def modifyFLUX(
             var = QiGB * 0.0
             for pos in [3, 4, 5, 6, 7]:
                 modTGYROfile(
-                    f"{folder}/out.tgyro.flux_i{i+2}",
+                    folder / f"out.tgyro.flux_i{i+2}",
                     var,
                     pos=pos,
                     fileN_suffix=special_label,
@@ -840,14 +843,14 @@ def modifyFLUX(
             for pos in [1, 2]:
                 if i + 2 != impurityPosition:
                     modTGYROfile(
-                        f"{folder}/out.tgyro.flux_i{i+2}",
+                        folder / f"out.tgyro.flux_i{i+2}",
                         var,
                         pos=pos,
                         fileN_suffix=special_label,
                     )
 
     modTGYROfile(
-        f"{folder}/out.tgyro.flux_i{impurityPosition}",
+        folder / f"out.tgyro.flux_i{impurityPosition}",
         GZGB,
         pos=2,
         fileN_suffix=special_label,
@@ -855,7 +858,7 @@ def modifyFLUX(
     if GZNeo is not None:
         GZGB_neo = GZNeo / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(
-            f"{folder}/out.tgyro.flux_i{impurityPosition}",
+            folder / f"out.tgyro.flux_i{impurityPosition}",
             GZGB_neo,
             pos=1,
             fileN_suffix=special_label,
@@ -863,9 +866,9 @@ def modifyFLUX(
 
 
 def modTGYROfile(file, var, pos=0, fileN_suffix=None):
-    fileN = file if fileN_suffix is None else f"{file}{fileN_suffix}"
+    fileN = file if fileN_suffix is None else file.parent / f"{file.name}{fileN_suffix}"
 
-    if not os.path.exists(fileN):
+    if not fileN.exists():
         os.system(f"cp {file} {fileN}")
 
     with open(fileN, "r") as f:

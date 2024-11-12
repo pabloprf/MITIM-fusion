@@ -32,7 +32,7 @@ class portals_beat(beat):
             INITparameters = {}
             ):
 
-        self.fileGACODE = self.initialize.folder / "input.gacode"
+        self.fileGACODE = self.initialize.folder / 'input.gacode'
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
 
         self.PORTALSparameters = PORTALSparameters
@@ -106,11 +106,11 @@ class portals_beat(beat):
 
         # Flux-match first
         folder_fm = self.folder / 'flux_match'
-        os.makedirs(folder_fm, exist_ok=True)
+        folder_fm.mkdir(parents=True, exist_ok=True)
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
-        powerstate = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=f'{folder_fm}/optimization_data.csv', plot_results = False)
+        powerstate = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv', plot_results = False)
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
@@ -127,7 +127,7 @@ class portals_beat(beat):
         # Prepare final beat's input.gacode
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
         self.profiles_output = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode' )
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         '''
@@ -141,7 +141,7 @@ class portals_beat(beat):
         '''
 
         # Write the pre-merge input.gacode before modifying it
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -189,7 +189,7 @@ class portals_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def grab_output(self, full = False):
 
@@ -199,7 +199,7 @@ class portals_beat(beat):
 
         opt_fun = STRATEGYtools.opt_evaluator(folder) if full else PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 
-        profiles = PROFILEStools.PROFILES_GACODE(f'{self.folder_output}/input.gacode') if isitfinished else None
+        profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode') if isitfinished else None
         
         return opt_fun, profiles
 
@@ -307,7 +307,7 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
-        fileTraining = stepSettings['folderOutputs'] / "surrogate_data.csv"
+        fileTraining = stepSettings['folderOutputs'] / 'surrogate_data.csv'
         
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining

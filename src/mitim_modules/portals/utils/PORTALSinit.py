@@ -44,10 +44,10 @@ def initializeProblem(
 
     FolderInitialization = folderWork / "Initialization"
 
-    if (cold_start) or (not os.path.exists(folderWork)):
+    if (cold_start) or (not folderWork.exists()):
         IOtools.askNewFolder(folderWork, force=cold_start)
 
-    os.makedirs(FolderInitialization, exist_ok=True)
+    FolderInitialization.mkdir(parents=True, exist_ok=True)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
@@ -55,12 +55,12 @@ def initializeProblem(
 
     # ---- Copy the file of interest to initialization folder
 
-    os.system(f"cp {fileStart} {FolderInitialization}/input.gacode")
+    os.system(f"cp {fileStart} {FolderInitialization / 'input.gacode'}")
 
     # ---- Make another copy to preserve the original state
 
     os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
+        f"cp {FolderInitialization / 'input.gacode'} {FolderInitialization / 'input.gacode_original'}"
     )
 
     # ---- Initialize file to modify and increase resolution

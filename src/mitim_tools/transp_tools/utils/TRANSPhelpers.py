@@ -16,8 +16,8 @@ class transp_run:
     def __init__(self, folder, shot, runid):
 
         self.shot, self.runid = shot, runid
-        self.folder = folder
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder = IOtools.expandPath(folder)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
         # Initialize variables
         self.variables, self.geometry = {}, {}
@@ -62,7 +62,7 @@ class transp_run:
         self.nml_object.populate(**transp_params)
         self.nml_object.write(self.runid)
 
-        self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
+        self.nml = self.folder / f"{self.shot}{self.runid}TR.DAT"
 
         self._insert_parameters_namelist()
 
@@ -75,11 +75,11 @@ class transp_run:
         Copy namelist from folder_original and change timings
         '''
 
-        self.nml = f"{self.folder}/{self.shot}{self.runid}TR.DAT"
-        os.system(f"cp {folder_original}/{nml_original} {self.nml}")
+        self.nml = self.folder / f"{self.shot}{self.runid}TR.DAT"
+        os.system(f"cp {folder_original / f'{nml_original}'} {self.nml}")
 
         # Predictive namelists
-        os.system(f"cp {folder_original}/*namelist.dat {self.folder}/.")
+        os.system(f"cp {folder_original / f'*namelist.dat'} {self.folder}")
 
         # Define timings
 
@@ -170,7 +170,7 @@ class transp_run:
                 uf.Variables['Z'] = np.array(z)
 
             # Write ufile
-            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.{self.quantities[quantity][1]}')
+            uf.writeUFILE(self.folder / f'PRF{self.shot}.{self.quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
         # Write Boundary UFILE
@@ -189,7 +189,7 @@ class transp_run:
                     R, Z = R[:-1], Z[:-1]
                     # -----------------------------------------------
 
-                    writeBoundary(f'{self.folder}/BOUNDARY_123456_{t}.DAT', R, Z)
+                    writeBoundary(self.folder / f'BOUNDARY_123456_{t}.DAT', R, Z)
                     tt.append(t)
 
             generateMRY(
@@ -240,14 +240,14 @@ class transp_run:
             uf.Variables['Q'] = [0.0,1.0]
             uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
             uf.Variables['Z'] = Zr
-            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.RFS')
+            uf.writeUFILE(self.folder / f'PRF{self.shot}.RFS')
 
             uf = UFILEStools.UFILEtransp(scratch='zfs')
             uf.Variables['X'] = ts
             uf.Variables['Q'] = [0.0,1.0]
             uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
             uf.Variables['Z'] = Zz
-            uf.writeUFILE(f'{self.folder}/PRF{self.shot}.ZFS')
+            uf.writeUFILE(self.folder / f'PRF{self.shot}.ZFS')
 
         if structures_position is not None:
 
@@ -268,7 +268,7 @@ class transp_run:
             # Write Limiters in ufile
             # --------------------------------------------------------------------------------------------
 
-            addLimiters_UF(f'{self.folder}/PRF{self.shot}.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
+            addLimiters_UF(self.folder / f'PRF{self.shot}.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
 
             # --------------------------------------------------------------------------------------------
             # Write Antenna in namelist
@@ -298,7 +298,7 @@ class transp_run:
         '''
 
         for ufile in ufiles:
-            os.system(f"cp {folder_original}/PRF12345.{ufile} {self.folder}/.")
+            os.system(f"cp {folder_original / f'PRF12345.{ufile}'} {self.folder}")
 
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
@@ -848,7 +848,9 @@ def generateMRY(
     IpSign=-1,
     name="",
     ):
-    filesInput = [FolderEquilibrium + "/scrunch_in", FolderEquilibrium + "/ga.d"]
+    folderEquilibrium = IOtools.expandPath(folderEquilibrium)
+    folderMRY = IOtools.expandPath(FolderMRY)
+    filesInput = [FolderEquilibrium / "scrunch_in", FolderEquilibrium / "ga.d"]
 
     if momentsScruncher > 12:
         print(
@@ -856,14 +858,14 @@ def generateMRY(
             typeMsg="w",
         )
 
-    with open(FolderEquilibrium + "ga.d", "w") as f:
+    with open(FolderEquilibrium / "ga.d", "w") as f:
         for i in times:
             nam = f"BOUNDARY_123456_{i}.DAT"
             f.write(nam + "\n")
-            filesInput.append(FolderEquilibrium + "/" + nam)
+            filesInput.append(FolderEquilibrium / nam)
 
     # Generate answers to scruncher in file scrunch_in
-    with open(FolderEquilibrium + "scrunch_in", "w") as f:
+    with open(FolderEquilibrium / "scrunch_in", "w") as f:
         f.write(f"g\nga.d\n{momentsScruncher}\na\nY\nN\nN\nY\nX")
 
     # Run scruncher
@@ -875,7 +877,7 @@ def generateMRY(
 
     scruncher_job.define_machine(
         "scruncher",
-        f"tmp_scruncher_{name}/",
+        f"tmp_scruncher_{name}",
         launchSlurm=False,
     )
 
@@ -887,8 +889,8 @@ def generateMRY(
 
     scruncher_job.run()
 
-    fileUF = f"{FolderMRY}/PRF{nameBaseShot}.MRY"
-    os.system(f"mv {FolderEquilibrium}/M123456.MRY {fileUF}")
+    fileUF = FolderMRY / f"PRF{nameBaseShot}.MRY"
+    os.system(f"mv {FolderEquilibrium / 'M123456.MRY'} {fileUF}")
 
     # Check if MRY file has the number of times expected
     UF = UFILEStools.UFILEtransp()
@@ -950,7 +952,7 @@ def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
         ax.plot(x, y, "-o", markersize=0.5, lw=0.5, c="k", label="lims")
 
     print(
-        f"\t- Limiters UFile created in ...{UFilePath[np.max([-40, -len(UFilePath)]):]}"
+        f"\t- Limiters UFile created in ...{IOtools.clipstr(UFilePath)}"
     )
 
 def writeBoundary(nameFile, rs_orig, zs_orig):
@@ -1136,7 +1138,8 @@ def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -
     return rmom, zmom, r_eval, z_eval
 
 def interpret_trdat(file):
-    if not os.path.exists(file):
+    file = IOtools.expandPath(file)
+    if not file.exists():
         print("TRDAT was not generated. It will likely fail!", typeMsg="q")
     else:
         with open(file, "r") as f:
@@ -1262,13 +1265,14 @@ def defaultbasedMDS(self, outtims=None, PRFmodified=False):
 
     # Add inputdir to namelist
     with open(self.nml_file, "a") as f:
-        f.write("inputdir='" + os.path.abspath(self.FolderTRANSP) + "'\n")
+        f.write(f"inputdir='{self.FolderTRANSP}'\n")
 
     # Change PTR templates
     IOtools.changeValue(
         self.nml_file,
         "pt_template",
-        f'"{os.path.abspath(self.FolderTRANSP)}/ptsolver_namelist.dat"',
+        #f'"{os.path.abspath(self.FolderTRANSP)}/ptsolver_namelist.dat"',
+        f'"{self.FolderTRANSP}/ptsolver_namelist.dat"',
         None,
         "=",
         CommentChar=None,
@@ -1276,7 +1280,8 @@ def defaultbasedMDS(self, outtims=None, PRFmodified=False):
     IOtools.changeValue(
         self.nml_file,
         "tglf_template",
-        f'"{os.path.abspath(self.FolderTRANSP)}/tglf_namelist.dat"',
+        #f'"{os.path.abspath(self.FolderTRANSP)}/tglf_namelist.dat"',
+        f'"{self.FolderTRANSP}/tglf_namelist.dat"',
         None,
         "=",
         CommentChar=None,
@@ -1284,7 +1289,8 @@ def defaultbasedMDS(self, outtims=None, PRFmodified=False):
     IOtools.changeValue(
         self.nml_file,
         "glf23_template",
-        f'"{os.path.abspath(self.FolderTRANSP)}/glf23_namelist.dat"',
+        #f'"{os.path.abspath(self.FolderTRANSP)}/glf23_namelist.dat"',
+        f'"{self.FolderTRANSP}/glf23_namelist.dat"',
         None,
         "=",
         CommentChar=None,

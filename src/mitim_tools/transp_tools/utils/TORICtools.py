@@ -18,10 +18,11 @@ def getTORICfromTRANSP(folderWork, nameRunid):
     torics = []
     cdf_FI = None
 
-    nameICRF = f"{folderWork}/TORIC_folder/{nameRunid}_ICRF_TAR.GZ1"
+    folderWork = IOtools.expandPath(folderWork)
+    nameICRF = folderWork / "TORIC_folder" / f"{nameRunid}_ICRF_TAR.GZ1"
 
-    print(f"\t\t- Looking for TORIC_folder/{nameRunid}_ICRF_TAR.GZ1 file...")
-    if os.path.exists(nameICRF):
+    print(f"\t\t- Looking for {nameICRF.relative_to(folderWork)} file...")
+    if nameICRF.exists():
         folder = convertToReadable(
             nameICRF, checkExtension="ncdf"
         )
@@ -42,10 +43,10 @@ def getTORICfromTRANSP(folderWork, nameRunid):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~ FI
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    nameFI = f"{folderWork}/FI_folder/{nameRunid}_FI_TAR.GZ1"
+    nameFI = folderWork / "FI_folder" / f"{nameRunid}_FI_TAR.GZ1"
 
-    print(f"\t\t- Looking for FI_folder/{nameRunid}_FI_TAR.GZ1 file...")
-    if os.path.exists(nameFI):
+    print(f"\t\t- Looking for {nameFI.relative_to(folderWork)} file...")
+    if nameFI.exists():
         folder_FI = convertToReadable(
             nameFI, checkExtension="cdf"
         )
@@ -63,6 +64,7 @@ def getTORICfromTRANSP(folderWork, nameRunid):
 
 class toricCDF:
     def __init__(self, folderWorkN, antenna="A1"):
+        folderWorkN = IOtools.expandPath(folderWorkN)
         numTOR = IOtools.findFileByExtension(
             folderWorkN, "_toric.ncdf", ForceFirst=True
         )
@@ -73,7 +75,7 @@ class toricCDF:
         fileN_msg = folderWorkN / f"{name}_{antenna}_{numTOR}_toric5.msgs"
 
         self.simulation = None
-        if os.path.exists(fileN):
+        if fileN.exists():
             print(f"\t\t- Reading toric file {IOtools.clipstr(fileN)}")
             self.simulation = toric_tools.toric_analysis(
                 f'{fileN}', mode="ICRF", layout="paper"

@@ -322,7 +322,7 @@ def analyze_results(
     else:
         prfs, metrics, metrics_opt = runFreeGS(self, dictDVs, plot=True, figs=figs)
 
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
+        FolderEvaluation = self.folder / "Outputs" / "final_analysis/"
         if storeResults:
             gs = FREEGSUplotting.writeResults(
                 FolderEvaluation,
@@ -412,9 +412,9 @@ def combined_analysis(
 
     if folderToStore is not None:
         IOtools.askNewFolder(folderToStore, force=True)
-        folderEvaluation_out = f"{folderToStore}/Outputs/"
+        folderEvaluation_out = folderToStore / "Outputs"
         IOtools.askNewFolder(folderEvaluation_out, force=True)
-        folderEvaluation = f"{folderEvaluation_out}final_analysis/"
+        folderEvaluation = folderEvaluation_out / "final_analysis"
         IOtools.askNewFolder(folderEvaluation, force=True)
         gs = FREEGSUplotting.writeResults(
             folderEvaluation,
@@ -480,11 +480,13 @@ def apply_rangeVar(
 def initializeGSgrab(subfolders, evaluations, superfolder="./"):
     if type(subfolders) == str:
         subfolders = [subfolders]
+    subfolders = [IOtools.expandPath(subfolder) for subfolder in subfolders]
+    superfolder = IOtools.expandPath(superfolder)
 
     # Initialize the currents (in case they have different DVs)
     coils = []
     for ff, ev in zip(subfolders, evaluations):
-        pklf = f"{superfolder}/{ff}/Outputs/optimization_object.pkl"
+        pklf = superfolder / f"{ff}" / "Outputs" / "optimization_object.pkl"
 
         mitim = pickle.load(open(pklf, "rb"))
 
@@ -525,6 +527,8 @@ def grabBestSpecificParams(
     ):
     if type(subfolders) == str:
         subfolders = [subfolders]
+    subfolders = [IOtools.expandPath(subfolder) for subfolder in subfolders]
+    superfolder = IOtools.expandPath(superfolder)
 
     # None evaluation to find best
 
@@ -533,7 +537,7 @@ def grabBestSpecificParams(
     cont = 0
     for ff, ev in zip(subfolders, evaluations):
         res = BOgraphics.optimization_results(
-            f"{superfolder}/{ff}/Outputs/optimization_results.out"
+            superfolder / f"{ff}" / "Outputs" / "optimization_results.out"
         )
         res.read()
         useDict_class = res.__dict__[useDict]

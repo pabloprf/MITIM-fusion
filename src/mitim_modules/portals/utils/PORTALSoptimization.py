@@ -60,13 +60,14 @@ def initialization_simple_relax(self):
     # Once flux matching has been attained, copy those as if they were direct MITIM evaluations
     # -------------------------------------------------------------------------------------------
 
-    os.makedirs(os.path.join(self.folderExecution, "Execution/"), exist_ok=True)
+    (self.folderExecution / "Execution").mkdir(parents=True, exist_ok=True)
 
     for i in range(self.Originalinitial_training):
-        ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
-        os.makedirs(ff, exist_ok=True)
+        ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
+        ff.mkdir(parents=True, exist_ok=True)
+        newname = f"{namingConvention}{i}"
         os.system(
-            f"cp -r {MainFolder}/{namingConvention}{i}/model_complete {ff}/model_complete"
+            f"cp -r {MainFolder / newname / 'model_complete'} {ff / 'model_complete'}"
         )
 
     return Xopt.cpu().numpy()

@@ -117,7 +117,7 @@ def calculator(
     p.profiles.deriveQuantities()
     
     p.to_gacode(
-        write_input_gacode=f"{folder}/input.gacode.new.powerstate",
+        write_input_gacode=folder / "input.gacode.new.powerstate",
         position_in_powerstate_batch=0,
         postprocess_input_gacode={
             "Tfast_ratio": False,

@@ -2,7 +2,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import CDFtools
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.experiment_tools import CMODtools
 
 """
@@ -24,8 +24,9 @@ runs = sys.argv[4:]
 cs = []
 lab = []
 for file in runs:
-    cs.append(CDFtools.transp_output(file))
-    lab.append(file.split("/")[-1].split(".")[0])
+    filepath = IOtools.expandPath(file)
+    cs.append(CDFtools.transp_output(filepath))
+    lab.append(filepath.stem)
 
 # ----- Reading data: MDS+ experimental data
 exp = CMODtools.CMODexperiment(shotNumber)

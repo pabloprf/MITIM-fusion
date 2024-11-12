@@ -31,7 +31,7 @@ def main():
 
     args = parser.parse_args()
 
-    folders = args.folders
+    folders = [IOtools.expandPath(folder) for folder in args.folders]
 
     portals_total = []
     for folderWork in folders:

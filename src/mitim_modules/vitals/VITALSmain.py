@@ -286,9 +286,7 @@ def runTGLF(
     initializationFolder = copy.deepcopy(tglf.FolderGACODE)
     tglf.FolderGACODE = FolderEvaluation
 
-    numSim = f'{self.folder}'.split("/")[-1]
-    if len(numSim) < 1:
-        numSim = f'{self.folder}'.split("/")[-2]
+    numSim = self.folder.name
 
     variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
 
@@ -337,7 +335,7 @@ def analyze_results(
 
         self.tglf_final = self_complete.tglf
         FolderEvaluation = self.folder / "Outputs" / "final_analysis"
-        os.makedirs(FolderEvaluation, exist_ok=True)
+        FolderEvaluation.mkdir(parents=True, exist_ok=True)
 
         launchSlurm = True
         print("\t- Running original case")
