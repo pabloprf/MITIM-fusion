@@ -26,11 +26,11 @@ class beat:
         # Where to run it
         self.name = beat_name
         self.folder = self.folder_beat / f'run_{self.name}'
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
         # Where to save the results
         self.folder_output = self.folder_beat / 'beat_results'
-        os.makedirs(self.folder_output, exist_ok=True)
+        self.folder_output.mkdir(parents=True, exist_ok=True)
 
         self.initialize_called = False
 
@@ -87,7 +87,7 @@ class beat_initializer:
         self.folder = self.beat_instance.folder_beat / f'initializer_{label}'
 
         if len(label) > 0:
-            os.makedirs(self.folder, exist_ok=True)
+            self.folder.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, profiles_file = None, profiles = {}, Vsurf = None,  **kwargs_beat):
 
@@ -256,7 +256,7 @@ class creator:
             self.folder = self.initialize_instance.folder / f'creator_{label}'
     
             if len(label) > 0:
-                os.makedirs(self.folder, exist_ok=True)
+                self.folder.mkdir(parents=True, exist_ok=True)
     
             self.profiles_insert = profiles_insert
 

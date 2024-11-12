@@ -14,7 +14,7 @@ class NEO:
         self.inputgacode = inputgacode
         self.folder = IOtools.expandPath(folder)
 
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
     def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
 

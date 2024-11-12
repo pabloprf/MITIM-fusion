@@ -87,7 +87,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
         nameRun = f"{namingConvention}{cont}"
         folder = MainFolder / nameRun
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
-            os.makedirs(folder / "model_complete", exist_ok=True)
+            (folder / "model_complete").mkdir(parents=True, exist_ok=True)
 
         # ***************************************************************************************************************
         # Calculate

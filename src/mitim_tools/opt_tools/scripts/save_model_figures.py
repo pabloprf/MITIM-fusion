@@ -32,7 +32,7 @@ gps = step.GP["individual_models"]
 
 # ***************** Plot and Save
 
-os.makedirs(save, exist_ok=True)
+save.mkdir(parents=True, exist_ok=True)
 
 for i in range(len(gps)):
     name_save = save / f"model{i+1}"

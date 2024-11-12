@@ -335,7 +335,7 @@ def analyze_results(
 
         self.tglf_final = self_complete.tglf
         FolderEvaluation = self.folder / "Outputs" / "final_analysis"
-        os.makedirs(FolderEvaluation, exist_ok=True)
+        FolderEvaluation.mkdir(parents=True, exist_ok=True)
 
         launchSlurm = True
         print("\t- Running original case")
