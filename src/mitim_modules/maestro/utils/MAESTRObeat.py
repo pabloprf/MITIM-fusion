@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
@@ -177,7 +178,7 @@ class initializer_from_geqdsk(beat_initializer):
         p.writeCurrentStatus(file=self.folder / 'input.gacode.geqdsk')
 
         # Copy original geqdsk for reference use
-        os.system(f'cp {geqdsk_file} {self.folder / "input.geqdsk"}')
+        shutil.copy2(geqdsk_file, self.folder / "input.geqdsk")
 
         # Save parameters also here in case they are needed already at this beat (e.g. for EPED)
         self._inform_save()

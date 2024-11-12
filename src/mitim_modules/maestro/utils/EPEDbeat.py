@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ class eped_beat(beat):
 
     def run(self, **kwargs):
 
-        os.system(f'cp {self.initialize.folder / "input.gacode"} {self.folder / "input.gacode"}')
+        shutil.copy2(self.initialize.folder / "input.gacode", self.folder / "input.gacode")
 
         # -------------------------------------------------------
         # Run the NN

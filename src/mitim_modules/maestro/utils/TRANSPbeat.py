@@ -133,9 +133,9 @@ class transp_beat(beat):
     def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
         # Copy to outputs
-        os.system(f'cp {self.folder / f"{self.shot}{self.runid}TR.DAT"} {self.folder_output}')
-        os.system(f'cp {self.folder / f"{self.shot}{self.runid}.CDF"} {self.folder_output}')
-        os.system(f'cp {self.folder / f"{self.shot}{self.runid}tr.log"} {self.folder_output}')
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
         time_extraction = self.transp.c.t[self.transp.c.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
