@@ -286,9 +286,7 @@ def runTGLF(
     initializationFolder = copy.deepcopy(tglf.FolderGACODE)
     tglf.FolderGACODE = FolderEvaluation
 
-    numSim = f'{self.folder}'.split("/")[-1]
-    if len(numSim) < 1:
-        numSim = f'{self.folder}'.split("/")[-2]
+    numSim = self.folder.name
 
     variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
 
