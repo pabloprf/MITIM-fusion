@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
@@ -1400,34 +1401,35 @@ class transp_nml:
     def write(self, runid = 'Z99', file = None):
 
         if file is not None:
-            self.file = file
-            self.inputdir = os.path.dirname(file)
+            self.file = Path(file)
+            self.inputdir = file.parent
         else:
-            self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
+            self.file = self.inputdir / "{self.shotnum}{runid}TR.DAT"
 
         print(f"\t- Writing main namelist to {IOtools.clipstr(self.file)}")
-        with open(self.file, "w") as file:
-            file.write(self.contents)
+        with open(self.file, "w") as f:
+            f.write(self.contents)
 
         if self.contents_ptr_ptsolver is not None:
             print(f"\t- Writing PT_SOLVER namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/ptsolver_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_ptsolver)
+            with open(self.inputdir} / f"ptsolver_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_ptsolver)
         if self.contents_ptr_glf23 is not None:
             print(f"\t- Writing GLF23 namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/glf23_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_glf23)
+            with open(self.inputdir / f"glf23_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_glf23)
         if self.contents_ptr_tglf is not None:
             print(f"\t- Writing TGLF namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/tglf_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_tglf)
+            with open(self.inputdir / f"tglf_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_tglf)
 
 def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
     '''
     This ensures that the folders are adapted to the, e.g., remote execution setup
     '''
+    # FolderRun should be a string since it represents the remote server
 
-    nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
+    nml_file = IOtools.expandPath(FolderTRANSP) / f"{runid}TR.DAT"
 
     # Change inputdir
     IOtools.changeValue(
@@ -1444,7 +1446,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "pt_template",
-            f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
+            f"'{FolderRun}/ptsolver_namelist.dat'",
             [""],
             "=",
             CommentChar=None,
@@ -1458,7 +1461,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "tglf_template",
-            f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
+            f"'{FolderRun}/tglf_namelist.dat'",
             [""],
             "=",
             CommentChar=None,
@@ -1472,7 +1476,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "glf23_template",
-            f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
+            f"'{FolderRun}/glf23_namelist.dat'",
             [""],
             "=",
             CommentChar=None,

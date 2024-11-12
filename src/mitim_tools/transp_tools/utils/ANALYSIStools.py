@@ -1136,9 +1136,9 @@ class ISOLVERinputs:
     def __init__(self, folder, name="sprc"):
         self.folder = IOtools.expandPath(folder)
 
-        self.file_conductor = f"{self.folder}/{name}_conductor_regions.dat"
-        self.file_limiters = f"{self.folder}/{name}_limiter_surface.dat"
-        self.file_connections = f"{self.folder}/{name}_coil_connections.dat"
+        self.file_conductor = self.folder / f"{name}_conductor_regions.dat"
+        self.file_limiters = self.folder / f"{name}_limiter_surface.dat"
+        self.file_connections = self.folder / f"{name}_coil_connections.dat"
 
         self.readCoils()
 

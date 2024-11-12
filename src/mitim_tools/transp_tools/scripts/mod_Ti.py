@@ -32,12 +32,12 @@ tilab = "TIO"
 timesplot = np.linspace(plotTime - avTime, plotTime + avTime, 100)
 
 ufTe = UFILEStools.UFILEtransp()
-ufTe.readUFILE(IOtools.expandPath("./PRF12345." + telab))
+ufTe.readUFILE(IOtools.expandPath(f"./PRF12345.{telab}"))
 
-os.system("cp {0} {0}_old".format(IOtools.expandPath("./PRF12345." + tilab)))
+os.system("cp {0} {0}_old".format(IOtools.expandPath(f"./PRF12345.{tilab}")))
 
 ufTi = UFILEStools.UFILEtransp()
-ufTi.readUFILE(IOtools.expandPath("./PRF12345." + tilab))
+ufTi.readUFILE(IOtools.expandPath("./PRF12345.{tilab}"))
 
 # Ti in Te time scale
 newZ = []

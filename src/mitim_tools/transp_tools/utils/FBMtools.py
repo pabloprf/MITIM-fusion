@@ -21,6 +21,7 @@ class fbmCDF:
             f"\t\t- Gathering FBM data for {particle}. Guiding Center: {guidingCenter}"
         )
 
+        file = IOtools.expandPath(file)
         self.guidingCenter = guidingCenter
         self.particle = particle
 
@@ -73,10 +74,10 @@ class fbmCDF:
         birthfile = None
 
         print("\t- Looking for birth data...")
-        if os.path.exists(file.split("_fi_")[0] + "_birth.cdf1"):
-            birthfile = file.split("_fi_")[0] + "_birth.cdf1"
-        elif os.path.exists(file.split(".DATA")[0] + "_birth.cdf1"):
-            birthfile = file.split(".DATA")[0] + "_birth.cdf1"
+        if (file.parent / f'{file.name.split("_fi_")[0] + "_birth.cdf1"}').exists():
+            birthfile = file.parent / file.name.split("_fi_")[0] + "_birth.cdf1"
+        elif (file.parent / f'{file.split(".DATA")[0] + "_birth.cdf1"}').exists():
+            birthfile = file.parent / file.name.split(".DATA")[0] + "_birth.cdf1"
         else:
             print("\t\t- NUBEAM birth cdf file could not be found", typeMsg="w")
 
@@ -281,10 +282,11 @@ def convertACtoCDF(file, guidingCenter=True, copyWhereOriginal=True, extralab="_
     This converts the .DATA1 file into the _fi_1.cdf
     """
 
-    folderOrig, _ = IOtools.getLocInfo(file)
+    file = IOtools.expandPath(file)
+    folderOrig, fileOrig = IOtools.getLocInfo(file, with_extension=True)
 
-    runid = file.split(".DATA")[0].split("/")[-1]
-    num = file.split(".DATA")[1]
+    runid = fileOrig.split(".DATA")[0]
+    num = fileOrig.split(".DATA")[1]
 
     finFile = f"{runid}_fi_{num}.cdf"
     typeF = "c" if guidingCenter else "p"
@@ -299,9 +301,9 @@ def convertACtoCDF(file, guidingCenter=True, copyWhereOriginal=True, extralab="_
         folderOrig, commandMain, file, finFile, name=runid, commandOrder=commandOrder
     )
 
-    os.system(f"mv {folderOrig}/{finFile} {folderOrig}/{finFile2}")
+    os.system(f"mv {folderOrig / f'finFile'} {folderOrig / f'finFile2'}")
 
-    cdf = netCDF4.Dataset(f"{folderOrig}/{finFile2}")
+    cdf = netCDF4.Dataset(folderOrig / f"finFile2")
 
     return cdf.variables
 
@@ -321,7 +323,7 @@ def runGetFBM(
 
     fbm_job.define_machine(
         "get_fbm",
-        f"tmp_fbm_{name}/",
+        f"tmp_fbm_{name}",
         launchSlurm=False,
     )
 
@@ -351,6 +353,7 @@ class birthCDF:
     def __init__(self, file, particle="D_MCBEAM"):
         print(f" >> Gathering BIRTH data for {particle}")
 
+        file = IOtools.expandPath(file)
         self.cdf = netCDF4.Dataset(file)
 
         # Major radius (cm)
@@ -392,12 +395,12 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
     noHe4 = False
 
     # Guiding Center
-    nameTry = f"{folderWork}/NUBEAM_folder/{nameRunid}_fi_{datanum}_GC.cdf"
-    nameTry2 = f"{folderWork}/NUBEAM_folder/{nameRunid}.DATA{datanum}"
+    nameTry = folderWork / "NUBEAM_folder" / f"{nameRunid}_fi_{datanum}_GC.cdf"
+    nameTry2 = folderWork / "NUBEAM_folder" / f"{nameRunid}.DATA{datanum}"
 
-    if os.path.exists(nameTry):
+    if nameTry.exists():
         ACalreadyConverted, name = True, nameTry
-    elif os.path.exists(nameTry2):
+    elif nameTry2.exists():
         ACalreadyConverted, name = False, nameTry2
     else:
         ACalreadyConverted = None
@@ -405,7 +408,7 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
     if ACalreadyConverted is not None:
         try:
             print(
-                f"\t\t\t- File ...{name[np.max([-40,-len(name)]):]} found, running workflow to get FBM"
+                f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM"
             )
             fbm_He4_gc = fbmCDF(
                 name,
@@ -418,15 +421,15 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
             print("\t\t- He4 from Fusion could not be found in FBM", typeMsg="w")
 
     # Particle position
-    nameTry = f"{folderWork}/NUBEAM_folder/{nameRunid}_fi_{datanum}_PO.cdf"
-    nameTry2 = f"{folderWork}/NUBEAM_folder/{nameRunid}.DATA{datanum}"
-    nameTry3 = f"{folderWork}/NUBEAM_folder/{nameRunid}.DATA{datanum}_original"
+    nameTry = folderWork / "NUBEAM_folder" / f"{nameRunid}_fi_{datanum}_PO.cdf"
+    nameTry2 = folderWork / "NUBEAM_folder" / f"{nameRunid}.DATA{datanum}"
+    nameTry3 = folderWork / "NUBEAM_folder" / f"{nameRunid}.DATA{datanum}_original"
 
-    if os.path.exists(nameTry):
+    if nameTry.exists():
         ACalreadyConverted, name = True, nameTry
-    elif os.path.exists(nameTry2): 
+    elif nameTry2.exists(): 
         ACalreadyConverted, name = False, nameTry2
-    elif os.path.exists(nameTry3):
+    elif nameTry3.exists():
         ACalreadyConverted, name = False, nameTry2
         os.system(f"mv {nameTry3} {nameTry2}")
     else:
@@ -436,7 +439,7 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
         if not noHe4:
             try:
                 print(
-                    f"\t\t\t- File ...{name[np.max([-40,-len(name)]):]} found, running workflow to get FBM"
+                    f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM"
                 )
                 fbm_He4_po = fbmCDF(
                     name,
