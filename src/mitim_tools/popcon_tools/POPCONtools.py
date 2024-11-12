@@ -378,7 +378,7 @@ class MITIMpopcon:
 
         # Read template plot options
         if plot_template is None:
-            plot_template = __mitimroot__ + "/templates/plot_popcon.yaml"
+            plot_template = __mitimroot__ / "templates" / "plot_popcon.yaml"
             plot_style = cfspopcon.read_plot_style(plot_template)
 
         # Update plot options
