@@ -44,7 +44,7 @@ cold_start = False
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folderO)
 
-folder = IOtools.expandPath(folderO + "/tgyro_std_analysis/")
+folder = folderO / "tgyro_std_analysis"
 tgyro, rhos, PredictionSet, TGLFsettings, extraOptionsTGLF = portals.extractTGYRO(
     folder=folder, cold_start=cold_start, evaluation=0
 )
@@ -77,7 +77,7 @@ def run_tgyro_parallel(Params, cont):
         TGYRO_solver_options = {"tgyro_method": method, "step_jac": i}
 
     tgyro_here.run(
-        subFolderTGYRO=name + "/",
+        subFolderTGYRO=name,
         TGYRO_solver_options=TGYRO_solver_options,
         iterations=iterations,
         cold_start=cold_startTGYRO,
