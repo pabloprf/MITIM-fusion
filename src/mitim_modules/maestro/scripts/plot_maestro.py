@@ -1,6 +1,6 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools import GUItools
+from mitim_tools.misc_tools import IOtools, GUItools
 
 """
 Quick way to plot several input.gacode files together
@@ -24,7 +24,7 @@ def main():
 
     args = parser.parse_args()
 
-    folders = args.folders
+    folders = [IOtools.expandPath(folder) for folder in args.folders]
     beats = args.beats
     only = args.only
     full = args.full
