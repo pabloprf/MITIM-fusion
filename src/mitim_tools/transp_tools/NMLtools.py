@@ -1404,7 +1404,7 @@ class transp_nml:
             self.file = IOtools.expandPath(file)
             self.inputdir = file.parent
         else:
-            self.file = self.inputdir / "{self.shotnum}{runid}TR.DAT"
+            self.file = self.inputdir / f"{self.shotnum}{runid}TR.DAT"
 
         print(f"\t- Writing main namelist to {IOtools.clipstr(self.file)}")
         with open(self.file, "w") as f:
@@ -1412,7 +1412,7 @@ class transp_nml:
 
         if self.contents_ptr_ptsolver is not None:
             print(f"\t- Writing PT_SOLVER namelist to {IOtools.clipstr(self.file)}")
-            with open(self.inputdir / f"ptsolver_namelist.dat", "w") as f:
+            with open(self.inputdir / "ptsolver_namelist.dat", "w") as f:
                 f.write(self.contents_ptr_ptsolver)
         if self.contents_ptr_glf23 is not None:
             print(f"\t- Writing GLF23 namelist to {IOtools.clipstr(self.file)}")
