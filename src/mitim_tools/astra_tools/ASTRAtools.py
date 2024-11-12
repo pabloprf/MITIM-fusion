@@ -1,4 +1,5 @@
 import os
+import shutil
 import tarfile
 import numpy as np
 from mitim_tools.misc_tools import IOtools,FARMINGtools, GUItools, GRAPHICStools
@@ -25,7 +26,7 @@ class ASTRA():
         IOtools.askNewFolder(self.folder)
 
         # Move files
-        os.system(f'cp {self.file_repo} {self.folder / "ASTRA8_REPO.tar.gz"}')
+        shutil.copy2(self.file_repo, self.folder / 'ASTRA8_REPO.tar.gz')
 
         # untar
         with tarfile.open(
@@ -52,7 +53,8 @@ class ASTRA():
 
         self.folder_astra = self.folder /  name
         IOtools.askNewFolder(self.folder_astra)
-        os.system(f'cp -r {self.folder / "ASTRA8_REPO"}* {self.folder_astra}')
+        for item in self.folder.glob('ASTRA8_REPO*'):
+            shutil.copy2(item, self.folder_astra)
 
         astra_name = f'mitim_astra_{name}'
 
