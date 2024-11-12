@@ -143,7 +143,7 @@ def mitimRun(
 
     if cold_start:
         # Create folder
-        os.makedirs(folderEvaluation, exist_ok=True)
+        folderEvaluation.mkdir(parents=True, exist_ok=True)
 
         # Write params.in.X
         IOtools.writeparams(x, paramsfile, bounds, outputs, numEval)

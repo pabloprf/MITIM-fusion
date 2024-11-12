@@ -18,24 +18,24 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
 
     # Find beat results from folders
     folder_beats = folder / 'Beats'
-    beats = sorted([item for item in os.listdir(folder_beats) if not item.startswith(".")], key=lambda x: int(x.split('_')[1]))
+    beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
-        if 'run_transp' in os.listdir(folder_beats/ f'{beats[beat]}'):
+        if (folder_beats / f'{beats[beat]}' / 'run_transp').exists():
             beat_types.append('transp')
-        elif 'run_portals' in os.listdir(folder_beats/ f'{beats[beat]}'):
+        elif (folder_beats / f'{beats[beat]}' / 'run_portals').exists():
             beat_types.append('portals')
-        elif 'run_eped' in os.listdir(folder_beats/ f'{beats[beat]}'):
+        elif (folder_beats / f'{beats[beat]}' / 'run_eped').exists():
             beat_types.append('eped')
 
     # First initializer
     beat_initializer = None
-    if 'initializer_freegs' in os.listdir(folder_beats / f'{beats[0]}'):
+    if (folder_beats / f'{beats[0]}' / 'initializer_freegs').exists():
         beat_initializer = 'freegs'
-    elif 'initializer_geqdsk' in os.listdir(folder_beats / f'{beats[0]}'):
+    elif (folder_beats / f'{beats[0]}' / 'inititalizer_geqdsk').exists():
         beat_initializer = 'geqdsk'
-    elif 'initializer_profiles' in os.listdir(folder_beats / f'{beats[0]}'):
+    elif (folder_beats / f'{beats[0]}' / 'initializer_profiles').exists():
         beat_initializer = 'profiles'
 
     # Create "dummy" maestro by only defining the beats

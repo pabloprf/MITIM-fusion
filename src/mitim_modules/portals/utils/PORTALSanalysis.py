@@ -32,7 +32,7 @@ class PORTALSanalyzer:
             else self.opt_fun.folder / "Analysis"
         )
 
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
         self.fn = None
 
@@ -479,7 +479,7 @@ class PORTALSanalyzer:
             folder = self.folder / f"portals_step{evaluation}"
 
         folder = IOtools.expandPath(folder)
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         # Original class
         portals_fun_original = self.opt_fun.prfs_model.optimization_object
@@ -526,7 +526,7 @@ class PORTALSanalyzer:
             folder = self.folder / f"tgyro_step{evaluation}"
 
         folder = IOtools.expandPath(folder)
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
@@ -575,7 +575,7 @@ class PORTALSanalyzer:
 
         folder = IOtools.expandPath(folder)
 
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         print(
             f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}"
@@ -615,7 +615,7 @@ class PORTALSanalyzer:
         if folder is None:
             folder = self.folder / "tglf_full"
 
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         if onlyBest:
             ranges = [self.ibest]

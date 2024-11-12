@@ -45,7 +45,7 @@ class transp_nml:
         self.shotnum = shotnum
 
         if self.inputdir is not None and not self.inputdir.exists():
-            os.makedirs(self.inputdir)
+            self.inputdir.mkdir(parents=True, exist_ok=True)
 
         # Until machine is defined, these are None
         self.ICRFantennas = None

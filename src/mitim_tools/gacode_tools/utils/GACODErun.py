@@ -309,7 +309,7 @@ def CDFtoTRXPLoutput(
     nameFiles, fail_attempts = "10000", 2
     folderWork = IOtools.expandPath(folderWork)
 
-    os.makedirs(folderWork, exist_ok=True)
+    folderWork.mkdir(parents=True, exist_ok=True)
     if sendState:
         cdffile = folderWork / f'{nameFiles}.CDF'
         os.system(f"cp {LocationCDF} {cdffile}")

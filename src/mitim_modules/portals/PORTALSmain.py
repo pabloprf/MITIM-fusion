@@ -547,13 +547,13 @@ class portals(STRATEGYtools.opt_evaluator):
         if reevaluateTargets > 0:
             print("- Re-evaluate targets", typeMsg="i")
 
-            os.makedirs(folderNew / "TargetsRecalculate", exist_ok=True)
+            (folderNew / "TargetsRecalculate").mkdir(parents=True, exist_ok=True)
 
             for numPORTALS in range(len(optimization_data.data)):
 
                 FolderEvaluation = folderNew / "TargetsRecalculate" / f"Evaluation.{numPORTALS}"
 
-                os.makedirs(FolderEvaluation, exist_ok=True)
+                FolderEvaluation.mkdir(parents=True, exist_ok=True)
 
                 # ------------------------------------------------------------------------------------
                 # Produce design variables
@@ -626,7 +626,7 @@ def runModelEvaluator(
     # ---------------------------------------------------------------------------------------------------
 
     folder_model = FolderEvaluation / "model_complete"
-    os.makedirs(folder_model, exist_ok=True)
+    folder_model.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------------------------------------------
     # Prepare evaluating vector X

@@ -43,8 +43,8 @@ class maestro:
         self.folder_logs = self.folder_output / "Logs"
         self.folder_beats = self.folder / "Beats"
 
-        os.makedirs(self.folder_logs, exist_ok=True)
-        os.makedirs(self.folder_beats, exist_ok=True)
+        self.folder_logs.mkdir(parents=True, exist_ok=True)
+        self.folder_beats.mkdir(parents=True, exist_ok=True)
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')
