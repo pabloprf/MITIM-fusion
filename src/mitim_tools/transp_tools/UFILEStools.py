@@ -862,40 +862,6 @@ def changeUFILEs(
 
         print(f"\t- Changed {iDV} in TRANSP U-Files to {valToModify[iDV]}{printt}")
 
-
-def generateInitialRampValues(dictParams, FolderTRANSP, nameBaseShot, dictParamsOrig):
-    # Parameters in U-Files
-
-    UF = UFILEtransp()
-    UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.CUR")
-    Ip_orig = UF.Variables["Z"][0]
-
-    UF = UFILEtransp()
-    UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.RBZ")
-    RBZ_orig = UF.Variables["Z"][0]
-
-    R_orig, epsilon_orig, a_orig = (
-        dictParamsOrig["rmajor"],
-        dictParamsOrig["epsilon"],
-        copy.deepcopy(epsilon_orig * R_orig),
-    )
-
-    # Parameters in new baseline (which was created to avoid intersections)
-
-    rmajor_baseline, epsilon_baseline, Bt = (
-        dictParams["rmajor_startwith"],
-        dictParams["epsilon_startwith"],
-        dictParams["Bt"],
-    )
-
-    R_new = copy.deepcopy(rmajor_baseline)
-    RBZ_new = copy.deepcopy(Bt * R_new * 100.0)
-    a_new = copy.deepcopy(epsilon_baseline * R_new)
-    Ip_new = copy.deepcopy(Ip_orig)
-
-    return Ip_new, RBZ_new
-
-
 def offsettimeUF(FolderTRANSP, nameBaseShot, nameufile, offsettime):
     # Read Ufile
     UF = UFILEtransp()
