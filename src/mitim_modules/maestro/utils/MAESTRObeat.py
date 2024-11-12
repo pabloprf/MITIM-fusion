@@ -112,7 +112,7 @@ class beat_initializer:
         # --------------------------------------------------------------------------------------------
 
         # Write it to initialization folder
-        self.profiles_current.writeCurrentStatus(file=self.folder / 'input.gacode' )
+        self.profiles_current.writeCurrentStatus(file=self.folder / 'input.gacode')
 
         # Pass the profiles to the beat instance
         self.beat_instance.profiles_current = self.profiles_current
@@ -137,7 +137,7 @@ class initializer_from_previous(beat_initializer):
         print("\t- Initializing profiles from previous beat's result", typeMsg = 'i')
         
         beat_num = self.beat_instance.maestro_instance.counter_current-1
-        profiles_file = self.beat_instance.maestro_instance.beats[beat_num].folder_output / "input.gacode"
+        profiles_file = self.beat_instance.maestro_instance.beats[beat_num].folder_output / 'input.gacode'
 
         super().__call__(profiles_file)
 
@@ -177,7 +177,7 @@ class initializer_from_geqdsk(beat_initializer):
         p.writeCurrentStatus(file=self.folder / 'input.gacode.geqdsk')
 
         # Copy original geqdsk for reference use
-        os.system(f'cp {geqdsk_file} {self.folder}/input.geqdsk')
+        os.system(f'cp {geqdsk_file} {self.folder / "input.geqdsk"}')
 
         # Save parameters also here in case they are needed already at this beat (e.g. for EPED)
         self._inform_save()
@@ -253,7 +253,7 @@ class creator:
         def __init__(self, initialize_instance, profiles_insert = {}, label = 'generic'):
     
             self.initialize_instance = initialize_instance
-            self.folder = self.initialize_instance.folder / f'creator_{label}/'
+            self.folder = self.initialize_instance.folder / f'creator_{label}'
     
             if len(label) > 0:
                 os.makedirs(self.folder, exist_ok=True)
@@ -363,7 +363,7 @@ class creator_from_eped(creator_from_parameterization):
         eped_results = beat_eped._run(loopBetaN = 1)
 
         # Potentially save variables
-        np.save(beat_eped.folder_output/ 'eped_results.npy', eped_results)
+        np.save(beat_eped.folder_output / 'eped_results.npy', eped_results)
         beat_eped._inform_save(eped_results)
 
         # Call the profiles creator
