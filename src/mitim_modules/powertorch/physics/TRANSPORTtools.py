@@ -803,7 +803,7 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
 
     a, subname = IOtools.reducePathLevel(GeneralFolder, level=1, isItFile=False)
 
-    FolderEvaluation = IOtools.expandPath(folderEvaluation)
+    FolderEvaluation = IOtools.expandPath(FolderEvaluation)
 
     name = FolderEvaluation.name.split(".")[-1]  # 0   (evaluation #)
 
