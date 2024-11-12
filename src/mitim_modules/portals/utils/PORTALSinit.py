@@ -55,12 +55,12 @@ def initializeProblem(
 
     # ---- Copy the file of interest to initialization folder
 
-    os.system(f"cp {fileStart} {FolderInitialization}/input.gacode")
+    os.system(f"cp {fileStart} {FolderInitialization / 'input.gacode'}")
 
     # ---- Make another copy to preserve the original state
 
     os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
+        f"cp {FolderInitialization / 'input.gacode'} {FolderInitialization / 'input.gacode_original'}"
     )
 
     # ---- Initialize file to modify and increase resolution

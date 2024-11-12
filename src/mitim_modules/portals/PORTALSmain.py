@@ -402,10 +402,10 @@ class portals(STRATEGYtools.opt_evaluator):
                 dictStore = pickle_dill.load(handle)                            #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
-                f"{self.folder}/Initialization/input.gacode_modified"
+                self.folder / "Initialization" / "input.gacode_modified"
             )
             dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
-                f"{self.folder}/Initialization/input.gacode_original"
+                self.folder / "Initialization" / "input.gacode_original"
             )
             with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle)
@@ -523,15 +523,15 @@ class portals(STRATEGYtools.opt_evaluator):
                 2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
         """
 
-        os.makedirs(folderNew / "Outputs", exist_ok=True)
+        (folderNew / "Outputs").mkdir(parents=True, exist_ok=True)
 
-        os.system(f"cp {folderRead}/Outputs/optimization_data.csv {folderNew}/Outputs/.")
-        os.system(f"cp {folderRead}/Outputs/optimization_extra.pkl {folderNew}/Outputs/.")
+        os.system(f"cp {folderRead / 'Outputs' / 'optimization_data.csv'} {folderNew / 'Outputs'}")
+        os.system(f"cp {folderRead / 'Outputs' / 'optimization_extra.pkl'} {folderNew / 'Outputs'}")
 
         optimization_data = BOgraphics.optimization_data(
             self.optimization_options["dvs"],
             self.optimization_options["ofs"],
-            file=f"{folderNew}/Outputs/optimization_data.csv",
+            file=folderNew / "Outputs" / "optimization_data.csv",
         )
 
         self.optimization_options["initial_training"] = len(optimization_data.data)
@@ -550,9 +550,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
             for numPORTALS in range(len(optimization_data.data)):
 
-                FolderEvaluation = (
-                    f"{folderNew}/TargetsRecalculate/Evaluation.{numPORTALS}"
-                )
+                FolderEvaluation = folderNew / "TargetsRecalculate" / f"Evaluation.{numPORTALS}"
 
                 os.makedirs(FolderEvaluation, exist_ok=True)
 
