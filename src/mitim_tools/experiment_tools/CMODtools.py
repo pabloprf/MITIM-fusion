@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import socket
 import numpy as np
 import matplotlib.pyplot as plt
@@ -664,7 +665,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     # ----- Change names to those that I understand
 
     for i, j in zip(["NER", "TER", "TI2"], ["NEL", "TEL", "TIO"]):
-        os.system(f"mv {folderWork / f'PRF{shotnum}.{i}'} {folderWork / f'PRF{shotnum}.{j}'}")
+        (folderWork / f'PRF{shotnum}.{i}').replace(folderWork / f'PRF{shotnum}.{j}')
 
     # ---- Add C-Mod limiter
 
@@ -686,7 +687,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     UFILEStools.quickUFILE(xZeff, Zeff, folderWork / f"PRF{shotnum}.ZF2", typeuf="zf2")
 
     # This file is useless
-    os.system(f"rm {folderWork}/PRF{shotnum}.ZEF")
+    os.remove(folderWork / f"PRF{shotnum}.ZEF")
 
     # ---- Ti validity
 
@@ -701,7 +702,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'PRF'"
 
     # Let's not include neutrons
-    os.system(f"rm {folderWork / f'PRF{shotnum}.NTX'}")
+    os.remove(folderWork / f"PRF{shotnum}.NTX")
 
     # ---------------------------------------
     # Simulation settings
@@ -822,7 +823,7 @@ def getTRANSP_MDS(
         getMMX(shotnumber, runid, ff)
         IOtools.changeValue(nml_file, "premry", None, [], "=")
         IOtools.changeValue(nml_file, "extmry", None, [], "=")
-        os.system(f"cp {ff / f'PRF{runid}.MMX'} {folderWork}")
+        shutil.copy2(ff / f"PRF{runid}.MMX", folderWork)
         IOtools.changeValue(nml_file, "premmx", '"PRF"', [], "=")
         IOtools.changeValue(nml_file, "extmmx", '"MMX"', [], "=")
 
@@ -996,7 +997,8 @@ def getZeff_neo(
         zeff.extend([float(j) for j in i.split()])
     zeff = np.array(zeff)
 
-    os.system(f"rm {folder / 't.dat'} {folder / 'z.dat'}")
+    os.remove(folder / "t.dat")
+    os.remove(folder / "z.dat")
 
     return zeff, t
 
@@ -1025,10 +1027,6 @@ def getMMX(shotNumber, runid, folderWork):
         print(f" >> Maximum relative GS error in data: {GSerrormax}")
 
     for ufile in ["PLF", "PF0", "TRF", "PRS", "QPR", "LIM", "GRB", "MMX"]:
-        os.system(
-            "mv {0}/PRF{1}.{2} {3}/PRF{4}.{2}".format(
-                folderScratch, str(shotNumber)[-6:], ufile, folderWork, runid
-            )
-        )
+        (folderScratch / f"PRF{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"PRF{runid}.{ufile}")
 
-    os.system(f"rm -r {folderScratch}")
+    shutil.rmtree(folderScratch)
