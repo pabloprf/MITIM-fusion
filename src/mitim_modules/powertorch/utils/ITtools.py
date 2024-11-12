@@ -81,9 +81,11 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     storeValues = algorithmOptions.get("storeValues", True)
     namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
 
+    MainFolder = IOtools.expandPath(MainFolder)
+
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}{cont}"
-        folder = MainFolder /  nameRun
+        folder = MainFolder / nameRun
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             os.makedirs(folder / "model_complete", exist_ok=True)
 
@@ -99,7 +101,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
         # Save state so that I can check initializations
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             self.save(folder / "powerstate.pkl")
-            os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
+            os.system(f"cp {folderTGYRO / 'input.gacode'} {folder}")
 
         return QTransport, QTarget
 

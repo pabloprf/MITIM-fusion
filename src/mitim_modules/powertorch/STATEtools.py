@@ -288,6 +288,7 @@ class powerstate:
             - folder: folder to save the results, if used by calculation methods (e.g. to write profiles and/or run black-box simulations)
             - evaluation_number
         """
+        folder = IOtools.expandPath(folder)
 
         # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
         self.modify(X)
@@ -643,6 +644,7 @@ class powerstate:
         """
         Update the transport of the current state.
         """
+        folder = IOtools.expandPath(folder)
 
         # Select transport evaluator
         if self.TransportOptions["transport_evaluator"] is None:

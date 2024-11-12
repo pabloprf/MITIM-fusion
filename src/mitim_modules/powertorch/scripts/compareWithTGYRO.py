@@ -10,7 +10,7 @@ from mitim_modules.powertorch import STATEtools
 """
 This code is useful to get an idea of how well POWERSTATE is calculating the targets, compared to the standard of TGYRO.
 To run:
-		compareWithTGYRO.py tgyro_folder/
+		compareWithTGYRO.py tgyro_folder
 """
 
 
