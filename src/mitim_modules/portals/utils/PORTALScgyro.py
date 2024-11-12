@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import numpy as np
 from IPython import embed
@@ -869,7 +870,7 @@ def modTGYROfile(file, var, pos=0, fileN_suffix=None):
     fileN = file if fileN_suffix is None else file.parent / f"{file.name}{fileN_suffix}"
 
     if not fileN.exists():
-        os.system(f"cp {file} {fileN}")
+        shutil.copy2(file, fileN)
 
     with open(fileN, "r") as f:
         lines = f.readlines()

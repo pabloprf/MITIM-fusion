@@ -1,6 +1,7 @@
 import copy
 import torch
 import os
+import shutil
 from functools import partial
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
@@ -69,9 +70,7 @@ def initialization_simple_relax(self):
         if os.path.exists(f"{ff}/model_complete"):
             os.system(f"rm -r {ff}/model_complete")
         newname = f"{namingConvention}{i}"
-        os.system(
-            f"cp -r {MainFolder / newname / 'model_complete'} {ff / 'model_complete'}"
-        )
+        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete")
 
     return Xopt.cpu().numpy()
 
