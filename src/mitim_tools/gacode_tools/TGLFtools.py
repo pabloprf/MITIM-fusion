@@ -1,6 +1,7 @@
 import os
 import copy
 import pickle
+from pathlib import Path
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -3905,9 +3906,9 @@ def reduceToControls(dict_all):
 
 class TGLFinput:
     def __init__(self, file=None):
-        self.file = file
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
 
-        if self.file is not None and os.path.exists(self.file):
+        if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
                 lines = f.readlines()
             file_txt = "".join(lines)

@@ -152,8 +152,9 @@ class OPTstep:
 
         self.GP = {"individual_models": [None] * self.y.shape[-1]}
         fileTraining = IOtools.expandPath(self.stepSettings['folderOutputs']) / "surrogate_data.csv"
+        fileBackup = fileTraining.parent / "surrogate_data.csv.bak"
         if fileTraining.exists():
-            os.rename(f'{fileTraining}', f'{fileTraining}.bak')
+            os.rename(f'{fileTraining}', f'{fileBackup}')
 
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
@@ -257,8 +258,8 @@ class OPTstep:
 
             self.GP["individual_models"][i] = GP
 
-        if os.path.exists(f'{fileTraining}.bak'):
-            os.remove(f'{fileTraining}.bak')
+        if fileBackup.exists():
+            os.remove(f'{fileBackup}')
 
         # ------------------------------------------------------------------------------------------------------
         # Combine them in a ModelListGP (create one single with MV but do not fit)

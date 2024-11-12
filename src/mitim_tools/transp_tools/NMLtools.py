@@ -41,10 +41,10 @@ class transp_nml:
         timings = {}
         ):
 
-        self.inputdir = inputdir
+        self.inputdir = IOtools.expandPath(inputdir) if isinstance(inputdir, (str, Path)) else None
         self.shotnum = shotnum
 
-        if self.inputdir is not None and not os.path.exists(self.inputdir):
+        if self.inputdir is not None and not self.inputdir.exists():
             os.makedirs(self.inputdir)
 
         # Until machine is defined, these are None
@@ -1401,7 +1401,7 @@ class transp_nml:
     def write(self, runid = 'Z99', file = None):
 
         if file is not None:
-            self.file = Path(file)
+            self.file = IOtools.expandPath(file)
             self.inputdir = file.parent
         else:
             self.file = self.inputdir / "{self.shotnum}{runid}TR.DAT"
@@ -1412,7 +1412,7 @@ class transp_nml:
 
         if self.contents_ptr_ptsolver is not None:
             print(f"\t- Writing PT_SOLVER namelist to {IOtools.clipstr(self.file)}")
-            with open(self.inputdir} / f"ptsolver_namelist.dat", "w") as f:
+            with open(self.inputdir / f"ptsolver_namelist.dat", "w") as f:
                 f.write(self.contents_ptr_ptsolver)
         if self.contents_ptr_glf23 is not None:
             print(f"\t- Writing GLF23 namelist to {IOtools.clipstr(self.file)}")

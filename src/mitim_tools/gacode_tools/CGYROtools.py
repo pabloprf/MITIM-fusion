@@ -2,6 +2,7 @@ import os
 import copy
 import datetime
 import time
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun
@@ -647,9 +648,9 @@ class CGYRO:
 
 class CGYROinput:
     def __init__(self, file=None):
-        self.file = file
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
 
-        if self.file is not None and os.path.exists(self.file):
+        if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
                 lines = f.readlines()
             self.file_txt = "".join(lines)

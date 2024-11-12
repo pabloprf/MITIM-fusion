@@ -1,6 +1,5 @@
 import os
 import time
-import os.path
 import datetime
 import re
 import numpy as np

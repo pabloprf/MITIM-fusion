@@ -446,6 +446,10 @@ def storeCDF(FolderTRANSP, runid, retrieveAC=False):
 
 
 def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
+
+    nml_file = IOtools.expandPath(nml_file)
+    nml_file_ptsolver = IOtools.expandPath(nml_file_ptsolver)
+
     # If no TORIC, no MPI
     val = IOtools.findValue(nml_file, "nlicrf", "=", raiseException=False)
     if (val is None) or IOtools.isFalse(val):
@@ -458,7 +462,7 @@ def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
     val = IOtools.findValue(
         nml_file, "lpredictive_mode", "=", raiseException=False, findOnlyLast=True
     )
-    if os.path.exists(nml_file_ptsolver):
+    if nml_file_ptsolver.exists():
         val1 = IOtools.findValue(
             nml_file_ptsolver,
             "pt_confinement%tglf%active",

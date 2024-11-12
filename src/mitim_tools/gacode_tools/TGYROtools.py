@@ -334,8 +334,8 @@ class TGYRO:
         txt_nonexist = ""
         if exists:
             for j in self.outputFiles:
-                file = f"{self.FolderTGYRO}{j}"
-                existThis = os.path.exists(file)
+                file = self.FolderTGYRO / f"{j}"
+                existThis = file.exists()
                 if not existThis:
                     txt_nonexist += f"\t\t- {IOtools.clipstr(file)}\n"
                 exists = exists and existThis
@@ -1311,7 +1311,7 @@ class TGYROoutput:
                 self.ne_predicted = i.split()[-1] != "fixed"
 
         file = self.FolderTGYRO / f"out.tgyro.evo_te"
-        if os.path.exists(file):
+        if file.exists():
             self.roa, self.QeGB_sim, self.QeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
@@ -1319,7 +1319,7 @@ class TGYROoutput:
             self.QeGB_sim, self.QeGB_tar = None, None
 
         file = self.FolderTGYRO / f"out.tgyro.evo_ti"
-        if os.path.exists(file):
+        if file.exists():
             self.roa, self.QiGB_sim, self.QiGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
@@ -1327,7 +1327,7 @@ class TGYROoutput:
             self.QiGB_sim, self.QiGB_tar = None, None
 
         file = self.FolderTGYRO / f"out.tgyro.evo_ne"
-        if os.path.exists(file):
+        if file.exists():
             self.roa, self.GeGB_sim, self.GeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
@@ -1335,7 +1335,7 @@ class TGYROoutput:
             self.GeGB_sim, self.GeGB_tar = None, None
 
         file = self.FolderTGYRO / f"out.tgyro.evo_er"
-        if os.path.exists(file):
+        if file.exists():
             self.roa, self.MtGB_sim, self.MtGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
@@ -1346,7 +1346,7 @@ class TGYROoutput:
 
         for i in range(10):
             file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}"
-            if os.path.exists(file):
+            if file.exists():
                 _, GiGB_sim, GiGB_tar = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1411,7 +1411,7 @@ class TGYROoutput:
 
         for i in range(10):
             file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}"
-            if os.path.exists(file):
+            if file.exists():
                 (
                     _,
                     GiGB_sim_neo,
@@ -1485,7 +1485,7 @@ class TGYROoutput:
 
             for i in range(10):
                 file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}_stds"
-                if os.path.exists(file):
+                if file.exists():
                     (
                         _,
                         GiGB_sim_neo,
@@ -1526,7 +1526,7 @@ class TGYROoutput:
 
             # Targets
             file = self.FolderTGYRO / f"out.tgyro.evo_te_stds"
-            if os.path.exists(file):
+            if file.exists():
                 _, _, self.QeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1534,7 +1534,7 @@ class TGYROoutput:
                 self.QeGB_tar_stds = None
 
             file = self.FolderTGYRO / f"out.tgyro.evo_ti_stds"
-            if os.path.exists(file):
+            if file.exists():
                 _, _, self.QiGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1542,7 +1542,7 @@ class TGYROoutput:
                 self.QiGB_tar_stds = None
 
             file = self.FolderTGYRO / f"out.tgyro.evo_ne_stds"
-            if os.path.exists(file):
+            if file.exists():
                 _, _, self.GeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1550,7 +1550,7 @@ class TGYROoutput:
                 self.GeGB_tar_stds = None
 
             file = self.FolderTGYRO / f"out.tgyro.evo_er_stds"
-            if os.path.exists(file):
+            if file.exists():
                 _, _, self.MtGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1560,7 +1560,7 @@ class TGYROoutput:
             self.GiGB_tar_stds = []
             for i in range(10):
                 file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}_stds"
-                if os.path.exists(file):
+                if file.exists():
                     _, _, GiGB_tar = GACODEinterpret.readGeneral(
                         file, numcols=3, maskfun=self.maskp
                     )
@@ -1718,7 +1718,7 @@ class TGYROoutput:
 
         cont = 1
         file = self.FolderTGYRO / f"out.tgyro.profile_i{cont}"
-        while os.path.exists(file):
+        while file.exists():
             _, ni, aLni, Ti, aLti, betai_unit = GACODEinterpret.readGeneral(
                 file, numcols=6, maskfun=self.maskp
             )
@@ -4595,9 +4595,9 @@ def plotAll(TGYROoutputs, labels=None, fn=None):
 
 class TGYROinput:
     def __init__(self, input_profiles, file=None, onlyThermal=False, limitSpecies=100):
-        self.file = file
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
 
-        if self.file is not None and os.path.exists(self.file):
+        if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
                 lines = f.readlines()
             self.file_txt = "".join(lines)

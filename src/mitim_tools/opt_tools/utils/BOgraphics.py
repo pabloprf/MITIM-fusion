@@ -832,6 +832,7 @@ def retrieveResults(
     # ----------------------------------------------------------------------------------------------------------------
     # Grab remote results optimization
     # ----------------------------------------------------------------------------------------------------------------
+    folderWork = IOtools.expandPath(folderWork)
 
     if folderRemote is not None:
         [machine, folderRemote0] = folderRemote.split(":")
@@ -841,10 +842,10 @@ def retrieveResults(
         else:
             port = ""
 
-        username = IOtools.expandPath("$USER")
+        username = os.environ["USER"]
 
         print(" - Grabbing remote")
-        os.makedirs(folderWork, exist_ok=True)
+        folderWork.mkdir(parents=True, exist_ok=True)
 
 
         os.system(
@@ -1157,7 +1158,7 @@ class optimization_data:
     ):
         # If start from scratch, overwrite the tabular, otherwise there's risk of error if not all OFs coincide, that's why forceNew
 
-        self.file = file
+        self.file = IOtools.expandPath(file)
         self.inputs = inputs
         self.outputs = outputs
 
@@ -1170,7 +1171,7 @@ class optimization_data:
             self.data_point_dictionary[i + "_std"] = np.nan
         self.data_point_dictionary['maximization_objective'] = np.nan
 
-        if forceNew or not os.path.exists(self.file):
+        if forceNew or not self.file.exists():
             # Create empty csv
             self.data = pd.DataFrame(columns = self.data_point_dictionary.keys())
             self.data.to_csv(self.file, index=False)

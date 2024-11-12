@@ -111,16 +111,17 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
+    astra_root = IOtools.expandPath(astra_root)
     template_path = __mitimroot__ / "tests" / "data "/ "input.gacode"
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
     # Extract CDF file
     cdf_file = None
-    astra_results_dir = IOtools.expandPath(astra_root) / "ncdf_out"
-    for file in os.listdir(astra_results_dir):
-        if file.endswith(".CDF"):
-            cdf_file = os.path.join(astra_results_dir, file)
+    astra_results_dir = astra_root / "ncdf_out"
+    for file in astra_results_dir.glob("*"):
+        if file.suffix in [".CDF"]:
+            cdf_file = file.resolve()
             break
 
     if cdf_file is None:
@@ -133,9 +134,9 @@ def convert_ASTRA_to_gacode(astra_root,
 
     # Extract Geometry info
     geometry_file = None
-    for file in os.listdir(astra_root):
-        if file.endswith(".geqdsk") or file.endswith(".eqdsk"):
-            geometry_file = os.path.join(astra_root, file)
+    for file in astra_root.glob("*"):
+        if file.suffix in [".geqdsk", ".eqdsk"]:
+            geometry_file = file.resolve()
             break
 
     if geometry_file is None:

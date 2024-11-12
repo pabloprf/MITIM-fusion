@@ -39,11 +39,11 @@ class transp_beat(beat):
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
 
         if shot is None:
-            folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
+            folder_last = self.maestro_instance.folder.resolve().name
             shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
-            username = os.path.expandvars('$USER')
+            username = os.environ['USER']
             letter = username[0].upper()
             if letter == '$':
                 letter = 'A'

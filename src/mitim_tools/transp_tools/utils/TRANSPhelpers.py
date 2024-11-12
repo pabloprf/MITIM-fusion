@@ -1138,7 +1138,8 @@ def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -
     return rmom, zmom, r_eval, z_eval
 
 def interpret_trdat(file):
-    if not os.path.exists(file):
+    file = IOtools.expandPath(file)
+    if not file.exists():
         print("TRDAT was not generated. It will likely fail!", typeMsg="q")
     else:
         with open(file, "r") as f:

@@ -1058,7 +1058,7 @@ def runTGLF(
                     tglf_executor[subFolderTGLF][rho]['folder'] / f"{original_file}"
                 )
 
-                if os.path.exists(final_destination):
+                if final_destination.exists():
                     os.system(f"rm {final_destination}")
 
                 temp_file = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}" / f"{file}"
@@ -1066,9 +1066,9 @@ def runTGLF(
                     f"mv {temp_file} {final_destination}"
                 )
 
-                fineall = fineall and os.path.exists(final_destination)
+                fineall = fineall and final_destination.exists()
 
-                if not os.path.exists(final_destination):
+                if not final_destination.exists():
                     print(
                         f"\t!! file {file} ({original_file}) could not be retrived",
                         typeMsg="w",
