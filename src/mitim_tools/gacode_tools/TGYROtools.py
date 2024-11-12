@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -163,7 +164,7 @@ class TGYRO:
                 "\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",
                 typeMsg="i",
             )
-            os.system(f"rm -r {self.FolderGACODE_tmp}")
+            shutil.rmtree(self.FolderGACODE_tmp)
 
     def run(
         self,
@@ -522,25 +523,18 @@ class TGYRO:
 
             # Copy those files that I'm interested in, plus the extra file, into the main folder
             for file in self.outputFiles + ["input.tgyro"]:
-                os.system(f"cp {self.FolderTGYRO_tmp / file} {self.FolderTGYRO / file}")
+                shutil.copy2(self.FolderTGYRO_tmp / f"{file}", self.FolderTGYRO / f"{file}")
 
             # Rename the input.tglf.news to the actual rho they where at
             for cont, i in enumerate(self.rhosToSimulate):
-                oldfile = f"input.tglf.new{cont + 1}"
-                newfile = f"input.tglf_{i:.4f}"
-                os.system(
-                    f"cp {self.FolderTGYRO / oldfile} {self.FolderTGYRO / newfile}"
-                )
+                shutil.copy2(self.FolderTGYRO / f"input.tglf.new{cont + 1}", self.FolderTGYRO / f"input.tglf_{i:.4f}")
 
             # If I have run TGYRO with the goal of generating inputs, move them to the GACODE folder
             for rho in rhosCopy:
-                file = f"input.tglf_{rho:.4f}"
-                os.system(
-                    f"cp {self.FolderTGYRO / file} {self.FolderGACODE}"
-                )
+                shutil.copy2(self.FolderTGYRO / f"input.tglf_{rho:.4f}", self.FolderGACODE)
 
             # Remove temporary folder
-            os.system(f"rm -r {self.FolderTGYRO_tmp}")
+            shutil.rmtree(self.FolderTGYRO_tmp)
 
         else:
             print(" ~~~ Not running TGYRO", typeMsg="i")
@@ -4746,8 +4740,8 @@ def produceInputs_TGYROworkflow(
                 "\t\t+++++++ .cdf plasma-state file already generated, I need to run profiles_gen"
             )
             # Copying them to tmp folder in case there are not there and cold_starting from .cdf and .geq in final folder
-            os.system(f"cp {finalFolder / '10001.cdf'} {folderWork}")
-            os.system(f"cp {finalFolder / '10001.geq'} {folderWork}")
+            shutil.copy2(finalFolder / "10001.cdf", folderWork)
+            shutil.copy2(finalFolder / "10001.geq", folderWork)
         else:
             print(f"\t\t+++++++ {finalFolder / '10001.cdf'} file not found")
             StateGenerated = False
@@ -4794,10 +4788,11 @@ def produceInputs_TGYROworkflow(
         # Pass files
         # ---------------------------------------------------------------------------------------------------------------
 
-        os.system(f"cp {tmpFolder / '10001.cdf'} {finalFolder}")
-        os.system(f"cp {tmpFolder / '10001.geq'} {finalFolder}")
+        shutil.copy2(tmpFolder / "10001.cdf", finalFolder)
+        shutil.copy2(tmpFolder / "10001.geq", finalFolder)
         for file_to_look in files_to_look:
-            os.system(f"cp {tmpFolder / file_to_look}* {finalFolder}")
+            for item in tmpFolder.glob(f"{file_to_look}*"):
+                shutil.copy2(item, finalFolder)
 
     else:
         print(
