@@ -1,5 +1,6 @@
 import torch
 import os
+import shutil
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -102,7 +103,7 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
         # Save state so that I can check initializations
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             self.save(folder / "powerstate.pkl")
-            os.system(f"cp {folderTGYRO / 'input.gacode'} {folder}")
+            shutil.copy2(folderTGYRO / "input.gacode", folder)
 
         return QTransport, QTarget
 
