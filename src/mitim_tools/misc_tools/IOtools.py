@@ -279,7 +279,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
 
     if file_current.exists():
         if check >= eliminateAfter:
-            os.system(f"rm {file_current.resolve()}")
+            os.remove(file_current)
         else:
             file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
             if file_next.exists():
@@ -290,7 +290,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
                     eliminateAfter=eliminateAfter,
                     rootFolder=root_current,
                 )
-            os.system(f"mv {file_current.resolve()} {file_next.resolve()}")
+            file_current.replace(file_next)
 
     return file_current #f"{file_current}"
 
@@ -389,17 +389,17 @@ def zipFiles(files, outputFolder, name="info"):
     if not opath.is_dir():
         opath.mkdir(parents=True)
     for i in files:
-        os.system(f"cp {i} {opath}")
-    shutil.make_archive(f"{opath}", "zip", odir)
-    os.system(f"rm -r {opath}")
+        shutil.copy2(IOtools.expandPath(i), opath)
+    shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
+    shutil.rmtree(opath)
 
 
 def unzipFiles(file, destinyFolder, clear=True):
     zpath = Path(file).expanduser()
     odir = Path(destinyFolder).expanduser()
-    shutil.unpack_archive(f"{zpath}", f"{odir}")
+    shutil.unpack_archive(zpath, odir)
     if clear:
-        os.system("rm {zpath.resolve()}")
+        os.remove(zpath)
 
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
@@ -435,7 +435,7 @@ def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, from
 
     ofile = Path(file).expanduser()
     if ofile.exists():
-        os.system(f"rm {ofile}")
+        os.remove(ofile)
 
     if Ti is None:
         Ti = Te
@@ -549,7 +549,7 @@ def loopFileBackUp(file):
         copyToPath = fpath.parent / (fpath.name + "_0")
         if copyToPath.exists():
             loopFileBackUp(copyToPath)
-        os.system(f"mv {fpath} {copyToPath}")
+        fpath.replace(copyToPath)
 
 
 def createTimeTXT(duration_in_s, until=3):
@@ -602,13 +602,14 @@ def renameCommand(ini, fin, folder="~/"):
     ipath = Path(folder).expanduser()
     if ini is not None:
         if "mfe" in socket.gethostname():
-            os.system(f'cd {ipath.resolve()} && rename "s/{ini}/{fin}/" *')
+            os.chdir(ipath)
+            os.system(f'rename "s/{ini}/{fin}/" *')
         else:
             for filepath in ipath.glob(f"*{ini}*"):
                 newname = filepath.name
                 newname = newname.sub(f"{ini}", f"{fin}")
                 opath = filepath.parent / newname
-                os.system(f"mv {filepath.resolve()} {opath.resolve()}")
+                filepath.replace(opath)
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
@@ -634,20 +635,19 @@ def askNewFolder(folderWork, force=False, move=None):
     workpath = Path(folderWork).expanduser()
     if workpath.exists():
         if force:
-            os.system(f"rm -r {workpath}")
+            shutil.rmtree(workpath)
         else:
             if move is not None:
-                os.system(f"mv {workpath} {workpath}_{move}")
+                workpath.replace(workpath.parent / f"{workpath.name}_{move}")
             else:
                 print(
                     f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
-                os.system(f"rm -r {workpath}")
+                shutil.rmtree(workpath)
     if not workpath.exists():
         workpath.mkdir(parents=True)
     if workpath.is_dir():
-        fstr = clipstr(f"{workpath.resolve()}")
-        print(f" \t\t~ Folder ...{fstr} created")
+        print(f" \t\t~ Folder ...{clipstr(workpath)} created")
     else:  # What is this?
         fo = reducePathLevel(workpath, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
@@ -946,7 +946,7 @@ def changeValue(
 
                 f2.write(line)
 
-    os.system(f"mv {fpath2.resolve()} {fpath1.resolve()}")
+    fpath2.replace(fpath1)
 
     # If not found at least once, then write it, but make sure it is after the updates flag
     if not FoundAtLeastOnce and Value is not None:
