@@ -38,33 +38,18 @@ def main():
 
 
     for i in expl:
-        if ":" in i:
-            cdfs.append(
-                CDFtools.transp_output(
-                    i.split(":")[1],
-                    ssh=i.split(":")[0],
-                    readFBM=readFBM,
-                    readTGLF=readTGLF,
-                    readTORIC=readTORIC,
-                    readGFILE=readGFILE,
-                    readStructures=readStructures,
-                    readGEQDSK=readGEQDSK,
-                    ZerothTime=ZerothTime,
-                )
+        cdfs.append(
+            CDFtools.transp_output(
+                i,
+                readFBM=readFBM,
+                readTGLF=readTGLF,
+                readTORIC=readTORIC,
+                readGFILE=readGFILE,
+                readGEQDSK=readGEQDSK,
+                readStructures=readStructures,
+                ZerothTime=ZerothTime,
             )
-        else:
-            cdfs.append(
-                CDFtools.transp_output(
-                    i,
-                    readFBM=readFBM,
-                    readTGLF=readTGLF,
-                    readTORIC=readTORIC,
-                    readGFILE=readGFILE,
-                    readGEQDSK=readGEQDSK,
-                    readStructures=readStructures,
-                    ZerothTime=ZerothTime,
-                )
-            )
+        )
 
     if plotYN:
         from mitim_tools.misc_tools.GUItools import FigureNotebook
