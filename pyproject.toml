@@ -30,6 +30,7 @@ dependencies = [
   "pandas",
   "xlsxwriter",
   "statsmodels",
+  "pyreadline3",
   "dill",
   "IPython",
   "pyDOE",
