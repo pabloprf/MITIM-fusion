@@ -1,4 +1,3 @@
-import os
 import copy
 import torch
 import sys
@@ -9,16 +8,12 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
-
 from IPython import embed
-
-
-
 
 # ----------------------------------------------------------------------------------------------------
 # Tools not to clutter SURROGATEtools.py
@@ -832,25 +827,17 @@ def retrieveResults(
     # ----------------------------------------------------------------------------------------------------------------
     # Grab remote results optimization
     # ----------------------------------------------------------------------------------------------------------------
+
     folderWork = IOtools.expandPath(folderWork)
 
     if folderRemote is not None:
         [machine, folderRemote0] = folderRemote.split(":")
-        if "-" in machine:
-            [machine, port] = machine.split("-")
-            port = "-P " + port
-        else:
-            port = ""
 
-        username = os.environ["USER"]
+        folderRemote0 = f"{IOtools.expandPath(folderRemote0)}"
 
         print(" - Grabbing remote")
         folderWork.mkdir(parents=True, exist_ok=True)
-
-
-        os.system(
-            f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}"
-        )
+        FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow

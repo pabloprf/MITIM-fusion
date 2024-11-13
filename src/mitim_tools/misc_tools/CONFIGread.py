@@ -100,6 +100,7 @@ def machineSettings(
     code="tgyro",
     nameScratch="mitim_tmp/",
     forceUsername=None,
+    forceMachine=None,
 ):
     """
     This script uses the config json file and completes the information required to run each code
@@ -109,7 +110,7 @@ def machineSettings(
 
     # Determine where to run this code, depending on config file
     s = load_settings()
-    machine = s["preferences"][code]
+    machine = s["preferences"][code] if forceMachine is None else forceMachine
 
     """
     Set-up per code and machine
