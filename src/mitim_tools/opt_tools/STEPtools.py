@@ -258,8 +258,7 @@ class OPTstep:
 
             self.GP["individual_models"][i] = GP
 
-        if fileBackup.exists():
-            os.remove(f'{fileBackup}')
+        fileBackup.unlink(missing_ok=True)
 
         # ------------------------------------------------------------------------------------------------------
         # Combine them in a ModelListGP (create one single with MV but do not fit)

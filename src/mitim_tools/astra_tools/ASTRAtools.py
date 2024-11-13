@@ -34,7 +34,7 @@ class ASTRA():
         ) as tar:
             tar.extractall(path=self.folder)
 
-        os.remove(self.folder / "ASTRA8_REPO.tar.gz")
+        (self.folder / "ASTRA8_REPO.tar.gz").unlink(missing_ok=True)
 
         # Define basic controls
         self.equfile = 'fluxes'

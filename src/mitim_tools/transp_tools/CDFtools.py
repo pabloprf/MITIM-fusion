@@ -43,8 +43,7 @@ def read_cdf_transp(cdf_file):
         print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
 
         # Create a dataset object to store the modified data
-        if mod_file.exists():
-            os.remove(f'{mod_file}')
+        mod_file.unlink(missing_ok=True)
         dst = netCDF4.Dataset(mod_file, 'w', memory=None)
         
         # Copy global attributes
