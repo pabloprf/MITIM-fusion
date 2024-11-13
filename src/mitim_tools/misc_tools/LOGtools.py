@@ -83,6 +83,38 @@ def printMsg(*args, typeMsg=""):
             if typeMsg == "q":
                 return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
 
+
+if not sys.platform.startswith('win'):
+    import termios
+    import tty
+
+class prompting_context:
+    def __init__(self):
+        # For Unix-based systems, save the terminal settings
+        if not sys.platform.startswith('win'):
+            self.old_settings = termios.tcgetattr(sys.stdin)
+
+    def __enter__(self):
+        # Set raw mode for Unix-based systems
+        if not sys.platform.startswith('win'):
+            tty.setraw(sys.stdin.fileno())
+        return self
+
+    def __exit__(self, *args):
+        # Restore original terminal settings for Unix-based systems
+        if not sys.platform.startswith('win'):
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+
+    def get_key(self, prompt="Press a key: "):
+        # Use input() for Windows; it requires pressing Enter
+        if sys.platform.startswith('win'):
+            print(prompt, end='', flush=True)
+            key = input()[0]  # Capture only the first character
+        else:
+            # For Unix-based systems, read a single character
+            key = sys.stdin.read(1)
+        return key
+
 def query_yes_no(question, extra=""):
     '''
     From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input 
@@ -91,15 +123,11 @@ def query_yes_no(question, extra=""):
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
 
-    if sys.platform.startswith('win'):
-        import pyreadline3
-    else:
-        import readline
-
     while True:
         total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
         printMsg(*total)
-        choice = input().lower()
+        with prompting_context() as context:
+            choice = context.get_key()
         if len(choice) > 1:
             choice = choice[0]
         if choice in valid:
