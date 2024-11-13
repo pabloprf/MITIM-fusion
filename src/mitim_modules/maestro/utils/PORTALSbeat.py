@@ -121,8 +121,10 @@ class portals_beat(beat):
 
         # Remove output folders
         for item in self.folder_output.glob('*'):
-            if item.is
-            shutil.rmtree()
+            if item.is_file():
+                item.unlink(missing_ok=True)
+            elif item.is_dir():
+                shutil.rmtree(item)
 
         # Copy to outputs
         shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
