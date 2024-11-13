@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
@@ -76,10 +77,11 @@ class transp_run:
         '''
 
         self.nml = self.folder / f"{self.shot}{self.runid}TR.DAT"
-        os.system(f"cp {folder_original / f'{nml_original}'} {self.nml}")
+        shutil.copy2(folder_original / f'{nml_original}', self.nml)
 
         # Predictive namelists
-        os.system(f"cp {folder_original / f'*namelist.dat'} {self.folder}")
+        for item in folder_original.glob('*namelist.dat'):
+            shutil.copy2(item, self.folder)
 
         # Define timings
 
@@ -298,7 +300,7 @@ class transp_run:
         '''
 
         for ufile in ufiles:
-            os.system(f"cp {folder_original / f'PRF12345.{ufile}'} {self.folder}")
+            shutil.copy2(folder_original / f'PRF12345.{ufile}', self.folder)
 
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
@@ -890,7 +892,7 @@ def generateMRY(
     scruncher_job.run()
 
     fileUF = FolderMRY / f"PRF{nameBaseShot}.MRY"
-    os.system(f"mv {FolderEquilibrium / 'M123456.MRY'} {fileUF}")
+    (FolderEquilibrium / 'M123456.MRY').replace(fileUF)
 
     # Check if MRY file has the number of times expected
     UF = UFILEStools.UFILEtransp()
@@ -1222,9 +1224,10 @@ def defaultbasedMDS(self, outtims=None, PRFmodified=False):
     else:
         raise Exception("Tokamak MDS+ not implemented")
 
-    os.system("cp {0} {0}_old".format(self.nml_file))
+    old_nml_file = self.nml_file.with_name(f"{self.nml_file.name}_old")
+    shutil.copy2(self.nml_file, old_nml_file)
     TRANSPnamelist_dict = updateTRANSPfromNML(
-        self.nml_file + "_old",
+        old_nml_file,
         self.nml_file,
         self.FolderTRANSP,
         PRFmodified=PRFmodified,

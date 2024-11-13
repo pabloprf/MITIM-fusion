@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 import torch
 import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -110,8 +111,8 @@ class tgyro_model(power_transport):
     def evaluate(self):
 
         # After producing the profiles, copy for future modifications
-        self.file_profs_mod = f"{self.file_profs}_modified"
-        os.system(f"cp {self.file_profs} {self.file_profs_mod}")
+        self.file_profs_mod = self.file_profs.parent / f"{self.file_profs.name}_modified"
+        shutil.copy2(self.file_profs, self.file_profs_mod)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
@@ -180,10 +181,8 @@ class tgyro_model(power_transport):
 
         # Copy original TGYRO folder
         if (self.folder / "tglf_neo").exists():
-            os.system(f"rm -r {self.folder / 'tglf_neo'}")
-        os.system(
-            f"cp -r {self.folder / 'tglf_neo_original'} {self.folder / 'tglf_neo'}"
-        )
+            shutil.rmtree(self.folder / "tglf_neo")
+        shutil.copytree(self.folder / "tglf_neo_original", self.folder / "tglf_neo")
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
         curateTGYROfiles(
@@ -270,9 +269,7 @@ class tgyro_model(power_transport):
                 print("\t\t\t* No, it was not, repating process", typeMsg="i")
 
                 # Copy tglf_neo results
-                os.system(
-                    f"cp -r {self.folder / 'tglf_neo'} {self.folder / 'cgyro_neo'}"
-                )
+                shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
                 cgyro_trick(
@@ -383,7 +380,7 @@ def tglf_scan_trick(fluxesTGYRO, tgyro, label, RadiisToRun, profiles, impurityPo
 
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:
-        os.system(f"rm -r {tglf.FolderGACODE}")
+        shutil.rmtree(tglf.FolderGACODE)
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
@@ -705,9 +702,9 @@ def profilesToShare(self):
             IOtools.askNewFolder(whereFolder)
 
         fil = whereFolder / f"input.gacode.{self.evaluation_number}"
-        os.system(f"cp {self.file_profs_mod} {fil}")
-        os.system(f"cp {self.file_profs} {fil}_unmodified")
-        os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
+        shutil.copy2(self.file_profs_mod, fil)
+        shutil.copy2(self.file_profs, fil.parent / f"{fil.name}_unmodified")
+        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}_unmodified.new")
         print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")

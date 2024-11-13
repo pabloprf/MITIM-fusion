@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -249,7 +250,7 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
         print(
             f"\t\t- Namelist was found: {NML}TR.DAT, copying to ...{IOtools.clipstr(LocationNML)}"
         )
-        os.system(f"cp {LocationNML_orig} {LocationNML}")
+        shutil.copy2(LocationNML_orig, LocationNML)
         dummy = False
 
     return LocationNML, dummy
@@ -312,9 +313,9 @@ def CDFtoTRXPLoutput(
     folderWork.mkdir(parents=True, exist_ok=True)
     if sendState:
         cdffile = folderWork / f'{nameFiles}.CDF'
-        os.system(f"cp {LocationCDF} {cdffile}")
+        shutil.copy2(LocationCDF, cdffile)
     trfile = folderWork / f'{nameFiles}TR.DAT'
-    os.system(f"mv {LocationNML} {trfile}")
+    LocationNML.replace(trfile)
 
     runTRXPL(
         folderWork,
@@ -480,7 +481,7 @@ def runPROFILES_GEN(
 
     if UsePRFmodification:
         print("\t\t- Running modifyPlasmaState")
-        os.system(f"cp {FolderTGLF / (nameFiles + '.cdf')} {FolderTGLF / (nameFiles + '.cdf_old')}")
+        shutil.copy2(FolderTGLF / f"{nameFiles}.cdf", FolderTGLF / f"{nameFiles}.cdf_old")
         pls = PLASMASTATEtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
         pls.modify_default(FolderTGLF / f"{nameFiles}.cdf")
 
@@ -1057,14 +1058,10 @@ def runTGLF(
                 final_destination = (
                     tglf_executor[subFolderTGLF][rho]['folder'] / f"{original_file}"
                 )
-
-                if final_destination.exists():
-                    os.system(f"rm {final_destination}")
+                final_destination.unlink(missing_ok=True)
 
                 temp_file = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}" / f"{file}"
-                os.system(
-                    f"mv {temp_file} {final_destination}"
-                )
+                temp_file.replace(final_destination)
 
                 fineall = fineall and final_destination.exists()
 

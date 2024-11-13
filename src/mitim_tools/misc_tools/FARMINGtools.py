@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import shutil
 import time
 import sys
 import subprocess
@@ -454,11 +455,9 @@ class mitim_job:
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                "cp "
-                + f'{self.folder_local / "mitim_send.tar.gz"}'
-                + " "
-                + f'{self.folderExecution}/mitim_send.tar.gz'
+            shutil.copy2(
+                self.folder_local / "mitim_send.tar.gz",
+                f"{self.folderExecution}/mitim_send.tar.gz"
             )
 
         # Extract it
@@ -472,7 +471,7 @@ class mitim_job:
 
         # Remove tarballs
         print("\t\t- Removing tarballs")
-        os.remove(self.folder_local / "mitim_send.tar.gz")
+        (self.folder_local / "mitim_send.tar.gz").unlink(missing_ok=True)
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, **kwargs):
@@ -532,11 +531,10 @@ class mitim_job:
             "\t\t- Removing local output files & folders that potentially exist from previous runs"
         )
         for file in self.output_files:
-            if (self.folder_local / file).exists():
-                os.remove(self.folder_local / file)
+            (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
             if (self.folder_local / folder).exists():
-                os.system(f"rm -rf {self.folder_local / folder}")
+                shutil.rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remotely)")
@@ -566,10 +564,9 @@ class mitim_job:
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                f"cp {self.folderExecution}/mitim_receive.tar.gz"
-                + " "
-                + f"{self.folder_local / 'mitim_receive.tar.gz'}"
+            shutil.copy2(
+                f"{self.folderExecution}/mitim_receive.tar.gz",
+                self.folder_local / "mitim_receive.tar.gz"
             )
         print(self.folderExecution, self.folder_local)
 
@@ -582,7 +579,7 @@ class mitim_job:
 
         # Remove tarballs
         print("\t\t- Removing tarballs")
-        os.remove(self.folder_local / "mitim_receive.tar.gz")
+        (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
         self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
         # Check if all files were received
@@ -1087,8 +1084,7 @@ def create_slurm_execution_files(
     else:
         comm, launch = ["#!/bin/bash -l"] + full_command, "" #"bash "
 
-    if fileSBATCH.exists():
-        os.system(f"rm {fileSBATCH}")
+    fileSBATCH.unlink(missing_ok=True)
     with open(fileSBATCH, "w") as f:
         f.write("\n".join(comm))
 
@@ -1108,8 +1104,7 @@ def create_slurm_execution_files(
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
 
-    if fileSHELL.exists():
-        os.system(f"rm {fileSHELL}")
+    fileSHELL.unlink(missing_ok=True)
     with open(fileSHELL, "w") as f:
         f.write("\n".join(commandSHELL))
 

@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
@@ -114,15 +115,17 @@ class portals_beat(beat):
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
-        os.system(f'cp {folder_fm / "optimization_data.csv"} {self.folder / "Outputs"}')
+        shutil.copy2(folder_fm / 'optimization_data.csv', self.folder / 'Outputs')
 
     def finalize(self, **kwargs):
 
         # Remove output folders
-        os.system(f'rm -r {self.folder_output / "*"}')
+        for item in self.folder_output.glob('*'):
+            if item.is
+            shutil.rmtree()
 
         # Copy to outputs
-        os.system(f'cp -r {self.folder / "Outputs"} {self.folder_output / "Outputs"}')
+        shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
         # Prepare final beat's input.gacode
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)

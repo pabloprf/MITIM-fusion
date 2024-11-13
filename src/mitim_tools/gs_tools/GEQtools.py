@@ -105,7 +105,7 @@ class MITIMgeqdsk:
                     f"{filename}_time{i}.geqdsk",**kwargs,
                 )
             )
-            os.system(f"rm {filename}_time{i}.geqdsk")
+            os.remove(f"{filename}_time{i}.geqdsk")
 
         return gs
 
