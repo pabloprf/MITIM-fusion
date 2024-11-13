@@ -1,12 +1,9 @@
-import cfspopcon
 import numpy as np
-import matplotlib.pyplot as plt
 import xarray as xr
 from IPython import embed
 from popop.xarrays_with_units import ureg, Quantity
 from popop.drivers import run_original_POPCON
 from IPython import embed
-from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 

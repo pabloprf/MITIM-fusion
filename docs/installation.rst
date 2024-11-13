@@ -71,6 +71,7 @@ There are different options to handle this config file.
 Apart from machine configurations, ``preferences`` in ``config_user.json`` also includes a ``verbose_level`` flag, which indicates the amount of messages that are printed to the terminal when running MITIM:
 
 .. code-block:: console
+   
    5: everything (normal prints + information prints + warning prints + questions + optimization progress)
    4: information prints + warning prints + questions + optimization progress
    3: information prints + warning prints + questions

@@ -1,12 +1,14 @@
-import torch, datetime, argparse, botorch, copy, scipy
-import dill as pickle_dill
+import torch
+import argparse
+import copy
+import scipy
 import numpy as np
-from IPython import embed
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
-from mitim_tools.opt_tools import STRATEGYtools, BOTORCHtools, OPTtools
+from mitim_tools.opt_tools import STRATEGYtools, OPTtools
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.opt_tools.optimizers import ROOTtools
+from IPython import embed
 
 """
 This script performs a series of tests using BOTORCH optimizer for the last step of the MITIM folder.

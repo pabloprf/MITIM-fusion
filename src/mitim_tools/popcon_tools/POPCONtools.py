@@ -4,7 +4,6 @@ import cfspopcon
 from cfspopcon.unit_handling import ureg
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools import __mitimroot__
 
 import matplotlib.pyplot as plt

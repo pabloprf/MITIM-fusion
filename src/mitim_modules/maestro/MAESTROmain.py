@@ -1,5 +1,4 @@
 import copy
-import os
 import datetime
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot

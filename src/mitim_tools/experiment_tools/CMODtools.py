@@ -1,5 +1,4 @@
 import sys
-import os
 import shutil
 import socket
 import numpy as np

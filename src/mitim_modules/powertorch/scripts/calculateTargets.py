@@ -7,7 +7,6 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.portals.utils import PORTALSinit
 from mitim_modules.powertorch.physics import TRANSPORTtools,TARGETStools
 from IPython import embed
 

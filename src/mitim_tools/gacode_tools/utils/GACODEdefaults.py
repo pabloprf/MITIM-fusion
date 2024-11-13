@@ -1,9 +1,7 @@
 import json
-from pathlib import Path
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools import __mitimroot__
-
 from IPython import embed
 
 from mitim_tools.misc_tools.LOGtools import printMsg as print
