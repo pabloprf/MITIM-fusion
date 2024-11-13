@@ -940,9 +940,7 @@ class PRF_BO:
             self.optimization_object.__dict__[ikey] = saver[ikey]
         # -----------------------------------------------------------------------------------
 
-        os.rename(
-            f"{stateFile_tmp}", f"{stateFile}"
-        )  # This way I reduce the risk of getting a mid-creation file
+        stateFile_tmp.replace(stateFile)  # This way I reduce the risk of getting a mid-creation file
 
         print(
             f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the PRF_BO class"
