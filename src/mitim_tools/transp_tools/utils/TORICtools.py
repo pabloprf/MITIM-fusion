@@ -663,7 +663,8 @@ def convertToReadable(tarfile_full, checkExtension="ncdf"):
         print(
             f"\t\t- There is not a TORIC ncdf in {foldertar}, I need to extract the tar file first"
         )
-        os.system(f"cd {foldertar} && tar -xvf {tarfile}")
+        os.chdir(foldertar)
+        os.system(f"tar -xvf {tarfile}")
         print("\t\t\t* Extracted!")
 
     return foldertar

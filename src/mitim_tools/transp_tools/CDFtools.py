@@ -1,4 +1,5 @@
 import os
+import shutil
 import pickle
 import copy
 import datetime
@@ -15182,19 +15183,17 @@ class transp_output:
 
         self.produceTGYROfiles(folderWork=folderWork, time=time, avTime=avTime)
 
-        os.system(f"cp {folderWork / '*'} {self.FolderCDF / TGYROprep_folder}")
+        for item in folderWork.glob("*"):
+            if item.is_file():
+                shutil.copy2(item, self.FolderCDF / "TGYROprep_folder")
+            elif item.is_dir():
+                shutil.copytree(item, self.FolderCDF / "TGYROprep_folder" / item.name)
 
         # ---- Organize relevant things from TGYRO folder
 
-        os.system(
-            f"cp {folderWork / '10001.geq'} {self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.geq'}"
-        )
-        os.system(
-            f"cp {folderWork / '10001.cdf'} {self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.cdf'}"
-        )
-        os.system(
-            "cp {folderWork / 'input.gacode'} {self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.input.gacode'}"
-        )
+        shutil.copy2(folderWork / '10001.geq', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.geq')
+        shutil.copy2(folderWork / '10001.cdf', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.cdf')
+        shutil.copy2(folderWork / 'input.gacode', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.input.gacode')
 
         print(
             "\n~~~~~~ Simulation results ready at t={0:.3f}s +- {3:0.3f}s (last sawtooth={2:.3f}s) in folder {1}/RELEASE_folder/\n".format(
@@ -15213,8 +15212,10 @@ class transp_output:
 
         # ---- Zip at this stage
 
-        os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
-        os.system("mv {self.FolderCDF / 'TRANSPrun.tar'} {self.FolderCDF / 'RELEASE_folder'}")
+        os.chdir(self.FolderCDF)
+        os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
+        shutil.rmtree(self.FolderCDF / 'RELEASE_folder')
+        (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
 

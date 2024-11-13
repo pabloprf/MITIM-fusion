@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import datetime
 import time
@@ -309,10 +310,14 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         folder_inputs = folderWork / "tmp_inputs"
         if folder_inputs.exists():
-            os.system(f"rm -r {folder_inputs}")
+            shutil.rmtree(folder_inputs)
         
         IOtools.askNewFolder(folder_inputs, force=True)
-        os.system(f"cp -r {folderWork / '*'} {folder_inputs}")
+        for item in folderWork.glob('*'):
+            if item.is_file():
+                shutil.copy2(item, folder_inputs)
+            elif item.is_dir():
+                shutil.copytree(item, folder_inputs / item.name)
 
         inputFolders = [folderWork / "tmp_inputs"]
 
@@ -393,12 +398,12 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     if TRANSPcommand_prep is not None:
         if (folderWork / f'{runid}tr_dat.log').exists():
-            os.system(f"rm { folderWork / f'{runid}tr_dat.log'}")
+            os.remove(folderWork / f'{runid}tr_dat.log')
 
         # Run first the prep (with tr_dat)
         if (folderWork / f'{runid}mitim_bash.src').exists():
-            os.system(f"rm { folderWork / f'{runid}mitim_bash.src'}")
-            os.system(f"rm { folderWork / f'{runid}mitim_shell_executor.sh'}")
+            os.remove(folderWork / f'{runid}mitim_bash.src')
+            os.remove(folderWork / f'{runid}mitim_shell_executor.sh')
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -421,8 +426,8 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
         if (folderWork / 'tmp_inputs' / 'mitim_bash.src').exists():
-            os.system(f"rm {folderWork / 'tmp_inputs' / 'mitim_bash.src'}")
-            os.system(f"rm {folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh'}")
+            os.remove(folderWork / 'tmp_inputs' / 'mitim_bash.src')
+            os.remove(folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh')
 
     # ---------------
     # Execute Full
@@ -437,7 +442,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     transp_job.run(waitYN=False)
 
-    os.system(f"rm -r {folderWork / 'tmp_inputs'}")
+    shutil.rmtree(folderWork / 'tmp_inputs')
 
 
 def interpretRun(infoSLURM, log_file):
@@ -550,7 +555,11 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
     )  # Because it needs to read what it was there from run()
 
     odir = folderWork / "results" / f"{tok}.00"
-    os.system(f"cd {folderWork} && cp -r {odir / '*'} .")
+    for item in odir.glob('*'):
+        if item.is_file():
+            shutil.copy2(item, folderWork)
+        elif item.is_dir():
+            shutil.copytree(item, folderWork / item.name)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
@@ -617,23 +626,15 @@ def organizeACfiles(
 
     if NUBEAM:
         for i in range(nummax):
-            name = runid + f".DATA{i + 1}"
-            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
-            name = runid + f"_birth.cdf{i + 1}"
-            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
+            (FolderTRANSP / f'{runid}.DATA{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}.DATA{i + 1}')
+            (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}_birth.cdf{i + 1}')
 
     if ICRF:
         for i in range(nummax):
-            name = runid + f"_ICRF_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'TORIC_folder'}")
-
-            name = runid + f"_FI_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'FI_folder'}")
-
-        name = runid + "FPPRF.DATA"
-        os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'NUBEAM_folder'}")
+            (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORIC_folder' / f'{runid}_ICRF_TAR.GZ{i + 1}')
+            (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').replace(FolderTRANSP / 'FI_folder' / f'{runid}_FI_TAR.GZ{i + 1}')
+        (FolderTRANSP / f'{runid}FPPRF.DATA').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}FPPRF.DATA')
 
     if TORBEAM:
         for i in range(nummax):
-            name = runid + f"_TOR_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP / f'{name}'} {FolderTRANSP / 'TORBEAM_folder'}")
+            (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORBEAM_folder' / f'{runid}_TOR_TAR.GZ{i + 1}')

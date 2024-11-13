@@ -301,9 +301,9 @@ def convertACtoCDF(file, guidingCenter=True, copyWhereOriginal=True, extralab="_
         folderOrig, commandMain, file, finFile, name=runid, commandOrder=commandOrder
     )
 
-    os.system(f"mv {folderOrig / f'finFile'} {folderOrig / f'finFile2'}")
+    (folderOrig / f"{finFile}").replace(folderOrig / f"{finFile2}")
 
-    cdf = netCDF4.Dataset(folderOrig / f"finFile2")
+    cdf = netCDF4.Dataset(folderOrig / f"{finFile2}")
 
     return cdf.variables
 
@@ -338,8 +338,10 @@ def runGetFBM(
         )
         fbm_job.run(timeoutSecs=MaxSeconds)
 
-        os.system(f"mv {file} {file}_original")
-        os.system(f"mv {file}_converted {file}")
+        origfile = file.with_name(f"{file.name}_original")
+        convfile = file.with_name(f"{file.name}_converted")
+        file.replace(origfile)
+        convfile.replace(file)
 
     fbm_job.prep(
         commandMain,
@@ -431,7 +433,7 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
         ACalreadyConverted, name = False, nameTry2
     elif nameTry3.exists():
         ACalreadyConverted, name = False, nameTry2
-        os.system(f"mv {nameTry3} {nameTry2}")
+        nameTry3.replace(nameTry2)
     else:
         ACalreadyConverted = None
 
