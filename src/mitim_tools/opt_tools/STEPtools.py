@@ -153,7 +153,7 @@ class OPTstep:
         fileTraining = IOtools.expandPath(self.stepSettings['folderOutputs']) / "surrogate_data.csv"
         fileBackup = fileTraining.parent / "surrogate_data.csv.bak"
         if fileTraining.exists():
-            os.rename(f'{fileTraining}', f'{fileBackup}')
+            fileTraining.replace(fileBackup)
 
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
