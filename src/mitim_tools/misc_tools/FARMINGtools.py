@@ -58,7 +58,6 @@ New handling of jobs in remote or local clusters. Example use:
 
 """
 
-
 class mitim_job:
     def __init__(self, folder_local):
         if not isinstance(folder_local, (str, Path)):
@@ -165,17 +164,17 @@ class mitim_job:
             command_str_mod,
             self.folderExecution,
             self.machineSettings["modules"],
-            job_array=self.slurm_settings["job_array"],
+            job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            nameJob=self.slurm_settings["name"],
-            minutes=self.slurm_settings["minutes"],
-            nodes=self.slurm_settings["nodes"],
-            ntasks=self.slurm_settings["ntasks"],
-            cpuspertask=self.slurm_settings["cpuspertask"],
+            nameJob=self.slurm_settings["name"] if "name" in self.slurm_settings else "test",
+            minutes=self.slurm_settings["minutes"] if "minutes" in self.slurm_settings else 5,
+            nodes=self.slurm_settings["nodes"] if "nodes" in self.slurm_settings else None,
+            ntasks=self.slurm_settings["ntasks"] if "ntasks" in self.slurm_settings else 1,
+            cpuspertask=self.slurm_settings["cpuspertask"] if "cpuspertask" in self.slurm_settings else 4,
             slurm=self.machineSettings["slurm"],
-            memory_req_by_job=self.slurm_settings["mem"],
+            memory_req_by_job=self.slurm_settings["mem"] if "mem" in self.slurm_settings else None,
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
@@ -1153,6 +1152,35 @@ def printEfficiencySLURM(out_file):
         os.system(f"seff {jobid}")
         print("\n****** SACCT:")
         os.system(f"sacct -j {jobid}")
+
+
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = []):
+    '''
+    Quick routine for file retrieval from remote machine
+    Assumes remote machine is linux 
+    '''
+
+    job = mitim_job(folder_local)
+
+    # Define machine
+    job.slurm_settings, job.launchSlurm = {}, False
+    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch='file_retrieval',forceMachine=machine)
+    job.folderExecution = job.machineSettings["folderWork"]
+
+    # Prep files and folders to be transfered
+    command, output_files, output_folders = '', [], []
+    for file in files_remote:
+        file0 = file.split('/')[-1]
+        command += f'cp {file} {job.folderExecution}/{file0}\n'
+        output_files.append(file0)
+    for folder in folders_remote:
+        folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
+        command += f'cp -r {folder} {job.folderExecution}/{folder0}\n'
+        output_folders.append(folder0)
+
+    # Submit
+    job.prep(command,output_files=output_files,output_folders=output_folders)
+    job.run()
 
 
 if __name__ == "__main__":
