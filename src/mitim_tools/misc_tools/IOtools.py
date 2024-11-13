@@ -508,7 +508,14 @@ def correctNML(BaseFile):
 
     fpath = Path(BaseFile).expanduser()
     if fpath.is_file():
-        os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
+        fpath_new = fpath.with_name(f'{fpath.name}_new')
+        with open(fpath, 'r') as ff:
+            all_lines = ff.read()
+        with open(fpath_new, 'w') as wf:
+            wf.write(all_lines.translate(str.maketrans('', '', '\r')))
+        if fpath_new.exists():
+            fpath_new.replace(fpath)
+        #os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
 
 def getTimeDifference(previousTime, newTime=None, niceText=True, factor=1):
