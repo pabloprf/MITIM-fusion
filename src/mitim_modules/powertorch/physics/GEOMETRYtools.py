@@ -1,5 +1,4 @@
 import numpy as np
-from scipy import integrate
 from mitim_tools.misc_tools import MATHtools
 from IPython import embed
 

@@ -1,4 +1,3 @@
-import os
 import shutil
 import tarfile
 import numpy as np

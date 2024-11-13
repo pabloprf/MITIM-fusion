@@ -1,6 +1,5 @@
 import os
 import shutil
-import copy
 import datetime
 import time
 from pathlib import Path

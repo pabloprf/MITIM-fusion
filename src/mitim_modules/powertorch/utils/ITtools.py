@@ -1,5 +1,4 @@
 import torch
-import os
 import shutil
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.physics import TRANSPORTtools

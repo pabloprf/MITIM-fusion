@@ -1,6 +1,5 @@
 import copy
 import torch
-import os
 import shutil
 from functools import partial
 from mitim_modules.powertorch.physics import TRANSPORTtools

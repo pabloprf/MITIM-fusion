@@ -1,7 +1,6 @@
 import copy
 import torch
 import datetime
-import os
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools

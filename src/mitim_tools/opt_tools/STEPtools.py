@@ -1,5 +1,4 @@
 import copy
-import os
 import datetime
 import torch
 import botorch

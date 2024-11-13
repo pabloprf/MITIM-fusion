@@ -1,7 +1,7 @@
-import sys, torch
-from IPython import embed
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
+from IPython import embed
 
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGYROtools

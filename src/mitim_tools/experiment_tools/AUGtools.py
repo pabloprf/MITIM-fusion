@@ -1,4 +1,3 @@
-import os
 import shutil
 import math
 import numpy as np
@@ -186,6 +185,7 @@ def convertHeatingsToUFILE(folder, allLines, shotnum="54321"):
     )
 
     # NBI
+    Pnbi = None #TO FIX
 
     timesOn = np.repeat([[0.0, 10.0]], 10, axis=0)
     UFILEStools.writeAntenna(

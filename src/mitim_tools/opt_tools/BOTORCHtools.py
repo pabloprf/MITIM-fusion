@@ -9,7 +9,6 @@ import botorch
 import gpytorch
 from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy

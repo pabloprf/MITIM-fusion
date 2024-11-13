@@ -1,4 +1,3 @@
-import os
 import shutil
 import copy
 import numpy as np

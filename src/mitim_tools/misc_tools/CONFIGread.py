@@ -2,10 +2,10 @@ import os
 import json
 import socket
 import getpass
+from pathlib import Path
 from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
-from pathlib import Path
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Configuration file

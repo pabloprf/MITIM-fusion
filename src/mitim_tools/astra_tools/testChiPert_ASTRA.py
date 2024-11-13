@@ -1,7 +1,4 @@
-# import required system and numerical routines
-import sys
 import numpy as np
-from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 from IPython import embed
 

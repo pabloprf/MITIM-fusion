@@ -1,13 +1,11 @@
-import pdb
 import torch
-import netCDF4
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_tools.popcon_tools.utils import PRFfunctionals, FUNCTIONALScalc
-from mitim_tools.misc_tools import MATHtools, IOtools, FARMINGtools, GRAPHICStools
+from mitim_tools.misc_tools import MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.powertorch.physics import CALCtools
+from IPython import embed
 
 
 def parabolic(Tbar=5, nu=2.5, rho=None, Tedge=0):
