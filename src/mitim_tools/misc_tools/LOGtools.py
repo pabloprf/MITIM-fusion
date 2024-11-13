@@ -91,16 +91,14 @@ def query_yes_no(question, extra=""):
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
 
-    if 'win' not in sys.platform:
-        import readline
-    else:
+    if sys.platform.startswith('win'):
         import pyreadline3
+    else:
+        import readline
 
     while True:
         total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
         printMsg(*total)
-        #with promting_context():
-        #    choice = sys.stdin.read(1)
         choice = input().lower()
         if len(choice) > 1:
             choice = choice[0]
