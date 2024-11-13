@@ -623,15 +623,20 @@ def organizeACfiles(
 
     if NUBEAM:
         for i in range(nummax):
-            (FolderTRANSP / f'{runid}.DATA{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}.DATA{i + 1}')
-            (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}_birth.cdf{i + 1}')
-
+            if (FolderTRANSP / f'{runid}.DATA{i + 1}').exists():
+                (FolderTRANSP / f'{runid}.DATA{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}.DATA{i + 1}')
+            if (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}_birth.cdf{i + 1}')
     if ICRF:
         for i in range(nummax):
-            (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORIC_folder' / f'{runid}_ICRF_TAR.GZ{i + 1}')
-            (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').replace(FolderTRANSP / 'FI_folder' / f'{runid}_FI_TAR.GZ{i + 1}')
-        (FolderTRANSP / f'{runid}FPPRF.DATA').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}FPPRF.DATA')
+            if (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORIC_folder' / f'{runid}_ICRF_TAR.GZ{i + 1}')
+            if (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').replace(FolderTRANSP / 'FI_folder' / f'{runid}_FI_TAR.GZ{i + 1}')
+        if (FolderTRANSP / f'{runid}FPPRF.DATA').exists():
+            (FolderTRANSP / f'{runid}FPPRF.DATA').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}FPPRF.DATA')
 
     if TORBEAM:
         for i in range(nummax):
-            (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORBEAM_folder' / f'{runid}_TOR_TAR.GZ{i + 1}')
+            if (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORBEAM_folder' / f'{runid}_TOR_TAR.GZ{i + 1}')

@@ -391,7 +391,7 @@ def zipFiles(files, outputFolder, name="info"):
     if not opath.is_dir():
         opath.mkdir(parents=True)
     for i in files:
-        shutil.copy2(IOtools.expandPath(i), opath)
+        shutil.copy2(expandPath(i), opath)
     shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
     shutil.rmtree(opath)
 
