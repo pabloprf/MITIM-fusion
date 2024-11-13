@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import datetime
 import re
@@ -143,7 +144,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
 
             old_file = self.FolderTRANSP / f"{self.runid}.CDF"
             if old_file.exists():
-                os.system(f"mv {old_file} {old_file}_prev")
+                old_file.replace(old_file.parent / f"{old_file.name}_prev")
 
             # ---------------------
             # Send look request (tr_look)
@@ -196,9 +197,8 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                             typeMsg="w",
                         )
                         try:
-                            os.system(
-                                "cd " + self.FolderTRANSP + " && cp *CDF_prev saved"
-                            )
+                            for item in self.FolderTRANSP.glob('*CDF_prev'):
+                                shutil.copy2(item, self.FolderTRANSP / "saved")
                             print(
                                 f'\t- {self.runid} last CDF state backed up as "saved"'
                             )
@@ -825,7 +825,7 @@ def getSERVERfile(name, FolderSimulation, nameRunTot, tok, server, nameNewFolder
 
     if nameNewFolder is not None:
         nfold.mkdir(parents=True, exist_ok=True)
-        os.system(f"mv {localFile} {nfold}")
+        localFile.replace(nfold / localFile.name)
 
 
 def corruptRecover(FolderSimulation, nameRunTot, tok, serverCDF):

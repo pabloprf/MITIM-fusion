@@ -79,7 +79,7 @@ def tr_start(
     if retrieveTerminalOutput:
         outputFiles.append("outputtrstart.txt")
         extraout = " >> outputtrstart.txt"
-        os.system(f"rm {FolderTRANSP / 'outputtrstart.txt'}")
+        os.remove(FolderTRANSP / "outputtrstart.txt")
     else:
         extraout = ""
 
@@ -148,7 +148,7 @@ def tr_dat(runid, tok, FolderTRANSP):
 
     inputFolders = [FolderTRANSP]
     outputFiles = ["outputtrdat.txt"]
-    os.system(f"rm {FolderTRANSP / 'outputtrdat.txt'}")
+    os.remove(FolderTRANSP / "outputtrdat.txt")
 
     Command = f"cd {scratchArea} && trdat {tok} {runid} Q >> outputtrdat.txt"
 
@@ -203,7 +203,7 @@ def tr_send(FolderTRANSP, runid, tok):
     outputFiles = []
     if retrieveTerminalOutput:
         outputFiles.append("outputtrsend.txt")
-        os.system(f"rm {FolderTRANSP / 'outputtrsend.txt'}")
+        os.remove(FolderTRANSP / "outputtrsend.txt")
 
     inputFiles = [
         FolderTRANSP / f"{runid}_{tok}_tmp.tar.gz",
@@ -255,7 +255,7 @@ def tr_look(FolderTRANSP, runid, tok, waitseconds=60):
     outputFiles = []
     if retrieveTerminalOutput:
         outputFiles.append("outputtrlook.txt")
-        os.system(f"rm {FolderTRANSP / 'outputtrlook.txt'}")
+        os.remove(FolderTRANSP / "outputtrlook.txt")
 
     # --------------------------------
     # Run
