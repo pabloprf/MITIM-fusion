@@ -90,7 +90,6 @@ class transp_output:
     def __init__(
         self,
         netCDFfile,
-        ssh=None,
         ZerothTime=False,
         readFBM=False,
         ask_if_fbm=False,
@@ -125,14 +124,7 @@ class transp_output:
 
         # ~~~~~~~~ Open CDF file ~~~~~~~~
 
-        if ssh is None:
-            print(
-                f"\n>> Analyzing netCDF file locally: ...{IOtools.clipstr(netCDFfile)}"
-            )
-        else:
-            print(f">> Analyzing netCDF file remotely by opening {netCDFfile} in {ssh}")
-            os.system(f"scp {ssh}:{netCDFfile} {folderScratch}state.cdf")
-            netCDFfile = f"{folderScratch}state.cdf"
+        print(f"\n>> Analyzing netCDF file {IOtools.clipstr(netCDFfile)}")
 
         self.LocationCDF = netCDFfile
 
