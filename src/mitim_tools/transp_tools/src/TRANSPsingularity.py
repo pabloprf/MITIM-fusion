@@ -397,13 +397,11 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ------------------
 
     if TRANSPcommand_prep is not None:
-        if (folderWork / f'{runid}tr_dat.log').exists():
-            os.remove(folderWork / f'{runid}tr_dat.log')
+        (folderWork / f'{runid}tr_dat.log').unlink(missing_ok=True)
 
         # Run first the prep (with tr_dat)
-        if (folderWork / f'{runid}mitim_bash.src').exists():
-            os.remove(folderWork / f'{runid}mitim_bash.src')
-            os.remove(folderWork / f'{runid}mitim_shell_executor.sh')
+        (folderWork / f'{runid}mitim_bash.src').unlink(missing_ok=True)
+        (folderWork / f'{runid}mitim_shell_executor.sh').unlink(missing_ok=True)
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -425,9 +423,8 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         TRANSPhelpers.interpret_trdat( folderWork / f'{runid}tr_dat.log')
 
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        if (folderWork / 'tmp_inputs' / 'mitim_bash.src').exists():
-            os.remove(folderWork / 'tmp_inputs' / 'mitim_bash.src')
-            os.remove(folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh')
+        (folderWork / 'tmp_inputs' / 'mitim_bash.src').unlink(missing_ok=True)
+        (folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh').unlink(missing_ok=True)
 
     # ---------------
     # Execute Full

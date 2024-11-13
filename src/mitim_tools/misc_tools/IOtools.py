@@ -279,7 +279,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
 
     if file_current.exists():
         if check >= eliminateAfter:
-            os.remove(file_current)
+            file_current.unlink(missing_ok=True)
         else:
             file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
             if file_next.exists():
@@ -399,7 +399,7 @@ def unzipFiles(file, destinyFolder, clear=True):
     odir = Path(destinyFolder).expanduser()
     shutil.unpack_archive(zpath, odir)
     if clear:
-        os.remove(zpath)
+        zpath.unlink(missing_ok=True)
 
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
@@ -434,8 +434,7 @@ def getVar_ExcelColumn(df, columnName, fromRow=4):
 def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, fromRow=4):
 
     ofile = Path(file).expanduser()
-    if ofile.exists():
-        os.remove(ofile)
+    ofile.unlink(missing_ok=True)
 
     if Ti is None:
         Ti = Te

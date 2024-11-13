@@ -687,7 +687,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     UFILEStools.quickUFILE(xZeff, Zeff, folderWork / f"PRF{shotnum}.ZF2", typeuf="zf2")
 
     # This file is useless
-    os.remove(folderWork / f"PRF{shotnum}.ZEF")
+    (folderWork / f"PRF{shotnum}.ZEF").unlink(missing_ok=True)
 
     # ---- Ti validity
 
@@ -702,7 +702,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'PRF'"
 
     # Let's not include neutrons
-    os.remove(folderWork / f"PRF{shotnum}.NTX")
+    (folderWork / f"PRF{shotnum}.NTX").unlink(missing_ok=True)
 
     # ---------------------------------------
     # Simulation settings
@@ -997,8 +997,8 @@ def getZeff_neo(
         zeff.extend([float(j) for j in i.split()])
     zeff = np.array(zeff)
 
-    os.remove(folder / "t.dat")
-    os.remove(folder / "z.dat")
+    (folder / "t.dat").unlink(missing_ok=True)
+    (folder / "z.dat").unlink(missing_ok=True)
 
     return zeff, t
 

@@ -1058,9 +1058,7 @@ def runTGLF(
                 final_destination = (
                     tglf_executor[subFolderTGLF][rho]['folder'] / f"{original_file}"
                 )
-
-                if final_destination.exists():
-                    os.remove(final_destination)
+                final_destination.unlink(missing_ok=True)
 
                 temp_file = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}" / f"{file}"
                 temp_file.replace(final_destination)
