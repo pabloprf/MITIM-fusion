@@ -2,9 +2,7 @@ import re
 import os
 import sys
 import datetime
-import tty
 import warnings
-import termios
 import contextlib
 import logging
 from IPython import embed
@@ -93,33 +91,30 @@ def query_yes_no(question, extra=""):
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
 
+    if 'win' not in sys.platform:
+        import readline
+    else:
+        import pyreadline3
+
     while True:
         total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
         printMsg(*total)
-        with promting_context():
-            choice = sys.stdin.read(1)
-        if choice.lower() in valid:
-            printMsg(f"\t\t>> Answer: {choice.lower()}")
-            if valid[choice.lower()] is not None:
+        #with promting_context():
+        #    choice = sys.stdin.read(1)
+        choice = input().lower()
+        if len(choice) > 1:
+            choice = choice[0]
+        if choice in valid:
+            printMsg(f"\t\t>> Received answer: {choice}")
+            if valid[choice] is not None:
                 printMsg(
-                    f'\t\t>> Proceeding sending "{valid[choice.lower()]}" flag to main program'
+                    f'\t\t>> Proceeding sending "{valid[choice]}" flag to main program'
                 )
-                return valid[choice.lower()]
+                return valid[choice]
             else:
                 raise Exception("[mitim] Exit request")
         else:
             printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
-
-
-class promting_context(object):
-    def __init__(self):
-        self.old_settings = termios.tcgetattr(sys.stdin)
-
-    def __enter__(self):
-        tty.setraw(sys.stdin.fileno())
-
-    def __exit__(self, *args):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
 
 class HiddenPrints:
     """
