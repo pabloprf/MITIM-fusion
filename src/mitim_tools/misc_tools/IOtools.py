@@ -1346,7 +1346,7 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
         assert npath.exists()
-    return npath #f"{npath.resolve()}" + "/" if npath.is_dir() else f"{npath.resolve()}"
+    return npath.resolve()
 
 
 def reducePathLevel(path, level=1, isItFile=False):
