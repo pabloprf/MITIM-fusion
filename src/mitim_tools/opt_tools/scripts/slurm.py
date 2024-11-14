@@ -11,8 +11,8 @@ To call:
 	python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py ~/STUDIES/analysis/_2022_SweepUpdate/runGSnew.py run1 
 
 	or:
-		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py run1 --partition sched_mit_psfc
-		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py run1 --seeds 10
+		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py --folder run1 --partition sched_mit_psfc
+		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py --folder run1 --seeds 10
 
 """
 
@@ -49,6 +49,7 @@ def commander(
         command,
         folderWork,
         None,
+        folder_local=folderWork,
         launchSlurm=True,
         nameJob=f"mitim_opt_{num}{extra_name}",
         slurm={"partition": partition},
