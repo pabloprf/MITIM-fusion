@@ -4,7 +4,6 @@ To run: python3  tests/MITIM_workflow.py
 """
 
 import os
-import torch
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools import __mitimroot__
 
@@ -47,6 +46,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 
     def scalarized_objective(self, Y):
         import numpy as np
+        import torch
         ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of = Y[..., ofs_ordered_names == "z"]
