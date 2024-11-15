@@ -964,7 +964,8 @@ def runTGLF(
             folderTGLF_this = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}"
             folders.append(folderTGLF_this)
 
-            folders_red.append(f"{folderTGLF_this.relative_to(tmpFolder)}")
+            folderTGLF_this_rel = folderTGLF_this.relative_to(tmpFolder)
+            folders_red.append(folderTGLF_this_rel.as_posix() if tglf_job.machineSettings['machine'] != 'local' else str(folderTGLF_this_rel))
 
             folderTGLF_this.mkdir(parents=True, exist_ok=True)
 
@@ -987,13 +988,8 @@ def runTGLF(
         TGLFcommand = ""
         for folder in folders_red:
 
-            if tglf_job.machineSettings['machine'] != 'local':
-                folder_correct = folder.as_posix()
-            else:
-                folder_correct = str(folder)
-
             TGLFcommand += (
-                f"tglf -e {folder_correct} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+                f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
             )
 
         TGLFcommand += (
