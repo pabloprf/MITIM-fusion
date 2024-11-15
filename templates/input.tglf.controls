@@ -19,7 +19,7 @@ ETG_FACTOR              = 1.25
 # ~~~ Physics included
 ADIABATIC_ELEC          = False      # T: Use adiabatic electrons
 THETA_TRAPPED           = 0.7        # Parameter to adjust trapped fraction model
-USE_BPER                = False     # Include transverse magnetic fluctuations, 𝛿𝐴‖ -> PERPENDICULAR FLUCTUATIONS
+USE_BPER                = False     # Include transverse magnetic fluctuations, delta A parallel -> PERPENDICULAR FLUCTUATIONS
 USE_BPAR                = False     # Include compressional magnetic fluctuations, \delta B_{\lVert }}  -> COMPRESSIONAL EFFECTS
 USE_MHD_RULE            = False     # Ignore pressure gradient contribution to curvature drift
 XNU_MODEL               = 2         # Collision model (2=new)
