@@ -163,7 +163,7 @@ class mitim_job:
         comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
             command_str_mod,
             self.folderExecution,
-            self.machineSettings["modules"],
+            modules_remote=self.machineSettings["modules"],
             job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
@@ -947,7 +947,7 @@ def SerialProcedure(Function, Params, howmany):
 def create_slurm_execution_files(
     command,
     folder_remote,
-    modules_remote,
+    modules_remote=None,
     slurm={},
     folder_local=None,
     shellPreCommands=None,
