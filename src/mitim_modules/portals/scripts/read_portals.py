@@ -42,6 +42,9 @@ def main():
         plotAllFluxes = args.all
         complete = args.complete
 
+        if not folderWork.exists():
+            folderWork.mkdir(parents=True, exist_ok=True)
+
         folderRemote = (
             f"{folderRemote_reduced}/{IOtools.reducePathLevel(folderWork)[-1]}/"
             if folderRemote_reduced is not None

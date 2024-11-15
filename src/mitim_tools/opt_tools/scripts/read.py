@@ -221,8 +221,8 @@ def main():
     args = parser.parse_args()
 
     analysis_level = args.type
-    folders_reduced = [IOtools.expandPath(folder) for folder in args.folders]
-    folderRemote_reduced = args.remote
+    folders = args.folders
+    remote_parent = args.remote
     seeds = args.seeds
     resolution = args.resolution
     save_folder = args.save
@@ -231,40 +231,38 @@ def main():
 
 # -----------------------------------------
 
-    folders_reduced_original = copy.deepcopy(folders_reduced)
+    # ----- Folders (complete local path)
+    folders_complete = []
+    for i in range(len(folders)):
+        if seeds is not None:
+            aux = [f"{folders[i]}_s{k}" for k in range(seeds)]
+            folders_complete.extend(aux)
+        else:
+            folders_complete.append(folders[i])
 
-    if seeds is not None:
-        for i in range(len(folders_reduced)):
-            aux = [f"{folders_reduced[i]}_s{k}" for k in range(seeds)]
-            del folders_reduced[i]
-            folders_reduced.extend(aux)
+    txt = "***************************************************************************\n"
+    for i in range(len(folders_complete)):
+        folders_complete[i] = IOtools.expandPath(folders_complete[i])
+        folders_complete[i].mkdir(parents=True, exist_ok=True)
+        txt += f"* Reading results in {folders_complete[i]}\n"
+        
+    # ----- Folders (reduced local path)
+    folders_reduced = [IOtools.reducePathLevel(folderWork)[-1] for folderWork in folders_complete]
 
-    foldersWork = [
-        IOtools.expandPath(folder_reduced, ensurePathValid=True)
-        for folder_reduced in folders_reduced
-    ]
-    reduced_folders = [
-        IOtools.reducePathLevel(folderWork)[-1] for folderWork in foldersWork
-    ]
-
-    if len(foldersWork) > 1:
+    if len(folders_complete) > 1:
         retrieval_level = copy.deepcopy(analysis_level)
         analysis_level = -1
     else:
         retrieval_level = analysis_level
 
-    txt = "***************************************************************************\n"
-    for folderWork in foldersWork:
-        txt += f"* Reading results in {folderWork}\n"
-
-    if folderRemote_reduced is None:
-        foldersRemote = [None] * len(foldersWork)
+    if remote_parent is None:
+        folders_remote = [None] * len(folders_complete)
     else:
-        foldersRemote = [
-            f"{folderRemote_reduced}/{reduced_folder}/"
-            for reduced_folder in reduced_folders
+        folders_remote = [
+            f"{remote_parent}/{reduced_folder}/"
+            for reduced_folder in folders_reduced
         ]
-        txt += f"\n\t...From remote folder {folderRemote_reduced}\n"
+        txt += f"\n\t...From remote folder {remote_parent}\n"
 
     print(
         "\n"
@@ -273,11 +271,11 @@ def main():
     )
     print(f"(Analysis level {analysis_level})\n")
 
-    if len(foldersWork) == 1:
-        opt_fun = STRATEGYtools.opt_evaluator(foldersWork[0])
+    if len(folders_complete) == 1:
+        opt_fun = STRATEGYtools.opt_evaluator(folders_complete[0])
         opt_fun.plot_optimization_results(
             analysis_level=analysis_level,
-            folderRemote=foldersRemote[0],
+            folderRemote=folders_remote[0],
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
             save_folder=save_folder,
@@ -285,7 +283,7 @@ def main():
         )
     else:
         opt_funs = []
-        for folderWork, folderRemote in zip(foldersWork, foldersRemote):
+        for folderWork, folderRemote in zip(folders_complete, folders_remote):
             opt_fun = STRATEGYtools.opt_evaluator(folderWork)
             try:
                 opt_fun.plot_optimization_results(
@@ -301,7 +299,7 @@ def main():
 
     if analysis_level == -1:
         yCummMeans, xes, resS, logS, fig = plotCompare(
-            foldersWork, plotMeanMax=[True, len(foldersWork) < 2]
+            folders_complete, plotMeanMax=[True, len(folders_complete) < 2]
         )
 
     # ------
