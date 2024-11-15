@@ -61,7 +61,7 @@ def findOptima(fun, writeTrajectory=False):
     time1 = datetime.datetime.now()
     print(f'\t\t- Time: {time1.strftime("%Y-%m-%d %H:%M:%S")}')
     print(
-        f"\t\t- Optimizing to find {q} point(s) with {num_restarts} cold_starts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
+        f"\t\t- Optimizing to find {q} point(s) with {num_restarts} restarts from {raw_samples} raw samples ({options['maxiter']} iterations)\n"
     )
 
     x_opt, _ = botorch.optim.optimize_acqf(

@@ -113,7 +113,7 @@ def main():
         "--partition",
         type=str,
         required=False,
-        default=IOtools.expandPath("$MITIM_PARTITION"),
+        default=IOtools.expandPath("$MFEIM_PARTITION"),
     )
     parser.add_argument("--seeds", type=int, required=False, default=1)
     parser.add_argument(
