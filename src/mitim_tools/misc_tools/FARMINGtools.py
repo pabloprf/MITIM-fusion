@@ -1153,34 +1153,77 @@ def printEfficiencySLURM(out_file):
         print("\n****** SACCT:")
         os.system(f"sacct -j {jobid}")
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Functions for quick remote executions
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = []):
-    '''
-    Quick routine for file retrieval from remote machine
-    Assumes remote machine is linux 
-    '''
+def perform_quick_remote_execution(
+    folder_local,
+    machine,
+    command,
+    input_files=[],
+    input_folders=[],
+    output_files=[],
+    output_folders=[],
+    job_name = "test",
+    ):
 
     job = mitim_job(folder_local)
 
     # Define machine
     job.slurm_settings, job.launchSlurm = {}, False
-    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch='file_retrieval',forceMachine=machine)
+    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
     job.folderExecution = job.machineSettings["folderWork"]
 
+    # Submit
+    job.prep(
+        command,
+        input_files=input_files,
+        input_folders=input_folders,
+        output_files=output_files,
+        output_folders=output_folders)
+    job.run()
+
+
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = []):
+    '''
+    Quick routine for file retrieval from remote machine (assumes remote machine is linux)
+
+    e.g.:
+            mitim_plot_portals run2 --remote engaging:path_to_folder_remote_where_run2_is/
+
+    '''
+
+    job_name = 'file_retrieval'
+
+    # ------------------------------------------------
     # Prep files and folders to be transfered
+    # ------------------------------------------------
+
+    machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
+
     command, output_files, output_folders = '', [], []
     for file in files_remote:
         file0 = file.split('/')[-1]
-        command += f'cp {file} {job.folderExecution}/{file0}\n'
+        command += f'cp {file} {machineSettings["folderWork"]}/{file0}\n'
         output_files.append(file0)
     for folder in folders_remote:
         folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
-        command += f'cp -r {folder} {job.folderExecution}/{folder0}\n'
+        command += f'cp -r {folder} {machineSettings["folderWork"]}/{folder0}\n'
         output_folders.append(folder0)
 
-    # Submit
-    job.prep(command,output_files=output_files,output_folders=output_folders)
-    job.run()
+    # ------------------------------------------------
+    # Run
+    # ------------------------------------------------
+
+    perform_quick_remote_execution(
+        folder_local,
+        machine,
+        command,
+        output_files = output_files,
+        output_folders = output_folders,
+        job_name = job_name
+    )
 
 
 if __name__ == "__main__":
