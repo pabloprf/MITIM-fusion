@@ -1116,7 +1116,7 @@ def create_slurm_execution_files(
 
     comm = f"cd {folder_remote} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
-    return comm, fileSBATCH, fileSHELL
+    return comm, fileSBATCH.resolve(), fileSHELL.resolve()
 
 
 def curateOutFiles(outputFiles):
