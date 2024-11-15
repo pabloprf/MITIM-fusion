@@ -507,8 +507,6 @@ class mitim_job:
         except socket.timeout:
             print("\t> Command timed out!", typeMsg="w")
 
-        embed()
-
         return output, error
 
     def execute_local(self, command_str, printYN=False, timeoutSecs=None, **kwargs):
