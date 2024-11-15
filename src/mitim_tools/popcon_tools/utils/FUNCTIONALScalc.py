@@ -42,6 +42,6 @@ def calculate_simplified_volavg(x, T):
             :, -1
         ]
         / vol[:, -1]
-    ).numpy()
+    ).cpu().numpy()
 
     return Tvol

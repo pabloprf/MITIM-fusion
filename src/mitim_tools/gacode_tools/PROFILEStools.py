@@ -1132,7 +1132,7 @@ class PROFILES_GACODE:
     def tglf_plasma(self):
 
         def deriv_gacode(y):
-            return grad(self.profiles["rmin(m)"],y).numpy()
+            return grad(self.profiles["rmin(m)"],y).cpu().numpy()
 
         self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
 
@@ -1145,7 +1145,7 @@ class PROFILES_GACODE:
             torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
             torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
             self.derived["a"],
-            mref_u=self.derived["mi_ref"]).numpy()
+            mref_u=self.derived["mi_ref"]).cpu().numpy()
 
         self.derived['debye'] = PLASMAtools.debye(
             self.profiles['te(keV)'],
@@ -1423,8 +1423,8 @@ class PROFILES_GACODE:
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
     def toNumpyArrays(self):
-        self.profiles.update({key: tensor.cpu().detach().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
-        self.derived.update({key: tensor.cpu().detach().numpy() for key, tensor in self.derived.items() if isinstance(tensor, torch.Tensor)})
+        self.profiles.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
+        self.derived.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.derived.items() if isinstance(tensor, torch.Tensor)})
 
     def writeCurrentStatus(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
@@ -4188,7 +4188,7 @@ def aLT(r, p):
             torch.from_numpy(r).to(torch.double), torch.from_numpy(p).to(torch.double)
         )
         .cpu()
-        .numpy()
+        .cpu().numpy()
     )
 
 
@@ -4252,7 +4252,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["te(keV)"][-1],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     aLT0 = aLTi_true[: ix1 + 1]
@@ -4271,7 +4271,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["ti(keV)"][-1, 0],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     aLT0 = aLne_true[: ix1 + 1]
@@ -4290,7 +4290,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["ne(10^19/m^3)"][-1],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     p.profiles["te(keV)"] = Te

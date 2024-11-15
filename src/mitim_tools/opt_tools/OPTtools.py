@@ -1094,13 +1094,13 @@ def untransformation_loop(X_transformed, input_transform, x0):
         loss = (input_transform(X) - X_transformed).square().mean()
         V = torch.autograd.grad(loss, X)[0]
 
-        return loss.detach().numpy(), V.detach().numpy()
+        return loss.detach().cpu().numpy(), V.detach().cpu().numpy()
 
     from scipy.optimize import minimize
 
     sol = minimize(
         evaluator_losses,
-        x0.numpy()[0, :],
+        x0.cpu().numpy()[0, :],
         method="L-BFGS-B",
         jac=True,
         options={"disp": 1, "gtol": 1e-15, "ftol": 1e-15},

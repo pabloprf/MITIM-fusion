@@ -46,7 +46,7 @@ for step in step_num:
 
 	# Grab info from optimization
 	infoOPT = strat.steps[step].InfoOptimization
-	y_acq = infoOPT[0]['info']['acq_evaluated'].numpy()
+	y_acq = infoOPT[0]['info']['acq_evaluated'].cpu().numpy()
 
 	# Operate
 	acq = strat.steps[step].evaluators['acq_function']
