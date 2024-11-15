@@ -1,4 +1,4 @@
-import os
+import shutil
 import torch
 import copy
 import numpy as np
@@ -22,7 +22,7 @@ def initializeProblem(
     RelVar_y_min,
     limitsAreRelative=True,
     hardGradientLimits=None,
-    restartYN=False,
+    cold_start=False,
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
@@ -34,7 +34,7 @@ def initializeProblem(
     """
     Notes:
         - Specification of points occur in rho coordinate, although internally the work is r/a
-            restartYN = True if restart from beginning
+            cold_start = True if cold_start from beginning
         - I can give ModelOptions directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
@@ -42,12 +42,12 @@ def initializeProblem(
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
 
-    FolderInitialization = folderWork + "/Initialization"
+    FolderInitialization = folderWork / "Initialization"
 
-    if (restartYN) or (not os.path.exists(folderWork)):
-        IOtools.askNewFolder(folderWork, force=restartYN)
+    if (cold_start) or (not folderWork.exists()):
+        IOtools.askNewFolder(folderWork, force=cold_start)
 
-    os.makedirs(FolderInitialization, exist_ok=True)
+    FolderInitialization.mkdir(parents=True, exist_ok=True)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
@@ -55,17 +55,15 @@ def initializeProblem(
 
     # ---- Copy the file of interest to initialization folder
 
-    os.system(f"cp {fileStart} {FolderInitialization}/input.gacode")
+    shutil.copy2(fileStart, FolderInitialization / "input.gacode")
 
     # ---- Make another copy to preserve the original state
 
-    os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
-    )
+    shutil.copy2(FolderInitialization / "input.gacode", FolderInitialization / "input.gacode_original")
 
     # ---- Initialize file to modify and increase resolution
 
-    initialization_file = f"{FolderInitialization}/input.gacode"
+    initialization_file = FolderInitialization / "input.gacode"
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
 
     # About radial locations
@@ -90,7 +88,7 @@ def initializeProblem(
     defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
 
     # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_modified")
+    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
         portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
@@ -109,7 +107,7 @@ def initializeProblem(
     ):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
+            data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
             if not (data_df['Ion']==profiles.Species[i]["N"]).any():
                 speciesNotFound.append(profiles.Species[i]["N"])
         if len(speciesNotFound) > 0:
@@ -126,7 +124,7 @@ def initializeProblem(
 
     if ModelOptions is None:
         ModelOptions = {
-            "restart": False,
+            "cold_start": False,
             "launchMODELviaSlurm": portals_fun.PORTALSparameters[
                 "launchEvaluationsAsSlurmJobs"
             ],
@@ -199,7 +197,7 @@ def initializeProblem(
 
     # Write this updated profiles class (with parameterized profiles)
     _ = portals_fun.powerstate.to_gacode(
-        write_input_gacode=f"{FolderInitialization}/input.gacode",
+        write_input_gacode=FolderInitialization / "input.gacode",
         postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
     )
 

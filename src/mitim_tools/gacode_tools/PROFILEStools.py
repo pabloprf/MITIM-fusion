@@ -1,5 +1,4 @@
 import copy
-import os
 import torch
 import csv
 import numpy as np
@@ -187,7 +186,7 @@ class PROFILES_GACODE:
         name="vgen1",
         includeAll=False,
         write_new_file=None,
-        restart=False,
+        cold_start=False,
         ):
         profiles = copy.deepcopy(self)
 
@@ -199,7 +198,7 @@ class PROFILES_GACODE:
 
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
-        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, restart=restart)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, cold_start=cold_start)
 
         profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
         if resol_changed:
@@ -2916,11 +2915,14 @@ class PROFILES_GACODE:
         ms=2,
         alpha=1.0,
         useRoa=False,
-        RhoLocationsPlot=[],
+        RhoLocationsPlot=None,
         plotImpurity=None,
         plotRotation=False,
         autoscale=True,
         ):
+
+        if RhoLocationsPlot is None: RhoLocationsPlot=[]
+
         if axs4 is None:
             plt.ion()
             fig, axs = plt.subplots(
@@ -3951,8 +3953,7 @@ class PROFILES_GACODE:
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:

@@ -132,10 +132,7 @@ def compareDictionaries(d1, d2, precision_of=None):
 
 
 def printTable(diff, warning_percent=1e-1):
-    try:
-        print(f"{'':>15}{file1.split('/')[-1]:>25}{file2.split('/')[-1]:>25}")
-    except:
-        pass
+
     for key in diff:
         if diff[key][0] is not None:
             if diff[key][1] is not None:

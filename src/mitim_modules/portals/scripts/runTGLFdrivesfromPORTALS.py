@@ -1,4 +1,5 @@
 import argparse
+from mitim_tools.misc_tools import IOtools
 from mitim_modules.portals.utils import PORTALSanalysis
 
 """
@@ -24,12 +25,12 @@ parser.add_argument(
 parser.add_argument("-r", required=False, default=False, action="store_true")
 
 args = parser.parse_args()
-folder = args.folder
+folder = IOtools.expandPath(args.folder)
 ev = args.ev
 pos = args.pos
 wf = args.wf
 var = args.var
-restart = args.r
+cold_start = args.r
 
 # --- Workflow
 
@@ -43,7 +44,7 @@ tglf.runScanTurbulenceDrives(
     variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
     TGLFsettings=TGLFsettings,
     extraOptions=extraOptions,
-    restart=restart,
+    cold_start=cold_start,
     runWaveForms=wf,
 )
 

@@ -1,7 +1,7 @@
-import sys, torch
-from IPython import embed
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
+from IPython import embed
 
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGYROtools
@@ -10,7 +10,7 @@ from mitim_modules.powertorch import STATEtools
 """
 This code is useful to get an idea of how well POWERSTATE is calculating the targets, compared to the standard of TGYRO.
 To run:
-		compareWithTGYRO.py tgyro_folder/
+		compareWithTGYRO.py tgyro_folder
 """
 
 

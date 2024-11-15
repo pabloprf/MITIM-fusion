@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
@@ -39,11 +40,11 @@ class transp_beat(beat):
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
 
         if shot is None:
-            folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
+            folder_last = self.maestro_instance.folder.resolve().name
             shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
-            username = os.path.expandvars('$USER')
+            username = os.environ['USER']
             letter = username[0].upper()
             if letter == '$':
                 letter = 'A'
@@ -128,14 +129,14 @@ class transp_beat(beat):
             retrieveAC = self.timeAC is not None,
             )
 
-        self.transp.c = CDFtools.transp_output(f"{self.folder}/{self.shot}{self.runid}.CDF")
+        self.transp.c = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
 
     def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
         # Copy to outputs
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}TR.DAT {self.folder_output}/.')
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}.CDF {self.folder_output}/.')
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}tr.log {self.folder_output}/.')
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
         time_extraction = self.transp.c.t[self.transp.c.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
@@ -145,7 +146,7 @@ class transp_beat(beat):
         self._add_heating_profiles(force_auxiliary_heating_at_output)
 
         # Write profiles
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / "input.gacode")
 
     def _add_heating_profiles(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}):
         '''
@@ -177,7 +178,7 @@ class transp_beat(beat):
 
         # Write the pre-merge input.gacode before modifying it
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
+        profiles_output_pre_merge.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -208,7 +209,7 @@ class transp_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def grab_output(self):
 
@@ -216,7 +217,7 @@ class transp_beat(beat):
 
         if isitfinished:
             c = CDFtools.transp_output(self.folder_output)
-            profiles = PROFILEStools.PROFILES_GACODE(f'{self.folder_output}/input.gacode')
+            profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode')
         else:
             # Trying to see if there's an intermediate CDF in folder
             print('\t\t- Searching for intermediate CDF in folder')
@@ -241,10 +242,10 @@ class transp_beat(beat):
 
     def finalize_maestro(self):
 
-        cdf = CDFtools.transp_output(f"{self.folder}/{self.transp.shot}{self.transp.runid}.CDF")
+        cdf = CDFtools.transp_output(self.folder / f"{self.transp.shot}{self.transp.runid}.CDF")
         self.maestro_instance.final_p = cdf.to_profiles()
         
-        final_file = f'{self.maestro_instance.folder_output}/input.gacode_final'
+        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 

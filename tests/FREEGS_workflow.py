@@ -1,4 +1,3 @@
-import os
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools import __mitimroot__
 from matplotlib import pyplot as plt
@@ -35,10 +34,10 @@ axs = fig.subplot_mosaic(
 f.plot(axs=[axs['A'], axs['1'], axs['2'], axs['3'], axs['4']])
 
 # Write geqdsk
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/freegs_test/"), exist_ok=True)
-f.write(__mitimroot__ + "/tests/scratch/freegs_test/mitim_freegs.geqdsk")
+(__mitimroot__ / "tests" / "scratch" / "freegs_test").mkdir(parents=True, exist_ok=True)
+f.write(__mitimroot__ / "tests" / "scratch" / "freegs_test" / "mitim_freegs.geqdsk")
 
 # Write inputs to run TRANSP
-f.to_transp(folder = __mitimroot__ + "/tests/scratch/freegs_test/transp_input/")
+f.to_transp(folder = __mitimroot__ / "tests" / "scratch" / "freegs_test" / "transp_input")
 
 plt.show()

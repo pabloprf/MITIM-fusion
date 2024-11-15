@@ -1,4 +1,3 @@
-import os
 import copy
 import torch
 import numpy as np
@@ -27,12 +26,12 @@ class PORTALSanalyzer:
         self.opt_fun = opt_fun
 
         self.folder = (
-            folderAnalysis
+            IOtools.expandPath(folderAnalysis)
             if folderAnalysis is not None
-            else f"{self.opt_fun.folder}/Analysis/"
+            else self.opt_fun.folder / "Analysis"
         )
 
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
         self.fn = None
 
@@ -55,7 +54,7 @@ class PORTALSanalyzer:
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
 
-        if os.path.exists(folder) or folderRemote is not None:
+        if folder.exists() or folderRemote is not None:
 
             opt_fun = STRATEGYtools.opt_evaluator(folder)
 
@@ -143,7 +142,7 @@ class PORTALSanalyzer:
             self.iextra = self.ilast
 
         if self.mitim_runs[0] is None:
-            print("* Issue with reading mitim_run 0, likely due to a restart of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
+            print("* Issue with reading mitim_run 0, likely due to a cold_start of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
             print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
 
         # Store setup of TGYRO run
@@ -184,15 +183,15 @@ class PORTALSanalyzer:
 
         self.profiles_next = None
         x_train_num = self.step.train_X.shape[0]
-        file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode"
-        if os.path.exists(file):
+        file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode"
+        if file.exists():
             print("\t\t- Reading next profile to evaluate (from folder)")
             self.profiles_next = PROFILEStools.PROFILES_GACODE(
                 file, calculateDerived=False
             )
 
-            file = f"{self.opt_fun.folder}/Execution/Evaluation.{x_train_num}/model_complete/input.gacode.new"
-            if os.path.exists(file):
+            file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode.new"
+            if file.exists():
                 self.profiles_next_new = PROFILEStools.PROFILES_GACODE(
                     file, calculateDerived=False
                 )
@@ -403,11 +402,11 @@ class PORTALSanalyzer:
             """
             folder, label = UseThisTGLFfull
             if folder is None:
-                folder = f"{self.folder}/tglf_full/"
+                folder = self.folder / "tglf_full"
             self.tglf_full = TGLFtools.TGLF(rhos=self.rhos)
             for ev in range(self.ilast + 1):
                 self.tglf_full.read(
-                    folder=f"{folder}/Evaluation.{ev}/tglf_{label}/", label=f"ev{ev}"
+                    folder=folder / f"Evaluation.{ev}" / f"tglf_{label}", label=f"ev{ev}"
                 )
             UseTGLFfull_x = label
 
@@ -476,16 +475,16 @@ class PORTALSanalyzer:
             evaluation = self.ilast
 
         if folder is None:
-            folder = f"{self.folder}/portals_step{evaluation}/"
+            folder = self.folder / f"portals_step{evaluation}"
 
         folder = IOtools.expandPath(folder)
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         # Original class
         portals_fun_original = self.opt_fun.prfs_model.optimization_object
 
         # Start from the profiles of that step
-        fileGACODE = f"{folder}/input.gacode_transferred"
+        fileGACODE = folder / "input.gacode_transferred"
         p = self.extractProfiles(evaluation=evaluation)
         p.writeCurrentStatus(file=fileGACODE)
 
@@ -516,17 +515,17 @@ class PORTALSanalyzer:
 
         return portals_fun, fileGACODE, folder
 
-    def extractTGYRO(self, folder=None, restart=False, evaluation=0):
+    def extractTGYRO(self, folder=None, cold_start=False, evaluation=0):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
             evaluation = self.ilast
 
         if folder is None:
-            folder = f"{self.folder}/tgyro_step{evaluation}/"
+            folder = self.folder / f"tgyro_step{evaluation}"
 
         folder = IOtools.expandPath(folder)
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
@@ -534,7 +533,7 @@ class PORTALSanalyzer:
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(
-            folder, profilesclass_custom=profiles, restart=restart, forceIfRestart=True
+            folder, profilesclass_custom=profiles, cold_start=cold_start, forceIfcold_start=True
         )
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
@@ -547,7 +546,7 @@ class PORTALSanalyzer:
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self, folder=None, positions=None, evaluation=None, restart=False):
+    def extractTGLF(self, folder=None, positions=None, evaluation=None, cold_start=False):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -571,22 +570,22 @@ class PORTALSanalyzer:
                 rhos.append(rhos_considered[i])
 
         if folder is None:
-            folder = f"{self.folder}/tglf_ev{evaluation}/"
+            folder = self.folder / f"tglf_ev{evaluation}"
 
         folder = IOtools.expandPath(folder)
 
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         print(
             f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}"
         )
 
-        inputgacode = f"{folder}/input.gacode.start"
+        inputgacode = folder / f"input.gacode.start"
         p = self.extractProfiles(evaluation=evaluation)
         p.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        _ = tglf.prep(folder, restart=restart, inputgacode=inputgacode)
+        _ = tglf.prep(folder, cold_start=cold_start, inputgacode=inputgacode)
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
         extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
@@ -600,7 +599,7 @@ class PORTALSanalyzer:
     def runTGLFfull(
         self,
         folder=None,
-        restart=False,
+        cold_start=False,
         label="default",
         tglf_object=None,
         onlyBest=False,
@@ -613,9 +612,9 @@ class PORTALSanalyzer:
         """
 
         if folder is None:
-            folder = f"{self.folder}/tglf_full/"
+            folder = self.folder / "tglf_full"
 
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         if onlyBest:
             ranges = [self.ibest]
@@ -624,7 +623,7 @@ class PORTALSanalyzer:
 
         for ev in ranges:
             tglf, TGLFsettings, extraOptions = self.extractTGLF(
-                folder=f"{folder}/Evaluation.{ev}/", evaluation=ev, restart=restart
+                folder=folder / f"Evaluation.{ev}", evaluation=ev, cold_start=cold_start
             )
 
             kwargsTGLF_this = copy.deepcopy(kwargsTGLF)
@@ -634,7 +633,7 @@ class PORTALSanalyzer:
             if "extraOptions" not in kwargsTGLF_this:
                 kwargsTGLF_this["extraOptions"] = extraOptions
 
-            tglf.run(subFolderTGLF=f"tglf_{label}/", restart=restart, **kwargsTGLF_this)
+            tglf.run(subFolderTGLF=f"tglf_{label}", cold_start=cold_start, **kwargsTGLF_this)
 
         # Read all previously run cases into a single class
         if tglf_object is None:
@@ -642,13 +641,13 @@ class PORTALSanalyzer:
 
         for ev in ranges:
             tglf_object.read(
-                folder=f"{folder}/Evaluation.{ev}/tglf_{label}/",
+                folder=folder / f"Evaluation.{ev}" / f"tglf_{label}",
                 label=f"{label}_ev{ev}",
             )
 
         return tglf_object
 
-    def runCases(self, onlyBest=False, restart=False, fn=None):
+    def runCases(self, onlyBest=False, cold_start=False, fn=None):
         from mitim_modules.portals.PORTALSmain import runModelEvaluator
 
         variations_best = self.opt_fun.res.best_absolute_full["x"]
@@ -656,8 +655,8 @@ class PORTALSanalyzer:
 
         if not onlyBest:
             print("\t- Running original case")
-            FolderEvaluation = f"{self.folder}/final_analysis_original/"
-            if not os.path.exists(FolderEvaluation):
+            FolderEvaluation = self.folder / f"final_analysis_original"
+            if not FolderEvaluation.exists():
                 IOtools.askNewFolder(FolderEvaluation, force=True)
 
             dictDVs = {}
@@ -673,12 +672,12 @@ class PORTALSanalyzer:
                 FolderEvaluation,
                 dictDVs,
                 name0,
-                restart=restart,
+                cold_start=cold_start,
             )
 
         print(f"\t- Running best case #{self.opt_fun.res.best_absolute_index}")
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis_best/"
-        if not os.path.exists(FolderEvaluation):
+        FolderEvaluation = self.folder / "Outputs" / "final_analysis_best"
+        if not FolderEvaluation.exists():
             IOtools.askNewFolder(FolderEvaluation, force=True)
 
         dictDVs = {}
@@ -693,7 +692,7 @@ class PORTALSanalyzer:
             FolderEvaluation,
             dictDVs,
             name,
-            restart=restart,
+            cold_start=cold_start,
         )
 
         # Plot
@@ -953,7 +952,7 @@ class PORTALSinitializer:
         for i in range(100):
             try:
                 prof = PROFILEStools.PROFILES_GACODE(
-                    f"{self.folder}/Outputs/portals_profiles/input.gacode.{i}"
+                    self.folder / "Outputs" / "portals_profiles" / f"input.gacode.{i}"
                 )
             except FileNotFoundError:
                 break
@@ -962,7 +961,7 @@ class PORTALSinitializer:
         for i in range(100):
             try:
                 p = STATEtools.read_saved_state(
-                    f"{self.folder}/Initialization/initialization_simple_relax/portals_sr_{IOtools.reducePathLevel(self.folder)[1]}_ev_{i}/powerstate.pkl"
+                    self.folder / "Initialization" / "initialization_simple_relax" / f"portals_sr_{IOtools.reducePathLevel(self.folder)[1]}_ev_{i}" / "powerstate.pkl"
                 )
             except FileNotFoundError:
                 break

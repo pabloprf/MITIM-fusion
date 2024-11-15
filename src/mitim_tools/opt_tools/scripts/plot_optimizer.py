@@ -1,6 +1,7 @@
 import argparse
 import torch
 import numpy as np
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import GRAPHICStools,GUItools
 
@@ -13,7 +14,7 @@ args = parser.parse_args()
 
 # Inputs
 
-folderWork = args.folder
+folderWork = IOtools.expandPath(args.folder)
 step_from = args.from_step
 step_to = args.to_step
 

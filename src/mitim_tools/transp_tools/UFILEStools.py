@@ -268,9 +268,7 @@ class UFILEtransp:
             f.write("".join(self.STR_footer))
 
         print(
-            "\t\t- UFILE written with {1} time points: ...{0}".format(
-                filename[np.max([-40, -len(filename)]) :], timepoints
-            )
+            f"\t\t- UFILE written with {timepoints} time points: ...{IOtools.clipstr(filename)}"
         )
 
     def writeVar(self, f, var, ncols=6):
@@ -695,7 +693,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = tlastsaws[-1] - extratim
             ind = np.argmin(np.abs(f["TIME"][:] - (timer)))
             print(
-                ">> Restarting {0} from top of last sawtooth ({1}ms before), t={2:.3f}s".format(
+                ">> cold_starting {0} from top of last sawtooth ({1}ms before), t={2:.3f}s".format(
                     varCDF, extratim * 1000.0, timer
                 )
             )
@@ -704,7 +702,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             ind = -1
 
     elif timeExtract == -2:
-        print(f">> Restarting {varCDF} from last time, t={f['TIME'][:][-1]:.3f}s")
+        print(f">> cold_starting {varCDF} from last time, t={f['TIME'][:][-1]:.3f}s")
         ind = -1
 
     elif timeExtract == -3:
@@ -713,7 +711,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = (tlastsaws[lastindex] + tlastsaws[lastindex - 1]) / 2.0
             ind = np.argmin(np.abs(f["TIME"][:] - timer))
             print(
-                f">> Restarting {varCDF} from middle of last sawteeth, t={timer:.3f}s"
+                f">> cold_starting {varCDF} from middle of last sawteeth, t={timer:.3f}s"
             )
 
         except:
@@ -730,7 +728,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             timer = tlastsaws[-1] + timeExtract * 1e-3
             ind = np.argmin(np.abs(f["TIME"][:] - timer))
             print(
-                f">> Restarting {-timeExtract}ms before last sawteeth, t={timer:.3f}s"
+                f">> cold_starting {-timeExtract}ms before last sawteeth, t={timer:.3f}s"
             )
 
         except:
@@ -742,7 +740,7 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
             ind = -1
 
     else:
-        print(f">> Restarting {varCDF} from t={timeExtract:.3f}s")
+        print(f">> cold_starting {varCDF} from t={timeExtract:.3f}s")
         ind = np.argmin(np.abs(f["TIME"][:] - timeExtract))
 
     # Selection of rho_tor coordinate
@@ -798,28 +796,28 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
 def updateTypicalFiles(folder_new, cdf_file, timeExtract, shot="12345"):
     _, _ = updateUFILEfromCDF(
         "Q",
-        f"{folder_new}/PRF{shot}.QPR",
+        folder_new / f"PRF{shot}.QPR",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TE",
-        f"{folder_new}/PRF{shot}.TEL",
+        folder_new / f"PRF{shot}.TEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TI",
-        f"{folder_new}/PRF{shot}.TIO",
+        folder_new / f"PRF{shot}.TIO",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "NE",
-        f"{folder_new}/PRF{shot}.NEL",
+        folder_new / f"PRF{shot}.NEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
@@ -864,40 +862,6 @@ def changeUFILEs(
 
         print(f"\t- Changed {iDV} in TRANSP U-Files to {valToModify[iDV]}{printt}")
 
-
-def generateInitialRampValues(dictParams, FolderTRANSP, nameBaseShot, dictParamsOrig):
-    # Parameters in U-Files
-
-    UF = UFILEtransp()
-    UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.CUR")
-    Ip_orig = UF.Variables["Z"][0]
-
-    UF = UFILEtransp()
-    UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.RBZ")
-    RBZ_orig = UF.Variables["Z"][0]
-
-    R_orig, epsilon_orig, a_orig = (
-        dictParamsOrig["rmajor"],
-        dictParamsOrig["epsilon"],
-        copy.deepcopy(epsilon_orig * R_orig),
-    )
-
-    # Parameters in new baseline (which was created to avoid intersections)
-
-    rmajor_baseline, epsilon_baseline, Bt = (
-        dictParams["rmajor_startwith"],
-        dictParams["epsilon_startwith"],
-        dictParams["Bt"],
-    )
-
-    R_new = copy.deepcopy(rmajor_baseline)
-    RBZ_new = copy.deepcopy(Bt * R_new * 100.0)
-    a_new = copy.deepcopy(epsilon_baseline * R_new)
-    Ip_new = copy.deepcopy(Ip_orig)
-
-    return Ip_new, RBZ_new
-
-
 def offsettimeUF(FolderTRANSP, nameBaseShot, nameufile, offsettime):
     # Read Ufile
     UF = UFILEtransp()
@@ -928,7 +892,7 @@ def initializeUFILES_MinimalTRANSP(rho, Te, Ti, ne, q, V, location=".", name="12
         quickUFILE(
             rho,
             ufiles[ufn][1],
-            f"{location}/PRF{name}.{ufn}",
+            location / f"PRF{name}.{ufn}",
             typeuf=ufiles[ufn][0],
         )
 

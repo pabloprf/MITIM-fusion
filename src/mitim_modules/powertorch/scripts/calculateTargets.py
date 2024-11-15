@@ -7,7 +7,6 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.portals.utils import PORTALSinit
 from mitim_modules.powertorch.physics import TRANSPORTtools,TARGETStools
 from IPython import embed
 
@@ -16,7 +15,7 @@ def calculator(
     typeCalculation=2,
     TypeTarget=3,
     folder="~/scratch/",
-    restart=True,
+    cold_start=True,
     rho_vec=np.linspace(0.1, 0.9, 9),
     profProvided=False,
     fineTargetsResolution = None,
@@ -42,7 +41,7 @@ def calculator(
             TransportOptions={
                 "transport_evaluator": TRANSPORTtools.tgyro_model,
                 "ModelOptions": {
-                    "restart": restart,
+                    "cold_start": cold_start,
                     "launchSlurm": True,
                     "MODELparameters": {
                         "Physics_options": {
@@ -117,7 +116,7 @@ def calculator(
     p.profiles.deriveQuantities()
     
     p.to_gacode(
-        write_input_gacode=f"{folder}/input.gacode.new.powerstate",
+        write_input_gacode=folder / "input.gacode.new.powerstate",
         position_in_powerstate_batch=0,
         postprocess_input_gacode={
             "Tfast_ratio": False,

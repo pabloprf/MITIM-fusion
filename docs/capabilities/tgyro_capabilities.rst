@@ -21,14 +21,15 @@ For this tutorial we will need the following modules:
 
 .. code-block:: python
 
+	from pathlib import Path
 	from mitim_tools.gacode_tools import TGYROtools,PROFILEStools
 
 Select the location of the input.gacode file to start the simulation from. You should also select the folder where the simulation will be run:
 
 .. code-block:: python
 
-	gacode_file = 'MITIM-fusion/tests/data/input.gacode'
-	folder      = 'MITIM-fusion/tests/scratch/tgyro_tut/'
+	gacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+	folder      = Path('MITIM-fusion/tests/scratch/tgyro_tut')
 
 Create a PROFILES class from the input.gacode file:
 
@@ -76,7 +77,7 @@ Now TGYRO can be run:
 
 .. code-block:: python
 
-    tgyro.run( subFolderTGYRO        = 'run1/',      
+    tgyro.run( subFolderTGYRO        = 'run1',      
                iterations            = iterations,
                special_radii         = rhos,
                PredictionSet         = PredictionSet,
@@ -113,10 +114,11 @@ Create a profiles class with the `input.gacode` file that TGYRO used to run and 
 
 .. code-block:: python
 
+	from pathlib import Path
 	from mitim_tools.gacode_tools import TGYROtools,PROFILEStools
 
-	gacode_file = 'MITIM-fusion/tests/data/input.gacode'
-	folder      = 'MITIM-fusion/tests/scratch/tgyro_tut/run1/'
+	gacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+	folder      = Path('MITIM-fusion/tests/scratch/tgyro_tut/run1')
 
 	profiles    = PROFILEStools.PROFILES_GACODE(gacode_file)
 	tgyro_out   = TGYROtools.TGYROoutput(folder,profiles=profiles)

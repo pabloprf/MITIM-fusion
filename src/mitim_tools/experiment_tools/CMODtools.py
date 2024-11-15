@@ -1,5 +1,5 @@
 import sys
-import os
+import shutil
 import socket
 import numpy as np
 import matplotlib.pyplot as plt
@@ -664,18 +664,18 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     # ----- Change names to those that I understand
 
     for i, j in zip(["NER", "TER", "TI2"], ["NEL", "TEL", "TIO"]):
-        os.system("mv {0}/PRF{1}.{2} {0}/PRF{1}.{3}".format(folderWork, shotnum, i, j))
+        (folderWork / f'PRF{shotnum}.{i}').replace(folderWork / f'PRF{shotnum}.{j}')
 
     # ---- Add C-Mod limiter
 
     rlim, zlim = defineFirstWall()
-    TRANSPhelpers.addLimiters_UF(f"{folderWork}/PRF{shotnum}.LIM", rlim, zlim)
+    TRANSPhelpers.addLimiters_UF(folderWork / f"PRF{shotnum}.LIM", rlim, zlim)
 
     # ---- No gas flow (my way is to give this file)
 
     gasflow = 0.0
     UFILEStools.quickUFILE(
-        None, gasflow, f"{folderWork}/PRF{shotnum}.GFD", typeuf="gfd"
+        None, gasflow, folderWork / f"PRF{shotnum}.GFD", typeuf="gfd"
     )
 
     # ---- Zeff specified as a uniform profile (my way)
@@ -683,10 +683,10 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     xZeff, Zeff = np.linspace(0, 1, 10), np.ones(10) * IOtools.findValue(
         nml_old, "xzeffi", "="
     )
-    UFILEStools.quickUFILE(xZeff, Zeff, f"{folderWork}/PRF{shotnum}.ZF2", typeuf="zf2")
+    UFILEStools.quickUFILE(xZeff, Zeff, folderWork / f"PRF{shotnum}.ZF2", typeuf="zf2")
 
     # This file is useless
-    os.system(f"rm {folderWork}/PRF{shotnum}.ZEF")
+    (folderWork / f"PRF{shotnum}.ZEF").unlink(missing_ok=True)
 
     # ---- Ti validity
 
@@ -701,7 +701,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'PRF'"
 
     # Let's not include neutrons
-    os.system(f"rm {folderWork}/PRF{shotnum}.NTX")
+    (folderWork / f"PRF{shotnum}.NTX").unlink(missing_ok=True)
 
     # ---------------------------------------
     # Simulation settings
@@ -761,7 +761,7 @@ def getTRANSP_MDS(
     runid, runid_new, folderWork="~/scratch/test/", toric_mpi=1, shotnumber=None
 ):
     folderWork = IOtools.expandPath(folderWork)
-    if not os.path.exists(folderWork):
+    if not folderWork.exists():
         IOtools.askNewFolder(folderWork)
 
     tree = MDSplus.Tree("transp", int(runid))
@@ -769,7 +769,7 @@ def getTRANSP_MDS(
     # Namelist
     nml = tree.getNode("NAME_LIST").record.data()
 
-    nml_file = f"{folderWork}/{runid_new}TR.DAT"
+    nml_file = folderWork / f"{runid_new}TR.DAT"
     with open(nml_file, "w") as f:
         for i in range(len(nml)):
             f.write(nml[i].decode("UTF-8") + "\n")
@@ -817,12 +817,12 @@ def getTRANSP_MDS(
     # If MRY wasn't populated, run my own equilribium scruncher
     if nomry and shotnumber is not None:
         print("** Because MRY was not produced, run scrunch2 to produce MMX")
-        ff = f"{folderWork}/scrunch/"
-        os.makedirs(ff, exist_ok=True)
+        ff = folderWork / "scrunch"
+        ff.mkdir(parents=True, exist_ok=True)
         getMMX(shotnumber, runid, ff)
         IOtools.changeValue(nml_file, "premry", None, [], "=")
         IOtools.changeValue(nml_file, "extmry", None, [], "=")
-        os.system(f"cp {ff}/PRF{runid}.MMX {folderWork}/.")
+        shutil.copy2(ff / f"PRF{runid}.MMX", folderWork)
         IOtools.changeValue(nml_file, "premmx", '"PRF"', [], "=")
         IOtools.changeValue(nml_file, "extmmx", '"MMX"', [], "=")
 
@@ -849,7 +849,7 @@ def nodeToUF(runid, name, nameMDS, folderWork, inputs=".INPUTS:", labelX=None):
 
         uf.Variables["Z"] = np.transpose(uf.Variables["Z"])
 
-    filename = f"{folderWork}/PRF{runid}.{nameMDS}"
+    filename = folderWork / f"PRF{runid}.{nameMDS}"
 
     uf.writeUFILE(filename)
 
@@ -957,7 +957,7 @@ def compareMDSandCDF(runidMDS, CDFclass):
 def getZeff_neo(
     shotNumber,
     folder=IOtools.expandPath("~/"),
-    routine=__mitimroot__ + "/scripts/zeff_neo",
+    routine=__mitimroot__ / "scripts" / "zeff_neo",
 ):
     with open(folder + "/idl_in", "w") as f:
         f.write(f".r {routine}\n\n")
@@ -996,19 +996,20 @@ def getZeff_neo(
         zeff.extend([float(j) for j in i.split()])
     zeff = np.array(zeff)
 
-    os.system("rm " + folder + "/t.dat " + folder + "/z.dat")
+    (folder / "t.dat").unlink(missing_ok=True)
+    (folder / "z.dat").unlink(missing_ok=True)
 
     return zeff, t
 
 
 def getMMX(shotNumber, runid, folderWork):
     folderWork = IOtools.expandPath(folderWork)
-    folderScratch = folderWork + "/scr_mmx/"
+    folderScratch = folderWork / "scr_mmx"
 
-    if not os.path.exists(folderScratch):
+    if not folderScratch.exists():
         IOtools.askNewFolder(folderScratch)
 
-    with open(folderScratch + "/scrunch.in", "w") as f:
+    with open(folderScratch / "scrunch.in", "w") as f:
         f.write(f"CMOD\n{shotNumber}\nA\nA\nQ\nY\nP\nPRF\nW\nQ")
 
     Command = f"cd {folderScratch} && scrunch2 < scrunch.in"
@@ -1025,10 +1026,6 @@ def getMMX(shotNumber, runid, folderWork):
         print(f" >> Maximum relative GS error in data: {GSerrormax}")
 
     for ufile in ["PLF", "PF0", "TRF", "PRS", "QPR", "LIM", "GRB", "MMX"]:
-        os.system(
-            "mv {0}/PRF{1}.{2} {3}/PRF{4}.{2}".format(
-                folderScratch, str(shotNumber)[-6:], ufile, folderWork, runid
-            )
-        )
+        (folderScratch / f"PRF{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"PRF{runid}.{ufile}")
 
-    os.system(f"rm -r {folderScratch}")
+    shutil.rmtree(folderScratch)

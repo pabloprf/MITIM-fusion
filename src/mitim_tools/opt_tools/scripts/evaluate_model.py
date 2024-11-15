@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument("--plot", type=bool, required=False, default=True)
 args = parser.parse_args()
 
-folderWork = args.folder
+folderWork = IOtools.expandPath(args.folder)
 step_num = args.step
 output_label = args.output
 input_label = args.input

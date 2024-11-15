@@ -4,7 +4,6 @@ import cfspopcon
 from cfspopcon.unit_handling import ureg
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools import __mitimroot__
 
 import matplotlib.pyplot as plt
@@ -363,10 +362,13 @@ class MITIMpopcon:
              plot_template=None,
              plot_options={}, 
              use_result=True,
-             points=[],
+             points=None,
              title="POPCON Results"
             ):
         
+        if points is None:
+            points = []
+
         fig, ax = plt.subplots(dpi=200)
 
         if dataset_2D is None:
@@ -375,7 +377,7 @@ class MITIMpopcon:
 
         # Read template plot options
         if plot_template is None:
-            plot_template = __mitimroot__ + "/templates/plot_popcon.yaml"
+            plot_template = __mitimroot__ / "templates" / "plot_popcon.yaml"
             plot_style = cfspopcon.read_plot_style(plot_template)
 
         # Update plot options

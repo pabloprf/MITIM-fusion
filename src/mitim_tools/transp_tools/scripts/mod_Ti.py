@@ -6,7 +6,7 @@ use:
 
 """
 
-import sys, os, copy
+import sys, os, copy, shutil
 import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.misc_tools import IOtools
@@ -29,15 +29,21 @@ except:
 telab = "TEL"
 tilab = "TIO"
 
+telabfile = IOtools.expandPath(f"./PRF12345.{telab}")
+tilabfile = IOtools.expandPath(f"./PRF12345.{tilab}")
+tilaboldfile = IOtools.expandPath(f"./PRF12345.{tilab}_old")
+tilabtestfile = IOtools.expandPath(f"./PRF12345.{tilab}_test")
+
 timesplot = np.linspace(plotTime - avTime, plotTime + avTime, 100)
 
 ufTe = UFILEStools.UFILEtransp()
-ufTe.readUFILE(IOtools.expandPath("./PRF12345." + telab))
+ufTe.readUFILE(telabfile)
 
-os.system("cp {0} {0}_old".format(IOtools.expandPath("./PRF12345." + tilab)))
+if tilabfile.exists():
+    shutil.copy2(tilabfile, tilaboldfile)
 
 ufTi = UFILEStools.UFILEtransp()
-ufTi.readUFILE(IOtools.expandPath("./PRF12345." + tilab))
+ufTi.readUFILE(tilabfile)
 
 # Ti in Te time scale
 newZ = []
@@ -62,11 +68,11 @@ for it in range(ufTi.Variables["Y"].shape[0]):
     )
 
 ufTi_new.Variables["Z"].transpose()
-ufTi_new.writeUFILE(IOtools.expandPath(f"./PRF12345.{tilab}_test"))
+ufTi_new.writeUFILE(tilabtestfile)
 
 
 ufTi_test = UFILEStools.UFILEtransp()
-ufTi_test.readUFILE(IOtools.expandPath(f"./PRF12345.{tilab}_test"))
+ufTi_test.readUFILE(tilabtestfile)
 
 fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(9, 9))
 
@@ -130,4 +136,4 @@ plt.show()
 print("Do you want to change Ti? (insert exit)", typeMsg="q")
 embed()
 
-os.system("mv {0}_test {0}".format(IOtools.expandPath(f"./PRF12345.{tilab}")))
+tilabtestfile.replace(tilabfile)

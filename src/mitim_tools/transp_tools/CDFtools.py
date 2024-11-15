@@ -1,4 +1,5 @@
 import os
+import shutil
 import pickle
 import copy
 import datetime
@@ -34,15 +35,16 @@ def read_cdf_transp(cdf_file):
     With the support of chatGPT 4o (08/10/2024)
     '''
 
+    cdf_file = IOtools.expandPath(cdf_file)
+    mod_file = cdf_file.parent / f'{cdf_file.name}_mod'
     src = netCDF4.Dataset(cdf_file)
 
     if src['TIME'].shape[0] > src['TIME3'].shape[0]:
         print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
 
         # Create a dataset object to store the modified data
-        if os.path.exists(f'{cdf_file}_mod'):
-            os.remove(f'{cdf_file}_mod')
-        dst = netCDF4.Dataset(f'{cdf_file}_mod', 'w', memory=None)
+        mod_file.unlink(missing_ok=True)
+        dst = netCDF4.Dataset(mod_file, 'w', memory=None)
         
         # Copy global attributes
         dst.setncatts({attr: src.getncattr(attr) for attr in src.ncattrs()})
@@ -88,7 +90,6 @@ class transp_output:
     def __init__(
         self,
         netCDFfile,
-        ssh=None,
         ZerothTime=False,
         readFBM=False,
         ask_if_fbm=False,
@@ -104,12 +105,14 @@ class transp_output:
         timeExtract=1.0,
         timeExtract_av=0.1,
         EvaluateExtraAnalysis=None,
-        folderScratch=IOtools.expandPath("~/scratch/"),
+        folderScratch="~/scratch/",
     ):
         """
         calculateAccurateLineAverage = None (=_avol), False (flux surface at one time), True (accurate at each time)
         coincideTime is used when comparing to experiment: first is experiment
         """
+
+        folderScratch = IOtools.expandPath(folderScratch)
 
         self.readGEQDSK = readGEQDSK
 
@@ -121,20 +124,13 @@ class transp_output:
 
         # ~~~~~~~~ Open CDF file ~~~~~~~~
 
-        if ssh is None:
-            print(
-                f"\n>> Analyzing netCDF file locally: ...{netCDFfile[np.max([-40,-len(netCDFfile)]):]}"
-            )
-        else:
-            print(f">> Analyzing netCDF file remotely by opening {netCDFfile} in {ssh}")
-            os.system(f"scp {ssh}:{netCDFfile} {folderScratch}state.cdf")
-            netCDFfile = f"{folderScratch}state.cdf"
+        print(f"\n>> Analyzing netCDF file {IOtools.clipstr(netCDFfile)}")
 
         self.LocationCDF = netCDFfile
 
         # Capability to provide folder and just find the CDF in there
-        if os.path.isdir(self.LocationCDF):
-            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF+'/', ".CDF", agnostic_to_case=True, provide_full_path = True)
+        if self.LocationCDF.is_dir(): 
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
                 raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
@@ -143,9 +139,7 @@ class transp_output:
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
-        self.FolderCDF = (
-            "/".join(os.path.abspath(self.LocationCDF).split("/")[:-1]) + "/"
-        )
+        self.FolderCDF = self.LocationCDF.resolve().parent
 
         self.FolderEvaluation, _ = IOtools.reducePathLevel(
             self.FolderCDF, level=1, isItFile=False
@@ -154,7 +148,7 @@ class transp_output:
         self.folderWork, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
 
         print(
-            f"\t- INFO - runid: {self.nameRunid}; folder: ...{self.folderWork[np.max([-40,-len(self.folderWork)]):]}"
+            f"\t- INFO - runid: {self.nameRunid}; folder: ...{IOtools.clipstr(netCDFfile)}"
         )
 
         self.eps00 = 1e-14
@@ -231,14 +225,14 @@ class transp_output:
             datanum = 1
 
             file_converted = (
-                f"{self.folderWork}/NUBEAM_folder/{self.nameRunid}_fi_{datanum}_GC.cdf"
+                self.folderWork / f"NUBEAM_folder" / f"{self.nameRunid}_fi_{datanum}_GC.cdf"
             )
             file_notconverted = (
-                f"{self.folderWork}/NUBEAM_folder/{self.nameRunid}.DATA{datanum}"
+                self.folderWork / f"NUBEAM_folder" / f"{self.nameRunid}.DATA{datanum}"
             )
 
-            needToConvert = os.path.exists(file_notconverted) and (
-                not os.path.exists(file_converted)
+            needToConvert = file_notconverted.exists() and (
+                not file_converted.exists()
             )
 
             if needToConvert:
@@ -13522,8 +13516,8 @@ class transp_output:
         # 	Here I make the exception of reading it at plotting, because I may have generated it since loading the class
 
         self.gfile_out = None
-        fileG = f"{self.folderWork}/RELEASE_folder/TRANSPrun.geq"
-        if self.readGEQDSK and os.path.exists(fileG):
+        fileG = self.folderWork / f"RELEASE_folder" / f"TRANSPrun.geq"
+        if self.readGEQDSK and fileG.exists():
             try:
                 self.gfile_out = GEQtools.MITIMgeqdsk(fileG)
             except:
@@ -13861,7 +13855,7 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Final Convergence
         # 	Note:   Even if variables have not converged,
-        # 			but always having covered at least two sawteeth, to avoid that next restarted run starts again from the beginning!
+        # 			but always having covered at least two sawteeth, to avoid that next cold_started run starts again from the beginning!
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         ConvergedRun = (Conv_minTime and Conv_variables) and numSaw > 1
@@ -13995,11 +13989,11 @@ class transp_output:
         time=None,
         avTime=0.0,
         rhos=np.linspace(0.3, 0.9, 11),
-        restartPreparation=False,
+        cold_startPreparation=False,
         plotCompare=True,
         extraflag="",
         onlyThermal_TGYRO=False,
-        forceIfRestart=True,
+        forceIfcold_start=True,
         **kwargs_TGLFrun,
     ):
         """
@@ -14024,7 +14018,7 @@ class transp_output:
         # --------------------------------------------
 
         folderGACODE = (
-            f'{self.FolderCDF}/FolderGACODE_{f"{nameF:.0f}".zfill(5)}ms{extraflag}/'
+            self.FolderCDF / f'FolderGACODE_{f"{nameF:.0f}".zfill(5)}ms{extraflag}'
         )
 
         if int(time * 1000) not in self.TGLFstd:
@@ -14034,17 +14028,17 @@ class transp_output:
 
         cdf = self.TGLFstd[nameF].prep(
             folderGACODE,
-            restart=restartPreparation,
+            cold_start=cold_startPreparation,
             onlyThermal_TGYRO=onlyThermal_TGYRO,
             cdf_open=self,
-            forceIfRestart=forceIfRestart,
+            forceIfcold_start=forceIfcold_start,
         )
 
         labelTGLF = kwargs_TGLFrun.get("label", "tglf1")
 
         self.TGLFstd[nameF].run(
-            subFolderTGLF=labelTGLF + "/",
-            forceIfRestart=forceIfRestart,
+            subFolderTGLF=labelTGLF,
+            forceIfcold_start=forceIfcold_start,
             **kwargs_TGLFrun,
         )
 
@@ -14094,14 +14088,14 @@ class transp_output:
         )
 
         self.TGLFstd[int(time * 1000)].prep(
-            self.FolderCDF + f"FolderGACODE_{'{0:.0f}'.format(time * 1000).zfill(5)}ms/"
+            self.FolderCDF / f"FolderGACODE_{'{0:.0f}'.format(time * 1000).zfill(5)}ms"
         )
 
         # ~~~~~~~ Perturbative diffusivity
 
         if typeAnalysis == "CHIPERT":
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="chi_per/",
+                subFolderTGLF="chi_per",
                 label="chi_pert",
                 analysisType="e",
                 TGLFsettings=TGLFsettings,
@@ -14114,7 +14108,7 @@ class transp_output:
                 addTrace = [40, 173]
 
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="impurity/",
+                subFolderTGLF="impurity",
                 label="impurity",
                 analysisType="Z",
                 TGLFsettings=TGLFsettings,
@@ -14130,9 +14124,9 @@ class transp_output:
 
         if "FLUC" in typeAnalysis:
             self.TGLFstd[int(time * 1000)].run(
-                subFolderTGLF="fluctuations/",
+                subFolderTGLF="fluctuations",
                 TGLFsettings=TGLFsettings,
-                forceIfRestart=True,
+                forceIfcold_start=True,
             )
 
             self.TGLFstd[int(time * 1000)].read(
@@ -14634,7 +14628,7 @@ class transp_output:
         rhoRange=[0.4, 0.8],
         timeRange=0.5,
         TGLFsettings=1,
-        restart=False,
+        cold_start=False,
         plotYN=True,
     ):
         if time is None:
@@ -14652,13 +14646,13 @@ class transp_output:
         rhos = np.linspace(rhoRange[0], rhoRange[1], num)
 
         self.ChiPert_tglf = TGLFtools.TGLF(cdf=self.LocationCDF, time=time, rhos=rhos)
-        self.ChiPert_tglf.prep(self.FolderCDF + "chi_per_calc/", restart=restart)
+        self.ChiPert_tglf.prep(self.FolderCDF / "chi_per_calc", cold_start=cold_start)
         self.ChiPert_tglf.runAnalysis(
-            subFolderTGLF="chi_per/",
+            subFolderTGLF="chi_per",
             label="chi_pert",
             analysisType="e",
             TGLFsettings=TGLFsettings,
-            restart=restart,
+            cold_start=cold_start,
             cdf_open=self,
         )
 
@@ -14756,8 +14750,8 @@ class transp_output:
 
         print("\t- Looking for equilibrium file in CDF folder...")
         for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
-            for folder in ["EQ_folder/", ""]:
-                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension, ForceFirst=True)
+            for folder in ["EQ_folder", ""]:
+                gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
                     self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
@@ -14769,9 +14763,9 @@ class transp_output:
             )
 
         # Try to read boundary too
-        if os.path.exists(self.FolderCDF + "/PRF12345.RFS"):
+        if (self.FolderCDF / "PRF12345.RFS").exists():
             self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
-                self.FolderCDF + "/PRF12345.RFS", self.FolderCDF + "/PRF12345.ZFS"
+                self.FolderCDF / "PRF12345.RFS", self.FolderCDF / "PRF12345.ZFS"
             )
 
     def getICRFantennas(self, namelist):
@@ -14916,7 +14910,7 @@ class transp_output:
             NML = IOtools.findFileByExtension(self.FolderCDF, "TR.DAT", ForceFirst=True)
 
         if NML is not None:
-            namelist = self.FolderCDF + NML + "TR.DAT"
+            namelist = NML
 
             if np.sum(self.PichT) > 0.0 + self.eps00 * (1 + len(self.t)):
                 self.getICRFantennas(namelist)
@@ -15127,9 +15121,9 @@ class transp_output:
 
         print(f" ~~~~~~ Writing output pickle file with plasma at t={time:.3f}s")
         folderWork = IOtools.expandPath(folderWork)
-        file = f"{folderWork}/{name}.pkl"
+        file = folderWork / f"{name}.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
 
 
     # ---------------------------------------------------------------------------------------------------------
@@ -15160,7 +15154,7 @@ class transp_output:
 
         self.tgyro = TGYROtools.TGYRO(self.LocationCDF, time=time, avTime=avTime)
         self.tgyro.prep(
-            folderWork, restart=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
+            folderWork, cold_start=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
         )
 
     def writeOutput(self, folderWork=None, time=-0.06, avTime=0.05):
@@ -15170,31 +15164,27 @@ class transp_output:
         call: c.writeOutput()
         """
 
-        IOtools.askNewFolder(f"{self.FolderCDF}/RELEASE_folder", force=True)
+        IOtools.askNewFolder(self.FolderCDF / f"RELEASE_folder", force=True)
 
         # ---- Perform TGYRO operations fully in folderWork (scratch) and then move
 
         # IOtools.askNewFolder('{0}/TGYROprep_folder/'.format(self.FolderCDF),force=True)
         if folderWork is None:
-            folderWork = f"{self.FolderCDF}/TGYROprep_folder/scratch"
+            folderWork = self.FolderCDF / "TGYROprep_folder" / "scratch"
 
         self.produceTGYROfiles(folderWork=folderWork, time=time, avTime=avTime)
 
-        os.system(f"cp {folderWork}/* {self.FolderCDF}/TGYROprep_folder/.")
+        for item in folderWork.glob("*"):
+            if item.is_file():
+                shutil.copy2(item, self.FolderCDF / "TGYROprep_folder")
+            elif item.is_dir():
+                shutil.copytree(item, self.FolderCDF / "TGYROprep_folder" / item.name)
 
         # ---- Organize relevant things from TGYRO folder
 
-        os.system(
-            f"cp {folderWork}/10001.geq {self.FolderCDF}/RELEASE_folder/TRANSPrun.geq"
-        )
-        os.system(
-            f"cp {folderWork}/10001.cdf {self.FolderCDF}/RELEASE_folder/TRANSPrun.cdf"
-        )
-        os.system(
-            "cp {0}/input.gacode {1}/RELEASE_folder/TRANSPrun.input.gacode".format(
-                folderWork, self.FolderCDF
-            )
-        )
+        shutil.copy2(folderWork / '10001.geq', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.geq')
+        shutil.copy2(folderWork / '10001.cdf', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.cdf')
+        shutil.copy2(folderWork / 'input.gacode', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.input.gacode')
 
         print(
             "\n~~~~~~ Simulation results ready at t={0:.3f}s +- {3:0.3f}s (last sawtooth={2:.3f}s) in folder {1}/RELEASE_folder/\n".format(
@@ -15205,7 +15195,7 @@ class transp_output:
         # ---- Pickle file
 
         self.writePickle(
-            f"{self.FolderCDF}/RELEASE_folder/",
+            self.FolderCDF / "RELEASE_folder",
             time=time,
             avTime=avTime,
             name="TRANSPrun",
@@ -15213,15 +15203,16 @@ class transp_output:
 
         # ---- Zip at this stage
 
-        os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
-        os.system("mv {0}/TRANSPrun.tar {0}/RELEASE_folder/.".format(self.FolderCDF))
+        os.chdir(self.FolderCDF)
+        os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
+        shutil.rmtree(self.FolderCDF / 'RELEASE_folder')
+        (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
@@ -16014,28 +16005,29 @@ class transp_output:
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def writeAuxiliarFiles(
-        self, loc=IOtools.expandPath("~/mitim_runs/data/SPARC/features/"), name=None
+        self, loc="~/mitim_runs/data/SPARC/features", name=None
     ):
+        loc = IOtools.expandPath(loc)
         if name is None:
-            name = f"Ev_{self.LocationCDF.split('.')[-2].split('/')[-1][5:]}"
+            name = f"Ev_{self.LocationCDF.name.split('.')[-2][5:]}"
 
-        folder = f"{loc}/{name}/"
+        folder = loc / f"{name}"
 
-        os.makedirs(folder, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
 
         # Impurities
         for cont, key in enumerate(self.nZs):
             dictPKL = {"rho": self.x_lw, "nimp": self.nZs[key]["total"][self.ind_saw]}
-            file = f"{folder}/nimp{cont + 1}.pkl"
+            file = folder / f"nimp{cont + 1}.pkl"
             with open(file, "wb") as handle:
-                pickle.dump(dictPKL, handle, protocol=2)
+                pickle.dump(dictPKL, handle, protocol=4)
             print(f" --> Written {file}")
 
         # Minorities
         dictPKL = {"rho": self.x_lw, "n": self.nmini[self.ind_saw]}
-        file = f"{folder}/nmini.pkl"
+        file = folder / f"nmini.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
         print(f" --> Written {file}")
 
 # ---------------------------------------------------------------------------------------------------------

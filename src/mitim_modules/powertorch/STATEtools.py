@@ -1,7 +1,6 @@
 import copy
 import torch
 import datetime
-import os
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -213,8 +212,7 @@ class powerstate:
         # Write input.gacode
         if write_input_gacode is not None:
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
-            if not os.path.exists(os.path.dirname(write_input_gacode)):
-                os.makedirs(os.path.dirname(write_input_gacode))
+            write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
@@ -234,7 +232,7 @@ class powerstate:
     def save(self, file):
         print(f"\t- Writing power state file: {IOtools.clipstr(file)}")
         with open(file, "wb") as handle:
-            pickle.dump(self, handle)
+            pickle.dump(self, handle, protocol=4)
 
     def combine_states(self, states, includeTransport=True):
         self.TransportOptions_set = [self.TransportOptions]
@@ -288,6 +286,7 @@ class powerstate:
             - folder: folder to save the results, if used by calculation methods (e.g. to write profiles and/or run black-box simulations)
             - evaluation_number
         """
+        folder = IOtools.expandPath(folder)
 
         # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
         self.modify(X)
@@ -643,6 +642,7 @@ class powerstate:
         """
         Update the transport of the current state.
         """
+        folder = IOtools.expandPath(folder)
 
         # Select transport evaluator
         if self.TransportOptions["transport_evaluator"] is None:

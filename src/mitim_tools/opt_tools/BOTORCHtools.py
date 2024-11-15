@@ -327,7 +327,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 "parameters_combined"
             ]
 
-    def restartCommons(self):
+    def cold_startCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = False
         if (
             "parameters_combined"
@@ -340,7 +340,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
     def transform_inputs(self, X):
         self.prepareToGenerateCommons()
         X_tr = super().transform_inputs(X)
-        self.restartCommons()
+        self.cold_startCommons()
 
         return X_tr
 
@@ -360,7 +360,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             posterior_transform=posterior_transform,
             **kwargs,
         )
-        self.restartCommons()
+        self.cold_startCommons()
 
         return posterior
 
@@ -444,9 +444,9 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
         else:
-            factor = Y.mean(dim=-2, keepdim=True) * 0.0 + 1.0
+            factor = Y.mean(dim=-2, keepdim=True).to(Y.device) * 0.0 + 1.0
 
         self.stdvs = factor
         self.means = self.stdvs * 0.0
@@ -463,7 +463,7 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
@@ -531,7 +531,7 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def forward(self, X):
         """
         Notes:
-                - X in the form of [batch,restarts,q,dim]
+                - X in the form of [batch,cold_starts,q,dim]
                 - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
         """
 

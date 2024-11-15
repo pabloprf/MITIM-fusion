@@ -1,18 +1,22 @@
 import os
+import torch
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = False
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 # Inputs
-inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folderWork = __mitimroot__ + "/tests/scratch/portals_test/"
+inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
-if restart and os.path.exists(folderWork):
-    os.system(f"rm -r {folderWork}")
+if cold_start and folderWork.exists():
+    os.system(f"rm -r {folderWork.resolve()}")
+
+# Let's not consume the entire computer resources when running test... limit to 4 threads
+torch.set_num_threads(4)
 
 # --------------------------------------------------------------------------------------------
 # Optimization Class
@@ -20,7 +24,7 @@ if restart and os.path.exists(folderWork):
 
 # Initialize class
 portals_fun = PORTALSmain.portals(folderWork)
-portals_fun.optimization_options["BO_iterations"] = 2
+portals_fun.optimization_options["BO_iterations"] = 1
 portals_fun.optimization_options["initial_training"] = 3
 portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.INITparameters["removeFast"] = True
@@ -36,7 +40,7 @@ portals_fun.prep(inputgacode)
 # --------------------------------------------------------------------------------------------
 
 # Run
-prf_bo = STRATEGYtools.PRF_BO(portals_fun, restartYN=restart, askQuestions=False)
+prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=cold_start, askQuestions=False)
 prf_bo.run()
 
 # Plot

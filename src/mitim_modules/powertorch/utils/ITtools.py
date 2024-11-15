@@ -1,9 +1,9 @@
 import torch
-import copy
-import os
+import shutil
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
 def fluxMatchRoot(self, algorithmOptions={}):
@@ -80,28 +80,29 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     MainFolder = algorithmOptions.get("MainFolder", "~/scratch/")
     storeValues = algorithmOptions.get("storeValues", True)
     namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
+
+    MainFolder = IOtools.expandPath(MainFolder)
     digitized = algorithmOptions.get("id", 0)
 
     def evaluator(X, cont=0):
         nameRun = f"{namingConvention}_{digitized}_{cont}"
-        folder = f"{MainFolder}/{namingConvention}_{cont}/"
+        folder = MainFolder /  f"{namingConvention}_{cont}"
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
-            os.makedirs(os.path.join(folder, "model_complete/"), exist_ok=True)
+            (folder / "model_complete").mkdir(parents=True, exist_ok=True)
 
         # ***************************************************************************************************************
         # Calculate
         # ***************************************************************************************************************
 
-        folderTGYRO = f"{folder}/model_complete/"
-
+        folderTGYRO = folder / "model_complete"
         QTransport, QTarget, _, _ = self.calculate(
             X, nameRun=nameRun, folder=folderTGYRO, evaluation_number=cont
         )
 
         # Save state so that I can check initializations
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
-            self.save(f"{folder}/powerstate.pkl")
-            os.system(f"cp {folderTGYRO}/input.gacode {folder}/.")
+            self.save(folder / "powerstate.pkl")
+            shutil.copy2(folderTGYRO / "input.gacode", folder)
 
         return QTransport, QTarget
 

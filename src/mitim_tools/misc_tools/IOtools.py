@@ -14,6 +14,8 @@ import functools
 import hashlib
 from collections import OrderedDict
 from pathlib import Path
+import platform
+import torch
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -95,6 +97,8 @@ def mitim_timer(name="\t* Script"):
     return decorator_timer
 
 def clipstr(txt, chars=40):
+    if not isinstance(txt, str):
+        txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
 def receiveWebsite(url, data=None):
@@ -277,7 +281,7 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
 
     if file_current.exists():
         if check >= eliminateAfter:
-            os.system(f"rm {file_current.resolve()}")
+            file_current.unlink(missing_ok=True)
         else:
             file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
             if file_next.exists():
@@ -288,9 +292,9 @@ def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", elimin
                     eliminateAfter=eliminateAfter,
                     rootFolder=root_current,
                 )
-            os.system(f"mv {file_current.resolve()} {file_next.resolve()}")
+            file_current.replace(file_next)
 
-    return f"{file_current}"
+    return file_current #f"{file_current}"
 
 def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     '''
@@ -387,17 +391,17 @@ def zipFiles(files, outputFolder, name="info"):
     if not opath.is_dir():
         opath.mkdir(parents=True)
     for i in files:
-        os.system(f"cp {i} {opath}")
-    shutil.make_archive(f"{opath}", "zip", odir)
-    os.system(f"rm -r {opath}")
+        shutil.copy2(expandPath(i), opath)
+    shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
+    shutil.rmtree(opath)
 
 
 def unzipFiles(file, destinyFolder, clear=True):
     zpath = Path(file).expanduser()
     odir = Path(destinyFolder).expanduser()
-    shutil.unpack_archive(f"{zpath}", f"{odir}")
+    shutil.unpack_archive(zpath, odir)
     if clear:
-        os.system("rm {zpath.resolve()}")
+        zpath.unlink(missing_ok=True)
 
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
@@ -432,8 +436,7 @@ def getVar_ExcelColumn(df, columnName, fromRow=4):
 def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, fromRow=4):
 
     ofile = Path(file).expanduser()
-    if ofile.exists():
-        os.system(f"rm {ofile}")
+    ofile.unlink(missing_ok=True)
 
     if Ti is None:
         Ti = Te
@@ -505,7 +508,14 @@ def correctNML(BaseFile):
 
     fpath = Path(BaseFile).expanduser()
     if fpath.is_file():
-        os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
+        fpath_new = fpath.with_name(f'{fpath.name}_new')
+        with open(fpath, 'r') as ff:
+            all_lines = ff.read()
+        with open(fpath_new, 'w') as wf:
+            wf.write(all_lines.translate(str.maketrans('', '', '\r')))
+        if fpath_new.exists():
+            fpath_new.replace(fpath)
+        #os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
 
 def getTimeDifference(previousTime, newTime=None, niceText=True, factor=1):
@@ -547,7 +557,7 @@ def loopFileBackUp(file):
         copyToPath = fpath.parent / (fpath.name + "_0")
         if copyToPath.exists():
             loopFileBackUp(copyToPath)
-        os.system(f"mv {fpath} {copyToPath}")
+        fpath.replace(copyToPath)
 
 
 def createTimeTXT(duration_in_s, until=3):
@@ -600,13 +610,14 @@ def renameCommand(ini, fin, folder="~/"):
     ipath = Path(folder).expanduser()
     if ini is not None:
         if "mfe" in socket.gethostname():
-            os.system(f'cd {ipath.resolve()} && rename "s/{ini}/{fin}/" *')
+            os.chdir(ipath)
+            os.system(f'rename "s/{ini}/{fin}/" *')
         else:
             for filepath in ipath.glob(f"*{ini}*"):
                 newname = filepath.name
                 newname = newname.sub(f"{ini}", f"{fin}")
                 opath = filepath.parent / newname
-                os.system(f"mv {filepath.resolve()} {opath.resolve()}")
+                filepath.replace(opath)
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
@@ -632,20 +643,19 @@ def askNewFolder(folderWork, force=False, move=None):
     workpath = Path(folderWork).expanduser()
     if workpath.exists():
         if force:
-            os.system(f"rm -r {workpath}")
+            shutil.rmtree(workpath)
         else:
             if move is not None:
-                os.system(f"mv {workpath} {workpath}_{move}")
+                workpath.replace(workpath.parent / f"{workpath.name}_{move}")
             else:
                 print(
                     f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
-                os.system(f"rm -r {workpath}")
+                shutil.rmtree(workpath)
     if not workpath.exists():
         workpath.mkdir(parents=True)
     if workpath.is_dir():
-        fstr = clipstr(f"{workpath.resolve()}")
-        print(f" \t\t~ Folder ...{fstr} created")
+        print(f" \t\t~ Folder ...{clipstr(workpath)} created")
     else:  # What is this?
         fo = reducePathLevel(workpath, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
@@ -676,13 +686,14 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
     return r, z
 
 
-def getLocInfo(locFile, removeSpaces=True):
+def getLocInfo(locFile, with_extension=False):
+    # First return value is a pathlib.Path object, second return value is a string
     ipath = Path(locFile).expanduser()
-    return f"{ipath.parent}", f"{ipath.stem}"
+    return ipath.parent, ipath.name if with_extension else ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, provide_full_path=False
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False
     ):
     """
     Retrieves the file without folder and extension
@@ -714,14 +725,14 @@ def findFileByExtension(
         )
 
     # TODO: We really should not change return type
-    retval = None
-    if retpath is not None:
-        if not provide_full_path:
-            retval = f"{retpath.name}".replace(extension, "")
-        else:
-            retval = f"{retpath}"
+    #retval = None
+    #if retpath is not None:
+    #    if not provide_full_path:
+    #        retval = f"{retpath.name}".replace(extension, "")
+    #    else:
+    #        retval = f"{retpath}"
 
-    return retval
+    return retpath
 
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
@@ -943,7 +954,7 @@ def changeValue(
 
                 f2.write(line)
 
-    os.system(f"mv {fpath2.resolve()} {fpath1.resolve()}")
+    fpath2.replace(fpath1)
 
     # If not found at least once, then write it, but make sure it is after the updates flag
     if not FoundAtLeastOnce and Value is not None:
@@ -1308,7 +1319,8 @@ def obtainGeneralParams(inputFile, resultsFile):
 
     numDakota = iname.split(".")[2]
 
-    return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
+    #return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
+    return FolderEvaluation, numDakota, ipath, rpath
 
 
 def isNumber(val):
@@ -1334,7 +1346,7 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
         assert npath.exists()
-    return f"{npath.resolve()}" + "/" if npath.is_dir() else f"{npath.resolve()}"
+    return npath.resolve() if npath.exists() else npath # To cover cases in which the path is an environment variable that does not exist as file/dir
 
 
 def reducePathLevel(path, level=1, isItFile=False):
@@ -1342,13 +1354,14 @@ def reducePathLevel(path, level=1, isItFile=False):
     npath_before = npath
     if len(npath.parents) > level:
         npath_before = npath.parents[level - 1]
-    path_before = f"{npath_before}"
-    if level > 0:
-        path_before += "/"
-    path_after = f"{npath}"
-    if path_before in path_after:
-        path_after = path_after.replace(path_before, "")
-    return path_before, path_after
+    #path_before = f"{npath_before}"
+    #if level > 0:
+    #    path_before += "/"
+    #path_after = f"{npath}"
+    #if path_before in path_after:
+    #    path_after = path_after.replace(path_before, "")
+    #return path_before, path_after
+    return npath_before, npath.relative_to(npath_before)
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
@@ -1631,3 +1644,61 @@ def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a bet
     
     # Format the number to ensure it has exactly `num_digits` digits
     return f'{final_number:0{num_digits}d}'
+
+def print_machine_info(output_file=None):
+
+    info_lines = []
+
+    # System Information
+    info_lines.append("=== System Information ===")
+    info_lines.append(f"System: {platform.system()}")
+    info_lines.append(f"Node Name: {platform.node()}")
+    info_lines.append(f"Release: {platform.release()}")
+    info_lines.append(f"Version: {platform.version()}")
+    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"Processor: {platform.processor()}")
+
+    # CPU Information
+    info_lines.append("\n=== CPU Information ===")
+    logical_cpus = os.cpu_count()
+    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
+
+    # Attempt to get CPU frequency (limited without external packages)
+    try:
+        if platform.system() == "Windows":
+            import subprocess
+            cmd = 'wmic cpu get MaxClockSpeed'
+            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+            info_lines.append(f"Max Frequency: {max_freq} MHz")
+        elif platform.system() == "Linux":
+            with open('/proc/cpuinfo') as f:
+                cpuinfo = f.read()
+            import re
+            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
+            if matches:
+                current_freq = matches[0]
+                info_lines.append(f"Current Frequency: {current_freq} MHz")
+        else:
+            info_lines.append("CPU Frequency information not available.")
+    except Exception as e:
+        info_lines.append("Error retrieving CPU Frequency information.")
+
+    # PyTorch CPU Information
+    info_lines.append("\n=== PyTorch Information ===")
+    num_threads = torch.get_num_threads()
+    num_interop_threads = torch.get_num_interop_threads()
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled = getattr(torch.backends, 'mkl', None)
+
+    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
+    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
+    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
+    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # Output to screen or file
+    output = '\n'.join(info_lines)
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(output)
+    else:
+        print(output)

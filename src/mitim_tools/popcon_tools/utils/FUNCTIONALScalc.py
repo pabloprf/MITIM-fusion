@@ -1,9 +1,7 @@
-import torch, pdb
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 

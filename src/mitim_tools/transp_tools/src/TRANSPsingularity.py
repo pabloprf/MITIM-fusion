@@ -1,4 +1,5 @@
 import os
+import shutil
 import copy
 import datetime
 import time
@@ -26,7 +27,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         # Store folderExecution for later use
         machineSettings = CONFIGread.machineSettings(
-            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}/"
+            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}"
         )
         self.folderExecution = machineSettings["folderWork"]
 
@@ -49,7 +50,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         self.job.define_machine(
             "transp",
-            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}/",
+            f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}",
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": nparallel,
@@ -58,14 +59,14 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             },
         )
 
-    def run(self, restartFromPrevious=False, **kwargs):
+    def run(self, cold_startFromPrevious=False, **kwargs):
         runSINGULARITY(
             self.job,
             self.runid,
             self.shotnumber,
             self.tok,
             self.mpisettings,
-            restartFromPrevious=restartFromPrevious,
+            cold_startFromPrevious=cold_startFromPrevious,
         )
 
         self.jobid = self.job.jobid
@@ -173,7 +174,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         **kwargs,
         ):
         # Launch run
-        self.run(restartFromPrevious=False)
+        self.run(cold_startFromPrevious=False)
 
         self.statusStop = -1
 
@@ -212,7 +213,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             # ~~~~~ Re-launch because of timelimit
-            # self.run(restartFromPrevious=True)
+            # self.run(cold_startFromPrevious=True)
 
         # ---------------------------------------------------------------------------
         # Post-TRANSP
@@ -273,7 +274,7 @@ def runSINGULARITY(
     shotnumber,
     tok,
     mpis,
-    restartFromPrevious=False,
+    cold_startFromPrevious=False,
 ):
     folderWork = transp_job.folder_local
     nparallel = transp_job.slurm_settings["ntasks"]
@@ -303,18 +304,22 @@ def runSINGULARITY(
 
     # ********** Standard run, from the beginning
 
-    if not restartFromPrevious:
+    if not cold_startFromPrevious:
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
         # ------------------------------------------------------------
-        if os.path.exists("{folderWork}/tmp_inputs"):
-            os.system(f"rm -r {folderWork}/tmp_inputs")
+        folder_inputs = folderWork / "tmp_inputs"
+        if folder_inputs.exists():
+            shutil.rmtree(folder_inputs)
         
-        
-        IOtools.askNewFolder(folderWork + "/tmp_inputs/", force=True)
-        os.system(f"cp -r {folderWork}/* {folderWork}/tmp_inputs/")
+        IOtools.askNewFolder(folder_inputs, force=True)
+        for item in folderWork.glob('*'):
+            if item.is_file():
+                shutil.copy2(item, folder_inputs)
+            elif item.is_dir():
+                shutil.copytree(item, folder_inputs / item.name)
 
-        inputFolders = [folderWork + "/tmp_inputs/"]
+        inputFolders = [folderWork / "tmp_inputs"]
 
         shellPreCommands = ["cp ./tmp_inputs/* ."]
 
@@ -323,7 +328,7 @@ def runSINGULARITY(
         # ------------------------------------------------------------
 
         # ENV
-        file = folderWork + "/env_prf"
+        file = folderWork / "env_prf"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write(
@@ -331,7 +336,7 @@ def runSINGULARITY(
             )
 
         # Direct env (dirty fix until Jai fixes the env app)
-        file = folderWork + "/transp-bashrc"
+        file = folderWork / "transp-bashrc"
         inputFiles.append(file)
         ENVcommand = f"""
 export WORKDIR=./
@@ -353,7 +358,7 @@ export NCQL3D_NPROCS=0
             f.write(ENVcommand)
 
         # PRE
-        file = folderWork + "/pre_prf"
+        file = folderWork / "pre_prf"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write("00\nY\nLaunched by MITIM\nx\n")
@@ -379,7 +384,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
     # ********** Start from previous
 
     else:
-        print("Launch restart request")
+        print("Launch cold_start request")
 
         TRANSPcommand_prep = None
 
@@ -392,13 +397,11 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     # ------------------
 
     if TRANSPcommand_prep is not None:
-        if os.path.exists(f"{folderWork}/{runid}tr_dat.log"):
-            os.system(f"rm {folderWork}/{runid}tr_dat.log")
+        (folderWork / f'{runid}tr_dat.log').unlink(missing_ok=True)
 
         # Run first the prep (with tr_dat)
-        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        (folderWork / f'{runid}mitim_bash.src').unlink(missing_ok=True)
+        (folderWork / f'{runid}mitim_shell_executor.sh').unlink(missing_ok=True)
 
         transp_job.prep(
             TRANSPcommand_prep,
@@ -417,12 +420,11 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         transp_job.launchSlurm = lS  # Back to original
 
         # Interpret
-        TRANSPhelpers.interpret_trdat(f"{folderWork}/{runid}tr_dat.log")
+        TRANSPhelpers.interpret_trdat( folderWork / f'{runid}tr_dat.log')
 
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
-        if os.path.exists(f"{folderWork}/tmp_inputs/mitim_bash.src"):
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_bash.src")
-            os.system(f"rm {folderWork}/tmp_inputs/mitim_shell_executor.sh")
+        (folderWork / 'tmp_inputs' / 'mitim_bash.src').unlink(missing_ok=True)
+        (folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh').unlink(missing_ok=True)
 
     # ---------------
     # Execute Full
@@ -437,7 +439,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     transp_job.run(waitYN=False)
 
-    os.system(f"rm -r {folderWork}/tmp_inputs")
+    shutil.rmtree(folderWork / 'tmp_inputs')
 
 
 def interpretRun(infoSLURM, log_file):
@@ -540,7 +542,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
 
     transp_job.prep(
         TRANSPcommand,
-        output_folders=["results/"],
+        output_folders=["results"],
         output_files=[f"{runid}tr.log"],
         label_log_files="_finish",
     )
@@ -549,7 +551,12 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         removeScratchFolders=False
     )  # Because it needs to read what it was there from run()
 
-    os.system(f"cd {folderWork}&& cp -r results/{tok}.00/* .")
+    odir = folderWork / "results" / f"{tok}.00"
+    for item in odir.glob('*'):
+        if item.is_file():
+            shutil.copy2(item, folderWork)
+        elif item.is_dir():
+            shutil.copytree(item, folderWork / item.name)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
@@ -579,7 +586,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
     extra_commands = " --delay-updates --ignore-errors --exclude='*_state.cdf' --exclude='*.tmp' --exclude='mitim*'"
 
     TRANSPcommand = f"""
-rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+rsync -av{extra_commands} {folderTRANSP} . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
 """
 
     # ---------------
@@ -599,11 +606,11 @@ rsync -av{extra_commands} {folderTRANSP}/ . &&  singularity run {txt_bind}--app 
     # Not sure why but the look sometimes just rabndomly (?) fails, so we need to try a few times, outside of the logic of the mitim_job checker
     for i in range(times_retry_look):
         transp_job.run(check_if_files_received=False)
-        if os.path.exists(f"{folderWork}/{runid}.CDF"):
+        if (folderWork / f"{runid}.CDF").exists():
             break
         else:
             print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
-    if not os.path.exists(f"{folderWork}/{runid}.CDF"):
+    if not (folderWork / f"{runid}.CDF").exists():
         print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
 
 
@@ -612,27 +619,24 @@ def organizeACfiles(
 ):
 
     for ff in ["NUBEAM_folder", "TORIC_folder", "TORBEAM_folder", "FI_folder"]:
-        os.makedirs(os.path.join(FolderTRANSP, ff), exist_ok=True)
+        (FolderTRANSP / ff).mkdir(parents=True, exist_ok=True)
 
     if NUBEAM:
         for i in range(nummax):
-            name = runid + f".DATA{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
-            name = runid + f"_birth.cdf{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
-
+            if (FolderTRANSP / f'{runid}.DATA{i + 1}').exists():
+                (FolderTRANSP / f'{runid}.DATA{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}.DATA{i + 1}')
+            if (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_birth.cdf{i + 1}').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}_birth.cdf{i + 1}')
     if ICRF:
         for i in range(nummax):
-            name = runid + f"_ICRF_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORIC_folder")
-
-            name = runid + f"_FI_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/FI_folder")
-
-        name = runid + "FPPRF.DATA"
-        os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/NUBEAM_folder")
+            if (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_ICRF_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORIC_folder' / f'{runid}_ICRF_TAR.GZ{i + 1}')
+            if (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_FI_TAR.GZ{i + 1}').replace(FolderTRANSP / 'FI_folder' / f'{runid}_FI_TAR.GZ{i + 1}')
+        if (FolderTRANSP / f'{runid}FPPRF.DATA').exists():
+            (FolderTRANSP / f'{runid}FPPRF.DATA').replace(FolderTRANSP / 'NUBEAM_folder' / f'{runid}FPPRF.DATA')
 
     if TORBEAM:
         for i in range(nummax):
-            name = runid + f"_TOR_TAR.GZ{i + 1}"
-            os.system(f"mv {FolderTRANSP}/{name} {FolderTRANSP}/TORBEAM_folder")
+            if (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').exists():
+                (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORBEAM_folder' / f'{runid}_TOR_TAR.GZ{i + 1}')

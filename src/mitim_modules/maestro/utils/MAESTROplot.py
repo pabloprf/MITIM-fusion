@@ -17,25 +17,25 @@ LW = 1.0
 def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
     # Find beat results from folders
-    folder_beats = f'{folder}/Beats/'
-    beats = sorted([item for item in os.listdir(folder_beats) if not item.startswith(".")], key=lambda x: int(x.split('_')[1]))
+    folder_beats = folder / 'Beats'
+    beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
-        if 'run_transp' in os.listdir(f'{folder_beats}/{beats[beat]}'):
+        if (folder_beats / f'{beats[beat]}' / 'run_transp').exists():
             beat_types.append('transp')
-        elif 'run_portals' in os.listdir(f'{folder_beats}/{beats[beat]}'):
+        elif (folder_beats / f'{beats[beat]}' / 'run_portals').exists():
             beat_types.append('portals')
-        elif 'run_eped' in os.listdir(f'{folder_beats}/{beats[beat]}'):
+        elif (folder_beats / f'{beats[beat]}' / 'run_eped').exists():
             beat_types.append('eped')
 
     # First initializer
     beat_initializer = None
-    if 'initializer_freegs' in os.listdir(f'{folder_beats}/{beats[0]}'):
+    if (folder_beats / f'{beats[0]}' / 'initializer_freegs').exists():
         beat_initializer = 'freegs'
-    elif 'initializer_geqdsk' in os.listdir(f'{folder_beats}/{beats[0]}'):
+    elif (folder_beats / f'{beats[0]}' / 'inititalizer_geqdsk').exists():
         beat_initializer = 'geqdsk'
-    elif 'initializer_profiles' in os.listdir(f'{folder_beats}/{beats[0]}'):
+    elif (folder_beats / f'{beats[0]}' / 'initializer_profiles').exists():
         beat_initializer = 'profiles'
 
     # Create "dummy" maestro by only defining the beats
@@ -57,8 +57,8 @@ def plot_results(self, fn):
 
     # Collect initialization
     ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initialize.folder}/input.gacode')}
-    if os.path.exists(f'{self.beats[1].initialize.folder}/input.geqdsk'):
-        ini['geqdsk'] = GEQtools.MITIMgeqdsk(f'{self.beats[1].initialize.folder}/input.geqdsk')
+    if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
+        ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
 
     # Collect PORTALS profiles and TRANSP cdfs translated to profiles
     objs = OrderedDict()
@@ -91,7 +91,7 @@ def plot_results(self, fn):
     if len(ps) > 0:
         # Plot profiles
         figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
-        log_file = f'{self.folder_logs}/plot_maestro.log' if (not self.terminal_outputs) else None
+        log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
             PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 

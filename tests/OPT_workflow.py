@@ -4,13 +4,12 @@ To run: python3  tests/MITIM_workflow.py
 """
 
 import os
-import torch
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+(__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 # -----------------------------------------------------------------------------------------------------
 # ----- Inputs (function to optimize)
@@ -47,6 +46,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 
     def scalarized_objective(self, Y):
         import numpy as np
+        import torch
         ofs_ordered_names = np.array(self.optimization_options["ofs"])
 
         of = Y[..., ofs_ordered_names == "z"]
@@ -62,10 +62,10 @@ class opt_class(STRATEGYtools.opt_evaluator):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = __mitimroot__ + "/templates/main.namelist.json"
-folderWork = __mitimroot__ + "/tests/scratch/opt_test/"
+namelist = __mitimroot__ / "templates" / "main.namelist.json"
+folderWork = __mitimroot__ / "tests" / "scratch" / "opt_test"
 
-if restart and os.path.exists(folderWork):
+if cold_start and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
 
 # -----------------------------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ opt_fun1D = opt_class(folderWork, namelist)
 opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework
-PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, restartYN=restart, askQuestions=False)
+PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, cold_start=cold_start, askQuestions=False)
 
 # Run BO framework
 PRF_BO.run()

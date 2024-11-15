@@ -23,23 +23,23 @@ For this tutorial we will need the following modules and the folder to run VITAL
 .. code-block:: python
 
 	import numpy as np
-
+	from pathlib import Path
 	from mitim_tools.gacode_tools import TGLFtools
 	from mitim_modules.vitals     import VITALSmain
 	from mitim_tools.opt_tools    import STRATEGYtools
 
-	folder = 'MITIM-fusion/tests/scratch/vitals_tut/'
+	folder = Path('MITIM-fusion/tests/scratch/vitals_tut')
 
 As a starting point of VITALS, you need to prepare and run TGLF for the base case (please follow the :ref:`TGLF` tutorial for more details):
 
 .. code-block:: python
 
-	inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
+	inputgacode_file = Path('MITIM-fusion/tests/data/input.gacode')
 	rho              = 0.5
 	
 	tglf = TGLFtools.TGLF( rhos = [ rho ] )
 	cdf = tglf.prep( folder, inputgacode = inputgacode_file)
-	tglf.run( subFolderTGLF = 'run_base/', TGLFsettings = 5)
+	tglf.run( subFolderTGLF = 'run_base', TGLFsettings = 5)
 	tglf.read( label = 'run_base' )
 
 
@@ -84,7 +84,7 @@ At this point, the TGLF class is ready to go into VITALS. One can give the ``tgl
 
 .. code-block:: python
 
-	tglf_file = folder + 'tglf_base.pkl'
+	tglf_file = folder / 'tglf_base.pkl'
 	tglf.save_pkl(tglf_file)
 
 
@@ -137,11 +137,11 @@ We are now ready to prepare the VITALS class. Here we have two options:
 	# Option 2. Pass the tglf pickled file
 	vitals_fun.prep( tglf_file, rho, ofs, dvs, dvs_min, dvs_max, classLoaded = False )
 
-Now we can create and launch the MITIM optimization process from the beginning (i.e. ``restart = True``):
+Now we can create and launch the MITIM optimization process from the beginning (i.e. ``cold_start = True``):
 
 .. code-block:: python
 
-	mitim_bo = STRATEGYtools.PRF_BO(vitals_fun, restartYN = True )
+	mitim_bo = STRATEGYtools.PRF_BO(vitals_fun, cold_start = True )
 	mitim_bo.run()
 
 .. note::

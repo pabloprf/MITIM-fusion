@@ -1,17 +1,21 @@
 import os
+import torch
 from mitim_modules.maestro import MAESTROmain
 from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
-folder = os.path.join(__mitimroot__, "tests/scratch/maestro_test/")
+folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 
-if restart and os.path.exists(folder):
+if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-os.makedirs(os.path.join(__mitimroot__, "tests/scratch/"), exist_ok=True)
+# Let's not consume the entire computer resources when running test... limit to 4 threads
+torch.set_num_threads(4)
+
+folder.mkdir(parents=True, exist_ok=True)
 
 params = {'Ip_MA': 1.15, 'B_T': 2.1, 'Zeff': 2.0, 'PichT_MW': 2.2}
 geometry = {'R': 1.675, 'a': 0.67, 'kappa_sep': 1.8, 'delta_sep': 0.237, 'zeta_sep': 0.0, 'z0': 0.0}
@@ -30,7 +34,7 @@ portals_namelist = { "optimization_options": {"BO_iterations": 2 },
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro():
 
-    m = MAESTROmain.maestro(folder, master_restart = restart, terminal_outputs = False)
+    m = MAESTROmain.maestro(folder, master_cold_start = cold_start, terminal_outputs = True)
 
     m.define_beat('transp', initializer='freegs')
     m.define_creator('parameterization', **params_bc, **params_init)

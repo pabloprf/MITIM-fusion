@@ -37,7 +37,7 @@ parser.add_argument("--resol", type=int, required=False, default=None)  # --reso
 args = parser.parse_args()
 
 foldersWork = [
-    IOtools.expandPath(folder_reduced + "/", ensurePathValid=True)
+    IOtools.expandPath(folder_reduced, ensurePathValid=True)
     for folder_reduced in args.folders
 ]
 n = args.n

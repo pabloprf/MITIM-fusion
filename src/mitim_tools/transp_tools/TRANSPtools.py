@@ -120,10 +120,10 @@ class TRANSPgeneric:
         self.shotnumberReal = shotNumberReal
 
         # Namelist location
-        self.nml_file = f"{self.FolderTRANSP}/{self.runid}TR.DAT"
-        self.nml_file_ptsolver = f"{self.FolderTRANSP}/ptsolver_namelist.dat"
-        self.nml_file_glf23 = f"{self.FolderTRANSP}/glf23_namelist.dat"
-        self.nml_file_tglf = f"{self.FolderTRANSP}/tglf_namelist.dat"
+        self.nml_file = self.FolderTRANSP / f"{self.runid}TR.DAT"
+        self.nml_file_ptsolver = self.FolderTRANSP / "ptsolver_namelist.dat"
+        self.nml_file_glf23 = self.FolderTRANSP / "glf23_namelist.dat"
+        self.nml_file_tglf = self.FolderTRANSP / "tglf_namelist.dat"
 
         """
 		Make sure that the namelists end with \
@@ -131,7 +131,7 @@ class TRANSPgeneric:
 		"""
 
         for file in [self.nml_file_ptsolver, self.nml_file_glf23, self.nml_file_tglf]:
-            if os.path.exists(file):
+            if file.exists():
                 with open(file, "a") as f:
                     f.write("\n/\n")
 
@@ -189,7 +189,7 @@ class TRANSPgeneric:
             except:
                 pass
 
-            # Check if it has been restarted by mistake, to avoid overwritting my CDF_prev file at next time step!
+            # Check if it has been cold_started by mistake, to avoid overwritting my CDF_prev file at next time step!
             try:
                 if lastTime > self.cdfs["r1"].t[-1]:
                     print(
@@ -311,7 +311,6 @@ class TRANSPgeneric:
         # ------------------------------------------------------------------------------------------------------------------
         # TORIC
         # ------------------------------------------------------------------------------------------------------------------
-
         nlicrf = IOtools.findValue(
             self.nml_file, "nlicrf", "=", raiseException=False, avoidIfStartsWith="!"
         )
@@ -419,34 +418,38 @@ class TRANSPgeneric:
 
 
 def storeCDF(FolderTRANSP, runid, retrieveAC=False):
-    netCDFfile = f"{FolderTRANSP}/{runid}.CDF"
+    netCDFfile = FolderTRANSP / f"{runid}.CDF"
 
     if retrieveAC:
         readFBM = readTORIC = True
     else:
         readFBM = readTORIC = False
 
-    try:
-        c = CDFtools.transp_output(
-            netCDFfile,
-            readTGLF=True,
-            readStructures=True,
-            readGFILE=True,
-            readGEQDSK=True,
-            readFBM=readFBM,
-            readTORIC=readTORIC,
-        )
-    except:
-        print(
-            "\t- CDF file could not be processed as transp_output, possibly corrupted",
-            typeMsg="w",
-        )
-        c = None
+    # try:
+    c = CDFtools.transp_output(
+        netCDFfile,
+        readTGLF=True,
+        readStructures=True,
+        readGFILE=True,
+        readGEQDSK=True,
+        readFBM=readFBM,
+        readTORIC=readTORIC,
+    )
+    # except:
+    #     print(
+    #         "\t- CDF file could not be processed as transp_output, possibly corrupted",
+    #         typeMsg="w",
+    #     )
+    #     c = None
 
     return c
 
 
 def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
+
+    nml_file = IOtools.expandPath(nml_file)
+    nml_file_ptsolver = IOtools.expandPath(nml_file_ptsolver)
+
     # If no TORIC, no MPI
     val = IOtools.findValue(nml_file, "nlicrf", "=", raiseException=False)
     if (val is None) or IOtools.isFalse(val):
@@ -459,7 +462,7 @@ def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
     val = IOtools.findValue(
         nml_file, "lpredictive_mode", "=", raiseException=False, findOnlyLast=True
     )
-    if os.path.exists(nml_file_ptsolver):
+    if nml_file_ptsolver.exists():
         val1 = IOtools.findValue(
             nml_file_ptsolver,
             "pt_confinement%tglf%active",

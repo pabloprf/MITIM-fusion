@@ -1,44 +1,39 @@
-import os
+import shutil
 import tarfile
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools,FARMINGtools
+from mitim_tools.misc_tools import IOtools,FARMINGtools, GUItools, GRAPHICStools
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
 from mitim_tools import __mitimroot__
 from IPython import embed
-from mitim_tools.surrogate_tools import NNtools
-
 class ASTRA():
 
     def __init__(self):
 
         pass
 
-    def prep(self,folder,file_repo = __mitimroot__ + '/templates/ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
         self.folder = IOtools.expandPath(folder)
-        self.file_repo = file_repo
+        self.file_repo = IOtools.expandPath(file_repo)
 
         # Create folder
         IOtools.askNewFolder(self.folder)
 
         # Move files
-        os.system(f'cp {self.file_repo} {self.folder}/ASTRA8_REPO.tar.gz')
+        shutil.copy2(self.file_repo, self.folder / 'ASTRA8_REPO.tar.gz')
 
         # untar
         with tarfile.open(
-            os.path.join(self.folder, "ASTRA8_REPO.tar.gz"), "r"
+            self.folder / "ASTRA8_REPO.tar.gz", "r"
         ) as tar:
             tar.extractall(path=self.folder)
 
-        #os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_as}/')
-        os.remove(os.path.join(self.folder, "ASTRA8_REPO.tar.gz"))
+        (self.folder / "ASTRA8_REPO.tar.gz").unlink(missing_ok=True)
 
         # Define basic controls
         self.equfile = 'fluxes'
@@ -55,9 +50,10 @@ class ASTRA():
         self.t_ini = t_ini
         self.t_end = t_end
 
-        self.folder_astra = f'{self.folder}/{name}/'
+        self.folder_astra = self.folder /  name
         IOtools.askNewFolder(self.folder_astra)
-        os.system(f'cp -r {self.folder}/ASTRA8_REPO/* {self.folder_astra}/')
+        for item in self.folder.glob('ASTRA8_REPO*'):
+            shutil.copy2(item, self.folder_astra)
 
         astra_name = f'mitim_astra_{name}'
 
@@ -65,7 +61,7 @@ class ASTRA():
 
         self.astra_job.define_machine(
             "astra",
-            f"{astra_name}/",
+            f"{astra_name}",
             launchSlurm=False,
         )
 
@@ -81,7 +77,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
         # Execute
         # ---------------------------------------------
 
-        self.output_folder = f'{name}/.res/ncdf/'
+        self.output_folder = name / '.res' / 'ncdf'
 
         self.astra_job.prep(
             self.command_to_run_astra,
@@ -95,9 +91,7 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
 
     def read(self):
 
-        self.cdf_file = f'{self.output_folder}/'
-
-        self.cdf = ASTRA_CDFtools.transp_output(self.cdf_file)
+        self.cdf = ASTRA_CDFtools.transp_output(self.output_folder)
 
     def plot(self):
 
@@ -118,16 +112,17 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
-    template_path = __mitimroot__ + "/tests/data/input.gacode"
+    astra_root = IOtools.expandPath(astra_root)
+    template_path = __mitimroot__ / "tests" / "data "/ "input.gacode"
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
     # Extract CDF file
     cdf_file = None
-    astra_results_dir = os.path.join(astra_root, "ncdf_out")
-    for file in os.listdir(astra_results_dir):
-        if file.endswith(".CDF"):
-            cdf_file = os.path.join(astra_results_dir, file)
+    astra_results_dir = astra_root / "ncdf_out"
+    for file in astra_results_dir.glob("*"):
+        if file.suffix in [".CDF"]:
+            cdf_file = file.resolve()
             break
 
     if cdf_file is None:
@@ -140,9 +135,9 @@ def convert_ASTRA_to_gacode(astra_root,
 
     # Extract Geometry info
     geometry_file = None
-    for file in os.listdir(astra_root):
-        if file.endswith(".geqdsk") or file.endswith(".eqdsk"):
-            geometry_file = os.path.join(astra_root, file)
+    for file in astra_root.glob("*"):
+        if file.suffix in [".geqdsk", ".eqdsk"]:
+            geometry_file = file.resolve()
             break
 
     if geometry_file is None:
@@ -292,6 +287,9 @@ def create_initial_conditions(te_avg,
     else:
         rho = np.linspace(0,1,n_rho)
 
+    file_output_location = IOtools.expandPath(file_output_location)
+    file_output_location.mkdir(parents=True, exist_ok=True)
+
     psi_n = None
 
     if geometry is not None:
@@ -344,7 +342,7 @@ def create_initial_conditions(te_avg,
         {len(Z)}                    ;-# OF  Y PTS-
 """
 
-        with open(file_output_location + "/R_BOUNDARY", 'w') as f:
+        with open(file_output_location / "R_BOUNDARY", 'w') as f:
             x = range(1, len(g.Rb) + 1)
             f.write(r_preamble)
             f.write(f"  1.000000e-01\n ")
@@ -356,7 +354,7 @@ def create_initial_conditions(te_avg,
             f.write("\n ")
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
-        with open(file_output_location + "/Z_BOUNDARY", 'w') as f:
+        with open(file_output_location / "Z_BOUNDARY", 'w') as f:
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
         psi_n = g.g["AuxQuantities"]["PSI_NORM"]
@@ -488,7 +486,7 @@ def create_initial_conditions(te_avg,
     if Te is None:
         Te = T
 
-    with open(file_output_location+"/TE_ASTRA", 'w')  as f:
+    with open(file_output_location / "TE_ASTRA", 'w')  as f:
         f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -500,7 +498,7 @@ def create_initial_conditions(te_avg,
     if Ti is None:
         Ti = T
 
-    with open(file_output_location+"/TI_ASTRA", 'w')  as f:
+    with open(file_output_location / "TI_ASTRA", 'w')  as f:
         f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -512,7 +510,7 @@ def create_initial_conditions(te_avg,
     if ne is None:
         ne = n
 
-    with open(file_output_location+"/NE_ASTRA", 'w')  as f:
+    with open(file_output_location / "NE_ASTRA", 'w')  as f:
         f.write(preamble_dens)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -524,7 +522,7 @@ def create_initial_conditions(te_avg,
 
         q = q_profile
         
-        with open(file_output_location+"/q_ASTRA", 'w')  as f:
+        with open(file_output_location / "q_ASTRA", 'w')  as f:
             f.write(preamble_q)
             f.write(f" 1.000000e-01\n ")
             f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))

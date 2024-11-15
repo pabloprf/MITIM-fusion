@@ -1,4 +1,3 @@
-import os
 import copy
 import torch
 import sys
@@ -9,16 +8,12 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
-
 from IPython import embed
-
-
-
 
 # ----------------------------------------------------------------------------------------------------
 # Tools not to clutter SURROGATEtools.py
@@ -833,30 +828,23 @@ def retrieveResults(
     # Grab remote results optimization
     # ----------------------------------------------------------------------------------------------------------------
 
+    folderWork = IOtools.expandPath(folderWork)
+
     if folderRemote is not None:
         [machine, folderRemote0] = folderRemote.split(":")
-        if "-" in machine:
-            [machine, port] = machine.split("-")
-            port = "-P " + port
-        else:
-            port = ""
 
-        username = IOtools.expandPath("$USER")
+        folderRemote0 = f"{IOtools.expandPath(folderRemote0)}"
 
         print(" - Grabbing remote")
-        os.makedirs(folderWork, exist_ok=True)
-
-
-        os.system(
-            f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}"
-        )
+        folderWork.mkdir(parents=True, exist_ok=True)
+        FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow
     # ----------------------------------------------------------------------------------------------------------------
 
     print("\t\t--> Opening optimization_object.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
+    prfs_model = STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
 
     if "timeStamp" in prfs_model.__dict__:
         print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
@@ -864,13 +852,13 @@ def retrieveResults(
         print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
     # ---------------- Read optimization_results
-    fileOutputs = folderWork + "/Outputs/optimization_results.out"
+    fileOutputs = folderWork / "Outputs" / "optimization_results.out"
     res = optimization_results(file=fileOutputs)
     res.readClass(prfs_model)
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork + "/Outputs/optimization_log.txt")
+    log = LogFile(folderWork / "Outputs" / "optimization_log.txt")
     try:
         log.interpret()
     except:
@@ -879,7 +867,7 @@ def retrieveResults(
 
     # ---------------- Read Tabular
     if analysis_level >= 0:
-        data_df = pd.read_csv(folderWork + "/Outputs/optimization_data.csv")
+        data_df = pd.read_csv(folderWork / "Outputs" / "optimization_data.csv")
     else:
         data_df = None
 
@@ -888,7 +876,7 @@ def retrieveResults(
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork}/Outputs/optimization_extra.pkl", "rb") as handle:
+            with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
                 prfs_model.dictStore = pickle_dill.load(handle)
         except:
             print("Could not load optimization_extra", typeMsg="w")
@@ -1152,12 +1140,12 @@ class optimization_data:
         self,
         inputs,
         outputs,
-        file="Outputs/optimization_data.dat",
+        file,
         forceNew=False,
     ):
         # If start from scratch, overwrite the tabular, otherwise there's risk of error if not all OFs coincide, that's why forceNew
 
-        self.file = file
+        self.file = IOtools.expandPath(file)
         self.inputs = inputs
         self.outputs = outputs
 
@@ -1170,7 +1158,7 @@ class optimization_data:
             self.data_point_dictionary[i + "_std"] = np.nan
         self.data_point_dictionary['maximization_objective'] = np.nan
 
-        if forceNew or not os.path.exists(self.file):
+        if forceNew or not self.file.exists():
             # Create empty csv
             self.data = pd.DataFrame(columns = self.data_point_dictionary.keys())
             self.data.to_csv(self.file, index=False)
@@ -1297,7 +1285,7 @@ class optimization_data:
 
 
 class optimization_results:
-    def __init__(self, file="Outputs/optimization_results.out"):
+    def __init__(self, file):
         self.file = file
         self.predictedSofar = 0
 
@@ -1475,8 +1463,8 @@ class optimization_results:
         return f"\n\t y{stry} :\n{xb}", l2, np.array(allY)
 
     def createHeaders(self):
-        if self.PRF_BO.restartYN:
-            txtR = "\n* Restarting capability requested, looking into previous optimization_data.dat"
+        if self.PRF_BO.cold_start:
+            txtR = "\n* cold_starting capability requested, looking into previous optimization_data.dat"
         else:
             txtR = ""
 
@@ -1573,7 +1561,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         self.gatherOptima()
 
-        # Gather base (may not be evaluation #0 if I have restarted from Tabular !!!!)
+        # Gather base (may not be evaluation #0 if I have cold_started from Tabular !!!!)
         self.DVbase = {}
         cont_bug = 0
         for i in range(len(lines)):
@@ -1607,7 +1595,6 @@ Workflow start time: {IOtools.getStringFromTime()}
                 Best in each optimization loop. So, if each optimization provides 5 points, this will search
                 within that range. Not TURBO
         """
-
         self.iterationPositions = np.cumsum(self.numEvals)
 
         # -----------------------------------------------------------------

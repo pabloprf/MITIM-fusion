@@ -1,6 +1,6 @@
 import copy
 import torch
-import os
+import shutil
 from functools import partial
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
@@ -25,11 +25,11 @@ def initialization_simple_relax(self):
 
     folderExecution = IOtools.expandPath(self.folderExecution, ensurePathValid=True)
 
-    MainFolder = f"{folderExecution}/Initialization/initialization_simple_relax/"
-    os.makedirs(MainFolder, exist_ok=True)
+    MainFolder = folderExecution / "Initialization" / "initialization_simple_relax"
+    MainFolder.mkdir(parents=True, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    digitized = IOtools.string_to_sequential_number(self.folderExecution, num_digits=10)
+    digitized = IOtools.string_to_sequential_number(f'{self.folderExecution}', num_digits=10)
     namingConvention = f"portals_sr_{b}_ev"
 
     algorithmOptions = {
@@ -61,16 +61,13 @@ def initialization_simple_relax(self):
     # Once flux matching has been attained, copy those as if they were direct MITIM evaluations
     # -------------------------------------------------------------------------------------------
 
-    os.makedirs(os.path.join(self.folderExecution, "Execution/"), exist_ok=True)
+    (self.folderExecution / "Execution").mkdir(parents=True, exist_ok=True)
 
     for i in range(self.Originalinitial_training):
-        ff = f"{self.folderExecution}/Execution/Evaluation.{i}/"
-        os.makedirs(ff, exist_ok=True)
-        if os.path.exists(f"{ff}/model_complete"):
-            os.system(f"rm -r {ff}/model_complete")
-        os.system(
-            f"cp -r {MainFolder}/{namingConvention}_{i}/model_complete {ff}/model_complete"
-        )
+        ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
+        ff.mkdir(parents=True, exist_ok=True)
+        newname = f"{namingConvention}_{i}"
+        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete")
 
     return Xopt.cpu().numpy()
 

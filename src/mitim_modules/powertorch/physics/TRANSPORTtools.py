@@ -1,5 +1,5 @@
 import copy
-import os
+import shutil
 import torch
 import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -78,7 +78,7 @@ class power_transport:
         )
 
         # Write this updated profiles class (with parameterized profiles and target powers)
-        self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
+        self.file_profs = self.folder / "input.gacode"
         self.powerstate.profiles = self.powerstate.to_gacode(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
@@ -110,8 +110,8 @@ class tgyro_model(power_transport):
     def evaluate(self):
 
         # After producing the profiles, copy for future modifications
-        self.file_profs_mod = f"{self.file_profs}_modified"
-        os.system(f"cp {self.file_profs} {self.file_profs_mod}")
+        self.file_profs_mod = self.file_profs.parent / f"{self.file_profs.name}_modified"
+        shutil.copy2(self.file_profs, self.file_profs_mod)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
@@ -125,7 +125,7 @@ class tgyro_model(power_transport):
         useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
         UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
         launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
-        restart = ModelOptions.get("restart", False)
+        cold_start = ModelOptions.get("cold_start", False)
         provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
         profiles_postprocessing_fun = ModelOptions.get("profiles_postprocessing_fun", None)
         OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
@@ -151,9 +151,9 @@ class tgyro_model(power_transport):
             print("\t- Launching TGYRO evaluation as a terminal job")
 
         tgyro.run(
-            subFolderTGYRO="tglf_neo_original/",
-            restart=restart,
-            forceIfRestart=True,
+            subFolderTGYRO="tglf_neo_original",
+            cold_start=cold_start,
+            forceIfcold_start=True,
             special_radii=RadiisToRun,
             iterations=0,
             PredictionSet=[
@@ -172,18 +172,16 @@ class tgyro_model(power_transport):
         tgyro.read(label="tglf_neo_original")
 
         # Copy one with evaluated targets
-        self.file_profs_targets = f"{tgyro.FolderTGYRO}/input.gacode.new"
+        self.file_profs_targets = tgyro.FolderTGYRO / "input.gacode.new"
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 2. tglf_neo: Write TGLF, NEO and TARGET errors in tgyro files as well
         # ------------------------------------------------------------------------------------------------------------------------
 
         # Copy original TGYRO folder
-        if os.path.exists(f"{self.folder}/tglf_neo/"):
-            os.system(f"rm -r {self.folder}/tglf_neo/")
-        os.system(
-            f"cp -r {self.folder}/tglf_neo_original {self.folder}/tglf_neo"
-        )
+        if (self.folder / "tglf_neo").exists():
+            shutil.rmtree(self.folder / "tglf_neo")
+        shutil.copytree(self.folder / "tglf_neo_original", self.folder / "tglf_neo")
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
         curateTGYROfiles(
@@ -191,18 +189,18 @@ class tgyro_model(power_transport):
             "tglf_neo_original",
             RadiisToRun,
             self.powerstate.ProfilesPredicted,
-            f"{self.folder}/tglf_neo/",
+            self.folder / "tglf_neo",
             percentError,
             impurityPosition=impurityPosition,
             includeFast=includeFast,
             provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
-            restart=restart,
+            cold_start=cold_start,
             extra_name = self.name,
         )
 
         # Read again to capture errors
-        tgyro.read(label="tglf_neo", folder=f"{self.folder}/tglf_neo/")
+        tgyro.read(label="tglf_neo", folder=self.folder / "tglf_neo")
 
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # Run TGLF standalone --> In preparation for the transition
@@ -211,16 +209,16 @@ class tgyro_model(power_transport):
         # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=RadiisToRun)
         # _ = tglf.prep(
-        #     self.folder+'/stds/',
+        #     self.folder / 'stds',
         #     inputgacode=self.file_profs,
         #     recalculatePTOT=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-        #     restart=restart)
+        #     cold_start=cold_start)
 
         # tglf.run(
-        #     subFolderTGLF="tglf_neo_original/",
+        #     subFolderTGLF="tglf_neo_original",
         #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-        #     restart=restart,
-        #     forceIfRestart=True,
+        #     cold_start=cold_start,
+        #     forceIfcold_start=True,
         #     extraOptions=MODELparameters["transport_model"]["extraOptionsTGLF"],
         #     launchSlurm=launchMODELviaSlurm,
         #     slurm_setup={"cores": 4, "minutes": 1},
@@ -258,10 +256,10 @@ class tgyro_model(power_transport):
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
             )
 
-            correctly_run = os.path.exists(f"{self.folder}/cgyro_neo")
+            correctly_run = (self.folder / "cgyro_neo").exists()
             if correctly_run:
                 print("\t\t- Folder exists, but was cgyro_trick run?")
-                with open(f"{self.folder}/cgyro_neo/mitim_flag", "r") as f:
+                with open(self.folder / "cgyro_neo" / "mitim_flag", "r") as f:
                     correctly_run = bool(float(f.readline()))
 
             if correctly_run:
@@ -270,21 +268,19 @@ class tgyro_model(power_transport):
                 print("\t\t\t* No, it was not, repating process", typeMsg="i")
 
                 # Copy tglf_neo results
-                os.system(
-                    f"cp -r {self.folder}/tglf_neo {self.folder}/cgyro_neo"
-                )
+                shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
                 cgyro_trick(
                     self,
-                    f"{self.folder}/cgyro_neo",
+                    self.folder / "cgyro_neo",
                     profiles_postprocessing_fun=profiles_postprocessing_fun,
                     name=self.name,
                 )
 
             # Read TGYRO files and construct portals variables
 
-            tgyro.read(label="cgyro_neo", folder=f"{self.folder}/cgyro_neo") 
+            tgyro.read(label="cgyro_neo", folder=self.folder / "cgyro_neo") 
 
             powerstate_orig = copy.deepcopy(self.powerstate)
 
@@ -338,7 +334,7 @@ def tglf_scan_trick(
     profiles, 
     impurityPosition=1, includeFast=False,  
     delta=0.02, 
-    restart=False, 
+    cold_start=False, 
     check_coincidence_thr=1E-2, 
     extra_name="", 
     remove_folders_out = False
@@ -355,7 +351,7 @@ def tglf_scan_trick(
 
     # Prepare scan 
 
-    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations/')
+    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
 
     variables_to_scan = []
     for i in profiles:
@@ -381,21 +377,21 @@ def tglf_scan_trick(
     tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = f'{name}/',
+                    subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     TGLFsettings = None,
                     ApplyCorrections = False,
                     add_baseline_to = 'first',
-                    restart=restart,
-                    forceIfRestart=True,
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
                     slurm_setup={"cores": 1}, # 1 core per radius, since this is going to launch ~ Nr=5 x (Nv=3 x Nd=2 + 1) = 35 TGLFs at once
                     extra_name = f'{extra_name}_{name}',
                     )
 
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:
-        os.system(f"rm -r {tglf.FolderGACODE}")
+        shutil.rmtree(tglf.FolderGACODE)
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
@@ -550,7 +546,7 @@ def curateTGYROfiles(
     impurityPosition=1,
     includeFast=False,
     use_tglf_scan_trick=None,
-    restart=False,
+    cold_start=False,
     extra_name="",
     ):
 
@@ -591,7 +587,7 @@ def curateTGYROfiles(
             impurityPosition=impurityPosition, 
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
-            restart=restart,
+            cold_start=cold_start,
             extra_name=extra_name
             )
 
@@ -717,15 +713,15 @@ def curateTGYROfiles(
 def profilesToShare(self):
     if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
-            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
+            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles"
         )
-        if not os.path.exists(whereFolder):
+        if not whereFolder.exists():
             IOtools.askNewFolder(whereFolder)
 
-        fil = f"{whereFolder}/input.gacode.{self.evaluation_number}"
-        os.system(f"cp {self.file_profs_mod} {fil}")
-        os.system(f"cp {self.file_profs} {fil}_unmodified")
-        os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
+        fil = whereFolder / f"input.gacode.{self.evaluation_number}"
+        shutil.copy2(self.file_profs_mod, fil)
+        shutil.copy2(self.file_profs, fil.parent / f"{fil.name}_unmodified")
+        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}_unmodified.new")
         print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")
@@ -738,7 +734,7 @@ def cgyro_trick(
     name="",
 ):
 
-    with open(f"{FolderEvaluation_TGYRO}/mitim_flag", "w") as f:
+    with open(FolderEvaluation_TGYRO / "mitim_flag", "w") as f:
         f.write("0")
 
     # **************************************************************************************************************************
@@ -804,7 +800,7 @@ def cgyro_trick(
             pass
 
     # Write a flag indicating this was performed, to avoid an issue that... the script crashes when it has copied tglf_neo, without cgyro_trick modification
-    with open(f"{FolderEvaluation_TGYRO}/mitim_flag", "w") as f:
+    with open(FolderEvaluation_TGYRO / "mitim_flag", "w") as f:
         f.write("1")
 
 def dummyCDF(GeneralFolder, FolderEvaluation):
@@ -812,19 +808,22 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
     This routine creates path to a dummy CDF file in FolderEvaluation, with the name "simulation_evaluation.CDF"
 
     GeneralFolder, e.g.    ~/runs_portals/run10/
-    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0//model_complete/
+    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0/model_complete/
     """
 
     # ------- Name construction for scratch folders in parallel ----------------
 
     GeneralFolder = IOtools.expandPath(GeneralFolder, ensurePathValid=True)
 
-    subname = GeneralFolder.split("/")[-1]  # run10 (simulation)
-    if len(subname) == 0:
-        subname = GeneralFolder.split("/")[-2]
+    a, subname = IOtools.reducePathLevel(GeneralFolder, level=1, isItFile=False)
 
-    name = FolderEvaluation.split(".")[-1].split("/")[0]  # 0 	(evaluation #)
+    FolderEvaluation = IOtools.expandPath(FolderEvaluation)
 
-    cdf = f"{FolderEvaluation}/{subname}_ev{name}.CDF"
+    name = FolderEvaluation.name.split(".")[-1]  # 0   (evaluation #)
+
+    if name == "":
+        name = "0"
+
+    cdf = FolderEvaluation / f"{subname}_ev{name}.CDF"
 
     return cdf

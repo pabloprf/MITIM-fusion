@@ -29,7 +29,7 @@ def writeResults(
     params=None,
     fn=None,
 ):
-    if not os.path.exists(whereOutput):
+    if not whereOutput.exists():
         IOtools.askNewFolder(whereOutput, force=False, move=None)
 
     metrics["prfs"], metrics["params"], metrics["function_parameters"] = (
@@ -42,7 +42,7 @@ def writeResults(
     filename = "Summary"
     writeTable(
         metrics,
-        f"{whereOutput}/{filename}.xlsx",
+        whereOutput / f"{filename}.xlsx",
         metrics["params"]["times"],
         divPlate=divPlate,
         strikes=strikes,
@@ -56,16 +56,16 @@ def writeResults(
         axs, fn = GEQplotting.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
 
     # ------------- Pickles
-    file = f"{whereOutput}/{namePkl}.pkl"
+    file = whereOutput / f"{namePkl}.pkl"
     try:
         with open(file, "wb") as handle:
-            pickle.dump(metrics, handle, protocol=2)
+            pickle.dump(metrics, handle, protocol=4)
     except:
         for i in range(len(prfs)):
             del metrics["prfs"][i].sweep.eq
             del metrics["prfs"][i].sweep.profiles.eq
         with open(file, "wb") as handle:
-            pickle.dump(metrics["prfs"][i].sweep, handle, protocol=2)
+            pickle.dump(metrics["prfs"][i].sweep, handle, protocol=4)
 
     return gs
 
@@ -1303,13 +1303,13 @@ def write_gfiles(prfs, whereOutput, check=True):
     gs = []
     for i in range(len(prfs)):
         filename = f"geqdsk_freegsu_run{i}.geq"
-        with open(f"{whereOutput}/{filename}", "w") as f:
+        with open(whereOutput / f"{filename}", "w") as f:
             geqdsk.write(prfs[i].sweep.eq, f)
         print(f"\t~ g-file {filename} written")
 
         if check:
             try:
-                gs.append(GEQtools.MITIMgeqdsk(f"{whereOutput}/{filename}"))
+                gs.append(GEQtools.MITIMgeqdsk(whereOutput / f"{filename}"))
             except:
                 print("\t- Problem checking gfile", typeMsg="w")
 

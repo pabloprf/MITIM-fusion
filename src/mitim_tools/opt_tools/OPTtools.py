@@ -746,8 +746,12 @@ def plotInfo(
     axOFs_r=None,
     boundsThis=None,
     it_start=0,
-    xypair=[],
+    xypair=None,
 ):
+
+    if xypair is None:
+        xypair = []
+
     # Ranges ----------
     if plotStart:
         if bounds is not None:

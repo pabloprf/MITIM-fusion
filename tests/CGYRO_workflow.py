@@ -2,15 +2,15 @@ import os
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = True
 
-gacode_file = __mitimroot__ + "/tests/data/input.gacode"
-folder = __mitimroot__ + "/tests/scratch/cgyro_test/"
+gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" / "cgyro_test"
 
-if restart and os.path.exists(folder):
+if cold_start and folder.exists():
     os.system(f"rm -r {folder}")
 
-os.makedirs(folder, exist_ok=True)
+folder.mkdir(parents=True, exist_ok=True)
 
 cgyro = CGYROtools.CGYRO()
 

@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import shutil
 import time
 import sys
 import subprocess
@@ -15,6 +16,7 @@ import copy
 import tarfile
 import paramiko
 import numpy as np
+from pathlib import Path
 from contextlib import contextmanager
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -56,10 +58,11 @@ New handling of jobs in remote or local clusters. Example use:
 
 """
 
-
 class mitim_job:
     def __init__(self, folder_local):
-        self.folder_local = folder_local
+        if not isinstance(folder_local, (str, Path)):
+            raise TypeError('MITIM job folder must be a valid string or pathlib.Path object to a local directory')
+        self.folder_local = IOtools.expandPath(folder_local)
         self.jobid = None
 
     def define_machine(
@@ -112,18 +115,19 @@ class mitim_job:
             code=code,
             nameScratch=nameScratch,
         )
+        # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
 
     def prep(
         self,
         command,
-        input_files=[],
-        input_folders=[],
-        output_files=[],
-        output_folders=[],
+        input_files=None,
+        input_folders=None,
+        output_files=None,
+        output_folders=None,
         check_files_in_folder={},
-        shellPreCommands=[],
-        shellPostCommands=[],
+        shellPreCommands=None,
+        shellPostCommands=None,
         label_log_files="",
     ):
         """
@@ -138,14 +142,14 @@ class mitim_job:
 
         # Pass to class
         self.command = command
-        self.input_files = input_files
-        self.input_folders = input_folders
-        self.output_files = output_files
-        self.output_folders = output_folders
+        self.input_files = input_files if isinstance(input_files, list) else []
+        self.input_folders = input_folders if isinstance(input_folders, list) else []
+        self.output_files = output_files if isinstance(output_files, list) else []
+        self.output_folders = output_folders if isinstance(output_folders, list) else []
         self.check_files_in_folder = check_files_in_folder
 
-        self.shellPreCommands = shellPreCommands
-        self.shellPostCommands = shellPostCommands
+        self.shellPreCommands = shellPreCommands if isinstance(shellPreCommands, list) else []
+        self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
     def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
@@ -159,18 +163,18 @@ class mitim_job:
         comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
             command_str_mod,
             self.folderExecution,
-            self.machineSettings["modules"],
-            job_array=self.slurm_settings["job_array"],
+            modules_remote=self.machineSettings["modules"],
+            job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            nameJob=self.slurm_settings["name"],
-            minutes=self.slurm_settings["minutes"],
-            nodes=self.slurm_settings["nodes"],
-            ntasks=self.slurm_settings["ntasks"],
-            cpuspertask=self.slurm_settings["cpuspertask"],
+            nameJob=self.slurm_settings["name"] if "name" in self.slurm_settings else "test",
+            minutes=self.slurm_settings["minutes"] if "minutes" in self.slurm_settings else 5,
+            nodes=self.slurm_settings["nodes"] if "nodes" in self.slurm_settings else None,
+            ntasks=self.slurm_settings["ntasks"] if "ntasks" in self.slurm_settings else 1,
+            cpuspertask=self.slurm_settings["cpuspertask"] if "cpuspertask" in self.slurm_settings else 4,
             slurm=self.machineSettings["slurm"],
-            memory_req_by_job=self.slurm_settings["mem"],
+            memory_req_by_job=self.slurm_settings["mem"] if "mem" in self.slurm_settings else None,
             launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
@@ -184,12 +188,12 @@ class mitim_job:
 
         self.output_files = curateOutFiles(self.output_files)
 
-        # Relative paths #TODO: Fix
+        # Relative paths
         self.input_files = [
-            os.path.relpath(path, self.folder_local) for path in self.input_files
+            path.relative_to(self.folder_local) for path in self.input_files
         ]
         self.input_folders = [
-            os.path.relpath(path, self.folder_local) for path in self.input_folders
+            path.relative_to(self.folder_local) for path in self.input_folders
         ]
 
         # Process
@@ -204,7 +208,7 @@ class mitim_job:
         # Get jobid
         if self.launchSlurm:
             try:
-                with open(self.folder_local + "/mitim.out", "r") as f:
+                with open(self.folder_local / "mitim.out", "r") as f:
                     aux = f.readlines()
                 for line in aux:
                     if "Submitted batch job " in line:
@@ -239,7 +243,7 @@ class mitim_job:
         )
 
         # ~~~~~~ Connect
-        self.connect(log_file=f"{self.folder_local}/paramiko.log")
+        self.connect(log_file=self.folder_local / "paramiko.log")
 
         # ~~~~~~ Prepare scratch folder
         if removeScratchFolders:
@@ -350,10 +354,10 @@ class mitim_job:
 
             if key_jump is not None:
                 key_jump = IOtools.expandPath(key_jump)
-                if not os.path.exists(key_jump):
+                if not key_jump.exists():
                     if print(
                         'Key file "'
-                        + key_jump
+                        + f'{key_jump}'
                         + '" does not exist, continue without key',
                         typeMsg="q",
                     ):
@@ -401,10 +405,10 @@ class mitim_job:
 
             if self.key_filename is not None:
                 self.key_filename = IOtools.expandPath(self.key_filename)
-                if not os.path.exists(self.key_filename):
+                if not self.key_filename.exists():
                     if print(
                         'Key file "'
-                        + self.key_filename
+                        + f'{self.key_filename}'
                         + '" does not exist, continue without key',
                         typeMsg="q",
                     ):
@@ -414,7 +418,7 @@ class mitim_job:
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f"\t\t{self.folderExecution}")
 
-        command = "mkdir -p " + self.folderExecution
+        command = f"mkdir -p {self.folderExecution}"
 
         output, error = self.execute(command)
 
@@ -426,12 +430,12 @@ class mitim_job:
         )
 
         # Create a tarball of the local directory
-        print("\t\t- Tarballing (locally)")
+        print("\t\t- Tarballing (client side)")
         with tarfile.open(
-            os.path.join(self.folder_local, "mitim_send.tar.gz"), "w:gz"
+            self.folder_local / "mitim_send.tar.gz", "w:gz"
         ) as tar:
             for file in self.input_files + self.input_folders:
-                tar.add(os.path.join(self.folder_local, file), arcname=file)
+                tar.add(self.folder_local / file, arcname=file)
 
         # Send it
         print("\t\t- Sending")
@@ -445,31 +449,29 @@ class mitim_job:
                 + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             ) as t:
                 self.sftp.put(
-                    os.path.join(self.folder_local, "mitim_send.tar.gz"),
-                    os.path.join(self.folderExecution, "mitim_send.tar.gz"),
+                    self.folder_local / "mitim_send.tar.gz",
+                    f"{self.folderExecution}/mitim_send.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                "cp "
-                + os.path.join(self.folder_local, "mitim_send.tar.gz")
-                + " "
-                + os.path.join(self.folderExecution, "mitim_send.tar.gz")
+            shutil.copy2(
+                self.folder_local / "mitim_send.tar.gz",
+                f"{self.folderExecution}/mitim_send.tar.gz"
             )
 
         # Extract it
         print("\t\t- Extracting tarball")
         self.execute(
             "tar -xzf "
-            + os.path.join(self.folderExecution, "mitim_send.tar.gz")
+            + f'{self.folderExecution}/mitim_send.tar.gz'
             + " -C "
-            + self.folderExecution
+            + f'{self.folderExecution}'
         )
 
         # Remove tarballs
         print("\t\t- Removing tarballs")
-        os.remove(os.path.join(self.folder_local, "mitim_send.tar.gz"))
-        self.execute("rm " + os.path.join(self.folderExecution, "mitim_send.tar.gz"))
+        (self.folder_local / "mitim_send.tar.gz").unlink(missing_ok=True)
+        self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, **kwargs):
 
@@ -528,19 +530,18 @@ class mitim_job:
             "\t\t- Removing local output files & folders that potentially exist from previous runs"
         )
         for file in self.output_files:
-            if os.path.exists(os.path.join(self.folder_local, file)):
-                os.remove(os.path.join(self.folder_local, file))
+            (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
-            if os.path.exists(os.path.join(self.folder_local, folder)):
-                os.system(f"rm -rf {os.path.join(self.folder_local, folder)}")
+            if (self.folder_local / folder).exists():
+                shutil.rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
-        print("\t\t- Tarballing (remotely)")
+        print("\t\t- Tarballing (server side)")
         self.execute(
             "tar -czf "
-            + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
+            + f'{self.folderExecution}/mitim_receive.tar.gz'
             + " -C "
-            + self.folderExecution
+            + f'{self.folderExecution}'
             + " "
             + " ".join(self.output_files + self.output_folders)
         )
@@ -557,29 +558,28 @@ class mitim_job:
                 + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             ) as t:
                 self.sftp.get(
-                    os.path.join(self.folderExecution, "mitim_receive.tar.gz"),
-                    os.path.join(self.folder_local, "mitim_receive.tar.gz"),
+                    f"{self.folderExecution}/mitim_receive.tar.gz",
+                    self.folder_local / "mitim_receive.tar.gz",
                     callback=lambda sent, total_size: t.update_to(sent, total_size),
                 )
         else:
-            os.system(
-                "cp "
-                + os.path.join(self.folderExecution, "mitim_receive.tar.gz")
-                + " "
-                + os.path.join(self.folder_local, "mitim_receive.tar.gz")
+            shutil.copy2(
+                f"{self.folderExecution}/mitim_receive.tar.gz",
+                self.folder_local / "mitim_receive.tar.gz"
             )
+        print(self.folderExecution, self.folder_local)
 
         # Extract the tarball locally
         print("\t\t- Extracting tarball")
         with tarfile.open(
-            os.path.join(self.folder_local, "mitim_receive.tar.gz"), "r:gz"
+            self.folder_local / "mitim_receive.tar.gz", "r:gz"
         ) as tar:
             tar.extractall(path=self.folder_local)
 
         # Remove tarballs
         print("\t\t- Removing tarballs")
-        os.remove(os.path.join(self.folder_local, "mitim_receive.tar.gz"))
-        self.execute("rm " + os.path.join(self.folderExecution, "mitim_receive.tar.gz"))
+        (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
+        self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
         # Check if all files were received
         if check_if_files_received:
@@ -603,7 +603,7 @@ class mitim_job:
     def remove_scratch_folder(self):
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
-        output, error = self.execute("rm -rf " + self.folderExecution)
+        output, error = self.execute(f"rm -rf {self.folderExecution}")
 
         return output, error
 
@@ -676,7 +676,7 @@ class mitim_job:
         # Read output of squeue command -> self.infoSLURM
         # -----------------------------------------------
 
-        with open(self.folder_local + "/squeue_output.dat", "r") as f:
+        with open(self.folder_local / "squeue_output.dat", "r") as f:
             output_squeue = f.read()
         output_squeue = str(output_squeue)[3:].split("\n")
 
@@ -712,8 +712,8 @@ class mitim_job:
         # If it was available, read the status of the ACTUAL slurm job
         # ------------------------------------------------------------
 
-        if os.path.exists(f"{self.folder_local}/{file_output}"):
-            with open(f"{self.folder_local}/{file_output}", "r") as f:
+        if (self.folder_local / file_output).exists():
+            with open(self.folder_local / file_output, "r") as f:
                 self.log_file = f.readlines()
         else:
             self.log_file = None
@@ -738,22 +738,20 @@ class mitim_job:
 
         # Check if all files were received
         for file in self.output_files:
-            if not os.path.exists(os.path.join(self.folder_local, file)):
+            if not (self.folder_local / file).exists():
                 print(f"\t\t- File {file} not received", typeMsg="w")
                 received = False
 
         for folder in self.output_folders:
             # Check if all folders were received
-            if not os.path.exists(os.path.join(self.folder_local, folder)):
+            if not (self.folder_local / folder).exists():
                 print(f"\t\t- Folder {folder} not received", typeMsg="w")
                 received = False
             # Check if all files in folder were received (optional information provided at job execution)
             else:
                 if folder in check_files_in_folder:
                     for file in check_files_in_folder[folder]:
-                        if not os.path.exists(
-                            os.path.join(self.folder_local, folder, file)
-                        ):
+                        if not (self.folder_local / folder / file).exists():
                             print(
                                 f"\t\t- File {file} not received in folder {folder}",
                                 typeMsg="w",
@@ -822,14 +820,14 @@ def timeout(time, proc=None):
 
 def run_subprocess(commandExecute, timeoutSecs=None, localRun=False):
     """
-    Note that before I had a context such as "with Popen() as p:" but that failed to catch time outs!
-    So, even though I don't know why... I'm doing this directly, with opening and closing it
-
-    For local runs, I had originally:
-            error=None; result=None;
-            os.system(Command)
-    Now, it uses subprocess with shell. This is because I couldn't load "source" because is a shell command, with simple os.system()
-    New solution is not the safest but it works.
+    Note (PRF):
+        Note that before I had a context such as "with Popen() as p:" but that failed to catch time outs!
+        So, even though I don't know why... I'm doing this directly, with opening and closing it
+        For local runs, I had originally:
+                error=None; result=None;
+                os.system(Command)
+        Now, it uses subprocess with shell. This is because I couldn't load "source" because is a shell command, with simple os.system()
+        New solution is not the safest but it works.
     """
 
     if localRun:
@@ -949,11 +947,11 @@ def SerialProcedure(Function, Params, howmany):
 def create_slurm_execution_files(
     command,
     folder_remote,
-    modules_remote,
+    modules_remote=None,
     slurm={},
     folder_local=None,
-    shellPreCommands=[],
-    shellPostCommands=[],
+    shellPreCommands=None,
+    shellPostCommands=None,
     launchSlurm=True,
     nameJob="test",
     minutes=5,
@@ -965,15 +963,19 @@ def create_slurm_execution_files(
     label_log_files="",
     wait_until_sbatch=True,
 ):
-    if folder_local is None:
-        folder_local = folder_remote
     if isinstance(command, str):
         command = [command]
 
-    folderExecution = IOtools.expandPath(folder_remote)
-    fileSBATCH = f"{folder_local}/mitim_bash{label_log_files}.src"
-    fileSHELL = f"{folder_local}/mitim_shell_executor{label_log_files}.sh"
-    fileSBATCH_remote = f"{folder_remote}/mitim_bash{label_log_files}.src"
+    if shellPostCommands is None:
+        shellPostCommands = []
+
+    if shellPreCommands is None:
+        shellPreCommands = []
+
+    folderExecution = folder_remote
+    fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
+    fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
+    fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
 
     minutes = int(minutes)
 
@@ -1007,7 +1009,7 @@ def create_slurm_execution_files(
     commandSBATCH = []
 
     # ******* Basics
-    commandSBATCH.append("#!/bin/bash -l")
+    commandSBATCH.append("#!/usr/bin/env bash")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
     commandSBATCH.append(
         f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat"
@@ -1078,13 +1080,12 @@ def create_slurm_execution_files(
 
     wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
-        comm, launch = commandSBATCH, "sbatch" + wait_txt
+        comm, launch = commandSBATCH, "sbatch" + wait_txt + " "
     else:
-        comm, launch = full_command, "bash"
+        comm, launch = ["#!/usr/bin/env bash"] + full_command, ""
 
-    if os.path.exists(fileSBATCH):
-        os.system(f"rm {fileSBATCH}")
-    with open(fileSBATCH, "w") as f:
+    fileSBATCH.unlink(missing_ok=True)
+    with open(fileSBATCH, "w", newline="") as f:
         f.write("\n".join(comm))
 
     """
@@ -1093,7 +1094,8 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    commandSHELL = copy.deepcopy(shellPreCommands)
+    commandSHELL = ["#!/usr/bin/env bash"]
+    commandSHELL.extend(copy.deepcopy(shellPreCommands))
     commandSHELL.append("")
     if modules_remote is not None:
         commandSHELL.append(modules_remote)
@@ -1102,9 +1104,8 @@ def create_slurm_execution_files(
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
 
-    if os.path.exists(fileSHELL):
-        os.system(f"rm {fileSHELL}")
-    with open(fileSHELL, "w") as f:
+    fileSHELL.unlink(missing_ok=True)
+    with open(fileSHELL, "w", newline="") as f:
         f.write("\n".join(commandSHELL))
 
     """
@@ -1113,9 +1114,9 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && bash mitim_shell_executor{label_log_files}.sh > mitim.out"
+    comm = f"cd {folder_remote} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
-    return comm, fileSBATCH, fileSHELL
+    return comm, fileSBATCH.resolve(), fileSHELL.resolve()
 
 
 def curateOutFiles(outputFiles):
@@ -1152,6 +1153,78 @@ def printEfficiencySLURM(out_file):
         os.system(f"seff {jobid}")
         print("\n****** SACCT:")
         os.system(f"sacct -j {jobid}")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Functions for quick remote executions
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def perform_quick_remote_execution(
+    folder_local,
+    machine,
+    command,
+    input_files=[],
+    input_folders=[],
+    output_files=[],
+    output_folders=[],
+    job_name = "test",
+    ):
+
+    job = mitim_job(folder_local)
+
+    # Define machine
+    job.slurm_settings, job.launchSlurm = {}, False
+    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
+    job.folderExecution = job.machineSettings["folderWork"]
+
+    # Submit
+    job.prep(
+        command,
+        input_files=input_files,
+        input_folders=input_folders,
+        output_files=output_files,
+        output_folders=output_folders)
+    job.run()
+
+
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = []):
+    '''
+    Quick routine for file retrieval from remote machine (assumes remote machine is linux)
+
+    e.g.:
+            mitim_plot_portals run2 --remote engaging:path_to_folder_remote_where_run2_is/
+
+    '''
+
+    job_name = 'file_retrieval'
+
+    # ------------------------------------------------
+    # Prep files and folders to be transfered
+    # ------------------------------------------------
+
+    machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
+
+    command, output_files, output_folders = '', [], []
+    for file in files_remote:
+        file0 = file.split('/')[-1]
+        command += f'cp {file} {machineSettings["folderWork"]}/{file0}\n'
+        output_files.append(file0)
+    for folder in folders_remote:
+        folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
+        command += f'cp -r {folder} {machineSettings["folderWork"]}/{folder0}\n'
+        output_folders.append(folder0)
+
+    # ------------------------------------------------
+    # Run
+    # ------------------------------------------------
+
+    perform_quick_remote_execution(
+        folder_local,
+        machine,
+        command,
+        output_files = output_files,
+        output_folders = output_folders,
+        job_name = job_name
+    )
 
 
 if __name__ == "__main__":

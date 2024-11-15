@@ -7,8 +7,8 @@ from mitim_tools import __mitimroot__
 # --------------------------------------------------------------------------------------------
 
 # Starting input.gacode file
-inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folder = __mitimroot__ + "/tests/scratch/portals_tut/"
+inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" / "portals_tut"
 
 # Initialize PORTALS class
 portals_fun = PORTALSmain.portals(folder)

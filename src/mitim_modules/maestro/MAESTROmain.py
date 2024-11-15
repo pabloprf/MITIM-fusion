@@ -1,5 +1,4 @@
 import copy
-import os
 import datetime
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
@@ -23,7 +22,7 @@ MAESTRO:
 
 class maestro:
 
-    def __init__(self, folder, terminal_outputs = False, master_restart = False):
+    def __init__(self, folder, terminal_outputs = False, master_cold_start = False):
         '''
         Inputs:
             - folder: Main folder where all the beats will be saved
@@ -31,7 +30,7 @@ class maestro:
         '''
 
         self.terminal_outputs = terminal_outputs
-        self.master_restart = master_restart        # If True, all beats will be restarted
+        self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
 
         # --------------------------------------------------------------------------------------------
         # Prepare folders
@@ -39,12 +38,12 @@ class maestro:
 
         self.folder = IOtools.expandPath(folder)
         
-        self.folder_output = f'{self.folder}/Outputs/'
-        self.folder_logs = f'{self.folder_output}/Logs/'
-        self.folder_beats = f'{self.folder}/Beats/'
+        self.folder_output = self.folder / "Outputs"
+        self.folder_logs = self.folder_output / "Logs"
+        self.folder_beats = self.folder / "Beats"
 
-        os.makedirs(self.folder_logs, exist_ok=True)
-        os.makedirs(self.folder_beats, exist_ok=True)
+        self.folder_logs.mkdir(parents=True, exist_ok=True)
+        self.folder_beats.mkdir(parents=True, exist_ok=True)
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')
@@ -75,7 +74,7 @@ class maestro:
         '''
         self.parameters_trans_beat = {} 
 
-    def define_beat(self, beat, initializer = None, restart = False):
+    def define_beat(self, beat, initializer = None, cold_start = False):
 
         timeBeginning = datetime.datetime.now()
 
@@ -97,7 +96,7 @@ class maestro:
         self.beat.define_initializer(initializer)
 
         # Check here if the beat has already been performed
-        self.check(restart = restart or self.master_restart )
+        self.check(cold_start = cold_start or self.master_cold_start )
 
     def define_creator(self, method, **kwargs):
         '''
@@ -117,7 +116,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer('\t\t* Checker')
-    def check(self, beat_check = None, restart = False, **kwargs):
+    def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
             After each beat, the results are passed to an output folder.
@@ -130,24 +129,24 @@ class maestro:
             beat_check = self.beat
 
         print('\t- Checking...')
-        log_file = f'{self.folder_logs}/beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
+        log_file = self.folder_logs / f'beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             output_file = None
-            if not restart:
-                output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True, provide_full_path=True)
+            if not cold_start:
+                output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
                 if output_file is not None:
                     print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
             else:
-                print('\t\t- Forced restarting of beat', typeMsg = 'i')
+                print('\t\t- Forced cold_starting of beat', typeMsg = 'i')
 
             self.beat.run_flag = output_file is None
 
-        # If this beat is restarted, all next beats will be restarted
+        # If this beat is cold_started, all next beats will be cold_started
         if self.beat.run_flag:
-            if not self.master_restart:
+            if not self.master_cold_start:
                 print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
-            self.master_restart = True
+            self.master_cold_start = True
 
         return output_file is not None
 
@@ -156,7 +155,7 @@ class maestro:
 
         print('\t- Initializing...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter_current}_ini.log' if (not self.terminal_outputs) else None
+            log_file = self.folder_logs / f'beat_{self.counter_current}_ini.log' if (not self.terminal_outputs) else None
             with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
@@ -164,21 +163,21 @@ class maestro:
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
 
-        log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
+        log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             # Initializer can also save important parameters
             self.beat.initialize._inform_save()
 
             if self.profiles_with_engineering_parameters is None:
                 # First initialization, freeze engineering parameters
-                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.initialize.folder}/input.gacode'))
+                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
 
     @mitim_timer('\t\t* Preparation')
     def prepare(self, *args, **kwargs):
 
         print('\t- Preparing...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter_current}_prep.log' if (not self.terminal_outputs) else None
+            log_file = self.folder_logs / f'beat_{self.counter_current}_prep.log' if (not self.terminal_outputs) else None
             with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 
                 # Initialize if necessary
@@ -198,7 +197,7 @@ class maestro:
         # Run 
         print('\t- Running...')
         if self.beat.run_flag:
-            log_file = f'{self.folder_logs}/beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
+            log_file = self.folder_logs / f'beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
             with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
 
@@ -216,25 +215,25 @@ class maestro:
         self._freeze_parameters()
 
         # Inform next beats
-        log_file = f'{self.folder_logs}/beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
+        log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
             self.beat._inform_save()
 
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
-            profiles = PROFILEStools.PROFILES_GACODE(f'{self.beat.folder_output}/input.gacode')
+            profiles = PROFILEStools.PROFILES_GACODE(self.beat.folder_output / 'input.gacode')
 
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
-        self.profiles_with_engineering_parameters.writeCurrentStatus(file=self.folder_output+'/input.gacode_frozen' )
+        self.profiles_with_engineering_parameters.writeCurrentStatus(file= (self.folder_output / 'input.gacode_frozen'))
 
     @mitim_timer('\t\t* Finalizing')
     def finalize(self):
 
         print('\t- Finalizing MAESTRO run...')
         
-        log_file = f'{self.folder_output}/beat_final' if (not self.terminal_outputs) else None
+        log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             self.beat.finalize_maestro()
 
@@ -268,7 +267,7 @@ class maestro:
             if only_beats is None or only_beats == beat.name:
 
                 print(f'\t- Plotting beat #{counter}...')
-                log_file = f'{self.folder_logs}/plot_{counter}.log' if (not self.terminal_outputs) else None
+                log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
                 with LOGtools.conditional_log_to_file(log_file=log_file):
                     msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
                 print(msg)

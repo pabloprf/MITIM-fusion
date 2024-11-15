@@ -1,4 +1,4 @@
-import os
+import shutil
 import math
 import numpy as np
 
@@ -185,6 +185,7 @@ def convertHeatingsToUFILE(folder, allLines, shotnum="54321"):
     )
 
     # NBI
+    Pnbi = None #TO FIX
 
     timesOn = np.repeat([[0.0, 10.0]], 10, axis=0)
     UFILEStools.writeAntenna(
@@ -242,7 +243,7 @@ def convertBoundaryToUFILE(allLines, folder):
         )
         writeLines(f, Z, perline=10)
 
-    os.system(f"cp {name} {folder}/BOUNDARY_123456_10000.DAT")
+    shutil.copy2(f"{name}", f"{folder}/BOUNDARY_123456_10000.DAT")
 
     # MRY
     TRANSPhelpers.generateMRY(folder, ["01000", "10000"], folder, "54321")

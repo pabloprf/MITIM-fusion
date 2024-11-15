@@ -1,5 +1,4 @@
 import copy
-import os
 import datetime
 import torch
 import botorch
@@ -107,7 +106,7 @@ class OPTstep:
         # **** From standard deviation to variance
         self.train_Yvar = self.train_Ystd**2
 
-    def fit_step(self, avoidPoints=[], fitWithTrainingDataIfContains=None):
+    def fit_step(self, avoidPoints=None, fitWithTrainingDataIfContains=None):
         """
         Notes:
             - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
@@ -115,6 +114,9 @@ class OPTstep:
                     PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
                     the fluxes but I do want *new* target calculation
         """
+
+        if avoidPoints is None:
+            avoidPoints = []
 
         """
 		*********************************************************************************************************************
@@ -148,9 +150,10 @@ class OPTstep:
 		"""
 
         self.GP = {"individual_models": [None] * self.y.shape[-1]}
-        fileTraining = f"{self.stepSettings['folderOutputs']}/surrogate_data.csv"
-        if os.path.exists(fileTraining):
-            os.system(f'mv {fileTraining} {fileTraining}.bak')
+        fileTraining = IOtools.expandPath(self.stepSettings['folderOutputs']) / "surrogate_data.csv"
+        fileBackup = fileTraining.parent / "surrogate_data.csv.bak"
+        if fileTraining.exists():
+            fileTraining.replace(fileBackup)
 
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
@@ -254,8 +257,7 @@ class OPTstep:
 
             self.GP["individual_models"][i] = GP
 
-        if os.path.exists(fileTraining+".bak"):
-            os.remove(fileTraining+".bak")
+        fileBackup.unlink(missing_ok=True)
 
         # ------------------------------------------------------------------------------------------------------
         # Combine them in a ModelListGP (create one single with MV but do not fit)

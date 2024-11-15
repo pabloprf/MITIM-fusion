@@ -2,6 +2,7 @@ import os
 import json
 import socket
 import getpass
+from pathlib import Path
 from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
@@ -31,12 +32,14 @@ class ConfigManager:
 
     def get(self):
         if self._config_file_path is None:
-            self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
-            if os.path.exists(self._config_file_path):
+            if "MITIM_CONFIG" in os.environ:
+                self._config_file_path = Path(os.environ["MITIM_CONFIG"]).expanduser()
+            
+            if self._config_file_path is not None and self._config_file_path.exists():
                 printMsg(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
-                self._config_file_path = __mitimroot__ + "/templates/config_user.json"
+                self._config_file_path = __mitimroot__ / "templates" / "config_user.json"
                 printMsg(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
         return self._config_file_path
 
@@ -97,6 +100,7 @@ def machineSettings(
     code="tgyro",
     nameScratch="mitim_tmp/",
     forceUsername=None,
+    forceMachine=None,
 ):
     """
     This script uses the config json file and completes the information required to run each code
@@ -106,7 +110,7 @@ def machineSettings(
 
     # Determine where to run this code, depending on config file
     s = load_settings()
-    machine = s["preferences"][code]
+    machine = s["preferences"][code] if forceMachine is None else forceMachine
 
     """
     Set-up per code and machine
@@ -126,7 +130,7 @@ def machineSettings(
         "tunnel": None,
         "port": None,
         "identity": None,
-        "modules": "source ~/.bashrc",
+        "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
         "slurm": {},
         "isTunnelSameMachine": (
@@ -161,7 +165,7 @@ def machineSettings(
     # ************************************************************************************************************************
 
     # Am I already in this machine?
-    if machine in socket.gethostname():
+    if machineSettings["machine"] in socket.gethostname():
         # Avoid tunneling and porting if I'm already there
         machineSettings["tunnel"] = machineSettings["port"] = None
 
