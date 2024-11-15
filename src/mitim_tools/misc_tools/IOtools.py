@@ -1344,7 +1344,7 @@ def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
         assert npath.exists()
-    return npath.resolve()
+    return npath.resolve() if npath.exists() else npath # To cover cases in which the path is an environment variable that does not exist as file/dir
 
 
 def reducePathLevel(path, level=1, isItFile=False):
