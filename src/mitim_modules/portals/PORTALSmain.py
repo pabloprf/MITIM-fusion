@@ -408,7 +408,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 self.folder / "Initialization" / "input.gacode_original"
             )
             with open(self.optimization_extra, "wb") as handle:
-                pickle_dill.dump(dictStore, handle)
+                pickle_dill.dump(dictStore, handle, protocol=4)
 
     def scalarized_objective(self, Y):
         """

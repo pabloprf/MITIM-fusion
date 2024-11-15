@@ -427,7 +427,7 @@ class PRF_BO:
 
             # Write
             with open(self.optimization_extra, "wb") as handle:
-                pickle_dill.dump(dictStore, handle)
+                pickle_dill.dump(dictStore, handle, protocol=4)
 
             # Write the class into the optimization_object
             optimization_object.optimization_extra = self.optimization_extra
@@ -925,11 +925,11 @@ class PRF_BO:
 
         with open(stateFile_tmp, "wb") as handle:
             try:
-                pickle_dill.dump(copyClass, handle)
+                pickle_dill.dump(copyClass, handle, protocol=4)
             except:
                 print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables = ['variable1', 'variable2'] with the variables you think cannot be pickled", typeMsg="w")
                 del copyClass.optimization_object
-                pickle_dill.dump(copyClass, handle)
+                pickle_dill.dump(copyClass, handle, protocol=4)
 
         # Get variables back ----------------------------------------------------------------
         for ikey in saver:

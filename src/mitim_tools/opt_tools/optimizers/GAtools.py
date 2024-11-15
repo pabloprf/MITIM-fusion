@@ -395,7 +395,7 @@ class PRF_GA:
 
     def save(self, stateFile):
         with open(stateFile, "wb") as handle:
-            pickle.dump(self, handle)
+            pickle.dump(self, handle, protocol=4)
         print(f" --> GA state file {stateFile} generated, containing the PRF_GA class")
 
     def readGA(self, stateFile):

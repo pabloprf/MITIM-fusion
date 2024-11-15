@@ -282,4 +282,4 @@ GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False, size=7)
 if save:
     name = folder / f"test{test}_seeds{numSeeds}_variations{numVariations}.pkl"
     with open(name, "wb") as handle:
-        pickle_dill.dump({"traj": traj, "ybest": ybest, "timeTotal": timeTotal}, handle)
+        pickle_dill.dump({"traj": traj, "ybest": ybest, "timeTotal": timeTotal}, handle, protocol=4)
