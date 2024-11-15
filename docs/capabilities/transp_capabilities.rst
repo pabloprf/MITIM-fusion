@@ -32,23 +32,23 @@ For this reason, this workflow assumes that a folder exists with all the plasma 
 
 	folder_original = Path("MITIM-fusion/tests/data/FolderTRANSP/")
 	folder 			= Path("MITIM-fusion/tests/scratch/transp_tut/")
-	os.system(f'rm -r {folder}')
-	os.system(f'cp -r {folder_original} {folder}')
+	os.system(f"rm -r {folder}")
+	os.system(f"cp -r {folder_original} {folder}")
 
 First, one would initialize the TRANSP class with the given folder and the tokamak name:
 
 .. code-block:: python
 
-	tokamak = 'CMOD'
+	tokamak = "CMOD"
 	transp  = TRANSPtools.TRANSP( folder, tokamak )
 
 Then, select a shotnumber and run name, such that the TRANSP simulation will have the complete name `shotnumber+runname`, and the MPI settings for the TRANSP run:
 
 .. code-block:: python
 
-	shotnumber  = '12345'
-	runname     = 'X01'
-	mpisettings = { 'trmpi': 1, 'toricmpi': 64, 'ptrmpi': 1 }
+	shotnumber  = "12345"
+	runname     = "X01"
+	mpisettings = { "trmpi": 1, "toricmpi": 64, "ptrmpi": 1 }
 
 	transp.defineRunParameters( shotnumber+runname, shotnumber, mpisettings = mpisettings )
 

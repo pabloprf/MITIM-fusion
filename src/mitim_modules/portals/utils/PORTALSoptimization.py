@@ -66,8 +66,6 @@ def initialization_simple_relax(self):
     for i in range(self.Originalinitial_training):
         ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
         ff.mkdir(parents=True, exist_ok=True)
-        if os.path.exists(f"{ff}/model_complete"):
-            os.system(f"rm -r {ff}/model_complete")
         newname = f"{namingConvention}{i}"
         shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete")
 
