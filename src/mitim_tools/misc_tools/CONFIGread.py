@@ -165,7 +165,7 @@ def machineSettings(
     # ************************************************************************************************************************
 
     # Am I already in this machine?
-    if machine in socket.gethostname():
+    if machineSettings["machine"] in socket.gethostname():
         # Avoid tunneling and porting if I'm already there
         machineSettings["tunnel"] = machineSettings["port"] = None
 
