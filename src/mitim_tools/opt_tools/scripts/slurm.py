@@ -4,62 +4,32 @@ from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 """
 This script is used to launch a slurm job of a MITIM optimization.
-The main script should receive: folderWork and --seed
+The optimization script should receive both "folder" and "--seed", i.e.:
+
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("folder", type=str)
+        parser.add_argument("--seed", type=int, required=False, default=0)
+        args = parser.parse_args()
+        folder = Path(args.folder)
+        seed = args.seed
+
+        # REST OF SCRIPT
 
 To call:
-	cd folder_where_all_runs_are/
-	python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py ~/STUDIES/analysis/_2022_SweepUpdate/runGSnew.py run1 
 
-	or:
-		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py --folder run1 --partition sched_mit_psfc
-		python3 ~/MITIM/mitim_opt/opt_tools/scripts/slurm.py runGSnew.py --folder run1 --seeds 10
+    mitim_slurm runPORTALS.py --folder run1/
 
+Options:
+    --partition: partition to run the job
+    --env: path to the virtual environment
+    --seeds: number of seeds to run
+    --hours: number of hours to run the job
+    --n: number of CPUs per task
+    --seed_specific: specific seed to run
+    --extra: extra arguments to pass to the script
+   
 """
-
-
-def commander(
-    script,
-    folderWork0,
-    num,
-    partition,
-    venv,
-    n=32,
-    hours=8,
-    seed=0,
-    extra_name="",
-    extra=None,
-):
-    folderWork = IOtools.expandPath(folderWork0) / f"{extra_name}"
-
-    print(f"* Launching slurm job of MITIM optimization with random seed = {seed}")
-
-    folderWork.mkdir(parents=True, exist_ok=True)
-
-    if extra is not None:
-        extra_str = " ".join([str(e) for e in extra])
-    else:
-        extra_str = ""
-
-    command = [
-        f"source {venv}/bin/activate",
-        f"python3 {script} {folderWork} {extra_str} --seed {seed}",
-    ]
-
-    _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
-        command,
-        folderWork,
-        None,
-        folder_local=folderWork,
-        launchSlurm=True,
-        nameJob=f"mitim_opt_{num}{extra_name}",
-        slurm={"partition": partition},
-        minutes=int(60 * hours),
-        ntasks=1,
-        cpuspertask=n,
-    )
-
-    os.system(f"sbatch {fileSBATCH}")
-
 
 def run_slurm(
     script,
@@ -73,60 +43,62 @@ def run_slurm(
     extra=None,
 ):
     script = IOtools.expandPath(script)
-    folderWork = IOtools.expandPath(folder)
+    folder = IOtools.expandPath(folder)
 
-    num = folderWork.name
+    seeds_explore = [seed_specific] if seeds == 1 else list(range(seeds))
 
-    if seeds > 1:
-        for i in range(seeds):
-            j = i  # +10
-            commander(
-                script,
-                folderWork,
-                num,
-                partition,
-                venv,
-                seed=j,
-                extra_name=f"_s{j}",
-                hours=hours,
-                n=n,
-                extra=extra,
-            )
-    else:
-        commander(
-            script,
-            folderWork,
-            num,
-            partition,
-            venv,
-            seed=seed_specific,
-            hours=hours,
-            n=n,
-            extra=extra,
+    for seed in seeds_explore:
+
+        extra_name = "" if seeds == 1 else f"_s{seed}"
+
+        folder = IOtools.expandPath(folder) / extra_name
+
+        print(f"* Launching slurm job of MITIM optimization with random seed = {seed}")
+
+        folder.mkdir(parents=True, exist_ok=True)
+
+        extra_str = " ".join([str(e) for e in extra]) if extra is not None else ""
+
+        command = [
+            f"source {venv}/bin/activate",
+            f"python3 {script} {folder} {extra_str} --seed {seed}",
+        ]
+
+        _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
+            command,
+            folder_remote=folder,
+            folder_local=folder,
+            nameJob=f"mitim_opt_{folder.name}{extra_name}",
+            slurm={"partition": partition},
+            minutes=int(60 * hours),
+            ntasks=1,
+            cpuspertask=n,
         )
+
+        os.system(f"sbatch {fileSBATCH}")
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("script", type=str)
     parser.add_argument("--folder", type=str, required=False, default="run1/")
+    parser.add_argument("--hours", type=int, required=False, default=8)
+    parser.add_argument("--n", type=int, required=False, default=16)
+    parser.add_argument("--seed_specific", type=int, required=False, default=0)
+    parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
+    parser.add_argument("--seeds", type=int, required=False, default=1)
     parser.add_argument(
         "--partition",
         type=str,
         required=False,
         default=IOtools.expandPath("$MFEIM_PARTITION"),
     )
-    parser.add_argument("--seeds", type=int, required=False, default=1)
     parser.add_argument(
         "--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env")
     )
-    parser.add_argument("--hours", type=int, required=False, default=8)
-    parser.add_argument("--n", type=int, required=False, default=16)
-    parser.add_argument("--seed_specific", type=int, required=False, default=0)
-    parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
 
     args = parser.parse_args()
 
-    # Run
     run_slurm(
         args.script,
         args.folder,
