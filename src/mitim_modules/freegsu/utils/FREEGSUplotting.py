@@ -59,13 +59,13 @@ def writeResults(
     file = whereOutput / f"{namePkl}.pkl"
     try:
         with open(file, "wb") as handle:
-            pickle.dump(metrics, handle, protocol=2)
+            pickle.dump(metrics, handle, protocol=4)
     except:
         for i in range(len(prfs)):
             del metrics["prfs"][i].sweep.eq
             del metrics["prfs"][i].sweep.profiles.eq
         with open(file, "wb") as handle:
-            pickle.dump(metrics["prfs"][i].sweep, handle, protocol=2)
+            pickle.dump(metrics["prfs"][i].sweep, handle, protocol=4)
 
     return gs
 

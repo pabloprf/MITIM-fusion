@@ -1595,7 +1595,6 @@ Workflow start time: {IOtools.getStringFromTime()}
                 Best in each optimization loop. So, if each optimization provides 5 points, this will search
                 within that range. Not TURBO
         """
-
         self.iterationPositions = np.cumsum(self.numEvals)
 
         # -----------------------------------------------------------------

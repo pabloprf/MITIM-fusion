@@ -15123,7 +15123,7 @@ class transp_output:
         folderWork = IOtools.expandPath(folderWork)
         file = folderWork / f"{name}.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
 
 
     # ---------------------------------------------------------------------------------------------------------
@@ -16020,14 +16020,14 @@ class transp_output:
             dictPKL = {"rho": self.x_lw, "nimp": self.nZs[key]["total"][self.ind_saw]}
             file = folder / f"nimp{cont + 1}.pkl"
             with open(file, "wb") as handle:
-                pickle.dump(dictPKL, handle, protocol=2)
+                pickle.dump(dictPKL, handle, protocol=4)
             print(f" --> Written {file}")
 
         # Minorities
         dictPKL = {"rho": self.x_lw, "n": self.nmini[self.ind_saw]}
         file = folder / f"nmini.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
         print(f" --> Written {file}")
 
 # ---------------------------------------------------------------------------------------------------------

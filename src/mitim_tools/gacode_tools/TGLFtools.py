@@ -207,7 +207,7 @@ class TGLF:
 
         # Write
         with open(file, "wb") as handle:
-            pickle.dump(tglf_copy, handle)
+            pickle.dump(tglf_copy, handle, protocol=4)
 
     def prep(
         self,

@@ -232,7 +232,7 @@ class powerstate:
     def save(self, file):
         print(f"\t- Writing power state file: {IOtools.clipstr(file)}")
         with open(file, "wb") as handle:
-            pickle.dump(self, handle)
+            pickle.dump(self, handle, protocol=4)
 
     def combine_states(self, states, includeTransport=True):
         self.TransportOptions_set = [self.TransportOptions]
