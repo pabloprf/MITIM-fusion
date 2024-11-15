@@ -66,7 +66,7 @@ def initialization_simple_relax(self):
     for i in range(self.Originalinitial_training):
         ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
         ff.mkdir(parents=True, exist_ok=True)
-        newname = f"{namingConvention}{i}"
+        newname = f"{namingConvention}_{i}"
         shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete")
 
     return Xopt.cpu().numpy()

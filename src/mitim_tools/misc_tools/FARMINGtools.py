@@ -820,14 +820,14 @@ def timeout(time, proc=None):
 
 def run_subprocess(commandExecute, timeoutSecs=None, localRun=False):
     """
-    Note that before I had a context such as "with Popen() as p:" but that failed to catch time outs!
-    So, even though I don't know why... I'm doing this directly, with opening and closing it
-
-    For local runs, I had originally:
-            error=None; result=None;
-            os.system(Command)
-    Now, it uses subprocess with shell. This is because I couldn't load "source" because is a shell command, with simple os.system()
-    New solution is not the safest but it works.
+    Note (PRF):
+        Note that before I had a context such as "with Popen() as p:" but that failed to catch time outs!
+        So, even though I don't know why... I'm doing this directly, with opening and closing it
+        For local runs, I had originally:
+                error=None; result=None;
+                os.system(Command)
+        Now, it uses subprocess with shell. This is because I couldn't load "source" because is a shell command, with simple os.system()
+        New solution is not the safest but it works.
     """
 
     if localRun:

@@ -4,7 +4,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_tools import __mitimroot__
 
-cold_start = True
+cold_start = False
 
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
