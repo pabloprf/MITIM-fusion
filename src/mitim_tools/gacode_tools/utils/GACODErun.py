@@ -987,7 +987,7 @@ def runTGLF(
         TGLFcommand = ""
         for folder in folders_red:
 
-            if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
+            if tglf_job.machineSettings['machine'] != 'local':
                 folder_correct = folder.as_posix()
             else:
                 folder_correct = str(folder)
