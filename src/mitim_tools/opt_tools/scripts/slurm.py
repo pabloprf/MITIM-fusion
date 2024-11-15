@@ -78,13 +78,15 @@ def run_slurm(
             cpuspertask=n,
         )
 
+        command_execution = f"sbatch {fileSBATCH}"
+
         if machine == "local":
-            os.system(f"bash {fileSBATCH}")
+            os.system(command_execution)
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,
                 machine,
-                f"sbatch {fileSBATCH}",
+                command_execution,
                 input_files=[fileSBATCH],
                 job_name = nameJob,
                 )
