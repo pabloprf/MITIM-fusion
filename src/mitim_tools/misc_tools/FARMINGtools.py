@@ -507,6 +507,8 @@ class mitim_job:
         except socket.timeout:
             print("\t> Command timed out!", typeMsg="w")
 
+        embed()
+
         return output, error
 
     def execute_local(self, command_str, printYN=False, timeoutSecs=None, **kwargs):
@@ -1009,7 +1011,7 @@ def create_slurm_execution_files(
     commandSBATCH = []
 
     # ******* Basics
-    commandSBATCH.append("#!/bin/bash -l")
+    commandSBATCH.append("#!/usr/bin/env bash")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
     commandSBATCH.append(
         f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat"
@@ -1082,10 +1084,10 @@ def create_slurm_execution_files(
     if launchSlurm:
         comm, launch = commandSBATCH, "sbatch" + wait_txt + " "
     else:
-        comm, launch = ["#!/bin/bash -l"] + full_command, "" #"bash "
+        comm, launch = ["#!/usr/bin/env bash"] + full_command, ""
 
     fileSBATCH.unlink(missing_ok=True)
-    with open(fileSBATCH, "w") as f:
+    with open(fileSBATCH, "w", newline="") as f:
         f.write("\n".join(comm))
 
     """
@@ -1094,7 +1096,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    commandSHELL = ["#!/bin/bash -l"]
+    commandSHELL = ["#!/usr/bin/env bash"]
     commandSHELL.extend(copy.deepcopy(shellPreCommands))
     commandSHELL.append("")
     if modules_remote is not None:
@@ -1105,7 +1107,7 @@ def create_slurm_execution_files(
         commandSHELL.append(shellPostCommands[i])
 
     fileSHELL.unlink(missing_ok=True)
-    with open(fileSHELL, "w") as f:
+    with open(fileSHELL, "w", newline="") as f:
         f.write("\n".join(commandSHELL))
 
     """
