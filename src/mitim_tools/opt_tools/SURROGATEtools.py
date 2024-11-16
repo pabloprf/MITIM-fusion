@@ -42,6 +42,7 @@ class surrogate_model:
         surrogateOptions={},
         FixedValue=False,
         fileTraining=None,
+        seed = 0
     ):
         """
         Noise is variance here (square of standard deviation).
@@ -50,7 +51,7 @@ class surrogate_model:
         if avoidPoints is None:
             avoidPoints = []
 
-        torch.manual_seed(0)
+        torch.manual_seed(seed)
 
         self.avoidPoints = avoidPoints
         self.output = output
