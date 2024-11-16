@@ -146,8 +146,8 @@ class PORTALSanalyzer:
             print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
 
         # Store setup of TGYRO run
-        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].numpy()
-        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].numpy()
+        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
+        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
 
         self.PORTALSparameters = self.opt_fun.prfs_model.optimization_object.PORTALSparameters
         self.MODELparameters = self.opt_fun.prfs_model.optimization_object.MODELparameters
@@ -731,14 +731,14 @@ class wrapped_model_portals:
         for key in self._models:
             if hasattr(self._models[key], 'gpmodel'):
                 if hasattr(self._models[key].gpmodel, 'train_X_usedToTrain'):
-                    xtrain = self._models[key].gpmodel.train_X_usedToTrain.detach().numpy()
+                    xtrain = self._models[key].gpmodel.train_X_usedToTrain.detach().cpu().numpy()
                     if len(xtrain.shape) < 2:
                         xtrain = np.atleast_2d(xtrain)
                     if xtrain.shape[1] != len(self._input_variables):
                         xtrain = xtrain.T
                     self._training_inputs[key] = pd.DataFrame(xtrain, columns=self._input_variables)
                 if hasattr(self._models[key].gpmodel, 'train_Y_usedToTrain'):
-                    ytrain = self._models[key].gpmodel.train_Y_usedToTrain.detach().numpy()
+                    ytrain = self._models[key].gpmodel.train_Y_usedToTrain.detach().cpu().numpy()
                     if len(ytrain.shape) < 2:
                         ytrain = np.atleast_2d(ytrain)
                     if ytrain.shape[1] != 1:

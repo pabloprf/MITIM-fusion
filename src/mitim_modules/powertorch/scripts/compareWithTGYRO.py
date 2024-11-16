@@ -48,7 +48,7 @@ ax.plot(
     label="STATE Te",
     markersize=markersize,
 )
-MaxError = (np.abs(t.Te[0] - s.plasma["te"][0].numpy()) / t.Te[0] * 100.0).max()
+MaxError = (np.abs(t.Te[0] - s.plasma["te"][0].cpu().numpy()) / t.Te[0] * 100.0).max()
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Ti[0, 0], "s-", lw=0.5, label="TGYRO Ti", markersize=markersize)
@@ -60,7 +60,7 @@ ax.plot(
     label="STATE Ti",
     markersize=markersize,
 )
-MaxError = (np.abs(t.Ti[0, 0] - s.plasma["ti"][0].numpy()) / t.Ti[0, 0] * 100.0).max()
+MaxError = (np.abs(t.Ti[0, 0] - s.plasma["ti"][0].cpu().numpy()) / t.Ti[0, 0] * 100.0).max()
 print(f"{MaxError = :.3f} %")
 
 ax.set_ylabel("$keV$")
@@ -77,7 +77,7 @@ ax.plot(
     label="STATE ne",
     markersize=markersize,
 )
-MaxError = (np.abs(t.ne[0] - s.plasma["ne"][0].numpy() * 1e-1) / t.ne[0] * 100.0).max()
+MaxError = (np.abs(t.ne[0] - s.plasma["ne"][0].cpu().numpy() * 1e-1) / t.ne[0] * 100.0).max()
 print(f"{MaxError = :.3f} %")
 
 ax.set_ylabel("$10^{20}m^{-3}$")
@@ -109,7 +109,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         markersize=markersize,
     )
     MaxError = np.nanmax(
-        np.abs(tgyroQuantity[0] - P[0].numpy()) / tgyroQuantity[0] * 100.0
+        np.abs(tgyroQuantity[0] - P[0].cpu().numpy()) / tgyroQuantity[0] * 100.0
     )
     print(f"{label} {MaxError = :.3f} %")
 
@@ -142,7 +142,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         markersize=markersize,
     )
     MaxError = np.nanmax(
-        np.abs(tgyroQuantity[0] - P[0].numpy()) / tgyroQuantity[0] * 100.0
+        np.abs(tgyroQuantity[0] - P[0].cpu().numpy()) / tgyroQuantity[0] * 100.0
     )
     print(f"{label} {MaxError = :.3f} %")
 
@@ -156,19 +156,19 @@ ax = axs[0, 2]
 ax.plot(t.rho[0], t.Qe_tar[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
 P = s.plasma["Pe"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].numpy()) / t.Qe_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tar[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
 P = s.plasma["Pi"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].numpy()) / t.Qi_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Ce_tar[0], "s-", lw=0.5, label="TGYRO Ce", markersize=markersize)
 P = s.plasma["Ce"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Ce", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Ce_tarMW[0] - P[0].numpy()) / t.Ce_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Ce_tarMW[0] - P[0].cpu().numpy()) / t.Ce_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.set_ylabel("$MW/m^2$")
@@ -180,19 +180,19 @@ ax = axs[1, 2]
 ax.plot(t.rho[0], t.Qe_tarMW[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
 P = s.plasma["Pe"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].numpy()) / t.Qe_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tarMW[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
 P = s.plasma["Pi"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].numpy()) / t.Qi_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Ce_tarMW[0], "s-", lw=0.5, label="TGYRO Ce", markersize=markersize)
 P = s.plasma["Ce"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Ce", markersize=markersize)
-MaxError = np.nanmax(np.abs(t.Ce_tarMW[0] - P[0].numpy()) / t.Ce_tarMW[0] * 100.0)
+MaxError = np.nanmax(np.abs(t.Ce_tarMW[0] - P[0].cpu().numpy()) / t.Ce_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.set_ylabel("$MW$")

@@ -96,11 +96,11 @@ def RicciMetric(y1, y2, y1_std, y2_std, h=None, d0=2.0, l=1.0):
 
     for i in range(d.shape[1]):
         d[:, i] = (
-            (y1[:, i] - y2[:, i]) ** 2 / (y1_std[:, i] ** 2 + y2_std[:, i] ** 2)
+            (y1.cpu()[:, i] - y2.cpu()[:, i]) ** 2 / (y1_std.cpu()[:, i] ** 2 + y2_std.cpu()[:, i] ** 2)
         ) ** 0.5
         R[:, i] = 0.5 * (np.tanh((d[:, i] - d0) / l) + 1)
         S[:, i] = np.exp(
-            -(y1_std[:, i] + y2_std[:, i]) / (abs(y1[:, i]) + abs(y2[:, i]))
+            -(y1_std.cpu()[:, i] + y2_std.cpu()[:, i]) / (abs(y1.cpu()[:, i]) + abs(y2.cpu()[:, i]))
         )  # Quantification of measurement precision (0-1)
 
     QR = (H * S).sum(axis=1)  # Quality of comparison

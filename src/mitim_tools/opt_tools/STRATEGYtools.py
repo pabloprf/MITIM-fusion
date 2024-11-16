@@ -1008,7 +1008,7 @@ class PRF_BO:
 
         # Update optimization_data with nans
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Update optimization_results only as "predicted"
         if not isThisCorrected:
@@ -1064,7 +1064,7 @@ class PRF_BO:
 
         # Update Tabular data with the actual evaluations
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Update optimization_results with the actual evaluations
         if not isThisCorrected:
@@ -1348,7 +1348,7 @@ class PRF_BO:
 
         # Write initialization in Tabular
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Write optimization_results
         self.optimization_results.addPoints(
@@ -1393,7 +1393,7 @@ class PRF_BO:
             )
         # ------------------
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
         self.optimization_results.addPoints(
             includePoints=[0, self.Originalinitial_training],
             executed=True,
@@ -1671,7 +1671,7 @@ class PRF_BO:
 
             # Grab info from optimization
             infoOPT = self.steps[step].InfoOptimization
-            y_acq = infoOPT[0]['info']['acq_evaluated'].numpy()
+            y_acq = infoOPT[0]['info']['acq_evaluated'].cpu().numpy()
 
             # Operate
             acq = self.steps[step].evaluators['acq_function']
@@ -1778,7 +1778,7 @@ class PRF_BO:
 
         bounds = torch.Tensor([boundsRaw[b] for b in boundsRaw])
         boundsThis = (
-            info[0]["bounds"].numpy().transpose(1, 0) if "bounds" in info[0] else None
+            info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
         )
 
         # ----------------------------------------------------------------------

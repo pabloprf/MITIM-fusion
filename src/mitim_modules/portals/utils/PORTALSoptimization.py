@@ -142,7 +142,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     # Write In Table
     # ----------------------------------------------------
 
-    X = powerstate.Xcurrent[-1,:].unsqueeze(0).numpy()
+    X = powerstate.Xcurrent[-1,:].unsqueeze(0).cpu().numpy()
 
     if file_write_csv is not None:
         inputs = []
