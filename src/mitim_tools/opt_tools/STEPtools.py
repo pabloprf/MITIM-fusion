@@ -378,6 +378,16 @@ class OPTstep:
                 )
             )
 
+        elif self.acquisition_type == "ei_mc":
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.monte_carlo.qExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max(),
+                    sampler=sampler
+                )
+            )
+
         elif self.acquisition_type == "logei_mc":
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogExpectedImprovement(
