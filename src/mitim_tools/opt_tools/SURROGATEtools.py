@@ -13,10 +13,6 @@ from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
-
-UseCUDAifAvailable = True
-
 # ---------------------------------------------------------------------------------
 # 	Model Class
 # ---------------------------------------------------------------------------------
@@ -69,15 +65,7 @@ class surrogate_model:
         self.losses = None
 
         if self.dfT is None:
-            self.dfT = torch.randn(
-                (2, 2),
-                dtype=torch.double,
-                device=torch.device(
-                    "cpu"
-                    if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                    else "cuda"
-                ),
-            )
+            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
 
         self.train_X = torch.from_numpy(Xor).to(self.dfT)
         self.train_Y = torch.from_numpy(Yor).to(self.dfT)

@@ -31,7 +31,7 @@ def default_namelist(optimization_options):
 
 
 class vitals(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None):
+    def __init__(self, folder, namelist=None, **kwargs):
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -45,6 +45,7 @@ class vitals(STRATEGYtools.opt_evaluator):
             folder,
             namelist=namelist,
             default_namelist_function=default_namelist if (namelist is None) else None,
+            **kwargs
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

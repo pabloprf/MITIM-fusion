@@ -10,8 +10,6 @@ from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTt
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-UseCUDAifAvailable = True
-
 # ------------------------------------------------------------------
 # POWERSTATE Class
 # ------------------------------------------------------------------
@@ -32,6 +30,10 @@ class powerstate:
                 "TargetCalc": "powerstate"
                 },
         },
+        tensor_opts = {
+            "dtype": torch.double,
+            "device": torch.device("cpu"),
+        }
     ):
         '''
         Inputs:
@@ -69,15 +71,7 @@ class powerstate:
         self.ProfilesPredicted = _ensure_ne_before_nz(self.ProfilesPredicted)
 
         # Default type and device tensor
-        self.dfT = torch.randn(
-            (2, 2),
-            dtype=torch.double,
-            device=torch.device(
-                "cpu"
-                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                else "cuda"
-            ),
-        )
+        self.dfT = torch.randn((2, 2), **tensor_opts)
 
         '''
         Potential profiles to evolve (aLX) and their corresponding flux matching

@@ -485,12 +485,12 @@ def parameterize_curve(
     aLy_coarse[-1, 1] = aLy_coarse[-2, 1]
 
     # Boundary condition at point moved by gridPointsAllowed
-    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.cpu().numpy())).to(
+    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.numpy())).to(
         ygrad_coord
     )
 
     # Boundary condition at point (ACTUAL THAT I WANT to keep fixed, i.e. rho=0.8)
-    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.cpu().numpy())).to(
+    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.numpy())).to(
         ygrad_coord
     )
 

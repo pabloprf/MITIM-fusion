@@ -86,7 +86,10 @@ class portals(STRATEGYtools.opt_evaluator):
         self, 
         folder,                             # Folder where the PORTALS workflow will be run
         namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
-        TensorsType=torch.double,           # Type of tensors to be used (torch.float, torch.double)
+        tensor_opts = {
+            "dtype": torch.double,
+            "device": torch.device("cpu"),
+        },
         CGYROrun=False,                     # If True, use CGYRO defaults for best optimization practices
         portals_transformation_variables = None,          # If None, use defaults for both main and trace
         portals_transformation_variables_trace = None,
@@ -109,7 +112,7 @@ class portals(STRATEGYtools.opt_evaluator):
         super().__init__(
             folder,
             namelist=namelist,
-            TensorsType=TensorsType,
+            tensor_opts=tensor_opts,
             default_namelist_function=(
                 partial(default_namelist, CGYROrun=CGYROrun)
                 if (namelist is None)
@@ -185,8 +188,6 @@ class portals(STRATEGYtools.opt_evaluator):
 		Physics-informed parameters to fit surrogates
 		---------------------------------------------
 		"""
-
-        
 
         (
             portals_transformation_variables,
@@ -316,7 +317,7 @@ class portals(STRATEGYtools.opt_evaluator):
             limitsAreRelative=limitsAreRelative,
             cold_start=cold_start,
             hardGradientLimits=hardGradientLimits,
-            dfT=self.dfT,
+            tensor_opts = self.tensor_opts,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
             ModelOptions=ModelOptions,
