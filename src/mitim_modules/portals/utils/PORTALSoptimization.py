@@ -104,6 +104,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
 
 
     # Create powerstate with the same options as the original portals but with the new profiles
+    embed()
     powerstate = STATEtools.powerstate(
         profiles_new,
         EvolutionOptions={
@@ -115,6 +116,9 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
         },
         TransportOptions=TransportOptions,
         TargetOptions=step.surrogate_parameters["powerstate"].TargetOptions,
+        tensor_opts = {
+            "dtype": step.surrogate_parameters["powerstate"].dfT.dtype,
+            "device": step.surrogate_parameters["powerstate"].dfT.device},
     )
 
     # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles

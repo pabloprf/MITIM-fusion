@@ -21,8 +21,6 @@ from mitim_tools.opt_tools.utils import (
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
-UseCUDAifAvailable = True
-
 """
 Example usage (see tutorials for actual examples and parameter definitions):
 
@@ -70,12 +68,17 @@ class opt_evaluator:
         self,
         folder,
         namelist=None,
-        TensorsType=torch.double,
         default_namelist_function=None,
+        tensor_opts = {
+            "dtype": torch.double,
+            "device": torch.device("cpu"),
+        }
     ):
         """
         Namelist file can be provided and will be copied to the folder
         """
+
+        self.tensor_opts = tensor_opts
 
         print("- Parent opt_evaluator function initialized")
 
@@ -124,17 +127,9 @@ class opt_evaluator:
 
         # Determine type of tensors to work with
         torch.set_default_dtype(
-            TensorsType
+            self.tensor_opts["dtype"]
         )  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
-        self.dfT = torch.randn(
-            (2, 2),
-            dtype=TensorsType,
-            device=torch.device(
-                "cpu"
-                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                else "cuda"
-            ),
-        )
+        self.dfT = torch.randn( (2, 2), **tensor_opts)
 
         # Name of calibrated objectives (e.g. QiRes1 to represent the objective from Qi1-QiT1)
         self.name_objectives = None

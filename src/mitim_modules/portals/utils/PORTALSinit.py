@@ -26,10 +26,13 @@ def initializeProblem(
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
-    dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
+    tensor_opts = {
+        "dtype": torch.double,
+        "device": torch.device("cpu"),
+    }
     ):
     """
     Notes:
@@ -38,6 +41,8 @@ def initializeProblem(
         - I can give ModelOptions directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
+
+    dfT = torch.randn((2, 2), **tensor_opts)
 
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
@@ -177,6 +182,7 @@ def initializeProblem(
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                 "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
         },
+        tensor_opts = tensor_opts
     )
 
     # ***************************************************************************************************
@@ -227,6 +233,7 @@ def initializeProblem(
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                     "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
             },
+            tensor_opts = tensor_opts
         )
 
         dictCPs_base_extra = {}

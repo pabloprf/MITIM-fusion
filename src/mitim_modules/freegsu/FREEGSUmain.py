@@ -33,7 +33,7 @@ def default_namelist(optimization_options):
 
 
 class freegsu(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None, function_parameters={}):
+    def __init__(self, folder, namelist=None, function_parameters={}, **kwargs):
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -49,6 +49,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
             folder,
             namelist=namelist,
             default_namelist_function=default_namelist if (namelist is None) else None,
+            **kwargs
         )
 
     def prep(
