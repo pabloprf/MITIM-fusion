@@ -55,7 +55,8 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
             return f
         fun_opt.__call__ = types.MethodType(new_call, fun_opt)
 
-    print(f"\t\t- Optimizing using optimize_acqf: {q = } {f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''}, {num_restarts = }, {raw_samples = }")
+    seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
+    print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
 
     with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
         x_opt, _ = botorch.optim.optimize_acqf(
