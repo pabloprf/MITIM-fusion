@@ -1662,7 +1662,7 @@ class MITIM_BO:
 
         fig = fn.add_figure(label='Acquisition Convergence')
 
-        axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3, sharex=False, sharey=False)
+        axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3)
 
         for step in step_num:
 
@@ -1681,20 +1681,18 @@ class MITIM_BO:
             for ix in range(self.steps[step].train_X.shape[0]):
                 acq_trained[ix] = acq(torch.Tensor(self.steps[step].train_X[ix,:]).unsqueeze(0)).item()
 
-
             # Plot
-            ax.plot(y_acq, c='b')
-            ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=0.5, label='max acq of trained points')
+            ax.plot(y_acq,'-o', c='g', markersize=2, lw = 0.5, label='max of batch')
+            ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=1.0, label='max trained')
+            ax.axhline(y=y_acq[0], c='b', ls='--', lw=1.0, label='max of guesses')
 
             ax.set_title(f'BO Step #{step}')
-            ax.set_ylabel('acquisition')
-            ax.set_xlabel('iteration')
+            ax.set_ylabel('$f_{acq}$ (to max)')
+            ax.set_xlabel('Evaluations')
             if step == step_num[0]:
-                ax.legend()
+                ax.legend(loc='best')
 
             GRAPHICStools.addDenseAxis(ax)
-            ax.set_ylim(top=0.0)
-
 
     def plotModelStatus(
         self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None
@@ -1878,21 +1876,12 @@ class MITIM_BO:
 
         xypair = np.array(xypair)
 
-        loga = True if xypair[:, 1].min() > 0 else False
-
         axsDVs[0].legend(prop={"size": 5})
-        if loga:
-            for p in range(len(axsOFs)):
-                axsOFs[p].set_xscale("log")
-                axsOFs[p].set_yscale("log")
-
         ax1_r.set_ylabel("DV values")
         GRAPHICStools.addDenseAxis(ax1_r)
         GRAPHICStools.autoscale_y(ax1_r)
 
-        ax2_r.set_ylabel("Residual values")
-        if loga:
-            ax2_r.set_yscale("log")
+        ax2_r.set_ylabel("Acquisition values")
         GRAPHICStools.addDenseAxis(ax2_r)
         GRAPHICStools.autoscale_y(ax2_r)
 
@@ -1901,20 +1890,18 @@ class MITIM_BO:
         iinfo = info[-1]["info"]
         for i, y in enumerate(iinfo["y_res"]):
             ax0_r.axhline(
-                y=-y,
+                y=y,
                 c=colors[ipost + 1],
                 ls="--",
                 lw=2,
                 label=info[-1]["method"] if i == 0 else "",
             )
         iinfo = info[0]["info"]
-        ax0_r.axhline(y=-iinfo["y_res_start"][0], c="k", ls="--", lw=2)
+        ax0_r.axhline(y=iinfo["y_res_start"][0], c="k", ls="--", lw=2)
 
         ax0_r.set_xlabel("Optimization iterations")
-        ax0_r.set_ylabel("$-f_{acq}$")
+        ax0_r.set_ylabel("$f_{acq}$")
         GRAPHICStools.addDenseAxis(ax0_r)
-        if loga:
-            ax0_r.set_yscale("log")
         ax0_r.legend(loc="best", prop={"size": 8})
         ax0_r.set_title("Evolution of acquisition in optimization stages")
 
