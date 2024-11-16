@@ -34,8 +34,8 @@ class surrogate_model:
         Yor,
         Yvaror,
         surrogate_parameters,
-        output=None,
-        output_transformed=None,
+        outputs=None,
+        outputs_transformed=None,
         bounds=None,
         avoidPoints=None,
         dfT=None,
@@ -54,8 +54,8 @@ class surrogate_model:
         torch.manual_seed(seed)
 
         self.avoidPoints = avoidPoints
-        self.output = output
-        self.output_transformed = output_transformed
+        self.outputs = outputs
+        self.outputs_transformed = outputs_transformed
         self.surrogateOptions = surrogateOptions
         self.dfT = dfT
         self.surrogate_parameters = surrogate_parameters
@@ -68,9 +68,9 @@ class surrogate_model:
         if self.dfT is None:
             self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
 
-        self.train_X = torch.from_numpy(Xor).to(self.dfT)
         self.train_Y = torch.from_numpy(Yor).to(self.dfT)
-
+        self.train_X = torch.from_numpy(Xor).to(self.dfT).unsqueeze(0).repeat(self.train_Y.shape[-1], 1, 1)
+        
         # Extend noise if needed
         if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
             print(
@@ -249,23 +249,24 @@ class surrogate_model:
             tf1=outcome_transform_physics, tf2=output_transformed_standardization
         ).to(self.dfT)
 
-        self.variables = (
-            self.surrogate_transformation_variables[self.output]
-            if (
-                (self.output is not None)
-                and ("surrogate_transformation_variables" in self.__dict__)
-                and (self.surrogate_transformation_variables is not None)
-            )
-            else None
-        )
+        self.variables = None
+        # self.variables = (
+        #     self.surrogate_transformation_variables[self.output]
+        #     if (
+        #         (self.output is not None)
+        #         and ("surrogate_transformation_variables" in self.__dict__)
+        #         and (self.surrogate_transformation_variables is not None)
+        #     )
+        #     else None
+        # )
 
         # *************************************************************************************
         # Model
         # *************************************************************************************
 
-        print(
-            f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-        )
+        # print(
+        #     f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
+        # )
 
         """
         self.train_X contains the untransformed of this specific run:   (batch1, dimX)
@@ -286,23 +287,10 @@ class surrogate_model:
 
     def _define_physics_transformation(self):
 
-        self._select_transition_physics_based_params()
+        # ------------------------------------------------------------------------------------
+        # Define individual transformations and then put together
+        # ------------------------------------------------------------------------------------
 
-        # Input and Outcome transform (PHYSICS)
-        dimY = self.train_Y.shape[-1]
-        input_transform_physics = BOTORCHtools.Transformation_Inputs(
-            self.output, self.surrogate_parameters, self.surrogate_transformation_variables
-        ).to(self.dfT)
-        outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
-            dimY, self.output, self.surrogate_parameters
-        ).to(self.dfT)
-
-        dimTransformedDV_x = input_transform_physics(self.train_X).shape[-1]
-        dimTransformedDV_y = dimY
-
-        return input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y
-
-    def _select_transition_physics_based_params(self, ):
         self.surrogate_transformation_variables = None
         if ("surrogate_transformation_variables_alltimes" in self.surrogate_parameters) and (self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None):
 
@@ -321,6 +309,41 @@ class surrogate_model:
 
             self.surrogate_transformation_variables = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
 
+        # ------------------------------------------------------------------------------------
+        # Input and Outcome transform (PHYSICS) of each output
+        # ------------------------------------------------------------------------------------
+
+        input_transformations_physics = []
+        outcome_transformations_physics = []
+
+        for ind_out in range(self.train_Y.shape[-1]):
+
+            dimY = 1
+
+            input_transform_physics = BOTORCHtools.Transformation_Inputs(
+                self.outputs[ind_out], self.surrogate_parameters, self.surrogate_transformation_variables
+            ).to(self.dfT)
+            outcome_transform_physics = BOTORCHtools.Transformation_Outcomes(
+                dimY, self.outputs[ind_out], self.surrogate_parameters
+            ).to(self.dfT)
+
+            input_transformations_physics.append(input_transform_physics)
+            outcome_transformations_physics.append(outcome_transform_physics)
+
+        # ------------------------------------------------------------------------------------
+        # Broadcast the input transformation to all outputs
+        # ------------------------------------------------------------------------------------
+
+        input_transformation_physics = botorch.models.transforms.input.BatchBroadcastedInputTransform(input_transformations_physics)
+        output_transformation_physics = outcome_transformations_physics[0] #TO FIX
+
+        dimX = input_transformation_physics(self.train_X).shape[-1]
+
+        dimTransformedDV_x = dimX
+        dimTransformedDV_y = self.train_Y.shape[-1]
+
+        return input_transformation_physics, output_transformation_physics, dimTransformedDV_x, dimTransformedDV_y
+
     def normalization_pass(
         self,
         input_transform_physics,
@@ -332,12 +355,15 @@ class surrogate_model:
         outcome_transform_normalization.training = True
         outcome_transform_normalization._is_trained = torch.tensor(False)
 
-        train_X_transformed = torch.cat(
-            (input_transform_physics(self.train_X), self.train_X_added), axis=0
-        )
-        y, yvar = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
-        train_Y_transformed = torch.cat((y, self.train_Y_added), axis=0)
-        train_Yvar_transformed = torch.cat((yvar, self.train_Yvar_added), axis=0)
+        train_X_transformed = input_transform_physics(self.train_X)
+        train_Y_transformed, train_Yvar_transformed = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
+
+        # train_X_transformed = torch.cat(
+        #     (input_transform_physics(self.train_X), self.train_X_added), axis=0
+        # )
+        # y, yvar = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
+        # train_Y_transformed = torch.cat((y, self.train_Y_added), axis=0)
+        # train_Yvar_transformed = torch.cat((yvar, self.train_Yvar_added), axis=0)
 
         train_X_transformed_norm = input_transform_normalization(train_X_transformed)
         (
@@ -420,6 +446,7 @@ class surrogate_model:
         # --------------------------------------------------
 
         # Store first MLL value
+        embed()
         track_fval = [
             -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
             .detach()

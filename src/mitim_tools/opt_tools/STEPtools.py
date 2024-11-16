@@ -158,6 +158,29 @@ class OPTstep:
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
 
+        # full Multi-output model
+        gp_mo = SURROGATEtools.surrogate_model(
+            self.x,
+            self.y,
+            self.yvar,
+            self.surrogate_parameters,
+            outputs=self.outputs,
+            outputs_transformed=self.stepSettings["name_transformed_ofs"],
+            bounds=self.bounds,
+            dfT=self.dfT,
+            surrogateOptions=self.surrogateOptions,
+        )
+
+        # Fitting
+        gp_mo.fit()
+
+
+        aaaa
+
+
+
+
+
         for i in range(self.y.shape[-1]):
             outi = self.outputs[i] if (self.outputs is not None) else None
 

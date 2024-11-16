@@ -43,16 +43,16 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
         )
 
-        self.store_training(
-            train_X,
-            train_X_added,
-            train_Y,
-            train_Y_added,
-            train_Yvar,
-            train_Yvar_added,
-            input_transform,
-            outcome_transform,
-        )
+        # self.store_training(
+        #     train_X,
+        #     train_X_added,
+        #     train_Y,
+        #     train_Y_added,
+        #     train_Yvar,
+        #     train_Yvar_added,
+        #     input_transform,
+        #     outcome_transform,
+        # )
 
         """
 		----------------------------------------------------------------------------------------
@@ -78,24 +78,24 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         if outcome_transform is not None:
             train_Y, train_Yvar = outcome_transform(train_X, train_Y, train_Yvar)
 
-        # Added points are raw transformed, so I need to normalize them
-        if train_X_added.shape[0] > 0:
-            train_X_added = input_transform["tf2"](train_X_added)
-            train_Y_added, train_Yvar_added = outcome_transform["tf2"](
-                train_Y_added, train_Yvar_added
-            )
+        # # Added points are raw transformed, so I need to normalize them
+        # if train_X_added.shape[0] > 0:
+        #     train_X_added = input_transform["tf2"](train_X_added)
+        #     train_Y_added, train_Yvar_added = outcome_transform["tf2"](
+        #         train_Y_added, train_Yvar_added
+        #     )
         # -----
 
-        train_X_usedToTrain = torch.cat((transformed_X, train_X_added), axis=0)
-        train_Y_usedToTrain = torch.cat((train_Y, train_Y_added), axis=0)
-        train_Yvar_usedToTrain = torch.cat((train_Yvar, train_Yvar_added), axis=0)
+        train_X_usedToTrain = transformed_X #torch.cat((transformed_X, train_X_added), axis=0)
+        train_Y_usedToTrain = train_Y #torch.cat((train_Y, train_Y_added), axis=0)
+        train_Yvar_usedToTrain = train_Yvar #torch.cat((train_Yvar, train_Yvar_added), axis=0)
 
         self._input_batch_shape, self._aug_batch_shape = self.get_batch_dimensions(
             train_X=train_X_usedToTrain, train_Y=train_Y_usedToTrain
         )
 
-        train_Y_usedToTrain = train_Y_usedToTrain.squeeze(-1)
-        train_Yvar_usedToTrain = train_Yvar_usedToTrain.squeeze(-1)
+        # train_Y_usedToTrain = train_Y_usedToTrain.squeeze(-1)
+        # train_Yvar_usedToTrain = train_Yvar_usedToTrain.squeeze(-1)
 
         """
 		-----------------------------------------------------------------------
