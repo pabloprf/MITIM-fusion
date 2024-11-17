@@ -68,9 +68,10 @@ class surrogate_model:
         if self.dfT is None:
             self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
 
+        # I need: GPs, training, dim
         self.train_Y = torch.from_numpy(Yor).to(self.dfT)
-        self.train_X = torch.from_numpy(Xor).to(self.dfT).unsqueeze(0).repeat(self.train_Y.shape[-1], 1, 1)
-        
+        self.train_X = torch.from_numpy(Xor).to(self.dfT)
+
         # Extend noise if needed
         if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
             print(
@@ -85,31 +86,32 @@ class surrogate_model:
         for i in self.surrogateOptions:
             print(f"\t\t{i:20} = {self.surrogateOptions[i]}")
 
-        # --------------------------------------------------------------------
-        # Eliminate points if needed (not from the "added" set)
-        # --------------------------------------------------------------------
+        # # --------------------------------------------------------------------
+        # # Eliminate points if needed (not from the "added" set)
+        # # --------------------------------------------------------------------
 
-        if len(self.avoidPoints) > 0:
-            print(
-                f"\t- Fitting without considering points: {self.avoidPoints}",
-                typeMsg="w",
-            )
+        # if len(self.avoidPoints) > 0:
+        #     print(
+        #         f"\t- Fitting without considering points: {self.avoidPoints}",
+        #         typeMsg="w",
+        #     )
 
-            self.train_X = torch.Tensor(
-                np.delete(self.train_X, self.avoidPoints, axis=0)
-            ).to(self.dfT)
-            self.train_Y = torch.Tensor(
-                np.delete(self.train_Y, self.avoidPoints, axis=0)
-            ).to(self.dfT)
-            self.train_Yvar = torch.Tensor(
-                np.delete(self.train_Yvar, self.avoidPoints, axis=0)
-            ).to(self.dfT)
+        #     self.train_X = torch.Tensor(
+        #         np.delete(self.train_X, self.avoidPoints, axis=0)
+        #     ).to(self.dfT)
+        #     self.train_Y = torch.Tensor(
+        #         np.delete(self.train_Y, self.avoidPoints, axis=0)
+        #     ).to(self.dfT)
+        #     self.train_Yvar = torch.Tensor(
+        #         np.delete(self.train_Yvar, self.avoidPoints, axis=0)
+        #     ).to(self.dfT)
 
         # -------------------------------------------------------------------------------------
         # Add points from file
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
+        continueAdding = False
         if ("extrapointsFile" in self.surrogateOptions) and (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
 
             print(
@@ -124,8 +126,6 @@ class surrogate_model:
                 continueAdding = False
             else:
                 continueAdding = True
-        else:
-            continueAdding = False
 
         if continueAdding:
 
@@ -173,7 +173,7 @@ class surrogate_model:
             # --------------------------------------------------------------------------------------
             # Define transformation (here because I want to account for the added points)
             # --------------------------------------------------------------------------------------
-            self.num_training_points = self.train_X.shape[0]
+            self.num_training_points = self.train_X.shape[1]
             input_transform_physics, outcome_transform_physics, dimTransformedDV_x, dimTransformedDV_y = self._define_physics_transformation()
             # ------------------------------------------------------------------------------------------------------------
 
@@ -223,10 +223,10 @@ class surrogate_model:
         # -------------------------------------------------------------------------------------
 
         input_transform_normalization = botorch.models.transforms.input.Normalize(
-            dimTransformedDV_x, bounds=None
+            d = dimTransformedDV_x, bounds=None
         ).to(self.dfT)
         output_transformed_standardization = (
-            botorch.models.transforms.outcome.Standardize((dimTransformedDV_y))
+            botorch.models.transforms.outcome.Standardize(m = dimTransformedDV_y)
         ).to(self.dfT)
 
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
@@ -272,18 +272,26 @@ class surrogate_model:
         self.train_X contains the untransformed of this specific run:   (batch1, dimX)
         self.train_X_added contains the transformed of the table:       (batch2, dimXtr)
         """
-        self.gpmodel = BOTORCHtools.ExactGPcustom(
-            self.train_X,
-            self.train_Y,
-            self.train_Yvar,
-            input_transform=input_transform,
-            outcome_transform=outcome_transform,
-            surrogateOptions=self.surrogateOptions,
-            variables=self.variables,
-            train_X_added=self.train_X_added,
-            train_Y_added=self.train_Y_added,
-            train_Yvar_added=self.train_Yvar_added,
+
+        embed()
+        self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
+            self.train_X, self.train_Y, train_Yvar = self.train_Yvar, input_transform = input_transform) #, outcome_transform=outcome_transform,
         )
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gpmodel.likelihood, self.gpmodel)
+        botorch.fit.fit_gpytorch_mll(mll)
+
+        # self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
+        #     self.train_X,
+        #     self.train_Y,
+        #     self.train_Yvar,
+        #     input_transform=input_transform,
+        #     outcome_transform=outcome_transform,
+        #     surrogateOptions=self.surrogateOptions,
+        #     variables=self.variables,
+        #     train_X_added=self.train_X_added,
+        #     train_Y_added=self.train_Y_added,
+        #     train_Yvar_added=self.train_Yvar_added,
+        # )
 
     def _define_physics_transformation(self):
 
@@ -316,9 +324,9 @@ class surrogate_model:
         input_transformations_physics = []
         outcome_transformations_physics = []
 
-        for ind_out in range(self.train_Y.shape[-1]):
+        for ind_out in range(self.train_Y.shape[0]):
 
-            dimY = 1
+            dimY = self.train_Y.shape[-1]
 
             input_transform_physics = BOTORCHtools.Transformation_Inputs(
                 self.outputs[ind_out], self.surrogate_parameters, self.surrogate_transformation_variables
@@ -334,7 +342,7 @@ class surrogate_model:
         # Broadcast the input transformation to all outputs
         # ------------------------------------------------------------------------------------
 
-        input_transformation_physics = botorch.models.transforms.input.BatchBroadcastedInputTransform(input_transformations_physics)
+        input_transformation_physics = BOTORCHtools.BatchBroadcastedInputTransform_MITIM(input_transformations_physics)
         output_transformation_physics = outcome_transformations_physics[0] #TO FIX
 
         dimX = input_transformation_physics(self.train_X).shape[-1]
@@ -408,8 +416,8 @@ class surrogate_model:
 		"""
 
         # Train always in physics-transformed space, to enable mitim re-use training from file
-        with fundamental_model_context(self):
-            track_fval = self.perform_model_fit(mll)
+        #with fundamental_model_context(self):
+        track_fval = self.perform_model_fit(mll)
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
@@ -446,11 +454,9 @@ class surrogate_model:
         # --------------------------------------------------
 
         # Store first MLL value
-        embed()
         track_fval = [
             -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
             .detach()
-            .item()
         ]
 
         def callback(x, y, mll=mll):
@@ -472,9 +478,9 @@ class surrogate_model:
         self.gpmodel.likelihood.eval()
         mll.eval()
 
-        print(
-            f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}"
-        )
+        # print(
+        #     f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}"
+        # )
 
         return track_fval
 
@@ -898,13 +904,15 @@ class fundamental_model_context(object):
 
     def __enter__(self):
         # Works for individual models, not ModelList
-        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = False
+        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = False
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = False
 
         return self.surrogate_model
 
     def __exit__(self, *args):
-        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = True
+        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = True
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
 
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):

@@ -14,8 +14,156 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
 # ----------------------------------------------------------------------------------------------------------------------------
 
+import torch
+from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
+from botorch.models.model import FantasizeMixin
+from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform, Standardize
+from botorch.models.utils import validate_input_scaling
+from botorch.models.utils.gpytorch_modules import (
+    get_covar_module_with_dim_scaled_prior,
+    get_gaussian_likelihood_with_lognormal_prior,
+)
+from botorch.utils.containers import BotorchContainer
+from botorch.utils.datasets import SupervisedDataset
+from botorch.utils.types import _DefaultType, DEFAULT
+from gpytorch.distributions.multivariate_normal import MultivariateNormal
+from gpytorch.likelihoods.gaussian_likelihood import FixedNoiseGaussianLikelihood
+from gpytorch.likelihoods.likelihood import Likelihood
+from gpytorch.means.constant_mean import ConstantMean
+from gpytorch.means.mean import Mean
+from gpytorch.models.exact_gp import ExactGP
+from gpytorch.module import Module
+from torch import Tensor
 
-class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
+class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
+    def __init__(
+        self,
+        train_X,
+        train_Y,
+        train_Yvar = None,
+        likelihood = None,
+        covar_module = None,
+        mean_module = None,
+        outcome_transform = None,
+        input_transform = None,
+    ) -> None:
+
+        self._validate_tensor_args(X=train_X, Y=train_Y, Yvar=train_Yvar)
+        if outcome_transform == DEFAULT:
+            outcome_transform = Standardize(
+                m=train_Y.shape[-1], batch_shape=train_X.shape[:-2]
+            )
+        with torch.no_grad():
+            transformed_X = self.transform_inputs(
+                X=train_X, input_transform=input_transform
+            )
+            embed()
+        if outcome_transform is not None:
+            train_Y, train_Yvar = outcome_transform(train_X, train_Y, train_Yvar)
+        # Validate again after applying the transforms
+        self._validate_tensor_args(X=transformed_X, Y=train_Y, Yvar=train_Yvar)
+        ignore_X_dims = getattr(self, "_ignore_X_dims_scaling_check", None)
+        validate_input_scaling(
+            train_X=transformed_X,
+            train_Y=train_Y,
+            train_Yvar=train_Yvar,
+            ignore_X_dims=ignore_X_dims,
+        )
+        self._set_dimensions(train_X=train_X, train_Y=train_Y)
+        train_X, train_Y, train_Yvar = self._transform_tensor_args(
+            X=train_X, Y=train_Y, Yvar=train_Yvar
+        )
+        if likelihood is None:
+            if train_Yvar is None:
+                likelihood = get_gaussian_likelihood_with_lognormal_prior(
+                    batch_shape=self._aug_batch_shape
+                )
+            else:
+                likelihood = FixedNoiseGaussianLikelihood(
+                    noise=train_Yvar, batch_shape=self._aug_batch_shape
+                )
+        else:
+            self._is_custom_likelihood = True
+        ExactGP.__init__(
+            self, train_inputs=train_X, train_targets=train_Y, likelihood=likelihood
+        )
+        if mean_module is None:
+            mean_module = ConstantMean(batch_shape=self._aug_batch_shape)
+        self.mean_module = mean_module
+        if covar_module is None:
+            covar_module = get_covar_module_with_dim_scaled_prior(
+                ard_num_dims=transformed_X.shape[-1],
+                batch_shape=self._aug_batch_shape,
+            )
+            # Used for subsetting along the output dimension. See Model.subset_output.
+            self._subset_batch_dict = {
+                "mean_module.raw_constant": -1,
+                "covar_module.raw_lengthscale": -3,
+            }
+            if train_Yvar is None:
+                self._subset_batch_dict["likelihood.noise_covar.raw_noise"] = -2
+        self.covar_module: Module = covar_module
+        # TODO: Allow subsetting of other covar modules
+        if outcome_transform is not None:
+            self.outcome_transform = outcome_transform
+        if input_transform is not None:
+            self.input_transform = input_transform
+        self.to(train_X)
+
+    def posterior(
+        self,
+        X,
+        output_indices=None,
+        observation_noise=False,
+        posterior_transform=None,
+        **kwargs,
+    ):
+
+        self.eval()  # make sure model is in eval mode
+        # input transforms are applied at `posterior` in `eval` mode, and at
+        # `model.forward()` at the training time
+        Xtr = self.transform_inputs(X)
+        with botorch.models.utils.gpt_posterior_settings():
+            # insert a dimension for the output dimension
+            if self._num_outputs > 1:
+                Xtr, output_dim_idx = botorch.models.utils.add_output_dim(
+                    X=Xtr, original_batch_shape=self._input_batch_shape
+                )
+            # NOTE: BoTorch's GPyTorchModels also inherit from GPyTorch's ExactGP, thus
+            # self(X) calls GPyTorch's ExactGP's __call__, which computes the posterior,
+            # rather than e.g. SingleTaskGP's forward, which computes the prior.
+            mvn = self(Xtr)
+            mvn = self._apply_noise(X=Xtr, mvn=mvn, observation_noise=observation_noise)
+            if self._num_outputs > 1:
+                mean_x = mvn.mean
+                covar_x = mvn.lazy_covariance_matrix
+                output_indices = output_indices or range(self._num_outputs)
+                mvns = [
+                    gpytorch.distributions.MultivariateNormal(
+                        mean_x.select(dim=output_dim_idx, index=t),
+                        covar_x[(slice(None),) * output_dim_idx + (t,)],
+                    )
+                    for t in output_indices
+                ]
+                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
+
+        posterior = botorch.posteriors.gpytorch.GPyTorchPosterior(distribution=mvn)
+        if hasattr(self, "outcome_transform"):
+            posterior = self.outcome_transform.untransform_posterior(X, posterior)
+        if posterior_transform is not None:
+            return posterior_transform(posterior)
+        return posterior
+
+class BatchBroadcastedInputTransform_MITIM(botorch.models.transforms.input.BatchBroadcastedInputTransform):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+  
+    def _Xs_and_transforms(self, X):
+        Xs = (X,) * len(self.transforms)
+        return zip(Xs, self.transforms)
+
+class SingleTaskGP_MITIM2(botorch.models.gp_regression.SingleTaskGP):
     def __init__(
         self,
         train_X,
@@ -107,7 +255,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
 
         if FixedNoise:
             # Noise not inferred, given by data
-            
             likelihood = (
                 gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
                     noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
@@ -272,6 +419,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         posterior_transform=None,
         **kwargs,
     ):
+
         self.eval()  # make sure model is in eval mode
         # input transforms are applied at `posterior` in `eval` mode, and at
         # `model.forward()` at the training time
@@ -368,7 +516,6 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 # ----------------------------------------------------------------------------------------------------------------------------
 # I need my own transformation based on physics
 # ----------------------------------------------------------------------------------------------------------------------------
-
 
 class Transformation_Inputs(
     botorch.models.transforms.input.ReversibleInputTransform, torch.nn.Module

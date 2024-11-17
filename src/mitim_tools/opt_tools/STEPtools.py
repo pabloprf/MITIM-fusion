@@ -159,7 +159,7 @@ class OPTstep:
         time1 = datetime.datetime.now()
 
         # full Multi-output model
-        gp_mo = SURROGATEtools.surrogate_model(
+        self.GP["combined_model"] = SURROGATEtools.surrogate_model(
             self.x,
             self.y,
             self.yvar,
@@ -172,166 +172,162 @@ class OPTstep:
         )
 
         # Fitting
-        gp_mo.fit()
+        self.GP["combined_model"].fit()
 
 
-        aaaa
+        # for i in range(self.y.shape[-1]):
+        #     outi = self.outputs[i] if (self.outputs is not None) else None
+
+        #     # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
+        #     specialTreatment = (
+        #         (outi is not None)
+        #         and (fitWithTrainingDataIfContains is not None)
+        #         and (fitWithTrainingDataIfContains not in outi)
+        #     )
+        #     # -----------------------------------------------------------------------------------------------------------------------------------
+
+        #     outi_transformed = (
+        #         self.stepSettings["name_transformed_ofs"][i]
+        #         if (self.stepSettings["name_transformed_ofs"] is not None)
+        #         else outi
+        #     )
+
+        #     # ---------------------------------------------------------------------------------------------------
+        #     # Define model-specific functions for this output
+        #     # ---------------------------------------------------------------------------------------------------
+
+        #     surrogateOptions = copy.deepcopy(self.surrogateOptions)
+
+        #     # Then, depending on application (e.g. targets in mitim are fitted differently)
+        #     if (
+        #         "selectSurrogate" in surrogateOptions
+        #         and surrogateOptions["selectSurrogate"] is not None
+        #     ):
+        #         surrogateOptions = surrogateOptions["selectSurrogate"](
+        #             outi, surrogateOptions
+        #         )
+
+        #     # ---------------------------------------------------------------------------------------------------
+        #     # To avoid problems with fixed values (e.g. calibration terms that are fixed)
+        #     # ---------------------------------------------------------------------------------------------------
+
+        #     threshold_to_consider_fixed = 1e-6
+        #     MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(
+        #         self.y.mean()
+        #     )
+
+        #     if (
+        #         np.isnan(MaxRelativeDifference)
+        #         or (
+        #             (self.y.shape[0] > 1)
+        #             and ((MaxRelativeDifference < threshold_to_consider_fixed).all())
+        #         )
+        #     ) and (not specialTreatment):
+        #         print(
+        #             f"\t- Identified that outputs did not change, utilizing constant kernel for {outi}",
+        #             typeMsg="w",
+        #         )
+        #         FixedValue = True
+        #         surrogateOptions["TypeMean"] = 0
+        #         surrogateOptions["TypeKernel"] = 6  # Constant kernel
+
+        #     else:
+        #         FixedValue = False
+
+        #     # ---------------------------------------------------------------------------------------------------
+        #     # Fit individual output
+        #     # ---------------------------------------------------------------------------------------------------
+
+        #     # Data to train the surrogate
+        #     x = self.x
+        #     y = np.expand_dims(self.y[:, i], axis=1)
+        #     yvar = np.expand_dims(self.yvar[:, i], axis=1)
+
+        #     if specialTreatment:
+        #         x, y, yvar = (
+        #             np.empty((0, x.shape[-1])),
+        #             np.empty((0, y.shape[-1])),
+        #             np.empty((0, y.shape[-1])),
+        #         )
+
+        #     # Surrogate
+
+        #     print(f"~ Model for output: {outi}")
+
+        #     GP = SURROGATEtools.surrogate_model(
+        #         x,
+        #         y,
+        #         yvar,
+        #         self.surrogate_parameters,
+        #         bounds=self.bounds,
+        #         output=outi,
+        #         output_transformed=outi_transformed,
+        #         avoidPoints=self.avoidPoints,
+        #         dfT=self.dfT,
+        #         surrogateOptions=surrogateOptions,
+        #         FixedValue=FixedValue,
+        #         fileTraining=fileTraining,
+        #     )
+
+        #     # Fitting
+        #     GP.fit()
+
+        #     self.GP["individual_models"][i] = GP
+
+        # fileBackup.unlink(missing_ok=True)
+
+        # # ------------------------------------------------------------------------------------------------------
+        # # Combine them in a ModelListGP (create one single with MV but do not fit)
+        # # ------------------------------------------------------------------------------------------------------
+
+        # print("~ MV model to initialize combination")
+
+        # self.GP["combined_model"] = SURROGATEtools.surrogate_model(
+        #     self.x,
+        #     self.y,
+        #     self.yvar,
+        #     self.surrogate_parameters,
+        #     avoidPoints=self.avoidPoints,
+        #     bounds=self.bounds,
+        #     dfT=self.dfT,
+        #     surrogateOptions=self.surrogateOptions,
+        # )
+
+        # models = ()
+        # for GP in self.GP["individual_models"]:
+        #     models += (GP.gpmodel,)
+        # self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
 
 
 
+        # # ------------------------------------------------------------------------------------------------------
+        # # Make sure each model has the right surrogate_transformation_variables inside the combined model
+        # # ------------------------------------------------------------------------------------------------------
+        # if self.GP["combined_model"].surrogate_transformation_variables is not None:
+        #     for i in range(self.y.shape[-1]):
 
+        #         outi = self.outputs[i] if (self.outputs is not None) else None
 
-        for i in range(self.y.shape[-1]):
-            outi = self.outputs[i] if (self.outputs is not None) else None
+        #         if outi is not None:
+        #             self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
 
-            # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
-            specialTreatment = (
-                (outi is not None)
-                and (fitWithTrainingDataIfContains is not None)
-                and (fitWithTrainingDataIfContains not in outi)
-            )
-            # -----------------------------------------------------------------------------------------------------------------------------------
+        # print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
 
-            outi_transformed = (
-                self.stepSettings["name_transformed_ofs"][i]
-                if (self.stepSettings["name_transformed_ofs"] is not None)
-                else outi
-            )
+        # """
+		# *********************************************************************************************************************
+		# 	Postprocessing
+		# *********************************************************************************************************************
+		# """
 
-            # ---------------------------------------------------------------------------------------------------
-            # Define model-specific functions for this output
-            # ---------------------------------------------------------------------------------------------------
-
-            surrogateOptions = copy.deepcopy(self.surrogateOptions)
-
-            # Then, depending on application (e.g. targets in mitim are fitted differently)
-            if (
-                "selectSurrogate" in surrogateOptions
-                and surrogateOptions["selectSurrogate"] is not None
-            ):
-                surrogateOptions = surrogateOptions["selectSurrogate"](
-                    outi, surrogateOptions
-                )
-
-            # ---------------------------------------------------------------------------------------------------
-            # To avoid problems with fixed values (e.g. calibration terms that are fixed)
-            # ---------------------------------------------------------------------------------------------------
-
-            threshold_to_consider_fixed = 1e-6
-            MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(
-                self.y.mean()
-            )
-
-            if (
-                np.isnan(MaxRelativeDifference)
-                or (
-                    (self.y.shape[0] > 1)
-                    and ((MaxRelativeDifference < threshold_to_consider_fixed).all())
-                )
-            ) and (not specialTreatment):
-                print(
-                    f"\t- Identified that outputs did not change, utilizing constant kernel for {outi}",
-                    typeMsg="w",
-                )
-                FixedValue = True
-                surrogateOptions["TypeMean"] = 0
-                surrogateOptions["TypeKernel"] = 6  # Constant kernel
-
-            else:
-                FixedValue = False
-
-            # ---------------------------------------------------------------------------------------------------
-            # Fit individual output
-            # ---------------------------------------------------------------------------------------------------
-
-            # Data to train the surrogate
-            x = self.x
-            y = np.expand_dims(self.y[:, i], axis=1)
-            yvar = np.expand_dims(self.yvar[:, i], axis=1)
-
-            if specialTreatment:
-                x, y, yvar = (
-                    np.empty((0, x.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                )
-
-            # Surrogate
-
-            print(f"~ Model for output: {outi}")
-
-            GP = SURROGATEtools.surrogate_model(
-                x,
-                y,
-                yvar,
-                self.surrogate_parameters,
-                bounds=self.bounds,
-                output=outi,
-                output_transformed=outi_transformed,
-                avoidPoints=self.avoidPoints,
-                dfT=self.dfT,
-                surrogateOptions=surrogateOptions,
-                FixedValue=FixedValue,
-                fileTraining=fileTraining,
-            )
-
-            # Fitting
-            GP.fit()
-
-            self.GP["individual_models"][i] = GP
-
-        fileBackup.unlink(missing_ok=True)
-
-        # ------------------------------------------------------------------------------------------------------
-        # Combine them in a ModelListGP (create one single with MV but do not fit)
-        # ------------------------------------------------------------------------------------------------------
-
-        print("~ MV model to initialize combination")
-
-        self.GP["combined_model"] = SURROGATEtools.surrogate_model(
-            self.x,
-            self.y,
-            self.yvar,
-            self.surrogate_parameters,
-            avoidPoints=self.avoidPoints,
-            bounds=self.bounds,
-            dfT=self.dfT,
-            surrogateOptions=self.surrogateOptions,
-        )
-
-        models = ()
-        for GP in self.GP["individual_models"]:
-            models += (GP.gpmodel,)
-        self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
-
-        # ------------------------------------------------------------------------------------------------------
-        # Make sure each model has the right surrogate_transformation_variables inside the combined model
-        # ------------------------------------------------------------------------------------------------------
-        if self.GP["combined_model"].surrogate_transformation_variables is not None:
-            for i in range(self.y.shape[-1]):
-
-                outi = self.outputs[i] if (self.outputs is not None) else None
-
-                if outi is not None:
-                    self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
-
-        print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
-
-        """
-		*********************************************************************************************************************
-			Postprocessing
-		*********************************************************************************************************************
-		"""
-
-        # Test (if test could not be launched is likely because a singular matrix for Choleski decomposition)
-        print("--> Launching tests to assure batch evaluation accuracy")
-        TESTtools.testBatchCapabilities(self.GP["combined_model"])
-        print("--> Launching tests to assure model combination accuracy")
-        TESTtools.testCombinationCapabilities(
-            self.GP["individual_models"], self.GP["combined_model"]
-        )
-        print("--> Launching tests evaluate accuracy on training set (absolute units)")
-        self.GP["combined_model"].testTraining()
+        # # Test (if test could not be launched is likely because a singular matrix for Choleski decomposition)
+        # print("--> Launching tests to assure batch evaluation accuracy")
+        # TESTtools.testBatchCapabilities(self.GP["combined_model"])
+        # print("--> Launching tests to assure model combination accuracy")
+        # TESTtools.testCombinationCapabilities(
+        #     self.GP["individual_models"], self.GP["combined_model"]
+        # )
+        # print("--> Launching tests evaluate accuracy on training set (absolute units)")
+        # self.GP["combined_model"].testTraining()
 
         txt_time = IOtools.getTimeDifference(time1)
 

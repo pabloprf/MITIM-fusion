@@ -112,7 +112,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
-    print(shape_orig, X.shape)
+
     powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """
@@ -155,13 +155,13 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 # ----------------------------------------------------------------------
 
 
-def transformPORTALS(X0, surrogate_parameters, output):
+def transformPORTALS(X, surrogate_parameters, output):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
             E.g.: (batch1,batch2,batch3,dim) -> (batch1*batch2*batch3,dim)
     """
-    X = X0[0,...] #TO FIX
+
     shape_orig = np.array(X.shape)
     X = X.view(np.prod(shape_orig[:-1]), shape_orig[-1])
 
