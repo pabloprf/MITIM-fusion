@@ -440,8 +440,8 @@ class OPTstep:
 
 
         embed()
-        x = torch.rand(128, self.train_X.shape[-1]).to(self.dfT)
-        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
+        x = torch.rand(64, self.train_X.shape[-1]).to(self.dfT)
+        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_acq64.prof") as s:
             self.evaluators["acq_function"](x)
 
 
