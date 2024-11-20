@@ -258,38 +258,19 @@ class surrogate_model:
         self.train_X_added contains the transformed of the table:       (batch2, dimXtr)
         """
 
+
         self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
             self.train_X,
             self.train_Y,
-            train_Yvar = self.train_Yvar,
-            input_transform = input_transform,
+            self.train_Yvar,
+            input_transform=input_transform,
             outcome_transform=outcome_transform,
+            # surrogateOptions=self.surrogateOptions,
+            # variables=self.variables,
+            # train_X_added=self.train_X_added,
+            # train_Y_added=self.train_Y_added,
+            # train_Yvar_added=self.train_Yvar_added,
         )
-        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gpmodel.likelihood, self.gpmodel)
-        botorch.fit.fit_gpytorch_mll(mll)
-        #self.gpmodel.posterior(self.train_X)
-
-        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
-        from mitim_tools.misc_tools import IOtools
-        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
-            self.gpmodel.posterior(x)
-
-
-        embed()
-
-
-        # self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
-        #     self.train_X,
-        #     self.train_Y,
-        #     self.train_Yvar,
-        #     input_transform=input_transform,
-        #     outcome_transform=outcome_transform,
-        #     surrogateOptions=self.surrogateOptions,
-        #     variables=self.variables,
-        #     train_X_added=self.train_X_added,
-        #     train_Y_added=self.train_Y_added,
-        #     train_Yvar_added=self.train_Yvar_added,
-        # )
 
     def _define_MITIM_transformations(self):
 
@@ -423,6 +404,14 @@ class surrogate_model:
         # Train always in physics-transformed space, to enable mitim re-use training from file
         #with fundamental_model_context(self):
         track_fval = self.perform_model_fit(mll)
+
+        embed()
+        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
+        from mitim_tools.misc_tools import IOtools
+        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof1") as s:
+            self.gpmodel.posterior(x)
+
+
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
