@@ -448,7 +448,6 @@ class surrogate_model:
             -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
             .detach()
         ]
-        embed()
 
         def callback(x, y, mll=mll):
             track_fval.append(y.fval)

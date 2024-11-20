@@ -190,8 +190,6 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             )
 
 
-
-
         # TODO: Allow subsetting of other covar modules
         if outcome_transform is not None:
             self.outcome_transform = outcome_transform

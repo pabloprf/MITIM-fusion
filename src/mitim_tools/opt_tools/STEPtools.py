@@ -163,11 +163,6 @@ class OPTstep:
             with open(self.fileOutputs, "a") as f:
                 f.write(f" (took total of {txt_time})")
 
-        embed()
-        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
-        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
-            self.GP["combined_model"].gpmodel.posterior(x)
-
     def _fit_multioutput_model(self):
 
         surrogateOptions = self.surrogateOptions["selectSurrogate"]('AllMITIM', self.surrogateOptions)
@@ -359,7 +354,7 @@ class OPTstep:
         I create this so that, upon reading a pickle, I re-call it. Otherwise, it is very heavy to store lambdas
         """
 
-        self.evaluators = {"GP": self.GP["combined_model"]}
+        self.evaluators = {"GP": self.GP["mo_model"]}
 
         # **************************************************************************************************
         # Objective (multi-objective model -> single objective residual)
