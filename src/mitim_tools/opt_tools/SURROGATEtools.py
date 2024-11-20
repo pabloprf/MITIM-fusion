@@ -405,14 +405,6 @@ class surrogate_model:
         #with fundamental_model_context(self):
         track_fval = self.perform_model_fit(mll)
 
-        embed()
-        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
-        from mitim_tools.misc_tools import IOtools
-        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof1") as s:
-            self.gpmodel.posterior(x)
-
-
-
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
         # ---------------------------------------------------------------------------------------------------

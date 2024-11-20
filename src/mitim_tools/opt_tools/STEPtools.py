@@ -335,6 +335,13 @@ class OPTstep:
             "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
         )
 
+        embed()
+        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
+        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
+            self.GP["combined_model"].gpmodel.posterior(x)
+
+
+
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
                 f.write(f" (took total of {txt_time})")
