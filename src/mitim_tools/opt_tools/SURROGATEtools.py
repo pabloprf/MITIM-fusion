@@ -215,12 +215,12 @@ class surrogate_model:
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
         # -------------------------------------------------------------------------------------
 
-        self.normalization_pass(
-            input_transform_physics,
-            input_transform_normalization,
-            outcome_transform_physics,
-            output_transformed_standardization,
-        )
+        # self.normalization_pass(
+        #     input_transform_physics,
+        #     input_transform_normalization,
+        #     outcome_transform_physics,
+        #     output_transformed_standardization,
+        # )
         
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION
@@ -234,16 +234,16 @@ class surrogate_model:
             tf1=outcome_transform_physics, tf2=output_transformed_standardization, tf3=BOTORCHtools.OutcomeToBatchDimension()
         ).to(self.dfT)
 
-        self.variables = None
-        # self.variables = (
-        #     self.surrogate_transformation_variables[self.output]
-        #     if (
-        #         (self.output is not None)
-        #         and ("surrogate_transformation_variables" in self.__dict__)
-        #         and (self.surrogate_transformation_variables is not None)
-        #     )
-        #     else None
-        # )
+        self.output = 'QeTurb_1'
+        self.variables = (
+            self.surrogate_transformation_variables[self.output]
+            if (
+                (self.output is not None)
+                and ("surrogate_transformation_variables" in self.__dict__)
+                and (self.surrogate_transformation_variables is not None)
+            )
+            else None
+        )
 
         # *************************************************************************************
         # Model
@@ -318,7 +318,9 @@ class surrogate_model:
 
         input_transformation_physics = BOTORCHtools.BatchBroadcastedInputTransform(input_transformations_physics)
 
-        dimTransformedDV_x = input_transformation_physics(self.train_X).shape[-1]
+        transformed_X = input_transformation_physics(self.train_X)
+
+        dimTransformedDV_x = transformed_X.shape[-1]
         dimTransformedDV_y = self.train_Y.shape[-1]
 
         # ------------------------------------------------------------------------------------
@@ -326,10 +328,12 @@ class surrogate_model:
         # ------------------------------------------------------------------------------------
 
         input_transform_normalization = botorch.models.transforms.input.Normalize(
-            d = dimTransformedDV_x, bounds=None
+            d = dimTransformedDV_x, bounds=None, batch_shape=transformed_X.shape[:-2]
         ).to(self.dfT)
         output_transformed_standardization = (
-            botorch.models.transforms.outcome.Standardize(m = dimTransformedDV_y)
+            botorch.models.transforms.outcome.Standardize(
+                m = dimTransformedDV_y, #batch_shape=self.train_Y.transpose(0,1).shape
+            )
         ).to(self.dfT)
 
         return  input_transformation_physics, \
@@ -414,12 +418,12 @@ class surrogate_model:
         # Go back to definining the right normalizations, because the optimizer has to work on training mode...
         # ---------------------------------------------------------------------------------------------------
 
-        self.normalization_pass(
-            self.gpmodel.input_transform["tf1"],
-            self.gpmodel.input_transform["tf2"],
-            self.gpmodel.outcome_transform["tf1"],
-            self.gpmodel.outcome_transform["tf2"],
-        )
+        # self.normalization_pass(
+        #     self.gpmodel.input_transform["tf1"],
+        #     self.gpmodel.input_transform["tf2"],
+        #     self.gpmodel.outcome_transform["tf1"],
+        #     self.gpmodel.outcome_transform["tf2"],
+        # )
 
     def perform_model_fit(self, mll):
         self.gpmodel.train()
@@ -432,7 +436,7 @@ class surrogate_model:
 
         # Approx MLL ---------------------------------------
         (train_x,) = mll.model.train_inputs
-        approx_mll = len(train_x) > 2000
+        approx_mll = False #len(train_x) > 2000
         if approx_mll:
             print(
                 f"\t* Using approximate MLL because x has {len(train_x)} elements",
@@ -444,6 +448,7 @@ class surrogate_model:
             -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
             .detach()
         ]
+        embed()
 
         def callback(x, y, mll=mll):
             track_fval.append(y.fval)

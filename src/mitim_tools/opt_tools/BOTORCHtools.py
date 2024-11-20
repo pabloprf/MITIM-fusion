@@ -17,15 +17,8 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import OutcomeTransform, Standardize
 from botorch.models.utils import validate_input_scaling
-from botorch.models.utils.gpytorch_modules import (
-    get_covar_module_with_dim_scaled_prior,
-    get_gaussian_likelihood_with_lognormal_prior,
-)
 from botorch.utils.types import DEFAULT
-from gpytorch.likelihoods.gaussian_likelihood import FixedNoiseGaussianLikelihood
-from gpytorch.means.constant_mean import ConstantMean
 from gpytorch.models.exact_gp import ExactGP
-from gpytorch.module import Module
 from torch import Tensor
 
 from linear_operator.operators import CholLinearOperator, DiagLinearOperator
@@ -135,7 +128,6 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             self.mean_module = PRF_CriticalGradient(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
-
 
         """
 		-----------------------------------------------------------------------
@@ -562,23 +554,15 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
     def prepareToGenerateCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = True
         # Make sure that this ModelListGP evaluation is fresh
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("surrogate_parameters" in self.models[0].input_transform.tf1.__dict__) and \
+            ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
     def cold_startCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = False
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("surrogate_parameters" in self.models[0].input_transform.tf1.__dict__) and \
+            ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
     def transform_inputs(self, X):
         self.prepareToGenerateCommons()

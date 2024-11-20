@@ -9,9 +9,7 @@ from IPython import embed
 
 def selectSurrogate(output, surrogateOptions, CGYROrun=False):
 
-    print(
-        f'\t- Selecting surrogate options for "{output}" to be run'
-    )
+    print(f'\t- Selecting surrogate options for "{output}" to be run')
 
     if output is not None:
         # If it's a target, just linear
