@@ -1,6 +1,6 @@
 """
 **************************************************************************************************************
-This set of tools are custom modifications to BOTORCH or GPYTORCH ones to satisfy my needs
+This set of tools are custom modifications to BOTORCH or GPYTORCH ones to satisfy MITIM/PORTALS needs
 **************************************************************************************************************
 """
 
@@ -29,6 +29,14 @@ from gpytorch.module import Module
 from torch import Tensor
 
 from linear_operator.operators import CholLinearOperator, DiagLinearOperator
+
+from typing import Iterable
+from torch.nn import ModuleDict
+from botorch.posteriors.gpytorch import GPyTorchPosterior
+from botorch.posteriors.posterior import Posterior
+from gpytorch.distributions import MultitaskMultivariateNormal
+from linear_operator.operators import BlockDiagLinearOperator
+
 
 class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
     def __init__(
@@ -65,6 +73,8 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             ignore_X_dims=ignore_X_dims,
         )
         self._set_dimensions(train_X=train_X, train_Y=train_Y)
+        self._aug_batch_shape = train_Y.shape[:-2] #<----- New
+
         train_X, train_Y, train_Yvar = self._transform_tensor_args(
             X=train_X, Y=train_Y, Yvar=train_Yvar
         )
@@ -482,29 +492,13 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         self.prepareToGenerateCommons()
         X_tr = super().transform_inputs(X)
         self.cold_startCommons()
-
         return X_tr
 
-    def posterior(
-        self,
-        X,
-        output_indices=None,
-        observation_noise=False,
-        posterior_transform=None,
-        **kwargs,
-    ):
+    def posterior(self, *args, **kwargs):
         self.prepareToGenerateCommons()
-        posterior = super().posterior(
-            X,
-            output_indices=output_indices,
-            observation_noise=observation_noise,
-            posterior_transform=posterior_transform,
-            **kwargs,
-        )
+        posterior = super().posterior(*args, **kwargs)
         self.cold_startCommons()
-
         return posterior
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # I need my own transformation based on physics
@@ -942,27 +936,6 @@ class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
         return res
 
 
-#!/usr/bin/env -S grimaldi --kernel bento_kernel_automl
-# fmt: off
-
-""":py"""
-# %local-changes
-
-""":py"""
-import botorch
-import torch
-from botorch.fit import fit_gpytorch_mll
-from botorch.models import SingleTaskGP
-from botorch.models.transforms.input import Normalize
-from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
-from torch import Tensor
-
-""":py"""
-from typing import Iterable
-
-from botorch.models.transforms.input import InputTransform
-from torch.nn import ModuleDict
-
 
 class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
     r"""An input transform representing a list of transforms to be broadcasted."""
@@ -1110,17 +1083,6 @@ class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
         # Xs = X_expanded.unbind(dim=self.broadcast_index)
         # return zip(Xs, self.transforms)
         return zip([X for _ in self.transforms], self.transforms)
-
-
-
-
-""":py"""
-from botorch.models.transforms.outcome import OutcomeTransform
-from botorch.posteriors.gpytorch import GPyTorchPosterior
-from botorch.posteriors.posterior import Posterior
-from gpytorch.distributions import MultitaskMultivariateNormal
-from linear_operator.operators import BlockDiagLinearOperator
-
 
 class OutcomeToBatchDimension(OutcomeTransform):
     """Transform permuting dimensions in the outcome tensor."""

@@ -335,10 +335,10 @@ class OPTstep:
             "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
         )
 
-        embed()
-        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
-        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
-            self.GP["combined_model"].gpmodel.posterior(x)
+        # embed()
+        # x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
+        # with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
+        #     self.GP["combined_model"].gpmodel.posterior(x)
 
 
 
@@ -437,6 +437,14 @@ class OPTstep:
         # Add this because of the way train_X is defined within the gpmodel, which is foundamental, but the acquisition for sample
         # around best, needs the raw one! (for noisy it is automatic)
         self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
+
+
+        embed()
+        x = torch.rand(128, self.train_X.shape[-1]).to(self.dfT)
+        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
+            self.evaluators["acq_function"](x)
+
+
 
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
