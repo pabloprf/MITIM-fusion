@@ -43,13 +43,30 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         self,
         train_X,
         train_Y,
-        train_Yvar = None,
-        likelihood = None,
-        covar_module = None,
-        mean_module = None,
-        outcome_transform = None,
-        input_transform = None,
-    ) -> None:
+        train_Yvar,
+        input_transform=None,
+        outcome_transform=None,
+        surrogateOptions={},
+        variables=None,
+        train_X_added=torch.Tensor([]),
+        train_Y_added=torch.Tensor([]),
+        train_Yvar_added=torch.Tensor([]),
+    ):
+        """
+        _added refers to already-transformed variables that are added from table
+        """
+
+        TypeMean = surrogateOptions.get("TypeMean", 0)
+        TypeKernel = surrogateOptions.get("TypeKernel", 0)
+        FixedNoise = surrogateOptions.get("FixedNoise", False)
+        ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
+        learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
+        print("\t\t* Surrogate model options:")
+        print(
+            f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
+        )
+
+
 
         self._validate_tensor_args(X=train_X, Y=train_Y, Yvar=train_Yvar)
         if outcome_transform == DEFAULT:
@@ -60,6 +77,8 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             transformed_X = self.transform_inputs(
                 X=train_X, input_transform=input_transform
             )
+
+        self.ard_num_dims = transformed_X.shape[-1]
 
         if outcome_transform is not None:
             train_Y, train_Yvar = outcome_transform(train_X, train_Y, train_Yvar)
@@ -78,36 +97,109 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         train_X, train_Y, train_Yvar = self._transform_tensor_args(
             X=train_X, Y=train_Y, Yvar=train_Yvar
         )
-        if likelihood is None:
-            if train_Yvar is None:
-                likelihood = get_gaussian_likelihood_with_lognormal_prior(
-                    batch_shape=self._aug_batch_shape
-                )
-            else:
-                likelihood = FixedNoiseGaussianLikelihood(
-                    noise=train_Yvar, batch_shape=self._aug_batch_shape
-                )
-        else:
-            self._is_custom_likelihood = True
+
+        self._subset_batch_dict = {}
+
+        likelihood = (
+            gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
+                noise=train_Yvar.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
+                batch_shape=self._aug_batch_shape,
+                learn_additional_noise=learn_additional_noise,
+            )
+        )
+        self._is_custom_likelihood = True
+
         ExactGP.__init__(
             self, train_inputs=train_X, train_targets=train_Y, likelihood=likelihood
         )
-        if mean_module is None:
-            mean_module = ConstantMean(batch_shape=self._aug_batch_shape)
-        self.mean_module = mean_module
-        if covar_module is None:
-            covar_module = get_covar_module_with_dim_scaled_prior(
-                ard_num_dims=transformed_X.shape[-1],
-                batch_shape=self._aug_batch_shape,
+
+        """
+		-----------------------------------------------------------------------
+		GP Mean
+		-----------------------------------------------------------------------
+		"""
+
+        if TypeMean == 0:
+            self.mean_module = gpytorch.means.constant_mean.ConstantMean(
+                batch_shape=self._aug_batch_shape
             )
-            # Used for subsetting along the output dimension. See Model.subset_output.
-            self._subset_batch_dict = {
-                "mean_module.raw_constant": -1,
-                "covar_module.raw_lengthscale": -3,
-            }
-            if train_Yvar is None:
-                self._subset_batch_dict["likelihood.noise_covar.raw_noise"] = -2
-        self.covar_module: Module = covar_module
+        elif TypeMean == 1:
+            self.mean_module = gpytorch.means.linear_mean.LinearMean(
+                self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True
+            )
+        elif TypeMean == 2:
+            self.mean_module = PRF_LinearMeanGradients(
+                batch_shape=self._aug_batch_shape, variables=variables
+            )
+        elif TypeMean == 3:
+            self.mean_module = PRF_CriticalGradient(
+                batch_shape=self._aug_batch_shape, variables=variables
+            )
+
+
+        """
+		-----------------------------------------------------------------------
+		GP Kernel - Covariance
+		-----------------------------------------------------------------------
+		"""
+
+        # Priors
+        lengthscale_prior = gpytorch.priors.torch_priors.GammaPrior(3.0, 6.0)
+        outputscale_prior = gpytorch.priors.torch_priors.GammaPrior(2.0, 0.15)
+
+        # Do not allow too small lengthscales?
+        lengthscale_constraint = (
+            None  # gpytorch.constraints.constraints.GreaterThan(0.05)
+        )
+
+        self._subset_batch_dict["covar_module.raw_outputscale"] = -1
+        self._subset_batch_dict["covar_module.base_kernel.raw_lengthscale"] = -3
+
+        if TypeKernel == 0:
+            self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
+                base_kernel=gpytorch.kernels.matern_kernel.MaternKernel(
+                    nu=2.5,
+                    ard_num_dims=self.ard_num_dims,
+                    batch_shape=self._aug_batch_shape,
+                    lengthscale_prior=lengthscale_prior,
+                    lengthscale_constraint=lengthscale_constraint,
+                ),
+                batch_shape=self._aug_batch_shape,
+                outputscale_prior=outputscale_prior,
+            )
+        elif TypeKernel == 1:
+            self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
+                base_kernel=gpytorch.kernels.rbf_kernel.RBFKernel(
+                    ard_num_dims=self.ard_num_dims,
+                    batch_shape=self._aug_batch_shape,
+                    lengthscale_prior=lengthscale_prior,
+                    lengthscale_constraint=lengthscale_constraint,
+                ),
+                batch_shape=self._aug_batch_shape,
+                outputscale_prior=outputscale_prior,
+            )
+        elif TypeKernel == 2:
+            self.covar_module = PRF_ConstantKernel(
+                ard_num_dims=self.ard_num_dims,
+                batch_shape=self._aug_batch_shape,
+                lengthscale_prior=lengthscale_prior,
+                lengthscale_constraint=lengthscale_constraint,
+            )
+        elif TypeKernel == 3:
+            self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
+                base_kernel=PRF_NNKernel(
+                    ard_num_dims=self.ard_num_dims,
+                    batch_shape=self._aug_batch_shape,
+                    lengthscale_prior=lengthscale_prior,
+                    lengthscale_constraint=lengthscale_constraint,
+                ),
+                batch_shape=self._aug_batch_shape,
+                outputscale_prior=outputscale_prior,
+            )
+
+
+
+
         # TODO: Allow subsetting of other covar modules
         if outcome_transform is not None:
             self.outcome_transform = outcome_transform

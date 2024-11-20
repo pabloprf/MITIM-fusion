@@ -158,6 +158,11 @@ class OPTstep:
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
 
+
+        surrogateOptions = self.surrogateOptions["selectSurrogate"](
+                'QeTurb_1', self.surrogateOptions
+            )
+
         # full Multi-output model
         self.GP["combined_model"] = SURROGATEtools.surrogate_model(
             self.x,
@@ -168,7 +173,7 @@ class OPTstep:
             outputs_transformed=self.stepSettings["name_transformed_ofs"],
             bounds=self.bounds,
             dfT=self.dfT,
-            surrogateOptions=self.surrogateOptions,
+            surrogateOptions=surrogateOptions,
         )
 
         # Fitting
@@ -335,12 +340,10 @@ class OPTstep:
             "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
         )
 
-        # embed()
-        # x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
-        # with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
-        #     self.GP["combined_model"].gpmodel.posterior(x)
-
-
+        embed()
+        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
+        with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
+            self.GP["combined_model"].gpmodel.posterior(x)
 
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
