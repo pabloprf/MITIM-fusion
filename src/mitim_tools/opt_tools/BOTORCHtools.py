@@ -14,9 +14,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
 # ----------------------------------------------------------------------------------------------------------------------------
 
-import torch
-from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
-from botorch.models.model import FantasizeMixin
 from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import OutcomeTransform, Standardize
 from botorch.models.utils import validate_input_scaling
@@ -24,17 +21,14 @@ from botorch.models.utils.gpytorch_modules import (
     get_covar_module_with_dim_scaled_prior,
     get_gaussian_likelihood_with_lognormal_prior,
 )
-from botorch.utils.containers import BotorchContainer
-from botorch.utils.datasets import SupervisedDataset
-from botorch.utils.types import _DefaultType, DEFAULT
-from gpytorch.distributions.multivariate_normal import MultivariateNormal
+from botorch.utils.types import DEFAULT
 from gpytorch.likelihoods.gaussian_likelihood import FixedNoiseGaussianLikelihood
-from gpytorch.likelihoods.likelihood import Likelihood
 from gpytorch.means.constant_mean import ConstantMean
-from gpytorch.means.mean import Mean
 from gpytorch.models.exact_gp import ExactGP
 from gpytorch.module import Module
 from torch import Tensor
+
+from linear_operator.operators import CholLinearOperator, DiagLinearOperator
 
 class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
     def __init__(
@@ -58,7 +52,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             transformed_X = self.transform_inputs(
                 X=train_X, input_transform=input_transform
             )
-            embed()
+
         if outcome_transform is not None:
             train_Y, train_Yvar = outcome_transform(train_X, train_Y, train_Yvar)
         # Validate again after applying the transforms
@@ -111,7 +105,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             self.input_transform = input_transform
         self.to(train_X)
 
-    def posterior(
+    def posterior_full(
         self,
         X,
         output_indices=None,
@@ -459,7 +453,6 @@ class SingleTaskGP_MITIM2(botorch.models.gp_regression.SingleTaskGP):
 # ModelListGP needs to be modified to allow me to have "common" parameters to models, to not run at every transformation again
 # ----------------------------------------------------------------------------------------------------------------------------
 
-
 class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
     def __init__(self, *gp_models):
         super().__init__(*gp_models)
@@ -518,8 +511,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 # ----------------------------------------------------------------------------------------------------------------------------
 
 class Transformation_Inputs(
-    botorch.models.transforms.input.ReversibleInputTransform, torch.nn.Module
-):
+    botorch.models.transforms.input.ReversibleInputTransform, torch.nn.Module):
     def __init__(
         self,
         output,
@@ -580,54 +572,104 @@ class Transformation_Inputs(
 
 # Copy standardize but modify in untransform the "std" which is my factor!
 class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
-    def __init__(self, m, output, surrogate_parameters):
+    def __init__(self, m, outputs_names, surrogate_parameters):
         super().__init__(m)
 
-        self.output = output
+        self.outputs_names = outputs_names
         self.surrogate_parameters = surrogate_parameters
         self.flag_to_evaluate = True
 
     def forward(self, X, Y, Yvar):
-        if (self.output is not None) and (self.flag_to_evaluate):
+        if (self.outputs_names is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
-                X, self.surrogate_parameters, self.output
+                X, self.surrogate_parameters, self.outputs_names
             ).to(X.device)
         else:
             factor = Y.mean(dim=-2, keepdim=True).to(Y.device) * 0.0 + 1.0
 
+        # This occurs in Standardize, now I'm tricking it
         self.stdvs = factor
         self.means = self.stdvs * 0.0
         self._stdvs_sq = self.stdvs.pow(2)
+        self._is_trained = torch.tensor(True)
 
         # When calling the forward method of Standardize, do not recalculate mean and stdvs (never be on training)
-        self._is_trained = torch.tensor(True)
         self.training = False
         # ----------------------------------------
 
         return super().forward(Y, Yvar)
 
     def untransform_posterior(self, X, posterior):
-        if (self.output is not None) and (self.flag_to_evaluate):
+        if (self.outputs_names is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
-                X, self.surrogate_parameters, self.output
+                X, self.surrogate_parameters, self.outputs_names
             ).to(X.device)
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
             self._stdvs_sq = self.stdvs.pow(2)
-            return super().untransform_posterior(posterior)
-
+            return self.untransform_posterior_mod(posterior)
         else:
             return posterior
 
     def untransform(self, Y, Yvar):
         raise NotImplementedError("[MITIM] This situation has not been implemented yet")
 
+    def untransform_posterior_mod(self, posterior):
+        '''
+        PRF: I modified this because I cannot make the squeeze operation in the posterior, otherwise
+        I miss the element of the batch dimension 
+        '''
+        is_mtgp_posterior = False
+        if type(posterior) is GPyTorchPosterior:
+            is_mtgp_posterior = posterior._is_mt
+        if not self._m == posterior._extended_shape()[-1] and not is_mtgp_posterior:
+            raise RuntimeError(
+                "Incompatible output dimensions encountered. Transform has output "
+                f"dimension {self._m} and posterior has "
+                f"{posterior._extended_shape()[-1]}."
+            )
+
+        mvn = posterior.distribution
+        offset = self.means
+        scale_fac = self.stdvs
+        if not posterior._is_mt:
+            mean_tf = offset.squeeze(-1) + scale_fac.squeeze(-1) * mvn.mean
+            scale_fac = scale_fac.squeeze(-1).expand_as(mean_tf)
+        else:
+            mean_tf = offset + scale_fac * mvn.mean
+            # reps = mean_tf.shape[-2:].numel() // scale_fac.size(-1)
+            # scale_fac = scale_fac.squeeze(-2)
+
+            reps = mean_tf.shape[-2:].numel() // scale_fac.size(-1)
+            scale_fac = scale_fac.view(-1)
+            
+            # if mvn._interleaved:
+            #     scale_fac = scale_fac.repeat(*[1 for _ in scale_fac.shape[:-1]], reps)
+            # else:
+            #     scale_fac = torch.repeat_interleave(scale_fac, reps, dim=-1)
+
+        if (
+            not mvn.islazy
+            # TODO: Figure out attribute namming weirdness here
+            or mvn._MultivariateNormal__unbroadcasted_scale_tril is not None
+        ):
+            # if already computed, we can save a lot of time using scale_tril
+            covar_tf = CholLinearOperator(mvn.scale_tril * scale_fac.unsqueeze(-1))
+        else:
+            lcv = mvn.lazy_covariance_matrix
+            #scale_fac = scale_fac.expand(lcv.shape[:-1])
+            scale_mat = DiagLinearOperator(scale_fac)
+            covar_tf = scale_mat @ lcv @ scale_mat
+
+        kwargs = {"interleaved": mvn._interleaved} if posterior._is_mt else {}
+        mvn_tf = mvn.__class__(mean=mean_tf, covariance_matrix=covar_tf, **kwargs)
+        return GPyTorchPosterior(mvn_tf)
+
 
 # Because I need it to take X too (for physics only, which is always the first tf)
 class ChainedOutcomeTransform(
-    botorch.models.transforms.outcome.ChainedOutcomeTransform
-):
+    botorch.models.transforms.outcome.ChainedOutcomeTransform):
     def __init__(self, **transforms):
         super().__init__(**transforms)
 
@@ -643,7 +685,7 @@ class ChainedOutcomeTransform(
         for i, tf in enumerate(reversed(self.values())):
             posterior = (
                 tf.untransform_posterior(X, posterior)
-                if i == 1
+                if i == len(self.values())-1
                 else tf.untransform_posterior(posterior)
             )  # Only physics transformation (tf1) takes X
 
@@ -898,3 +940,267 @@ class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
             + self.bias
         )
         return res
+
+
+#!/usr/bin/env -S grimaldi --kernel bento_kernel_automl
+# fmt: off
+
+""":py"""
+# %local-changes
+
+""":py"""
+import botorch
+import torch
+from botorch.fit import fit_gpytorch_mll
+from botorch.models import SingleTaskGP
+from botorch.models.transforms.input import Normalize
+from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
+from torch import Tensor
+
+""":py"""
+from typing import Iterable
+
+from botorch.models.transforms.input import InputTransform
+from torch.nn import ModuleDict
+
+
+class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
+    r"""An input transform representing a list of transforms to be broadcasted."""
+
+    def __init__(
+        self,
+        transforms: list[InputTransform],
+        broadcast_index: int = -3,
+    ) -> None:
+        r"""A transform list that is broadcasted across a batch dimension specified by
+        `broadcast_index`. This is allows using a batched Gaussian process model when
+        the input transforms are different for different batch dimensions.
+
+        Args:
+            transforms: The transforms to broadcast across the first batch dimension.
+                The transform at position i in the list will be applied to `X[i]` for
+                a given input tensor `X` in the forward pass.
+            broadcast_index: The tensor index at which the transforms are broadcasted.
+
+        Example:
+            >>> tf1 = Normalize(d=2)
+            >>> tf2 = InputStandardize(d=2)
+            >>> tf = BatchBroadcastedTransformList(transforms=[tf1, tf2])
+        """
+        super().__init__()
+        self.transform_on_train = False
+        self.transform_on_eval = False
+        self.transform_on_fantasize = False
+        self.transforms = transforms
+        if broadcast_index >= 0:
+            raise ValueError("A non-negative broadcast index is not supported yet.")
+        if broadcast_index in (-2, -1):
+            raise ValueError(
+                "The broadcast index cannot be -2 and -1, as these indices are reserved"
+                " for non-batch, data and input dimensions."
+            )
+        self.broadcast_index = broadcast_index
+        self.is_one_to_many = self.transforms[0].is_one_to_many
+        if not all(tf.is_one_to_many == self.is_one_to_many for tf in self.transforms):
+            raise ValueError(  # output shapes of transforms must be the same
+                "All transforms must have the same is_one_to_many property."
+            )
+        for tf in self.transforms:
+            self.transform_on_train |= tf.transform_on_train
+            self.transform_on_eval |= tf.transform_on_eval
+            self.transform_on_fantasize |= tf.transform_on_fantasize
+
+    def transform(self, X: Tensor) -> Tensor:
+        r"""Transform the inputs to a model.
+
+        Individual transforms are applied in sequence and results are returned as
+        a batched tensor.
+
+        Args:
+            X: A `batch_shape x n x d`-dim tensor of inputs.
+
+        Returns:
+            A `batch_shape x n x d`-dim tensor of transformed inputs.
+        """
+        return torch.stack(
+            [t.forward(Xi) for Xi, t in self._Xs_and_transforms(X)],
+            dim=self.broadcast_index,
+        )
+
+    def untransform(self, X: Tensor) -> Tensor:
+        r"""Un-transform the inputs to a model.
+
+        Un-transforms of the individual transforms are applied in reverse sequence.
+
+        Args:
+            X: A `batch_shape x n x d`-dim tensor of transformed inputs.
+
+        Returns:
+            A `batch_shape x n x d`-dim tensor of un-transformed inputs.
+        """
+        # return torch.stack(
+        #     [t.untransform(Xi) for Xi, t in self._Xs_and_transforms(X)],
+        #     dim=self.broadcast_index,
+        # )
+        #
+        # return self.transforms[0].untransform(X)
+        Xt = torch.stack(
+            [t.untransform(Xi) for Xi, t in self._Xs_and_transforms(X)],
+            dim=self.broadcast_index,
+        )
+        Xt = Xt.unique(dim=self.broadcast_index)
+        # since we are assuming that this batch dimension was added solely
+        # because of different transforms, rather than different original inputs X.
+        assert Xt.shape[self.broadcast_index] == 1
+        return Xt.squeeze(self.broadcast_index)
+
+    def equals(self, other: InputTransform) -> bool:
+        r"""Check if another input transform is equivalent.
+
+        Args:
+            other: Another input transform.
+
+        Returns:
+            A boolean indicating if the other transform is equivalent.
+        """
+        return (
+            super().equals(other=other)
+            and all(t1.equals(t2) for t1, t2 in zip(self.transforms, other.transforms))
+            and (self.broadcast_index == other.broadcast_index)
+        )
+
+    def preprocess_transform(self, X: Tensor) -> Tensor:
+        r"""Apply transforms for preprocessing inputs.
+
+        The main use cases for this method are 1) to preprocess training data
+        before calling `set_train_data` and 2) preprocess `X_baseline` for noisy
+        acquisition functions so that `X_baseline` is "preprocessed" with the
+        same transformations as the cached training inputs.
+
+        Args:
+            X: A `batch_shape x n x d`-dim tensor of inputs.
+
+        Returns:
+            A `batch_shape x n x d`-dim tensor of (transformed) inputs.
+        """
+        return torch.stack(
+            [t.preprocess_transform(Xi) for Xi, t in self._Xs_and_transforms(X)],
+            dim=self.broadcast_index,
+        )
+
+    def _Xs_and_transforms(self, X: Tensor) -> Iterable[tuple[Tensor, InputTransform]]:
+        r"""Returns an iterable of sub-tensors of X and their associated transforms.
+
+        Args:
+            X: A `batch_shape x n x d`-dim tensor of inputs.
+
+        Returns:
+            An iterable containing tuples of sub-tensors of X and their transforms.
+        """
+        # transform_shape = (
+        #     len(input_transform.transforms),
+        #     *(1 for _ in range(abs(self.broadcast_index) - 1)),
+        # )
+        # print(f"{transform_shape = }")
+        # print(f"{X.shape = }")
+        # TODO: Add dimension rather than broadcasting over the inputs.
+
+        # broadcast_shape = torch.broadcast_shapes(transform_shape, X.shape)
+        # X_expanded = X.expand(broadcast_shape)
+        # Xs = X_expanded.unbind(dim=self.broadcast_index)
+        # return zip(Xs, self.transforms)
+        return zip([X for _ in self.transforms], self.transforms)
+
+
+
+
+""":py"""
+from botorch.models.transforms.outcome import OutcomeTransform
+from botorch.posteriors.gpytorch import GPyTorchPosterior
+from botorch.posteriors.posterior import Posterior
+from gpytorch.distributions import MultitaskMultivariateNormal
+from linear_operator.operators import BlockDiagLinearOperator
+
+
+class OutcomeToBatchDimension(OutcomeTransform):
+    """Transform permuting dimensions in the outcome tensor."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(
+        self, Y: Tensor, Yvar: Tensor | None = None
+    ) -> tuple[Tensor, Tensor | None]:
+        r"""Transform the outcomes in a model's training targets
+
+        Args:
+            Y: A `batch_shape x n x m`-dim tensor of training targets.
+            Yvar: A `batch_shape x n x m`-dim tensor of observation noises
+                associated with the training targets (if applicable).
+
+        Returns:
+            A two-tuple with the transformed outcomes (batch_shape x m x n x 1).
+
+            - The transformed outcome observations.
+            - The transformed observation noise (if applicable).
+        """
+        return Y.unsqueeze(-3).transpose(-3, -1), (
+            Yvar.unsqueeze(-3).transpose(-3, -1) #if Yvar else None
+        )
+
+    def untransform(
+        self, Y: Tensor, Yvar: Tensor | None = None
+    ) -> tuple[Tensor, Tensor | None]:
+        r"""Un-transform previously transformed outcomes
+
+        Args:
+            Y: A `batch_shape x n x m`-dim tensor of transfomred training targets.
+            Yvar: A `batch_shape x n x m`-dim tensor of transformed observation
+                noises associated with the training targets (if applicable).
+
+        Returns:
+            A two-tuple with the un-transformed outcomes:
+
+            - The un-transformed outcome observations.
+            - The un-transformed observation noise (if applicable).
+        """
+        assert Y.shape[-1] == 1
+        Y_perm = Y.transpose(-3, -1).squeeze(-3)
+        Yvar_perm = Yvar.transpose(-3, -1).squeeze(-3) if Yvar else None
+        return Y_perm, Yvar_perm
+
+    @property
+    def _is_linear(self) -> bool:
+        """
+        True for transformations such as `Standardize`; these should be able to apply
+        `untransform_posterior` to a GPyTorchPosterior and return a GPyTorchPosterior,
+        because a multivariate normal distribution should remain multivariate normal
+        after applying the transform.
+        """
+        return True
+
+    def untransform_posterior(self, posterior: Posterior) -> Posterior:
+        r"""Un-transform a posterior.
+
+        Posteriors with `_is_linear=True` should return a `GPyTorchPosterior` when
+        `posterior` is a `GPyTorchPosterior`. Posteriors with `_is_linear=False`
+        likely return a `TransformedPosterior` instead.
+
+        Args:
+            posterior: A posterior in the transformed space.
+
+        Returns:
+            The un-transformed posterior.
+        """
+        mvn = posterior.mvn
+        # print(f"{posterior.mean.shape = }")
+        # print(f"{mvn.mean.shape = }")
+        mean = self.untransform(posterior.mean)[0]
+        # print(f"{mean.shape = }")
+        covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
+        # could potentially use from_independent_mvns
+        # print(f"{mvn._covar.shape = }")
+        # print(f"{covar.shape=}")
+        dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
+        return GPyTorchPosterior(distribution=dis)
+

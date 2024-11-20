@@ -412,7 +412,7 @@ class portals(STRATEGYtools.opt_evaluator):
             with open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
 
-    def scalarized_objective(self, Y0):
+    def scalarized_objective(self, Y):
         """
         Notes
         -----
@@ -421,14 +421,6 @@ class portals(STRATEGYtools.opt_evaluator):
         """
 
         ofs_ordered_names = np.array(self.optimization_options["ofs"])
-
-        # TO FIX: convert to dimensions such that the dimY is in -1
-        if Y0.shape[0] == len(ofs_ordered_names):
-            Y = Y0.transpose(0, -1)
-        elif Y0.shape[1] == len(ofs_ordered_names):
-            Y = Y0.transpose(1, -1)
-        else:
-            Y = Y0
 
         """
 		-------------------------------------------------------------------------
@@ -455,17 +447,6 @@ class portals(STRATEGYtools.opt_evaluator):
 		"""
 
         of, cal, _, res = PORTALSinteraction.calculatePseudos(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
-
-        # TO FIX: convert dims back
-        print(Y.shape, of.shape, cal.shape, res.shape)
-        if Y0.shape[0] == len(ofs_ordered_names):
-            of = of.transpose(0, -1)
-            cal = cal.transpose(0, -1)
-            #res = res.transpose(0, -1)
-        elif Y0.shape[1] == len(ofs_ordered_names):
-            of = of.transpose(1, -1)
-            cal = cal.transpose(1, -1)
-            #res = res.transpose(1, -1)
 
         return of, cal, res
 
