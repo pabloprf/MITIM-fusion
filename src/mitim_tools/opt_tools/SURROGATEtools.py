@@ -269,7 +269,7 @@ class surrogate_model:
         botorch.fit.fit_gpytorch_mll(mll)
         #self.gpmodel.posterior(self.train_X)
 
-        x = torch.rand(64, self.train_X.shape[-1]).to(self.dfT)
+        x = torch.rand(10_000, self.train_X.shape[-1]).to(self.dfT)
         from mitim_tools.misc_tools import IOtools
         with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_gp64.prof") as s:
             self.gpmodel.posterior(x)
