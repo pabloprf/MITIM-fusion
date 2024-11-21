@@ -844,17 +844,17 @@ def retrieveResults(
     # ----------------------------------------------------------------------------------------------------------------
 
     print("\t\t--> Opening optimization_object.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
+    mitim_model = STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
 
-    if "timeStamp" in prfs_model.__dict__:
-        print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
+    if "timeStamp" in mitim_model.__dict__:
+        print(f"\t\t\t- Time stamp of optimization_object.pkl: {mitim_model.timeStamp}")
     else:
         print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
     # ---------------- Read optimization_results
     fileOutputs = folderWork / "Outputs" / "optimization_results.out"
     res = optimization_results(file=fileOutputs)
-    res.readClass(prfs_model)
+    res.readClass(mitim_model)
     res.read()
 
     # ---------------- Read Logger
@@ -877,16 +877,16 @@ def retrieveResults(
         # Store here the store
         try:
             with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
-                prfs_model.dictStore = pickle_dill.load(handle)
+                mitim_model.dictStore = pickle_dill.load(handle)
         except:
             print("Could not load optimization_extra", typeMsg="w")
-            prfs_model.dictStore = None
+            mitim_model.dictStore = None
         # -------------------
 
-        prfs_model.optimization_results = res
-        prfs_model.logFile = log
+        mitim_model.optimization_results = res
+        mitim_model.logFile = log
         if plotFN is not None:
-            fn = prfs_model.plot(
+            fn = mitim_model.plot(
                 doNotShow=doNotShow,
                 fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
@@ -897,9 +897,9 @@ def retrieveResults(
     else:
         if plotFN:
             fn = res.plot(doNotShow=doNotShow, log=log, fn = plotFN)
-        prfs_model = None
+        mitim_model = None
 
-    return fn, res, prfs_model, log, data_df
+    return fn, res, mitim_model, log, data_df
 
 
 
@@ -1289,11 +1289,11 @@ class optimization_results:
         self.file = file
         self.predictedSofar = 0
 
-    def readClass(self, PRF_BOclass):
-        self.PRF_BO = PRF_BOclass
+    def readClass(self, MITIM_BOclass):
+        self.MITIM_BO = MITIM_BOclass
 
-    def initialize(self, PRF_BOclass):
-        self.readClass(PRF_BOclass)
+    def initialize(self, MITIM_BOclass):
+        self.readClass(MITIM_BOclass)
         self.createHeaders()
         self.save()
 
@@ -1408,8 +1408,8 @@ class optimization_results:
             positionShow = position
 
         xb = ""
-        for cont, j in enumerate(self.PRF_BO.bounds):
-            xb += f"\t\t\t{j} = {self.PRF_BO.train_X[position,cont]:.6e}\n"
+        for cont, j in enumerate(self.MITIM_BO.bounds):
+            xb += f"\t\t\t{j} = {self.MITIM_BO.train_X[position,cont]:.6e}\n"
         xb = xb[:-1]
 
         return f"\n\n {strn} {positionShow}\n\t x :\n{xb}"
@@ -1421,34 +1421,34 @@ class optimization_results:
             if not zero:
                 y = yl = yu = ydifference
             else:
-                y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
             stry = " (rel diff, %)"
             position = 0
         else:
             if predicted:
                 if not zero:
-                    y = np.atleast_2d(self.PRF_BO.y_next_pred.cpu())
-                    yl = np.atleast_2d(self.PRF_BO.y_next_pred_l.cpu())
-                    yu = np.atleast_2d(self.PRF_BO.y_next_pred_u.cpu())
+                    y = np.atleast_2d(self.MITIM_BO.y_next_pred.cpu())
+                    yl = np.atleast_2d(self.MITIM_BO.y_next_pred_l.cpu())
+                    yu = np.atleast_2d(self.MITIM_BO.y_next_pred_u.cpu())
                 else:
-                    y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                    y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
                 stry = " (model)"
             else:
                 if not zero:
-                    y = self.PRF_BO.train_Y
+                    y = self.MITIM_BO.train_Y
                     yl = (
-                        self.PRF_BO.train_Y - 2 * self.PRF_BO.train_Ystd
+                        self.MITIM_BO.train_Y - 2 * self.MITIM_BO.train_Ystd
                     )  # -2*sigma, to imitate the predicted one
                     yu = (
-                        self.PRF_BO.train_Y + 2 * self.PRF_BO.train_Ystd
+                        self.MITIM_BO.train_Y + 2 * self.MITIM_BO.train_Ystd
                     )  # +2*sigma, to imitate the predicted one
                 else:
-                    y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                    y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
                 stry = ""
 
         xb = ""
         allY = []
-        for cont, j in enumerate(self.PRF_BO.outputs):
+        for cont, j in enumerate(self.MITIM_BO.outputs):
             xb += f"\t\t\t{j} = {y[position,cont]:.6e}"
             allY.append(y[position, cont])
 
@@ -1463,18 +1463,18 @@ class optimization_results:
         return f"\n\t y{stry} :\n{xb}", l2, np.array(allY)
 
     def createHeaders(self):
-        if self.PRF_BO.cold_start:
+        if self.MITIM_BO.cold_start:
             txtR = "\n* cold_starting capability requested, looking into previous optimization_data.dat"
         else:
             txtR = ""
 
         txtIn = ""
-        for i in self.PRF_BO.bounds:
+        for i in self.MITIM_BO.bounds:
             txtIn += "\t{0} from {1:.5f} to {2:.5f}\n".format(
-                i, self.PRF_BO.bounds[i][0], self.PRF_BO.bounds[i][1]
+                i, self.MITIM_BO.bounds[i][0], self.MITIM_BO.bounds[i][1]
             )
         txtOut = ""
-        for cont, i in enumerate(self.PRF_BO.outputs):
+        for cont, i in enumerate(self.MITIM_BO.outputs):
             txtOut += f"\t{i}"
 
         STR_header = f"""
@@ -1482,12 +1482,12 @@ MITIM version 0.2 (P. Rodriguez-Fernandez, 2020)
 Workflow start time: {IOtools.getStringFromTime()} 
 \t"""
 
-        if self.PRF_BO.optimization_options["dvs_base"] is None:
+        if self.MITIM_BO.optimization_options["dvs_base"] is None:
             STR_base = ""
         else:
             txtBase = ""
-            for cont, i in enumerate(self.PRF_BO.bounds):
-                txtBase += f"\t{i} = {self.PRF_BO.optimization_options['dvs_base'][cont]:.5f}\n"
+            for cont, i in enumerate(self.MITIM_BO.bounds):
+                txtBase += f"\t{i} = {self.MITIM_BO.optimization_options['dvs_base'][cont]:.5f}\n"
             STR_base = f"""
 * Baseline point (added as Evaluation.0 to initial batch)
 {txtBase}
@@ -1507,9 +1507,9 @@ Workflow start time: {IOtools.getStringFromTime()}
 	""".format(
             txtIn,
             txtOut,
-            self.PRF_BO.optimization_results.file,
-            len(self.PRF_BO.bounds),
-            len(self.PRF_BO.outputs),
+            self.MITIM_BO.optimization_results.file,
+            len(self.MITIM_BO.bounds),
+            len(self.MITIM_BO.outputs),
             STR_base,
             txtR,
         )
@@ -1523,7 +1523,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def getBest(self, rangeT=None):
 
-        converged, res = self.PRF_BO.optimization_options['stopping_criteria'](self.PRF_BO, parameters = self.PRF_BO.optimization_options['stopping_criteria_parameters'])
+        converged, res = self.MITIM_BO.optimization_options['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['stopping_criteria_parameters'])
 
         best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]
@@ -2218,8 +2218,8 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.optima,
             self.OF_labels,
             colors,
-            self.PRF_BO.scalarized_objective,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
+            self.MITIM_BO.scalarized_objective,
+            OF_labels_complete=self.MITIM_BO.stepSettings["name_objectives"],
         )
         xe, yTe, yTMe, _ = plotAndGrab(
             ax,
@@ -2229,11 +2229,11 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             colors,
-            self.PRF_BO.scalarized_objective,
+            self.MITIM_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
+            OF_labels_complete=self.MITIM_BO.stepSettings["name_objectives"],
         )
 
         # Compress evaluations to optima grid (assuming)
@@ -2382,7 +2382,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.optima,
                 self.OF_labels,
                 None,
-                self.PRF_BO.scalarized_objective,
+                self.MITIM_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2397,7 +2397,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.evaluations,
                 self.OF_labels,
                 None,
-                self.PRF_BO.scalarized_objective,
+                self.MITIM_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2434,8 +2434,8 @@ Workflow start time: {IOtools.getStringFromTime()}
                     markersize=2,
                 )
 
-            if self.PRF_BO.stepSettings["name_objectives"] is not None:
-                ax.set_ylabel(self.PRF_BO.stepSettings["name_objectives"][i])
+            if self.MITIM_BO.stepSettings["name_objectives"] is not None:
+                ax.set_ylabel(self.MITIM_BO.stepSettings["name_objectives"][i])
             else:
                 ax.set_ylabel(f"Objective Function #{i+1}")
 
@@ -2483,7 +2483,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             None,
-            self.PRF_BO.scalarized_objective,
+            self.MITIM_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,

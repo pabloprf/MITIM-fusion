@@ -12,7 +12,7 @@ def runTGYRO(
     folderWork,
     outputFiles=None,
     nameRunid="",
-    nameJob="tgyro_prf",
+    nameJob="tgyro_mitim",
     nparallel=8,
     minutes=30,
     inputFiles=None,

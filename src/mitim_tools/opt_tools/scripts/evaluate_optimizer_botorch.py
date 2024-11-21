@@ -39,7 +39,7 @@ numVariations = args.var
 
 opt_fun = STRATEGYtools.opt_evaluator(folder)
 opt_fun.read_optimization_results(analysis_level=4)
-step = opt_fun.prfs_model.steps[-1]
+step = opt_fun.mitim_model.steps[-1]
 
 fun = OPTtools.fun_optimization(
     step.stepSettings, step.evaluators, step.StrategyOptions_use

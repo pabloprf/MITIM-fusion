@@ -29,10 +29,10 @@ except:
 telab = "TEL"
 tilab = "TIO"
 
-telabfile = IOtools.expandPath(f"./PRF12345.{telab}")
-tilabfile = IOtools.expandPath(f"./PRF12345.{tilab}")
-tilaboldfile = IOtools.expandPath(f"./PRF12345.{tilab}_old")
-tilabtestfile = IOtools.expandPath(f"./PRF12345.{tilab}_test")
+telabfile = IOtools.expandPath(f"./MIT12345.{telab}")
+tilabfile = IOtools.expandPath(f"./MIT12345.{tilab}")
+tilaboldfile = IOtools.expandPath(f"./MIT12345.{tilab}_old")
+tilabtestfile = IOtools.expandPath(f"./MIT12345.{tilab}_test")
 
 timesplot = np.linspace(plotTime - avTime, plotTime + avTime, 100)
 

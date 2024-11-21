@@ -760,4 +760,4 @@ def analyze_results(
     if analysis_level in [2, 5]:
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
-    return portals_full.opt_fun.prfs_model.optimization_object
+    return portals_full.opt_fun.mitim_model.optimization_object

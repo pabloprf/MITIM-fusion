@@ -593,7 +593,7 @@ def PORTALSanalyzer_plotMetrics(
     # Plot las point as check
     ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
-    separator = self.opt_fun.prfs_model.optimization_options["initial_training"] + 0.5 - 1
+    separator = self.opt_fun.mitim_model.optimization_options["initial_training"] + 0.5 - 1
 
     if self.evaluations[-1] < separator:
         separator = None
@@ -1547,7 +1547,7 @@ def PORTALSanalyzer_plotExpected(
 
     # ---- Plot fluxes
     cont = plotVars(
-        self.opt_fun.prfs_model,
+        self.opt_fun.mitim_model,
         y_trainreal,
         [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
         [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1560,7 +1560,7 @@ def PORTALSanalyzer_plotExpected(
         colors=colors,
     )
     _ = plotVars(
-        self.opt_fun.prfs_model,
+        self.opt_fun.mitim_model,
         y_train,
         [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
         [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1574,7 +1574,7 @@ def PORTALSanalyzer_plotExpected(
 
     if y_next is not None:
         cont = plotVars(
-            self.opt_fun.prfs_model,
+            self.opt_fun.mitim_model,
             y_next,
             [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
             [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1782,11 +1782,11 @@ def PORTALSanalyzer_plotExpected(
 
     try:
         Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
-            y_trainreal[self.opt_fun.prfs_model.BOmetrics["overall"]["indBest"], :]
+            y_trainreal[self.opt_fun.mitim_model.BOmetrics["overall"]["indBest"], :]
             .detach()
             .cpu()
             .cpu().numpy(),
-            self.opt_fun.prfs_model,
+            self.opt_fun.mitim_model,
         )
         rangePlotResidual = np.max([np.max(Qe_tar), np.max(Qi_tar), np.max(Ge_tar)])
         for ax in [axTe_r, axTi_r, axne_r]:
@@ -1933,8 +1933,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         axsR.append(fig.add_subplot(grid[1, i]))
 
     produceInfoRanges(
-        self.opt_fun.prfs_model.optimization_object,
-        self.opt_fun.prfs_model.bounds_orig,
+        self.opt_fun.mitim_model.optimization_object,
+        self.opt_fun.mitim_model.bounds_orig,
         axsR=axsR,
         color="k",
         lw=0.2,
@@ -1942,8 +1942,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         label="original",
     )
     produceInfoRanges(
-        self.opt_fun.prfs_model.optimization_object,
-        self.opt_fun.prfs_model.bounds,
+        self.opt_fun.mitim_model.optimization_object,
+        self.opt_fun.mitim_model.bounds,
         axsR=axsR,
         color="c",
         lw=0.2,
@@ -1961,7 +1961,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
-        ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
+        ls="-o" if self.opt_fun.mitim_model.avoidPoints else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -1977,7 +1977,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
-            ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
+            ls="-o" if self.opt_fun.mitim_model.avoidPoints else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
@@ -2395,17 +2395,17 @@ def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
     return metric, metric_lab
 
 
-def varToReal(y, prfs_model):
+def varToReal(y, mitim_model):
 
-    of, cal, res = prfs_model.optimization_object.scalarized_objective(
-        torch.Tensor(y).to(prfs_model.optimization_object.dfT).unsqueeze(0)
+    of, cal, res = mitim_model.optimization_object.scalarized_objective(
+        torch.Tensor(y).to(mitim_model.optimization_object.dfT).unsqueeze(0)
     )
 
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in prfs_model.optimization_object.MODELparameters["ProfilesPredicted"]:
-        for rad in prfs_model.optimization_object.MODELparameters["RhoLocations"]:
+    for prof in mitim_model.optimization_object.MODELparameters["ProfilesPredicted"]:
+        for rad in mitim_model.optimization_object.MODELparameters["RhoLocations"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2443,7 +2443,7 @@ def varToReal(y, prfs_model):
 
 
 def plotVars(
-    prfs_model,
+    mitim_model,
     y,
     axs,
     axsR,
@@ -2474,15 +2474,15 @@ def plotVars(
         contP += 1
 
         x_var = (
-            prfs_model.optimization_object.surrogate_parameters["powerstate"]
+            mitim_model.optimization_object.surrogate_parameters["powerstate"]
             .plasma["roa"][0, 1:]
             .cpu()
             .cpu().numpy()
-        )  # prfs_model.optimization_object.MODELparameters['RhoLocations']
+        )  # mitim_model.optimization_object.MODELparameters['RhoLocations']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
-                y[i, :].detach().cpu().numpy(), prfs_model
+                y[i, :].detach().cpu().numpy(), mitim_model
             )
         except:
             continue
@@ -2499,7 +2499,7 @@ def plotVars(
                 Ge_tarEl,
                 GZ_tarEl,
                 Mt_tarEl,
-            ) = varToReal(yerr[0][i, :].detach().cpu().numpy(), prfs_model)
+            ) = varToReal(yerr[0][i, :].detach().cpu().numpy(), mitim_model)
             (
                 QeEu,
                 QiEu,
@@ -2511,7 +2511,7 @@ def plotVars(
                 Ge_tarEu,
                 GZ_tarEu,
                 Mt_tarEu,
-            ) = varToReal(yerr[1][i, :].detach().cpu().numpy(), prfs_model)
+            ) = varToReal(yerr[1][i, :].detach().cpu().numpy(), mitim_model)
 
         if axTe_f is not None:
             ax = axTe_f

@@ -37,15 +37,15 @@ class PORTALSanalyzer:
 
         # Preparation
         print("- Grabbing model")
-        self.step = self.opt_fun.prfs_model.steps[-1]
+        self.step = self.opt_fun.mitim_model.steps[-1]
         self.gp = self.step.GP["combined_model"]
 
-        self.powerstate = self.opt_fun.prfs_model.optimization_object.surrogate_parameters[
+        self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters[
             "powerstate"
         ]
 
         # Read dictionaries
-        with open(self.opt_fun.prfs_model.optimization_object.optimization_extra, "rb") as f:
+        with open(self.opt_fun.mitim_model.optimization_object.optimization_extra, "rb") as f:
             self.mitim_runs = pickle_dill.load(f)
 
         self.prep_metrics()
@@ -124,7 +124,7 @@ class PORTALSanalyzer:
 
         # What's the last iteration?
         if ilast is None:
-            # self.opt_fun.prfs_model.train_Y.shape[0]
+            # self.opt_fun.mitim_model.train_Y.shape[0]
             for ikey in self.mitim_runs:
                 if not isinstance(self.mitim_runs[ikey], dict):
                     break
@@ -149,8 +149,8 @@ class PORTALSanalyzer:
         self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
         self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
 
-        self.PORTALSparameters = self.opt_fun.prfs_model.optimization_object.PORTALSparameters
-        self.MODELparameters = self.opt_fun.prfs_model.optimization_object.MODELparameters
+        self.PORTALSparameters = self.opt_fun.mitim_model.optimization_object.PORTALSparameters
+        self.MODELparameters = self.opt_fun.mitim_model.optimization_object.MODELparameters
 
         # Useful flags
         self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
@@ -349,7 +349,7 @@ class PORTALSanalyzer:
             self.DeltaQ = np.append(self.DeltaQ, DeltaQ1[i + 1, :, :], axis=1)
 
         self.aLTn_perc = None
-        # try:	self.aLTn_perc  = calcLinearizedModel(self.opt_fun.prfs_model,self.DeltaQ,numChannels=self.numChannels,numRadius=self.numRadius,sepers=[self.i0, self.ibest])
+        # try:	self.aLTn_perc  = calcLinearizedModel(self.opt_fun.mitim_model,self.DeltaQ,numChannels=self.numChannels,numRadius=self.numRadius,sepers=[self.i0, self.ibest])
         # except:	print('\t- Jacobian calculation failed',typeMsg='w')
 
         self.DVdistMetric_x = self.opt_fun.res.DVdistMetric_x
@@ -436,9 +436,9 @@ class PORTALSanalyzer:
 
     def extractModels(self, step=-1):
         if step < 0:
-            step = len(self.opt_fun.prfs_model.steps) - 1
+            step = len(self.opt_fun.mitim_model.steps) - 1
 
-        gps = self.opt_fun.prfs_model.steps[step].GP["individual_models"]
+        gps = self.opt_fun.mitim_model.steps[step].GP["individual_models"]
 
         # Make dictionary
         models = {}
@@ -481,7 +481,7 @@ class PORTALSanalyzer:
         folder.mkdir(parents=True, exist_ok=True)
 
         # Original class
-        portals_fun_original = self.opt_fun.prfs_model.optimization_object
+        portals_fun_original = self.opt_fun.mitim_model.optimization_object
 
         # Start from the profiles of that step
         fileGACODE = folder / "input.gacode_transferred"
@@ -507,7 +507,7 @@ class PORTALSanalyzer:
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
-                prf_bo = STRATEGYtools.PRF_BO(portals_fun);     prf_bo.run()
+                mitim_bo = STRATEGYtools.MITIM_BO(portals_fun);     mitim_bo.run()
 ****************************************************************************************************
 """,
             typeMsg="i",
@@ -668,7 +668,7 @@ class PORTALSanalyzer:
             name0 = f"portals_{b}_ev{0}"  # e.g. portals_jet37_ev0
 
             tgyroO, powerstateO, _ = runModelEvaluator(
-                self.opt_fun.prfs_model.optimization_object,
+                self.opt_fun.mitim_model.optimization_object,
                 FolderEvaluation,
                 dictDVs,
                 name0,
@@ -688,7 +688,7 @@ class PORTALSanalyzer:
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{self.res.best_absolute_index}"  # e.g. portals_jet37_ev0
         tgyroB, powerstateB, _ = runModelEvaluator(
-            self.opt_fun.prfs_model.optimization_object,
+            self.opt_fun.mitim_model.optimization_object,
             FolderEvaluation,
             dictDVs,
             name,
@@ -865,7 +865,7 @@ class wrapped_model_portals:
 
 
 def calcLinearizedModel(
-    prfs_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
+    mitim_model, DeltaQ, posBase=-1, numChannels=3, numRadius=4, sepers=[]
 ):
     """
     posBase = 1 is aLTi, 0 is aLTe, if the order is [a/LTe,aLTi]
@@ -875,16 +875,16 @@ def calcLinearizedModel(
     NOTE for PRF: THIS ONLY WORKS FOR TURBULENCE, nOT NEO!
     """
 
-    trainx = prfs_model.steps[-1].GP["combined_model"].train_X.cpu().numpy()
+    trainx = mitim_model.steps[-1].GP["combined_model"].train_X.cpu().numpy()
 
     istep, aLTn_est, aLTn_base = 0, [], []
     for i in range(trainx.shape[0]):
-        if i >= prfs_model.optimization_options["initial_training"]:
+        if i >= mitim_model.optimization_options["initial_training"]:
             istep += 1
 
         # Jacobian
         J = (
-            prfs_model.steps[istep]
+            mitim_model.steps[istep]
             .GP["combined_model"]
             .localBehavior(trainx[i, :], plotYN=False)
         )

@@ -25,7 +25,7 @@ save = Path(args.save)
 
 opt_fun = STRATEGYtools.opt_evaluator(folderWork)
 opt_fun.read_optimization_results(analysis_level=4)
-strat = opt_fun.prfs_model
+strat = opt_fun.mitim_model
 step = strat.steps[step_num]
 gps = step.GP["individual_models"]
 

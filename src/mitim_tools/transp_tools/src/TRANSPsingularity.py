@@ -328,7 +328,7 @@ def runSINGULARITY(
         # ------------------------------------------------------------
 
         # ENV
-        file = folderWork / "env_prf"
+        file = folderWork / "env_mitim"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write(
@@ -368,13 +368,13 @@ export NCQL3D_NPROCS=0
         # ---------------
 
         TRANSPcommand_prep = f"""
-#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_prf
+#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
 singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 """
 
         TRANSPcommand = f"""
-#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_prf
+#singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
 singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}

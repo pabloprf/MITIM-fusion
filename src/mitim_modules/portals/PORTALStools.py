@@ -414,10 +414,10 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
     return powerstate
 
 
-def stopping_criteria_portals(prf_bo, parameters = {}):
+def stopping_criteria_portals(mitim_bo, parameters = {}):
 
     # Standard stopping criteria
-    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(prf_bo, parameters)
+    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(mitim_bo, parameters)
 
     # Ricci metric
     ricci_value = parameters["ricci_value"]
@@ -426,12 +426,12 @@ def stopping_criteria_portals(prf_bo, parameters = {}):
 
     print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
 
-    Y = torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT)
-    of, cal, _ = prf_bo.scalarized_objective(Y)
+    Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
+    of, cal, _ = mitim_bo.scalarized_objective(Y)
     
-    Ystd = torch.from_numpy(prf_bo.train_Ystd).to(prf_bo.dfT)
-    of_u, cal_u, _ = prf_bo.scalarized_objective(Y+Ystd)
-    of_l, cal_l, _ = prf_bo.scalarized_objective(Y-Ystd)
+    Ystd = torch.from_numpy(mitim_bo.train_Ystd).to(mitim_bo.dfT)
+    of_u, cal_u, _ = mitim_bo.scalarized_objective(Y+Ystd)
+    of_l, cal_l, _ = mitim_bo.scalarized_objective(Y-Ystd)
 
     # If the transformation is linear, they should be the same
     of_stdu, cal_stdu = (of_u-of), (cal_u-cal)

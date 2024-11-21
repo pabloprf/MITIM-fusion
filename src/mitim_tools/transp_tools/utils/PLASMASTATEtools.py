@@ -364,7 +364,7 @@ def lumpingMetric(z_orig, Zave_mean, nZave, nameVar):
     return z
 
 
-def removeSpecies_Dictionary(DataSet_orig, DimensionToChange, index=100, nameVar="PRF"):
+def removeSpecies_Dictionary(DataSet_orig, DimensionToChange, index=100, nameVar="MITIM"):
     print(
         "\nOriginal species dimension: {0}, removing {1} in index {2}".format(
             DataSet_orig.dims[DimensionToChange], nameVar, index
@@ -415,7 +415,7 @@ def lumpImpurities_Dictionary(
     nZave,
     startLump=1,
     endLump=100,
-    nameImp="PRF",
+    nameImp="MITIM",
 ):
     print(
         "\nOriginal species dimension: {0}, Lumping from {1} to {2}".format(
@@ -446,7 +446,7 @@ def lumpImpurities_Dictionary(
 
 
 def changeVariable_Lump(
-    name, varOrig, startLump, endLump, Zave_mean, nZave, nameImp="PRF"
+    name, varOrig, startLump, endLump, Zave_mean, nZave, nameImp="MITIM"
 ):
     print(
         'Changing "{0}" because dimensions {1} for {2}'.format(
@@ -481,7 +481,7 @@ def lumpVariable(
     Zave_mean,
     nZave,
     IsItName=False,
-    nameImp="PRF",
+    nameImp="MITIM",
     nameVar="",
 ):
     z = []

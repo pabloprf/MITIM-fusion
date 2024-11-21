@@ -96,9 +96,9 @@ class portals_beat(beat):
             **self.exploration_ranges,
             )
 
-        self.prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start = cold_start, askQuestions = False)
+        self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
-        self.prf_bo.run()
+        self.mitim_bo.run()
 
     def _flux_match_for_first_point(self):
 
@@ -182,10 +182,10 @@ class portals_beat(beat):
         self.profiles_output.enforceQuasineutrality()
 
         # Insert powers
-        if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
+        if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
             # Insert exchange
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
-            if self.prf_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
+            if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
                 # Insert radiation and fusion
                 for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
                     self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]

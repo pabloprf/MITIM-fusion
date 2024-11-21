@@ -399,17 +399,17 @@ class transp_output:
 
         # ~~~~~~~~ Special Variables  (for convergence) ~~~~~~~~
         self.SpecialVariables = {
-            "VarPRF_Q": self.Q,
-            "VarPRF_PRESS": self.p_avol,
-            "VarPRF_TE": self.Te_avol,
-            "VarPRF_TI": self.Ti_avol,
-            "VarPRF_NE": self.ne_avol,
-            "VarPRF_HE4": self.nHe4_avol,
-            "VarPRF_PRESS_0": self.p[:, 0],
-            "VarPRF_TI_0": self.Ti0,
-            "VarPRF_TE_0": self.Te0,
-            "VarPRF_NE_0": self.ne0,
-            "VarPRF_HE4_0": self.nHe4[:, 0],
+            "VarMITIM_Q": self.Q,
+            "VarMITIM_PRESS": self.p_avol,
+            "VarMITIM_TE": self.Te_avol,
+            "VarMITIM_TI": self.Ti_avol,
+            "VarMITIM_NE": self.ne_avol,
+            "VarMITIM_HE4": self.nHe4_avol,
+            "VarMITIM_PRESS_0": self.p[:, 0],
+            "VarMITIM_TI_0": self.Ti0,
+            "VarMITIM_TE_0": self.Te0,
+            "VarMITIM_NE_0": self.ne0,
+            "VarMITIM_HE4_0": self.nHe4[:, 0],
         }
 
     def analyze_initial(self, duration=1.0, fig=None):
@@ -503,13 +503,13 @@ class transp_output:
         """
 		 Extra transport analysis variables. Posibilities:
 
-		 	- VarPRF_CHIPERT_QE_0.60 for dQe/daLTe at rho=0.6
+		 	- VarMITIM_CHIPERT_QE_0.60 for dQe/daLTe at rho=0.6
 
-		 	- VarPRF_D_W_0.60 for D particle coefficient W at rho=0.6
-		 	- VarPRF_V_W_0.60 for V particle coefficient W at rho=0.6
-		 	- VarPRF_VoD_W_0.60
+		 	- VarMITIM_D_W_0.60 for D particle coefficient W at rho=0.6
+		 	- VarMITIM_V_W_0.60 for V particle coefficient W at rho=0.6
+		 	- VarMITIM_VoD_W_0.60
 
-			- VarPRF_FLUCTE_LOWK_0.6 for integrated Te fluctuation levels at low-k at rho=0.6
+			- VarMITIM_FLUCTE_LOWK_0.6 for integrated Te fluctuation levels at low-k at rho=0.6
 
 		"""
 
@@ -527,10 +527,10 @@ class transp_output:
                 success = True
                 for var in EvaluateExtraAnalysis:
                     if (
-                        "VarPRF_CHIPERT" in var
-                        or "VarPRF_D" in var
-                        or "VarPRF_V" in var
-                        or "VarPRF_FLUCTE" in var
+                        "VarMITIM_CHIPERT" in var
+                        or "VarMITIM_D" in var
+                        or "VarMITIM_V" in var
+                        or "VarMITIM_FLUCTE" in var
                     ):
                         typeA = var.split("_")[-3]  # CHIPERT, D, V, FLUCTE, VoD
                         quantity = var.split("_")[-2]  # QE, W, LOWK
@@ -1275,9 +1275,9 @@ class transp_output:
         # Time evolution of Umag_pol according to TRANSP
         u_transp = self.UmagT_pol_dt
         # Actual time evolution of Umag_pol
-        u_prf = np.append([0], np.diff(self.UmagT_pol) / np.diff(self.t))
+        u_mitim = np.append([0], np.diff(self.UmagT_pol) / np.diff(self.t))
         # Extra power not accounted by UmagT_pol_dt at each time
-        u_diff = u_prf - u_transp
+        u_diff = u_mitim - u_transp
 
         DeltaUpol = []
         for it in range(len(self.t)):
@@ -3701,9 +3701,9 @@ class transp_output:
             self.mu0 * self.Ip_cum * 1e6 / self.Lpol
         )  # This is like a longitudinal average
 
-        # self.Li_PRF_1 	= self.Bpol2_avol/self.Bpol_avol**2
-        # self.Li_PRF_2x 	= self.Bpol2/self.Bpol**2
-        # self.Li_PRF_2 	= volumeAverage_var(self.f,self.Li_PRF_2x)
+        # self.Li_MITIM_1 	= self.Bpol2_avol/self.Bpol_avol**2
+        # self.Li_MITIM_2x 	= self.Bpol2/self.Bpol**2
+        # self.Li_MITIM_2 	= volumeAverage_var(self.f,self.Li_MITIM_2x)
 
         self.LiVDIFF = self.f["LI_VDIFF"][:]  # it is equal to 2*LIO2
         self.Bpol2_extrap = np.zeros(len(self.t))
@@ -4211,17 +4211,17 @@ class transp_output:
             negradTe[it] = np.interp(self.xb[it], self.x[it], negradTe[it])
             nigradTi[it] = np.interp(self.xb[it], self.x[it], nigradTi[it])
 
-        self.qe_PRF = -self.Chi_e * negradTe * 1e-6  # MW/m^2
-        self.qi_PRF = -self.Chi_i * nigradTi * 1e-6  # MW/m^2
-        self.Ge_PRF = (
+        self.qe_MITIM = -self.Chi_e * negradTe * 1e-6  # MW/m^2
+        self.qi_MITIM = -self.Chi_i * nigradTi * 1e-6  # MW/m^2
+        self.Ge_MITIM = (
             -self.Deff_e
             * derivativeVar(self, self.ne * 1e20, specialDerivative=self.x)
             * self.ave_grad_rho
             * 1e-20
         )
 
-        self.Chi_e_PRF = self.qe_obs / (-negradTe) * 1e6
-        self.Chi_i_PRF = self.qi_obs / (-nigradTi) * 1e6
+        self.Chi_e_MITIM = self.qe_obs / (-negradTe) * 1e6
+        self.Chi_i_MITIM = self.qi_obs / (-nigradTi) * 1e6
 
         self.Chi_eff_check = -(self.qe_obs * 1e6 + self.qi_obs * 1e6) / (
             negradTe + nigradTi
@@ -6626,8 +6626,8 @@ class transp_output:
 
         # Magn
         ax = ax5
-        # ax.plot(self.t,self.Li_PRF_1,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA}\\rangle_v / \\langle \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
-        # ax.plot(self.t,self.Li_PRF_2,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA} / \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
+        # ax.plot(self.t,self.Li_MITIM_1,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA}\\rangle_v / \\langle \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
+        # ax.plot(self.t,self.Li_MITIM_2,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA} / \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
         ax.plot(self.t, self.Li1, lw=3, ls="-", label="$l_{i,1}$")
         ax.plot(
             self.t,
@@ -9538,7 +9538,7 @@ class transp_output:
             c="y",
             label="$\\chi_{eff}$ check",
         )
-        ax.plot(self.x_lw, self.Chi_e_PRF[i1, :], lw=1, c="c", label="$\\chi_e$ check")
+        ax.plot(self.x_lw, self.Chi_e_MITIM[i1, :], lw=1, c="c", label="$\\chi_e$ check")
         ax.set_ylabel("$\\chi$ ($m^2/s$)")
         ax.set_xlabel("$\\rho_N$")
         ax.legend(loc="best", prop={"size": self.mainLegendSize})
@@ -9569,7 +9569,7 @@ class transp_output:
         ax.plot(self.x_lw, self.qe_obs[i1, :], lw=2, c="r", ls="-", label="$q_e$ PB")
         ax.plot(
             self.x_lw,
-            self.qe_PRF[i1, :],
+            self.qe_MITIM[i1, :],
             lw=1,
             c="r",
             ls="--",
@@ -9579,7 +9579,7 @@ class transp_output:
         ax.plot(self.x_lw, self.qi_obs[i1, :], lw=2, c="b", ls="-", label="$q_i$ PB")
         ax.plot(
             self.x_lw,
-            self.qi_PRF[i1, :],
+            self.qi_MITIM[i1, :],
             lw=1,
             c="b",
             ls="--",
@@ -9609,7 +9609,7 @@ class transp_output:
         )
         ax.plot(
             self.x_lw,
-            self.Ge_PRF[i1, :],
+            self.Ge_MITIM[i1, :],
             lw=1,
             c="orange",
             ls="--",
@@ -9676,9 +9676,9 @@ class transp_output:
 
         ax = ax8
 
-        ax.plot(self.x_lw, self.qe_PRF[i1, :], lw=2, c="r", label="$q_e$")
+        ax.plot(self.x_lw, self.qe_MITIM[i1, :], lw=2, c="r", label="$q_e$")
         ax.plot(self.x_lw, self.qe_neo[i1, :], lw=1, c="m", label="$q_{e,nc}$")
-        ax.plot(self.x_lw, self.qi_PRF[i1, :], lw=2, c="b", label="$q_i$")
+        ax.plot(self.x_lw, self.qi_MITIM[i1, :], lw=2, c="b", label="$q_i$")
         ax.plot(self.x_lw, self.qi_neo[i1, :], lw=1, c="c", label="$q_{i,nc}$")
         ax.set_ylabel("$q_{e,i}$ ($MW/m^2$)")
         ax.set_xlabel("$\\rho_N$")
@@ -13876,7 +13876,7 @@ class transp_output:
 
         # -------- Standard TRANSP variable (only in time)
 
-        if "VarPRF" not in var:
+        if "VarMITIM" not in var:
             if radius is None:
                 val = self.f[var][:]
             else:
@@ -14763,9 +14763,9 @@ class transp_output:
             )
 
         # Try to read boundary too
-        if (self.FolderCDF / "PRF12345.RFS").exists():
+        if (self.FolderCDF / "MIT12345.RFS").exists():
             self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
-                self.FolderCDF / "PRF12345.RFS", self.FolderCDF / "PRF12345.ZFS"
+                self.FolderCDF / "MIT12345.RFS", self.FolderCDF / "MIT12345.ZFS"
             )
 
     def getICRFantennas(self, namelist):

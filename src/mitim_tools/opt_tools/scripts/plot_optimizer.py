@@ -22,7 +22,7 @@ step_to = args.to_step
 
 opt_fun = STRATEGYtools.opt_evaluator(folderWork)
 opt_fun.read_optimization_results(analysis_level=1)
-strat = opt_fun.prfs_model
+strat = opt_fun.mitim_model
 
 
 if step_to == -1:

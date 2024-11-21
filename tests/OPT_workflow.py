@@ -79,10 +79,10 @@ opt_fun1D = opt_class(folderWork, namelist)
 opt_fun1D.optimization_options["initial_training"] = 2
 
 # Initialize BO framework
-PRF_BO = STRATEGYtools.PRF_BO(opt_fun1D, cold_start=cold_start, askQuestions=False)
+MITIM_BO = STRATEGYtools.MITIM_BO(opt_fun1D, cold_start=cold_start, askQuestions=False)
 
 # Run BO framework
-PRF_BO.run()
+MITIM_BO.run()
 
 # -----------------------------------------------------------------------------------------------------
 # ----- Plotting

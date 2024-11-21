@@ -141,12 +141,12 @@ Now we can create and launch the MITIM optimization process from the beginning (
 
 .. code-block:: python
 
-	mitim_bo = STRATEGYtools.PRF_BO(vitals_fun, cold_start = True )
+	mitim_bo = STRATEGYtools.MITIM_BO(vitals_fun, cold_start = True )
 	mitim_bo.run()
 
 .. note::
 
-	If the user wants to run VITALS as a slurm job in a cluster, it is recommended that the keyword argument ``askQuestions = False`` is passed to ``PRF_BO()``.
+	If the user wants to run VITALS as a slurm job in a cluster, it is recommended that the keyword argument ``askQuestions = False`` is passed to ``MITIM_BO()``.
 
 3. VITALS Interpretation 
 ------------------------

@@ -257,7 +257,7 @@ class Porcelli:
         self.eps1 = np.zeros(len(transp.t))
         self.s1 = np.zeros(len(transp.t))
         self.s1_por = np.zeros(len(transp.t))
-        self.s1_prf = np.zeros(len(transp.t))
+        self.s1_mitim = np.zeros(len(transp.t))
         self.s1 = np.zeros(len(transp.t))
         self.BpC = np.zeros(len(transp.t))
         self.li1 = np.zeros(len(transp.t))
@@ -304,7 +304,7 @@ class Porcelli:
 
             self.r1[it] = x
             self.k1[it] = extrap(x, transp.rmin[it], transp.kappaS[it])
-            self.s1_prf[it] = (
+            self.s1_mitim[it] = (
                 extrap(x, transp.rmin[it], transp.shat[it]) / transp.a[it] * self.r1[it]
             )
             self.s1_por[it] = transp.porcelli_s1[it]

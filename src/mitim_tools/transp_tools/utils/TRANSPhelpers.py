@@ -172,7 +172,7 @@ class transp_run:
                 uf.Variables['Z'] = np.array(z)
 
             # Write ufile
-            uf.writeUFILE(self.folder / f'PRF{self.shot}.{self.quantities[quantity][1]}')
+            uf.writeUFILE(self.folder / f'MIT{self.shot}.{self.quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
         # Write Boundary UFILE
@@ -242,14 +242,14 @@ class transp_run:
             uf.Variables['Q'] = [0.0,1.0]
             uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
             uf.Variables['Z'] = Zr
-            uf.writeUFILE(self.folder / f'PRF{self.shot}.RFS')
+            uf.writeUFILE(self.folder / f'MIT{self.shot}.RFS')
 
             uf = UFILEStools.UFILEtransp(scratch='zfs')
             uf.Variables['X'] = ts
             uf.Variables['Q'] = [0.0,1.0]
             uf.Variables['Y'] = np.linspace(0, 2*np.pi, Rs.shape[-1], endpoint=True)
             uf.Variables['Z'] = Zz
-            uf.writeUFILE(self.folder / f'PRF{self.shot}.ZFS')
+            uf.writeUFILE(self.folder / f'MIT{self.shot}.ZFS')
 
         if structures_position is not None:
 
@@ -270,7 +270,7 @@ class transp_run:
             # Write Limiters in ufile
             # --------------------------------------------------------------------------------------------
 
-            addLimiters_UF(self.folder / f'PRF{self.shot}.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
+            addLimiters_UF(self.folder / f'MIT{self.shot}.LIM', self.geometry_select['R_lim'], self.geometry_select['Z_lim'], numLim=len(self.geometry_select['R_lim']))
 
             # --------------------------------------------------------------------------------------------
             # Write Antenna in namelist
@@ -300,7 +300,7 @@ class transp_run:
         '''
 
         for ufile in ufiles:
-            shutil.copy2(folder_original / f'PRF12345.{ufile}', self.folder)
+            shutil.copy2(folder_original / f'MIT12345.{ufile}', self.folder)
 
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
@@ -891,7 +891,7 @@ def generateMRY(
 
     scruncher_job.run()
 
-    fileUF = FolderMRY / f"PRF{nameBaseShot}.MRY"
+    fileUF = FolderMRY / f"MIT{nameBaseShot}.MRY"
     (FolderEquilibrium / 'M123456.MRY').replace(fileUF)
 
     # Check if MRY file has the number of times expected

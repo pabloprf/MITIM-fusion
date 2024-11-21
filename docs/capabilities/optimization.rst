@@ -105,8 +105,8 @@ Now we can create and launch the MITIM optimization process from the beginning (
 
 .. code-block:: python
 
-   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, cold_startYN = True )
-   PRF_BO.run()
+   MITIM_BO = STRATEGYtools.MITIM_BO( opt_fun1D, cold_startYN = True )
+   MITIM_BO.run()
 
 Once finished, we can plot the results easily with:
 

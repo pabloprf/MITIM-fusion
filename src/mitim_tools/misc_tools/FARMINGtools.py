@@ -883,7 +883,7 @@ def init(l_lock):
     lock = l_lock
 
 
-class PRF_ParallelClass_reduced(object):
+class MITIM_ParallelClass_reduced(object):
     def __init__(self, Function, Params):
         self.Params = Params
         self.Function = Function
@@ -917,7 +917,7 @@ def ParallelProcedure(
         print(
             f'\n~~~~~~~~~~~~~~~~~~ Launching batch of {howmany} evaluations ({parallel} in parallel), {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ~~~~~~~~~~~~~~~~~~'
         )
-    res = pool.map(PRF_ParallelClass_reduced(Function, Params), np.arange(howmany))
+    res = pool.map(MITIM_ParallelClass_reduced(Function, Params), np.arange(howmany))
     if array:
         print(
             "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"

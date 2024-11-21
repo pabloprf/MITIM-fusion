@@ -796,28 +796,28 @@ def updateUFILEfromCDF(varCDF, ufile, cdffile, timeExtract, timeWrite, scratch=N
 def updateTypicalFiles(folder_new, cdf_file, timeExtract, shot="12345"):
     _, _ = updateUFILEfromCDF(
         "Q",
-        folder_new / f"PRF{shot}.QPR",
+        folder_new / f"MIT{shot}.QPR",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TE",
-        folder_new / f"PRF{shot}.TEL",
+        folder_new / f"MIT{shot}.TEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "TI",
-        folder_new / f"PRF{shot}.TIO",
+        folder_new / f"MIT{shot}.TIO",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
     )
     _, _ = updateUFILEfromCDF(
         "NE",
-        folder_new / f"PRF{shot}.NEL",
+        folder_new / f"MIT{shot}.NEL",
         cdf_file,
         timeExtract,
         [0.0, 100.0],
@@ -841,7 +841,7 @@ def changeUFILEs(
 
         if stepTransition:
             UF = UFILEtransp()
-            UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.{iDV}")
+            UF.readUFILE(FolderTRANSP + f"MIT{nameBaseShot}.{iDV}")
             t_orig = np.array(UF.Variables["X"])
             val_orig = UF.Variables["Z"][np.argmin(np.abs(t_orig - timeOriginal))]
 
@@ -858,14 +858,14 @@ def changeUFILEs(
 
         UF = UFILEtransp(scratch=iDV.lower())
         UF.Variables["Z"], UF.Variables["X"] = Zvals, tvals
-        UF.writeUFILE(FolderTRANSP + f"PRF{nameBaseShot}.{iDV}")
+        UF.writeUFILE(FolderTRANSP + f"MIT{nameBaseShot}.{iDV}")
 
         print(f"\t- Changed {iDV} in TRANSP U-Files to {valToModify[iDV]}{printt}")
 
 def offsettimeUF(FolderTRANSP, nameBaseShot, nameufile, offsettime):
     # Read Ufile
     UF = UFILEtransp()
-    UF.readUFILE(FolderTRANSP + f"PRF{nameBaseShot}.{nameufile}")
+    UF.readUFILE(FolderTRANSP + f"MIT{nameBaseShot}.{nameufile}")
 
     # Modify variables
     if UF.dim == 1:
@@ -874,7 +874,7 @@ def offsettimeUF(FolderTRANSP, nameBaseShot, nameufile, offsettime):
         UF.Variables["Y"] = np.array(UF.Variables["Y"]) + offsettime
 
     #  Write new UFile
-    UF.writeUFILE(FolderTRANSP + f"PRF{nameBaseShot}.{nameufile}")
+    UF.writeUFILE(FolderTRANSP + f"MIT{nameBaseShot}.{nameufile}")
 
 
 def initializeUFILES_MinimalTRANSP(rho, Te, Ti, ne, q, V, location=".", name="12345"):
@@ -892,7 +892,7 @@ def initializeUFILES_MinimalTRANSP(rho, Te, Ti, ne, q, V, location=".", name="12
         quickUFILE(
             rho,
             ufiles[ufn][1],
-            location / f"PRF{name}.{ufn}",
+            location / f"MIT{name}.{ufn}",
             typeuf=ufiles[ufn][0],
         )
 
@@ -954,7 +954,7 @@ def reduceTimeUFILE(file, extractTime, newTimes=None):
     uf.writeUFILE(file)
 
 
-def createImpurityUFILE(rho, nZ, file="PRF12345.NW", Z=74, A=183, t=None):
+def createImpurityUFILE(rho, nZ, file="MIT12345.NW", Z=74, A=183, t=None):
     # nZ in 1E20
 
     uf = UFILEtransp(scratch="nzr")
@@ -969,7 +969,7 @@ def createImpurityUFILE(rho, nZ, file="PRF12345.NW", Z=74, A=183, t=None):
     uf.writeUFILE(file)
 
 
-def writeRFSZFS(theta, rho, R, Z, prefix="PRF12345", debug=False):
+def writeRFSZFS(theta, rho, R, Z, prefix="MIT12345", debug=False):
     timeAxis, timeVar = 0, "X"
     rhoVar = "Q"
     thetaVar = "Y"

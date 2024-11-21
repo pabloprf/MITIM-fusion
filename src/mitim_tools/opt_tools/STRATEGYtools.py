@@ -53,8 +53,8 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Run Workflow
 
-	PRF_BO = STRATEGYtools.PRF_BO(optimization_object)
-	PRF_BO.run()
+	MITIM_BO = STRATEGYtools.MITIM_BO(optimization_object)
+	MITIM_BO.run()
 
 Notes:
 	- A "nan" in the evaluator output (e.g. written in optimization_data) means that it has not been evaluated, so this is prone to be tried again.
@@ -206,7 +206,7 @@ class opt_evaluator:
             (
                 self.fn,
                 self.res,
-                self.prfs_model,
+                self.mitim_model,
                 self.log,
                 self.data,
             ) = BOgraphics.retrieveResults(
@@ -221,15 +221,15 @@ class opt_evaluator:
 
         # Make folders local
         try:
-            self.prfs_model.folderOutputs = self.prfs_model.folderOutputs.replace(
-                self.prfs_model.folderExecution, self.folder
+            self.mitim_model.folderOutputs = self.mitim_model.folderOutputs.replace(
+                self.mitim_model.folderExecution, self.folder
             )
-            self.prfs_model.optimization_extra = self.prfs_model.optimization_object.optimization_extra = (
-                self.prfs_model.optimization_extra.replace(
-                    self.prfs_model.folderExecution, self.folder
+            self.mitim_model.optimization_extra = self.mitim_model.optimization_object.optimization_extra = (
+                self.mitim_model.optimization_extra.replace(
+                    self.mitim_model.folderExecution, self.folder
                 )
             )
-            self.prfs_model.folderExecution = self.prfs_model.optimization_object.folder = (
+            self.mitim_model.folderExecution = self.mitim_model.optimization_object.folder = (
                 self.folder
             )
         except:
@@ -254,7 +254,7 @@ class opt_evaluator:
             print(f"\t\t* {ikey} = {variations_best[ikey]}")
 
         try:
-            self_complete = self.prfs_model.optimization_object
+            self_complete = self.mitim_model.optimization_object
         except:
             self_complete = None
             print("\t- Problem retrieving function", typeMsg="w")
@@ -314,7 +314,7 @@ class opt_evaluator:
 
             else:
                 # What function is it?
-                class_name = str(self.prfs_model.optimization_object).split()[0].split(".")[-1]
+                class_name = str(self.mitim_model.optimization_object).split()[0].split(".")[-1]
                 print(
                     f'\t- Retrieving "analyze_results" method from class "{class_name}"',
                     typeMsg="i",
@@ -349,7 +349,7 @@ class opt_evaluator:
 
 
 # Main BO class that performs optimization
-class PRF_BO:
+class MITIM_BO:
     def __init__(
         self,
         optimization_object,
@@ -867,7 +867,7 @@ class PRF_BO:
         )
         print("********************************************************\n")
 
-    def prepare_for_save_PRFBO(self, copyClass):
+    def prepare_for_save_MITIMBO(self, copyClass):
         """
         Downselect what elements to store
         """
@@ -876,7 +876,7 @@ class PRF_BO:
         # To avoid circularity when cold_starting, do not store the class in the optimization_results sub-class
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.optimization_results.PRF_BO
+        del copyClass.optimization_results.MITIM_BO
 
         # -------------------------------------------------------------------------------------------------
         # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TODO: Remove]
@@ -898,12 +898,12 @@ class PRF_BO:
 
         return copyClass
 
-    def prepare_for_read_PRFBO(self, copyClass):
+    def prepare_for_read_MITIMBO(self, copyClass):
         """
         Repair the downselection
         """
 
-        copyClass.optimization_results.PRF_BO = copy.deepcopy(self)
+        copyClass.optimization_results.MITIM_BO = copy.deepcopy(self)
 
         copyClass.scalarized_objective = copyClass.optimization_object.scalarized_objective
 
@@ -924,7 +924,7 @@ class PRF_BO:
             del self.optimization_object.__dict__[ikey]
         # -----------------------------------------------------------------------------------
 
-        copyClass = self.prepare_for_save_PRFBO(copy.deepcopy(self))
+        copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
 
         with open(stateFile_tmp, "wb") as handle:
             try:
@@ -942,7 +942,7 @@ class PRF_BO:
         stateFile_tmp.replace(stateFile)  # This way I reduce the risk of getting a mid-creation file
 
         print(
-            f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the PRF_BO class"
+            f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the MITIM_BO class"
         )
 
     def read(
@@ -971,7 +971,7 @@ class PRF_BO:
                     f.seek(0)
                     aux = CPU_Unpickler(f).load()
 
-            aux = self.prepare_for_read_PRFBO(aux)
+            aux = self.prepare_for_read_MITIMBO(aux)
 
             step = aux.steps[iteration]
             print(
@@ -1924,7 +1924,7 @@ class PRF_BO:
 # Stopping criteria
 # ----------------------------------------------------------------------
 
-def stopping_criteria_default(prf_bo, parameters = {}):
+def stopping_criteria_default(mitim_bo, parameters = {}):
 
     # ------------------------------------------------------------------------------------
     # Determine the stopping criteria
@@ -1934,7 +1934,7 @@ def stopping_criteria_default(prf_bo, parameters = {}):
     maximum_value_orig      = parameters["maximum_value"]
     minimum_dvs_variation   = parameters["minimum_dvs_variation"]
 
-    res_base = -prf_bo.BOmetrics["overall"]["Residual"][0].item()
+    res_base = -mitim_bo.BOmetrics["overall"]["Residual"][0].item()
 
     if maximum_value_is_rel:
         maximum_value = maximum_value_orig * res_base
@@ -1948,13 +1948,13 @@ def stopping_criteria_default(prf_bo, parameters = {}):
     # ------------------------------------------------------------------------------------
 
     if minimum_dvs_variation is not None:
-        converged_by_dvs, yvals = stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation)
+        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation)
     else:
         converged_by_dvs = False
         yvals = None
 
     if maximum_value is not None:
-        converged_by_value, yvals = stopping_criteria_by_value(prf_bo, maximum_value)
+        converged_by_value, yvals = stopping_criteria_by_value(mitim_bo, maximum_value)
     else:
         converged_by_value = False
         yvals = None
@@ -1963,11 +1963,11 @@ def stopping_criteria_default(prf_bo, parameters = {}):
 
     return converged, yvals
 
-def stopping_criteria_by_value(prf_bo, maximum_value):
+def stopping_criteria_by_value(mitim_bo, maximum_value):
 
     # Grab scalarized objectives for each case
     print("\t- Checking maximum value so far...")
-    _, _, maximization_value = prf_bo.scalarized_objective(torch.from_numpy(prf_bo.train_Y).to(prf_bo.dfT))
+    _, _, maximization_value = mitim_bo.scalarized_objective(torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT))
     yvals = maximization_value.cpu().numpy()
 
     # Best case (maximization)
@@ -1979,13 +1979,13 @@ def stopping_criteria_by_value(prf_bo, maximum_value):
 
     return criterion_is_met, -yvals
 
-def stopping_criteria_by_dvs(prf_bo, minimum_dvs_variation):
+def stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation):
 
     print("\t- Checking DV variations...")
-    _, yG_max = TESTtools.DVdistanceMetric(prf_bo.train_X)
+    _, yG_max = TESTtools.DVdistanceMetric(mitim_bo.train_X)
 
     criterion_is_met = (
-        prf_bo.currentIteration
+        mitim_bo.currentIteration
         >= minimum_dvs_variation[0]
         + minimum_dvs_variation[1]
     )
@@ -2011,10 +2011,10 @@ def read_from_scratch(file):
     """
 
     optimization_object = opt_evaluator(None)
-    prf = PRF_BO(optimization_object, onlyInitialize=True, askQuestions=False)
-    prf = prf.read(file=file, iteration=-1, provideFullClass=True)
+    mitim = MITIM_BO(optimization_object, onlyInitialize=True, askQuestions=False)
+    mitim = mitim.read(file=file, iteration=-1, provideFullClass=True)
 
-    return prf
+    return mitim
 
 
 def avoidClassInitialization(folderWork):

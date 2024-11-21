@@ -64,23 +64,23 @@ for test in tests:
             ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
 
             portals_fun.prep(inputgacode, folderWork, ModelOptions=ModelOptions)
-            prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
-            prf_bo.run()
+            mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)
+            mitim_bo.run()
 
         # Checks
         conditions_regressions([
-            [prf_bo.optimization_data.data['QeTurb_1'][0],0.0129878663484079],
-            [prf_bo.optimization_data.data['QeTurb_1'][1],0.0174629359509858],
-            [prf_bo.optimization_data.data['QeTurb_1'][2],0.0222306543202599],
-            [prf_bo.optimization_data.data['QeTurb_1'][3],0.0037220182305746],
-            [prf_bo.optimization_data.data['QeTurb_1'][4],0.0301250769357799],
-            [prf_bo.optimization_data.data['QeTurb_1'][5],0.0436471750834417],
-            [prf_bo.optimization_data.data['QiTurb_5'][0],0.0114099018688661],
-            [prf_bo.optimization_data.data['QiTurb_5'][1],0.0103728562456646],
-            [prf_bo.optimization_data.data['QiTurb_5'][2],0.0095916319760464],
-            [prf_bo.optimization_data.data['QiTurb_5'][3],0.0063868247281859],
-            [prf_bo.optimization_data.data['QiTurb_5'][4],0.0062216868661381],
-            [prf_bo.optimization_data.data['QiTurb_5'][5],0.0061692702220821],
+            [mitim_bo.optimization_data.data['QeTurb_1'][0],0.0129878663484079],
+            [mitim_bo.optimization_data.data['QeTurb_1'][1],0.0174629359509858],
+            [mitim_bo.optimization_data.data['QeTurb_1'][2],0.0222306543202599],
+            [mitim_bo.optimization_data.data['QeTurb_1'][3],0.0037220182305746],
+            [mitim_bo.optimization_data.data['QeTurb_1'][4],0.0301250769357799],
+            [mitim_bo.optimization_data.data['QeTurb_1'][5],0.0436471750834417],
+            [mitim_bo.optimization_data.data['QiTurb_5'][0],0.0114099018688661],
+            [mitim_bo.optimization_data.data['QiTurb_5'][1],0.0103728562456646],
+            [mitim_bo.optimization_data.data['QiTurb_5'][2],0.0095916319760464],
+            [mitim_bo.optimization_data.data['QiTurb_5'][3],0.0063868247281859],
+            [mitim_bo.optimization_data.data['QiTurb_5'][4],0.0062216868661381],
+            [mitim_bo.optimization_data.data['QiTurb_5'][5],0.0061692702220821],
         ])
 
     if test == 2:
@@ -102,26 +102,26 @@ for test in tests:
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
             portals_fun.prep(inputgacode, folderWork)
-            prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
-            prf_bo.run()
+            mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)
+            mitim_bo.run()
 
         # Checks
         conditions_regressions([
-            [prf_bo.optimization_data.data['QeTar_3'][0],0.0276660734686889],
-            [prf_bo.optimization_data.data['QeTar_3'][1],0.026050457428488],
-            [prf_bo.optimization_data.data['QeTar_3'][2],0.0245681162983153],
-            [prf_bo.optimization_data.data['QeTar_3'][3],0.0225138750256145],
-            [prf_bo.optimization_data.data['QeTar_3'][4],0.0238676726307135],
-            [prf_bo.optimization_data.data['QiTurb_4'][0],0.01904210194957 ],
-            [prf_bo.optimization_data.data['QiTurb_4'][1],0.015054384849328], 
-            [prf_bo.optimization_data.data['QiTurb_4'][2],0.012453620533174], 
-            [prf_bo.optimization_data.data['QiTurb_4'][3],0.009167817359775], 
-            [prf_bo.optimization_data.data['QiTurb_4'][4],0.010592748091966],
-            [prf_bo.optimization_data.data['QeTurb_1'][0],0.0008148021791468 ],
-            [prf_bo.optimization_data.data['QeTurb_1'][1],0.005048271135896 ],
-            [prf_bo.optimization_data.data['QeTurb_1'][2],0.0316597732275 ],
-            [prf_bo.optimization_data.data['QeTurb_1'][3],0.4672666906836 ],
-            [prf_bo.optimization_data.data['QeTurb_1'][4],-0.0006023859321252],
+            [mitim_bo.optimization_data.data['QeTar_3'][0],0.0276660734686889],
+            [mitim_bo.optimization_data.data['QeTar_3'][1],0.026050457428488],
+            [mitim_bo.optimization_data.data['QeTar_3'][2],0.0245681162983153],
+            [mitim_bo.optimization_data.data['QeTar_3'][3],0.0225138750256145],
+            [mitim_bo.optimization_data.data['QeTar_3'][4],0.0238676726307135],
+            [mitim_bo.optimization_data.data['QiTurb_4'][0],0.01904210194957 ],
+            [mitim_bo.optimization_data.data['QiTurb_4'][1],0.015054384849328], 
+            [mitim_bo.optimization_data.data['QiTurb_4'][2],0.012453620533174], 
+            [mitim_bo.optimization_data.data['QiTurb_4'][3],0.009167817359775], 
+            [mitim_bo.optimization_data.data['QiTurb_4'][4],0.010592748091966],
+            [mitim_bo.optimization_data.data['QeTurb_1'][0],0.0008148021791468 ],
+            [mitim_bo.optimization_data.data['QeTurb_1'][1],0.005048271135896 ],
+            [mitim_bo.optimization_data.data['QeTurb_1'][2],0.0316597732275 ],
+            [mitim_bo.optimization_data.data['QeTurb_1'][3],0.4672666906836 ],
+            [mitim_bo.optimization_data.data['QeTurb_1'][4],-0.0006023859321252],
         ])
 
     if test == 3:
@@ -142,14 +142,14 @@ for test in tests:
         #     portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
 
         #     portals_fun.prep(inputgacode, folderWork)
-        #     prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=False, askQuestions=False)
-        #     prf_bo.run()
+        #     mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)
+        #     mitim_bo.run()
 
-        #     with open(prf_bo.optimization_object.optimization_extra, "rb") as f:
+        #     with open(mitim_bo.optimization_object.optimization_extra, "rb") as f:
         #         mitim_runs = pickle_dill.load(f)
 
         # # Checks
         # conditions_regressions([
-        #     [prf_bo.optimization_data.data['QeTurb_1'][5],0.0713711320661],
+        #     [mitim_bo.optimization_data.data['QeTurb_1'][5],0.0713711320661],
         #     [mitim_runs[5]['powerstate'].plasma['PexchTurb'][0,3].item(),-0.0009466626542564001]
         # ])

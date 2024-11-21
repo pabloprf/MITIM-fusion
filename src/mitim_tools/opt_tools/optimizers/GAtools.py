@@ -49,7 +49,7 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     bounds = fun.bounds_mod.cpu().numpy()
 
     # Peform workflow
-    GA = PRF_GA(
+    GA = MITIM_GA(
         evaluators=fun.evaluators,
         numOFs=fun.dimOFs,
         dim=fun.dimDVs,
@@ -142,7 +142,7 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-class PRF_GA:
+class MITIM_GA:
     def __init__(
         self,
         evaluators,
@@ -396,7 +396,7 @@ class PRF_GA:
     def save(self, stateFile):
         with open(stateFile, "wb") as handle:
             pickle.dump(self, handle, protocol=4)
-        print(f" --> GA state file {stateFile} generated, containing the PRF_GA class")
+        print(f" --> GA state file {stateFile} generated, containing the MITIM_GA class")
 
     def readGA(self, stateFile):
         with open(stateFile, "rb") as f:

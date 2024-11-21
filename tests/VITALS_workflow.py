@@ -78,8 +78,8 @@ vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
 # Run VITALS
 # ********************************************************************************
 
-PRF_BO = STRATEGYtools.PRF_BO(vitals_fun, cold_start=cold_start, askQuestions=False)
-PRF_BO.run()
+MITIM_BO = STRATEGYtools.MITIM_BO(vitals_fun, cold_start=cold_start, askQuestions=False)
+MITIM_BO.run()
 
 vitals_fun.plot_optimization_results(analysis_level=4)
 

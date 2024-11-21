@@ -255,7 +255,7 @@ def runFreeGS(self, dictDVs, plot=False, figs=None, onlyPrepare=False, debug=Fal
         onlyPrepare=onlyPrepare,
     )
 
-    return out  # prfs,metrics,metrics_opt
+    return out  # mitims,metrics,metrics_opt
 
 
 def analyze_results(
@@ -320,13 +320,13 @@ def analyze_results(
     if onlyPrepare:
         return dictDVs
     else:
-        prfs, metrics, metrics_opt = runFreeGS(self, dictDVs, plot=True, figs=figs)
+        mitims, metrics, metrics_opt = runFreeGS(self, dictDVs, plot=True, figs=figs)
 
         FolderEvaluation = self.folder / "Outputs" / "final_analysis/"
         if storeResults:
             gs = FREEGSUplotting.writeResults(
                 FolderEvaluation,
-                prfs,
+                mitims,
                 metrics,
                 self.function_parameters,
                 namePkl="results",
@@ -408,7 +408,7 @@ def combined_analysis(
 
     figs = [fig1, fig2, fig3, figP, figa, figb, figMach, figRes]
 
-    prfs, metrics, metrics_opt = runFreeGS(p, {}, plot=True, figs=figs)
+    mitims, metrics, metrics_opt = runFreeGS(p, {}, plot=True, figs=figs)
 
     if folderToStore is not None:
         IOtools.askNewFolder(folderToStore, force=True)
@@ -418,7 +418,7 @@ def combined_analysis(
         IOtools.askNewFolder(folderEvaluation, force=True)
         gs = FREEGSUplotting.writeResults(
             folderEvaluation,
-            prfs,
+            mitims,
             metrics,
             p.function_parameters,
             namePkl="results",

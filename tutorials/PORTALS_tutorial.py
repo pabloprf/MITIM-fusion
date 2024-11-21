@@ -45,8 +45,8 @@ portals_fun.prep(inputgacode, ymax_rel=1.0, ymin_rel=1.0)
 # Run (optimization following namelist: templates/main.namelists.json)
 # --------------------------------------------------------------------------------------------
 
-prf_bo = STRATEGYtools.PRF_BO(portals_fun)
-prf_bo.run()
+mitim_bo = STRATEGYtools.MITIM_BO(portals_fun)
+mitim_bo.run()
 
 """
 To plot while it's going or has finished (via alias in portals.bashrc):

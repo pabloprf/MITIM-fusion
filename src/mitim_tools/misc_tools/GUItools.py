@@ -1,6 +1,6 @@
 """
 Notebook tabs, originally from F. Sciortino (MIT, 2019) but modified
-extensively by PRF.
+extensively by PRF
 """
 
 import sys

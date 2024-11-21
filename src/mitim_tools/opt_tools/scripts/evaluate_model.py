@@ -38,11 +38,11 @@ plotYN = args.plot
 
 opt_fun = STRATEGYtools.opt_evaluator(folderWork)
 opt_fun.read_optimization_results(analysis_level=4)
-strat = opt_fun.prfs_model
+strat = opt_fun.mitim_model
 step = strat.steps[step_num]
 gpA = step.GP["combined_model"]
 gp = step.GP["individual_models"][
-    np.where(np.array(opt_fun.prfs_model.outputs) == output_label)[0][0]
+    np.where(np.array(opt_fun.mitim_model.outputs) == output_label)[0][0]
 ]
 
 # ***************** Plot

@@ -527,14 +527,14 @@ def grabPrevious(foldermitim, dictCPs_base):
 
     opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(analysis_level=1)
-    x = opt_fun.prfs_model.BOmetrics["overall"]["xBest"].cpu().numpy()
-    dvs = opt_fun.prfs_model.optimization_options["dvs"]
+    x = opt_fun.mitim_model.BOmetrics["overall"]["xBest"].cpu().numpy()
+    dvs = opt_fun.mitim_model.optimization_options["dvs"]
     dvs_dict = {}
     for j in range(len(dvs)):
         dvs_dict[dvs[j]] = x[j]
 
     print(
-        f"- Grabbing best #{opt_fun.prfs_model.BOmetrics['overall']['indBest']} from previous workflow",
+        f"- Grabbing best #{opt_fun.mitim_model.BOmetrics['overall']['indBest']} from previous workflow",
         typeMsg="i",
     )
 

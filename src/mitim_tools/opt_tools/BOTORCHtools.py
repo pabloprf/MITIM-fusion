@@ -167,11 +167,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True
             )
         elif TypeMean == 2:
-            self.mean_module = PRF_LinearMeanGradients(
+            self.mean_module = MITIM_LinearMeanGradients(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
         elif TypeMean == 3:
-            self.mean_module = PRF_CriticalGradient(
+            self.mean_module = MITIM_CriticalGradient(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
 
@@ -217,7 +217,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 outputscale_prior=outputscale_prior,
             )
         elif TypeKernel == 2:
-            self.covar_module = PRF_ConstantKernel(
+            self.covar_module = MITIM_ConstantKernel(
                 ard_num_dims=self.ard_num_dims,
                 batch_shape=self._aug_batch_shape,
                 lengthscale_prior=lengthscale_prior,
@@ -225,7 +225,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             )
         elif TypeKernel == 3:
             self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
-                base_kernel=PRF_NNKernel(
+                base_kernel=MITIM_NNKernel(
                     ard_num_dims=self.ard_num_dims,
                     batch_shape=self._aug_batch_shape,
                     lengthscale_prior=lengthscale_prior,
@@ -555,7 +555,7 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
 # Custom kernels
 # ----------------------------------------------------------------------------------------------------------------------------
 
-class PRF_NNKernel(gpytorch.kernels.Kernel):
+class MITIM_NNKernel(gpytorch.kernels.Kernel):
     has_lengthscale, is_stationary = True, False
 
     def __init__(self, tau_prior=None, tau_constraint=None, **kwargs):
@@ -642,7 +642,7 @@ class PRF_NNKernel(gpytorch.kernels.Kernel):
         return val
 
 
-class PRF_ConstantKernel(gpytorch.kernels.Kernel):
+class MITIM_ConstantKernel(gpytorch.kernels.Kernel):
     has_lengthscale = False
 
     def forward(
@@ -678,7 +678,7 @@ class PRF_ConstantKernel(gpytorch.kernels.Kernel):
 # ----------------------------------------------------------------------------------------------------------------------------
 
 # mitim application: If a variable is a gradient, do linear, if not, do just bias
-class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):
+class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
     def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
         super().__init__()
 
@@ -706,7 +706,7 @@ class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):
         return res
 
 
-class PRF_CriticalGradient(gpytorch.means.mean.Mean):
+class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
     def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
         super().__init__()
 

@@ -40,8 +40,8 @@ portals_fun.prep(inputgacode)
 # --------------------------------------------------------------------------------------------
 
 # Run
-prf_bo = STRATEGYtools.PRF_BO(portals_fun, cold_start=cold_start, askQuestions=False)
-prf_bo.run()
+mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestions=False)
+mitim_bo.run()
 
 # Plot
 portals_fun.plot_optimization_results(analysis_level=4)

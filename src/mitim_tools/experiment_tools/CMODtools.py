@@ -664,18 +664,18 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     # ----- Change names to those that I understand
 
     for i, j in zip(["NER", "TER", "TI2"], ["NEL", "TEL", "TIO"]):
-        (folderWork / f'PRF{shotnum}.{i}').replace(folderWork / f'PRF{shotnum}.{j}')
+        (folderWork / f'MIT{shotnum}.{i}').replace(folderWork / f'MIT{shotnum}.{j}')
 
     # ---- Add C-Mod limiter
 
     rlim, zlim = defineFirstWall()
-    TRANSPhelpers.addLimiters_UF(folderWork / f"PRF{shotnum}.LIM", rlim, zlim)
+    TRANSPhelpers.addLimiters_UF(folderWork / f"MIT{shotnum}.LIM", rlim, zlim)
 
     # ---- No gas flow (my way is to give this file)
 
     gasflow = 0.0
     UFILEStools.quickUFILE(
-        None, gasflow, folderWork / f"PRF{shotnum}.GFD", typeuf="gfd"
+        None, gasflow, folderWork / f"MIT{shotnum}.GFD", typeuf="gfd"
     )
 
     # ---- Zeff specified as a uniform profile (my way)
@@ -683,10 +683,10 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     xZeff, Zeff = np.linspace(0, 1, 10), np.ones(10) * IOtools.findValue(
         nml_old, "xzeffi", "="
     )
-    UFILEStools.quickUFILE(xZeff, Zeff, folderWork / f"PRF{shotnum}.ZF2", typeuf="zf2")
+    UFILEStools.quickUFILE(xZeff, Zeff, folderWork / f"MIT{shotnum}.ZF2", typeuf="zf2")
 
     # This file is useless
-    (folderWork / f"PRF{shotnum}.ZEF").unlink(missing_ok=True)
+    (folderWork / f"MIT{shotnum}.ZEF").unlink(missing_ok=True)
 
     # ---- Ti validity
 
@@ -701,7 +701,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'PRF'"
 
     # Let's not include neutrons
-    (folderWork / f"PRF{shotnum}.NTX").unlink(missing_ok=True)
+    (folderWork / f"MIT{shotnum}.NTX").unlink(missing_ok=True)
 
     # ---------------------------------------
     # Simulation settings
@@ -822,7 +822,7 @@ def getTRANSP_MDS(
         getMMX(shotnumber, runid, ff)
         IOtools.changeValue(nml_file, "premry", None, [], "=")
         IOtools.changeValue(nml_file, "extmry", None, [], "=")
-        shutil.copy2(ff / f"PRF{runid}.MMX", folderWork)
+        shutil.copy2(ff / f"MIT{runid}.MMX", folderWork)
         IOtools.changeValue(nml_file, "premmx", '"PRF"', [], "=")
         IOtools.changeValue(nml_file, "extmmx", '"MMX"', [], "=")
 
@@ -849,7 +849,7 @@ def nodeToUF(runid, name, nameMDS, folderWork, inputs=".INPUTS:", labelX=None):
 
         uf.Variables["Z"] = np.transpose(uf.Variables["Z"])
 
-    filename = folderWork / f"PRF{runid}.{nameMDS}"
+    filename = folderWork / f"MIT{runid}.{nameMDS}"
 
     uf.writeUFILE(filename)
 
@@ -1026,6 +1026,6 @@ def getMMX(shotNumber, runid, folderWork):
         print(f" >> Maximum relative GS error in data: {GSerrormax}")
 
     for ufile in ["PLF", "PF0", "TRF", "PRS", "QPR", "LIM", "GRB", "MMX"]:
-        (folderScratch / f"PRF{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"PRF{runid}.{ufile}")
+        (folderScratch / f"MIT{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"MIT{runid}.{ufile}")
 
     shutil.rmtree(folderScratch)
