@@ -290,7 +290,7 @@ def prepareTGYRO(
     runPROFILES_GEN(
         folderWork,
         nameFiles=nameWork,
-        UsePRFmodification=fixPlasmaState,
+        UseMITIMmodification=fixPlasmaState,
         includeGEQ=includeGEQ,
     )
 
@@ -473,12 +473,12 @@ def runTRXPL(
 def runPROFILES_GEN(
     FolderTGLF,
     nameFiles="10001",
-    UsePRFmodification=False,
+    UseMITIMmodification=False,
     includeGEQ=True,
 ):
     runWithoutEqIfFail = False  # If profiles_gen fails, try without the "-g" option
 
-    if UsePRFmodification:
+    if UseMITIMmodification:
         print("\t\t- Running modifyPlasmaState")
         shutil.copy2(FolderTGLF / f"{nameFiles}.cdf", FolderTGLF / f"{nameFiles}.cdf_old")
         pls = PLASMASTATEtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")

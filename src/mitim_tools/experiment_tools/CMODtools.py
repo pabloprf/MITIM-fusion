@@ -618,7 +618,7 @@ def grabImpurities(nml, nml_dict={}):
     return nml_dict
 
 
-def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
+def updateTRANSPfromNML(nml_old, nml_new, folderWork, MITIMmodified=False):
     shotnum = int(IOtools.findValue(nml_old, "nshot", "="))
 
     # ---------------------------------------
@@ -650,11 +650,11 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
 
     nml_dict["nprad"] = 0
     nml_dict["prfac"] = 0.2
-    nml_dict["extbol"], nml_dict["prebol"] = "'BOL'", "'PRF'"
+    nml_dict["extbol"], nml_dict["prebol"] = "'BOL'", "'MIT'"
 
     # ---- Rotation is specified
 
-    nml_dict["extvp2"], nml_dict["prevp2"] = "'VP2'", "'PRF'"
+    nml_dict["extvp2"], nml_dict["prevp2"] = "'VP2'", "'MIT'"
 
     # ---- Use the same coordinates in UFILES and names
 
@@ -698,7 +698,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["model_sawtrigger"] = 0
     nml_dict["sawtooth_period"] = 0
     nml_dict["c_sawtooth(2)"] = 0
-    nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'PRF'"
+    nml_dict["extsaw"], nml_dict["presaw"] = "'SAW'", "'MIT'"
 
     # Let's not include neutrons
     (folderWork / f"MIT{shotnum}.NTX").unlink(missing_ok=True)
@@ -713,11 +713,11 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
     nml_dict["qefld"], nml_dict["rqefld"], nml_dict["xpefld"] = 0.0, 0.0, 2.0
     nml_dict["extqpr"] = nml_dict["preqpr"] = nml_dict["nriqpr"] = None
 
-    if not PRFmodified:
+    if not MITIMmodified:
         """
         These are settings that are not strickly experimental, but choices made by PRETRANSP.
-        Here, I can choose them (to reproduce the PRETRANSP exactly, with PRFmodified=False)
-        or use what I think it's best (PRFmodified=True)
+        Here, I can choose them (to reproduce the PRETRANSP exactly, with MITIMmodified=False)
+        or use what I think it's best (MITIMmodified=True)
         """
 
         #  ---- PRETRANSP used the default TIEDGE... which affects strongly neutrals and CX
@@ -747,7 +747,7 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, PRFmodified=False):
 
     if mry is None:
         nml_dict["premry"] = nml_dict["extmry"] = None
-        nml_dict["premmx"], nml_dict["extmmx"] = '"PRF"', '"MMX"'
+        nml_dict["premmx"], nml_dict["extmmx"] = '"MIT"', '"MMX"'
     # --------------------------------------------------------
 
     return nml_dict
@@ -808,7 +808,7 @@ def getTRANSP_MDS(
             uf = nodeToUF(
                 runid, name, nameMDS, folderWork, inputs=".INPUTS:", labelX=labelX
             )
-            IOtools.changeValue(nml_file, "PRE" + nameMDS, "'PRF'", [], "=")
+            IOtools.changeValue(nml_file, "PRE" + nameMDS, "'MIT'", [], "=")
         except:
             print("\t~~ Could not retrieve")
             if name == "mry":
@@ -823,7 +823,7 @@ def getTRANSP_MDS(
         IOtools.changeValue(nml_file, "premry", None, [], "=")
         IOtools.changeValue(nml_file, "extmry", None, [], "=")
         shutil.copy2(ff / f"MIT{runid}.MMX", folderWork)
-        IOtools.changeValue(nml_file, "premmx", '"PRF"', [], "=")
+        IOtools.changeValue(nml_file, "premmx", '"MIT"', [], "=")
         IOtools.changeValue(nml_file, "extmmx", '"MMX"', [], "=")
 
 

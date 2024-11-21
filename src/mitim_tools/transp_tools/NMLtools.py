@@ -966,32 +966,32 @@ class transp_nml:
 
         if self.Pich and 'rfp' not in self.Ufiles:
             lines = [
-                'preRFP	 = "MITIM"',
+                'preRFP	 = "MIT"',
                 'extRFP	 = "RFP"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         if self.Pech:
             lines = [
-                'preECP	 = "MITIM"',
+                'preECP	 = "MIT"',
                 'extECP	 = "ECH"',
-                'preECA	 = "MITIM"',
+                'preECA	 = "MIT"',
                 'extECA	 = "THE"',
-                'preECB	 = "MITIM"',
+                'preECB	 = "MIT"',
                 'extECB	 = "PHI"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         if self.Pnbi:
             lines = [
-                'preNB2	 = "MITIM"',
+                'preNB2	 = "MIT"',
                 'extNB2	 = "NB2"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         for i in self.Ufiles:
             lines = [
-                f'pre{i}	 = "MITIM" ',
+                f'pre{i}	 = "MIT" ',
                 f'ext{i}	 = "{self.Ufiles[i][0]}"',
                 "",
             ]

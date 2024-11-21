@@ -16,7 +16,7 @@ nameWork = s2.split(".cdf")[0]
 GACODErun.runPROFILES_GEN(
     folderWork,
     nameFiles=nameWork,
-    UsePRFmodification=True,
+    UseMITIMmodification=True,
     includeGEQ=True,
 )
 

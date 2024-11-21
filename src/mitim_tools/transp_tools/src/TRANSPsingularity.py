@@ -358,7 +358,7 @@ export NCQL3D_NPROCS=0
             f.write(ENVcommand)
 
         # PRE
-        file = folderWork / "pre_prf"
+        file = folderWork / "pre_mitim"
         inputFiles.append(file)
         with open(file, "w") as f:
             f.write("00\nY\nLaunched by MITIM\nx\n")
@@ -369,13 +369,13 @@ export NCQL3D_NPROCS=0
 
         TRANSPcommand_prep = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
+singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 """
 
         TRANSPcommand = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_prf
+singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
 singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
 singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}
 singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {transp_job.folderExecution}/{runid}tr.log

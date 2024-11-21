@@ -1208,12 +1208,12 @@ def populateFromMDS(self, runidMDS):
         shotnumber=self.shotnumberReal,
     )
 
-def defaultbasedMDS(self, outtims=None, PRFmodified=False):
+def defaultbasedMDS(self, outtims=None, MITIMmodified=False):
     """
     This routine creates a default nml for the given tokamak, and modifies it according to an
     existing nml that, e.g. has come from MDS+
 
-    PRFmodified = True doesn't care about original model settings, I use mine
+    MITIMmodified = True doesn't care about original model settings, I use mine
     """
 
     if outtims is None:
@@ -1230,7 +1230,7 @@ def defaultbasedMDS(self, outtims=None, PRFmodified=False):
         old_nml_file,
         self.nml_file,
         self.FolderTRANSP,
-        PRFmodified=PRFmodified,
+        MITIMmodified=MITIMmodified,
     )
 
     # Write NML
