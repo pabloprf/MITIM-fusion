@@ -43,7 +43,7 @@
         "MinimumRelativeNoise": null,
         "stds_outside": null,
         "stds_outside_checker": 5,
-        "extrapointsFile": null,
+        "add_data_from_file": null,
         "extrapointsModels": null,
         "extrapointsModelsAvoidContent": null
     },

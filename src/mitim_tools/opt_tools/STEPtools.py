@@ -262,7 +262,7 @@ class OPTstep:
         models = ()
         for GP in self.GP["individual_models"]:
             models += (GP.gpmodel,)
-        self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
+        self.GP["combined_model"].gpmodel = BOTORCHtools.ModelListGP_MITIM(*models)
 
         # ------------------------------------------------------------------------------------------------------
         # Make sure each model has the right surrogate_transformation_variables inside the combined model
@@ -298,7 +298,7 @@ class OPTstep:
         I create this so that, upon reading a pickle, I re-call it. Otherwise, it is very heavy to store lambdas
         """
 
-        self.evaluators = {"GP": self.GP["mo_model"]}
+        self.evaluators = {"GP": self.GP["combined_model"]}#mo_model"]}
 
         # **************************************************************************************************
         # Objective (multi-objective model -> single objective residual)
