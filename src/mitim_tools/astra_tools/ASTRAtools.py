@@ -10,7 +10,7 @@ class ASTRA():
 
         pass
 
-    #def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'): 
+    #def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO.tar.gz'):
     def prep(self,folder,file_repo = '$MITIM_PATH/templates/ASTRA8_REPO_MIT.tar'):
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
