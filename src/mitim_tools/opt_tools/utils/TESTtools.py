@@ -47,10 +47,6 @@ def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
     It stops running if the error gets larger than thrPercent in those cases
     """
 
-    from mitim_tools.misc_tools import IOtools
-    with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_evv.prof") as s:
-        GPs.predict(GPs.train_X[0:1, :].repeat(50, 1))
-
     for i in combinations:
         x = GPs.train_X[0:1, :].repeat(i, 1)
 

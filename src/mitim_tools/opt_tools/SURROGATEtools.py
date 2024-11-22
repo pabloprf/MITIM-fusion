@@ -206,12 +206,12 @@ class surrogate_model:
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
         # -------------------------------------------------------------------------------------
 
-        # self.normalization_pass(
-        #     input_transform_physics,
-        #     input_transform_normalization,
-        #     outcome_transform_physics,
-        #     output_transformed_standardization,
-        # )
+        self.normalization_pass(
+            input_transform_physics,
+            input_transform_normalization,
+            outcome_transform_physics,
+            output_transformed_standardization,
+        )
         
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION
@@ -395,8 +395,10 @@ class surrogate_model:
 		"""
 
         # Train always in physics-transformed space, to enable mitim re-use training from file
-        #with fundamental_model_context(self):
-        track_fval = self.perform_model_fit(mll)
+        with fundamental_model_context(self):
+            track_fval = self.perform_model_fit(mll)
+
+        embed()
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
@@ -407,12 +409,12 @@ class surrogate_model:
         # Go back to definining the right normalizations, because the optimizer has to work on training mode...
         # ---------------------------------------------------------------------------------------------------
 
-        # self.normalization_pass(
-        #     self.gpmodel.input_transform["tf1"],
-        #     self.gpmodel.input_transform["tf2"],
-        #     self.gpmodel.outcome_transform["tf1"],
-        #     self.gpmodel.outcome_transform["tf2"],
-        # )
+        self.normalization_pass(
+            self.gpmodel.input_transform["tf1"],
+            self.gpmodel.input_transform["tf2"],
+            self.gpmodel.outcome_transform["tf1"],
+            self.gpmodel.outcome_transform["tf2"],
+        )
 
     def perform_model_fit(self, mll):
         self.gpmodel.train()
@@ -901,16 +903,28 @@ class fundamental_model_context(object):
 
     def __enter__(self):
         # Works for individual models, not ModelList
-        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
-            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = False
+        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = False
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = False
 
         return self.surrogate_model
 
     def __exit__(self, *args):
-        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
-            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = True
+        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = True
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
+
+    # def __enter__(self):
+    #     # Works for individual models, not ModelList
+    #     embed()
+    #     for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+    #         self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = False
+    #     self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = False
+
+    #     return self.surrogate_model
+
+    # def __exit__(self, *args):
+    #     for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+    #         self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = True
+    #     self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
 
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 

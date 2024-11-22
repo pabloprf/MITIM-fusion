@@ -59,22 +59,58 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
         )
 
+        self.store_training(
+            train_X,
+            train_X_added,
+            train_Y,
+            train_Y_added,
+            train_Yvar,
+            train_Yvar_added,
+            input_transform,
+            outcome_transform,
+        )
 
+        # Grab num_outputs
+        self._num_outputs = train_Y.shape[-1]
 
-        self._validate_tensor_args(X=train_X, Y=train_Y, Yvar=train_Yvar)
-        if outcome_transform == DEFAULT:
-            outcome_transform = Standardize(
-                m=train_Y.shape[-1], batch_shape=train_X.shape[:-2]
-            )
-        with torch.no_grad():
-            transformed_X = self.transform_inputs(
-                X=train_X, input_transform=input_transform
-            )
+        # Grab ard_num_dims
+        if train_X.shape[0] > 0:
+            with torch.no_grad():
+                transformed_X = self.transform_inputs(
+                    X=train_X, input_transform=input_transform
+                )
+            self.ard_num_dims = transformed_X.shape[-1]
+        else:
+            self.ard_num_dims = train_X_added.shape[-1]
+            transformed_X = torch.empty((0, self.ard_num_dims)).to(train_X)
 
-        self.ard_num_dims = transformed_X.shape[-1]
-
+        # Transform outcomes
         if outcome_transform is not None:
             train_Y, train_Yvar = outcome_transform(train_X, train_Y, train_Yvar)
+
+        # Added points are raw transformed, so I need to normalize them
+        if train_X_added.shape[0] > 0:
+            train_X_added = input_transform["tf2"](train_X_added)
+            train_Y_added, train_Yvar_added = outcome_transform["tf2"](
+                train_Y_added, train_Yvar_added
+            )
+        # -----
+
+        train_X_usedToTrain = torch.cat((transformed_X, train_X_added), axis=0)
+        train_Y_usedToTrain = torch.cat((train_Y, train_Y_added), axis=0)
+        train_Yvar_usedToTrain = torch.cat((train_Yvar, train_Yvar_added), axis=0)
+
+        self._input_batch_shape, self._aug_batch_shape = self.get_batch_dimensions(
+            train_X=train_X_usedToTrain, train_Y=train_Y_usedToTrain
+        )
+
+        train_Y_usedToTrain = train_Y_usedToTrain.squeeze(-1)
+        train_Yvar_usedToTrain = train_Yvar_usedToTrain.squeeze(-1)
+
+        #self._aug_batch_shape = train_Y.shape[:-2] #<----- New
+
+
+
         # Validate again after applying the transforms
         self._validate_tensor_args(X=transformed_X, Y=train_Y, Yvar=train_Yvar)
         ignore_X_dims = getattr(self, "_ignore_X_dims_scaling_check", None)
@@ -85,25 +121,65 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             ignore_X_dims=ignore_X_dims,
         )
         self._set_dimensions(train_X=train_X, train_Y=train_Y)
-        self._aug_batch_shape = train_Y.shape[:-2] #<----- New
+        
 
         train_X, train_Y, train_Yvar = self._transform_tensor_args(
             X=train_X, Y=train_Y, Yvar=train_Yvar
         )
 
+        """
+		-----------------------------------------------------------------------
+		Likelihood and Noise
+		-----------------------------------------------------------------------
+		"""
+
         self._subset_batch_dict = {}
 
-        likelihood = (
-            gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
-                noise=train_Yvar.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
-                batch_shape=self._aug_batch_shape,
-                learn_additional_noise=learn_additional_noise,
+        if FixedNoise:
+            # Noise not inferred, given by data
+            
+            likelihood = (
+                gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
+                    noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
+                    batch_shape=self._aug_batch_shape,
+                    learn_additional_noise=learn_additional_noise,
+                )
             )
-        )
-        self._is_custom_likelihood = True
 
-        ExactGP.__init__(
-            self, train_inputs=train_X, train_targets=train_Y, likelihood=likelihood
+        else:
+            # Infer Noise
+
+            noise_prior = gpytorch.priors.torch_priors.GammaPrior(1.1, 0.05)
+            noise_prior_mode = (noise_prior.concentration - 1) / noise_prior.rate
+
+            if ConstrainNoise < 0:
+                noise_constraint = gpytorch.constraints.constraints.GreaterThan(
+                    -ConstrainNoise, transform=None, initial_value=noise_prior_mode
+                )
+            else:
+                noise_constraint = gpytorch.constraints.constraints.Interval(
+                    1e-6, ConstrainNoise, transform=None, initial_value=noise_prior_mode
+                )
+
+            likelihood = gpytorch.likelihoods.gaussian_likelihood.GaussianLikelihood(
+                noise_prior=noise_prior,
+                batch_shape=self._aug_batch_shape,
+                noise_constraint=noise_constraint,
+            )
+
+            self._subset_batch_dict["likelihood.noise_covar.raw_noise"] = -2
+
+        """
+		-----------------------------------------------------------------------
+		Initialize ExactGP
+		-----------------------------------------------------------------------
+		"""
+
+        gpytorch.models.exact_gp.ExactGP.__init__(
+            self,
+            train_inputs=train_X_usedToTrain,
+            train_targets=train_Y_usedToTrain,
+            likelihood=likelihood,
         )
 
         """
@@ -189,14 +265,33 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
                 outputscale_prior=outputscale_prior,
             )
 
-
-        # TODO: Allow subsetting of other covar modules
         if outcome_transform is not None:
             self.outcome_transform = outcome_transform
         if input_transform is not None:
             self.input_transform = input_transform
         self.to(train_X)
 
+    def store_training(self, x, xa, y, ya, yv, yva, input_transform, outcome_transform):
+
+        # x, y are raw untransformed, and I want raw transformed
+        if input_transform is not None:
+            x_tr = input_transform["tf1"](x)
+        else:
+            x_tr = x
+        if outcome_transform is not None:
+            y_tr, yv_tr = outcome_transform["tf1"](x, y, yv)
+        else:
+            y_tr, yv_tr = y, yv
+
+        # xa, ya are raw transformed
+        xa_tr = xa
+        ya_tr, yva_tr = ya, yva
+
+        self.train_X_usedToTrain = torch.cat((xa_tr, x_tr), axis=0)
+        self.train_Y_usedToTrain = torch.cat((ya_tr, y_tr), axis=0)
+        self.train_Yvar_usedToTrain = torch.cat((yva_tr, yv_tr), axis=0)
+
+    # Modify posterior call from BatchedMultiOutputGPyTorchModel to call posterior untransform with "X"
     def posterior(
         self,
         X,
