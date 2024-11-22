@@ -163,10 +163,17 @@ class surrogate_model:
             dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
             # ------------------------------------------------------------------------------------------------------------
 
-            self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full)).to(self.dfT)
-            self.train_X_added = torch.empty((0, dimTransformedDV_x)).to(self.dfT)
-            self.train_Y_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
-            self.train_Yvar_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
+            x_transformed = input_transform_physics(self.train_X)
+            shape = list(x_transformed.shape)
+            shape[-2] = 0
+            shape[-1] = dimTransformedDV_x_full
+
+            self.train_X_added_full = torch.empty(*shape).to(self.dfT)
+            shape[-1] = dimTransformedDV_x
+            self.train_X_added = torch.empty(*shape).to(self.dfT)
+            shape[-1] = 1
+            self.train_Y_added = torch.empty(*shape).to(self.dfT)
+            self.train_Yvar_added = torch.empty(*shape).to(self.dfT)
 
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
@@ -202,17 +209,7 @@ class surrogate_model:
         if (self.fileTraining is not None) and (self.train_X.shape[0] + self.train_X_added.shape[0] > 0):
             self.write_datafile(input_transform_physics, outcome_transform_physics)
 
-        # -------------------------------------------------------------------------------------
-        # Obtain normalization constants now (although during training this is messed up, so needed later too)
-        # -------------------------------------------------------------------------------------
 
-        self.normalization_pass(
-            input_transform_physics,
-            input_transform_normalization,
-            outcome_transform_physics,
-            output_transformed_standardization,
-        )
-        
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION
         # ------------------------------------------------------------------------------------
@@ -222,8 +219,14 @@ class surrogate_model:
         ).to(self.dfT)
 
         outcome_transform = BOTORCHtools.ChainedOutcomeTransform(
-            tf1=outcome_transform_physics, tf2=output_transformed_standardization #, tf3=BOTORCHtools.OutcomeToBatchDimension()
+            tf1=outcome_transform_physics, tf2=output_transformed_standardization, tf3=BOTORCHtools.OutcomeToBatchDimension()
         ).to(self.dfT)
+
+        # -------------------------------------------------------------------------------------
+        # Obtain normalization constants now (although during training this is messed up, so needed later too)
+        # -------------------------------------------------------------------------------------
+
+        self.normalization_pass(input_transform, outcome_transform)
 
         self.variables = (
             self.surrogate_transformation_variables[self.outputs[0]]
@@ -305,7 +308,7 @@ class surrogate_model:
         # Broadcast the input transformation to all outputs
         # ------------------------------------------------------------------------------------
 
-        input_transformation_physics = input_transformations_physics[0] #BOTORCHtools.BatchBroadcastedInputTransform(input_transformations_physics)
+        input_transformation_physics = BOTORCHtools.BatchBroadcastedInputTransform(input_transformations_physics)
 
         transformed_X = input_transformation_physics(self.train_X)
 
@@ -331,41 +334,41 @@ class surrogate_model:
                 output_transformed_standardization, \
                 dimTransformedDV_x, dimTransformedDV_y
 
-    def normalization_pass(
-        self,
-        input_transform_physics,
-        input_transform_normalization,
-        outcome_transform_physics,
-        outcome_transform_normalization,
-    ):
-        input_transform_normalization.training = True
-        outcome_transform_normalization.training = True
-        outcome_transform_normalization._is_trained = torch.tensor(False)
+    def normalization_pass(self,input_transform, outcome_transform):
+        '''
+        The goal of this is to capture NOW the normalization and standardization constants,
+        by account for both the actual data and the added data from file 
+        '''
 
-        train_X_transformed = input_transform_physics(self.train_X)
-        train_Y_transformed, train_Yvar_transformed = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
+        # Get input normalization and outcome standardization in training mode
+        input_transform['tf2'].training = True
+        outcome_transform['tf2'].training = True
+        outcome_transform['tf2']._is_trained = torch.tensor(False)
 
-        train_X_transformed = torch.cat(
-            (input_transform_physics(self.train_X), self.train_X_added), axis=0
-        )
-        y, yvar = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
-        train_Y_transformed = torch.cat((y, self.train_Y_added), axis=0)
-        train_Yvar_transformed = torch.cat((yvar, self.train_Yvar_added), axis=0)
+        # Get the input normalization constants by physics-transforming the train_x and adding the data from file
+        train_X_transformed = input_transform['tf1'](self.train_X)
+        train_X_transformed = torch.cat((train_X_transformed, self.train_X_added), axis=-2)
+        _ = input_transform['tf2'](train_X_transformed)
 
-        train_X_transformed_norm = input_transform_normalization(train_X_transformed)
-        (
-            train_Y_transformed_norm,
-            train_Yvar_transformed_norm,
-        ) = outcome_transform_normalization(train_Y_transformed, train_Yvar_transformed)
+        # Get the outcome standardization constants by physics-transforming the train_y and adding the data from file
+        # With the caveat that the added points have to not be batched
+        train_Y_transformed, train_Yvar_transformed = outcome_transform['tf1'](self.train_X, self.train_Y, self.train_Yvar)
+        y, yvar = outcome_transform['tf1'](self.train_X, self.train_Y, self.train_Yvar)
+        
+        train_Y_transformed = torch.cat((y, outcome_transform['tf3'].untransform(self.train_Y_added)[0]), axis=-2)
+        train_Yvar_transformed = torch.cat((yvar, outcome_transform['tf3'].untransform(self.train_Yvar_added)[0]), axis=0)
+
+        train_Y_transformed_norm, train_Yvar_transformed_norm = outcome_transform['tf2'](train_Y_transformed, train_Yvar_transformed)
 
         # Make sure they are not on training mode
-        input_transform_normalization.training = False
-        outcome_transform_normalization.training = False
-        outcome_transform_normalization._is_trained = torch.tensor(True)
+        input_transform['tf2'].training = False
+        outcome_transform['tf2'].training = False
+        outcome_transform['tf2']._is_trained = torch.tensor(True)
+
 
     def fit(self):
         print(
-            f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points"
+            f"\t- Fitting model to {self.train_X.shape[-2]+self.train_X_added.shape[-2]} points"
         )
 
         # ---------------------------------------------------------------------------------------------------
@@ -398,8 +401,6 @@ class surrogate_model:
         with fundamental_model_context(self):
             track_fval = self.perform_model_fit(mll)
 
-        embed()
-
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
         # ---------------------------------------------------------------------------------------------------
@@ -409,12 +410,7 @@ class surrogate_model:
         # Go back to definining the right normalizations, because the optimizer has to work on training mode...
         # ---------------------------------------------------------------------------------------------------
 
-        self.normalization_pass(
-            self.gpmodel.input_transform["tf1"],
-            self.gpmodel.input_transform["tf2"],
-            self.gpmodel.outcome_transform["tf1"],
-            self.gpmodel.outcome_transform["tf2"],
-        )
+        self.normalization_pass(self.gpmodel.input_transform, self.gpmodel.outcome_transform)
 
     def perform_model_fit(self, mll):
         self.gpmodel.train()
@@ -903,28 +899,16 @@ class fundamental_model_context(object):
 
     def __enter__(self):
         # Works for individual models, not ModelList
-        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = False
+        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = False
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = False
 
         return self.surrogate_model
 
     def __exit__(self, *args):
-        self.surrogate_model.gpmodel.input_transform.tf1.flag_to_evaluate = True
+        for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
+            self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = True
         self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
-
-    # def __enter__(self):
-    #     # Works for individual models, not ModelList
-    #     embed()
-    #     for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
-    #         self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = False
-    #     self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = False
-
-    #     return self.surrogate_model
-
-    # def __exit__(self, *args):
-    #     for i in range(len(self.surrogate_model.gpmodel.input_transform.tf1.transforms)):
-    #         self.surrogate_model.gpmodel.input_transform.tf1.transforms[i].flag_to_evaluate = True
-    #     self.surrogate_model.gpmodel.outcome_transform.tf1.flag_to_evaluate = True
 
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 

@@ -36,7 +36,6 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
-        "maxiter": 100,
     }
 
     """
@@ -64,18 +63,16 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
 
-   
-    #with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
-    #with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/profiler_opt.prof") as s:
-    x_opt, _ = botorch.optim.optimize_acqf(
-        acq_function=fun_opt,
-        bounds=fun.bounds_mod,
-        raw_samples=raw_samples,
-        q=q,
-        sequential=sequential_q,
-        num_restarts=num_restarts,
-        options=options,
-    )
+    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
+        x_opt, _ = botorch.optim.optimize_acqf(
+            acq_function=fun_opt,
+            bounds=fun.bounds_mod,
+            raw_samples=raw_samples,
+            q=q,
+            sequential=sequential_q,
+            num_restarts=num_restarts,
+            options=options,
+        )
     embed()
 
     acq_evaluated = torch.Tensor(acq_evaluated)

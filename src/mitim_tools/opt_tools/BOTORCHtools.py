@@ -15,19 +15,14 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # ----------------------------------------------------------------------------------------------------------------------------
 
 from botorch.models.transforms.input import InputTransform
-from botorch.models.transforms.outcome import OutcomeTransform, Standardize
+from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.models.utils import validate_input_scaling
-from botorch.utils.types import DEFAULT
-from gpytorch.models.exact_gp import ExactGP
 from torch import Tensor
-
 from linear_operator.operators import CholLinearOperator, DiagLinearOperator
-
 from typing import Iterable
 from torch.nn import ModuleDict
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.posteriors.posterior import Posterior
-from gpytorch.distributions import MultitaskMultivariateNormal
 from linear_operator.operators import BlockDiagLinearOperator
 
 
@@ -59,16 +54,14 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
         )
 
-        self.store_training(
-            train_X,
-            train_X_added,
-            train_Y,
-            train_Y_added,
-            train_Yvar,
-            train_Yvar_added,
-            input_transform,
-            outcome_transform,
-        )
+        # ** Store training data
+
+        # x, y are raw untransformed, and I want raw transformed. xa, ya are raw transformed
+        #x_tr = input_transform["tf1"](train_X)if input_transform is not None else train_X
+        #y_tr, yv_tr = outcome_transform["tf1"](train_X, train_Y, train_Yvar) if outcome_transform is not None else train_Y, train_Yvar
+        #self.train_X_usedToTrain = torch.cat((train_X_added, x_tr), axis=-2)
+        #self.train_Y_usedToTrain = torch.cat((train_Y_added, y_tr), axis=-2)
+        #self.train_Yvar_usedToTrain = torch.cat((train_Yvar_added, yv_tr), axis=-2)
 
         # Grab num_outputs
         self._num_outputs = train_Y.shape[-1]
@@ -91,40 +84,29 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         # Added points are raw transformed, so I need to normalize them
         if train_X_added.shape[0] > 0:
             train_X_added = input_transform["tf2"](train_X_added)
-            train_Y_added, train_Yvar_added = outcome_transform["tf2"](
-                train_Y_added, train_Yvar_added
-            )
+            train_Y_added = outcome_transform["tf3"].untransform(train_Y_added)[0]
+            train_Yvar_added = outcome_transform["tf3"].untransform(train_Yvar_added)[0]
+            train_Y_added, train_Yvar_added = outcome_transform["tf3"](*outcome_transform["tf2"](train_Y_added, train_Yvar_added))
+
         # -----
 
-        train_X_usedToTrain = torch.cat((transformed_X, train_X_added), axis=0)
-        train_Y_usedToTrain = torch.cat((train_Y, train_Y_added), axis=0)
-        train_Yvar_usedToTrain = torch.cat((train_Yvar, train_Yvar_added), axis=0)
-
-        self._input_batch_shape, self._aug_batch_shape = self.get_batch_dimensions(
-            train_X=train_X_usedToTrain, train_Y=train_Y_usedToTrain
-        )
-
-        train_Y_usedToTrain = train_Y_usedToTrain.squeeze(-1)
-        train_Yvar_usedToTrain = train_Yvar_usedToTrain.squeeze(-1)
-
-        #self._aug_batch_shape = train_Y.shape[:-2] #<----- New
-
-
+        train_X_usedToTrain = torch.cat((transformed_X, train_X_added), axis=-2)
+        train_Y_usedToTrain = torch.cat((train_Y, train_Y_added), axis=-2)
+        train_Yvar_usedToTrain = torch.cat((train_Yvar, train_Yvar_added), axis=-2)
 
         # Validate again after applying the transforms
-        self._validate_tensor_args(X=transformed_X, Y=train_Y, Yvar=train_Yvar)
+        self._validate_tensor_args(X=train_X_usedToTrain, Y=train_Y_usedToTrain, Yvar=train_Yvar_usedToTrain)
         ignore_X_dims = getattr(self, "_ignore_X_dims_scaling_check", None)
         validate_input_scaling(
-            train_X=transformed_X,
-            train_Y=train_Y,
-            train_Yvar=train_Yvar,
+            train_X=train_X_usedToTrain,
+            train_Y=train_Y_usedToTrain,
+            train_Yvar=train_Yvar_usedToTrain,
             ignore_X_dims=ignore_X_dims,
         )
-        self._set_dimensions(train_X=train_X, train_Y=train_Y)
+        self._set_dimensions(train_X=train_X_usedToTrain, train_Y=train_Y_usedToTrain)
         
-
-        train_X, train_Y, train_Yvar = self._transform_tensor_args(
-            X=train_X, Y=train_Y, Yvar=train_Yvar
+        train_X_usedToTrain, train_Y_usedToTrain, train_Yvar_usedToTrain = self._transform_tensor_args(
+            X=train_X_usedToTrain, Y=train_Y_usedToTrain, Yvar=train_Yvar_usedToTrain
         )
 
         """
@@ -270,26 +252,6 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         if input_transform is not None:
             self.input_transform = input_transform
         self.to(train_X)
-
-    def store_training(self, x, xa, y, ya, yv, yva, input_transform, outcome_transform):
-
-        # x, y are raw untransformed, and I want raw transformed
-        if input_transform is not None:
-            x_tr = input_transform["tf1"](x)
-        else:
-            x_tr = x
-        if outcome_transform is not None:
-            y_tr, yv_tr = outcome_transform["tf1"](x, y, yv)
-        else:
-            y_tr, yv_tr = y, yv
-
-        # xa, ya are raw transformed
-        xa_tr = xa
-        ya_tr, yva_tr = ya, yva
-
-        self.train_X_usedToTrain = torch.cat((xa_tr, x_tr), axis=0)
-        self.train_Y_usedToTrain = torch.cat((ya_tr, y_tr), axis=0)
-        self.train_Yvar_usedToTrain = torch.cat((yva_tr, yv_tr), axis=0)
 
     # Modify posterior call from BatchedMultiOutputGPyTorchModel to call posterior untransform with "X"
     def posterior(
@@ -559,6 +521,7 @@ class ChainedOutcomeTransform(
                 if i == len(self.values())-1
                 else tf.untransform_posterior(posterior)
             )  # Only physics transformation (tf1) takes X
+            
 
         return posterior
 

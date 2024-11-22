@@ -101,9 +101,9 @@ class OPTstep:
 
         time1 = datetime.datetime.now()
 
-        #self._fit_multioutput_model()
-        self._fit_individual_models(fit_output_contains=fit_output_contains)
-        
+        self._fit_multioutput_model(); self.GP["combined_model"] = self.GP["mo_model"]
+        #self._fit_individual_models(fit_output_contains=fit_output_contains)
+
         txt_time = IOtools.getTimeDifference(time1)
         print(f"--> Fitting of all models took {txt_time}")
         if self.fileOutputs is not None:
