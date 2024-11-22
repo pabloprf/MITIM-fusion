@@ -1,13 +1,23 @@
 import shutil
 import tarfile
 import numpy as np
+<<<<<<< HEAD
 from mitim_tools.misc_tools import IOtools,FARMINGtools, GUItools, GRAPHICStools
+=======
+import matplotlib.pyplot as plt
+from mitim_tools.misc_tools import IOtools,FARMINGtools
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 from mitim_tools.astra_tools import ASTRA_CDFtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
+<<<<<<< HEAD
+=======
+from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 from mitim_tools import __mitimroot__
 from IPython import embed
+from mitim_tools.surrogate_tools import NNtools
 
 class ASTRA():
 
@@ -15,7 +25,11 @@ class ASTRA():
 
         pass
 
+<<<<<<< HEAD
     def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
+=======
+    def prep(self,folder,file_repo = __mitimroot__ + '/templates/ASTRA8_REPO.tar.gz'): 
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -69,7 +83,7 @@ class ASTRA():
         # What to run 
         self.command_to_run_astra = f'''
 cd {self.astra_job.folderExecution}/{name} 
-exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
+scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
 '''
 
         self.shellPreCommand = f'cd {self.astra_job.folderExecution}/{name} &&  ./install.sh'
@@ -92,7 +106,13 @@ exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -
 
     def read(self):
 
+<<<<<<< HEAD
         self.cdf = ASTRA_CDFtools.transp_output(self.output_folder)
+=======
+        self.cdf_file = f'{self.output_folder}/'
+
+        self.cdf = ASTRA_CDFtools.transp_output(self.cdf_file)
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
     def plot(self):
 
@@ -113,8 +133,12 @@ def convert_ASTRA_to_gacode(astra_root,
     4. returns a mitim gacode object
     """
 
+<<<<<<< HEAD
     astra_root = IOtools.expandPath(astra_root)
     template_path = __mitimroot__ / "tests" / "data "/ "input.gacode"
+=======
+    template_path = __mitimroot__ + "/tests/data/input.gacode"
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
@@ -152,7 +176,11 @@ def convert_ASTRA_to_gacode(astra_root,
     print("Finding flux surface geometry ...")
     psis, rmaj, rmin, zmag, kappa, cn, sn   = g.get_MXH_coeff_new()
     print(cn.shape, sn.shape)
+<<<<<<< HEAD
     #shape_cos, shape_sin, bbox, psin_grid  = g.get_MXH_coeff(n=1000, n_coeff=6, plot=False)
+=======
+    #shape_cos, shape_sin, bbox, psin_grid
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -184,25 +212,25 @@ def convert_ASTRA_to_gacode(astra_root,
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
                                          
     # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
-    interp_to_rho = lambda x: np.interp(polflux_norm, psin_grid, x)    
+    interp_to_rho = lambda x: np.interp(polflux_norm, psis, x)    
 
     q = interp_to_nexp(c.q[ai])                ; params['q(-)'] = q
-    rmaj = interp_to_rho(bbox[0,:])            ; params['rmaj(m)'] = rmaj
-    rmin = interp_to_rho(bbox[1,:])            ; params['rmin(m)'] = rmin
-    zmag = interp_to_rho(bbox[2,:])            ; params['zmag(m)'] = zmag
-    kappa = interp_to_rho(bbox[3,:])           ; params['kappa(-)'] = kappa
-    delta = interp_to_rho(shape_sin[1,:])      ; params['delta(-)'] = delta
-    zeta = interp_to_rho(-shape_sin[2,:])      ; params['zeta(-)'] = zeta
-    shape_cos0 = interp_to_rho(shape_cos[0,:]) ; params['shape_cos0(-)'] = shape_cos0
-    shape_cos1 = interp_to_rho(shape_cos[1,:]) ; params['shape_cos1(-)'] = shape_cos1
-    shape_cos2 = interp_to_rho(shape_cos[2,:]) ; params['shape_cos2(-)'] = shape_cos2
-    shape_cos3 = interp_to_rho(shape_cos[3,:]) ; params['shape_cos3(-)'] = shape_cos3
-    shape_cos4 = interp_to_rho(shape_cos[4,:]) ; params['shape_cos4(-)'] = shape_cos4
-    shape_cos5 = interp_to_rho(shape_cos[5,:]) ; params['shape_cos5(-)'] = shape_cos5
+    rmaj = interp_to_rho(rmaj)            ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_rho(rmin)            ; params['rmin(m)'] = rmin
+    zmag = interp_to_rho(zmag)            ; params['zmag(m)'] = zmag
+    kappa = interp_to_rho(kappa)           ; params['kappa(-)'] = kappa
+    delta = interp_to_rho(sn[:,1])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-sn[:,2])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
     shape_cos6 = np.zeros(nexp)                ; params['shape_cos6(-)'] = shape_cos6
-    shape_sin3 = interp_to_rho(shape_sin[3,:]) ; params['shape_sin3(-)'] = shape_sin3
-    shape_sin4 = interp_to_rho(shape_sin[4,:]) ; params['shape_sin4(-)'] = shape_sin4
-    shape_sin5 = interp_to_rho(shape_sin[5,:]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin3 = interp_to_rho(sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
     shape_sin6 = np.zeros(nexp)                ; params['shape_sin6(-)'] = shape_sin6
 
     ne = interp_to_nexp(c.ne[ai,:])            ; params['ne(10^19/m^3)'] = ne
@@ -217,7 +245,7 @@ def convert_ASTRA_to_gacode(astra_root,
     te = interp_to_nexp(c.Te[ai,:])             ; params['te(keV)'] = te
     # all ions have same temperature
     ti = interp_to_nexp(c.Ti[ai,:])             ; params['ti(keV)'] = np.tile(ti, (nion, 1)).T 
-    ptot = interp_to_nexp(c.ptot[ai,:])         ; params['ptot(Pa)'] = ptot
+    ptot = interp_to_nexp(c.ptot[ai,:])         ; params['ptot(Pa)'] = ptot * 1602 # convert to Pa
     jbs = interp_to_nexp(c.Cubs[ai,:])          ; params["jbs(MA/m^2)"] = jbs
     z_eff = interp_to_nexp(c.ZEF[ai])           ; params['z_eff(-)'] = z_eff
     vtor = interp_to_nexp(c.VTOR[ai])           ; params['vtor(m/s)'] = vtor
@@ -414,7 +442,10 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
         p.plot()
 
     return p
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 def create_initial_conditions(te_avg,
                               ne_avg,
                               q_profile=None,
@@ -442,9 +473,12 @@ def create_initial_conditions(te_avg,
     else:
         rho = np.linspace(0,1,n_rho)
 
+<<<<<<< HEAD
     file_output_location = IOtools.expandPath(file_output_location)
     file_output_location.mkdir(parents=True, exist_ok=True)
 
+=======
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
     psi_n = None
 
     if geometry is not None:
@@ -497,7 +531,11 @@ def create_initial_conditions(te_avg,
         {len(Z)}                    ;-# OF  Y PTS-
 """
 
+<<<<<<< HEAD
         with open(file_output_location / "R_BOUNDARY", 'w') as f:
+=======
+        with open(file_output_location + "/R_BOUNDARY", 'w') as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
             x = range(1, len(g.Rb) + 1)
             f.write(r_preamble)
             f.write(f"  1.000000e-01\n ")
@@ -509,7 +547,11 @@ def create_initial_conditions(te_avg,
             f.write("\n ")
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
+<<<<<<< HEAD
         with open(file_output_location / "Z_BOUNDARY", 'w') as f:
+=======
+        with open(file_output_location + "/Z_BOUNDARY", 'w') as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
             f.write(";----END-OF-DATA-----------------COMMENTS:-----------;")
 
         psi_n = g.g["AuxQuantities"]["PSI_NORM"]
@@ -641,7 +683,11 @@ def create_initial_conditions(te_avg,
     if Te is None:
         Te = T
 
+<<<<<<< HEAD
     with open(file_output_location / "TE_ASTRA", 'w')  as f:
+=======
+    with open(file_output_location+"/TE_ASTRA", 'w')  as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
         f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -653,7 +699,11 @@ def create_initial_conditions(te_avg,
     if Ti is None:
         Ti = T
 
+<<<<<<< HEAD
     with open(file_output_location / "TI_ASTRA", 'w')  as f:
+=======
+    with open(file_output_location+"/TI_ASTRA", 'w')  as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
         f.write(preamble_Temp)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -665,7 +715,11 @@ def create_initial_conditions(te_avg,
     if ne is None:
         ne = n
 
+<<<<<<< HEAD
     with open(file_output_location / "NE_ASTRA", 'w')  as f:
+=======
+    with open(file_output_location+"/NE_ASTRA", 'w')  as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
         f.write(preamble_dens)
         f.write(f" 1.000000e-01\n ")
         f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -677,7 +731,11 @@ def create_initial_conditions(te_avg,
 
         q = q_profile
         
+<<<<<<< HEAD
         with open(file_output_location / "q_ASTRA", 'w')  as f:
+=======
+        with open(file_output_location+"/q_ASTRA", 'w')  as f:
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
             f.write(preamble_q)
             f.write(f" 1.000000e-01\n ")
             f.write("\n ".join(" ".join(f"{num:.6e}" for num in x[i:i + 6]) for i in range(0, len(x), 6)))
@@ -707,3 +765,7 @@ def create_initial_conditions(te_avg,
         ax_geo.set_aspect('equal')
 
         fn.show()
+<<<<<<< HEAD
+=======
+
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)

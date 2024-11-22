@@ -4,7 +4,11 @@ import tempfile
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+<<<<<<< HEAD
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
+=======
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools, MATHtools
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
@@ -53,7 +57,10 @@ def fix_file(filename):
     filename = noCoils_file
 
     return filename
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 class MITIMgeqdsk:
     def __init__(self, filename):
 
@@ -105,7 +112,11 @@ class MITIMgeqdsk:
                     f"{filename}_time{i}.geqdsk",**kwargs,
                 )
             )
+<<<<<<< HEAD
             os.remove(f"{filename}_time{i}.geqdsk")
+=======
+            os.system(f"rm {filename}_time{i}.geqdsk")
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
         return gs
 
@@ -435,11 +446,19 @@ class MITIMgeqdsk:
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
+<<<<<<< HEAD
         folder = IOtools.expandPath(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
         p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
         p.writeCurrentStatus(folder / 'input.gacode')
+=======
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
+        p.writeCurrentStatus(f'{folder}/input.gacode')
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
 
@@ -640,6 +659,7 @@ def find_squareness_points(R, Z, debug = False):
         ax.set_ylabel('Z [m]')
 
     return Ri_uo, Zi_uo, zeta_uo
+<<<<<<< HEAD
 
 def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
 
@@ -654,6 +674,8 @@ def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
 # -----------------------------------------------------------------------------
 # Utilities for parameterizations
 # -----------------------------------------------------------------------------
+=======
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
 def get_MXH_coeff_fromRZ(R,Z,psi,n_coeff=6, plot=False):
         '''
@@ -710,6 +732,23 @@ def get_MXH_coeff_fromRZ(R,Z,psi,n_coeff=6, plot=False):
         print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
         return cn, sn, gn, psis
 
+<<<<<<< HEAD
+=======
+def find_intersection_squareness(R, Z, Ax, Az, Dx, Dz):
+
+    R_line = np.linspace(Ax, Dx, 100)
+    Z_line = np.linspace(Az, Dz, 100)
+    line1 = LineString(zip(R_line, Z_line))
+    line2 = LineString(zip(R, Z))
+    intersection = line1.intersection(line2)
+
+    return intersection.x, intersection.y
+
+# -----------------------------------------------------------------------------
+# Utilities for parameterizations
+# -----------------------------------------------------------------------------
+
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 def from_RZ_to_mxh(R, Z, n_coeff=3):
     """
     Calculates MXH Coefficients for a flux surface
@@ -1206,7 +1245,11 @@ class freegs_millerized:
     # Writing
     # --------------------------------------------------------------
 
+<<<<<<< HEAD
     def write(self, filename):
+=======
+    def write(self, filename = "mitim_freegs.geqdsk"):
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
 
         print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
 
@@ -1217,7 +1260,11 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(scratch_folder)
+<<<<<<< HEAD
         file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
+=======
+        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
@@ -1230,8 +1277,14 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
+<<<<<<< HEAD
         scratch_folder.mkdir(parents=True, exist_ok=True)
         file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
+=======
+        if not os.path.exists(scratch_folder):
+            os.makedirs(scratch_folder)
+        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+>>>>>>> 4dfdd13 (Conflicts with ASTRAtools and GEQtools solved. It required integration of convert_from_astra_to_gacode tool in ASTRAtools to convert CDF output files from astra to gacode format.)
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
