@@ -184,12 +184,27 @@ class UFILEtransp:
             varPermut = "Y"
 
         aux = []
-        for i in range(len(self.Variables[varPermut])):
-            aux.append(self.Variables["Z"])
-        self.Variables["Z"] = np.array(aux)
+        if len(self.Variables[varPermut])>1:
+            for i in range(len(self.Variables[varPermut])):
+                aux.append(self.Variables["Z"])
+            self.Variables["Z"] = np.array(aux)
+            self.Variables["Z"] = np.squeeze(self.Variables["Z"])
+        else:
+            print('can not repeat the profile because the time index has only one point!!!')
 
         if self.dim == 2:
             self.Variables["Z"] = np.transpose(self.Variables["Z"])
+
+    def add_time_point(self,timepoint):
+        if self.dim == 1:
+            varPermut = "X"
+        elif self.dim == 2:
+            varPermut = "Y"
+
+        if timepoint>self.Variables['Y'][-1]:
+            self.Variables[varPermut]=np.append(self.Variables[varPermut],timepoint)
+        else:
+            print('the new time step is lower than the last one in the actual time array')
 
     def writeUFILE(self, filename, orderZvariable="C"):
         """
