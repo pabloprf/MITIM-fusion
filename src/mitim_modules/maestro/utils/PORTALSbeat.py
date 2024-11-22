@@ -295,7 +295,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.optimization_options['surrogateOptions']["add_data_to_modelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):

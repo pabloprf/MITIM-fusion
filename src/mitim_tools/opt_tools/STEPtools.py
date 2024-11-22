@@ -32,9 +32,10 @@ class OPTstep:
         currentIteration=1,
         ):
         """
-        train_Ystd is in standard deviations (square root of the variance), absolute magnitude
-        Rule: X_Y are provided in absolute units. Normalization has to happen inside each surrogate_model,
-                and de-normalized before giving results to the outside of the function
+        Notes:
+            - train_Ystd is in standard deviations (square root of the variance), absolute magnitude
+            - X_Y are provided untransformed and unnormalized. Normalization has to happen inside each
+              surrogate_model, and de-normalized before giving results to the outside of the function
         """
 
         self.train_X, self.train_Y, self.train_Ystd = train_X, train_Y, train_Ystd
@@ -51,6 +52,7 @@ class OPTstep:
         self.favor_proximity_type = self.stepSettings["optimization_options"]["favor_proximity_type"]
         self.optimizers = self.stepSettings["optimization_options"]["optimizers"]
         self.outputs = self.stepSettings["outputs"]
+        self.outputs_transformed = self.stepSettings["name_transformed_ofs"]
         self.dfT = self.stepSettings["dfT"]
         self.best_points_sequence = self.stepSettings["best_points_sequence"]
         self.fileOutputs = self.stepSettings["fileOutputs"]
@@ -65,50 +67,39 @@ class OPTstep:
     def fit_step(self, avoidPoints=None, fit_output_contains=None):
         """
         Notes:
-            - Note that fit_output_contains = 'Tar' would only use the train_X,Y,Yvar tensors
-                    to fit those surrogate variables that contain 'Tar' in their names. This is useful when in
-                    PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
-                    the fluxes but I do want new target calculation
+            - fit_output_contains = 'Tar' would only use the train_X,Y,Yvar tensors
+              to fit those surrogate variables that contain 'Tar' in their names. This is useful when in
+              PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
+              the fluxes but I do want new target calculation
         """
 
         # Prepare case information. Copy because I'll be removing outliers
-        self.x, self.y, self.yvar = (
-            copy.deepcopy(self.train_X),
-            copy.deepcopy(self.train_Y),
-            copy.deepcopy(self.train_Yvar),
-        )
+        self.x = copy.deepcopy(self.train_X)
+        self.y = copy.deepcopy(self.train_Y)
+        self.yvar = copy.deepcopy(self.train_Yvar)
 
         # Add outliers to avoid points (it cannot happen inside of SURROGATEtools or it will fail at combining)
         self.avoidPoints = copy.deepcopy(avoidPoints) if avoidPoints is not None else []
-        self.curate_outliers()
+        self._curate_outliers()
 
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
                 f.write("\n\n-----------------------------------------------------")
                 f.write("\n * Fitting GP models to training data...")
 
-        """
-        *********************************************************************************************************************
-            Performing Fit
-        *********************************************************************************************************************
-        """
+        # Performing Fit
 
-        print(
-            f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n"
-        )
+        print(f"\n~~~~~~~ Fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n")
 
-        self.GP = {}
+        with IOtools.timer(name = "\n\t- Fitting", name_timer = '\t\t- Time: ') as t:
 
-        time1 = datetime.datetime.now()
+            self.GP = {}
+            #self._fit_multioutput_model(); self.GP["combined_model"] = self.GP["mo_model"]
+            self._fit_individual_models(fit_output_contains=fit_output_contains)
 
-        self._fit_multioutput_model(); self.GP["combined_model"] = self.GP["mo_model"]
-        #self._fit_individual_models(fit_output_contains=fit_output_contains)
-
-        txt_time = IOtools.getTimeDifference(time1)
-        print(f"--> Fitting of all models took {txt_time}")
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
-                f.write(f" (took total of {txt_time})")
+                f.write(f" (took total of {t.timeDiff_txt})")
 
     def _fit_multioutput_model(self):
 
@@ -120,7 +111,7 @@ class OPTstep:
             self.yvar,
             self.surrogate_parameters,
             outputs=self.outputs,
-            outputs_transformed=self.stepSettings["name_transformed_ofs"],
+            outputs_transformed=self.outputs_transformed,
             bounds=self.bounds,
             dfT=self.dfT,
             surrogateOptions=surrogateOptions,
@@ -141,22 +132,14 @@ class OPTstep:
         self.GP["individual_models"] = [None] * self.y.shape[-1]
 
         for i in range(self.y.shape[-1]):
-            outi = self.outputs[i] if (self.outputs is not None) else None
 
-            # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
-            specialTreatment = (
-                (outi is not None)
-                and (fit_output_contains is not None)
-                and (fit_output_contains not in outi)
-            )
-            # -----------------------------------------------------------------------------------------------------------------------------------
+            # Grab name of output (raw and transformed)
+            output_this = self.outputs[i] if (self.outputs is not None) else None
+            output_this_tr = self.outputs_transformed[i] if (self.outputs_transformed is not None) else None
 
-            outi_transformed = (
-                self.stepSettings["name_transformed_ofs"][i]
-                if (self.stepSettings["name_transformed_ofs"] is not None)
-                else outi
-            )
-
+            #  specialTreatment is applied when I only want to use training data from a file, not from train_X
+            specialTreatment = (output_this is not None) and (fit_output_contains is not None) and (fit_output_contains not in output_this)
+            
             # ---------------------------------------------------------------------------------------------------
             # Define model-specific functions for this output
             # ---------------------------------------------------------------------------------------------------
@@ -164,41 +147,25 @@ class OPTstep:
             surrogateOptions = copy.deepcopy(self.surrogateOptions)
 
             # Then, depending on application (e.g. targets in mitim are fitted differently)
-            if (
-                "selectSurrogate" in surrogateOptions
-                and surrogateOptions["selectSurrogate"] is not None
-            ):
-                surrogateOptions = surrogateOptions["selectSurrogate"](
-                    outi, surrogateOptions
-                )
+            if ("selectSurrogate" in surrogateOptions) and (surrogateOptions["selectSurrogate"] is not None):
+                surrogateOptions = surrogateOptions["selectSurrogate"](output_this, surrogateOptions)
 
             # ---------------------------------------------------------------------------------------------------
             # To avoid problems with fixed values (e.g. calibration terms that are fixed)
             # ---------------------------------------------------------------------------------------------------
 
             threshold_to_consider_fixed = 1e-6
-            MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(
-                self.y.mean()
-            )
+            MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(self.y.mean())
 
-            if (
-                np.isnan(MaxRelativeDifference)
-                or (
-                    (self.y.shape[0] > 1)
-                    and ((MaxRelativeDifference < threshold_to_consider_fixed).all())
-                )
-            ) and (not specialTreatment):
-                print(
-                    f"\t- Identified that outputs did not change, utilizing constant kernel for {outi}",
-                    typeMsg="w",
-                )
+            FixedValue = False
+            if (np.isnan(MaxRelativeDifference) or \
+                ((self.y.shape[0] > 1) and ((MaxRelativeDifference < threshold_to_consider_fixed).all()))
+                ) and (not specialTreatment):
+                print(f"\t- Identified that outputs did not change, utilizing constant kernel for {output_this}",typeMsg="w",)
                 FixedValue = True
                 surrogateOptions["TypeMean"] = 0
                 surrogateOptions["TypeKernel"] = 6  # Constant kernel
-
-            else:
-                FixedValue = False
-
+                
             # ---------------------------------------------------------------------------------------------------
             # Fit individual output
             # ---------------------------------------------------------------------------------------------------
@@ -209,15 +176,13 @@ class OPTstep:
             yvar = np.expand_dims(self.yvar[:, i], axis=1)
 
             if specialTreatment:
-                x, y, yvar = (
-                    np.empty((0, x.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                )
+                x = np.empty((0, x.shape[-1]))
+                y = np.empty((0, y.shape[-1]))
+                yvar = np.empty((0, y.shape[-1]))
 
             # Surrogate
 
-            print(f"~ Model for output: {outi}")
+            print(f"~ Model for output: {output_this}")
 
             GP = SURROGATEtools.surrogate_model(
                 x,
@@ -225,8 +190,8 @@ class OPTstep:
                 yvar,
                 self.surrogate_parameters,
                 bounds=self.bounds,
-                outputs=[outi],
-                outputs_transformed=[outi_transformed],
+                outputs=[output_this],
+                outputs_transformed=[output_this_tr],
                 dfT=self.dfT,
                 surrogateOptions=surrogateOptions,
                 avoidPoints=self.avoidPoints,
@@ -270,10 +235,10 @@ class OPTstep:
         if self.GP["combined_model"].surrogate_transformation_variables is not None:
             for i in range(self.y.shape[-1]):
 
-                outi = self.outputs[i] if (self.outputs is not None) else None
+                output_this = self.outputs[i] if (self.outputs is not None) else None
 
-                if outi is not None:
-                    self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
+                if output_this is not None:
+                    self.GP["combined_model"].surrogate_transformation_variables[output_this] = self.GP["individual_models"][i].surrogate_transformation_variables[output_this]
 
         """
         *********************************************************************************************************************
@@ -471,7 +436,7 @@ class OPTstep:
             f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points"
         )
 
-    def curate_outliers(self):
+    def _curate_outliers(self):
         # Remove outliers
         self.outliers = removeOutliers(
             self.y,

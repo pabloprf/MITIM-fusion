@@ -336,14 +336,14 @@ class portals(STRATEGYtools.opt_evaluator):
         # Ignore targets in surrogate_data.csv
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if 'extrapointsModels' not in self.optimization_options['surrogateOptions'] or \
-            self.optimization_options['surrogateOptions']['extrapointsModels'] is None or \
-            len(self.optimization_options['surrogateOptions']['extrapointsModels'])==0:
+        if 'add_data_to_models' not in self.optimization_options['surrogateOptions'] or \
+            self.optimization_options['surrogateOptions']['add_data_to_models'] is None or \
+            len(self.optimization_options['surrogateOptions']['add_data_to_models'])==0:
 
             self._define_reuse_models()
 
         else:
-            print("\t- extrapointsModels already defined, not changing")
+            print("\t- add_data_to_models already defined, not changing")
 
     def _define_reuse_models(self):
         '''
@@ -353,21 +353,21 @@ class portals(STRATEGYtools.opt_evaluator):
             '_5' to avoid reusing position 5
         '''
 
-        self.optimization_options['surrogateOptions']['extrapointsModels'] = []
+        self.optimization_options['surrogateOptions']['add_data_to_models'] = []
 
         # Define avoiders
-        if self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] is None:
-            self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] = ['Tar']
+        if self.optimization_options['surrogateOptions']['add_data_to_modelsAvoidContent'] is None:
+            self.optimization_options['surrogateOptions']['add_data_to_modelsAvoidContent'] = ['Tar']
 
-        # Define extrapointsModels
+        # Define add_data_to_models
         for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
             add_key = True
-            for avoid in self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent']:
+            for avoid in self.optimization_options['surrogateOptions']['add_data_to_modelsAvoidContent']:
                 if avoid in key:
                     add_key = False
                     break
             if add_key:
-                self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
+                self.optimization_options['surrogateOptions']['add_data_to_models'].append(key)
 
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends

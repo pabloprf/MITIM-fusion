@@ -43,10 +43,15 @@ class surrogate_model:
         seed = 0
     ):
         """
-        Noise is variance here (square of standard deviation).
+        Note:
+            - noise is variance (square of standard deviation).
         """
 
         torch.manual_seed(seed)
+
+        # --------------------------------------------------------------------
+        # Input parameters
+        # --------------------------------------------------------------------
 
         self.avoidPoints = avoidPoints if avoidPoints is not None else []
         self.outputs = outputs
@@ -68,12 +73,12 @@ class surrogate_model:
             Yvaror = Yor * 0.0 + Yvaror
         self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
 
-        # ---------- Print ----------
+        self.losses = None
+
+        # Print options
         print("\t- Surrogate options:")
         for i in self.surrogateOptions:
             print(f"\t\t{i:20} = {self.surrogateOptions[i]}")
-
-        self.losses = None
 
         # --------------------------------------------------------------------
         # Eliminate points if needed (not from the "added" set)
@@ -81,120 +86,63 @@ class surrogate_model:
 
         self._remove_points()
 
+        # ------------------------------------------------------------------------------------------
+        # Retrieve points from file -> Xtr[batch, dimXtr], Ytr[batch, dimYtr], Yvartr[batch, dimYtr]
+        # ------------------------------------------------------------------------------------------
+
+        train_X_added_full, train_Y_added, train_Yvar_added, dx_tr_full = self._add_points_from_file()
+
         # -------------------------------------------------------------------------------------
-        # Add points from file
+        # Define transformations
         # -------------------------------------------------------------------------------------
 
-        addition_of_points = ("add_data_from_file" in self.surrogateOptions) and (self.surrogateOptions["add_data_from_file"] is not None)
-        is_this_single_output = (self.outputs is not None) and (len(self.outputs) == 1)
+        num_training_points = self.train_X.shape[0] + (train_X_added_full.shape[0] if train_X_added_full is not None else 0)
 
-        if addition_of_points and is_this_single_output:
-            raise Exception("[MITIM] add_data_from_file can only be used for single output models as of now...")
+        input_transform, outcome_transform, dx_tr, dy_tr = self._define_MITIM_transformations(num_training_points = num_training_points)
 
-        # Points to be added from file
-        continueAdding = False
-        if addition_of_points and (self.outputs is not None) and (self.outputs[0] in self.surrogateOptions["extrapointsModels"]):
+        # For easy future use
+        input_transform_physics = input_transform['tf1']
+        outcome_transform_physics = outcome_transform['tf1']
 
-            print(
-                f"\t* Requested extension of training set by points in file {self.surrogateOptions['add_data_from_file']}"
-            )
+        # --------------------------------------------------------------------------------------------
+        # Add points from file (provided as if tf1 was used -> I need to broadcast Xtr to all outputs)
+        # --------------------------------------------------------------------------------------------
 
-            df = pd.read_csv(self.surrogateOptions["add_data_from_file"])
-            df_model = df[df['Model'] == self.outputs[0]]
+        if train_X_added_full is not None:
 
-            if len(df_model) == 0:
-                print("\t- No points for this output in the file, nothing to add", typeMsg="i")
-                continueAdding = False
-            else:
-                continueAdding = True
-
-        if continueAdding:
-
-            # Check 1: Do the points for this output share the same x_names?
-            if df_model['x_names'].nunique() > 1:
-                print("Different x_names for points in the file, prone to errors", typeMsg='q')
-
-            # Check 2: Is it consistent with the x_names of this run?
-            x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
-            x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.outputs[0]]
-            if x_names != x_names_check:
-                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
-
-            self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
-            self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
-    
-            x = []
-            for i in range(len(x_names)):
-                x.append(df_model[f'x{i}'].to_numpy())
-            self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
-
-            # ------------------------------------------------------------------------------------------------------------
-            # Define transformation (here because I want to account for the added points)
-            # ------------------------------------------------------------------------------------------------------------
-            self.num_training_points = self.train_X.shape[0] + self.train_X_added_full.shape[0]
-            input_transform_physics, outcome_transform_physics, \
-            input_transform_normalization, output_transformed_standardization, \
-            dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
-            # ------------------------------------------------------------------------------------------------------------
-
-            self.train_X_added = (
-                self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
-            ).to(self.dfT)
-
+            raise Exception("[PRF] This is not working, I need to broadcast the input transformation to all outputs")
+            self.train_X_added_full = train_X_added_full.to(self.dfT)
+            self.train_X_added = (self.train_X_added_full[:, :dx_tr] if self.train_X_added_full.shape[-1] > dx_tr else self.train_X_added_full).to(self.dfT)
+            self.train_Y_added = train_Y_added.to(self.dfT)
+            self.train_Yvar_added = train_Yvar_added.to(self.dfT)
+        
         else:
-            if self.fileTraining is not None:
-                train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-                    self.train_X,
-                    self.outputs[0],
-                    self.surrogate_parameters,
-                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
-                )
-                dimTransformedDV_x_full = train_X_Complete.shape[-1]
-            else:
-                dimTransformedDV_x_full = self.train_X.shape[-1]
 
-            # --------------------------------------------------------------------------------------
-            # Define transformation (here because I want to account for the added points)
-            # --------------------------------------------------------------------------------------
-            self.num_training_points = self.train_X.shape[0]
+            x_transformed = input_transform_physics(self.train_X) # [batch, dimX] -> [batch, dimXtr] -> [dimY, batch, dimXtr]
 
-            input_transform_physics, outcome_transform_physics,\
-            input_transform_normalization, output_transformed_standardization,\
-            dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
-            # ------------------------------------------------------------------------------------------------------------
+            shape_xtr = list(x_transformed.shape)
+            shape_xtr[-2] = 0
+            shape_xtr[-1] = dx_tr_full
+            self.train_X_added_full = torch.empty(*shape_xtr).to(self.dfT) # [dimY, 0, dimXtr]
+            self.train_X_added = torch.empty(*shape_xtr).to(self.dfT)
 
-            x_transformed = input_transform_physics(self.train_X)
-            shape = list(x_transformed.shape)
-            shape[-2] = 0
-            shape[-1] = dimTransformedDV_x_full
-
-            self.train_X_added_full = torch.empty(*shape).to(self.dfT)
-            shape[-1] = dimTransformedDV_x
-            self.train_X_added = torch.empty(*shape).to(self.dfT)
-            shape[-1] = 1
-            self.train_Y_added = torch.empty(*shape).to(self.dfT)
-            self.train_Yvar_added = torch.empty(*shape).to(self.dfT)
+            y_transformed, yvar_transformed = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
+            shape_ytr = list(y_transformed.shape)
+            shape_ytr[-2] = 0
+            self.train_Y_added = torch.empty(*shape_ytr).to(self.dfT)
+            self.train_Yvar_added = torch.empty(*shape_ytr).to(self.dfT)
 
         # --------------------------------------------------------------------------------------
         # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
 
-        if (self.train_X_added.shape[0] > 0) and (self.train_X.shape[0] > 1):
-            self._ensure_small_variation_suppressed(input_transform_physics)
+        self._ensure_small_variation_suppressed(input_transform_physics)
 
         # --------------------------------------------------------------------------------------
         # Make sure at least 2 points
         # --------------------------------------------------------------------------------------
 
-        if self.train_X.shape[0] + self.train_X_added.shape[0] == 1:
-            factor = 1.2
-            print(
-                f"\t- This dataset had only one point, adding a point with linear interpolation (trick for PORTALS targets only), {factor}",
-                typeMsg="w",
-            )
-            self.train_X = torch.cat((self.train_X, self.train_X * factor))
-            self.train_Y = torch.cat((self.train_Y, self.train_Y * factor))
-            self.train_Yvar = torch.cat((self.train_Yvar, self.train_Yvar * factor))
+        self._ensure_minimum_dataset()
 
         # -------------------------------------------------------------------------------------
         # Check minimum noises
@@ -206,21 +154,7 @@ class surrogate_model:
         # Write file with surrogate if there are transformations
         # -------------------------------------------------------------------------------------
 
-        if (self.fileTraining is not None) and (self.train_X.shape[0] + self.train_X_added.shape[0] > 0):
-            self.write_datafile(input_transform_physics, outcome_transform_physics)
-
-
-        # ------------------------------------------------------------------------------------
-        # Combine transformations in chain of PHYSICS + NORMALIZATION
-        # ------------------------------------------------------------------------------------
-
-        input_transform = botorch.models.transforms.input.ChainedInputTransform(
-            tf1=input_transform_physics, tf2=input_transform_normalization
-        ).to(self.dfT)
-
-        outcome_transform = BOTORCHtools.ChainedOutcomeTransform(
-            tf1=outcome_transform_physics, tf2=output_transformed_standardization, tf3=BOTORCHtools.OutcomeToBatchDimension()
-        ).to(self.dfT)
+        #self._write_datafile(input_transform_physics, outcome_transform_physics)
 
         # -------------------------------------------------------------------------------------
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
@@ -242,9 +176,7 @@ class surrogate_model:
         # Model
         # *************************************************************************************
 
-        print(
-            f'\t- Initializing model{" for "+self.outputs_transformed[0] if (self.outputs_transformed is not None and (len(self.outputs)==1)) else ""}',
-        )
+        print(f'\t- Initializing model{" for "+self.outputs_transformed[0] if (self.outputs_transformed is not None and (len(self.outputs)==1)) else ""}',)
 
         """
         self.train_X contains the untransformed of this specific run:   (batch1, dimX)
@@ -264,7 +196,20 @@ class surrogate_model:
             train_Yvar_added=self.train_Yvar_added,
         )
 
-    def _define_MITIM_transformations(self):
+    def _ensure_minimum_dataset(self):
+
+        if self.train_X.shape[0] + self.train_X_added.shape[0] == 1:
+            factor = 1.2
+            print(
+                f"\t- This dataset had only one point, adding a point with linear interpolation (trick for PORTALS targets only), {factor}",
+                typeMsg="w",
+            )
+            self.train_X = torch.cat((self.train_X, self.train_X * factor))
+            self.train_Y = torch.cat((self.train_Y, self.train_Y * factor))
+            self.train_Yvar = torch.cat((self.train_Yvar, self.train_Yvar * factor))
+
+
+    def _define_MITIM_transformations(self, num_training_points):
 
         '''
         ********************************************************************************
@@ -284,7 +229,7 @@ class surrogate_model:
 
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
                 np.where(
-                    self.num_training_points < np.array(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())))[0][0]
+                    num_training_points < np.array(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())))[0][0]
                     ]
 
             self.surrogate_transformation_variables = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
@@ -312,55 +257,149 @@ class surrogate_model:
 
         transformed_X = input_transformation_physics(self.train_X)
 
-        dimTransformedDV_x = transformed_X.shape[-1]
-        dimTransformedDV_y = self.train_Y.shape[-1]
+        dx_tr = transformed_X.shape[-1]
+        dy_tr = self.train_Y.shape[-1]
 
         # ------------------------------------------------------------------------------------
         # Normalizations
         # ------------------------------------------------------------------------------------
 
         input_transform_normalization = botorch.models.transforms.input.Normalize(
-            d = dimTransformedDV_x, bounds=None, batch_shape=transformed_X.shape[:-2]
+            d = dx_tr, bounds=None, batch_shape=transformed_X.shape[:-2]
         ).to(self.dfT)
         output_transformed_standardization = (
             botorch.models.transforms.outcome.Standardize(
-                m = dimTransformedDV_y,
+                m = dy_tr,
             )
         ).to(self.dfT)
 
-        return  input_transformation_physics, \
-                output_transformation_physics, \
-                input_transform_normalization, \
-                output_transformed_standardization, \
-                dimTransformedDV_x, dimTransformedDV_y
+        # ------------------------------------------------------------------------------------
+        # Combine transformations in chain of PHYSICS + NORMALIZATION + BATCHING
+        # ------------------------------------------------------------------------------------
+
+        input_transform = botorch.models.transforms.input.ChainedInputTransform(
+            tf1=input_transformation_physics, tf2=input_transform_normalization ).to(self.dfT)
+
+        outcome_transform = BOTORCHtools.ChainedOutcomeTransform(
+            tf1=output_transformation_physics, tf2=output_transformed_standardization, tf3=BOTORCHtools.OutcomeToBatchDimension() ).to(self.dfT)
+
+        return input_transform, outcome_transform, dx_tr, dy_tr
+
+    def _add_points_from_file(self):
+
+        is_this_single_output = (self.outputs is not None) and (len(self.outputs) == 1)
+        potential_addition_of_points = ("add_data_from_file" in self.surrogateOptions) and (self.surrogateOptions["add_data_from_file"] is not None)
+        
+        if potential_addition_of_points:
+            if is_this_single_output:
+                addition_of_points = self.outputs[0] in self.surrogateOptions["add_data_to_models"]
+            else:
+                raise Exception("[MITIM] add_data_from_file can only be used for single output models as of now...")
+        else:
+            addition_of_points = False
+
+        # Points to be added from file
+        continueAdding = False
+        if addition_of_points:
+
+            print(f"\t* Extending training set by points in file {self.surrogateOptions['add_data_from_file']}")
+
+            df = pd.read_csv(self.surrogateOptions["add_data_from_file"])
+            df_model = df[df['Model'] == self.outputs[0]]
+
+            if len(df_model) == 0:
+                print("\t- No points for this output in the file, nothing to add", typeMsg="i")
+                continueAdding = False
+            else:
+                continueAdding = True
+
+        if continueAdding:
+
+            # Check 1: Do the points for this output share the same x_names?
+            if df_model['x_names'].nunique() > 1:
+                print("Different x_names for points in the file, prone to errors", typeMsg='q')
+
+            # Check 2: Is it consistent with the x_names of this run?
+            x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
+            x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.outputs[0]]
+            if x_names != x_names_check:
+                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
+
+            train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
+            train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
+    
+            x = []
+            for i in range(len(x_names)):
+                x.append(df_model[f'x{i}'].to_numpy())
+            train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
+
+            dx_tr_full = train_X_added_full.shape[-1]
+
+        else:
+
+            train_X_added_full = None
+            train_Y_added = None
+            train_Yvar_added = None
+
+            if self.fileTraining is not None:
+                train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+                    self.train_X,
+                    self.outputs[0],
+                    self.surrogate_parameters,
+                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
+                )
+                dx_tr_full = train_X_Complete.shape[-1]
+            else:
+                dx_tr_full = self.train_X.shape[-1]
+
+
+        return train_X_added_full, train_Y_added, train_Yvar_added, dx_tr_full
 
     def normalization_pass(self,input_transform, outcome_transform):
         '''
-        The goal of this is to capture NOW the normalization and standardization constants,
-        by account for both the actual data and the added data from file 
+        Notes:
+            - The goal of this is to capture NOW the normalization and standardization constants,
+              by account for both the actual data and the added data from file 
         '''
 
+        # -------------------------------------------------------------------------------------
         # Get input normalization and outcome standardization in training mode
+        # -------------------------------------------------------------------------------------
+
         input_transform['tf2'].training = True
         outcome_transform['tf2'].training = True
         outcome_transform['tf2']._is_trained = torch.tensor(False)
 
+        # -------------------------------------------------------------------------------------------------------
         # Get the input normalization constants by physics-transforming the train_x and adding the data from file
+        # -------------------------------------------------------------------------------------------------------
+
+        # Transform the data from file
         train_X_transformed = input_transform['tf1'](self.train_X)
+
+        # Concatenate the training data and the data from file
         train_X_transformed = torch.cat((train_X_transformed, self.train_X_added), axis=-2)
+
+        # Get the normalization constants
         _ = input_transform['tf2'](train_X_transformed)
 
+        # -----------------------------------------------------------------------------------------------------------
         # Get the outcome standardization constants by physics-transforming the train_y and adding the data from file
-        # With the caveat that the added points have to not be batched
-        train_Y_transformed, train_Yvar_transformed = outcome_transform['tf1'](self.train_X, self.train_Y, self.train_Yvar)
-        y, yvar = outcome_transform['tf1'](self.train_X, self.train_Y, self.train_Yvar)
-        
-        train_Y_transformed = torch.cat((y, outcome_transform['tf3'].untransform(self.train_Y_added)[0]), axis=-2)
-        train_Yvar_transformed = torch.cat((yvar, outcome_transform['tf3'].untransform(self.train_Yvar_added)[0]), axis=0)
+        # -----------------------------------------------------------------------------------------------------------
 
+        # Transform the data from file
+        train_Y_transformed, train_Yvar_transformed = outcome_transform['tf1'](self.train_X, self.train_Y, self.train_Yvar)
+        
+        # Concatenate the training data and the data from file
+        train_Y_transformed = torch.cat((train_Y_transformed, self.train_Y_added), axis=-2)
+        train_Yvar_transformed = torch.cat((train_Yvar_transformed, self.train_Yvar_added), axis=0)
+
+        # Get the standardization constants
         train_Y_transformed_norm, train_Yvar_transformed_norm = outcome_transform['tf2'](train_Y_transformed, train_Yvar_transformed)
 
+        # -------------------------------------------------------------------------------------
         # Make sure they are not on training mode
+        # -------------------------------------------------------------------------------------
         input_transform['tf2'].training = False
         outcome_transform['tf2'].training = False
         outcome_transform['tf2']._is_trained = torch.tensor(True)
@@ -497,7 +536,7 @@ class surrogate_model:
 
         return mean, upper, lower, samples
 
-    def write_datafile(self, input_transform_physics, outcome_transform_physics):
+    def _write_datafile(self, input_transform_physics, outcome_transform_physics):
         """
         --------------------------------------------------------------------
         Write file with surrogate if there are transformations
@@ -507,87 +546,87 @@ class surrogate_model:
         --------------------------------------------------------------------
         """
 
-        for i,output in enumerate(self.outputs):
+        if (self.fileTraining is not None) and (self.train_X.shape[-2] + self.train_X_added.shape[-2] > 0):
 
-            # ------------------------------------------------------------------------------------------------------------------------
-            # Transform the points without the added from file
-            # ------------------------------------------------------------------------------------------------------------------------
+            for i,output in enumerate(self.outputs):
 
-            # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
-            train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-                self.train_X,
-                output,
-                self.surrogate_parameters,
-                self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
-            )
+                # ------------------------------------------------------------------------------------------------------------------------
+                # Transform the points without the added from file
+                # ------------------------------------------------------------------------------------------------------------------------
 
-            train_Y, train_Yvar = outcome_transform_physics(
-                self.train_X, self.train_Y[...,i].unsqueeze(-1), self.train_Yvar[...,i].unsqueeze(-1)
-            )
-
-            dv_names_Complete = (
-                self.surrogate_parameters["surrogate_transformation_variables_lasttime"][output]
-                if (
-                    "surrogate_transformation_variables_lasttime" in self.surrogate_parameters
-                    and self.surrogate_parameters["surrogate_transformation_variables_lasttime"]
-                    is not None
+                # I do not use directly input_transform_physics because I need all the columns, not of this specif iteration
+                train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+                    self.train_X,
+                    output,
+                    self.surrogate_parameters,
+                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
                 )
-                else [i for i in self.bounds]
-            )
 
-            if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
-                    typeMsg="w",
+                train_Y, train_Yvar = outcome_transform_physics(
+                    self.train_X, self.train_Y[...,i].unsqueeze(-1), self.train_Yvar[...,i].unsqueeze(-1)
                 )
-                self.train_X_added_full = torch.cat(
-                    (
-                        self.train_X_added_full,
-                        torch.full(
-                            (
-                                self.train_X_added_full.shape[0],
-                                train_X_Complete.shape[-1]
-                                - self.train_X_added_full.shape[-1],
+
+                dv_names_Complete = (
+                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"][output]
+                    if (
+                        "surrogate_transformation_variables_lasttime" in self.surrogate_parameters
+                        and self.surrogate_parameters["surrogate_transformation_variables_lasttime"]
+                        is not None
+                    )
+                    else [i for i in self.bounds]
+                )
+
+                if self.train_X_added_full.shape[-1] < train_X_Complete.shape[-1]:
+                    print(
+                        "\t\t- Points from file have less input dimensions, extending with NaNs for writing new file",
+                        typeMsg="w",
+                    )
+                    self.train_X_added_full = torch.cat(
+                        (
+                            self.train_X_added_full,
+                            torch.full(
+                                (
+                                    self.train_X_added_full.shape[-2],
+                                    train_X_Complete.shape[-1]
+                                    - self.train_X_added_full.shape[-1],
+                                ),
+                                torch.nan,
                             ),
-                            torch.nan,
                         ),
-                    ),
-                    axis=-1,
-                )
-            elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
-                print(
-                    "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
-                    typeMsg="w",
-                )
-                self.train_X_added_full = self.train_X_added_full[
-                    :, : train_X_Complete.shape[-1]
-                ]
+                        axis=-1,
+                    )
+                elif self.train_X_added_full.shape[-1] > train_X_Complete.shape[-1]:
+                    print(
+                        "\t\t- Points from file have more input dimensions, removing last dimensions for writing new file",
+                        typeMsg="w",
+                    )
+                    self.train_X_added_full = self.train_X_added_full[..., : train_X_Complete.shape[-1]]
 
-            x = torch.cat((self.train_X_added_full, train_X_Complete), axis=0)
-            y = torch.cat((self.train_Y_added, train_Y), axis=0)
-            yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=0)
+                x = torch.cat((self.train_X_added_full, train_X_Complete), axis=-2)
+                y = torch.cat((self.train_Y_added, train_Y), axis=-2)
+                yvar = torch.cat((self.train_Yvar_added, train_Yvar), axis=-2)
 
 
-            # ------------------------------------------------------------------------------------------------------------------------
-            # Merged data with existing data frame and write
-            # ------------------------------------------------------------------------------------------------------------------------
+                # ------------------------------------------------------------------------------------------------------------------------
+                # Merged data with existing data frame and write
+                # ------------------------------------------------------------------------------------------------------------------------
 
-            new_df = create_df_portals(x,y,yvar,dv_names_Complete,output)
+                new_df = create_df_portals(x,y,yvar,dv_names_Complete,output)
 
-            if self.fileTraining.exists():
+                if self.fileTraining.exists():
 
-                # Load the existing DataFrame from the HDF5 file
-                existing_df = pd.read_csv(self.fileTraining)
+                    # Load the existing DataFrame from the HDF5 file
+                    existing_df = pd.read_csv(self.fileTraining)
 
-                # Concatenate the existing DataFrame with the new DataFrame
-                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    # Concatenate the existing DataFrame with the new DataFrame
+                    combined_df = pd.concat([existing_df, new_df], ignore_index=True)
 
-            else:
+                else:
 
-                combined_df = new_df
+                    combined_df = new_df
 
-            # Save the combined DataFrame back to the file
-            combined_df.to_csv(self.fileTraining, index=False)
+                # Save the combined DataFrame back to the file
+                combined_df.to_csv(self.fileTraining, index=False)
 
     # --------------------------
     # PLOTTING AND POST-ANALYSIS
@@ -793,29 +832,31 @@ class surrogate_model:
         inputs, as compared to the trained data of this run. In such a case, modify this variation
         """
 
-        # Do dimensions of the non-added points change?
-        x_transform = input_transform_physics(self.train_X)
-        indecesUnchanged = torch.where(
-            (x_transform.max(axis=0)[0] - x_transform.min(axis=0)[0])
-            / x_transform.mean(axis=0)[0]
-            < thr
-        )[0]
+        if (self.train_X_added.shape[-2] > 0) and (self.train_X.shape[-2] > 1):
 
-        HasThisBeenApplied = 0
+            # Do dimensions of the non-added points change?
+            x_transform = input_transform_physics(self.train_X)
+            indecesUnchanged = torch.where(
+                (x_transform.max(axis=-2)[0] - x_transform.min(axis=-2)[0])
+                / x_transform.mean(axis=-2)[0]
+                < thr
+            )[0]
 
-        for i in indecesUnchanged:
-            if (
-                (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
-            ).abs().max() < thr:
-                HasThisBeenApplied += 1
-                for j in range(self.train_X_added.shape[0]):
-                    self.train_X_added[j, i] = x_transform[0, i]
+            HasThisBeenApplied = 0
 
-        if HasThisBeenApplied > 0:
-            print(
-                f"\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims",
-                typeMsg="w",
-            )
+            for i in indecesUnchanged:
+                if (
+                    (self.train_X_added[:, i] - x_transform[0, i]) / x_transform[0, i]
+                ).abs().max() < thr:
+                    HasThisBeenApplied += 1
+                    for j in range(self.train_X_added.shape[-2]):
+                        self.train_X_added[...,j, i] = x_transform[...,0, i]
+
+            if HasThisBeenApplied > 0:
+                print(
+                    f"\t- Supression of small variations {thr:.1e} in added data applied to {HasThisBeenApplied} dims",
+                    typeMsg="w",
+                )
 
     def _ensure_minimum_noise(self):
         if ("MinimumRelativeNoise" in self.surrogateOptions) and (

@@ -44,8 +44,8 @@
         "stds_outside": null,
         "stds_outside_checker": 5,
         "add_data_from_file": null,
-        "extrapointsModels": null,
-        "extrapointsModelsAvoidContent": null
+        "add_data_to_models": null,
+        "add_data_to_modelsAvoidContent": null
     },
     "StrategyOptions": {
         "boundsRefine": null,
