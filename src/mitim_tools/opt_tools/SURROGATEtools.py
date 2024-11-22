@@ -16,8 +16,6 @@ from IPython import embed
 # ---------------------------------------------------------------------------------
 # 	Model Class
 # ---------------------------------------------------------------------------------
-
-
 class surrogate_model:
     """
     This is where each of the fittings take place.
@@ -77,150 +75,137 @@ class surrogate_model:
 
         self.losses = None
 
-        # # --------------------------------------------------------------------
-        # # Eliminate points if needed (not from the "added" set)
-        # # --------------------------------------------------------------------
+        # --------------------------------------------------------------------
+        # Eliminate points if needed (not from the "added" set)
+        # --------------------------------------------------------------------
 
-        # if len(self.avoidPoints) > 0:
-        #     print(
-        #         f"\t- Fitting without considering points: {self.avoidPoints}",
-        #         typeMsg="w",
-        #     )
-
-        #     self.train_X = torch.Tensor(
-        #         np.delete(self.train_X, self.avoidPoints, axis=0)
-        #     ).to(self.dfT)
-        #     self.train_Y = torch.Tensor(
-        #         np.delete(self.train_Y, self.avoidPoints, axis=0)
-        #     ).to(self.dfT)
-        #     self.train_Yvar = torch.Tensor(
-        #         np.delete(self.train_Yvar, self.avoidPoints, axis=0)
-        #     ).to(self.dfT)
+        self._remove_points()
 
         # -------------------------------------------------------------------------------------
         # Add points from file
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
-        # continueAdding = False
-        # if ("extrapointsFile" in self.surrogateOptions) and (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
+        continueAdding = False
+        if ("extrapointsFile" in self.surrogateOptions) and (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
 
-        #     print(
-        #         f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
-        #     )
+            print(
+                f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
+            )
 
-        #     df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
-        #     df_model = df[df['Model'] == self.output]
+            df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
+            df_model = df[df['Model'] == self.output]
 
-        #     if len(df_model) == 0:
-        #         print("\t- No points for this output in the file, nothing to add", typeMsg="i")
-        #         continueAdding = False
-        #     else:
-        #         continueAdding = True
+            if len(df_model) == 0:
+                print("\t- No points for this output in the file, nothing to add", typeMsg="i")
+                continueAdding = False
+            else:
+                continueAdding = True
 
-        # if continueAdding:
+        if continueAdding:
 
-        #     # Check 1: Do the points for this output share the same x_names?
-        #     if df_model['x_names'].nunique() > 1:
-        #         print("Different x_names for points in the file, prone to errors", typeMsg='q')
+            # Check 1: Do the points for this output share the same x_names?
+            if df_model['x_names'].nunique() > 1:
+                print("Different x_names for points in the file, prone to errors", typeMsg='q')
 
-        #     # Check 2: Is it consistent with the x_names of this run?
-        #     x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
-        #     x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.output]
-        #     if x_names != x_names_check:
-        #         print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
+            # Check 2: Is it consistent with the x_names of this run?
+            x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
+            x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.output]
+            if x_names != x_names_check:
+                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
 
-        #     self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
-        #     self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
+            self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
+            self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
     
-        #     x = []
-        #     for i in range(len(x_names)):
-        #         x.append(df_model[f'x{i}'].to_numpy())
-        #     self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
+            x = []
+            for i in range(len(x_names)):
+                x.append(df_model[f'x{i}'].to_numpy())
+            self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
 
-        #     # ------------------------------------------------------------------------------------------------------------
-        #     # Define transformation (here because I want to account for the added points)
-        #     # ------------------------------------------------------------------------------------------------------------
-        #     self.num_training_points = self.train_X.shape[0] + self.train_X_added_full.shape[0]
-        #     input_transform_physics, outcome_transform_physics, \
-        #     input_transform_normalization, output_transformed_standardization, \
-        #     dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
-        #     # ------------------------------------------------------------------------------------------------------------
+            # ------------------------------------------------------------------------------------------------------------
+            # Define transformation (here because I want to account for the added points)
+            # ------------------------------------------------------------------------------------------------------------
+            self.num_training_points = self.train_X.shape[0] + self.train_X_added_full.shape[0]
+            input_transform_physics, outcome_transform_physics, \
+            input_transform_normalization, output_transformed_standardization, \
+            dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
+            # ------------------------------------------------------------------------------------------------------------
 
-        #     self.train_X_added = (
-        #         self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
-        #     ).to(self.dfT)
+            self.train_X_added = (
+                self.train_X_added_full[:, :dimTransformedDV_x] if self.train_X_added_full.shape[-1] > dimTransformedDV_x else self.train_X_added_full
+            ).to(self.dfT)
 
-        # else:
-        # if self.fileTraining is not None:
-        #     train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-        #         self.train_X,
-        #         self.output,
-        #         self.surrogate_parameters,
-        #         self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
-        #     )
-        #     dimTransformedDV_x_full = train_X_Complete.shape[-1]
-        # else:
-        #     dimTransformedDV_x_full = self.train_X.shape[-1]
+        else:
+            if self.fileTraining is not None:
+                train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+                    self.train_X,
+                    self.output,
+                    self.surrogate_parameters,
+                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
+                )
+                dimTransformedDV_x_full = train_X_Complete.shape[-1]
+            else:
+                dimTransformedDV_x_full = self.train_X.shape[-1]
+
+            # --------------------------------------------------------------------------------------
+            # Define transformation (here because I want to account for the added points)
+            # --------------------------------------------------------------------------------------
+            self.num_training_points = self.train_X.shape[0]
+
+            input_transform_physics, outcome_transform_physics,\
+            input_transform_normalization, output_transformed_standardization,\
+            dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
+            # ------------------------------------------------------------------------------------------------------------
+
+            self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full)).to(self.dfT)
+            self.train_X_added = torch.empty((0, dimTransformedDV_x)).to(self.dfT)
+            self.train_Y_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
+            self.train_Yvar_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
 
         # --------------------------------------------------------------------------------------
-        # Define transformation (here because I want to account for the added points)
+        # Make sure that very small variations are not captured
         # --------------------------------------------------------------------------------------
-        self.num_training_points = self.train_X.shape[0]
-        input_transform_physics, outcome_transform_physics,\
-        input_transform_normalization, output_transformed_standardization,\
-        dimTransformedDV_x, dimTransformedDV_y = self._define_MITIM_transformations()
-        # ------------------------------------------------------------------------------------------------------------
 
-        # self.train_X_added_full = torch.empty((0, dimTransformedDV_x_full)).to(self.dfT)
-        # self.train_X_added = torch.empty((0, dimTransformedDV_x)).to(self.dfT)
-        # self.train_Y_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
-        # self.train_Yvar_added = torch.empty((0, dimTransformedDV_y)).to(self.dfT)
+        if (self.train_X_added.shape[0] > 0) and (self.train_X.shape[0] > 1):
+            self._ensure_small_variation_suppressed(input_transform_physics)
 
-        # # --------------------------------------------------------------------------------------
-        # # Make sure that very small variations are not captured
-        # # --------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------
+        # Make sure at least 2 points
+        # --------------------------------------------------------------------------------------
 
-        # if (self.train_X_added.shape[0] > 0) and (self.train_X.shape[0] > 1):
-        #     self.ensureMinimalVariationSuppressed(input_transform_physics)
+        if self.train_X.shape[0] + self.train_X_added.shape[0] == 1:
+            factor = 1.2
+            print(
+                f"\t- This dataset had only one point, adding a point with linear interpolation (trick for PORTALS targets only), {factor}",
+                typeMsg="w",
+            )
+            self.train_X = torch.cat((self.train_X, self.train_X * factor))
+            self.train_Y = torch.cat((self.train_Y, self.train_Y * factor))
+            self.train_Yvar = torch.cat((self.train_Yvar, self.train_Yvar * factor))
 
-        # # --------------------------------------------------------------------------------------
-        # # Make sure at least 2 points
-        # # --------------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------------------
+        # Check minimum noises
+        # -------------------------------------------------------------------------------------
 
-        # if self.train_X.shape[0] + self.train_X_added.shape[0] == 1:
-        #     factor = 1.2
-        #     print(
-        #         f"\t- This dataset had only one point, adding a point with linear interpolation (trick for PORTALS targets only), {factor}",
-        #         typeMsg="w",
-        #     )
-        #     self.train_X = torch.cat((self.train_X, self.train_X * factor))
-        #     self.train_Y = torch.cat((self.train_Y, self.train_Y * factor))
-        #     self.train_Yvar = torch.cat((self.train_Yvar, self.train_Yvar * factor))
+        self._ensure_minimum_noise()
 
-        # # -------------------------------------------------------------------------------------
-        # # Check minimum noises
-        # # -------------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------------------
+        # Write file with surrogate if there are transformations
+        # -------------------------------------------------------------------------------------
 
-        # self.ensureMinimumNoise()
-
-        # # -------------------------------------------------------------------------------------
-        # # Write file with surrogate if there are transformations
-        # # -------------------------------------------------------------------------------------
-
-        # if (self.fileTraining is not None) and (self.train_X.shape[0] + self.train_X_added.shape[0] > 0):
-        #     self.writeFileTraining(input_transform_physics, outcome_transform_physics)
+        if (self.fileTraining is not None) and (self.train_X.shape[0] + self.train_X_added.shape[0] > 0):
+            self.writeFileTraining(input_transform_physics, outcome_transform_physics)
 
         # -------------------------------------------------------------------------------------
         # Obtain normalization constants now (although during training this is messed up, so needed later too)
         # -------------------------------------------------------------------------------------
 
-        # self.normalization_pass(
-        #     input_transform_physics,
-        #     input_transform_normalization,
-        #     outcome_transform_physics,
-        #     output_transformed_standardization,
-        # )
+        self.normalization_pass(
+            input_transform_physics,
+            input_transform_normalization,
+            outcome_transform_physics,
+            output_transformed_standardization,
+        )
         
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION
@@ -249,15 +234,14 @@ class surrogate_model:
         # Model
         # *************************************************************************************
 
-        # print(
-        #     f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-        # )
+        print(
+            f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
+        )
 
         """
         self.train_X contains the untransformed of this specific run:   (batch1, dimX)
         self.train_X_added contains the transformed of the table:       (batch2, dimXtr)
         """
-
 
         self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
             self.train_X,
@@ -267,9 +251,9 @@ class surrogate_model:
             outcome_transform=outcome_transform,
             surrogateOptions=self.surrogateOptions,
             variables=self.variables,
-            # train_X_added=self.train_X_added,
-            # train_Y_added=self.train_Y_added,
-            # train_Yvar_added=self.train_Yvar_added,
+            train_X_added=self.train_X_added,
+            train_Y_added=self.train_Y_added,
+            train_Yvar_added=self.train_Yvar_added,
         )
 
     def _define_MITIM_transformations(self):
@@ -332,7 +316,7 @@ class surrogate_model:
         ).to(self.dfT)
         output_transformed_standardization = (
             botorch.models.transforms.outcome.Standardize(
-                m = dimTransformedDV_y, #batch_shape=self.train_Y.transpose(0,1).shape
+                m = dimTransformedDV_y,
             )
         ).to(self.dfT)
 
@@ -356,12 +340,12 @@ class surrogate_model:
         train_X_transformed = input_transform_physics(self.train_X)
         train_Y_transformed, train_Yvar_transformed = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
 
-        # train_X_transformed = torch.cat(
-        #     (input_transform_physics(self.train_X), self.train_X_added), axis=0
-        # )
-        # y, yvar = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
-        # train_Y_transformed = torch.cat((y, self.train_Y_added), axis=0)
-        # train_Yvar_transformed = torch.cat((yvar, self.train_Yvar_added), axis=0)
+        train_X_transformed = torch.cat(
+            (input_transform_physics(self.train_X), self.train_X_added), axis=0
+        )
+        y, yvar = outcome_transform_physics(self.train_X, self.train_Y, self.train_Yvar)
+        train_Y_transformed = torch.cat((y, self.train_Y_added), axis=0)
+        train_Yvar_transformed = torch.cat((yvar, self.train_Yvar_added), axis=0)
 
         train_X_transformed_norm = input_transform_normalization(train_X_transformed)
         (
@@ -375,9 +359,9 @@ class surrogate_model:
         outcome_transform_normalization._is_trained = torch.tensor(True)
 
     def fit(self):
-        # print(
-        #     f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points"
-        # )
+        print(
+            f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points"
+        )
 
         # ---------------------------------------------------------------------------------------------------
         # Define loss Function to minimize
@@ -406,8 +390,8 @@ class surrogate_model:
 		"""
 
         # Train always in physics-transformed space, to enable mitim re-use training from file
-        #with fundamental_model_context(self):
-        track_fval = self.perform_model_fit(mll)
+        with fundamental_model_context(self):
+            track_fval = self.perform_model_fit(mll)
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
@@ -418,12 +402,12 @@ class surrogate_model:
         # Go back to definining the right normalizations, because the optimizer has to work on training mode...
         # ---------------------------------------------------------------------------------------------------
 
-        # self.normalization_pass(
-        #     self.gpmodel.input_transform["tf1"],
-        #     self.gpmodel.input_transform["tf2"],
-        #     self.gpmodel.outcome_transform["tf1"],
-        #     self.gpmodel.outcome_transform["tf2"],
-        # )
+        self.normalization_pass(
+            self.gpmodel.input_transform["tf1"],
+            self.gpmodel.input_transform["tf2"],
+            self.gpmodel.outcome_transform["tf1"],
+            self.gpmodel.outcome_transform["tf2"],
+        )
 
     def perform_model_fit(self, mll):
         self.gpmodel.train()
@@ -468,9 +452,9 @@ class surrogate_model:
         self.gpmodel.likelihood.eval()
         mll.eval()
 
-        # print(
-        #     f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}"
-        # )
+        print(
+            f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}"
+        )
 
         return track_fval
 
@@ -494,11 +478,7 @@ class surrogate_model:
         # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
         # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
 
-        with (
-            fundamental_model_context(self)
-            if produceFundamental
-            else contextlib.nullcontext(self)
-        ) as surrogate_model:
+        with (fundamental_model_context(self) if produceFundamental else contextlib.nullcontext(self)) as surrogate_model:
             posterior = surrogate_model.gpmodel.posterior(X)
 
         mean = posterior.mean
@@ -782,7 +762,26 @@ class surrogate_model:
 
             return axs
 
-    def ensureMinimalVariationSuppressed(self, input_transform_physics, thr=1e-6):
+    def _remove_points(self):
+
+        if len(self.avoidPoints) > 0:
+            print(
+                f"\t- Fitting without considering points: {self.avoidPoints}",
+                typeMsg="w",
+            )
+
+            self.train_X = torch.Tensor(
+                np.delete(self.train_X, self.avoidPoints, axis=0)
+            ).to(self.dfT)
+            self.train_Y = torch.Tensor(
+                np.delete(self.train_Y, self.avoidPoints, axis=0)
+            ).to(self.dfT)
+            self.train_Yvar = torch.Tensor(
+                np.delete(self.train_Yvar, self.avoidPoints, axis=0)
+            ).to(self.dfT)
+
+
+    def _ensure_small_variation_suppressed(self, input_transform_physics, thr=1e-6):
         """
         In some cases, the added data from file might have extremely small variations in some of the fixed
         inputs, as compared to the trained data of this run. In such a case, modify this variation
@@ -812,7 +811,7 @@ class surrogate_model:
                 typeMsg="w",
             )
 
-    def ensureMinimumNoise(self):
+    def _ensure_minimum_noise(self):
         if ("MinimumRelativeNoise" in self.surrogateOptions) and (
             self.surrogateOptions["MinimumRelativeNoise"] is not None
         ):

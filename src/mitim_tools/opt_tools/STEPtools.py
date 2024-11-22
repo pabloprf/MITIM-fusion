@@ -30,7 +30,7 @@ class OPTstep:
         StrategyOptions={},
         BOmetrics=None,
         currentIteration=1,
-    ):
+        ):
         """
         train_Ystd is in standard deviations (square root of the variance), absolute magnitude
         Rule: X_Y are provided in absolute units. Normalization has to happen inside each surrogate_model,
@@ -38,60 +38,13 @@ class OPTstep:
         """
 
         self.train_X, self.train_Y, self.train_Ystd = train_X, train_Y, train_Ystd
-
-        """
-		Check dimensions
-			- train_X should be (num_train,dimX)
-			- train_Y should be (num_train,dimY)
-			- train_Ystd should be (num_train,dimY) or just one float representing all values
-		"""
-
-        if len(self.train_X.shape) < 2:
-            print(
-                "--> train x only had 1 dimension, assuming that it has only 1 dimension"
-            )
-            self.train_X = np.transpose(np.atleast_2d(self.train_X))
-
-        if len(self.train_Y.shape) < 2:
-            print(
-                "--> train y only had 1 dimension, assuming that it has only 1 dimension"
-            )
-            self.train_Y = np.transpose(np.atleast_2d(self.train_Y))
-
-        if (
-            isinstance(self.train_Ystd, float)
-            or isinstance(self.train_Ystd, int)
-            or len(self.train_Ystd.shape) < 2
-        ):
-            print(
-                "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in absolute terms"
-            )
-            if self.train_Ystd > 0:
-                print(
-                    "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in absolute terms"
-                )
-                self.train_Ystd = self.train_Y * 0.0 + self.train_Ystd
-            else:
-                print(
-                    "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in relative terms"
-                )
-                self.train_Ystd = self.train_Y * np.abs(self.train_Ystd)
-
-        if len(self.train_Ystd.shape) < 2:
-            print(
-                "--> train y noise only had 1 dimension, assuming that it has only 1 dimension"
-            )
-            self.train_Ystd = np.transpose(np.atleast_2d(self.train_Ystd))
-
-        # **** Get argumnets into this class
-
         self.bounds = bounds
         self.stepSettings = stepSettings
         self.BOmetrics = BOmetrics
         self.currentIteration = currentIteration
         self.StrategyOptions = StrategyOptions
 
-        # **** Step settings
+        # **** Step Settings
         self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
         self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_type"]
         self.acquisition_params = self.stepSettings["optimization_options"]["acquisition_params"]
@@ -103,26 +56,20 @@ class OPTstep:
         self.fileOutputs = self.stepSettings["fileOutputs"]
         self.surrogate_parameters = surrogate_parameters
 
+        # **** Check dimensions
+        self._check_dimensions()
+
         # **** From standard deviation to variance
         self.train_Yvar = self.train_Ystd**2
 
-    def fit_step(self, avoidPoints=None, fitWithTrainingDataIfContains=None):
+    def fit_step(self, avoidPoints=None, fit_output_contains=None):
         """
         Notes:
-            - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
+            - Note that fit_output_contains = 'Tar' would only use the train_X,Y,Yvar tensors
                     to fit those surrogate variables that contain 'Tar' in their names. This is useful when in
                     PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
-                    the fluxes but I do want *new* target calculation
+                    the fluxes but I do want new target calculation
         """
-
-        if avoidPoints is None:
-            avoidPoints = []
-
-        """
-		*********************************************************************************************************************
-			Preparing for fit
-		*********************************************************************************************************************
-		"""
 
         # Prepare case information. Copy because I'll be removing outliers
         self.x, self.y, self.yvar = (
@@ -132,30 +79,30 @@ class OPTstep:
         )
 
         # Add outliers to avoid points (it cannot happen inside of SURROGATEtools or it will fail at combining)
-        self.avoidPoints = copy.deepcopy(avoidPoints)
+        self.avoidPoints = copy.deepcopy(avoidPoints) if avoidPoints is not None else []
         self.curate_outliers()
 
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
                 f.write("\n\n-----------------------------------------------------")
                 f.write("\n * Fitting GP models to training data...")
+
+        """
+        *********************************************************************************************************************
+            Performing Fit
+        *********************************************************************************************************************
+        """
+
         print(
             f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n"
         )
-
-        """
-		*********************************************************************************************************************
-			Performing Fit
-		*********************************************************************************************************************
-		"""
 
         self.GP = {}
 
         time1 = datetime.datetime.now()
 
-        self._fit_multioutput_model()
-
-        #self._fit_individual_models(fitWithTrainingDataIfContains=fitWithTrainingDataIfContains)
+        #self._fit_multioutput_model()
+        self._fit_individual_models(fit_output_contains=fit_output_contains)
         
         txt_time = IOtools.getTimeDifference(time1)
         print(f"--> Fitting of all models took {txt_time}")
@@ -182,7 +129,7 @@ class OPTstep:
         # Fitting
         self.GP["mo_model"].fit()
 
-    def _fit_individual_models(self, fitWithTrainingDataIfContains=None):
+    def _fit_individual_models(self, fit_output_contains=None):
 
         fileTraining = IOtools.expandPath(self.stepSettings['folderOutputs']) / "surrogate_data.csv"
         fileBackup = fileTraining.parent / "surrogate_data.csv.bak"
@@ -199,8 +146,8 @@ class OPTstep:
             # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
             specialTreatment = (
                 (outi is not None)
-                and (fitWithTrainingDataIfContains is not None)
-                and (fitWithTrainingDataIfContains not in outi)
+                and (fit_output_contains is not None)
+                and (fit_output_contains not in outi)
             )
             # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -282,9 +229,9 @@ class OPTstep:
                 outputs_transformed=[outi_transformed],
                 dfT=self.dfT,
                 surrogateOptions=surrogateOptions,
-                # avoidPoints=self.avoidPoints,
-                # FixedValue=FixedValue,
-                # fileTraining=fileTraining,
+                avoidPoints=self.avoidPoints,
+                FixedValue=FixedValue,
+                fileTraining=fileTraining,
             )
 
             # Fitting
@@ -330,7 +277,7 @@ class OPTstep:
 
         """
         *********************************************************************************************************************
-        	Postprocessing
+            Postprocessing
         *********************************************************************************************************************
         """
 
@@ -344,10 +291,7 @@ class OPTstep:
         print("--> Launching tests evaluate accuracy on training set (absolute units)")
         self.GP["combined_model"].testTraining()
 
-        print(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
-        )
-
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 
     def defineFunctions(self, scalarized_objective):
         """
@@ -364,9 +308,7 @@ class OPTstep:
         def residual(Y, X = None):
             return scalarized_objective(Y)[2]
 
-        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
-            residual
-        )
+        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(residual)
 
         # **************************************************************************************************
         # Acquisition functions (following BoTorch assumption of maximization)
@@ -491,10 +433,10 @@ class OPTstep:
         self.defineFunctions(scalarized_objective)
 
         """
-		***********************************************
-		Peform optimization
-		***********************************************
-		"""
+        ***********************************************
+        Peform optimization
+        ***********************************************
+        """
 
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:
@@ -551,6 +493,47 @@ class OPTstep:
 
         if len(self.avoidPoints) > 0:
             print(f"\t ~~ Avoiding {len(self.avoidPoints)} points: ", self.avoidPoints)
+
+    def _check_dimensions(self):
+        """
+        Check dimensions
+            - train_X should be (num_train,dimX)
+            - train_Y should be (num_train,dimY)
+            - train_Ystd should be (num_train,dimY) or just one float representing all values
+        """
+
+        if len(self.train_X.shape) < 2:
+            print("--> train x only had 1 dimension, assuming that it has only 1 dimension")
+            self.train_X = np.transpose(np.atleast_2d(self.train_X))
+
+        if len(self.train_Y.shape) < 2:
+            print("--> train y only had 1 dimension, assuming that it has only 1 dimension")
+            self.train_Y = np.transpose(np.atleast_2d(self.train_Y))
+
+        if (
+            isinstance(self.train_Ystd, float)
+            or isinstance(self.train_Ystd, int)
+            or len(self.train_Ystd.shape) < 2
+        ):
+            print(
+                "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in absolute terms"
+            )
+            if self.train_Ystd > 0:
+                print(
+                    "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in absolute terms"
+                )
+                self.train_Ystd = self.train_Y * 0.0 + self.train_Ystd
+            else:
+                print(
+                    "--> train y noise only had 1 value only, assuming constant (std dev) for all samples in relative terms"
+                )
+                self.train_Ystd = self.train_Y * np.abs(self.train_Ystd)
+
+        if len(self.train_Ystd.shape) < 2:
+            print(
+                "--> train y noise only had 1 dimension, assuming that it has only 1 dimension"
+            )
+            self.train_Ystd = np.transpose(np.atleast_2d(self.train_Ystd))
 
 
 def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]):

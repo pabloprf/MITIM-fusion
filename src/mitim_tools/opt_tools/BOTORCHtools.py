@@ -121,11 +121,11 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
                 self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True
             )
         elif TypeMean == 2:
-            self.mean_module = PRF_LinearMeanGradients(
+            self.mean_module = MITIM_LinearMeanGradients(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
         elif TypeMean == 3:
-            self.mean_module = PRF_CriticalGradient(
+            self.mean_module = MITIM_CriticalGradient(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
 
@@ -171,7 +171,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
                 outputscale_prior=outputscale_prior,
             )
         elif TypeKernel == 2:
-            self.covar_module = PRF_ConstantKernel(
+            self.covar_module = MITIM_ConstantKernel(
                 ard_num_dims=self.ard_num_dims,
                 batch_shape=self._aug_batch_shape,
                 lengthscale_prior=lengthscale_prior,
@@ -179,7 +179,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             )
         elif TypeKernel == 3:
             self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
-                base_kernel=PRF_NNKernel(
+                base_kernel=MITIM_NNKernel(
                     ard_num_dims=self.ard_num_dims,
                     batch_shape=self._aug_batch_shape,
                     lengthscale_prior=lengthscale_prior,
