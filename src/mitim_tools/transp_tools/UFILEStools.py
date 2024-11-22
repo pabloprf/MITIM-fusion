@@ -209,6 +209,11 @@ class UFILEtransp:
             f.write("".join(self.STR_header))
 
             # Variable labels
+            if self.dim==1:
+                self.Variables['Y']=self.Variables['X']
+                self.STR_labelY=self.STR_labelX
+                self.numY=self.numX
+                self.labelY=self.labelX
             f.write(self.STR_labelY)
             if self.dim > 1:
                 f.write(self.STR_labelX)
@@ -282,7 +287,7 @@ class UFILEtransp:
                     j = 0
                 vecS.append(f"{j:.6e}".rjust(13))
             lineToWrite = "".join(vecS) + "\n"
-
+            lineToWrite = " "+lineToWrite
             cont += ncols
 
             f.write(lineToWrite)

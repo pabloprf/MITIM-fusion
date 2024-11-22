@@ -73,7 +73,7 @@ class ASTRA():
         # What to run 
         self.command_to_run_astra = f'''
 cd {self.astra_job.folderExecution}/{name} 
-scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
+exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
 '''
 
         self.shellPreCommand = f'cd {self.astra_job.folderExecution}/{name} &&  ./install.sh'
