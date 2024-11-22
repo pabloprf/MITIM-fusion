@@ -178,11 +178,6 @@ class surrogate_model:
 
         print(f'\t- Initializing model{" for "+self.outputs_transformed[0] if (self.outputs_transformed is not None and (len(self.outputs)==1)) else ""}',)
 
-        """
-        self.train_X contains the untransformed of this specific run:   (batch1, dimX)
-        self.train_X_added contains the transformed of the table:       (batch2, dimXtr)
-        """
-
         self.gpmodel = BOTORCHtools.SingleTaskGP_MITIM(
             self.train_X,
             self.train_Y,
@@ -267,11 +262,7 @@ class surrogate_model:
         input_transform_normalization = botorch.models.transforms.input.Normalize(
             d = dx_tr, bounds=None, batch_shape=transformed_X.shape[:-2]
         ).to(self.dfT)
-        output_transformed_standardization = (
-            botorch.models.transforms.outcome.Standardize(
-                m = dy_tr,
-            )
-        ).to(self.dfT)
+        output_transformed_standardization = botorch.models.transforms.outcome.Standardize(m = dy_tr).to(self.dfT)
 
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION + BATCHING
@@ -341,17 +332,13 @@ class surrogate_model:
             train_Y_added = None
             train_Yvar_added = None
 
-            if self.fileTraining is not None:
-                train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
-                    self.train_X,
-                    self.outputs[0],
-                    self.surrogate_parameters,
-                    self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
-                )
-                dx_tr_full = train_X_Complete.shape[-1]
-            else:
-                dx_tr_full = self.train_X.shape[-1]
-
+            train_X_Complete, _ = self.surrogate_parameters["transformationInputs"](
+                self.train_X,
+                self.outputs[0],
+                self.surrogate_parameters,
+                self.surrogate_parameters["surrogate_transformation_variables_lasttime"],
+            )
+            dx_tr_full = train_X_Complete.shape[-1]
 
         return train_X_added_full, train_Y_added, train_Yvar_added, dx_tr_full
 

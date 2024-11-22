@@ -94,8 +94,8 @@ class OPTstep:
         with IOtools.timer(name = "\n\t- Fitting", name_timer = '\t\t- Time: ') as t:
 
             self.GP = {}
-            #self._fit_multioutput_model(); self.GP["combined_model"] = self.GP["mo_model"]
-            self._fit_individual_models(fit_output_contains=fit_output_contains)
+            self._fit_multioutput_model(); self.GP["combined_model"] = self.GP["mo_model"]
+            #self._fit_individual_models(fit_output_contains=fit_output_contains)
 
         if self.fileOutputs is not None:
             with open(self.fileOutputs, "a") as f:

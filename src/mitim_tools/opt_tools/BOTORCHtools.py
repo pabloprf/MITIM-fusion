@@ -10,10 +10,6 @@ import gpytorch
 from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-# ----------------------------------------------------------------------------------------------------------------------------
-# SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
-# ----------------------------------------------------------------------------------------------------------------------------
-
 from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.models.utils import validate_input_scaling
@@ -24,8 +20,16 @@ from torch.nn import ModuleDict
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.posteriors.posterior import Posterior
 from linear_operator.operators import BlockDiagLinearOperator
+from gpytorch.distributions import MultitaskMultivariateNormal
 
-
+'''
+*******************************************************************************
+SingleTaskGP needs to be custom in MITIM because:
+    - Training occurs in transformed space directly, to allow for _added points
+    - Outcome transform calls are modified to take X 
+    - Options are provided (secondary)
+*******************************************************************************
+'''
 class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
     def __init__(
         self,
@@ -41,8 +45,19 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         train_Yvar_added=torch.Tensor([]),
     ):
         """
-        _added refers to already-transformed variables that are added from table
+        Notes:
+            - train_X is raw untransformed,     [batch, dx]
+            - train_Y is raw untransformed,     [batch, dy]
+            - train_Yvar is raw untransformed,  [batch, dy]
+            - _added refers to already-transformed variables (tf1) that are added from table:
+                    train_X_added is raw transformed,   [dytr, batch, dxtr]
+                    train_Y_added is raw transformed,   [batch, dytr]
+                    train_Yvar_added is raw transformed,[batch, dytr]
         """
+
+        # -----------------------------------------------------------------------
+        # Surrogate model options
+        # -----------------------------------------------------------------------
 
         TypeMean = surrogateOptions.get("TypeMean", 0)
         TypeKernel = surrogateOptions.get("TypeKernel", 0)
@@ -50,18 +65,16 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
         learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
         print("\t\t* Surrogate model options:")
-        print(
-            f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
-        )
+        print(f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}")
 
         # ** Store training data
 
         # x, y are raw untransformed, and I want raw transformed. xa, ya are raw transformed
         #x_tr = input_transform["tf1"](train_X)if input_transform is not None else train_X
         #y_tr, yv_tr = outcome_transform["tf1"](train_X, train_Y, train_Yvar) if outcome_transform is not None else train_Y, train_Yvar
-        #self.train_X_usedToTrain = torch.cat((train_X_added, x_tr), axis=-2)
-        #self.train_Y_usedToTrain = torch.cat((train_Y_added, y_tr), axis=-2)
-        #self.train_Yvar_usedToTrain = torch.cat((train_Yvar_added, yv_tr), axis=-2)
+        #self.train_X_use = torch.cat((train_X_added, x_tr), axis=-2)
+        #self.train_Y_use = torch.cat((train_Y_added, y_tr), axis=-2)
+        #self.train_Yvar_use = torch.cat((train_Yvar_added, yv_tr), axis=-2)
 
         # Grab num_outputs
         self._num_outputs = train_Y.shape[-1]
@@ -69,9 +82,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         # Grab ard_num_dims
         if train_X.shape[0] > 0:
             with torch.no_grad():
-                transformed_X = self.transform_inputs(
-                    X=train_X, input_transform=input_transform
-                )
+                transformed_X = self.transform_inputs(X=train_X, input_transform=input_transform)
             self.ard_num_dims = transformed_X.shape[-1]
         else:
             self.ard_num_dims = train_X_added.shape[-1]
@@ -84,29 +95,26 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         # Added points are raw transformed, so I need to normalize them
         if train_X_added.shape[0] > 0:
             train_X_added = input_transform["tf2"](train_X_added)
-            train_Y_added = outcome_transform["tf3"].untransform(train_Y_added)[0]
-            train_Yvar_added = outcome_transform["tf3"].untransform(train_Yvar_added)[0]
             train_Y_added, train_Yvar_added = outcome_transform["tf3"](*outcome_transform["tf2"](train_Y_added, train_Yvar_added))
 
-        # -----
-
-        train_X_usedToTrain = torch.cat((transformed_X, train_X_added), axis=-2)
-        train_Y_usedToTrain = torch.cat((train_Y, train_Y_added), axis=-2)
-        train_Yvar_usedToTrain = torch.cat((train_Yvar, train_Yvar_added), axis=-2)
+        # Concatenate the added points
+        train_X_use = torch.cat((transformed_X, train_X_added), axis=-2)
+        train_Y_use = torch.cat((train_Y, train_Y_added), axis=-2)
+        train_Yvar_use = torch.cat((train_Yvar, train_Yvar_added), axis=-2)
 
         # Validate again after applying the transforms
-        self._validate_tensor_args(X=train_X_usedToTrain, Y=train_Y_usedToTrain, Yvar=train_Yvar_usedToTrain)
+        self._validate_tensor_args(X=train_X_use, Y=train_Y_use, Yvar=train_Yvar_use)
         ignore_X_dims = getattr(self, "_ignore_X_dims_scaling_check", None)
         validate_input_scaling(
-            train_X=train_X_usedToTrain,
-            train_Y=train_Y_usedToTrain,
-            train_Yvar=train_Yvar_usedToTrain,
+            train_X=train_X_use,
+            train_Y=train_Y_use,
+            train_Yvar=train_Yvar_use,
             ignore_X_dims=ignore_X_dims,
         )
-        self._set_dimensions(train_X=train_X_usedToTrain, train_Y=train_Y_usedToTrain)
+        self._set_dimensions(train_X=train_X_use, train_Y=train_Y_use)
         
-        train_X_usedToTrain, train_Y_usedToTrain, train_Yvar_usedToTrain = self._transform_tensor_args(
-            X=train_X_usedToTrain, Y=train_Y_usedToTrain, Yvar=train_Yvar_usedToTrain
+        train_X_use, train_Y_use, train_Yvar_use = self._transform_tensor_args(
+            X=train_X_use, Y=train_Y_use, Yvar=train_Yvar_use
         )
 
         """
@@ -122,7 +130,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             
             likelihood = (
                 gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
-                    noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
+                    noise=train_Yvar_use.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
                     batch_shape=self._aug_batch_shape,
                     learn_additional_noise=learn_additional_noise,
                 )
@@ -157,12 +165,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
 		-----------------------------------------------------------------------
 		"""
 
-        gpytorch.models.exact_gp.ExactGP.__init__(
-            self,
-            train_inputs=train_X_usedToTrain,
-            train_targets=train_Y_usedToTrain,
-            likelihood=likelihood,
-        )
+        gpytorch.models.exact_gp.ExactGP.__init__(self, train_inputs=train_X_use, train_targets=train_Y_use, likelihood=likelihood)
 
         """
 		-----------------------------------------------------------------------
@@ -172,20 +175,16 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
 
         if TypeMean == 0:
             self.mean_module = gpytorch.means.constant_mean.ConstantMean(
-                batch_shape=self._aug_batch_shape
-            )
+                batch_shape=self._aug_batch_shape )
         elif TypeMean == 1:
             self.mean_module = gpytorch.means.linear_mean.LinearMean(
-                self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True
-            )
+                self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True )
         elif TypeMean == 2:
             self.mean_module = MITIM_LinearMeanGradients(
-                batch_shape=self._aug_batch_shape, variables=variables
-            )
+                batch_shape=self._aug_batch_shape, variables=variables )
         elif TypeMean == 3:
             self.mean_module = MITIM_CriticalGradient(
-                batch_shape=self._aug_batch_shape, variables=variables
-            )
+                batch_shape=self._aug_batch_shape, variables=variables )
 
         """
 		-----------------------------------------------------------------------
@@ -198,9 +197,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         outputscale_prior = gpytorch.priors.torch_priors.GammaPrior(2.0, 0.15)
 
         # Do not allow too small lengthscales?
-        lengthscale_constraint = (
-            None  # gpytorch.constraints.constraints.GreaterThan(0.05)
-        )
+        lengthscale_constraint = None  # gpytorch.constraints.constraints.GreaterThan(0.05)
 
         self._subset_batch_dict["covar_module.raw_outputscale"] = -1
         self._subset_batch_dict["covar_module.base_kernel.raw_lengthscale"] = -3
@@ -298,18 +295,14 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
             return posterior_transform(posterior)
         return posterior
 
-class BatchBroadcastedInputTransform_MITIM(botorch.models.transforms.input.BatchBroadcastedInputTransform):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-  
-    def _Xs_and_transforms(self, X):
-        Xs = (X,) * len(self.transforms)
-        return zip(Xs, self.transforms)
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# ModelListGP needs to be modified to allow me to have "common" parameters to models, to not run at every transformation again
-# ----------------------------------------------------------------------------------------------------------------------------
-
+'''
+*******************************************************************************
+ModelListGP needs to be custom in MITIM because:
+    - I shouldn't run the full transformation at every posterior call, only
+      once per ModelList. This will allow me to have "common"  parameters
+      to models, to not run at every transformation again
+*******************************************************************************
+'''
 class ModelListGP_MITIM(botorch.models.model_list_gp_regression.ModelListGP):
     def __init__(self, *gp_models):
         super().__init__(*gp_models)
@@ -339,10 +332,11 @@ class ModelListGP_MITIM(botorch.models.model_list_gp_regression.ModelListGP):
         self.cold_startCommons()
         return posterior
 
-# ----------------------------------------------------------------------------------------------------------------------------
-# I need my own transformation based on physics
-# ----------------------------------------------------------------------------------------------------------------------------
-
+'''
+*******************************************************************************
+Physics transformation for inputs
+*******************************************************************************
+'''
 class Transformation_Inputs(
     botorch.models.transforms.input.ReversibleInputTransform, torch.nn.Module):
     def __init__(
@@ -375,9 +369,7 @@ class Transformation_Inputs(
     @botorch.models.transforms.utils.subset_transform
     def _transform(self, X):
         if (self.output is not None) and (self.flag_to_evaluate):
-            Xtr, parameters_combined = self.surrogate_parameters[
-                "transformationInputs"
-            ](
+            Xtr, parameters_combined = self.surrogate_parameters["transformationInputs"](
                 X,
                 self.output,
                 self.surrogate_parameters,
@@ -397,13 +389,13 @@ class Transformation_Inputs(
     def _untransform(self, X):
         raise NotImplementedError("[MITIM] This situation has not been implemented yet")
 
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# I need my own outcome transformation based on physics and that takes "X" as well
-# ----------------------------------------------------------------------------------------------------------------------------
-
-
-# Copy standardize but modify in untransform the "std" which is my factor!
+'''
+*******************************************************************************
+Physics transformation for outputs. Notes:
+    - It needs to take "X" as well
+    - I leverage what's build in standardize to avoid repeating code
+*******************************************************************************
+'''
 class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
     def __init__(self, m, outputs_names, surrogate_parameters):
         super().__init__(m)
@@ -499,8 +491,14 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         mvn_tf = mvn.__class__(mean=mean_tf, covariance_matrix=covar_tf, **kwargs)
         return GPyTorchPosterior(mvn_tf)
 
-
 # Because I need it to take X too (for physics only, which is always the first tf)
+
+'''
+*******************************************************************************
+ChainedOutcomeTransform needs to be custom in MITIM because the first
+transformation (tf1) is assumed to be the physics one and  needs to take X
+*******************************************************************************
+'''
 class ChainedOutcomeTransform(
     botorch.models.transforms.outcome.ChainedOutcomeTransform):
     def __init__(self, **transforms):
@@ -527,255 +525,6 @@ class ChainedOutcomeTransform(
 
     def untransform(self, X, Y, Yvar):
         raise NotImplementedError("[MITIM] This situation has not been implemented yet")
-
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# Mean acquisition function in botorch doesn't allow objectives because it's analytic
-# ----------------------------------------------------------------------------------------------------------------------------
-
-class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
-    def __init__(
-        self,
-        model,
-        sampler=None,
-        objective=None,
-        posterior_transform=None,
-        X_pending=None,
-    ):
-        super().__init__(
-            model=model,
-            sampler=sampler,
-            objective=objective,
-            posterior_transform=posterior_transform,
-            X_pending=X_pending,
-        )
-
-    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
-    def forward(self, X):
-        """
-        Notes:
-                - X in the form of [batch,cold_starts,q,dim]
-                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
-        """
-
-        # Posterior distribution
-        posterior = self.model.posterior(
-            X=X, posterior_transform=self.posterior_transform
-        )
-
-        # mean as [batch1...N,q,dimY]
-        mean = posterior.mean
-
-        # objective [batch1...N,q] -> This assumes the nonlinearity of the objective is not significant, so obj(mean) = mean(obj)
-        obj = self.objective(mean)
-
-        # max over q
-        acq = obj.max(dim=1)[0]
-
-        return acq
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# Custom kernels
-# ----------------------------------------------------------------------------------------------------------------------------
-
-class MITIM_NNKernel(gpytorch.kernels.Kernel):
-    has_lengthscale, is_stationary = True, False
-
-    def __init__(self, tau_prior=None, tau_constraint=None, **kwargs):
-        super().__init__(**kwargs)
-
-        # register the raw parameter
-        self.register_parameter(
-            name="raw_tau",
-            parameter=torch.nn.Parameter(
-                torch.zeros(*self.batch_shape, 1, self.ard_num_dims)
-            ),
-        )
-
-        # set the parameter constraint to be [0,1], when nothing is specified
-        if tau_constraint is None:
-            tau_constraint = gpytorch.constraints.constraints.Interval(-0.5, 1.5)
-
-        # register the constraint
-        self.register_constraint("raw_tau", tau_constraint)
-
-        # set the parameter prior, see
-        if tau_prior is not None:
-            self.register_prior(
-                "length_prior",
-                tau_prior,
-                lambda m: m.tau,
-                lambda m, v: m._set_length(v),
-            )
-
-    # now set up the 'individual_models' paramter
-    @property
-    def tau(self):
-        # when accessing the parameter, apply the constraint transform
-        return self.raw_tau_constraint.transform(self.raw_tau)
-
-    @tau.setter
-    def tau(self, value):
-        return self._set_tau(value)
-
-    def _set_tau(self, value):
-        if not torch.is_tensor(value):
-            value = torch.as_tensor(value).to(self.raw_tau)
-        # when setting the paramater, transform the actual value to a raw one by applying the inverse transform
-        self.initialize(raw_length=self.raw_tau_constraint.inverse_transform(value))
-
-    def forward(
-        self,
-        x1: torch.Tensor,
-        x2: torch.Tensor,
-        **params,
-    ) -> torch.Tensor:
-        # print(self.lengthscale,self.tau,x1.shape,x2.shape)
-
-        x1o = x1.clone()
-        x2o = x2.clone()
-        if len(x1o.shape) > 2:
-            x1 = x1o[:, 0, :]  # x1o.view(x1o.shape[0]*x1o.shape[1],1)
-        if len(x2o.shape) > 2:
-            x2 = x2o[0, :, :]  # .view(x2o.shape[0]*x2o.shape[1],1)
-
-        x1 = torch.cat((torch.ones(x1.shape[0]).unsqueeze(1), x1.sub(self.tau)), dim=-1)
-
-        x2 = torch.cat((torch.ones(x2.shape[0]).unsqueeze(1), x2.sub(self.tau)), dim=-1)
-        S = torch.cat((torch.ones(1).unsqueeze(0), self.lengthscale.pow(-2)), dim=-1)[
-            0
-        ].diag()
-
-        prod_x1x2 = torch.matmul(x1.matmul(S), x2.transpose(-2, -1)).mul(2)
-
-        aux1 = x1.matmul(S).matmul(x1.transpose(-2, -1)).diag().mul(2).add(1)
-        aux2 = x2.matmul(S).matmul(x2.transpose(-2, -1)).diag().mul(2).add(1)
-
-        denom = aux1.unsqueeze(1).matmul(aux2.unsqueeze(0))
-
-        pi = torch.acos(torch.zeros(1)).item() * 2
-        val = torch.arcsin(prod_x1x2 * denom.pow(-0.5)).mul(2).div(pi)
-
-        if params["diag"]:
-            val = torch.diag(val)
-
-        if len(x1o.shape) > 2:
-            val = val.unsqueeze(1)
-
-        return val
-
-
-class MITIM_ConstantKernel(gpytorch.kernels.Kernel):
-    has_lengthscale = False
-
-    def forward(
-        self,
-        x1: torch.Tensor,
-        x2: torch.Tensor,
-        **params,
-    ) -> torch.Tensor:
-        dist = gpytorch.kernels.kernel.Distance()
-
-        x1_eq_x2 = torch.equal(x1, x2)
-
-        if "diag" in params and params["diag"]:
-            if x1_eq_x2:
-                res = (
-                    torch.zeros(
-                        *x1.shape[:-2], x1.shape[-2], dtype=x1.dtype, device=x1.device
-                    )
-                    * 0.0
-                )
-            else:
-                res = torch.norm(x1 - x2, p=2, dim=-1).pow(2) * 0.0
-        else:
-            res = dist._sq_dist(x1, x2, x1_eq_x2=x1_eq_x2, postprocess=False) * 0.0
-
-        val = res.div_(-2).exp_()
-
-        return val
-
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# Custom means
-# ----------------------------------------------------------------------------------------------------------------------------
-
-# mitim application: If a variable is a gradient, do linear, if not, do just bias
-class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
-    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
-        super().__init__()
-
-        # Indeces of variables that are gradient, so subject to CG behavior
-        grad_vector = []
-        if variables is not None:
-            for i, variable in enumerate(variables):
-                if ("aL" in variable) or ("dw" in variable):
-                    grad_vector.append(i)
-        self.indeces_grad = tuple(grad_vector)
-        # ----------------------------------------------------------------
-
-        self.register_parameter(
-            name="weights_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_parameter(
-            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
-        )
-
-    def forward(self, x):
-        res = x[..., self.indeces_grad].matmul(self.weights_lin).squeeze(-1) + self.bias
-        return res
-
-
-class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
-    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
-        super().__init__()
-
-        # Indeces of variables that are gradient, so subject to CG behavior
-        grad_vector = []
-        if variables is not None:
-            for i, variable in enumerate(variables):
-                if ("aL" in variable) or ("dw" in variable):
-                    grad_vector.append(i)
-        self.indeces_grad = tuple(grad_vector)
-        # ----------------------------------------------------------------
-
-        self.register_parameter(
-            name="weights_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_parameter(
-            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
-        )
-
-        self.NNfunc = (
-            lambda x: x * (1 + torch.erf(x / 0.01)) / 2.0
-        )  # https://paperswithcode.com/method/gelu
-
-        self.register_parameter(
-            name="relu_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_constraint(
-            "relu_lin", gpytorch.constraints.constraints.Interval(0, 1)
-        )
-
-    def forward(self, x):
-        res = (
-            self.NNfunc(x[..., self.indeces_grad] - self.relu_lin.transpose(0, 1))
-            .matmul(self.weights_lin)
-            .squeeze(-1)
-            + self.bias
-        )
-        return res
-
-
 
 class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
     r"""An input transform representing a list of transforms to be broadcasted."""
@@ -1003,7 +752,246 @@ class OutcomeToBatchDimension(OutcomeTransform):
         # could potentially use from_independent_mvns
         # print(f"{mvn._covar.shape = }")
         # print(f"{covar.shape=}")
-        from gpytorch.distributions import MultivariateNormal
-        dis = MultivariateNormal(mean=mean, covariance_matrix=covar)
+        dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
         return GPyTorchPosterior(distribution=dis)
+
+# ----------------------------------------------------------------------------------------------------------------------------
+# Mean acquisition function in botorch doesn't allow objectives because it's analytic
+# ----------------------------------------------------------------------------------------------------------------------------
+
+class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
+    def __init__(
+        self,
+        model,
+        sampler=None,
+        objective=None,
+        posterior_transform=None,
+        X_pending=None,
+    ):
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=objective,
+            posterior_transform=posterior_transform,
+            X_pending=X_pending,
+        )
+
+    @botorch.utils.transforms.t_batch_mode_transform()  # This ensures the t-batch dimension. Example: X of (q=5,dim=1) will be (batch=1,q=5,dim=1)
+    def forward(self, X):
+        """
+        Notes:
+                - X in the form of [batch,cold_starts,q,dim]
+                - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
+        """
+
+        # Posterior distribution
+        posterior = self.model.posterior(
+            X=X, posterior_transform=self.posterior_transform
+        )
+
+        # mean as [batch1...N,q,dimY]
+        mean = posterior.mean
+
+        # objective [batch1...N,q] -> This assumes the nonlinearity of the objective is not significant, so obj(mean) = mean(obj)
+        obj = self.objective(mean)
+
+        # max over q
+        acq = obj.max(dim=1)[0]
+
+        return acq
+
+# ----------------------------------------------------------------------------------------------------------------------------
+# Custom kernels and means
+# ----------------------------------------------------------------------------------------------------------------------------
+
+class MITIM_NNKernel(gpytorch.kernels.Kernel):
+    has_lengthscale, is_stationary = True, False
+
+    def __init__(self, tau_prior=None, tau_constraint=None, **kwargs):
+        super().__init__(**kwargs)
+
+        # register the raw parameter
+        self.register_parameter(
+            name="raw_tau",
+            parameter=torch.nn.Parameter(
+                torch.zeros(*self.batch_shape, 1, self.ard_num_dims)
+            ),
+        )
+
+        # set the parameter constraint to be [0,1], when nothing is specified
+        if tau_constraint is None:
+            tau_constraint = gpytorch.constraints.constraints.Interval(-0.5, 1.5)
+
+        # register the constraint
+        self.register_constraint("raw_tau", tau_constraint)
+
+        # set the parameter prior, see
+        if tau_prior is not None:
+            self.register_prior(
+                "length_prior",
+                tau_prior,
+                lambda m: m.tau,
+                lambda m, v: m._set_length(v),
+            )
+
+    # now set up the 'individual_models' paramter
+    @property
+    def tau(self):
+        # when accessing the parameter, apply the constraint transform
+        return self.raw_tau_constraint.transform(self.raw_tau)
+
+    @tau.setter
+    def tau(self, value):
+        return self._set_tau(value)
+
+    def _set_tau(self, value):
+        if not torch.is_tensor(value):
+            value = torch.as_tensor(value).to(self.raw_tau)
+        # when setting the paramater, transform the actual value to a raw one by applying the inverse transform
+        self.initialize(raw_length=self.raw_tau_constraint.inverse_transform(value))
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        **params,
+    ) -> torch.Tensor:
+        # print(self.lengthscale,self.tau,x1.shape,x2.shape)
+
+        x1o = x1.clone()
+        x2o = x2.clone()
+        if len(x1o.shape) > 2:
+            x1 = x1o[:, 0, :]  # x1o.view(x1o.shape[0]*x1o.shape[1],1)
+        if len(x2o.shape) > 2:
+            x2 = x2o[0, :, :]  # .view(x2o.shape[0]*x2o.shape[1],1)
+
+        x1 = torch.cat((torch.ones(x1.shape[0]).unsqueeze(1), x1.sub(self.tau)), dim=-1)
+
+        x2 = torch.cat((torch.ones(x2.shape[0]).unsqueeze(1), x2.sub(self.tau)), dim=-1)
+        S = torch.cat((torch.ones(1).unsqueeze(0), self.lengthscale.pow(-2)), dim=-1)[
+            0
+        ].diag()
+
+        prod_x1x2 = torch.matmul(x1.matmul(S), x2.transpose(-2, -1)).mul(2)
+
+        aux1 = x1.matmul(S).matmul(x1.transpose(-2, -1)).diag().mul(2).add(1)
+        aux2 = x2.matmul(S).matmul(x2.transpose(-2, -1)).diag().mul(2).add(1)
+
+        denom = aux1.unsqueeze(1).matmul(aux2.unsqueeze(0))
+
+        pi = torch.acos(torch.zeros(1)).item() * 2
+        val = torch.arcsin(prod_x1x2 * denom.pow(-0.5)).mul(2).div(pi)
+
+        if params["diag"]:
+            val = torch.diag(val)
+
+        if len(x1o.shape) > 2:
+            val = val.unsqueeze(1)
+
+        return val
+
+class MITIM_ConstantKernel(gpytorch.kernels.Kernel):
+    has_lengthscale = False
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        **params,
+    ) -> torch.Tensor:
+        dist = gpytorch.kernels.kernel.Distance()
+
+        x1_eq_x2 = torch.equal(x1, x2)
+
+        if "diag" in params and params["diag"]:
+            if x1_eq_x2:
+                res = (
+                    torch.zeros(
+                        *x1.shape[:-2], x1.shape[-2], dtype=x1.dtype, device=x1.device
+                    )
+                    * 0.0
+                )
+            else:
+                res = torch.norm(x1 - x2, p=2, dim=-1).pow(2) * 0.0
+        else:
+            res = dist._sq_dist(x1, x2, x1_eq_x2=x1_eq_x2, postprocess=False) * 0.0
+
+        val = res.div_(-2).exp_()
+
+        return val
+
+class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
+    # PORTALS application: If a variable is a gradient, do linear, if not, do just bias
+    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
+        super().__init__()
+
+        # Indeces of variables that are gradient, so subject to CG behavior
+        grad_vector = []
+        if variables is not None:
+            for i, variable in enumerate(variables):
+                if ("aL" in variable) or ("dw" in variable):
+                    grad_vector.append(i)
+        self.indeces_grad = tuple(grad_vector)
+        # ----------------------------------------------------------------
+
+        self.register_parameter(
+            name="weights_lin",
+            parameter=torch.nn.Parameter(
+                torch.randn(*batch_shape, len(self.indeces_grad), 1)
+            ),
+        )
+        self.register_parameter(
+            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
+        )
+
+    def forward(self, x):
+        res = x[..., self.indeces_grad].matmul(self.weights_lin).squeeze(-1) + self.bias
+        return res
+
+class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
+    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
+        super().__init__()
+
+        # Indeces of variables that are gradient, so subject to CG behavior
+        grad_vector = []
+        if variables is not None:
+            for i, variable in enumerate(variables):
+                if ("aL" in variable) or ("dw" in variable):
+                    grad_vector.append(i)
+        self.indeces_grad = tuple(grad_vector)
+        # ----------------------------------------------------------------
+
+        self.register_parameter(
+            name="weights_lin",
+            parameter=torch.nn.Parameter(
+                torch.randn(*batch_shape, len(self.indeces_grad), 1)
+            ),
+        )
+        self.register_parameter(
+            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
+        )
+
+        self.NNfunc = (
+            lambda x: x * (1 + torch.erf(x / 0.01)) / 2.0
+        )  # https://paperswithcode.com/method/gelu
+
+        self.register_parameter(
+            name="relu_lin",
+            parameter=torch.nn.Parameter(
+                torch.randn(*batch_shape, len(self.indeces_grad), 1)
+            ),
+        )
+        self.register_constraint(
+            "relu_lin", gpytorch.constraints.constraints.Interval(0, 1)
+        )
+
+    def forward(self, x):
+        res = (
+            self.NNfunc(x[..., self.indeces_grad] - self.relu_lin.transpose(0, 1))
+            .matmul(self.weights_lin)
+            .squeeze(-1)
+            + self.bias
+        )
+        return res
+
 
