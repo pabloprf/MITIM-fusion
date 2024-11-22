@@ -13,7 +13,7 @@ if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
 # Let's not consume the entire computer resources when running test... limit to 4 threads
-torch.set_num_threads(4)
+torch.set_num_threads(8)
 
 folder.mkdir(parents=True, exist_ok=True)
 
