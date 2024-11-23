@@ -63,7 +63,9 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
 
-    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
+    options["maxiter"] = 100
+    with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/ev.prof") as s:
+    #with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
         x_opt, _ = botorch.optim.optimize_acqf(
             acq_function=fun_opt,
             bounds=fun.bounds_mod,
@@ -73,6 +75,11 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
             num_restarts=num_restarts,
             options=options,
         )
+
+        # 
+        #     self.gpmodel.posterior(x).mean
+        #     #torch.autograd.grad(loss, X)[0]
+
     embed()
 
     acq_evaluated = torch.Tensor(acq_evaluated)

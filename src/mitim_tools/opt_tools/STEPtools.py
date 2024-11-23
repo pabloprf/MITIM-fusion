@@ -1,5 +1,4 @@
 import copy
-import datetime
 import torch
 import botorch
 import numpy as np

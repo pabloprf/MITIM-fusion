@@ -16,7 +16,7 @@ if cold_start and folderWork.exists():
     os.system(f"rm -r {folderWork.resolve()}")
 
 # Let's not consume the entire computer resources when running test... limit to 4 threads
-torch.set_num_threads(8)
+# torch.set_num_threads(8)
 
 # --------------------------------------------------------------------------------------------
 # Optimization Class

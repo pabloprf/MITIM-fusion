@@ -233,14 +233,14 @@ class surrogate_model:
 
         for ind_out in range(self.train_Y.shape[-1]):
 
-            input_transform_physics = BOTORCHtools.Transformation_Inputs(
+            input_transform_physics = BOTORCHtools.input_physics_transform(
                 self.outputs[ind_out], self.surrogate_parameters, self.surrogate_transformation_variables
             ).to(self.dfT)
 
             input_transformations_physics.append(input_transform_physics)
         
         dimY = self.train_Y.shape[-1]
-        output_transformation_physics = BOTORCHtools.Transformation_Outcomes(
+        output_transformation_physics = BOTORCHtools.outcome_physics_transform(
                 dimY, self.outputs, self.surrogate_parameters
             ).to(self.dfT)
 
@@ -262,7 +262,9 @@ class surrogate_model:
         input_transform_normalization = botorch.models.transforms.input.Normalize(
             d = dx_tr, bounds=None, batch_shape=transformed_X.shape[:-2]
         ).to(self.dfT)
-        output_transformed_standardization = botorch.models.transforms.outcome.Standardize(m = dy_tr).to(self.dfT)
+        output_transformed_standardization = botorch.models.transforms.outcome.Standardize(
+            m = dy_tr, batch_shape=self.train_Y.shape[:-2]
+        ).to(self.dfT)
 
         # ------------------------------------------------------------------------------------
         # Combine transformations in chain of PHYSICS + NORMALIZATION + BATCHING
@@ -346,7 +348,7 @@ class surrogate_model:
         '''
         Notes:
             - The goal of this is to capture NOW the normalization and standardization constants,
-              by account for both the actual data and the added data from file 
+              by accounting for both the actual data and the added data from file 
         '''
 
         # -------------------------------------------------------------------------------------
@@ -424,8 +426,8 @@ class surrogate_model:
 		"""
 
         # Train always in physics-transformed space, to enable mitim re-use training from file
-        with fundamental_model_context(self):
-            track_fval = self.perform_model_fit(mll)
+        #with fundamental_model_context(self):
+        track_fval = self.perform_model_fit(mll)
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
@@ -919,9 +921,11 @@ class surrogate_model:
 
             BOgraphics.printParam(param_name, param, extralab="\t\t\t")
 
-
-# Class to call the model posterior directly on transformed space (x and y)
 class fundamental_model_context(object):
+    '''
+    This is a context manager that will temporarily disable the physics transformations (tf1)
+    in the surrogate model
+    '''
     def __init__(self, surrogate_model):
         self.surrogate_model = surrogate_model
 
