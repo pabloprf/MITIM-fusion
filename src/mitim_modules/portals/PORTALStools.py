@@ -25,22 +25,28 @@ def selectSurrogates(outputs, surrogateOptions, CGYROrun=False):
 
     surrogateOptions_dict = {}
 
-    # Turbulent and Neoclassical
+    for i in range(len(outputs)):
+        # Turbulent and Neoclassical at inner locations
+        surrogateOptions_dict[i+1] = copy.deepcopy(surrogateOptions)
+        surrogateOptions_dict[i+1]["TypeMean"] = 1  # Linear
+        surrogateOptions_dict[i+1]["TypeKernel"] = 1  # RBF
 
-    surrogateOptions_dict[iTra] = copy.deepcopy(surrogateOptions)
-    surrogateOptions_dict[iTra]["TypeMean"] = 2  # Linear in gradients, constant in rest
-    surrogateOptions_dict[iTra]["TypeKernel"] = 1  # RBF
-    # surrogateOptions_dict[len(output)]['ExtraNoise']  = True
 
-    surrogateOptions_dict[iTar] = copy.deepcopy(surrogateOptions)
-    surrogateOptions_dict[iTar]["TypeMean"] = 2  # Linear in gradients, constant in rest
-    surrogateOptions_dict[iTar]["TypeKernel"] = 1  # RBF
-    # surrogateOptions_dict[len(output)]['ExtraNoise']  = True
 
-    # Targets (If it's a target, just linear)
-    surrogateOptions_dict[len(outputs)] = copy.deepcopy(surrogateOptions)
-    surrogateOptions_dict[len(outputs)]["TypeMean"] = 1
-    surrogateOptions_dict[len(outputs)]["TypeKernel"] = 2  # Constant kernel
+    # # Turbulent and Neoclassical at inner locations
+    # surrogateOptions_dict[iTra] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[iTra]["TypeMean"] = 1  # Linear
+    # surrogateOptions_dict[iTra]["TypeKernel"] = 1  # RBF
+
+    # # Turbulent and Neoclassical at outer location (generally less variables)
+    # surrogateOptions_dict[iTar] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[iTar]["TypeMean"] = 1  # Linear
+    # surrogateOptions_dict[iTar]["TypeKernel"] = 1  # RBF
+
+    # # Targets (If it's a target, just linear)
+    # surrogateOptions_dict[len(outputs)] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[len(outputs)]["TypeMean"] = 1 # Linear
+    # surrogateOptions_dict[len(outputs)]["TypeKernel"] = 2  # Constant kernel
 
     return surrogateOptions_dict
 

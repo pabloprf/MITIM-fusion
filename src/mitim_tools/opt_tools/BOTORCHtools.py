@@ -40,7 +40,7 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         input_transform=None,
         outcome_transform=None,
         surrogateOptions={},
-        variables=None,
+        #variables=None,
         train_X_added=torch.Tensor([]),
         train_Y_added=torch.Tensor([]),
         train_Yvar_added=torch.Tensor([]),
@@ -214,12 +214,12 @@ class SingleTaskGP_MITIM(botorch.models.gp_regression.SingleTaskGP):
         elif TypeMean == 1:
             self.mean_module = gpytorch.means.linear_mean.LinearMean(
                 self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True )
-        elif TypeMean == 2:
-            self.mean_module = MITIM_LinearMeanGradients(
-                batch_shape=self._aug_batch_shape, variables=variables )
-        elif TypeMean == 3:
-            self.mean_module = MITIM_CriticalGradient(
-                batch_shape=self._aug_batch_shape, variables=variables )
+        # elif TypeMean == 2:
+        #     self.mean_module = MITIM_LinearMeanGradients(
+        #         batch_shape=self._aug_batch_shape, variables=variables )
+        # elif TypeMean == 3:
+        #     self.mean_module = MITIM_CriticalGradient(
+        #         batch_shape=self._aug_batch_shape, variables=variables )
 
         """
 		-----------------------------------------------------------------------
@@ -890,7 +890,7 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
     def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
         super().__init__()
 
-        # Indeces of variables that are gradient, so subject to CG behavior
+        # Indeces of variables that are gradient, so subject to critical gradient behavior
         grad_vector = []
         if variables is not None:
             for i, variable in enumerate(variables):

@@ -103,7 +103,7 @@ class OPTstep:
     def _fit_multioutput_model(self):
 
         # Base model
-        self.GP["mo_model"] = SURROGATEtools.surrogate_model.simple(
+        self.GP["mo_model"] = SURROGATEtools.surrogate_model.only_define(
             self.x,
             self.y,
             self.yvar,

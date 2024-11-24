@@ -27,7 +27,7 @@ class surrogate_model:
     """
 
     @classmethod
-    def simple(cls, *args, **kwargs):
+    def only_define(cls, *args, **kwargs):
         # Create an instance of the class
         instance = cls.__new__(cls)
         # Initialize the parameters manually
@@ -202,15 +202,15 @@ class surrogate_model:
 
         self.normalization_pass(input_transform, outcome_transform)
 
-        self.variables = (
-            self.surrogate_transformation_variables[self.outputs[0]]
-            if (
-                (self.outputs is not None)
-                and ("surrogate_transformation_variables" in self.__dict__)
-                and (self.surrogate_transformation_variables is not None)
-            )
-            else None
-        )
+        # self.variables = (
+        #     self.surrogate_transformation_variables[self.outputs[0]]
+        #     if (
+        #         (self.outputs is not None)
+        #         and ("surrogate_transformation_variables" in self.__dict__)
+        #         and (self.surrogate_transformation_variables is not None)
+        #     )
+        #     else None
+        # )
 
         # *************************************************************************************
         # Model
@@ -225,7 +225,7 @@ class surrogate_model:
             input_transform=input_transform,
             outcome_transform=outcome_transform,
             surrogateOptions=self.surrogateOptions,
-            variables=self.variables,
+            #variables=self.variables,
             train_X_added=self.train_X_added,
             train_Y_added=self.train_Y_added,
             train_Yvar_added=self.train_Yvar_added,

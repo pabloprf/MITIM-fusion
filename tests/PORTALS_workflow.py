@@ -24,7 +24,7 @@ if cold_start and folderWork.exists():
 
 # Initialize class
 portals_fun = PORTALSmain.portals(folderWork)
-portals_fun.optimization_options["BO_iterations"] = 1
+portals_fun.optimization_options["BO_iterations"] = 5
 portals_fun.optimization_options["initial_training"] = 3
 portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.INITparameters["removeFast"] = True
