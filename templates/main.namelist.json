@@ -24,7 +24,7 @@
         "acquisition_params" : {
             "mc_samples": 1024,
             "acquisition_optimization" : {
-                "num_restarts": 128,
+                "num_restarts": 64,
                 "raw_samples": 1024
             }
         },
