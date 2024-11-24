@@ -19,8 +19,9 @@ from typing import Iterable
 from torch.nn import ModuleDict
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.posteriors.posterior import Posterior
-from linear_operator.operators import BlockDiagLinearOperator
+from linear_operator.operators import BlockDiagLinearOperator, CatLinearOperator, BlockInterleavedLinearOperator
 from gpytorch.distributions import MultitaskMultivariateNormal
+from gpytorch.distributions import MultivariateNormal
 
 '''
 *******************************************************************************
@@ -435,7 +436,7 @@ class outcome_physics_transform(botorch.models.transforms.outcome.OutcomeTransfo
 
         # Calculate the new mean and covariance
         mean_tf = factor * mvn.mean
-        scale_mat = DiagLinearOperator(factor)
+        scale_mat = DiagLinearOperator(factor.squeeze(-1))
         covar_tf = scale_mat @ lcv @ scale_mat
 
         # Recreate the untranformed posterior
@@ -474,7 +475,12 @@ class ChainedOutcomeTransform(
 
     def untransform(self, X, Y, Yvar):
         raise NotImplementedError("[MITIM] This situation has not been implemented yet")
-
+'''
+*******************************************************************************
+BatchBroadcastedInputTransform needs to be custom in MITIM because of the no
+repetition of expensive parameters
+******************************************************************************* 
+'''
 class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
     r"""An input transform representing a list of transforms to be broadcasted."""
 
@@ -536,7 +542,7 @@ class BatchBroadcastedInputTransform(InputTransform, ModuleDict):
 
         self.prepare_expensive_parameters()
         v = torch.stack(
-            [t.forward(Xi) for Xi, t in self._Xs_and_transforms(X)],                #PRF
+            [t.forward(Xi) for Xi, t in self._Xs_and_transforms(X)],
             dim=self.broadcast_index,
         )
         self.restart_expensive_parameters()
@@ -714,20 +720,33 @@ class OutcomeToBatchDimension(OutcomeTransform):
         Returns:
             The un-transformed posterior.
         """
+        # mvn = posterior.mvn
+        # mean = self.untransform(posterior.mean)[0]
+        # covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
+        # dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
+        # return GPyTorchPosterior(distribution=dis)
+
         mvn = posterior.mvn
-        # print(f"{posterior.mean.shape = }")
-        # print(f"{mvn.mean.shape = }")
         mean = self.untransform(posterior.mean)[0]
-        # print(f"{mean.shape = }")
-        covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
-        # could potentially use from_independent_mvns
-        # print(f"{mvn._covar.shape = }")
-        # print(f"{covar.shape=}")
-        
-        #dis = gpytorch.distributions.MultivariateNormal(mean=mean, covariance_matrix=covar)
-        #dis = mvn.__class__(mean=mean, covariance_matrix=covar) #PRF <----- CHANGED <<<<<<<<<<<<< CHGECK
-        #dis = gpytorch.distributions.multivariate_normal.MultivariateNormal(mean=mean, covariance_matrix=covar)
-        dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
+        #covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
+
+        _num_outputs = mean.shape[-1]
+
+        output_indices = range(_num_outputs)
+        mvns = []
+        for t in output_indices:
+            slices = [slice(None)] * mvn._covar.ndim
+            slices[-3] = 0
+            mvns.append(MultivariateNormal(
+                mean.select(dim=-1, index=t),
+                mvn._covar[tuple(slices)],
+            )
+            )
+        if len(mvns) == 1:
+            dis = mvns[0]
+        else:
+            dis = MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
+
         return GPyTorchPosterior(distribution=dis)
 
 '''
