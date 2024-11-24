@@ -26,6 +26,52 @@ class surrogate_model:
 
     """
 
+    @classmethod
+    def simple(cls, *args, **kwargs):
+        # Create an instance of the class
+        instance = cls.__new__(cls)
+        # Initialize the parameters manually
+        instance._init_parameters(*args, **kwargs)
+        return instance
+
+    def _init_parameters(self,
+        Xor,
+        Yor,
+        Yvaror,
+        surrogate_parameters,
+        outputs=None,
+        outputs_transformed=None,
+        bounds=None,
+        avoidPoints=None,
+        dfT=None,
+        surrogateOptions={},
+        FixedValue=False,
+        fileTraining=None,
+        seed = 0
+    ):
+        self.avoidPoints = avoidPoints if avoidPoints is not None else []
+        self.outputs = outputs
+        self.outputs_transformed = outputs_transformed
+        self.surrogateOptions = surrogateOptions
+        self.dfT = dfT
+        self.surrogate_parameters = surrogate_parameters
+        self.bounds = bounds
+        self.FixedValue = FixedValue
+        self.fileTraining = fileTraining
+        if self.dfT is None:
+            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
+        self.train_Y = torch.from_numpy(Yor).to(self.dfT)
+        self.train_X = torch.from_numpy(Xor).to(self.dfT)
+
+        # Extend noise if needed
+        if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
+            print(f"\t- Noise (variance) has one value only ({Yvaror}), assuming constant for all samples and outputs in absolute terms")
+            Yvaror = Yor * 0.0 + Yvaror
+        self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
+
+        self.losses = None
+
+
     def __init__(
         self,
         Xor,
@@ -53,27 +99,21 @@ class surrogate_model:
         # Input parameters
         # --------------------------------------------------------------------
 
-        self.avoidPoints = avoidPoints if avoidPoints is not None else []
-        self.outputs = outputs
-        self.outputs_transformed = outputs_transformed
-        self.surrogateOptions = surrogateOptions
-        self.dfT = dfT
-        self.surrogate_parameters = surrogate_parameters
-        self.bounds = bounds
-        self.FixedValue = FixedValue
-        self.fileTraining = fileTraining
-        if self.dfT is None:
-            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
-        self.train_Y = torch.from_numpy(Yor).to(self.dfT)
-        self.train_X = torch.from_numpy(Xor).to(self.dfT)
-
-        # Extend noise if needed
-        if isinstance(Yvaror, float) or len(Yvaror.shape) == 1:
-            print(f"\t- Noise (variance) has one value only ({Yvaror}), assuming constant for all samples and outputs in absolute terms")
-            Yvaror = Yor * 0.0 + Yvaror
-        self.train_Yvar = torch.from_numpy(Yvaror).to(self.dfT)
-
-        self.losses = None
+        self._init_parameters(
+            Xor,
+            Yor,
+            Yvaror,
+            surrogate_parameters,
+            outputs=outputs,
+            outputs_transformed=outputs_transformed,
+            bounds=bounds,
+            avoidPoints=avoidPoints,
+            dfT=dfT,
+            surrogateOptions=surrogateOptions,
+            FixedValue=FixedValue,
+            fileTraining=fileTraining,
+            seed=seed
+        )
 
         # Print options
         print("\t- Surrogate options:")
@@ -367,7 +407,7 @@ class surrogate_model:
         train_X_transformed = input_transform['tf1'](self.train_X)
 
         # Concatenate the training data and the data from file
-        train_X_transformed = torch.cat((train_X_transformed, self.train_X_added), axis=-2)
+        #train_X_transformed = torch.cat((train_X_transformed, self.train_X_added), axis=-2)
 
         # Get the normalization constants
         _ = input_transform['tf2'](train_X_transformed)

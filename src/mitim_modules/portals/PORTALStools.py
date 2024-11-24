@@ -7,22 +7,42 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def selectSurrogate(output, surrogateOptions, CGYROrun=False):
+def selectSurrogates(outputs, surrogateOptions, CGYROrun=False):
+    '''
+    This divides potentially different outputs into different
+    surrogates to be joined with ModelList 
+    '''
 
-    print(f'\t- Selecting surrogate options for "{output}" to be run')
-
-    if output is not None:
-        # If it's a target, just linear
+    # Find transition to Targets
+    for iTar, output in enumerate(outputs):
         if output[2:5] == "Tar":
-            surrogateOptions["TypeMean"] = 1
-            surrogateOptions["TypeKernel"] = 2  # Constant kernel
-        # If it's not, stndard
-        else:
-            surrogateOptions["TypeMean"] = 2  # Linear in gradients, constant in rest
-            surrogateOptions["TypeKernel"] = 1  # RBF
-            # surrogateOptions['ExtraNoise']  = True
+            break
 
-    return surrogateOptions
+    # Find transition to last location of transport
+    for iTra, output in enumerate(outputs):
+        if output.split('_')[-1] == outputs[iTar-1].split('_')[-1]:
+            break
+
+    surrogateOptions_dict = {}
+
+    # Turbulent and Neoclassical
+
+    surrogateOptions_dict[iTra] = copy.deepcopy(surrogateOptions)
+    surrogateOptions_dict[iTra]["TypeMean"] = 2  # Linear in gradients, constant in rest
+    surrogateOptions_dict[iTra]["TypeKernel"] = 1  # RBF
+    # surrogateOptions_dict[len(output)]['ExtraNoise']  = True
+
+    surrogateOptions_dict[iTar] = copy.deepcopy(surrogateOptions)
+    surrogateOptions_dict[iTar]["TypeMean"] = 2  # Linear in gradients, constant in rest
+    surrogateOptions_dict[iTar]["TypeKernel"] = 1  # RBF
+    # surrogateOptions_dict[len(output)]['ExtraNoise']  = True
+
+    # Targets (If it's a target, just linear)
+    surrogateOptions_dict[len(outputs)] = copy.deepcopy(surrogateOptions)
+    surrogateOptions_dict[len(outputs)]["TypeMean"] = 1
+    surrogateOptions_dict[len(outputs)]["TypeKernel"] = 2  # Constant kernel
+
+    return surrogateOptions_dict
 
 def default_portals_transformation_variables(additional_params = []):
     """
@@ -121,18 +141,12 @@ def input_transformation_portals(Xorig, output, surrogate_parameters, surrogate_
 	"""
 
     _, num = output.split("_")
-    index = powerstate.indexes_simulation[
-        int(num)
-    ]  # num=1 -> pos=1, so that it takes the second value in vectors
+    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
         xx = powerstate.plasma[ikey][: X.shape[0], index]
         xFit = torch.cat((xFit, xx.unsqueeze(1)), dim=1).to(X)
-    
-    #TO FIX
-    import torch.nn.functional as F
-    xFit = F.pad(xFit, (0, 3-xFit.shape[-1]))
 
     parameters_combined = {"powerstate": powerstate}
 

@@ -63,8 +63,8 @@ def default_namelist(optimization_options, CGYROrun=False):
             }
 
     # Surrogate
-    optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
-        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
+    optimization_options["surrogateOptions"]["selectSurrogates"] = partial(
+        PORTALStools.selectSurrogates, CGYROrun=CGYROrun
     )
 
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True

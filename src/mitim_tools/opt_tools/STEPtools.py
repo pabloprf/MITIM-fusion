@@ -102,9 +102,8 @@ class OPTstep:
 
     def _fit_multioutput_model(self):
 
-        surrogateOptions = self.surrogateOptions["selectSurrogate"]('AllMITIM', self.surrogateOptions)
-
-        self.GP["mo_model"] = SURROGATEtools.surrogate_model(
+        # Base model
+        self.GP["mo_model"] = SURROGATEtools.surrogate_model.simple(
             self.x,
             self.y,
             self.yvar,
@@ -113,11 +112,37 @@ class OPTstep:
             outputs_transformed=self.outputs_transformed,
             bounds=self.bounds,
             dfT=self.dfT,
-            surrogateOptions=surrogateOptions,
+            surrogateOptions=self.surrogateOptions,
         )
 
+        # -
+        surrogateOptions_dict = self.surrogateOptions["selectSurrogates"](self.outputs, self.surrogateOptions)
+
+        gps, j = [], 0
+        for i in surrogateOptions_dict:
+            gps.append(
+                SURROGATEtools.surrogate_model(
+                    self.x,
+                    self.y[:, j:i],
+                    self.yvar[:, j:i],
+                    self.surrogate_parameters,
+                    outputs=self.outputs[j:i],
+                    outputs_transformed=self.outputs_transformed[j:i],
+                    bounds=self.bounds,
+                    dfT=self.dfT,
+                    surrogateOptions=surrogateOptions_dict[i],
+                )
+            )
+            j = i
+
         # Fitting
-        self.GP["mo_model"].fit()
+        gpmodels = []
+        for gp in gps:
+            gp.fit()
+            gpmodels.append(gp.gpmodel)
+
+        # Joining    
+        self.GP["mo_model"].gpmodel = BOTORCHtools.ModelListGP_MITIM(*gpmodels)
 
     def _fit_individual_models(self, fit_output_contains=None):
 
@@ -146,8 +171,8 @@ class OPTstep:
             surrogateOptions = copy.deepcopy(self.surrogateOptions)
 
             # Then, depending on application (e.g. targets in mitim are fitted differently)
-            if ("selectSurrogate" in surrogateOptions) and (surrogateOptions["selectSurrogate"] is not None):
-                surrogateOptions = surrogateOptions["selectSurrogate"](output_this, surrogateOptions)
+            if ("selectSurrogates" in surrogateOptions) and (surrogateOptions["selectSurrogates"] is not None):
+                surrogateOptions = surrogateOptions["selectSurrogates"](output_this, surrogateOptions)
 
             # ---------------------------------------------------------------------------------------------------
             # To avoid problems with fixed values (e.g. calibration terms that are fixed)

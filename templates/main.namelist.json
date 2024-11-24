@@ -36,7 +36,7 @@
     "surrogateOptions": {
         "TypeKernel": 0,
         "TypeMean": 0,
-        "selectSurrogate": null,
+        "selectSurrogates": null,
         "FixedNoise": true,
         "ExtraNoise": false,
         "ConstrainNoise": -1e-3,

@@ -277,33 +277,46 @@ def initializeProblem(
                 dictDVs[name] = [dvs_fixed[name][0], base_gradient, dvs_fixed[name][1]]
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Define output dictionaries
+    # Define output dictionaries (order is important, consistent with selectSurrogates)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     ofs, name_objectives = [], []
-    for ikey in dictCPs_base:
-        if ikey == "te":
-            var = "Qe"
-        elif ikey == "ti":
-            var = "Qi"
-        elif ikey == "ne":
-            var = "Ge"
-        elif ikey == "nZ":
-            var = "GZ"
-        elif ikey == "w0":
-            var = "Mt"
 
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"{var}Turb_{i+1}")
-            ofs.append(f"{var}Neo_{i+1}")
+    # Turb and neo, ending with last location
 
-            ofs.append(f"{var}Tar_{i+1}")
+    for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+        for model in ["Turb", "Neo"]:
+            for ikey in dictCPs_base:
+                if ikey == "te":    var = "Qe"
+                elif ikey == "ti":  var = "Qi"
+                elif ikey == "ne":  var = "Ge"
+                elif ikey == "nZ":  var = "GZ"
+                elif ikey == "w0":  var = "Mt"
 
-            name_objectives.append(f"{var}Res_{i+1}")
+                ofs.append(f"{var}{model}_{i+1}")
 
-    if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"PexchTurb_{i+1}")
+
+                if f"{var}Res_{i+1}" not in name_objectives:
+                    name_objectives.append(f"{var}Res_{i+1}")
+
+        if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
+            for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+                ofs.append(f"PexchTurb_{i+1}")
+
+    # Tar
+
+    for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+        model = "Tar"
+        for ikey in dictCPs_base:
+            if ikey == "te":    var = "Qe"
+            elif ikey == "ti":  var = "Qi"
+            elif ikey == "ne":  var = "Ge"
+            elif ikey == "nZ":  var = "GZ"
+            elif ikey == "w0":  var = "Mt"
+
+            ofs.append(f"{var}{model}_{i+1}")
+
+
 
     name_transformed_ofs = []
     for of in ofs:
