@@ -659,19 +659,6 @@ class OutcomeToBatchDimension(OutcomeTransform):
     def forward(
         self, Y: Tensor, Yvar: Tensor | None = None
     ) -> tuple[Tensor, Tensor | None]:
-        r"""Transform the outcomes in a model's training targets
-
-        Args:
-            Y: A `batch_shape x n x m`-dim tensor of training targets.
-            Yvar: A `batch_shape x n x m`-dim tensor of observation noises
-                associated with the training targets (if applicable).
-
-        Returns:
-            A two-tuple with the transformed outcomes (batch_shape x m x n x 1).
-
-            - The transformed outcome observations.
-            - The transformed observation noise (if applicable).
-        """
         return Y.unsqueeze(-3).transpose(-3, -1), (
             Yvar.unsqueeze(-3).transpose(-3, -1) #if Yvar else None
         )
@@ -679,19 +666,6 @@ class OutcomeToBatchDimension(OutcomeTransform):
     def untransform(
         self, Y: Tensor, Yvar: Tensor | None = None
     ) -> tuple[Tensor, Tensor | None]:
-        r"""Un-transform previously transformed outcomes
-
-        Args:
-            Y: A `batch_shape x n x m`-dim tensor of transfomred training targets.
-            Yvar: A `batch_shape x n x m`-dim tensor of transformed observation
-                noises associated with the training targets (if applicable).
-
-        Returns:
-            A two-tuple with the un-transformed outcomes:
-
-            - The un-transformed outcome observations.
-            - The un-transformed observation noise (if applicable).
-        """
         assert Y.shape[-1] == 1
         Y_perm = Y.transpose(-3, -1).squeeze(-3)
         Yvar_perm = Yvar.transpose(-3, -1).squeeze(-3) if Yvar else None
@@ -699,54 +673,13 @@ class OutcomeToBatchDimension(OutcomeTransform):
 
     @property
     def _is_linear(self) -> bool:
-        """
-        True for transformations such as `Standardize`; these should be able to apply
-        `untransform_posterior` to a GPyTorchPosterior and return a GPyTorchPosterior,
-        because a multivariate normal distribution should remain multivariate normal
-        after applying the transform.
-        """
         return True
 
     def untransform_posterior(self, posterior: Posterior) -> Posterior:
-        r"""Un-transform a posterior.
-
-        Posteriors with `_is_linear=True` should return a `GPyTorchPosterior` when
-        `posterior` is a `GPyTorchPosterior`. Posteriors with `_is_linear=False`
-        likely return a `TransformedPosterior` instead.
-
-        Args:
-            posterior: A posterior in the transformed space.
-
-        Returns:
-            The un-transformed posterior.
-        """
-        # mvn = posterior.mvn
-        # mean = self.untransform(posterior.mean)[0]
-        # covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
-        # dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
-        # return GPyTorchPosterior(distribution=dis)
-        # ========================================================+++++++++++++++++++++++++++PRF Check
         mvn = posterior.mvn
         mean = self.untransform(posterior.mean)[0]
-        #covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
-
-        _num_outputs = mean.shape[-1]
-
-        output_indices = range(_num_outputs)
-        mvns = []
-        for t in output_indices:
-            slices = [slice(None)] * mvn._covar.ndim
-            slices[-3] = 0
-            mvns.append(MultivariateNormal(
-                mean.select(dim=-1, index=t),
-                mvn._covar[tuple(slices)],
-            )
-            )
-        if len(mvns) == 1:
-            dis = mvns[0]
-        else:
-            dis = MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
-
+        covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
+        dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
         return GPyTorchPosterior(distribution=dis)
 
 '''
