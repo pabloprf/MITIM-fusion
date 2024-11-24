@@ -725,7 +725,7 @@ class OutcomeToBatchDimension(OutcomeTransform):
         # covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)
         # dis = MultitaskMultivariateNormal(mean=mean, covariance_matrix=covar)
         # return GPyTorchPosterior(distribution=dis)
-
+        # ========================================================+++++++++++++++++++++++++++PRF Check
         mvn = posterior.mvn
         mean = self.untransform(posterior.mean)[0]
         #covar = BlockDiagLinearOperator(base_linear_op=mvn._covar, block_dim=-3)

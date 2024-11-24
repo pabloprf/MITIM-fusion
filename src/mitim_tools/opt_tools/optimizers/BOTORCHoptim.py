@@ -64,17 +64,17 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
 
     options["maxiter"] = 100
-    with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/ev.prof") as s:
+    #with IOtools.speeder("/Users/pablorf/PROJECTS/project_2024_PORTALSdevelopment/speed/ev.prof") as s:
     #with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
-        x_opt, _ = botorch.optim.optimize_acqf(
-            acq_function=fun_opt,
-            bounds=fun.bounds_mod,
-            raw_samples=raw_samples,
-            q=q,
-            sequential=sequential_q,
-            num_restarts=num_restarts,
-            options=options,
-        )
+    x_opt, _ = botorch.optim.optimize_acqf(
+        acq_function=fun_opt,
+        bounds=fun.bounds_mod,
+        raw_samples=raw_samples,
+        q=q,
+        sequential=sequential_q,
+        num_restarts=num_restarts,
+        options=options,
+    )
 
         # 
         #     self.gpmodel.posterior(x).mean
