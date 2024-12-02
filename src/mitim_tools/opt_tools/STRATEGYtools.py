@@ -221,19 +221,20 @@ class opt_evaluator:
 
         # Make folders local
         try:
-            self.mitim_model.folderOutputs = self.mitim_model.folderOutputs.replace(
-                self.mitim_model.folderExecution, self.folder
-            )
+            self.mitim_model.folderOutputs = Path(str(self.mitim_model.folderOutputs).replace(
+                str(self.mitim_model.folderExecution), str(self.folder)
+            ))
             self.mitim_model.optimization_extra = self.mitim_model.optimization_object.optimization_extra = (
-                self.mitim_model.optimization_extra.replace(
-                    self.mitim_model.folderExecution, self.folder
-                )
+                Path(str(self.mitim_model.optimization_extra).replace(
+                    str(self.mitim_model.folderExecution), str(self.folder)
+                ))
             )
             self.mitim_model.folderExecution = self.mitim_model.optimization_object.folder = (
                 self.folder
             )
         except:
             pass
+            
 
     def analyze_optimization_results(self):
         print("- Analyzing MITIM BO results")
