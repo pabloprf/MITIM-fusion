@@ -157,14 +157,14 @@ def machineSettings(
     # Specific case of being already in the machine where I need to run
     # ************************************************************************************************************************
 
-    # Am I already in this machine?
-    if machine in socket.gethostname():
-        # Avoid tunneling and porting if I'm already there
-        machineSettings["tunnel"] = machineSettings["port"] = None
+    # # Am I already in this machine?
+    # if machine in socket.gethostname():
+    #     # Avoid tunneling and porting if I'm already there
+    #     machineSettings["tunnel"] = machineSettings["port"] = None
 
-        # Avoid sshing if I'm already there except if I'm running with another specific user
-        if (forceUsername is None) or (forceUsername == getpass.getuser()):
-            machineSettings["machine"] = "local"
+    #     # Avoid sshing if I'm already there except if I'm running with another specific user
+    #     if (forceUsername is None) or (forceUsername == getpass.getuser()):
+    #         machineSettings["machine"] = "local"
 
     # ************************************************************************************************************************
 
