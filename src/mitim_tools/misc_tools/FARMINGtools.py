@@ -272,8 +272,15 @@ class mitim_job:
             if wait_for_all_commands and removeScratchFolders:
                 self.remove_scratch_folder()
         else:
+
+            # If not received, write output and error to files
+            with open(self.folder_local / "mitim_farming.out", "w") as f:
+                f.write(output.decode("utf-8"))
+            with open(self.folder_local / "mitim_farming.err", "w") as f:
+                f.write(error.decode("utf-8"))
+
             cont = print(
-                "\t* Not all expected files received, not removing scratch folder",
+                "\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",
                 typeMsg="q",
             )
             if not cont:

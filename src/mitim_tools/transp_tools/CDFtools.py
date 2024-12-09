@@ -13457,7 +13457,8 @@ class transp_output:
         self.diagramSpecies(time=time, fn=self.fn, label="Species", fn_color=fn_color)
 
         # Flows
-        self.diagramFlows(time=time, fn=self.fn, label="Flows", fn_color=fn_color)
+        timeStr = f" (@{time:.3f}s)" if time is not None else f"(@{self.t[self.ind_saw]:.3f}s)"
+        self.diagramFlows(time=time, fn=self.fn, label=f"Flows{timeStr}", fn_color=fn_color)
 
         # CPU
         fig = self.fn.add_figure(tab_color=fn_color, label="CPU usage")
