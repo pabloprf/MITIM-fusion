@@ -33,7 +33,7 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
     beat_initializer = None
     if (folder_beats / f'{beats[0]}' / 'initializer_freegs').exists():
         beat_initializer = 'freegs'
-    elif (folder_beats / f'{beats[0]}' / 'inititalizer_geqdsk').exists():
+    elif (folder_beats / f'{beats[0]}' / 'initializer_geqdsk').exists():
         beat_initializer = 'geqdsk'
     elif (folder_beats / f'{beats[0]}' / 'initializer_profiles').exists():
         beat_initializer = 'profiles'
