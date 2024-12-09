@@ -398,6 +398,10 @@ class OPTstep:
                 )
             )
 
+        # Add this because of the way train_X is defined within the gpmodel, which is foundamental, but the acquisition for sample
+        # around best, needs the raw one! (for noisy it is automatic)
+        self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
+
         # **************************************************************************************************
         # Quick function to return components (I need this for ROOT too, since I need the components)
         # **************************************************************************************************
