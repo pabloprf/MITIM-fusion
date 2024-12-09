@@ -10704,6 +10704,22 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if self.PiichT[it] + self.PeichT[it] > 1.0e-5:
+
+            arrowsOut={
+                    f"$P_{{ICH,i}}$ = {self.PiichT[it]:.1f}MW": [0.41, 0.7],
+                    f"$P_{{ICH,e}}$ = {self.PeichT[it]:.1f}MW": [0.39, 0.3],
+                }
+
+            percent_plot = 0.05
+            # If minorities are not in steady-state, some portion goes to their dW/dt
+            if self.GainminT[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
+                arrowsOut[f"$dW/dt$ = {self.GainminT[it]:.1f}MW"] = [0.15,0.85]
+                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+            # Fast heating
+            if self.PfichT_dir[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
+                arrowsOut[f"$P_{{ICH,fast}}$ = {self.PfichT_dir[it]:.1f}MW"] = [0.35,0.85]
+                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+            
             GRAPHICStools.diagram_plotModule(
                 ax,
                 "ICRF",
@@ -10711,12 +10727,10 @@ class transp_output:
                 noLab=False,
                 c="g",
                 typeBox="roundtooth",
-                arrowsOut={
-                    f"$P_{{ICH,i}}$ = {self.PiichT[it]:.1f}MW": [0.41, 0.7],
-                    f"$P_{{ICH,e}}$ = {self.PeichT[it]:.1f}MW": [0.39, 0.3],
-                },
+                arrowsOut=arrowsOut,
                 arrowsIn={f"$P_{{ICH}}$ = {self.PichT[it]:.1f}MW": [0.0, 0.7]},
             )
+
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # NBI
