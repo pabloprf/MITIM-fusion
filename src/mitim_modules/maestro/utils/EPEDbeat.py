@@ -17,7 +17,7 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location = None, norm_location = None, neped_20 = None, BetaN = None, Tesep_keV = None, nesep_20 = None, **kwargs):
+    def prepare(self, nn_location = None, norm_location = None, neped_20 = None, BetaN = None, Tesep_keV = None, nesep_20 = None, corrections_set = {}, **kwargs):
         ''' 
         EPED beat may receive the following parameters: neped_20, BetaN, Tesep_keV, nesep_20.
         If they are not provided, they will be taken from the profiles_current.
@@ -34,6 +34,8 @@ class eped_beat(beat):
         self.BetaN = BetaN
         self.Tesep_keV = Tesep_keV
         self.nesep_20 = nesep_20 
+
+        self.corrections_set = corrections_set
 
         self._inform()
 
@@ -97,17 +99,38 @@ class eped_beat(beat):
 
         nesep_ratio = nesep_20 / neped_20
 
+        # Store evaluation
+        self.current_evaluation = {
+            'Ip': Ip,
+            'Bt': Bt,
+            'R': R,
+            'a': a,
+            'kappa995': kappa995,
+            'delta995': delta995,
+            'neped_20': neped_20,
+            'BetaN': BetaN,
+            'zeff': zeff,
+            'Tesep_keV': Tesep_keV,
+            'nesep_ratio': nesep_ratio,
+        }
+
+        # --- Sometimes we may need specific EPED inputs
+        for key, value in self.corrections_set.items():
+            self.current_evaluation[key] = value
+        # ----------------------------------------------
+
         print('\n\t- Running EPED with:')
-        print(f'\t\t- Ip: {Ip:.2f} MA')
-        print(f'\t\t- Bt: {Bt:.2f} T')
-        print(f'\t\t- R: {R:.2f} m')
-        print(f'\t\t- a: {a:.2f} m')
-        print(f'\t\t- kappa995: {kappa995:.3f}')
-        print(f'\t\t- delta995: {delta995:.3f}')
-        print(f'\t\t- neped: {neped_20*10:.2f} 10^19 m^-3')
-        print(f'\t\t- zeff: {zeff:.2f}')
-        print(f'\t\t- tesep: {Tesep_keV*1E3:.1f} eV')
-        print(f'\t\t- nesep_ratio: {nesep_ratio:.2f}')
+        print(f'\t\t- Ip: {self.current_evaluation["Ip"]:.2f} MA')
+        print(f'\t\t- Bt: {self.current_evaluation["Bt"]:.2f} T')
+        print(f'\t\t- R: {self.current_evaluation["R"]:.2f} m')
+        print(f'\t\t- a: {self.current_evaluation["a"]:.2f} m')
+        print(f'\t\t- kappa995: {self.current_evaluation["kappa995"]:.3f}')
+        print(f'\t\t- delta995: {self.current_evaluation["delta995"]:.3f}')
+        print(f'\t\t- neped: {self.current_evaluation["neped_20"]:.2f} 10^19 m^-3')
+        print(f'\t\t- BetaN: {self.current_evaluation["BetaN"]:.2f}')
+        print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
+        print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.1f} eV')
+        print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
 
         # -------------------------------------------------------
         # Run NN
@@ -117,7 +140,19 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            ptop_kPa, wtop_psipol = self.nn(Ip, Bt, R, a, kappa995, delta995, neped_20*10, BetaN, zeff, tesep=Tesep_keV* 1E3,nesep_ratio=nesep_ratio)
+            ptop_kPa, wtop_psipol = self.nn(
+                self.current_evaluation["Ip"],
+                self.current_evaluation["Bt"],
+                self.current_evaluation["R"],
+                self.current_evaluation["a"],
+                self.current_evaluation["kappa995"],
+                self.current_evaluation["delta995"],
+                self.current_evaluation["neped_20"]*10,
+                self.current_evaluation["BetaN"],
+                self.current_evaluation["zeff"],
+                tesep=self.current_evaluation["Tesep_keV"]* 1E3,
+                nesep_ratio=self.current_evaluation["nesep_ratio"]
+            )
 
             BetaNs.append(BetaN)
             ptop_kPas.append(ptop_kPa)
