@@ -362,6 +362,10 @@ class MITIMgeqdsk:
         profiles['polflux(Wb/radian)'] = psi
         profiles['q(-)'] = q
 
+        if (profiles['q(-)'] < 0.0).any():
+            print("\t- Negative q detected, flipping the sign", typeMsg='w')
+            profiles['q(-)'] = -profiles['q(-)']
+
         # -------------------------------------------------------------------------------------------------------
         # Flux surfaces
         # -------------------------------------------------------------------------------------------------------
