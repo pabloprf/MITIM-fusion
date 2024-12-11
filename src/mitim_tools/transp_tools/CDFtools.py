@@ -10408,76 +10408,80 @@ class transp_output:
                 transform=ax.transAxes,
             )
 
-            layer = 2
-            level += 1
-            l2 = "He4 ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusHe4_avol[it] / self.ffus_avol[it] * 100.0,
-                self.ffusHe4_avol[it],
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "He3 ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusHe3_avol[it] / self.ffus_avol[it] * 100.0,
-                self.ffusHe3_avol[it],
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "H ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusH_avol[it] / self.ffus_avol[it] * 100.0, self.ffusH_avol[it]
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "T ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusT_avol[it] / self.ffus_avol[it] * 100.0, self.ffusT_avol[it]
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
+            if self.ffusHe4_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "He4 ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusHe4_avol[it] / self.ffus_avol[it] * 100.0,
+                    self.ffusHe4_avol[it],
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusHe3_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "He3 ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusHe3_avol[it] / self.ffus_avol[it] * 100.0,
+                    self.ffusHe3_avol[it],
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusH_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "H ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusH_avol[it] / self.ffus_avol[it] * 100.0, self.ffusH_avol[it]
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusT_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "T ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusT_avol[it] / self.ffus_avol[it] * 100.0, self.ffusT_avol[it]
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
 
         if self.fmini_avol[it] > minPlot:
             layer = 1
