@@ -113,7 +113,7 @@ def convert_ASTRA_to_gacode(astra_root,
     """
 
     astra_root = IOtools.expandPath(astra_root)
-    template_path = __mitimroot__ / "tests" / "data "/ "input.gacode"
+    template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
     p = PROFILEStools.PROFILES_GACODE(template_path)
     params = p.profiles
 
