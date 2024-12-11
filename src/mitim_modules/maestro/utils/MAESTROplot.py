@@ -40,7 +40,7 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
 
     # Create "dummy" maestro by only defining the beats
     from mitim_modules.maestro.MAESTROmain import maestro
-    m = maestro(folder, terminal_outputs = True)
+    m = maestro(folder, terminal_outputs = True, overall_log_file = False)
     for i,beat in enumerate(beat_types):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
 
