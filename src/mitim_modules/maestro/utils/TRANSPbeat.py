@@ -68,7 +68,7 @@ class transp_beat(beat):
         transp_namelist_mod = copy.deepcopy(transp_namelist)
 
         if 'timings' in transp_namelist_mod:
-            raise ValueError('Cannot define timings in MAESTRO transp_namelist')
+            raise ValueError('[MITIM] Cannot define timings in a MAESTRO transp_namelist')
         else:
             transp_namelist_mod['timings'] = {
                 "time_start": self.time_init,
@@ -78,7 +78,7 @@ class transp_beat(beat):
             }
 
         if 'Ufiles' in transp_namelist_mod:
-            raise ValueError('Cannot define UFILES in MAESTRO transp_namelist')
+            raise ValueError('[MITIM] Cannot define UFILES in a MAESTRO transp_namelist')
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
