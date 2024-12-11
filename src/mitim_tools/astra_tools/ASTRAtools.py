@@ -260,6 +260,160 @@ def convert_ASTRA_to_gacode(astra_root,
 
     return p
 
+def convert_ASTRA_to_gacode_fromCDF(astra_cdf, 
+                  nexp=112, # number of grid points for gacode output
+                  nion=5, # number of thermal and fast ion species
+                  ai=-3, # array index of astra timestep to convert
+                  gacode_out=None, # whether to output a file along with gacode object
+                  plot_result=False # whether to plot the gacode object
+                  ):
+    """
+    Converts ASTRA run directory to input.gacode file format
+    1. Reads the ASTRA output CDF file and extracts transport, profiles and the geometry
+    3. Writes the input.gacode file - default is scratch directory
+    4. returns a mitim gacode object
+    """
+
+    template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
+    p = PROFILEStools.PROFILES_GACODE(template_path)
+    params = p.profiles
+
+    # Extract CDF file
+    cdf_file = None
+    #astra_results = os.path.join(astra_cdf, "ncdf_out")
+    astra_results = astra_cdf
+    #for file in os.listdir(astra_results):
+    #    if file.endswith(".CDF"):
+    #        cdf_file = os.path.join(astra_results, file)
+    #        break
+    cdf_file = astra_results
+
+    if cdf_file is None:
+        raise(FileNotFoundError(f"No CDF file found in {astra_results}"))
+    else:
+        print(f"Found CDF file: {cdf_file}")
+
+    c = ASTRA_CDFtools.transp_output(cdf_file)
+    c.calcProfiles()
+    c.getProfiles()
+
+    # Aquire MXH Coefficients
+    print("Finding flux surface geometry ...")
+    r=c.R[ai,:,:]
+    z=c.Z[ai,:,:]
+    psi=c.FP_norm[ai,:]
+    shape_cos, shape_sin, bbox, psin_grid  = GEQtools.get_MXH_coeff_fromRZ(r,z,psi)
+    print("Done.")
+
+    params["nexp"] = np.array([str(nexp)])
+    params["nion"] = np.array([str(nion)])
+    params["shot"] = np.array(['12345'])
+
+    nexp_grid = np.linspace(0,1,nexp)
+
+    # interpolate ASTRA's rho grid to gacode rho grid
+    interp_to_nexp = lambda x: np.interp(nexp_grid,np.linspace(0,1,x.size),x)
+    
+    print("Getting Profiles from ASTRA...")
+    name = np.array(["D", "T", "He", "W", "F"]) ; params['name'] = name
+    iontype = np.array(['[therm]', '[therm]', '[therm]', '[therm]', '[therm]']) ; params['type'] = iontype
+    masse = np.array([0.00054489]) ; params['masse'] = masse
+    mass = np.array([2., 3., c.AIM1[ai],c.AIM2[ai], c.AIM3[ai]]) ; params['mass'] = mass # assumes 50/50 D/T !!!!
+    z = np.array([1., 1., c.ZIM1[ai,ai], 74., c.ZIM3[ai,ai]]) ; params['z'] = z
+
+    torfluxa = np.array([c.TF[ai]])             ; params['torfluxa(Wb/radian)'] = torfluxa
+    rcenter = np.array([c.RTOR[ai]])            ; params['rcentr(m)'] = rcenter
+    bcentr = np.array([c.BTOR[ai]])             ; params['bcentr(T)'] = bcentr
+    current = np.array([c.IPL[ai]])             ; params['current(MA)'] = current
+    rho = interp_to_nexp(c.rho[ai]/c.rho[ai,-1]); params['rho(-)'] = rho
+    polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
+
+    polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
+                                         
+    # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
+    interp_to_rho = lambda x: np.interp(polflux_norm, psis, x)    
+
+    q = interp_to_nexp(c.q[ai])                ; params['q(-)'] = q
+    rmaj = interp_to_rho(rmaj)            ; params['rmaj(m)'] = rmaj
+    rmin = interp_to_rho(rmin)            ; params['rmin(m)'] = rmin
+    zmag = interp_to_rho(zmag)            ; params['zmag(m)'] = zmag
+    kappa = interp_to_rho(kappa)           ; params['kappa(-)'] = kappa
+    delta = interp_to_rho(sn[:,1])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-sn[:,2])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
+    shape_cos6 = np.zeros(nexp)                ; params['shape_cos6(-)'] = shape_cos6
+    shape_sin3 = interp_to_rho(sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin6 = np.zeros(nexp)                ; params['shape_sin6(-)'] = shape_sin6
+
+    ne = interp_to_nexp(c.ne[ai,:])            ; params['ne(10^19/m^3)'] = ne
+    ni_main = interp_to_nexp(c.NMAIN[ai,:])
+    ni_He = interp_to_nexp(c.NIZ1[ai,:])
+    ni_W = interp_to_nexp(c.NIZ2[ai,:])
+    ni_F = interp_to_nexp(c.NIZ3[ai,:])
+    ni = np.vstack((ni_main/2, ni_main/2, ni_He, ni_W, ni_F)).T
+    
+    params['ni(10^19/m^3)'] = ni
+
+    te = interp_to_nexp(c.Te[ai,:])             ; params['te(keV)'] = te
+    # all ions have same temperature
+    ti = interp_to_nexp(c.Ti[ai,:])             ; params['ti(keV)'] = np.tile(ti, (nion, 1)).T 
+    ptot = interp_to_nexp(c.ptot[ai,:])         ; params['ptot(Pa)'] = ptot * 1602 # convert to Pa
+    jbs = interp_to_nexp(c.Cubs[ai,:])          ; params["jbs(MA/m^2)"] = jbs
+    z_eff = interp_to_nexp(c.ZEF[ai])           ; params['z_eff(-)'] = z_eff
+    vtor = interp_to_nexp(c.VTOR[ai])           ; params['vtor(m/s)'] = vtor
+    qohme = interp_to_nexp(c.POH[ai])           ; params['qohme(MW/m^3)'] = qohme
+    qbrem = interp_to_nexp(c.PRAD[ai])          ; params['qbrem(MW/m^3)'] = qbrem 
+    # setting qbrem equal to total radiation
+    # includes line and synchrotron radiation
+    qsync = np.zeros(nexp)                      ; params['qsync(MW/m^3)'] = qsync
+    qline = np.zeros(nexp)                      ; params['qline(MW/m^3)'] = qline
+    qei = np.zeros(nexp)                            ; params["qei(MW/m^3)"] = qei
+    qrfe = interp_to_nexp(c.PEICR[ai])          ; params['qrfe(MW/m^3)'] = qrfe
+    qrfi = interp_to_nexp(c.PIICR[ai])          ; params['qrfi(MW/m^3)'] = qrfi
+    qfuse = interp_to_nexp(c.PEDT[ai])          ; params['qfuse(MW/m^3)'] = qfuse
+    qfusi = interp_to_nexp(c.PIDT[ai])          ; params['qfusi(MW/m^3)'] = qfusi
+
+    # remaining parameters, need to derive w0 but set the rest zero for now
+    jbstor = np.zeros(nexp) ; params["jbstor(MA/m^2)"] = jbstor
+    johm = np.zeros(nexp) ; params["johm(MA/m^2)"] = johm
+    qbeame = np.zeros(nexp) ; params['qbeame(MW/m^3)'] = qbeame
+    qbeami = np.zeros(nexp) ; params['qbeami(MW/m^3)'] = qbeami
+    qione = np.zeros(nexp) ; params['qione(MW/m^3)'] = qione
+    qioni = np.zeros(nexp) ; params['qioni(MW/m^3)'] = qioni
+    qpar_beam = np.zeros(nexp) ; params['qpar_beam(MW/m^3)'] = qpar_beam
+    qmom = np.zeros(nexp) ; params['qmom(MW/m^3)'] = qmom
+    qpar_wall = np.zeros(nexp) ; params['qpar_wall(MW/m^3)'] = qpar_wall
+    qmom = np.zeros(nexp) ; params['qmom(N/m^2)'] = qmom
+    w0 = np.zeros(nexp) ; params['w0(rad/s)'] = w0
+    qpar_wall = np.zeros(nexp)
+    print("Done.")
+
+    # Some checks (to work with Joe when he's back)
+    for i in range(nexp-1):
+        if np.isnan(p.profiles['kappa(-)'][-1-(i+1)]):
+            p.profiles['kappa(-)'][-1-(i+1)] = p.profiles['kappa(-)'][-1-i]
+    p.profiles['rho(-)'][0] = 0.0
+
+    # rederive quantities
+    p.deriveQuantities()
+
+    # Print output to check Q, Pfus, etc.
+    p.printInfo()
+    
+    if gacode_out is not None:
+        p.writeCurrentStatus(file=gacode_out)
+    if plot_result:
+        p.plot()
+
+    return p
+
 def create_initial_conditions(te_avg,
                               ne_avg,
                               q_profile=None,
