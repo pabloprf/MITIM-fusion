@@ -2,7 +2,6 @@ import os
 import json
 import socket
 import getpass
-import hashlib
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
@@ -80,31 +79,6 @@ def read_dpi():
 
     return dpi
 
-def path_overlapping(nameScratch, append_folder_local, hash_length=20):
-    '''
-    (chatGPT 4o help)
-    This function is used to avoid overlapping of paths in scratch.
-    It generates a unique folder name by appending a hashed representation
-    of the input folder path to a base name.
-    '''
-
-    # Convert the append_folder_local path to a string and encode it in UTF-8,
-    # then generate a SHA-256 hash. This ensures a unique, deterministic hash
-    # value for the folder path.
-    hash_object = hashlib.sha256(str(append_folder_local).encode('utf-8'))
-
-    # Convert the hash object into a hexadecimal string and truncate it to
-    # the first 20 characters. This creates a compact, unique identifier for
-    # the folder path while reducing the risk of collision.
-    unique_hash = hash_object.hexdigest()[:hash_length]
-    
-    # Combine the base name (nameScratch) with the unique hash to create the
-    # final folder name. This ensures the folder is identifiable and unique
-    # across different runs or processes.
-    nameScratch_full = f"{nameScratch}_{unique_hash}"
-
-    return nameScratch_full
-
 def machineSettings(
     code="tgyro",
     nameScratch="mitim_tmp",
@@ -123,7 +97,7 @@ def machineSettings(
     machine = s["preferences"][code] if forceMachine is None else forceMachine
 
     # Paths in scratch should have a one-to-one (and only one) correspondence with local, to avoid overlapping
-    nameScratch_full = path_overlapping(nameScratch, append_folder_local) if append_folder_local is not None else nameScratch
+    nameScratch_full = IOtools.path_overlapping(nameScratch, append_folder_local) if append_folder_local is not None else nameScratch
 
     """
     Set-up per code and machine

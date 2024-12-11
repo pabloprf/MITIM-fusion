@@ -275,10 +275,7 @@ class mitim_job:
         else:
 
             # If not received, write output and error to files
-            with open(self.folder_local / "mitim_farming.out", "w") as f:
-                f.write(output.decode("utf-8"))
-            with open(self.folder_local / "mitim_farming.err", "w") as f:
-                f.write(error.decode("utf-8"))
+            self._write_debugging_files(output, error)
 
             cont = print(
                 "\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",
@@ -297,6 +294,12 @@ class mitim_job:
         print(
             f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n"
         )
+
+    def _write_debugging_files(self, output, error, extra_name=""):
+            with open(self.folder_local / f"mitim_farming{extra_name}.out", "w") as f:
+                f.write(output.decode("utf-8"))
+            with open(self.folder_local / f"mitim_farming{extra_name}.err", "w") as f:
+                f.write(error.decode("utf-8"))
 
     def connect(self, *args, **kwargs):
         if self.machineSettings["machine"] != "local":
@@ -663,7 +666,9 @@ class mitim_job:
 
         self.connect()
         output, error = self.execute(command, printYN=True)
-        self.retrieve()
+        received = self.retrieve()
+        if not received:
+            self._write_debugging_files(output, error, extra_name = '_check')
         self.close()
         self.interpret_status(file_output = file_output)
 
