@@ -13,6 +13,7 @@ import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from time import time
 
 """
 Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
@@ -307,61 +308,61 @@ class MITIMgeqdsk:
         '''
 
         return psis, rmaj, rmin, zmag, kappa, cn, sn
+
+def get_MXH_coeff_fromRZ(R,Z,psi,n_coeff=6, plot=False):
+    '''
+    these have to be np.arrays
+    R is R[rho,theta]
+    Z is Z[rho,theta]
+    psis is psis[rho]
+
+    Returns:
+        cn,sn,gn as [n_coeffs,rho]
+    '''
+    from scipy.interpolate import interp1d
+    start=time()
+
+    #print(n_coeff)
+    #print(R.shape)
+    #print(Z.shape)
+    #print(psis.shape)
+    f_interp=interp1d(np.linspace(0,1,len(psi)),psi)
+    psis=f_interp(np.linspace(0,1,len(R[:,0])))
+
+    cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
+    print(f" \t\t--> Finding g-file flux-surfaces")
+    for i, psi in enumerate(psis):
+        
+        if psi == 0:
+            psi+=0.0001
+
+        # need to construct level contours for each flux surface 
+        Ri, Zi = R[i,:], Z[i,:]
     
-    def get_MXH_coeff_fromRZ(R,Z,psi,n_coeff=6, plot=False):
-        '''
-        these have to be np.arrays
-        R is R[rho,theta]
-        Z is Z[rho,theta]
-        psis is psis[rho]
-
-        Returns:
-            cn,sn,gn as [n_coeffs,rho]
-        '''
-        from scipy.interpolate import interp1d
-        start=time()
-
-        #print(n_coeff)
-        #print(R.shape)
-        #print(Z.shape)
-        #print(psis.shape)
-        f_interp=interp1d(np.linspace(0,1,len(psi)),psi)
-        psis=f_interp(np.linspace(0,1,len(R[:,0])))
-
-        cn, sn, gn = np.zeros((n_coeff,psis.size)), np.zeros((n_coeff,psis.size)), np.zeros((4,psis.size))
-        print(f" \t\t--> Finding g-file flux-surfaces")
-        for i, psi in enumerate(psis):
+        #calculate Miller Extended Harmionic coefficients
+        #enforce zero at the innermost flux surface
             
-            if psi == 0:
-                psi+=0.0001
+        cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
+        if i == 0:
+            cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
 
-            # need to construct level contours for each flux surface 
-            Ri, Zi = R[i,:], Z[i,:]
-    
-            #calculate Miller Extended Harmionic coefficients
-            #enforce zero at the innermost flux surface
-            
-            cn[:,i], sn[:,i], gn[:,i] = get_flux_surface_geometry(Ri, Zi, n_coeff)
-            if i == 0:
-                cn[:,i]*=0 ; sn[:,i] *=0 # set shaping parameters zero for innermost flux surface near zero
+    end=time()
 
-        end=time()
-
-        print(f'\ntotal run time: {end-start} s')
-        if plot:
-            fig, axes = plt.subplots(2,1)
-            for i in np.arange(n_coeff):
-                axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
-                axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
-            axes[0].legend() ; axes[1].legend()
-            axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
-            axes[0].grid() ; axes[1].grid()
-            axes[0].set_title("MXH Coefficients - Cosine")
-            axes[1].set_title("MXH Coefficients - Sine")
-            plt.tight_layout()
-            plt.show()
-        print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
-        return cn, sn, gn, psis
+    print(f'\ntotal run time: {end-start} s')
+    if plot:
+        fig, axes = plt.subplots(2,1)
+        for i in np.arange(n_coeff):
+            axes[0].plot(psis,cn[i,:],label=f"$c_{i}$")
+            axes[1].plot(psis,sn[i,:],label=f"$s_{i}$")
+        axes[0].legend() ; axes[1].legend()
+        axes[0].set_xlabel("$\\Psi_N$") ; axes[1].set_xlabel("$\\Psi_N$")
+        axes[0].grid() ; axes[1].grid()
+        axes[0].set_title("MXH Coefficients - Cosine")
+        axes[1].set_title("MXH Coefficients - Sine")
+        plt.tight_layout()
+        plt.show()
+    print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
+    return cn, sn, gn, psis
 
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
