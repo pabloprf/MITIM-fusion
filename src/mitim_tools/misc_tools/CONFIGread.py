@@ -2,6 +2,7 @@ import os
 import json
 import socket
 import getpass
+import hashlib
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
@@ -70,7 +71,6 @@ def read_verbose_level():
 
     return verbose
 
-
 def read_dpi():
     s = load_settings()
     if "dpi_notebook" in s["preferences"]:
@@ -80,27 +80,37 @@ def read_dpi():
 
     return dpi
 
-def isThisEngaging():
-    try:
-        hostname = os.environ["SLURM_SUBMIT_HOST"][:6]
-    except:
-        try:
-            hostname = os.environ["HOSTNAME"][:6]
-        except:
-            return False
+def path_overlapping(nameScratch, append_folder_local, hash_length=20):
+    '''
+    (chatGPT 4o help)
+    This function is used to avoid overlapping of paths in scratch.
+    It generates a unique folder name by appending a hashed representation
+    of the input folder path to a base name.
+    '''
 
-    bo = hostname in ["eofe7.", "eofe8.", "eofe10"]
+    # Convert the append_folder_local path to a string and encode it in UTF-8,
+    # then generate a SHA-256 hash. This ensures a unique, deterministic hash
+    # value for the folder path.
+    hash_object = hashlib.sha256(str(append_folder_local).encode('utf-8'))
 
-    #print(f"\t- Is this engaging? {hostname}: {bo}")
+    # Convert the hash object into a hexadecimal string and truncate it to
+    # the first 20 characters. This creates a compact, unique identifier for
+    # the folder path while reducing the risk of collision.
+    unique_hash = hash_object.hexdigest()[:hash_length]
+    
+    # Combine the base name (nameScratch) with the unique hash to create the
+    # final folder name. This ensures the folder is identifiable and unique
+    # across different runs or processes.
+    nameScratch_full = f"{nameScratch}_{unique_hash}"
 
-    return bo
-
+    return nameScratch_full
 
 def machineSettings(
     code="tgyro",
-    nameScratch="mitim_tmp/",
+    nameScratch="mitim_tmp",
     forceUsername=None,
     forceMachine=None,
+    append_folder_local=None,
 ):
     """
     This script uses the config json file and completes the information required to run each code
@@ -112,6 +122,9 @@ def machineSettings(
     s = load_settings()
     machine = s["preferences"][code] if forceMachine is None else forceMachine
 
+    # Paths in scratch should have a one-to-one (and only one) correspondence with local, to avoid overlapping
+    nameScratch_full = path_overlapping(nameScratch, append_folder_local) if append_folder_local is not None else nameScratch
+
     """
     Set-up per code and machine
     -------------------------------------------------
@@ -119,10 +132,14 @@ def machineSettings(
 
     if forceUsername is not None:
         username = forceUsername
-        scratch = f"/home/{username}/scratch/{nameScratch}"
+        scratch = f"/home/{username}/scratch/{nameScratch_full}"
     else:
         username = s[machine]["username"] if ("username" in s[machine]) else "dummy"
-        scratch = f"{s[machine]['scratch']}/{nameScratch}"
+        scratch = f"{s[machine]['scratch']}/{nameScratch_full}"
+
+    # General limit of 255 characters in path
+    scratch = scratch[:255]
+    # ----  
 
     machineSettings = {
         "machine": s[machine]["machine"],
@@ -157,7 +174,7 @@ def machineSettings(
 
     if "scratch_tunnel" in s[machine]:
         machineSettings["folderWorkTunnel"] = (
-            f"{s[machine]['scratch_tunnel']}/{nameScratch}"
+            f"{s[machine]['scratch_tunnel']}/{nameScratch_full}"
         )
 
     # ************************************************************************************************************************

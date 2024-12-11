@@ -114,6 +114,7 @@ class mitim_job:
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
+            append_folder_local=self.folder_local,
         )
         # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
@@ -1180,7 +1181,7 @@ def perform_quick_remote_execution(
 
     # Define machine
     job.slurm_settings, job.launchSlurm = {}, False
-    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
+    job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine,append_folder_local=folder_local)
     job.folderExecution = job.machineSettings["folderWork"]
 
     # Submit
@@ -1208,7 +1209,7 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
     # Prep files and folders to be transfered
     # ------------------------------------------------
 
-    machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine)
+    machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine,append_folder_local=folder_local)
 
     command, output_files, output_folders = '', [], []
     for file in files_remote:

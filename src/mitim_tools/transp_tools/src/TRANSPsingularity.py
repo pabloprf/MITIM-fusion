@@ -27,7 +27,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
 
         # Store folderExecution for later use
         machineSettings = CONFIGread.machineSettings(
-            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}"
+            code="transp", nameScratch=f"transp_{self.tok}_{self.runid}", append_folder_local=self.FolderTRANSP
         )
         self.folderExecution = machineSettings["folderWork"]
 
