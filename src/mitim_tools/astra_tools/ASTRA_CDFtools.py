@@ -28,6 +28,8 @@ class transp_output:
             del self.nc_file
 
     def getProfiles(self):
+        self.R = self.f["r2d"][:]
+        self.Z = self.f["z2d"][:]
         self.rho = self.f["RHO"][:]
         self.xrho = self.f["XRHO"][:]
         self.BTOR = self.f["BTOR"][:]
@@ -320,7 +322,9 @@ class transp_output:
         self.tau98 = np.zeros([len(self.PEICR[:,-1])])
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
+        self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         for kk in range(0,len(self.PEDT[:,-1])):
+             self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
              self.QDT[kk,:] = np.cumsum((self.PEDT[kk,:]+self.PIDT[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QICRH[kk,:] = np.cumsum((self.PIICR[kk,:]+self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QE[kk,:] = np.cumsum(self.PE[kk,:]*self.HRO[kk]*self.VR[kk,:])
