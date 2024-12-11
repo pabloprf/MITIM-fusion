@@ -82,10 +82,9 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
 
     MainFolder = IOtools.expandPath(MainFolder)
-    digitized = algorithmOptions.get("id", 0)
 
     def evaluator(X, cont=0):
-        nameRun = f"{namingConvention}_{digitized}_{cont}"
+        nameRun = f"{namingConvention}_{cont}"
         folder = MainFolder /  f"{namingConvention}_{cont}"
         if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
             (folder / "model_complete").mkdir(parents=True, exist_ok=True)
