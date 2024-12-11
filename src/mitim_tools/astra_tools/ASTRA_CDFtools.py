@@ -342,10 +342,12 @@ class transp_output:
         self.QOH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.Wtot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
         self.ne_avg = np.zeros([len(self.PEICR[:,-1])])
+        self.ne_lineavg = np.zeros([len(self.PEICR[:,-1])])
         self.Te_avg = np.zeros([len(self.PEICR[:,-1])])
         self.Ti_avg = np.zeros([len(self.PEICR[:,-1])])
         self.n_Gr = self.IPL/(np.pi*self.ABC**2)
         self.tau98 = np.zeros([len(self.PEICR[:,-1])])
+        self.tau98_lineavg = np.zeros([len(self.PEICR[:,-1])])
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
         self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
@@ -379,10 +381,12 @@ class transp_output:
              self.QOH[kk,:] = np.cumsum(self.POH[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.Wtot[kk,:] = np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
+             self.ne_lineavg[kk] = np.cumsum(self.ne[kk,:])[-1]/len(self.ne[kk,:])
              self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.SNEBM_tot[kk] = np.cumsum(self.SNEBM[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_avg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
+             self.tau98_lineavg[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_lineavg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
              self.q95position[kk] = np.abs(self.FP_norm[kk] - 0.95).argmin()
              self.q95[kk] = 1/self.Mu[kk,self.q95position[kk]]
              self.delta95[kk] = self.tria[kk,self.q95position[kk]]
@@ -397,6 +401,7 @@ class transp_output:
         self.Wtot = 0.0024*self.Wtot   #check formula in ASTRA
         self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)
         self.H98 = self.tauE[:,-1]/self.tau98
+        self.H98_lineavg = self.tauE[:,-1]/self.tau98_lineavg
         self.NDEUT = self.f["NDEUT"][:]
         self.NTRIT = self.f["NTRIT"][:]
         self.NIZ1 = self.f["NIZ1"][:]
