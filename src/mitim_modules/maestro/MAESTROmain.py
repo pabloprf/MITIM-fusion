@@ -1,4 +1,5 @@
 import copy
+import sys
 import datetime
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
@@ -22,7 +23,7 @@ MAESTRO:
 
 class maestro:
 
-    def __init__(self, folder, terminal_outputs = False, master_cold_start = False):
+    def __init__(self, folder, terminal_outputs = False, master_cold_start = False, overall_log_file = True):
         '''
         Inputs:
             - folder: Main folder where all the beats will be saved
@@ -44,6 +45,10 @@ class maestro:
 
         self.folder_logs.mkdir(parents=True, exist_ok=True)
         self.folder_beats.mkdir(parents=True, exist_ok=True)
+
+        # If terminal outputs, I also want to keep track of what has happened in a log file
+        if terminal_outputs and overall_log_file:
+            sys.stdout = LOGtools.Logger(logFile=self.folder_output / "maestro.log", writeAlsoTerminal=True)
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')

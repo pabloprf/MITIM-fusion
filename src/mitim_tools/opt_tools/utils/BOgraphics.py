@@ -1046,7 +1046,7 @@ class LogFile:
         lab="",
         marker="o",
         color="b",
-    ):
+        ):
         if axs is None:
             plt.ion()
             fig, axs = plt.subplots(ncols=2)
