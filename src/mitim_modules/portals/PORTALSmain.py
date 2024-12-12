@@ -54,10 +54,10 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["BO_iterations"] = 50
     optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
     optimization_options['stopping_criteria_parameters'] =  {
-                "maximum_value": 1e-3,  # Reducing residual by 1000x is enough
+                "maximum_value": 5e-3,  # Reducing residual by 1000x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.05,
+                "ricci_value": 0.15,
                 "ricci_d0": 2.0,
                 "ricci_lambda": 1.0,
             }
@@ -80,7 +80,7 @@ def default_namelist(optimization_options, CGYROrun=False):
             }
         optimization_options["acquisition"]["points_per_step"] = 1
     else:
-        optimization_options["acquisition"]["type"] = "noisy_logei_mc"
+        optimization_options["acquisition"]["type"] = "posterior_mean"#"noisy_logei_mc"
         optimization_options["acquisition"]["optimization"] = {"botorch": {}}   # TGLF runs should prioritize speed, and botorch is robust enough
         optimization_options["acquisition"]["points_per_step"] = 1
 
@@ -237,7 +237,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.01,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
         }
 

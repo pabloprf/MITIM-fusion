@@ -31,8 +31,8 @@
                     "keep_best": 1
                     },
                 "botorch": {
-                    "num_restarts": 128,
-                    "raw_samples": 1024,
+                    "num_restarts": 64,
+                    "raw_samples": 4096,
                     "keep_best": 1
                     },
                 "ga": {

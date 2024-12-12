@@ -34,6 +34,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
         "sample_around_best": True,
+        "maxiter": 1000,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
     }
