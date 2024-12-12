@@ -364,6 +364,61 @@ def get_MXH_coeff_fromRZ(R,Z,psi,n_coeff=6, plot=False):
     print("Interpolated delta995:", np.interp(0.995,psis, sn[1,:]))
     return cn, sn, gn, psis
 
+def get_flux_surface_geometry(R, Z, n_coeff=3):
+    """
+    Calculates MXH Coefficients for a flux surface
+    """
+    Z = np.roll(Z, -np.argmax(R))
+    R = np.roll(R, -np.argmax(R))
+    if Z[1] < Z[0]: # reverses array so that theta increases
+        Z = np.flip(Z)
+        R = np.flip(R)
+
+    # compute bounding box for each flux surface
+    r = 0.5*(np.max(R)-np.min(R))
+    kappa = 0.5*(np.max(Z) - np.min(Z))/r
+    R0 = 0.5*(np.max(R)+np.min(R))
+    Z0 = 0.5*(np.max(Z)+np.min(Z))
+    bbox = [R0, r, Z0, kappa]
+
+    # solve for polar angles
+    # need to use np.clip to avoid floating-point precision errors
+    theta_r = np.arccos(np.clip(((R - R0) / r), -1, 1))
+    theta = np.arcsin(np.clip(((Z - Z0) / r / kappa),-1,1))
+
+    # Find the continuation of theta and theta_r to [0,2pi]
+    theta_r_cont = np.copy(theta_r) ; theta_cont = np.copy(theta)
+
+    max_theta = np.argmax(theta) ; min_theta = np.argmin(theta)
+    max_theta_r = np.argmax(theta_r) ; min_theta_r = np.argmin(theta_r)
+
+    theta_cont[:max_theta] = theta_cont[:max_theta]
+    theta_cont[max_theta:max_theta_r] = np.pi-theta[max_theta:max_theta_r]
+    theta_cont[max_theta_r:min_theta] = np.pi-theta[max_theta_r:min_theta]
+    theta_cont[min_theta:] = 2*np.pi+theta[min_theta:]
+
+    theta_r_cont[:max_theta] = theta_r_cont[:max_theta]
+    theta_r_cont[max_theta:max_theta_r] = theta_r[max_theta:max_theta_r]
+    theta_r_cont[max_theta_r:min_theta] = 2*np.pi - theta_r[max_theta_r:min_theta]
+    theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
+
+    theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
+    
+    # fourier decompose to find coefficients
+    c = np.zeros(n_coeff)
+    s = np.zeros(n_coeff)
+    f_theta_r = lambda theta: np.interp(theta, theta_cont, theta_r_cont)
+    from scipy.integrate import quad
+    for i in np.arange(n_coeff):
+        integrand_sin = lambda theta: np.sin(i*theta)*(f_theta_r(theta))
+        integrand_cos = lambda theta: np.cos(i*theta)*(f_theta_r(theta))
+
+        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
+        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
+        
+        
+    return c, s, bbox
+
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
