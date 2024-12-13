@@ -40,11 +40,13 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Number of cores (must be inside 1 node)
         # ---------------------------------------------------------------------------------------------------------------------------------------
-        nparallel = 1
+        self.nparallel = 1
         for j in self.mpisettings:
-            nparallel = int(np.max([nparallel, self.mpisettings[j]]))
+            self.nparallel = int(np.max([self.nparallel, self.mpisettings[j]]))
             if self.mpisettings[j] == 1:
                 self.mpisettings[j] = 0  # definition used for the transp-source
+
+
 
         self.job = FARMINGtools.mitim_job(self.FolderTRANSP)
 
@@ -53,7 +55,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}",
             slurm_settings={
                 "minutes": minutesAllocation,
-                "ntasks": nparallel,
+                "ntasks": np.max([self.nparallel, 8]),  # Even if I don't use MPI in TRANSP, I think it makes sense to still allocate a few cores for the sequential operations?
                 "name": self.job_name,
                 "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },
@@ -67,6 +69,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             self.tok,
             self.mpisettings,
             cold_startFromPrevious=cold_startFromPrevious,
+            mpi_tasks = self.nparallel,
         )
 
         self.jobid = self.job.jobid
@@ -274,10 +277,11 @@ def runSINGULARITY(
     shotnumber,
     tok,
     mpis,
+    mpi_tasks=None,
     cold_startFromPrevious=False,
 ):
     folderWork = transp_job.folder_local
-    nparallel = transp_job.slurm_settings["ntasks"]
+    nparallel = transp_job.slurm_settings["ntasks"] if mpi_tasks is None else mpi_tasks
 
     NMLtools.adaptNML(folderWork, runid, shotnumber, transp_job.folderExecution)
 
