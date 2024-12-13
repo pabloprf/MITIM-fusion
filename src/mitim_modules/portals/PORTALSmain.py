@@ -231,6 +231,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "use_tglf_scan_trick": 0.01,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
         }
 
         for key in self.PORTALSparameters.keys():
@@ -385,6 +386,7 @@ class portals(STRATEGYtools.opt_evaluator):
             name,
             numPORTALS=numPORTALS,
             dictOFs=dictOFs,
+            remove_folder_upon_completion=not self.PORTALSparameters["keep_full_model_folder"],
         )
 
         # Write results
@@ -616,6 +618,7 @@ def runModelEvaluator(
     cold_start=False,
     numPORTALS=0,
     dictOFs=None,
+    remove_folder_upon_completion=False,
     ):
 
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
@@ -663,6 +666,13 @@ def runModelEvaluator(
 
     if dictOFs is not None:
         dictOFs = map_powerstate_to_portals(powerstate, dictOFs)
+
+    # ---------------------------------------------------------------------------------------------------
+    # Remove folder
+    # ---------------------------------------------------------------------------------------------------
+    if remove_folder_upon_completion:
+        print(f"\t- To avoid exceedingly large PORTALS runs, removing ...{IOtools.clipstr(folder_model)}")
+        shutil.rmtree(folder_model)
 
     return powerstate, dictOFs
 
