@@ -108,7 +108,7 @@ def initializeProblem(
         speciesNotFound = []
         for i in range(len(profiles.Species)):
             data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
-            if not (data_df['Ion']==profiles.Species[i]["N"]).any():
+            if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
                 speciesNotFound.append(profiles.Species[i]["N"])
         if len(speciesNotFound) > 0:
             a = print(
