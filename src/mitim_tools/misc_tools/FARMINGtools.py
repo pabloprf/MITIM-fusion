@@ -322,6 +322,19 @@ class mitim_job:
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
 
+        # Catch random exceptions
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                self._connect_ssh_item()
+                break
+            except paramiko.ssh_exception.SSHException as e:
+                if attempt == max_retries:
+                    raise
+                print(f"\t<> Paramiko attempt {attempt}/{max_retries} failed with SSHException: {e}. Retrying...", typeMsg="w")
+
+    def _connect_ssh_item(self):
+
         try:
             self.define_jump()
             self.define_server()
