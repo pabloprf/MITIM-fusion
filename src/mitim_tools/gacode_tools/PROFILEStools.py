@@ -1086,7 +1086,7 @@ class PROFILES_GACODE:
             np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
             ITERcorrection=False,
             includeShaping=True,
-        )
+        )[0]
         self.derived["qstar_ITER"] = PLASMAtools.evaluate_qstar(
             self.profiles['current(MA)'][0],
             self.profiles['rcentr(m)'],
@@ -1096,7 +1096,7 @@ class PROFILES_GACODE:
             np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
             ITERcorrection=True,
             includeShaping=True,
-        )
+        )[0]
 
         # -------------------------------------------------------
         # Separatrix estimations
@@ -1271,7 +1271,7 @@ class PROFILES_GACODE:
 
             print(f"\n***********************{label}****************")
             print("Engineering Parameters:")
-            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA, Pin = {self.derived['qIn']:.2f}MW")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}), Pin = {self.derived['qIn']:.2f}MW")
             print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m, kappa_a = {self.derived['kappa_a']:.2f} (kappa_sep = {self.profiles['kappa(-)'][-1]:.2f}), delta_sep = {self.profiles['delta(-)'][-1]:.2f}")
             print("Performance:")
             print(
@@ -2749,11 +2749,11 @@ class PROFILES_GACODE:
             safe_division,
             c=color,
             lw=lw,
-            label=extralab + "Q_i/Q_e",
+            label=extralab + "$Q_i/Q_e$",
         )
         safe_division = np.divide(
             self.derived["qi_aux_MWmiller"],
-            self.derived["qe_MWm2"],
+            self.derived["qe_aux_MWmiller"],
             where=self.derived["qe_aux_MWmiller"] != 0,
             out=np.full_like(self.derived["qi_aux_MWmiller"], np.nan),
         )
@@ -2763,7 +2763,7 @@ class PROFILES_GACODE:
             c=color,
             lw=lw,
             ls="--",
-            label=extralab + "P_i/P_e",
+            label=extralab + "$P_i/P_e$",
         )
         ax.set_ylabel("Power ratios")
         ax.set_xlabel("$\\rho$")
