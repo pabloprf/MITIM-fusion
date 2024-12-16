@@ -834,7 +834,7 @@ def plotInfo(
         )
         # ---------- Plot Residue
         GRAPHICStools.plotMultiVariate(
-            np.transpose(np.atleast_2d(infoOPT["y_res_start"])),
+            -np.transpose(np.atleast_2d(infoOPT["y_res_start"])),
             axs=axR,
             marker="s",
             markersize=ms,
@@ -869,7 +869,7 @@ def plotInfo(
         )
         # ---------- Plot Residue
         GRAPHICStools.plotMultiVariate(
-            np.transpose(np.atleast_2d(infoOPT["y_res"])),
+            -np.transpose(np.atleast_2d(infoOPT["y_res"])),
             axs=axR,
             marker="s",
             markersize=ms,
@@ -894,17 +894,17 @@ def plotInfo(
 
     if not plotStart:
         y = (
-            -infoOPT["acq_evaluated"]
+            infoOPT["acq_evaluated"]
             if "acq_evaluated" in infoOPT
-            else -infoOPT["y_res"]
+            else infoOPT["y_res"]
         )
     else:
-        y = -infoOPT["y_res_start"]
+        y = infoOPT["y_res_start"]
 
     if not plotStart:
-        yo = -infoOPT["y_res"][0]
+        yo = infoOPT["y_res"][0]
     else:
-        yo = -infoOPT["y_res_start"][0]
+        yo = infoOPT["y_res_start"][0]
 
     x_origin = 0 + it_start
     x_last = len(y) - 1 + it_start

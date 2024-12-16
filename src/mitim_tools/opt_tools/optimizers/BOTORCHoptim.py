@@ -1,5 +1,4 @@
 import torch
-import types
 import botorch
 import random
 from mitim_tools.opt_tools import OPTtools
@@ -49,11 +48,17 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
 
     acq_evaluated = []
     if writeTrajectory:
-        def new_call(self, x, *args, v=acq_evaluated, **kwargs):
-            f = fun_opt(x, *args, **kwargs)
-            v.append(f.max().item())
-            return f
-        fun_opt.__call__ = types.MethodType(new_call, fun_opt)
+        class CustomFunctionWrapper:
+            def __init__(self, func, eval_list):
+                self.func = func
+                self.eval_list = eval_list
+
+            def __call__(self, x, *args, **kwargs):
+                f = self.func(x, *args, **kwargs)
+                self.eval_list.append(f.max().item())
+                return f
+
+        fun_opt = CustomFunctionWrapper(fun_opt, acq_evaluated)
 
     seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")

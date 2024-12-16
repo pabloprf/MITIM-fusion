@@ -7,24 +7,48 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def selectSurrogate(output, surrogateOptions, CGYROrun=False):
+def selectSurrogates(outputs, surrogateOptions, CGYROrun=False):
+    '''
+    This divides potentially different outputs into different
+    surrogates to be joined with ModelList 
+    '''
 
-    print(
-        f'\t- Selecting surrogate options for "{output}" to be run'
-    )
-
-    if output is not None:
-        # If it's a target, just linear
+    # Find transition to Targets
+    for iTar, output in enumerate(outputs):
         if output[2:5] == "Tar":
-            surrogateOptions["TypeMean"] = 1
-            surrogateOptions["TypeKernel"] = 2  # Constant kernel
-        # If it's not, stndard
-        else:
-            surrogateOptions["TypeMean"] = 2  # Linear in gradients, constant in rest
-            surrogateOptions["TypeKernel"] = 1  # RBF
-            # surrogateOptions['ExtraNoise']  = True
+            break
 
-    return surrogateOptions
+    # Find transition to last location of transport
+    for iTra, output in enumerate(outputs):
+        if output.split('_')[-1] == outputs[iTar-1].split('_')[-1]:
+            break
+
+    surrogateOptions_dict = {}
+
+    for i in range(len(outputs)):
+        # Turbulent and Neoclassical at inner locations
+        surrogateOptions_dict[i+1] = copy.deepcopy(surrogateOptions)
+        surrogateOptions_dict[i+1]["TypeMean"] = 1  # Linear
+        surrogateOptions_dict[i+1]["TypeKernel"] = 1  # RBF
+
+
+
+    # # Turbulent and Neoclassical at inner locations
+    # surrogateOptions_dict[iTra] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[iTra]["TypeMean"] = 1  # Linear
+    # surrogateOptions_dict[iTra]["TypeKernel"] = 1  # RBF
+
+    # # Turbulent and Neoclassical at outer location (generally less variables)
+    # surrogateOptions_dict[iTar] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[iTar]["TypeMean"] = 1  # Linear
+    # surrogateOptions_dict[iTar]["TypeKernel"] = 1  # RBF
+
+    # # Targets (If it's a target, just linear)
+    # surrogateOptions_dict[len(outputs)] = copy.deepcopy(surrogateOptions)
+    # surrogateOptions_dict[len(outputs)]["TypeMean"] = 1 # Linear
+    # surrogateOptions_dict[len(outputs)]["TypeKernel"] = 2  # Constant kernel
+
+    return surrogateOptions_dict
 
 def default_portals_transformation_variables(additional_params = []):
     """
@@ -91,7 +115,7 @@ def default_portals_transformation_variables(additional_params = []):
 
     return portals_transformation_variables, portals_transformation_variables_trace
 
-def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
+def input_transformation_portals(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
 
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
@@ -123,9 +147,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	"""
 
     _, num = output.split("_")
-    index = powerstate.indexes_simulation[
-        int(num)
-    ]  # num=1 -> pos=1, so that it takes the second value in vectors
+    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
@@ -151,12 +173,14 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 # ----------------------------------------------------------------------
 
 
-def transformPORTALS(X, surrogate_parameters, output):
+def output_transformation_portals(X, surrogate_parameters, outputs):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
             E.g.: (batch1,batch2,batch3,dim) -> (batch1*batch2*batch3,dim)
+    Output is a factor that account for all the outputs
     """
+
     shape_orig = np.array(X.shape)
     X = X.view(np.prod(shape_orig[:-1]), shape_orig[-1])
 
@@ -169,14 +193,16 @@ def transformPORTALS(X, surrogate_parameters, output):
     # Produce relevant quantities here (in particular, GB will be used)
     powerstate = constructEvaluationProfiles(X, surrogate_parameters)
 
-    # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
-    factorGB = GBfromXnorm(X, output, powerstate)
-    # --- Ratio of fluxes (quasilinear)
-    factorRat = ratioFactor(X, surrogate_parameters, output, powerstate)
-    # --- Specific to output
-    factorImp = ImpurityGammaTrick(X, surrogate_parameters, output, powerstate)
+    compounded = torch.Tensor().to(X)
+    for output in outputs:
+        # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
+        factorGB = GBfromXnorm(X, output, powerstate)
+        # --- Ratio of fluxes (quasilinear)
+        factorRat = ratioFactor(X, surrogate_parameters, output, powerstate)
+        # --- Specific to output
+        factorImp = ImpurityGammaTrick(X, surrogate_parameters, output, powerstate)
 
-    compounded = factorGB * factorRat * factorImp
+        compounded = torch.cat((compounded, factorGB * factorRat * factorImp), dim=-1)
 
     """
 	3. Go back to the original batching system
@@ -185,7 +211,7 @@ def transformPORTALS(X, surrogate_parameters, output):
 	"""
     shape_orig[-1] = compounded.shape[-1]
     compounded = compounded.view(tuple(shape_orig))
-
+    
     return compounded
 
 
@@ -226,7 +252,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     return PexchTurb_integrated
 
 
-# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
+# def output_transformation_portals(X,Y,Yvar,surrogate_parameters,output):
 # 	'''
 # 	Transform direct evaluation output to something that the model understands better.
 
@@ -245,14 +271,14 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 # 	return Ytr,Ytr_var
 
 
-# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
+# def unoutput_transformation_portals(X, mean, upper, lower, surrogate_parameters, output):
 # 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
+# 	Transform direct model output to the actual evaluation output (must be the opposite to output_transformation_portals)
 
 # 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
 # 		- Transforms and produces Y and confidence bounds (batch1,...,)
 
-# 	This untransforms whatever has happened in the transformPORTALS function
+# 	This untransforms whatever has happened in the output_transformation_portals function
 # 	'''
 
 # 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)
@@ -375,9 +401,11 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
     if ("parameters_combined" in surrogate_parameters) and (
         "powerstate" in surrogate_parameters["parameters_combined"]
     ):
+
         powerstate = surrogate_parameters["parameters_combined"]["powerstate"]
 
     else:
+
         powerstate = surrogate_parameters["powerstate"]
 
         if X.shape[0] > 0:

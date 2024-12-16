@@ -253,7 +253,7 @@ class portals_beat(beat):
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             if 'surrogateOptions' not in self.optimization_options:
                 self.optimization_options['surrogateOptions'] = {}
-            self.optimization_options['surrogateOptions']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
+            self.optimization_options['surrogateOptions']["add_data_from_file"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
@@ -300,7 +300,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.optimization_options['surrogateOptions']["add_data_to_modelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):

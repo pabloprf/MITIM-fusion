@@ -26,10 +26,13 @@ def initializeProblem(
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
-    dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
+    tensor_opts = {
+        "dtype": torch.double,
+        "device": torch.device("cpu"),
+    }
     ):
     """
     Notes:
@@ -38,6 +41,8 @@ def initializeProblem(
         - I can give ModelOptions directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
+
+    dfT = torch.randn((2, 2), **tensor_opts)
 
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
@@ -177,6 +182,7 @@ def initializeProblem(
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                 "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
         },
+        tensor_opts = tensor_opts
     )
 
     # ***************************************************************************************************
@@ -227,6 +233,7 @@ def initializeProblem(
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                     "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
             },
+            tensor_opts = tensor_opts
         )
 
         dictCPs_base_extra = {}
@@ -270,33 +277,46 @@ def initializeProblem(
                 dictDVs[name] = [dvs_fixed[name][0], base_gradient, dvs_fixed[name][1]]
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Define output dictionaries
+    # Define output dictionaries (order is important, consistent with selectSurrogates)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     ofs, name_objectives = [], []
-    for ikey in dictCPs_base:
-        if ikey == "te":
-            var = "Qe"
-        elif ikey == "ti":
-            var = "Qi"
-        elif ikey == "ne":
-            var = "Ge"
-        elif ikey == "nZ":
-            var = "GZ"
-        elif ikey == "w0":
-            var = "Mt"
 
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"{var}Turb_{i+1}")
-            ofs.append(f"{var}Neo_{i+1}")
+    # Turb and neo, ending with last location
 
-            ofs.append(f"{var}Tar_{i+1}")
+    for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+        for model in ["Turb", "Neo"]:
+            for ikey in dictCPs_base:
+                if ikey == "te":    var = "Qe"
+                elif ikey == "ti":  var = "Qi"
+                elif ikey == "ne":  var = "Ge"
+                elif ikey == "nZ":  var = "GZ"
+                elif ikey == "w0":  var = "Mt"
 
-            name_objectives.append(f"{var}Res_{i+1}")
+                ofs.append(f"{var}{model}_{i+1}")
 
-    if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"PexchTurb_{i+1}")
+
+                if f"{var}Res_{i+1}" not in name_objectives:
+                    name_objectives.append(f"{var}Res_{i+1}")
+
+        if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
+            for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+                ofs.append(f"PexchTurb_{i+1}")
+
+    # Tar
+
+    for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+        model = "Tar"
+        for ikey in dictCPs_base:
+            if ikey == "te":    var = "Qe"
+            elif ikey == "ti":  var = "Qi"
+            elif ikey == "ne":  var = "Ge"
+            elif ikey == "nZ":  var = "GZ"
+            elif ikey == "w0":  var = "Mt"
+
+            ofs.append(f"{var}{model}_{i+1}")
+
+
 
     name_transformed_ofs = []
     for of in ofs:
@@ -333,8 +353,8 @@ def initializeProblem(
         Variables[ikey] = prepportals_transformation_variables(portals_fun, ikey)
 
     portals_fun.surrogate_parameters = {
-        "transformationInputs": PORTALStools.produceNewInputs,
-        "transformationOutputs": PORTALStools.transformPORTALS,
+        "transformationInputs": PORTALStools.input_transformation_portals,
+        "transformationOutputs": PORTALStools.output_transformation_portals,
         "powerstate": portals_fun.powerstate,
         "applyImpurityGammaTrick": portals_fun.PORTALSparameters[
             "applyImpurityGammaTrick"

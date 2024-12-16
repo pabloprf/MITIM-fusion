@@ -23,8 +23,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-UseCUDAifAvailable = True
-
 """
 New handling of jobs in remote or local clusters. Example use:
 
@@ -926,9 +924,6 @@ def ParallelProcedure(
         import multiprocessing_on_dill as multiprocessing
     else:
         import multiprocessing
-
-    if UseCUDAifAvailable and torch.cuda.is_available():
-        multiprocessing.set_start_method("spawn")
 
     """
 	This way of pooling passes a lock when initializing every child class. It handles

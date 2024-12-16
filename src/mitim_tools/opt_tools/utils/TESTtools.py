@@ -50,6 +50,7 @@ def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
     for i in combinations:
         x = GPs.train_X[0:1, :].repeat(i, 1)
 
+        
         y1 = GPs.predict(x)[0]
         y2 = GPs.predict(x[0:1, :])[0]
 

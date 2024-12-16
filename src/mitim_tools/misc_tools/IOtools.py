@@ -82,6 +82,7 @@ class timer(object):
     def _get_time(self):
 
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
+        self.timeDiff_txt = createTimeTXT(self.timeDiff)
 
         print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
 

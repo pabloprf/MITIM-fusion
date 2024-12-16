@@ -730,15 +730,15 @@ class wrapped_model_portals:
                     self._output_variables.append(key)
         for key in self._models:
             if hasattr(self._models[key], 'gpmodel'):
-                if hasattr(self._models[key].gpmodel, 'train_X_usedToTrain'):
-                    xtrain = self._models[key].gpmodel.train_X_usedToTrain.detach().cpu().numpy()
+                if hasattr(self._models[key].gpmodel, 'train_X_use'):
+                    xtrain = self._models[key].gpmodel.train_X_use.detach().cpu().numpy()
                     if len(xtrain.shape) < 2:
                         xtrain = np.atleast_2d(xtrain)
                     if xtrain.shape[1] != len(self._input_variables):
                         xtrain = xtrain.T
                     self._training_inputs[key] = pd.DataFrame(xtrain, columns=self._input_variables)
-                if hasattr(self._models[key].gpmodel, 'train_Y_usedToTrain'):
-                    ytrain = self._models[key].gpmodel.train_Y_usedToTrain.detach().cpu().numpy()
+                if hasattr(self._models[key].gpmodel, 'train_Y_use'):
+                    ytrain = self._models[key].gpmodel.train_Y_use.detach().cpu().numpy()
                     if len(ytrain.shape) < 2:
                         ytrain = np.atleast_2d(ytrain)
                     if ytrain.shape[1] != 1:
