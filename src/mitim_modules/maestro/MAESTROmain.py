@@ -1,6 +1,7 @@
 import copy
 import sys
 import datetime
+import shutil
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -23,7 +24,14 @@ MAESTRO:
 
 class maestro:
 
-    def __init__(self, folder, terminal_outputs = False, master_cold_start = False, overall_log_file = True):
+    def __init__(
+            self,
+            folder,
+            terminal_outputs = False,
+            master_cold_start = False,
+            overall_log_file = True,
+            keep_all_files = True
+            ):
         '''
         Inputs:
             - folder: Main folder where all the beats will be saved
@@ -32,6 +40,7 @@ class maestro:
 
         self.terminal_outputs = terminal_outputs
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
+        self.keep_all_files = keep_all_files             # If True, all files will be kept, if False, only the final output files will be kept
 
         # --------------------------------------------------------------------------------------------
         # Prepare folders
@@ -120,7 +129,7 @@ class maestro:
     # Beat operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer('\t\t* Checker')
+    @mitim_timer('\t\t* Checker', name_timer=None)
     def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
@@ -155,7 +164,7 @@ class maestro:
 
         return output_file is not None
 
-    @mitim_timer('\t\t* Initializer')
+    @mitim_timer('\t\t* Initializer', name_timer=None)
     def initialize(self, *args, **kwargs):
 
         print('\t- Initializing...')
@@ -177,7 +186,7 @@ class maestro:
                 # First initialization, freeze engineering parameters
                 self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
 
-    @mitim_timer('\t\t* Preparation')
+    @mitim_timer('\t\t* Preparation', name_timer=None)
     def prepare(self, *args, **kwargs):
 
         print('\t- Preparing...')
@@ -196,7 +205,7 @@ class maestro:
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
 
-    @mitim_timer('\t\t* Run')
+    @mitim_timer('\t\t* Run', name_timer=None)
     def run(self, **kwargs):
 
         # Run 
@@ -224,6 +233,11 @@ class maestro:
         with LOGtools.conditional_log_to_file(log_file=log_file):
             self.beat._inform_save()
 
+        # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
+        if not self.keep_all_files:
+            for item in self.beat.folder .iterdir():
+                shutil.rmtree(item) if item.is_dir() else item.unlink()
+
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
@@ -233,7 +247,7 @@ class maestro:
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
         self.profiles_with_engineering_parameters.writeCurrentStatus(file= (self.folder_output / 'input.gacode_frozen'))
 
-    @mitim_timer('\t\t* Finalizing')
+    @mitim_timer('\t\t* Finalizing', name_timer=None)
     def finalize(self):
 
         print('\t- Finalizing MAESTRO run...')
@@ -246,7 +260,7 @@ class maestro:
     # Plotting operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer('\t\t* Plotting')
+    @mitim_timer('\t\t* Plotting', name_timer=None)
     def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
         print('*** Plotting MAESTRO ******************************************************************** ')

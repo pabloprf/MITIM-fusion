@@ -73,7 +73,7 @@ class timer(object):
 
     def __enter__(self):
         self.timeBeginning = datetime.datetime.now()
-        print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+        if self.name_timer is not None: print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
         return self
 
     def __exit__(self, *args):
@@ -87,11 +87,11 @@ class timer(object):
 
 # Decorator to time functions
 
-def mitim_timer(name="\t* Script"):
+def mitim_timer(name="\t* Script",name_timer = '\t* Start time: '):
     def decorator_timer(func):
         @functools.wraps(func)
         def wrapper_timer(*args, **kwargs):
-            with timer(name):
+            with timer(name,name_timer=name_timer):
                 return func(*args, **kwargs)
         return wrapper_timer
     return decorator_timer
