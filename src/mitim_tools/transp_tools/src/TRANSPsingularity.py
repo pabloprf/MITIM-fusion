@@ -55,7 +55,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             f"transp_{self.tok if tokamak_name is None else tokamak_name}_{self.runid}",
             slurm_settings={
                 "minutes": minutesAllocation,
-                "ntasks": np.max([self.nparallel, 8]),  # Even if I don't use MPI in TRANSP, I think it makes sense to still allocate a few cores for the sequential operations?
+                "ntasks": self.nparallel,
                 "name": self.job_name,
                 "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },
