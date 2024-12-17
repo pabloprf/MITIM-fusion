@@ -1679,7 +1679,8 @@ class MITIM_BO:
             # Plot
             ax.plot(y_acq,'-o', c='g', markersize=2, lw = 0.5, label='max of batch')
             ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=1.0, label='max trained')
-            ax.axhline(y=y_acq[0], c='b', ls='--', lw=1.0, label='max of guesses')
+            if len(y_acq)>0:
+                ax.axhline(y=y_acq[0], c='b', ls='--', lw=1.0, label='max of guesses')
 
             ax.set_title(f'BO Step #{step}')
             ax.set_ylabel('$f_{acq}$ (to max)')
