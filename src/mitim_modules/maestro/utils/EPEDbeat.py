@@ -129,12 +129,14 @@ class eped_beat(beat):
         print(f'\t\t- neped: {self.current_evaluation["neped_20"]:.2f} 10^19 m^-3')
         print(f'\t\t- BetaN: {self.current_evaluation["BetaN"]:.2f}')
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
-        print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.1f} eV')
+        print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
 
         # -------------------------------------------------------
         # Run NN
         # -------------------------------------------------------
+
+        BetaN = self.current_evaluation["BetaN"]
 
         BetaNs, ptop_kPas, wtop_psipols  = [], [], []
         for i in range(loopBetaN):
@@ -148,7 +150,7 @@ class eped_beat(beat):
                 self.current_evaluation["kappa995"],
                 self.current_evaluation["delta995"],
                 self.current_evaluation["neped_20"]*10,
-                self.current_evaluation["BetaN"],
+                BetaN,
                 self.current_evaluation["zeff"],
                 tesep=self.current_evaluation["Tesep_keV"]* 1E3,
                 nesep_ratio=self.current_evaluation["nesep_ratio"]

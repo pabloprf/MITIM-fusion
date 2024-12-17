@@ -172,6 +172,7 @@ class initializer_from_geqdsk(beat_initializer):
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
 
         # Convert to profiles
+        print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
