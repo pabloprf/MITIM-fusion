@@ -1,5 +1,11 @@
 import os
 import shutil
+from turtle import left
+import psutil
+import pandas as pd
+from mitim_tools.misc_tools import GRAPHICStools
+import numpy as np
+import matplotlib.pyplot as plt
 import sys
 import time
 import datetime
@@ -16,15 +22,6 @@ from collections import OrderedDict
 from pathlib import Path
 import platform
 import torch
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-try:
-    import pandas
-except ImportError:
-    pass
-
 try:
     from IPython import embed
 except ImportError:
@@ -407,7 +404,7 @@ def unzipFiles(file, destinyFolder, clear=True):
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
 
     ifile = Path(file).expanduser()
-    df = pandas.read_excel(ifile, sheet_name=sheet_name)
+    df = pd.read_excel(ifile, sheet_name=sheet_name)
 
     rho = getVar_ExcelColumn(df, df.keys()[fromColumn + 0], fromRow=fromRow)
     Te = getVar_ExcelColumn(df, df.keys()[fromColumn + 1], fromRow=fromRow) * 1e-3
@@ -453,8 +450,8 @@ def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, from
 
 def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
     ofile = Path(file).expanduser()
-    df = pandas.DataFrame(dictExcel)
-    writer = pandas.ExcelWriter(ofile, engine="xlsxwriter")
+    df = pd.DataFrame(dictExcel)
+    writer = pd.ExcelWriter(ofile, engine="xlsxwriter")
     df.to_excel(
         writer,
         sheet_name="Sheet1",
@@ -474,7 +471,7 @@ def createExcelRow(dataSet_dict, row_name="row 1"):
         data.append([dataSet_dict[i]])
     data = np.transpose(data)
 
-    df = pandas.DataFrame(data, index=[row_name], columns=columns)
+    df = pd.DataFrame(data, index=[row_name], columns=columns)
 
     return df
 
@@ -485,7 +482,7 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     df = createExcelRow(dataSet_dict, row_name=row_name)
 
     if fpath.is_file():
-        df_orig = pandas.read_excel(fpath, index_col=0)
+        df_orig = pd.read_excel(fpath, index_col=0)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
             df_new = df_new.drop(df.index[0])
@@ -495,7 +492,7 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     else:
         df_new = df
 
-    with pandas.ExcelWriter(fpath, mode="w") as writer:
+    with pd.ExcelWriter(fpath, mode="w") as writer:
         df_new.to_excel(writer, sheet_name="Sheet1")
 
 
@@ -1728,3 +1725,97 @@ def print_machine_info(output_file=None):
             f.write(output)
     else:
         print(output)
+
+
+def monitor_resources(pid, log_file="resource_log.txt", interval=1):
+
+    # Include machine info
+    print_machine_info(output_file=log_file)
+
+    process = psutil.Process(pid)
+    start_time = time.time()  # Record the start time of logging
+    
+    with open(log_file, "a") as log:
+        # Write header with proper column alignment
+        log.write(f"Monitoring resources for PID: {pid}\n")
+        log.write(
+            f"{'Timestamp':<20} {'Elapsed Time (s)':<18} {'Memory (GB)':<12} "
+            f"{'CPU (%)':<8} {'Threads':<10} {'Open Files':<12} {'IO Read (MB)':<15} {'IO Write (MB)':<15}\n"
+        )
+        log.write("=" * 100 + "\n")  # Add a separator line for clarity
+        try:
+            while True:
+                current_time = time.time()
+                elapsed_time = current_time - start_time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(current_time))
+
+                # Gather metrics
+                memory_info = process.memory_info()
+                cpu_percent = process.cpu_percent(interval=interval)
+                num_threads = process.num_threads()
+                open_files = len(process.open_files())
+                
+                # Safely handle io_counters
+                try:
+                    io_counters = process.io_counters()
+                    read_bytes = io_counters.read_bytes / 1e6  # Convert to MB
+                    write_bytes = io_counters.write_bytes / 1e6  # Convert to MB
+                except AttributeError:
+                    read_bytes = write_bytes = 0.0  # Fallback values
+                
+                # Format and write log entry
+                log_entry = (
+                    f"{timestamp:<20} {elapsed_time:<18.2f} {memory_info.rss / 1e9:<12.2f} "
+                    f"{cpu_percent:<8.2f} {num_threads:<10} {open_files:<12} {read_bytes:<15.2f} {write_bytes:<15.2f}\n"
+                )
+                log.write(log_entry)
+                log.flush()  # Ensure logs are updated in real-time
+        except (psutil.NoSuchProcess, KeyboardInterrupt):
+            log.write("Monitoring stopped.\n")
+            print("Monitoring stopped.")
+
+def plot_metrics(log_file="resource_log.txt", output_image="resource_metrics.png"):
+    
+    column_names = [
+        "Timestamp", "ElapsedTime", "MemoryGB", "CPUPercent", 
+        "Threads", "OpenFiles", "IOReadMB", "IOWriteMB"
+    ]
+
+    data = pd.read_csv(
+        log_file,
+        sep=r"\s\s+",
+        skiprows=2,  # Skip the first two header lines
+        names=column_names,
+        parse_dates=["Timestamp"],  # Automatically parse Timestamp
+        on_bad_lines="skip",  # Skip malformed lines
+    )
+
+    # Clean the data
+    # Replace non-numeric or NaN values with 0 or a suitable default
+    for col in column_names[1:]:  # Skip Timestamp
+        data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+
+    # Create a figure with subplots
+    plt.ion()
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(15, 10))
+
+    # Define metrics and labels
+    metrics = [
+        ("MemoryGB", "Memory Usage (GB)"),
+        ("CPUPercent", "CPU Usage (%)"),
+        ("Threads", "Threads"),
+        ("OpenFiles", "Open Files"),
+        ("IOReadMB", "IO Read (MB)"),
+        ("IOWriteMB", "IO Write (MB)"),
+    ]
+
+    # Plot each metric
+    for ax, (metric, label) in zip(axes.flat, metrics):
+        ax.plot(data["ElapsedTime"], data[metric], marker="o", linestyle="-",markersize=0.5)
+        ax.set_ylabel(label)
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel("Elapsed Time (s)")
+        GRAPHICStools.addDenseAxis(ax)
+
+    plt.tight_layout()

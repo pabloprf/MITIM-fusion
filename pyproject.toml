@@ -41,6 +41,7 @@ dependencies = [
   "freegs",
   "botorch",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
+  "psutil"
 ]
 
 [project.optional-dependencies]
