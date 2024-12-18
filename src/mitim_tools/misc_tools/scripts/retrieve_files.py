@@ -1,5 +1,5 @@
 import argparse
-from mitim_tools.misc_tools import FARMINGtools
+from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 def main():
 
@@ -10,9 +10,14 @@ def main():
 
     args = parser.parse_args()
 
-    folder_local = './'
+    folder_local = IOtools.expandPath('./')
     machine = args.machine
     files_remote = args.files
     folders_remote = args.folders
 
     FARMINGtools.retrieve_files_from_remote(folder_local, machine, files_remote = files_remote, folders_remote = folders_remote)
+
+    # Remote files created in this process
+    for file in ['mitim_bash.src', 'mitim_shell_executor.sh', 'paramiko.log', 'mitim.out']:
+        (folder_local / file).unlink(missing_ok=True)
+    

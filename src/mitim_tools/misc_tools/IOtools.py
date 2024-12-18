@@ -1,6 +1,5 @@
 import os
 import shutil
-from turtle import left
 import psutil
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
