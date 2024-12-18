@@ -1,17 +1,21 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools import IOtools, GUItools
+from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
 
 """
-Quick way to plot several input.gacode files together
+Quick way to plot several input.gacode files together (assumes unix in remote)
 e.g.
-		read_maestro.py folder [--beats 3]
+		read_maestro.py folder [--beats 3] [--remote mfews15]
+
+Notes:
+    - remote option will copy it locally in the current directory
 """
 
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
+    parser.add_argument("--remote",type=str, required=False, default=None)
     parser.add_argument(
         "--beats", type=int, required=False, default=2
     )  # Last beats to plot
@@ -24,7 +28,16 @@ def main():
 
     args = parser.parse_args()
 
-    folders = [IOtools.expandPath(folder) for folder in args.folders]
+    remote = args.remote
+    folders = args.folders
+
+    # Retrieve remote
+    if remote is not None:
+        FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders, purge_tmp_files = True)
+        folders = [IOtools.expandPath('./') / IOtools.reducePathLevel(folder)[-1] for folder in folders]
+    # -----
+
+    folders = [IOtools.expandPath(folder) for folder in folders]
     beats = args.beats
     only = args.only
     full = args.full

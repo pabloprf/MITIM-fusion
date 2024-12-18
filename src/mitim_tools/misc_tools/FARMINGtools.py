@@ -1207,7 +1207,7 @@ def perform_quick_remote_execution(
     job.run()
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = []):
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 
@@ -1246,6 +1246,12 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         output_folders = output_folders,
         job_name = job_name
     )
+
+    if purge_tmp_files:
+        # Remote files created in this process
+        for file in ['mitim_bash.src', 'mitim_shell_executor.sh', 'paramiko.log', 'mitim.out']:
+            (folder_local / file).unlink(missing_ok=True)
+    
 
 
 if __name__ == "__main__":
