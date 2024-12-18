@@ -126,7 +126,7 @@ class eped_beat(beat):
         print(f'\t\t- a: {self.current_evaluation["a"]:.2f} m')
         print(f'\t\t- kappa995: {self.current_evaluation["kappa995"]:.3f}')
         print(f'\t\t- delta995: {self.current_evaluation["delta995"]:.3f}')
-        print(f'\t\t- neped: {self.current_evaluation["neped_20"]:.2f} 10^19 m^-3')
+        print(f'\t\t- neped: {self.current_evaluation["neped_20"]:.2f} 10^20 m^-3')
         print(f'\t\t- BetaN: {self.current_evaluation["BetaN"]:.2f}')
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')

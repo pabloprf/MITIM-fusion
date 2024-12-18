@@ -809,6 +809,13 @@ def findValue(
     """
 
     fpath = Path(FilePath).expanduser()
+
+    if not fpath.is_file():
+        if raiseException:
+            raise Exception(f"File {fpath} not found")
+        else:
+            return None
+
     with open(fpath, "r") as f:
 
         for line in f:
