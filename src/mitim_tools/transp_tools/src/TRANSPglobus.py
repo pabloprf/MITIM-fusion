@@ -337,7 +337,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                     file, self.folderGRID_look, self.runid, self.FolderTRANSP, self.tok
                 )
 
-                netCDFfile = self.FolderTRANSP + f"{self.runid}.CDF"
+                netCDFfile = self.FolderTRANSP / f"{self.runid}.CDF"
 
                 # Sometimes the file is corrupted, len(t) different from len(Te)
                 try:
@@ -348,7 +348,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                     )
 
                 Reactor.writeResults_TXT(
-                    self.FolderTRANSP + "infoRun_preconvergence.dat", ensureBackUp=False
+                    self.FolderTRANSP / "infoRun_preconvergence.dat", ensureBackUp=False
                 )
 
                 # ---- Possibility of AC files
