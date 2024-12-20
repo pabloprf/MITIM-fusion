@@ -76,6 +76,8 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
     max_it = algorithmOptions.get("max_it", 1e5)
     relax = algorithmOptions.get("relax", 0.001)
     dx_max = algorithmOptions.get("dx_max", 0.05)
+    dx_max_abs = algorithmOptions.get("dx_max_abs", None)
+    dx_min_abs = algorithmOptions.get("dx_min_abs", None)
     print_each = algorithmOptions.get("print_each", 1e2)
     MainFolder = algorithmOptions.get("MainFolder", "~/scratch/")
     storeValues = algorithmOptions.get("storeValues", True)
@@ -127,6 +129,8 @@ def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
         relax=relax,
         dx_max=dx_max,
         bounds=bounds,
+        dx_max_abs = dx_max_abs,
+        dx_min_abs = dx_min_abs,
         print_each=print_each,
         storeValues=storeValues,
     )

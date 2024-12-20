@@ -158,16 +158,27 @@ def picard(fun, xGuess, tol=1e-6, max_it=1e3, relax_param=1.0):
 # --------------------------------------------------------------------------------------------------------
 
 
-def simple_relax_iteration(x, Q, QT, relax, dx_max):
-    # Calculate step (if target is larger than transport, dx is positive because I want to increase gradients)
+def simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None):
+    # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
     dx = relax * (QT - Q) / (Q**2 + QT**2) ** 0.5
 
     # Prevent big steps - Clamp to the max step (with the right sign)
     ix = dx.abs() > dx_max
     dx[ix] = dx_max * (dx[ix] / dx[ix].abs())
 
-    # Update (Note for PRF: abs() was added by me, I think it performs better that way!)
-    x_new = x + x.abs() * dx
+    # Define absolute step (Note for PRF: abs() was added by me, I think it performs better that way!)
+    x_step = x.abs() * dx
+
+    # Absolute steps limits
+    if dx_max_abs is not None:
+        ix = x_step.abs() > dx_max_abs
+        x_step[ix] = dx_max_abs * (x_step[ix] / x_step[ix].abs())
+    if dx_min_abs is not None:
+        ix = x_step.abs() < dx_min_abs
+        x_step[ix] = dx_min_abs * (x_step[ix] / x_step[ix].abs())
+
+    # Update
+    x_new = x + x_step
 
     return x_new
 
@@ -180,6 +191,8 @@ def relax(
     max_it=1e5,
     relax=0.1,
     dx_max=0.05,
+    dx_max_abs = None,
+    dx_min_abs = None,
     print_each=1e2,
     storeValues=False,
 ):
@@ -206,7 +219,7 @@ def relax(
         # Iterative Strategy
         # --------------------------------------------------------------------------------------------------------
 
-        x_new = simple_relax_iteration(x, Q, QT, relax, dx_max)
+        x_new = simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
 
         # Clamp to bounds
         if bounds is not None:
