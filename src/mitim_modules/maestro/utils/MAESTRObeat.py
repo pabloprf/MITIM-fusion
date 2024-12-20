@@ -121,6 +121,9 @@ class beat_initializer:
         # Initializer has been called
         self.beat_instance.initialize_called = True
 
+    def _inform_save(self):
+        pass
+
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
 # --------------------------------------------------------------------------------------------

@@ -261,6 +261,7 @@ def plot_results(self, fn):
     ax.plot(x, fG, '-s', markersize=7, lw = 1)
     ax.set_ylabel('$f_{G}$')
     ax.set_title('Density Evolution')
+    ax.axhline(y=1, color = 'k', lw = 1, ls = '--')
     GRAPHICStools.addDenseAxis(ax)
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
     ax.set_ylim([0,1.2])

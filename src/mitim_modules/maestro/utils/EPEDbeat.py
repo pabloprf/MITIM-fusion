@@ -1,4 +1,3 @@
-import os
 import shutil
 import copy
 import numpy as np
@@ -81,7 +80,9 @@ class eped_beat(beat):
         # Check if neped_20 is already defined by the prepare() method (e.g. in first beat) or via inform() (e.g. from a previous EPED beat)
         if self.neped_20 is None:
             # If not, using simply the density at rho = 0.95
-            self.neped_20 = np.interp(0.95,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
+            rho_check = 0.95
+            self.neped_20 = np.interp(rho_check,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
+            print(f'\t- neped_20 not provided as part of the trans-beat information nor prepare, using ne at rho = {rho_check} -> {self.neped_20:.2f} 10^20 m^-3')
 
         neped_20 = self.neped_20
 
@@ -338,11 +339,16 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
+def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False, minimum_relative_change_in_x=0.05):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
-    xp: top of the pedestal
+        xp: top of the pedestal
+        minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
     '''
+
+    if abs(xp-xp_old)/xp_old < minimum_relative_change_in_x:
+        print(f'\t- Keeping old core because the variation in width is {abs(xp-xp_old)/xp_old*100:.3f}<{minimum_relative_change_in_x*100:.1f}%')
+        xp = xp_old
 
     # Fit new pedestal
     _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
@@ -360,8 +366,9 @@ def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False):
     ycore_new = ycore_old * yped[ibc] / ycore_old[-1]
 
     # Stretch old core into the new extension
-    x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
-    ycore_new = np.interp(xcore,x_core_old_mod,ycore_new)
+    if xp != xp_old:
+        x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
+        ycore_new = np.interp(xcore,x_core_old_mod,ycore_new)
 
     # Merge
     ynew = copy.deepcopy(y)
