@@ -369,7 +369,7 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
     # ----------------------------------------
 
     total_points = 100
-    d_spacing_coarse = 1e-3  # 1/200 #1E-3
+    d_spacing_coarse = 1e-3
     points_updown = 2
 
     # ----------------------------------------------------------------------------------

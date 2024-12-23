@@ -452,7 +452,7 @@ class mitim_job:
         )
 
         # Create a tarball of the local directory
-        print("\t\t- Tarballing (client side)")
+        print("\t\t- Tarballing (local side)")
         with tarfile.open(
             self.folder_local / "mitim_send.tar.gz", "w:gz"
         ) as tar:
@@ -558,7 +558,7 @@ class mitim_job:
                 shutil.rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
-        print("\t\t- Tarballing (server side)")
+        print("\t\t- Tarballing (remote side)")
         self.execute(
             "tar -czf "
             + f'{self.folderExecution}/mitim_receive.tar.gz'

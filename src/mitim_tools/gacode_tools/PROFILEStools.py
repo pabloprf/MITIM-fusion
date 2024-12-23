@@ -1080,20 +1080,20 @@ class PROFILES_GACODE:
         self.derived["qstar"] = PLASMAtools.evaluate_qstar(
             self.profiles['current(MA)'][0],
             self.profiles['rcentr(m)'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.derived['kappa95'],
             self.profiles['bcentr(T)'],
             self.derived['eps'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            self.derived['delta95'],
             ITERcorrection=False,
             includeShaping=True,
         )[0]
         self.derived["qstar_ITER"] = PLASMAtools.evaluate_qstar(
             self.profiles['current(MA)'][0],
             self.profiles['rcentr(m)'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.derived['kappa95'],
             self.profiles['bcentr(T)'],
             self.derived['eps'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            self.derived['delta95'],
             ITERcorrection=True,
             includeShaping=True,
         )[0]
