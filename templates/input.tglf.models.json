@@ -49,6 +49,20 @@
             "WDIA_TRAPPED": 1.0
         }
     },
+    "100": {
+        "label": "settings as in ASTRA-TGLF framework",
+        "controls": {
+            "UNITS": "CGYRO",
+            "USE_BPER": true,
+            "USE_AVE_ION_GRID": true,
+            "SAT_RULE": 2,
+            "KYGRID_MODEL": 4,
+            "XNU_MODEL": 3,
+            "NBASIS_MAX": 6,
+            "B_MODEL_SA": 1,
+            "FT_MODEL_SA": 1
+        }
+    },
     "101": {
         "label": "[Experimentation] SAT3em basis",
         "controls": {
