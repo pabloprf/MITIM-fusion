@@ -260,7 +260,7 @@ class transp_beat(beat):
     # Additional TRANSP utilities
     # --------------------------------------------------------------------------------------------
 
-    def _additional_operations_add_initialization(self, machine_initialization = 'CMOD'):
+    def _additional_operations_add_initialization(self, machine_initialization = 'D3D'):
         '''
         ----------------------------------------------------------------------------------------------------------------------
         TRANSP must be initialized with a specific machine, so here I use the trick of changing the equilibrium and parameters

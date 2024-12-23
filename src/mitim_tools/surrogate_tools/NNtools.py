@@ -82,6 +82,6 @@ class eped_nn(mitim_nn):
                  ):
 
         nesep = neped*nesep_ratio
-        inputs = np.array([Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff])#, tesep, nesep])
+        inputs = np.array([Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep, nesep])
 
         return self.__call__(inputs)

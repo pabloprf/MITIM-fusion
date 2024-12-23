@@ -210,11 +210,7 @@ class portals(STRATEGYtools.opt_evaluator):
         targets_evaluator = TARGETStools.analytical_model
 
         self.PORTALSparameters = {
-            "percentError": [
-                10,
-                10,
-                1,
-            ],  # (%) Error (std, in percent) of model evaluation [TGLF, NEO, TARGET]
+            "percentError": [5,10,1],  # (%) Error (std, in percent) of model evaluation [TGLF (treated as minimum if scan trick), NEO, TARGET]
             "transport_evaluator": transport_evaluator,
             "targets_evaluator": targets_evaluator,
             "TargetCalc": "powerstate",  # Method to calculate targets (tgyro or powerstate)
