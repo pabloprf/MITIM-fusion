@@ -1275,8 +1275,10 @@ class PROFILES_GACODE:
 
             print(f"\n***********************{label}****************")
             print("Engineering Parameters:")
-            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}), Pin = {self.derived['qIn']:.2f}MW")
-            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m (eps = {self.derived['eps']:.3f}), kappa_a = {self.derived['kappa_a']:.2f} (kappa_sep = {self.profiles['kappa(-)'][-1]:.2f}), delta_sep = {self.profiles['delta(-)'][-1]:.2f}")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}, q*ITER = {self.derived['qstar_ITER']:.2f}), Pin = {self.derived['qIn']:.2f}MW")
+            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m (eps = {self.derived['eps']:.3f})")
+            print(f"\tkappa_sep = {self.profiles['kappa(-)'][-1]:.2f}, kappa_995 = {self.derived['kappa995']:.2f}, kappa_95 = {self.derived['kappa95']:.2f}, kappa_a = {self.derived['kappa_a']:.2f}")
+            print(f"\tdelta_sep  = {self.profiles['delta(-)'][-1]:.2f}, delta_995  = {self.derived['delta995']:.2f}, delta_95  = {self.derived['delta95']:.2f}")
             print("Performance:")
             print(
                 "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
