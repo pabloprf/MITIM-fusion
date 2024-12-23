@@ -1,3 +1,4 @@
+from math import nan
 import torch
 import copy
 import numpy as np
@@ -172,10 +173,12 @@ def simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_ab
     # Absolute steps limits
     if dx_max_abs is not None:
         ix = x_step.abs() > dx_max_abs
-        x_step[ix] = dx_max_abs * (x_step[ix] / x_step[ix].abs())
+        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
+        x_step[ix] = dx_max_abs * direction
     if dx_min_abs is not None:
         ix = x_step.abs() < dx_min_abs
-        x_step[ix] = dx_min_abs * (x_step[ix] / x_step[ix].abs())
+        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
+        x_step[ix] = dx_min_abs * direction
 
     # Update
     x_new = x + x_step
@@ -228,7 +231,6 @@ def relax(
         x = x_new.clone()
 
         # --------------------------------------------------------------------------------------------------------
-
         Q, QT = flux(x, cont=i + 1)
 
         if (i + 1) % int(print_each) == 0:
