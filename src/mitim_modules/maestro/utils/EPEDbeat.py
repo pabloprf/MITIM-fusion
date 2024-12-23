@@ -157,9 +157,9 @@ class eped_beat(beat):
                 nesep_ratio=self.current_evaluation["nesep_ratio"]
             )
 
-            print('\t- Operating with EPED results:')
-            print(f'\t\t- ptop_kPa: {ptop_kPa:.3f}')
-            print(f'\t\t- wtop_psipol: {wtop_psipol:.3f}')
+            print('\t- Raw EPED results:')
+            print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
+            print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
             
             BetaNs.append(BetaN)
             ptop_kPas.append(ptop_kPa)
@@ -188,7 +188,7 @@ class eped_beat(beat):
             # Temperature from pressure, assuming Te=Ti
             Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
 
-            print('\t- Calculated quantities:')
+            print('\t- Post-processed quantities:')
             print(f'\t\t- rhotop: {rhotop:.3f}')
             print(f'\t\t- netop_20: {netop_20:.3f}')
             print(f'\t\t- Ttop_keV: {Ttop_keV:.3f}')
@@ -204,7 +204,13 @@ class eped_beat(beat):
 
             x = self.profiles_current.profiles['rho(-)']
             xp = rhotop
-            xp_old = self.rhotop if 'rhotop' in self.__dict__ else 0.9
+
+            if 'rhotop' in self.__dict__:
+                print(f'\t\t- Using previously-stored rhotop: {self.rhotop:.3f}')
+                xp_old = self.rhotop
+            else:
+                print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
+                xp_old = 0.9
 
             self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old, label = 'Te')
 
@@ -331,11 +337,16 @@ class eped_beat(beat):
             self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
             print(f"\t\t- Using previous kappa995: {self.kappa995}")
         
-         # From a geqdsk initialization
+        # From a geqdsk initialization
         if 'delta995' in self.maestro_instance.parameters_trans_beat:
             self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
+        # From a previous EPED beat, grab the rhotop
+        if 'rhotop' in self.maestro_instance.parameters_trans_beat:
+            self.rhotop = self.maestro_instance.parameters_trans_beat['rhotop']
+            print(f"\t\t- Using previous rhotop: {self.rhotop}")
+            
     def _inform_save(self, eped_output = None):
 
         if eped_output is None:
@@ -354,16 +365,18 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_rel
         minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
     '''
 
-    print(f'\t\t- Scaling profile {label} by stretching: [{xp_old}, {yp}] -> [{xp}, {yp}]')
+    print(f'\t\t- Scaling profile {label} by stretching')
 
     if abs(xp-xp_old)/xp_old < minimum_relative_change_in_x:
-        print(f'\t\t\t* Keeping old core because the variation in width is {abs(xp-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {xp:.3f})')
+        print(f'\t\t\t* Keeping old core position because width variation is {abs(xp-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {xp:.3f})')
         xp = xp_old
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
     xcore_old = x[:ibc+1]
     ycore_old = y[:ibc+1]
+
+    print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
 
     # Fit new pedestal
     _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
@@ -398,6 +411,5 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_rel
         ax.legend()
     
         plt.show()
-
 
     return ynew
