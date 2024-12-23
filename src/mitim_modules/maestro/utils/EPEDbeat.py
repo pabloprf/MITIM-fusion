@@ -38,9 +38,10 @@ class eped_beat(beat):
 
         self._inform()
 
-    def run(self, **kwargs):
-
+        # Write here
         shutil.copy2(self.initialize.folder / "input.gacode", self.folder / "input.gacode")
+
+    def run(self, **kwargs):
 
         # -------------------------------------------------------
         # Run the NN
@@ -128,7 +129,6 @@ class eped_beat(beat):
         print(f'\t\t- kappa995: {self.current_evaluation["kappa995"]:.3f}')
         print(f'\t\t- delta995: {self.current_evaluation["delta995"]:.3f}')
         print(f'\t\t- neped: {self.current_evaluation["neped_20"]:.2f} 10^20 m^-3')
-        print(f'\t\t- BetaN: {self.current_evaluation["BetaN"]:.2f}')
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
@@ -157,6 +157,10 @@ class eped_beat(beat):
                 nesep_ratio=self.current_evaluation["nesep_ratio"]
             )
 
+            print('\t- Operating with EPED results:')
+            print(f'\t\t- ptop_kPa: {ptop_kPa:.3f}')
+            print(f'\t\t- wtop_psipol: {wtop_psipol:.3f}')
+            
             BetaNs.append(BetaN)
             ptop_kPas.append(ptop_kPa)
             wtop_psipols.append(wtop_psipol)
@@ -172,11 +176,7 @@ class eped_beat(beat):
             # Find ne at the top
             # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
             # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
-            pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, 
-                                                            nesep_20, 
-                                                            1-rhotop, 
-                                                            x=x
-                                                            )[1]
+            pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, nesep_20, 1-rhotop, x=x)[1]
 
             n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
             netop_20 = n0[0]
@@ -188,9 +188,17 @@ class eped_beat(beat):
             # Temperature from pressure, assuming Te=Ti
             Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
 
+            print('\t- Calculated quantities:')
+            print(f'\t\t- rhotop: {rhotop:.3f}')
+            print(f'\t\t- netop_20: {netop_20:.3f}')
+            print(f'\t\t- Ttop_keV: {Ttop_keV:.3f}')
+            print(f'\t\t- rhoped: {rhoped:.3f}')
+
             # -------------------------------------------------------
             # Put into profiles #TODO: This should be looped with the NN evaluation to find the self-consisent betaN with the current profiles
             # -------------------------------------------------------
+
+            print('\t- Applying EPED results to profiles:')
 
             self.profiles_output = copy.deepcopy(self.profiles_current)
 
@@ -198,12 +206,12 @@ class eped_beat(beat):
             xp = rhotop
             xp_old = self.rhotop if 'rhotop' in self.__dict__ else 0.9
 
-            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old)
+            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old, label = 'Te')
 
-            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old)
+            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old, label = 'Ti')
             self.profiles_output.makeAllThermalIonsHaveSameTemp()
 
-            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old)
+            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old, label = 'ne')
             self.profiles_output.enforceQuasineutrality()
 
             # ---------------------------------
@@ -339,24 +347,26 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching(x,y,xp,yp,xp_old, plotYN=False, minimum_relative_change_in_x=0.05):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_relative_change_in_x=0.05, label=''):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
         minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
     '''
 
-    if abs(xp-xp_old)/xp_old < minimum_relative_change_in_x:
-        print(f'\t- Keeping old core because the variation in width is {abs(xp-xp_old)/xp_old*100:.3f}<{minimum_relative_change_in_x*100:.1f}%')
-        xp = xp_old
+    print(f'\t\t- Scaling profile {label} by stretching: [{xp_old}, {yp}] -> [{xp}, {yp}]')
 
-    # Fit new pedestal
-    _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
+    if abs(xp-xp_old)/xp_old < minimum_relative_change_in_x:
+        print(f'\t\t\t* Keeping old core because the variation in width is {abs(xp-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {xp:.3f})')
+        xp = xp_old
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
     xcore_old = x[:ibc+1]
     ycore_old = y[:ibc+1]
+
+    # Fit new pedestal
+    _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
 
     # Find extension of new core
     ibc = np.argmin(np.abs(x-xp))

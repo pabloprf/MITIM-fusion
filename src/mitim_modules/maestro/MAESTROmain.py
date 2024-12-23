@@ -196,6 +196,7 @@ class maestro:
                 
                 # Initialize if necessary
                 if not self.beat.initialize_called:
+                    print('\t\t- Initializing beat before preparing...')
                     self.beat.initialize()
                 # -----------------------------
 
