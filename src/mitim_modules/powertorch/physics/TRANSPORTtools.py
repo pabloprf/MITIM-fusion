@@ -69,6 +69,9 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
+    def produce_profiles(self):
+        pass
+
     def _produce_profiles(self,deriveQuantities=True):
 
         self.applyCorrections = (
@@ -86,8 +89,24 @@ class power_transport:
             insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
-    def produce_profiles(self):
-        pass
+        self.profiles_transport = copy.deepcopy(self.powerstate.profiles)
+
+        self._modify_profiles()
+
+    def _modify_profiles(self):
+        '''
+        Modify the profiles (e.g. lumping) before running the transport model 
+        '''
+
+        # After producing the profiles, copy for future modifications
+        self.file_profs_unmod = self.file_profs.parent / f"{self.file_profs.name}_unmodified"
+        shutil.copy2(self.file_profs, self.file_profs_unmod)
+
+        profiles_postprocessing_fun = self.powerstate.TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
+
+        if profiles_postprocessing_fun is not None:
+            print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")
+            self.profiles_transport = profiles_postprocessing_fun(self.file_profs)
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
@@ -109,10 +128,6 @@ class tgyro_model(power_transport):
 
     def evaluate(self):
 
-        # After producing the profiles, copy for future modifications
-        self.file_profs_mod = self.file_profs.parent / f"{self.file_profs.name}_modified"
-        shutil.copy2(self.file_profs, self.file_profs_mod)
-
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
         # ------------------------------------------------------------------------------------------------------------------------
@@ -127,7 +142,6 @@ class tgyro_model(power_transport):
         launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
         cold_start = ModelOptions.get("cold_start", False)
         provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
-        profiles_postprocessing_fun = ModelOptions.get("profiles_postprocessing_fun", None)
         OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
@@ -143,7 +157,7 @@ class tgyro_model(power_transport):
         ]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
-        tgyro.prep(self.folder, profilesclass_custom=self.powerstate.profiles)
+        tgyro.prep(self.folder, profilesclass_custom=self.profiles_transport)
 
         if launchMODELviaSlurm:
             print("\t- Launching TGYRO evaluation as a batch job")
@@ -274,7 +288,6 @@ class tgyro_model(power_transport):
                 cgyro_trick(
                     self,
                     self.folder / "cgyro_neo",
-                    profiles_postprocessing_fun=profiles_postprocessing_fun,
                     name=self.name,
                 )
 
@@ -719,9 +732,9 @@ def profilesToShare(self):
             IOtools.askNewFolder(whereFolder)
 
         fil = whereFolder / f"input.gacode.{self.evaluation_number}"
-        shutil.copy2(self.file_profs_mod, fil)
-        shutil.copy2(self.file_profs, fil.parent / f"{fil.name}_unmodified")
-        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}_unmodified.new")
+        shutil.copy2(self.file_profs, fil)
+        shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
+        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new")
         print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")
@@ -730,7 +743,6 @@ def profilesToShare(self):
 def cgyro_trick(
     self,
     FolderEvaluation_TGYRO,
-    profiles_postprocessing_fun=None,
     name="",
 ):
 
@@ -760,17 +772,6 @@ def cgyro_trick(
             txt += f"{self.powerstate.plasma[varn][0,j+1]-self.powerstate.plasma[f'{varn}_tr_neo'][0,j+1]:.4e}   "
 
     print(txt)
-
-    # **************************************************************************************************************************
-    # Modification to input.gacode (e.g. lump impurities)
-    # **************************************************************************************************************************
-
-    if profiles_postprocessing_fun is not None:
-        print(
-            f"\t- Modifying input.gacode.modified to run transport calculations based on {profiles_postprocessing_fun}",
-            typeMsg="i",
-        )
-        profiles = profiles_postprocessing_fun(self.file_profs_mod)
 
     # Copy profiles so that later it is easy to grab all the input.gacodes that were evaluated
     profilesToShare(self)
