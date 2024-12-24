@@ -11,6 +11,9 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
 
+# <> Function to interpolate a curve <> 
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
 class eped_beat(beat):
 
     def __init__(self, maestro_instance, folder_name = None):
@@ -82,7 +85,7 @@ class eped_beat(beat):
         if self.neped_20 is None:
             # If not, using simply the density at rho = 0.95
             rho_check = 0.95
-            self.neped_20 = np.interp(rho_check,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
+            self.neped_20 = interpolation_function(rho_check,self.profiles_current.profiles['rho(-)'],self.profiles_current.profiles['ne(10^19/m^3)'])*1E-1
             print(f'\t- neped_20 not provided as part of the trans-beat information nor prepare, using ne at rho = {rho_check} -> {self.neped_20:.2f} 10^20 m^-3')
 
         neped_20 = self.neped_20
@@ -170,8 +173,8 @@ class eped_beat(beat):
             # -------------------------------------------------------
 
             # psi_pol to rhoN
-            rhotop = np.interp(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-            rhoped = np.interp(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+            rhotop = interpolation_function(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
+            rhoped = interpolation_function(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
 
             # Find ne at the top
             # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
@@ -183,7 +186,7 @@ class eped_beat(beat):
 
             # Find factor to account that it's not a pure plasma
             n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
-            factor = 1 + np.interp(rhotop, self.profiles_current.profiles['rho(-)'], n )
+            factor = 1 + interpolation_function(rhotop, self.profiles_current.profiles['rho(-)'], n )
 
             # Temperature from pressure, assuming Te=Ti
             Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
@@ -358,7 +361,7 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_relative_change_in_x=0.05, label=''):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_relative_change_in_x=0.005, label=''):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
@@ -391,7 +394,7 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_rel
     # Stretch old core into the new extension
     if xp != xp_old:
         x_core_old_mod = xcore_old * xcore[-1] / xcore_old[-1]
-        ycore_new = np.interp(xcore,x_core_old_mod,ycore_new)
+        ycore_new = interpolation_function(xcore,x_core_old_mod,ycore_new)
 
     # Merge
     ynew = copy.deepcopy(y)
