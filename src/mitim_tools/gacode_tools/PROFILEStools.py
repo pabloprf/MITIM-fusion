@@ -112,8 +112,11 @@ class PROFILES_GACODE:
             if ikey not in self.profiles.keys():
                 self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
 
+        self.deriveQuantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
 
+    def deriveQuantities(self, mi_ref=None, calculateDerived=True, n_theta_geo=1001, rederiveGeometry=True):
 
+        # -------------------------------------------------------------------------------------------------------------------
         self.readSpecies()
         self.produce_shape_lists()
         self.mi_first = self.Species[0]["A"]
@@ -153,7 +156,7 @@ class PROFILES_GACODE:
         # ------------------------------------------------------------------------------------------------
 
         if calculateDerived:
-            self.deriveQuantities()
+            self.deriveQuantities_full()
 
     # -------------------------------------------------------------------------------------
     # Method to write a scratch file
@@ -348,7 +351,7 @@ class PROFILES_GACODE:
                     self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
                 )
 
-    def deriveQuantities(self, mi_ref=None, n_theta_geo=1001, rederiveGeometry=True):
+    def deriveQuantities_full(self, mi_ref=None, n_theta_geo=1001, rederiveGeometry=True):
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
@@ -862,7 +865,8 @@ class PROFILES_GACODE:
 
         self.derived["tauE"] = self.derived["Wthr"] / self.derived["qHeat"]  # Seconds
 
-        self.derived["tauP"] = self.derived["Ne"] / self.derived["geIn"]  # Seconds
+        self.derived["tauP"] = np.where(self.derived["geIn"] != 0, self.derived["Ne"] / self.derived["geIn"], np.inf)   # Seconds
+        
 
         self.derived["tauPotauE"] = self.derived["tauP"] / self.derived["tauE"]
 
@@ -1584,6 +1588,14 @@ class PROFILES_GACODE:
                     0  # If no D or T, assume that the main ion is the first and only
                 )
 
+        self.ion_list_main = []
+        if self.DTplasmaBool:
+            self.ion_list_main = [self.Dion+1, self.Tion+1]
+        else:
+            self.ion_list_main = [self.Mion+1]
+        
+        self.ion_list_impurities = [i+1 for i in range(len(self.Species)) if i+1 not in self.ion_list_main]
+
     def remove(self, ions_list):
         # First order them
         ions_list.sort()
@@ -1626,7 +1638,7 @@ class PROFILES_GACODE:
         print("\t\t\t- Set of ions in updated profiles: ", self.profiles["name"])
 
     def lumpSpecies(
-        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False,
+        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False, force_mass=None
         ):
         """
         if (D,Z1,Z2), lumping Z1 and Z2 requires ions_list = [2,3]
@@ -1682,7 +1694,7 @@ class PROFILES_GACODE:
         else:
             Z = Zr_vol
 
-        A = Z * 2
+        A = Z * 2 if force_mass is None else force_mass
         nZ = fZ1 / Z * self.profiles["ne(10^19/m^3)"]
 
         print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f} (calculated as 2*Z)")
@@ -1712,6 +1724,19 @@ class PROFILES_GACODE:
         print(
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
         )
+
+    def lumpImpurities(self):
+
+        self.lumpSpecies(ions_list=self.ion_list_impurities)
+
+    def lumpDT(self):
+
+        if self.DTplasmaBool:
+            self.lumpSpecies(ions_list=self.ion_list_main, forcename="DT", force_mass=2.5)
+        else:
+            print('\t\t- No DT plasma, so no lumping of main ions')
+
+        self.moveSpecie(pos=len(self.Species), pos_new=1)
 
     def changeZeff(self, Zeff, ion_pos=2, quasineutral_ions=None, enforceSameGradients=False):
         """
