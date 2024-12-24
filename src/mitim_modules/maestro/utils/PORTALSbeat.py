@@ -240,7 +240,7 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
-    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True, change_last_radial_call = False):
+    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True, change_last_radial_call = False, minimum_relative_change_in_x = 0.005):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
@@ -301,11 +301,13 @@ class portals_beat(beat):
 
             # Check if I changed it previously and it hasn't moved
             if strKeys in self.maestro_instance.parameters_trans_beat:
-                print(f'\t\t\t*{strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
-                print(f'\t\t\t*{strKeys} in current PORTALS beat: {self.MODELparameters[strKeys]}')
-                if self.MODELparameters[strKeys][-1] == self.maestro_instance.parameters_trans_beat[strKeys][-1]:
+                print(f'\t\t\t* {strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
+                print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.MODELparameters[strKeys]}')
+
+                if abs(self.MODELparameters[strKeys][-1]-self.maestro_instance.parameters_trans_beat[strKeys][-1]) / self.maestro_instance.parameters_trans_beat[strKeys][-1] < minimum_relative_change_in_x:
                     print('\t\t\t* Last radial location was not moved')
                     last_radial_location_moved = False
+                    self.MODELparameters[strKeys][-1] = self.maestro_instance.parameters_trans_beat[strKeys][-1]
 
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
@@ -332,10 +334,10 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 
-        if 'RoaLocations' in self.MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RoaLocations'] = self.MODELparameters['RoaLocations']
-            print(f'\t\t* RoaLocations saved for future beats: {self.MODELparameters["RoaLocations"]}')
-        elif 'RhoLocations' in self.MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RhoLocations'] = self.MODELparameters['RhoLocations']
-            print(f'\t\t* RhoLocations saved for future beats: {self.MODELparameters["RhoLocations"]}')
+        if 'RoaLocations' in portals_output.MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RoaLocations'] = portals_output.MODELparameters['RoaLocations']
+            print(f'\t\t* RoaLocations saved for future beats: {portals_output.MODELparameters["RoaLocations"]}')
+        elif 'RhoLocations' in portals_output.MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RhoLocations'] = portals_output.MODELparameters['RhoLocations']
+            print(f'\t\t* RhoLocations saved for future beats: {portals_output.MODELparameters["RhoLocations"]}')
 

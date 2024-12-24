@@ -1,5 +1,6 @@
 import shutil
 import copy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
@@ -9,6 +10,7 @@ from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_modules.powertorch.physics import CALCtools
 from IPython import embed
 
 # <> Function to interpolate a curve <> 
@@ -60,7 +62,11 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self, loopBetaN = 1):
+    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005,):
+        '''
+            minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
+        '''
+
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -206,7 +212,7 @@ class eped_beat(beat):
             self.profiles_output = copy.deepcopy(self.profiles_current)
 
             x = self.profiles_current.profiles['rho(-)']
-            xp = rhotop
+            xroa = self.profiles_current.derived['roa']
 
             if 'rhotop' in self.__dict__:
                 print(f'\t\t- Using previously-stored rhotop: {self.rhotop:.3f}')
@@ -215,12 +221,17 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],xp,Ttop_keV,xp_old, label = 'Te')
 
-            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],xp,Ttop_keV,xp_old, label = 'Ti')
+            if abs(rhotop-xp_old)/xp_old < minimum_relative_change_in_x:
+                print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
+                rhotop = xp_old
+
+            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],rhotop,Ttop_keV,xp_old, label = 'Te', roa = xroa)
+
+            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
             self.profiles_output.makeAllThermalIonsHaveSameTemp()
 
-            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],xp,netop_20*1E1,xp_old, label = 'ne')
+            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
             self.profiles_output.enforceQuasineutrality()
 
             # ---------------------------------
@@ -361,18 +372,14 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_relative_change_in_x=0.005, label=''):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', keep_aLx=True, roa = None):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
-        minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
+        roa: needed if I want to keep the aLT profile in the core-predicted region
     '''
 
     print(f'\t\t- Scaling profile {label} by stretching')
-
-    if abs(xp-xp_old)/xp_old < minimum_relative_change_in_x:
-        print(f'\t\t\t* Keeping old core position because width variation is {abs(xp-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {xp:.3f})')
-        xp = xp_old
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
@@ -400,6 +407,21 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, minimum_rel
     ynew = copy.deepcopy(y)
     ynew[:ibc+1] = ycore_new
     ynew[ibc+1:] = yped[ibc+1:]
+
+
+    # Keep old aLT
+    if keep_aLx:
+        print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
+
+        # Calculate gradient in entire region
+        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+
+        # I'm only interested in core region, plus one ghost point with the same gradient
+        aLy = torch.cat( (aLy[:ibc+1], aLy[ibc].unsqueeze(0)) )
+
+        y_mod = CALCtools.integrateGradient( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
+        ynew[:ibc+2] = y_mod
+
 
     if plotYN:
         fig, ax = plt.subplots()
