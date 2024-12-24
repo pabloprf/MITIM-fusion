@@ -10,6 +10,9 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
 
+# <> Function to interpolate a curve <> 
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
 class portals_beat(beat):
 
     def __init__(self, maestro_instance):
@@ -269,11 +272,11 @@ class portals_beat(beat):
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in r/a)')
 
                 # interpolate the correct roa location from the EPED pedestal top, if it is defined
-                roatop = np.interp(self.maestro_instance.parameters_trans_beat['rhotop'], 
+                roatop = interpolation_function(self.maestro_instance.parameters_trans_beat['rhotop'], 
                                 self.profiles_current.profiles['rho(-)'], 
-                                self.profiles_current.derived['roa'])
+                                self.profiles_current.derived['roa']).item()
                 
-                roatop = round(roatop, 3)
+                #roatop = roatop.round(3)
                 
                 # set the last value of the radial locations to the interpolated value
                 roatop_old = copy.deepcopy(self.MODELparameters["RoaLocations"][-1])
@@ -296,6 +299,13 @@ class portals_beat(beat):
 
             last_radial_location_moved = True
 
+            # Check if I changed it previously and it hasn't moved
+            if strKeys in self.maestro_instance.parameters_trans_beat:
+                print(f'\t\t\t*{strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
+                print(f'\t\t\t*{strKeys} in current PORTALS beat: {self.MODELparameters[strKeys]}')
+                if self.MODELparameters[strKeys][-1] == self.maestro_instance.parameters_trans_beat[strKeys][-1]:
+                    print('\t\t\t* Last radial location was not moved')
+                    last_radial_location_moved = False
 
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
@@ -321,4 +331,11 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
+
+        if 'RoaLocations' in self.MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RoaLocations'] = self.MODELparameters['RoaLocations']
+            print(f'\t\t* RoaLocations saved for future beats: {self.MODELparameters["RoaLocations"]}')
+        elif 'RhoLocations' in self.MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RhoLocations'] = self.MODELparameters['RhoLocations']
+            print(f'\t\t* RhoLocations saved for future beats: {self.MODELparameters["RhoLocations"]}')
 
