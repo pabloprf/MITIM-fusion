@@ -59,19 +59,23 @@ class PORTALSanalyzer:
             opt_fun = STRATEGYtools.opt_evaluator(folder)
 
             try:
-                opt_fun.read_optimization_results(
-                    analysis_level=4, folderRemote=folderRemote
-                )
+
+                opt_fun.read_optimization_results(analysis_level=4, folderRemote=folderRemote)
+                step = opt_fun.mitim_model.steps[-1]    # To trigger potential exception
 
                 return cls(opt_fun, folderAnalysis=folderAnalysis)
 
-            except (FileNotFoundError, AttributeError) as e:
-                print(
-                    "\t- Could not read optimization results due to error:", typeMsg="w"
-                )
+            except (FileNotFoundError, AttributeError, IndexError) as e:
+                print("\t- Could not read optimization results due to error:", typeMsg="w")
                 print(e)
                 print("\t- Trying to read PORTALS initialization...", typeMsg="i")
-                return PORTALSinitializer(folder)
+
+                opt_fun_ini = PORTALSinitializer(folder)
+
+                # Attach to it what I could read from the original
+                opt_fun_ini.opt_fun_full = opt_fun
+
+                return opt_fun_ini
         else:
             print(
                 "\t- Folder does not exist, are you sure you are on the right path?",
@@ -972,6 +976,11 @@ class PORTALSinitializer:
         self.fn = None
 
     def plotMetrics(self, extra_lab="", **kwargs):
+
+        if len(self.powerstates) == 0:
+            print("- No powerstates available to plot metrics", typeMsg="w")
+            return
+
         if self.fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 

@@ -979,7 +979,7 @@ class MITIM_BO:
             step, aux = None, None
         except IndexError:
             print(f"\t- State file {stateFile} does not have all iterations required to continue from it", typeMsg="w")
-            step, aux = None, None
+            step = None
 
         return aux if provideFullClass else step
 

@@ -131,9 +131,20 @@ class portals_beat(beat):
         # Copy to outputs
         shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
+        # --------------------------------------------------------------------------------------------
         # Prepare final beat's input.gacode
+        # --------------------------------------------------------------------------------------------
+
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
-        self.profiles_output = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+
+        # Standard PORTALS output
+        try:
+            self.profiles_output = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+        # Converged in training case
+        except AttributeError:
+            print('\t\t- PORTALS probably converged in training, so analyzing a bit differently')
+            self.profiles_output = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
+
         self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
@@ -231,7 +242,13 @@ class portals_beat(beat):
     def finalize_maestro(self):
 
         portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
-        self.maestro_instance.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+
+        # Standard PORTALS output
+        try:
+            self.maestro_instance.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+        # Converged in training case
+        except AttributeError:
+            self.maestro_instance.final_p = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
         
         final_file = self.maestro_instance.folder_output / 'input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
@@ -322,7 +339,14 @@ class portals_beat(beat):
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()
 
-        stepSettings = portals_output.step.stepSettings
+        # Standard PORTALS output
+        try:
+            stepSettings = portals_output.step.stepSettings
+            MODELparameters = portals_output.MODELparameters
+        # Converged in training case
+        except AttributeError:
+            stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
+            MODELparameters =portals_output.opt_fun_full.mitim_model.optimization_object.MODELparameters
 
         max_value_neg_residual = stepSettings['optimization_options']['stopping_criteria_parameters']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
@@ -334,10 +358,10 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 
-        if 'RoaLocations' in portals_output.MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RoaLocations'] = portals_output.MODELparameters['RoaLocations']
-            print(f'\t\t* RoaLocations saved for future beats: {portals_output.MODELparameters["RoaLocations"]}')
-        elif 'RhoLocations' in portals_output.MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RhoLocations'] = portals_output.MODELparameters['RhoLocations']
-            print(f'\t\t* RhoLocations saved for future beats: {portals_output.MODELparameters["RhoLocations"]}')
+        if 'RoaLocations' in MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RoaLocations'] = MODELparameters['RoaLocations']
+            print(f'\t\t* RoaLocations saved for future beats: {MODELparameters["RoaLocations"]}')
+        elif 'RhoLocations' in MODELparameters:
+            self.maestro_instance.parameters_trans_beat['RhoLocations'] = MODELparameters['RhoLocations']
+            print(f'\t\t* RhoLocations saved for future beats: {MODELparameters["RhoLocations"]}')
 
