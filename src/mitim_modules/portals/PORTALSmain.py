@@ -223,7 +223,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
             "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
             "surrogateForTurbExch": False,  # Run turbulent exchange as surrogate?
-            "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes (only CGYRO so far)
+            "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes
             "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
@@ -511,10 +511,13 @@ class portals(STRATEGYtools.opt_evaluator):
         if 'TargetType' in self.MODELparameters["Physics_options"]:
             raise Exception("\t- TargetType is not used in PORTALS anymore, removing")
 
+        if self.PORTALSparameters["TargetCalc"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
+            print(
+                "\t- Requested custom modification of postprocessing function but targets from tgyro... are you sure?",
+                typeMsg="q",
+            )
 
-        key_rhos = (
-            "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
-        )
+        key_rhos = "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
 
         return key_rhos
 

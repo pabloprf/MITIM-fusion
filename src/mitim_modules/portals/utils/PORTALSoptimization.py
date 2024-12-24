@@ -102,7 +102,6 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
 
 
     # Create powerstate with the same options as the original portals but with the new profiles
-    embed()
     powerstate = STATEtools.powerstate(
         profiles_new,
         EvolutionOptions={
