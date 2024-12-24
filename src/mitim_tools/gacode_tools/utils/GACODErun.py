@@ -997,7 +997,7 @@ def runTGLF(
         )
         rho_array = None
 
-        ntasks = len(rhos)
+        ntasks = total_tglf_cores
         cpuspertask = cores_tglf
 
     elif typeRun in ["array"]:
@@ -1027,7 +1027,7 @@ def runTGLF(
             "name": name,
             "cpuspertask": cpuspertask,
             "job_array": rho_array,
-            "nodes": 1,
+            #"nodes": 1,
         },
     )
 
