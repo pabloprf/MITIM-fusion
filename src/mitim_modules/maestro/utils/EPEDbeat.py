@@ -43,10 +43,10 @@ class eped_beat(beat):
 
         self._inform()
 
+    def run(self, **kwargs):
+
         # Write here
         shutil.copy2(self.initialize.folder / "input.gacode", self.folder / "input.gacode")
-
-    def run(self, **kwargs):
 
         # -------------------------------------------------------
         # Run the NN

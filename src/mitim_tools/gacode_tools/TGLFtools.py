@@ -671,7 +671,6 @@ class TGLF:
             self.ResultsFiles,
             FolderTGLF,
             cold_start=cold_start,
-            forceIfcold_start=forceIfcold_start,
         )
 
         if len(rhosEvaluate) == len(rhos):
@@ -6326,7 +6325,7 @@ def cold_start_checker(
     ResultsFiles,
     FolderTGLF,
     cold_start=False,
-    forceIfcold_start=False,
+    print_each_time=False,
 ):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
@@ -6335,6 +6334,7 @@ def cold_start_checker(
         rhosEvaluate = rhos
     else:
         rhosEvaluate = []
+        cont_each = 0
         for ir in rhos:
             existsRho = True
             for j in ResultsFiles:
@@ -6342,9 +6342,15 @@ def cold_start_checker(
                 existsThis = ffi.exists()
                 existsRho = existsRho and existsThis
                 if not existsThis:
-                    print(f"\t* {ffi} does not exist")
+                    if print_each_time:
+                        print(f"\t* {ffi} does not exist")
+                    else:
+                        cont_each += 1
             if not existsRho:
                 rhosEvaluate.append(ir)
+
+    if not print_each_time and cont_each > 0:
+        print(f'\t* {cont_each} files from expected set are missing')
 
     if len(rhosEvaluate) < len(rhos) and len(rhosEvaluate) > 0:
         print(
