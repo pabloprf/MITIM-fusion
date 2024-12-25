@@ -147,6 +147,7 @@ class transp_nml:
 
         self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
+        self.dtCurrentDiffusion_ms = transp_params.get("dtCurrentDiffusion_ms",2.0)
         self.dtOut_ms = transp_params.get("dtOut_ms",1)
         self.dtIn_ms = transp_params.get("dtIn_ms",1)
         self.nzones = transp_params.get("nzones",100)
@@ -259,17 +260,17 @@ class transp_nml:
             "!----- Temporal resolution",
             "",
             "! * Geometry (MHD equilibrium)",
-            f"dtming = {1.0e-5}  ! Minimum timestep",
+            f"dtming = {1.0e-5}  ! Minimum timestep (default 1.0e-5)",
             f"dtmaxg = {self.dtEquilMax_ms*1E-3}  ! Maximum timestep (default 1.0e-2)",
             "",
-            "! * Particle and energy balance (transport)",
+            "! * Transport analysis (particle and energy balance)",
             f"dtinit = {1.0e-3}  ! Initial timestep (default 1.0e-3)",
             f"dtmint = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
             f"dtmaxt = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
             "",
             "! * Poloidal field diffusion",
             f"dtminb = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
-            f"dtmaxb = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
+            f"dtmaxb = {self.dtCurrentDiffusion_ms*1E-3}  ! Maximum timestep (default 2.0e-3)",
             "",
             "! * Heating and current drive",
             f"dticrf = {self.dtHeating_ms*1E-3} ! Timestep step for ICRF/TORIC (default 5.0e-3)",
