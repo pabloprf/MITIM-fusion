@@ -981,13 +981,19 @@ class PORTALSinitializer:
             print("- No powerstates available to plot metrics", typeMsg="w")
             return
 
-        if self.fn is None:
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
+        # Prepare figure -------------
+        if 'fig' in kwargs and kwargs['fig'] is not None:
+            print('Using provided figure, assuming I only want a summary')
+            figMain = kwargs['fig']
+            figG = None
+        else:
+            if self.fn is None:
+                from mitim_tools.misc_tools.GUItools import FigureNotebook
+                self.fn = FigureNotebook("PowerState", geometry="1800x900")
 
-            self.fn = FigureNotebook("PowerState", geometry="1800x900")
-
-        figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
-        figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
+            figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
+            figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
+        # ----------------------------
 
         axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
 
@@ -1037,33 +1043,34 @@ class PORTALSinitializer:
             )
 
         # GRADIENTS
-        if len(self.powerstates) > 0:
-            grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
-            axsGrads = []
-            for j in range(5):
-                for i in range(2):
-                    axsGrads.append(figG.add_subplot(grid[i, j]))
-            for i, p in enumerate(self.powerstates):
-                p.profiles.plotGradients(
-                    axsGrads,
-                    color=colors[i],
-                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
-                    plotRotation='w0' in p.ProfilesPredicted,
-                    lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                    label=f"profile #{i}",
-                )
+        if figG is not None:
+            if len(self.powerstates) > 0:
+                grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
+                axsGrads = []
+                for j in range(5):
+                    for i in range(2):
+                        axsGrads.append(figG.add_subplot(grid[i, j]))
+                for i, p in enumerate(self.powerstates):
+                    p.profiles.plotGradients(
+                        axsGrads,
+                        color=colors[i],
+                        plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                        plotRotation='w0' in p.ProfilesPredicted,
+                        lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
+                        label=f"profile #{i}",
+                    )
 
 
-            if len(self.profiles) > len(self.powerstates):
-                prof = self.profiles[-1]
-                prof.plotGradients(
-                    axsGrads,
-                    color=colors[i+1],
-                    plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
-                    plotRotation='w0' in p.ProfilesPredicted,
-                    lastRho=p.plasma["rho"][-1, -1].item(),
-                    label="next",
-                )
+                if len(self.profiles) > len(self.powerstates):
+                    prof = self.profiles[-1]
+                    prof.plotGradients(
+                        axsGrads,
+                        color=colors[i+1],
+                        plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                        plotRotation='w0' in p.ProfilesPredicted,
+                        lastRho=p.plasma["rho"][-1, -1].item(),
+                        label="next",
+                    )
 
-            axs[0].legend(prop={"size": 8})
-            axsGrads[0].legend(prop={"size": 8})
+                axs[0].legend(prop={"size": 8})
+                axsGrads[0].legend(prop={"size": 8})

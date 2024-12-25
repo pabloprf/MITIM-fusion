@@ -152,7 +152,7 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            ptop_kPa, wtop_psipol = self.nn(
+            inputs_to_nn = (
                 self.current_evaluation["Ip"],
                 self.current_evaluation["Bt"],
                 self.current_evaluation["R"],
@@ -162,9 +162,11 @@ class eped_beat(beat):
                 self.current_evaluation["neped_20"]*10,
                 BetaN,
                 self.current_evaluation["zeff"],
-                tesep=self.current_evaluation["Tesep_keV"]* 1E3,
-                nesep_ratio=self.current_evaluation["nesep_ratio"]
-            )
+                self.current_evaluation["Tesep_keV"]* 1E3,
+                nesep_ratio
+                )
+
+            ptop_kPa, wtop_psipol = self.nn(inputs_to_nn)
 
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
@@ -261,6 +263,7 @@ class eped_beat(beat):
             'nesep_20': nesep_20,
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
+            'inputs_to_nn': inputs_to_nn,
         }
 
         for key in eped_results:

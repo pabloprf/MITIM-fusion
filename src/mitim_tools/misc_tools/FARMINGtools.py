@@ -460,7 +460,7 @@ class mitim_job:
                 tar.add(self.folder_local / file, arcname=file)
 
         # Send it
-        print("\t\t- Sending")
+        print("\t\t- Sending (local -> remote)")
         if self.ssh is not None:
             with TqdmUpTo(
                 unit="B",
@@ -491,7 +491,7 @@ class mitim_job:
         )
 
         # Remove tarballs
-        print("\t\t- Removing tarballs")
+        print("\t\t- Removing tarball")
         (self.folder_local / "mitim_send.tar.gz").unlink(missing_ok=True)
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
@@ -569,7 +569,7 @@ class mitim_job:
         )
 
         # Download the tarball
-        print("\t\t- Downloading")
+        print("\t\t- Downloadin (remote -> local)")
         if self.ssh is not None:
             with TqdmUpTo(
                 unit="B",
@@ -599,7 +599,7 @@ class mitim_job:
             tar.extractall(path=self.folder_local)
 
         # Remove tarballs
-        print("\t\t- Removing tarballs")
+        print("\t\t- Removing tarball")
         (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
         self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
@@ -609,7 +609,7 @@ class mitim_job:
                 check_files_in_folder=check_files_in_folder
             )
             if received:
-                print("\t\t- All correct")
+                print("\t\t- All correct", typeMsg="i")
             else:
                 print("\t* Not all received, trying once again", typeMsg="w")
                 time.sleep(10)

@@ -96,7 +96,7 @@ mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 
 # MAESTRO
 mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
 
-# To run TRANSP (in folder with required files): transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
+# To run TRANSP (in folder with required files): mitim_run_transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
 mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
 
 # Others
