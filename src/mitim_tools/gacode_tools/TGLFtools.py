@@ -6330,11 +6330,11 @@ def cold_start_checker(
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
     """
+    cont_each = 0
     if cold_start:
         rhosEvaluate = rhos
     else:
         rhosEvaluate = []
-        cont_each = 0
         for ir in rhos:
             existsRho = True
             for j in ResultsFiles:
