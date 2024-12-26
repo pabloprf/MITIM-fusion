@@ -48,12 +48,21 @@ dependencies = [
 pyqt = [
   "PyQt6",
 ]
-omfit = [
-  "omfit_classes",
+omfit_new = [
+  "omfit_classes>3.2024.19.2", # Otherwise, it will need an old version of matplotlib, matplotlib<3.6
   "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
   "numpy<2.0.0",      # For the xarray requirement below to work
   "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
-  "matplotlib<3.6",   # As of 12/07/2023, omfit_classes fails for higher versions
+  "omas",
+  "fortranformat",
+  "openpyxl",
+]
+omfit = [
+  "omfit_classes==3.2024.19.2", 
+  "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
+  "numpy<2.0.0",      # For the xarray requirement below to work
+  "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
+  "matplotlib<3.6",
   "omas",
   "fortranformat",
   "openpyxl",

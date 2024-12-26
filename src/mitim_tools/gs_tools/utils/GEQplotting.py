@@ -532,10 +532,10 @@ def plotParameterization(self, axs=None):
     )
     patch = matplotlib.patches.PathPatch(path, facecolor="none")
     ax.add_patch(patch)
-    for col in cs.collections:
-        col.set_clip_path(patch)
-    for col in csA.collections:
-        col.set_clip_path(patch)
+    # for col in cs.collections:
+    #     col.set_clip_path(patch)
+    # for col in csA.collections:
+    #     col.set_clip_path(patch)
 
     self.plotEnclosingBox(ax=ax)
 
