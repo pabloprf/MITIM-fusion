@@ -166,7 +166,7 @@ class eped_beat(beat):
                 nesep_ratio
                 )
 
-            ptop_kPa, wtop_psipol = self.nn(inputs_to_nn)
+            ptop_kPa, wtop_psipol = self.nn(*inputs_to_nn)
 
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')

@@ -21,6 +21,7 @@ class transp_beat(beat):
         transition_window   = 0.10,  # To prevent equilibrium crashes
         freq_ICH            = None,  # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,  # To extract AC quantities
+        extract_last_instead_of_sawtooth = False,  # To extract last time instead of sawtooth
         **transp_namelist
         ):
         '''
@@ -38,6 +39,8 @@ class transp_beat(beat):
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
+
+        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
 
         if shot is None:
             folder_last = self.maestro_instance.folder.resolve().name
@@ -139,7 +142,8 @@ class transp_beat(beat):
         shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        time_extraction = self.transp.c.t[self.transp.c.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
+        it_extract = self.transp.c.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
+        time_extraction = self.transp.c.t[it_extract] 
         self.profiles_output = self.transp.c.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
