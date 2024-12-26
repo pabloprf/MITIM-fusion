@@ -651,7 +651,8 @@ class MITIM_BO:
             self.numIterations = 0
 
         if self.numIterations == 0:
-            print("- No iterations requested, stopping",typeMsg="i")
+            print("- No iterations requested, stopping (but first, running a training step)",typeMsg="i")
+            self.numIterations = 1
             self.hard_finish = True
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -665,9 +666,7 @@ class MITIM_BO:
             timeBeginningThis = datetime.datetime.now()
 
             print("\n------------------------------------------------------------")
-            print(
-                f'\tMITIM Step {self.currentIteration} ({timeBeginningThis.strftime("%Y-%m-%d %H:%M:%S")})'
-            )
+            print(f'\tMITIM Step {self.currentIteration} ({timeBeginningThis.strftime("%Y-%m-%d %H:%M:%S")})')
             print("------------------------------------------------------------")
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -675,9 +674,7 @@ class MITIM_BO:
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             if self.currentIteration > 0:
-                print(
-                    f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)"
-                )
+                print(f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)")
 
                 # *NOTE*: self.x_next has been updated earlier, either from a cold_start or from the full workflow
                 yN, yNstd = self.updateSet(self.StrategyOptions_use)
@@ -692,35 +689,25 @@ class MITIM_BO:
 
                 # Removing those spaces in the metrics that were not filled up
                 for ikey in self.keys_metrics:
-                    for i in range(
-                        self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1
-                    ):
+                    for i in range(self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1):
                         del self.BOmetrics[ikey][i]
                 # ------------------------------------------------------------------------------------------
 
-                break
+                #break
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~~~~ Perform BO step
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             # Does the tabular file include at least as many rows as requested to be run in this step?
-            pointsTabular = len(
-                self.optimization_data.data
-            )  # Number of points that the Tabular contains
+            pointsTabular = len(self.optimization_data.data)  # Number of points that the Tabular contains
             pointsExpected = len(self.train_X) + self.best_points
             if not self.cold_start:
                 if not pointsTabular >= pointsExpected:
-                    print(
-                        f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",
-                        typeMsg="w",
-                    )
+                    print(f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
                     self.cold_start = True
                 else:
-                    print(
-                        f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",
-                        typeMsg="i",
-                    )
+                    print(f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
 
             # In the case of starting from previous, do not run BO process.
             if not self.cold_start:
@@ -751,9 +738,7 @@ class MITIM_BO:
             if not self.cold_start:
                 # Read next from Tabular
                 self.x_next, _, _ = self.optimization_data.extract_points(
-                    points=np.arange(
-                        len(self.train_X), len(self.train_X) + self.best_points
-                    )
+                    points=np.arange(len(self.train_X), len(self.train_X) + self.best_points)
                 )
                 self.x_next = torch.from_numpy(self.x_next).to(self.dfT)
 
@@ -793,11 +778,7 @@ class MITIM_BO:
 				---------------------------------------------------------------------------------------
 				"""
 
-                train_Ystd = (
-                    self.train_Ystd
-                    if (self.optimization_options["train_Ystd"] is None)
-                    else self.optimization_options["train_Ystd"]
-                )
+                train_Ystd = self.train_Ystd if (self.optimization_options["train_Ystd"] is None) else self.optimization_options["train_Ystd"]
 
                 current_step = STEPtools.OPTstep(
                     self.train_X,
@@ -812,16 +793,12 @@ class MITIM_BO:
                 )
 
                 # Incorporate strategy_options for later retrieving
-                current_step.StrategyOptions_use = copy.deepcopy(
-                    self.StrategyOptions_use
-                )
+                current_step.StrategyOptions_use = copy.deepcopy(self.StrategyOptions_use)
 
                 self.steps.append(current_step)
 
                 # Avoid points
-                avoidPoints = np.append(
-                    self.avoidPoints_failed, self.avoidPoints_outside
-                )
+                avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
                 self.avoidPoints = np.unique([int(j) for j in avoidPoints])
 
                 # ***** Fit
@@ -832,11 +809,14 @@ class MITIM_BO:
                     self.save()
 
                 # ***** Optimize
-                self.steps[-1].optimize(
-                    self.scalarized_objective,
-                    position_best_so_far=self.BOmetrics["overall"]["indBest"],
-                    seed=self.seed,
-                )
+                if not self.hard_finish:
+                    self.steps[-1].optimize(
+                        self.scalarized_objective,
+                        position_best_so_far=self.BOmetrics["overall"]["indBest"],
+                        seed=self.seed,
+                    )
+                else:
+                    self.steps[-1].x_next = None
 
             # Pass the information about next step
             self.x_next = self.steps[-1].x_next
