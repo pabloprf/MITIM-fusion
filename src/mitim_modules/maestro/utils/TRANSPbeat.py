@@ -15,24 +15,27 @@ class transp_beat(beat):
 
     def prepare(
         self,
-        letter = None,
-        shot = None, 
-        flattop_window      = 0.20,  # To allow for steady-state in heating and current diffusion
-        transition_window   = 0.10,  # To prevent equilibrium crashes
-        freq_ICH            = None,  # Frequency of ICRF heating (if None, find optimal)
-        extractAC           = False,  # To extract AC quantities
-        extract_last_instead_of_sawtooth = False,  # To extract last time instead of sawtooth
+        letter              = None,
+        shot                = None, 
+        flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
+        extractAC           = False,                # To extract AC quantities
+        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
         **transp_namelist
         ):
         '''
-        Using some smart defaults to avoid repeating TRANSP runid
-            shot will be 5 digits that depend on the last subfolder
-                e.g. run_cmod1 -> '94351', run_cmod2 -> '94352', run_d3d1 -> '72821', etc
-            letter will depend on username in this machine, if it can be found
-                e.g. pablorf -> 'P"
+        - For letter and shot:
+            Using some smart defaults to avoid repeating TRANSP runid
+                shot will be 5 digits that depend on the last subfolder
+                    e.g. run_cmod1 -> '94351', run_cmod2 -> '94352', run_d3d1 -> '72821', etc
+                letter will depend on username in this machine, if it can be found
+                    e.g. pablorf -> 'P"
+        - transp_namelist is a dictionary with the keys that I want to be different from the defaults
+            (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
 
         # Define timings
+        transition_window     = 0.1     # To prevent equilibrium crashes
         currentheating_window = 0.001
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
@@ -71,7 +74,7 @@ class transp_beat(beat):
         transp_namelist_mod = copy.deepcopy(transp_namelist)
 
         if 'timings' in transp_namelist_mod:
-            raise ValueError('[MITIM] Cannot define timings in a MAESTRO transp_namelist')
+            raise ValueError('[MITIM] You cannot define timings in a MAESTRO transp_namelist!')
         else:
             transp_namelist_mod['timings'] = {
                 "time_start": self.time_init,
@@ -81,7 +84,7 @@ class transp_beat(beat):
             }
 
         if 'Ufiles' in transp_namelist_mod:
-            raise ValueError('[MITIM] Cannot define UFILES in a MAESTRO transp_namelist')
+            raise ValueError('[MITIM] You cannot define UFILES in a MAESTRO transp_namelist')
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
@@ -272,3 +275,41 @@ class transp_beat(beat):
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4, 1.0
         
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Defaults to help MAESTRO
+# -----------------------------------------------------------------------------------------------------------------------
+
+def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current_diffusion = False):
+
+    transp_namelist = {
+        'flattop_window': 1.0,       
+        'extractAC': False,      
+        'dtOut_ms' : 10.0,
+        'dtIn_ms' : 10.0,
+        'nzones' : 60,
+        'nzones_energetic' : 20, 
+        'nzones_distfun' : 10,     
+        'MCparticles' : 1e4,
+        'toric_ntheta' : 64,   
+        'toric_nrho' : 128, 
+        'Pich': parameters_engineering['PichT_MW']>0.0,
+        'DTplasma': parameters_mix['DTplasma'],
+        'useNUBEAMforAlphas': True,
+        'Minorities': parameters_mix['minority'],
+        "zlump" :[  [74.0, 184.0, 0.1*parameters_mix['impurity_ratio_WtoZ']],
+                    [parameters_mix['lowZ_impurity'], parameters_mix['lowZ_impurity']*2, 0.1] ],
+        }
+
+    if only_current_diffusion:
+        transp_namelist['flattop_window'] = 15.0
+        transp_namelist['dtEquilMax_ms'] = 100.0
+        transp_namelist['dtHeating_ms'] = 100.0 
+        transp_namelist['dtCurrentDiffusion_ms'] = 100.0
+        transp_namelist['dtOut_ms'] = 100.0
+        transp_namelist['dtIn_ms'] = 100.0
+        transp_namelist['useNUBEAMforAlphas'] = False
+        transp_namelist['Pich'] = False
+
+    return transp_namelist
+

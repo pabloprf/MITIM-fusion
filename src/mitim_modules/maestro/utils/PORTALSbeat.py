@@ -365,3 +365,19 @@ class portals_beat(beat):
             self.maestro_instance.parameters_trans_beat['RhoLocations'] = MODELparameters['RhoLocations']
             print(f'\t\t* RhoLocations saved for future beats: {MODELparameters["RhoLocations"]}')
 
+# -----------------------------------------------------------------------------------------------------------------------
+# Defaults to help MAESTRO
+# -----------------------------------------------------------------------------------------------------------------------
+
+def portals_beat_soft_criteria():
+
+    optimization_options = {
+        "BO_iterations": 15,
+        'stopping_criteria_parameters': {
+                "maximum_value": 10e-3,  # Reducing residual by 100x is enough
+                "maximum_value_is_rel": True,
+                "minimum_dvs_variation": [10, 3, 1.0],  # After iteration 10, Check if 3 consecutive DVs are varying less than 1.0% from the rest that has been evaluated
+                "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 1.0,
+            } }
+    
+    return optimization_options
