@@ -112,18 +112,18 @@ class maestro:
         # Check here if the beat has already been performed
         self.check(cold_start = cold_start or self.master_cold_start )
 
-    def define_creator(self, method, **kwargs):
+    def define_creator(self, method, **kwargs_creator):
         '''
         To initialize some profile functional form
         '''
         if method == 'eped':
-            self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs)
+            self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
-            self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs)
+            self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
         elif method == 'profiles':
-            self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs)
+            self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs_creator)
         else:
-            raise ValueError(f'Creator method {method} not recognized')
+            raise ValueError(f'[MITIM] Creator method {method} not recognized')
 
     # --------------------------------------------------------------------------------------------
     # Beat operations

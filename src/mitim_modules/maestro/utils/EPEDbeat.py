@@ -21,11 +21,17 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
-    def prepare(self, nn_location = None, norm_location = None, neped_20 = None, BetaN = None, Tesep_keV = None, nesep_20 = None, corrections_set = {}, **kwargs):
-        ''' 
-        EPED beat may receive the following parameters: neped_20, BetaN, Tesep_keV, nesep_20.
-        If they are not provided, they will be taken from the profiles_current.
-        '''
+    def prepare(
+            self,
+            nn_location = None, 
+            norm_location = None,
+            neped_20 = None,        # Force this pedestal density (e.g. at creator stage), otherwise from the profiles_current
+            BetaN = None,           # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
+            Tesep_keV = None,       # Force this Te at the separatrix, otherwise from the profiles_current
+            nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
+            corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
+            **kwargs
+            ):
 
         self.nn = NNtools.eped_nn(type='tf')
         nn_location = IOtools.expandPath(nn_location)
@@ -62,7 +68,7 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005,):
+    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
         '''

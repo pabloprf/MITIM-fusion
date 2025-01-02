@@ -67,7 +67,7 @@ class PORTALSanalyzer:
 
             except (FileNotFoundError, AttributeError, IndexError) as e:
                 print("\t- Could not read optimization results due to error:", typeMsg="w")
-                print(e)
+                print(f"\t\t{e}")
                 print("\t- Trying to read PORTALS initialization...", typeMsg="i")
 
                 opt_fun_ini = PORTALSinitializer(folder)

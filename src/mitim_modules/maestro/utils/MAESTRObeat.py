@@ -346,11 +346,11 @@ class creator_from_parameterization(creator):
 
 class creator_from_eped(creator_from_parameterization):
 
-    def __init__(self, initialize_instance, label = 'eped', BetaN = None, **parameters):
+    def __init__(self, initialize_instance, label = 'eped', BetaN = None, **kwargs_eped):
         super().__init__(initialize_instance, label = label)
 
         self.BetaN = BetaN
-        self.parameters = parameters
+        self.parameters = kwargs_eped
         if self.BetaN is None:
             raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
 
