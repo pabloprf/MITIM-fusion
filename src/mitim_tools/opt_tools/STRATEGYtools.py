@@ -645,13 +645,16 @@ class MITIM_BO:
         self.initializeOptimization()
 
         self.currentIteration = -1
+
+        # Has the problem reached convergence in the training?
         converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = 0
 
+        # If no iterations are requested, just run the training step
         if self.numIterations == 0:
-            print("- No iterations requested, stopping (but first, running a training step)",typeMsg="i")
+            print("- No BO iterations requested, workflow will stop after running a training step (to enable reading later)",typeMsg="i")
             self.numIterations = 1
             self.hard_finish = True
 
@@ -692,8 +695,6 @@ class MITIM_BO:
                     for i in range(self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1):
                         del self.BOmetrics[ikey][i]
                 # ------------------------------------------------------------------------------------------
-
-                #break
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~~~~ Perform BO step
@@ -748,10 +749,7 @@ class MITIM_BO:
 
                 # If there is any Nan, assume that I cannot cold_start this step
                 if IOtools.isAnyNan(self.x_next.cpu()):
-                    print(
-                        "\t* Because x_next points have NaNs, disabling cold_starting-from-previous from this point on",
-                        typeMsg="w",
-                    )
+                    print("\t* Because x_next points have NaNs, disabling cold_starting-from-previous from this point on",typeMsg="w")
                     self.cold_start = True
 
                 # Step is valid, append to this current one
@@ -825,22 +823,13 @@ class MITIM_BO:
             if self.storeClass and self.cold_start:
                 self.save()
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~ Run last point with actual model
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if not self.hard_finish:
-            print("\n\n ------------------------------------------------------------")
-            print(" Final evaluation of optima predicted at last MITIM step")
-            print("------------------------------------------------------------\n\n")
-
-            _, _ = self.updateSet(self.StrategyOptions, ForceNotApplyCorrections=True)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if self.hard_finish:
+                break
 
         self.save()
 
-        print(
-            f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~"
-        )
+        print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
         print("********************************************************\n")
 
     def prepare_for_save_MITIMBO(self, copyClass):
@@ -955,10 +944,10 @@ class MITIM_BO:
                 typeMsg="i",
             )
         except FileNotFoundError:
-            print(f"\t- State file {stateFile} not found", typeMsg="w")
+            print(f"\t- State file {IOtools.clipstr(stateFile)} not found", typeMsg="w")
             step, aux = None, None
         except IndexError:
-            print(f"\t- State file {stateFile} does not have all iterations required to continue from it", typeMsg="w")
+            print(f"\t- State file {IOtools.clipstr(stateFile)} does not have all iterations required to continue from it", typeMsg="w")
             step = None
 
         return aux if provideFullClass else step
