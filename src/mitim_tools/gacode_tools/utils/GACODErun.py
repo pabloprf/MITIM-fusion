@@ -224,32 +224,20 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
 
     LocationCDF = IOtools.expandPath(LocationCDF)
     Folder = LocationCDF.parent
-    print(
-        f"\t- Looking for namelist in folder ...{IOtools.clipstr(Folder)}"
-    )
+    print(f"\t- Looking for namelist in folder ...{IOtools.clipstr(Folder)}")
 
-    NML = IOtools.findFileByExtension(Folder, "TR.DAT", ForceFirst=ForceFirst)
+    LocationNML = IOtools.findFileByExtension(Folder, "TR.DAT", ForceFirst=ForceFirst)
 
     # -----------------------------------------------------------
     # Copy to folder or create dummy if it has not been found
     # -----------------------------------------------------------
 
-    LocationNML = folderWork / f"{nameRunid}TR.DAT"
-
-    if NML is None:
-        print(
-            "\t\t- Creating dummy namelist because it was not found in folder",
-            typeMsg="i",
-        )
+    if LocationNML is None:
+        print("\t\t- Creating dummy namelist because it was not found in folder",typeMsg="i",)
         with open(LocationNML, "w") as f:
             f.write(f"nshot = {nameRunid}")
         dummy = True
     else:
-        LocationNML_orig = Folder / NML / "TR.DAT"
-        print(
-            f"\t\t- Namelist was found: {NML}TR.DAT, copying to ...{IOtools.clipstr(LocationNML)}"
-        )
-        shutil.copy2(LocationNML_orig, LocationNML)
         dummy = False
 
     return LocationNML, dummy
