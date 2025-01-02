@@ -81,7 +81,17 @@ def default_namelist(optimization_options, CGYROrun=False):
         optimization_options["acquisition"]["points_per_step"] = 1
     else:
         optimization_options["acquisition"]["type"] = "posterior_mean"#"noisy_logei_mc"
-        optimization_options["acquisition"]["optimization"] = {"botorch": {}}   # TGLF runs should prioritize speed, and botorch is robust enough
+        optimization_options["acquisition"]["optimization"] = {
+            "root": {
+                "num_restarts": 5,
+                "keep_best": 1
+                },
+            "botorch": {
+                "num_restarts": 64,
+                "raw_samples": 4096,
+                "keep_best": 1
+                },
+            }   # TGLF runs should prioritize speed, and botorch is robust enough
         optimization_options["acquisition"]["points_per_step"] = 1
 
     return optimization_options
