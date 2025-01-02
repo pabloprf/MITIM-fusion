@@ -1670,7 +1670,7 @@ class MITIM_BO:
         fig = fn.add_figure(label=f"#{boStep}: Jacobian", tab_color=tab_color)
         maxPoints = 1  # 4
         xExplore = []
-        if "x_next" in step.__dict__.keys():
+        if "x_next" in step.__dict__.keys() and step.x_next is not None:
             for i in range(np.min([step.x_next.shape[0], maxPoints])):
                 xExplore.append(step.x_next[i].cpu().numpy())
         else:

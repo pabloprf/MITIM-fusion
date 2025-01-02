@@ -622,7 +622,7 @@ class TGLF:
         #  Cannot be in parallel to the previous run, because it needs the results of unstable ky
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if "runWaveForms" in kwargs_TGLFrun and len(kwargs_TGLFrun["runWaveForms"]) > 0:
+        if "runWaveForms" in kwargs_TGLFrun and kwargs_TGLFrun["runWaveForms"] is not None and len(kwargs_TGLFrun["runWaveForms"]) > 0:
             self._run_wf(
                 kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun
             )
