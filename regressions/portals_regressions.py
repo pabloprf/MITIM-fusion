@@ -58,7 +58,7 @@ for test in tests:
             portals_fun.INITparameters["removeFast"] = True
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti"]
-            portals_fun.optimization_options["optimizers"] = "botorch"
+            portals_fun.optimization_options["acquisition"]["optimization"] = {"botorch":{}}
 
             portals_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.diffusion_model
             ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}

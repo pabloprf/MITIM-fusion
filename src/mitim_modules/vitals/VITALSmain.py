@@ -13,7 +13,7 @@ def default_namelist(optimization_options):
 
     optimization_options["initial_training"] = 8
     optimization_options["BO_iterations"] = 20
-    optimization_options["points_per_step"] = 4
+    optimization_options["acquisition"]["points_per_step"] = 4
     optimization_options["parallel_evaluations"] = (
         1  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )
@@ -24,11 +24,14 @@ def default_namelist(optimization_options):
     optimization_options["StrategyOptions"]["TURBO_addPoints"] = 16
 
     # Acquisition
-    optimization_options["optimizers"] = "root_5-botorch-ga"
-    optimization_options["acquisition_type"] = "posterior_mean"
-
+    optimization_options["acquisition"]["type"] = "posterior_mean"
+    optimization_options["acquisition"]["optimization"] = {
+        "root": {"num_restarts": 5},
+        "botorch": {},
+        "ga": {},
+        }
+    
     return optimization_options
-
 
 class vitals(STRATEGYtools.opt_evaluator):
     def __init__(self, folder, namelist=None, **kwargs):

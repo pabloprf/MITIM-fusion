@@ -20,19 +20,30 @@
         "ensure_within_bounds": false,
         "expand_bounds": true,
         "parallel_evaluations": 1,
-        "acquisition_type": "noisy_logei_mc",
-        "acquisition_params" : {
-            "mc_samples": 1024,
-            "acquisition_optimization" : {
-                "num_restarts": 128,
-                "raw_samples": 1024,
-                "parallel_roots": 5
+        "acquisition": {
+            "type": "noisy_logei_mc",
+            "parameters": {
+                "mc_samples": 1024
+                },
+            "optimization": {
+                "root": {
+                    "num_restarts": 5,
+                    "keep_best": 1
+                    },
+                "botorch": {
+                    "num_restarts": 128,
+                    "raw_samples": 1024,
+                    "keep_best": 1
+                    },
+                "ga": {
+                    "keep_best": 32
+                    }
+                },
+            "relative_improvement_for_stopping": null,
+            "favor_proximity_type": 0,
+            "ensure_new_points": true,
+            "points_per_step": 1
             }
-        },
-        "optimizers": "botorch",
-        "points_per_step": 1,
-        "favor_proximity_type": 0,
-        "ensure_new_points": true
     },
     "surrogateOptions": {
         "TypeKernel": 0,

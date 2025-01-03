@@ -34,8 +34,7 @@ class fun_optimization:
             self.bounds_mod[0, i] -= self.StrategyOptions["AllowedExcursions"][0] * tot
             self.bounds_mod[1, i] += self.StrategyOptions["AllowedExcursions"][1] * tot
 
-    def prep(self, number_optimized_points=1, xGuesses=None, seed=0):
-        self.number_optimized_points = number_optimized_points
+    def prep(self, xGuesses=None, seed=0):
         self.xGuesses = xGuesses
         self.seed = seed
 
@@ -105,6 +104,7 @@ class fun_optimization:
         previous_solutions=None,
         best_performance_previous_iteration=None,
         method_parameters={},
+        enoughPerformance=None,
     ):
         """
         Possible Methods
@@ -130,7 +130,7 @@ class fun_optimization:
         if previous_solutions is not None:
             x_opt, y_opt_residual, z_opt = previous_solutions
 
-            x_opt, y_opt_residual, z_opt = pointSelection(
+            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = select_points(
                 x_opt2,
                 y_opt_residual2,
                 z_opt2,
@@ -140,6 +140,7 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
+                enoughPerformance=enoughPerformance
             )
 
         else:
@@ -149,20 +150,19 @@ class fun_optimization:
                 z_opt2,
             )
 
-        return x_opt, y_opt_residual, z_opt, info
+        return x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate
 
 
-def optAcq(
+def acquire_next_points(
     stepSettings={},
     evaluators={},
     StrategyOptions={},
     best_points=5,
-    optimization_sequence=["ga"],
+    optimizers={},
     it_number=1,
     seed=0,
     position_best_so_far=-1,
     forceAllPointsInBounds=False,
-    acquisition_optim_params = {},
 ):
     """
     Everything returned here is unnormalized
@@ -181,15 +181,9 @@ def optAcq(
     """
 
     time1 = datetime.datetime.now()
-    print(
-        "\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    )
-    print(
-        f" Posterior Optimization (GPs trained with {evaluators['GP'].train_X.shape[0]}/{evaluators['GP'].train_X.shape[0]+len(evaluators['GP'].avoidPoints)} points), {time1.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-    print(
-        "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    )
+    print("\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    print(f" Posterior Optimization (GPs trained with {evaluators['GP'].train_X.shape[0]}/{evaluators['GP'].train_X.shape[0]+len(evaluators['GP'].avoidPoints)} points), {time1.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Instance fun
@@ -214,57 +208,47 @@ def optAcq(
 
     infoOptimization = []
 
-    for i, optimizers in enumerate(optimization_sequence):
+    for i, optimizer in enumerate(optimizers):
         time2 = datetime.datetime.now()
-        print(f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimization_sequence[i]} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n')
+        print(f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimizer} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n')
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizers == "ga":
-            from mitim_tools.opt_tools.optimizers.GAtools import findOptima
+        if optimizer == "ga":           from mitim_tools.opt_tools.optimizers.GAtools import findOptima
+        elif optimizer == "botorch":    from mitim_tools.opt_tools.optimizers.BOTORCHoptim import findOptima
+        elif optimizer == "root" :      from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
 
-            number_optimized_points = np.max([best_points, 32])
-            funct_params = {}
-        elif optimizers == "botorch":
-            from mitim_tools.opt_tools.optimizers.BOTORCHoptim import findOptima
-
-            number_optimized_points = best_points
-
-            funct_params = {
-                "raw_samples" : acquisition_optim_params.get("raw_samples",100),
-                "num_restarts" : acquisition_optim_params.get("num_restarts",10),
-            }
-        elif "root" in optimizers:
-            from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
-
-            number_optimized_points = int(optimizers.split("_")[1])
-            funct_params = {
-                "parallel_roots" : acquisition_optim_params.get("parallel_roots",1),
-            }
-
-        fun.prep(
-            number_optimized_points=number_optimized_points,
-            xGuesses=x_opt,
-            seed=it_number + seed,
-        )
+        fun.prep(xGuesses=x_opt,seed=it_number + seed)
 
         # *********** Optimize
-        x_opt, y_opt_residual, z_opt, info = fun.optimize(
+        x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(
             findOptima,
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
-            method_parameters=funct_params,
+            method_parameters=optimizers[optimizer],
+            enoughPerformance=stepSettings['optimization_options']['acquisition']['relative_improvement_for_stopping']
         )
         # ****************************************************************************************
 
         infoOptimization.append(
             {
-                "method": optimization_sequence[i],
+                "method": optimizer,
                 "info": info,
                 "elapsed_seconds": IOtools.getTimeDifference(time2, niceText=False),
                 "bounds": fun.bounds,
             }
         )
+
+        # If hard_finish_surrogate, do not continue
+        if hard_finish_surrogate:
+            x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
+
+            if (x_opt_test.shape[1] == 0) or (stepSettings["Optim"]["ensureNewPoints"]and (x_opt_test.shape[0] < best_points)):
+                print("- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",typeMsg="i")
+            else:
+                print("- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",typeMsg="i",)
+                break
+
 
     # ~~~~ Clean-up set and complete with actual OFs
 
@@ -290,7 +274,7 @@ def optAcq(
     return x_opt, infoOptimization
 
 
-def pointSelection(
+def select_points(
     x_opt,
     y_res,
     z_opt,
@@ -300,6 +284,7 @@ def pointSelection(
     z_opt_previous,
     maxExtrapolation=[0.0, 0.0],
     ToleranceNiche=None,
+    enoughPerformance=None,
 ):
     # Remove points if they are outside of bounds by more than margin
     x_opt, y_res, z_opt = pointsOperation_bounds(
@@ -322,7 +307,19 @@ def pointSelection(
     print(f"\t- New candidate set has an acquisition spanning from {-y_res[0]:.5e} (best, method = {method}) to {-y_res[-1]:.5e}")
     print("\t- " + TESTtools.summaryTypes(z_opt))
 
-    return x_opt, y_res, z_opt
+    # Check if this is enough and I send a hard_finish
+    hard_finish_surrogate = False
+    if enoughPerformance is not None:
+        print(f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... ")
+        embed()
+        best_now = y_res[0].item()
+        if best_now >= enoughPerformance:
+            print(f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer...")
+            hard_finish_surrogate = True
+        else:
+            print(f"\t\t* Optimization at this stage ({best_now:.3e}) did not reach enough performance ({enoughPerformance:.3e})")
+
+    return x_opt, y_res, z_opt, hard_finish_surrogate
 
 
 def pointsOperation_concat(
@@ -571,12 +568,8 @@ def pointsOperation_random(
         )
         ib = 0  # Around the best, which is the first one since I have ordered them
 
-        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"][
-            "ensure_new_points"
-        ]:
-            print(
-                f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point"
-            )
+        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"]["acquisition"]["ensure_new_points"]:
+            print(f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point")
             draw_bounds, _, _ = SBOcorrections.factorBounds(
                 center=x_optRandom[ib],
                 bounds=fun.bounds,
@@ -585,9 +578,7 @@ def pointsOperation_random(
                 bounds_lim=stepSettings["bounds_orig"],
             )
 
-            new_opt = SAMPLINGtools.LHS(
-                best_points - x_optRandom.shape[0], draw_bounds, seed=randomSeed
-            )
+            new_opt = SAMPLINGtools.LHS(best_points - x_optRandom.shape[0], draw_bounds, seed=randomSeed)
             new_y = evaluators["acq_function"](new_opt.unsqueeze(1)).detach()
             x_optRandom = torch.cat((x_optRandom, new_opt)).to(stepSettings["dfT"])
             y_optRandom = torch.cat((y_optRandom, new_y)).to(stepSettings["dfT"])

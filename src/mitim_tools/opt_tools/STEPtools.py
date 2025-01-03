@@ -93,10 +93,10 @@ class OPTstep:
 
         # **** Step settings
         self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
-        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_type"]
-        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition_params"]
-        self.favor_proximity_type = self.stepSettings["optimization_options"]["favor_proximity_type"]
-        self.optimizers = self.stepSettings["optimization_options"]["optimizers"]
+        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition"]["type"]
+        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition"]["parameters"]
+        self.favor_proximity_type = self.stepSettings["optimization_options"]["acquisition"]["favor_proximity_type"]
+        self.optimizers = self.stepSettings["optimization_options"]["acquisition"]["optimization"]        
         self.outputs = self.stepSettings["outputs"]
         self.dfT = self.stepSettings["dfT"]
         self.best_points_sequence = self.stepSettings["best_points_sequence"]
@@ -366,7 +366,7 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Monte Carlo acquisition functions
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
+        
         sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([self.acquisition_params["mc_samples"]]))
 
         if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
@@ -471,19 +471,18 @@ class OPTstep:
         print("~~~~ Running optimization methods")
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-        print(f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n')
+        print(f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers.keys()}" methods to find {self.best_points_sequence} points\n')
 
-        self.x_next, self.InfoOptimization = OPTtools.optAcq(
+        self.x_next, self.InfoOptimization = OPTtools.acquire_next_points(
             stepSettings=self.stepSettings,
             evaluators=self.evaluators,
             StrategyOptions=self.StrategyOptions,
             best_points=int(self.best_points_sequence),
-            optimization_sequence=self.optimizers.split("-"),
+            optimizers=self.optimizers,
             it_number=self.currentIteration,
             position_best_so_far=position_best_so_far,
             seed=seed,
             forceAllPointsInBounds=forceAllPointsInBounds,
-            acquisition_optim_params=self.acquisition_params["acquisition_optimization"],
         )
 
         print(f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points")

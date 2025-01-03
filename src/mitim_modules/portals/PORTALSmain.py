@@ -62,6 +62,8 @@ def default_namelist(optimization_options, CGYROrun=False):
                 "ricci_lambda": 1.0,
             }
 
+    optimization_options['acquisition']['relative_improvement_for_stopping'] = 1e-3
+
     # Surrogate
     optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
         PORTALStools.selectSurrogate, CGYROrun=CGYROrun
@@ -70,13 +72,17 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
 
     if CGYROrun:
-        optimization_options["acquisition_type"] = "posterior_mean"
-        optimization_options["optimizers"] = "root_5-botorch-ga"  # Added root which is not a default bc it needs dimX=dimY
-        optimization_options["points_per_step"] = 1
+        optimization_options["acquisition"]["type"] = "posterior_mean"
+        optimization_options["acquisition"]["optimization"] = {
+            "root": {"num_restarts": 5},      # Added root which is not a default bc it needs dimX=dimY
+            "botorch": {},
+            "ga": {},
+            }
+        optimization_options["acquisition"]["points_per_step"] = 1
     else:
-        optimization_options["acquisition_type"] = "noisy_logei_mc"
-        optimization_options["optimizers"] = "botorch"  # TGLF runs should prioritize speed, and botorch is robust enough
-        optimization_options["points_per_step"] = 1
+        optimization_options["acquisition"]["type"] = "noisy_logei_mc"
+        optimization_options["acquisition"]["optimization"] = {"botorch": {}}   # TGLF runs should prioritize speed, and botorch is robust enough
+        optimization_options["acquisition"]["points_per_step"] = 1
 
     return optimization_options
 

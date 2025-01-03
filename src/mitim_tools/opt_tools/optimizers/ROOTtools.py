@@ -14,7 +14,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     np.random.seed(fun.seed)
 
     # Options
-    numCases = optimization_params["parallel_roots"]
+    numCases = optimization_params.get("num_restarts",1)
     runCasesInParallelAsBatch = True
     solver = "lm"
     algorithmOptions = {"maxiter": 1000}

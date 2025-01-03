@@ -1,5 +1,4 @@
 import torch
-import types
 import botorch
 import random
 from mitim_tools.opt_tools import OPTtools
@@ -28,10 +27,10 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     """
     
-    raw_samples = optimization_params["raw_samples"]
-    num_restarts = optimization_params["num_restarts"]
-
-    q = fun.number_optimized_points
+    raw_samples = optimization_params.get("raw_samples",100)
+    num_restarts = optimization_params.get("num_restarts",10)
+   
+    q = optimization_params.get("keep_best",1)
     sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
         "sample_around_best": True,

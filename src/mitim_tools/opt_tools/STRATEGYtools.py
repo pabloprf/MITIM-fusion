@@ -442,7 +442,7 @@ class MITIM_BO:
             unprint_fun = copy.deepcopy(self.optimization_options['stopping_criteria'])
             def opt_crit(*args,**kwargs):
                 print('\n--------------------------------------------------')
-                print('Optimization criteria')
+                print('Convergence criteria')
                 print('--------------------------------------------------')
                 v = unprint_fun(*args,**kwargs)
                 print('--------------------------------------------------\n')
@@ -551,7 +551,7 @@ class MITIM_BO:
             self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["ofs"]
 
             # How many points each iteration will produce?
-            self.best_points_sequence = self.optimization_options["points_per_step"]
+            self.best_points_sequence = self.optimization_options["acquisition"]["points_per_step"]
             self.best_points = int(np.sum(self.best_points_sequence))
 
             """
@@ -665,7 +665,7 @@ class MITIM_BO:
         self.StrategyOptions_use = self.StrategyOptions
 
         self.steps, self.resultsSet = [], []
-        for self.currentIteration in range(self.numIterations):
+        for self.currentIteration in range(self.numIterations+1):
             timeBeginningThis = datetime.datetime.now()
 
             print("\n------------------------------------------------------------")
@@ -685,6 +685,11 @@ class MITIM_BO:
                 # Stored in previous step
                 self.steps[-1].y_next = yN
                 self.steps[-1].ystd_next = yNstd
+
+                # Determine here when to stop the loop
+                if self.currentIteration == self.numIterations - 1:
+                    print("- Last iteration has been reached",typeMsg="i")
+                    self.hard_finish = True
 
             # After evaluating metrics inside updateSet, I may have requested a hard finish
             if self.hard_finish:
@@ -1879,6 +1884,16 @@ class MITIM_BO:
 # Stopping criteria
 # ----------------------------------------------------------------------
 
+def max_val(maximum_value_orig, maximum_value_is_rel, res_base):
+    if maximum_value_is_rel:
+        maximum_value = maximum_value_orig * res_base
+        print(f'\t* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}')
+    else:
+        maximum_value = maximum_value_orig
+        print(f'\t* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})' )
+
+    return maximum_value
+
 def stopping_criteria_default(mitim_bo, parameters = {}):
 
     # ------------------------------------------------------------------------------------
@@ -1891,13 +1906,8 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
 
     res_base = -mitim_bo.BOmetrics["overall"]["Residual"][0].item()
 
-    if maximum_value_is_rel:
-        maximum_value = maximum_value_orig * res_base
-        print(f'\t* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}')
-    else:
-        maximum_value = maximum_value_orig
-        print(f'\t* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})' )
-        
+    maximum_value = max_val(maximum_value_orig, maximum_value_is_rel, res_base)
+
     # ------------------------------------------------------------------------------------
     # Stopping criteria
     # ------------------------------------------------------------------------------------

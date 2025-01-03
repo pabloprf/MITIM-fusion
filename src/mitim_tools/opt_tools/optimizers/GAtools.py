@@ -15,10 +15,7 @@ from mitim_tools.opt_tools.OPTtools import summarizeSituation
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
-
-
-def findOptima(fun, writeTrajectory=False, **kwargs):
+def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     print("- GA optimization techniques used to maximize acquisition")
 
     random.seed(fun.seed)
@@ -90,7 +87,7 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     membersOfInterest = copy.deepcopy(frontsOfInterest_Pareto)
     members = np.atleast_2d(GA.membersEvolution[GA.besttrial])
     cont = 0
-    while membersOfInterest.shape[0] < fun.number_optimized_points:
+    while membersOfInterest.shape[0] < fun.optimization_params.get("keep_best",32):
         membersOfInterest = np.append(
             membersOfInterest, np.atleast_2d(members[cont]), axis=0
         )

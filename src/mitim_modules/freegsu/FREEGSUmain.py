@@ -18,16 +18,20 @@ def default_namelist(optimization_options):
     """
 
     optimization_options["initial_training"] = 32
-    optimization_options["BO_iterations"] = 100
+    optimization_options["convergence"]["BO_iterations"] = 100
     optimization_options["parallel_evaluations"] = 16
     optimization_options['stopping_criteria_parameters']["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
-    optimization_options["points_per_step"] = 16  # I found this better
+    optimization_options["acquisition"]["points_per_step"] = 16  # I found this better
     optimization_options["surrogateOptions"]["FixedNoise"] = False
     optimization_options["StrategyOptions"]["TURBO"] = True
 
     # Acquisition
-    optimization_options["optimizers"] = "root_5-botorch-ga"
-    optimization_options["acquisition_type"] = "posterior_mean"
+    optimization_options["acquisition"]["type"] = "posterior_mean"
+    optimization_options["acquisition"]["optimization"] = {
+        "root": {"num_restarts": 5},
+        "botorch": {},
+        "ga": {},
+        }
 
     return optimization_options
 
