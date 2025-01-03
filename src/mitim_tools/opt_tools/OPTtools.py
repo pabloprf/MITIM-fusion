@@ -118,9 +118,7 @@ class fun_optimization:
         """
 
         # ** OPTIMIZE **
-        x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
-            self, optimization_params = method_parameters, writeTrajectory=True
-        )
+        x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(self, optimization_params = method_parameters, writeTrajectory=True)
         # **********************************************************************
 
         info = storeInfo(x_opt2, acq_evaluated, self)
@@ -199,18 +197,14 @@ def optAcq(
 
     fun = fun_optimization(stepSettings, evaluators, StrategyOptions)
 
-    fun.changeBounds(
-        it_number, position_best_so_far, forceAllPointsInBounds=forceAllPointsInBounds
-    )
+    fun.changeBounds(it_number, position_best_so_far, forceAllPointsInBounds=forceAllPointsInBounds)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Find some initial conditions
     #   Complete initial guess with training and remove if outside bounds of this iteration
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    x_opt, y_opt_residual, z_opt = prepFirstStage(
-        fun, checkBounds=True, seed=it_number + seed
-    )
+    x_opt, y_opt_residual, z_opt = prepFirstStage(fun, checkBounds=True, seed=it_number + seed)
     best_performance_previous_iteration = y_opt_residual[0].item()
     x_initial = x_opt.clone()
 
@@ -222,9 +216,7 @@ def optAcq(
 
     for i, optimizers in enumerate(optimization_sequence):
         time2 = datetime.datetime.now()
-        print(
-            f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimization_sequence[i]} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n'
-        )
+        print(f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimization_sequence[i]} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n')
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
@@ -246,7 +238,9 @@ def optAcq(
             from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
 
             number_optimized_points = int(optimizers.split("_")[1])
-            funct_params = {}
+            funct_params = {
+                "parallel_roots" : acquisition_optim_params.get("parallel_roots",1),
+            }
 
         fun.prep(
             number_optimized_points=number_optimized_points,
@@ -287,9 +281,7 @@ def optAcq(
         seed=seed,
     )
 
-    infoOptimization.append(
-        {"method": "cleanup", "info": storeInfo(x_opt, torch.Tensor([]), fun)}
-    )
+    infoOptimization.append({"method": "cleanup", "info": storeInfo(x_opt, torch.Tensor([]), fun)})
 
     print(
         f"\t~~~~~~~ Optimization workflow took {IOtools.getTimeDifference(time1)}, and it passes {x_opt.shape[0]} optima to next MITIM iteration"
@@ -323,15 +315,11 @@ def pointSelection(
     x_opt, y_res, z_opt, _ = pointsOperation_order(x_opt, y_res, z_opt, fun)
 
     # Apply niche
-    x_opt, y_res, z_opt = pointsOperation_niche(
-        x_opt, y_res, z_opt, fun, ToleranceNiche=ToleranceNiche
-    )
+    x_opt, y_res, z_opt = pointsOperation_niche(x_opt, y_res, z_opt, fun, ToleranceNiche=ToleranceNiche)
 
     # Summarize
     method = TESTtools.identifyType(z_opt[0].item())
-    print(
-        f"\t- New candidate set has an acquisition spanning from {-y_res[0]:.5f} to {-y_res[-1]:.5f}. Best found by method = {method}"
-    )
+    print(f"\t- New candidate set has an acquisition spanning from {-y_res[0]:.5e} (best, method = {method}) to {-y_res[-1]:.5e}")
     print("\t- " + TESTtools.summaryTypes(z_opt))
 
     return x_opt, y_res, z_opt

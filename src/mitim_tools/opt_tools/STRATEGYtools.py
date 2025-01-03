@@ -1610,12 +1610,12 @@ class MITIM_BO:
 		Acquisition
 		****************************************************************
 		"""
-        self.plotAcquisitionOptimization(fn=fn)
+        self.plotAcquisitionOptimizationSummary(fn=fn)
 
         return fn
 
 
-    def plotAcquisitionOptimization(self, fn=None, step_from=0, step_to=-1):
+    def plotAcquisitionOptimizationSummary(self, fn=None, step_from=0, step_to=-1):
 
         if step_to == -1:
             step_to = len(self.steps)
@@ -1627,6 +1627,7 @@ class MITIM_BO:
         fig = fn.add_figure(label='Acquisition Convergence')
 
         axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3)
+        colors = GRAPHICStools.listColors()
 
         for step in step_num:
 
@@ -1636,26 +1637,29 @@ class MITIM_BO:
 
             # Grab info from optimization
             infoOPT = self.steps[step].InfoOptimization
-            y_acq = infoOPT[0]['info']['acq_evaluated'].cpu().numpy()
-
-            # Operate
             acq = self.steps[step].evaluators['acq_function']
 
             acq_trained = np.zeros(self.steps[step].train_X.shape[0])
             for ix in range(self.steps[step].train_X.shape[0]):
                 acq_trained[ix] = acq(torch.Tensor(self.steps[step].train_X[ix,:]).unsqueeze(0)).item()
 
-            # Plot
-            ax.plot(y_acq,'-o', c='g', markersize=2, lw = 0.5, label='max of batch')
-            ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=1.0, label='max trained')
-            if len(y_acq)>0:
-                ax.axhline(y=y_acq[0], c='b', ls='--', lw=1.0, label='max of guesses')
+            # Plot trained acquisition
+            ax.axhline(y=acq_trained.max(), c='k', ls='--', lw=1.0, label='max of trained')
+
+            # Plot acquisition evolution 
+            for i in range(len(infoOPT)-1): #no cleanup stage
+                y_acq = infoOPT[i]['info']['acq_evaluated'].cpu().numpy()
+                ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]} (max of batch)')
+                
+                # Plot max of guesses
+                if len(y_acq)>0:
+                    ax.axhline(y=y_acq[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
 
             ax.set_title(f'BO Step #{step}')
             ax.set_ylabel('$f_{acq}$ (to max)')
             ax.set_xlabel('Evaluations')
             if step == step_num[0]:
-                ax.legend(loc='best')
+                ax.legend(loc='best', fontsize=6)
 
             GRAPHICStools.addDenseAxis(ax)
 
@@ -1779,9 +1783,7 @@ class MITIM_BO:
             num_axes_y += 1
 
         num_plots = num_axes_x + num_axes_y + num_axes_res
-        axs = GRAPHICStools.producePlotsGrid(
-            num_plots, fig=fig1, hspace=0.4, wspace=0.4
-        )
+        axs = GRAPHICStools.producePlotsGrid(num_plots, fig=fig1, hspace=0.4, wspace=0.4)
 
         axsDVs = axs[:num_axes_x]
         axsOFs = axs[num_axes_x:-1]

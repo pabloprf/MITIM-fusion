@@ -471,9 +471,7 @@ class OPTstep:
         print("~~~~ Running optimization methods")
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-        print(
-            f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n'
-        )
+        print(f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n')
 
         self.x_next, self.InfoOptimization = OPTtools.optAcq(
             stepSettings=self.stepSettings,
@@ -488,9 +486,7 @@ class OPTstep:
             acquisition_optim_params=self.acquisition_params["acquisition_optimization"],
         )
 
-        print(
-            f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points"
-        )
+        print(f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points")
 
     def curate_outliers(self):
         # Remove outliers
