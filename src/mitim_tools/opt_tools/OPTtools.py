@@ -104,7 +104,7 @@ class fun_optimization:
         previous_solutions=None,
         best_performance_previous_iteration=None,
         method_parameters={},
-        enoughPerformance=None,
+        enoughPerformance_relative=None,
     ):
         """
         Possible Methods
@@ -140,7 +140,7 @@ class fun_optimization:
                 z_opt,
                 maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
                 ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=enoughPerformance
+                enoughPerformance_relative=enoughPerformance_relative
             )
 
         else:
@@ -226,7 +226,7 @@ def acquire_next_points(
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
             method_parameters=optimizers[optimizer],
-            enoughPerformance=stepSettings['optimization_options']['acquisition']['relative_improvement_for_stopping']
+            enoughPerformance_relative=stepSettings['optimization_options']['acquisition']['relative_improvement_for_stopping']
         )
         # ****************************************************************************************
 
@@ -243,7 +243,7 @@ def acquire_next_points(
         if hard_finish_surrogate:
             x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
 
-            if (x_opt_test.shape[1] == 0) or (stepSettings["Optim"]["ensureNewPoints"]and (x_opt_test.shape[0] < best_points)):
+            if (x_opt_test.shape[1] == 0) or (stepSettings['optimization_options']['acquisition']['ensure_new_points']and (x_opt_test.shape[0] < best_points)):
                 print("- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",typeMsg="i")
             else:
                 print("- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",typeMsg="i",)
@@ -284,7 +284,7 @@ def select_points(
     z_opt_previous,
     maxExtrapolation=[0.0, 0.0],
     ToleranceNiche=None,
-    enoughPerformance=None,
+    enoughPerformance_relative=None,
 ):
     # Remove points if they are outside of bounds by more than margin
     x_opt, y_res, z_opt = pointsOperation_bounds(
@@ -309,12 +309,12 @@ def select_points(
 
     # Check if this is enough and I send a hard_finish
     hard_finish_surrogate = False
-    if enoughPerformance is not None:
-        print(f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... ")
-        embed()
+    if enoughPerformance_relative is not None:
+        enoughPerformance = y_res_previous[0].item() * enoughPerformance_relative
+        print(f"\t- Checking if enough optimization was achieved already ({enoughPerformance_relative:.3e} relative -> {enoughPerformance:.3e} absolute)")
         best_now = y_res[0].item()
         if best_now >= enoughPerformance:
-            print(f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer...")
+            print(f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer...", typeMsg="i")
             hard_finish_surrogate = True
         else:
             print(f"\t\t* Optimization at this stage ({best_now:.3e}) did not reach enough performance ({enoughPerformance:.3e})")
@@ -455,10 +455,6 @@ def pointsOperation_bounds(
             f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}"
         )
         IOtools.printPoints(x_removeds, numtabs=2)
-    else:
-        print(
-            f"\t- No points removed b/c they are inside bounds or they were allowed{txt}"
-        )
 
     return x_opt_inbounds, y_opt_inbounds, z_opt_inbounds
 

@@ -32,43 +32,69 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     # ~~~~~ Define evaluator
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
-        """
-        Notes:
-            - x comes extended, batch*dim
-            - y must be returned extended as well, batch*dim
-        """
-
-        X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
-
-        # Transform from infinite bounds
-        X = bound_transform.transform(X)
-
-        # Evaluate residuals
-        _, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
-        y = y1 - y2
-
-        # Root requires that len(x)==len(y)
-        y = fixDimensions_ROOT(X, y)
-
-        # Compress again  [batch,dim]->[batch*dim]
-        y = y.view(x.shape)
-
-        return y
-
     acq_evaluated = []
+
     if writeTrajectory:
-        class CustomFunctionWrapper:
-            def __init__(self, func, eval_list):
-                self.func = func
-                self.eval_list = eval_list
 
-            def __call__(self, x, *args, **kwargs):
-                f = self.func(x, *args, **kwargs)
-                self.eval_list.append(f.max().item())
-                return f
+        def fun_opt(
+            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
+        ):
+            """
+            Notes:
+                    - x comes extended, batch*dim
+                    - y must be returned extended as well, batch*dim
+            """
 
-        fun_opt = CustomFunctionWrapper(fun_opt, acq_evaluated)
+            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+            # Transform from infinite bounds
+            X = bound_transform.transform(X)
+
+            # Evaluate residuals
+            yOut, y1, y2, _ = fun.evaluators["residual_function"](
+                X, outputComponents=True
+            )
+            y = y1 - y2
+
+            acq_evaluated.append(
+                -yOut.abs().min().item()
+            )  # yOut has [batch] dimensions, so look at the best
+
+            # Root requires that len(x)==len(y)
+            y = fixDimensions_ROOT(X, y)
+
+            # Compress again  [batch,dim]->[batch*dim]
+            y = y.view(x.shape)
+
+            return y
+
+    else:
+
+        def fun_opt(
+            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
+        ):
+            """
+            Notes:
+                    - x comes extended, batch*dim
+                    - y must be returned extended as well, batch*dim
+            """
+
+            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+            # Transform from infinite bounds
+            X = bound_transform.transform(X)
+
+            # Evaluate residuals
+            _, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
+            y = y1 - y2
+
+            # Root requires that len(x)==len(y)
+            y = fixDimensions_ROOT(X, y)
+
+            # Compress again  [batch,dim]->[batch*dim]
+            y = y.view(x.shape)
+
+            return y
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Guesses
@@ -116,8 +142,8 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     x_res = bound_transform.transform(x_res)
 
     bb = TESTtools.checkSolutionIsWithinBounds(x_res, fun.bounds).item()
-    print(f"\t- Is this solution inside bounds? {bb}")
     if not bb:
+        print(f"\t- Is this solution inside bounds? {bb}")
         print(f"\t\t- with allowed extrapolations? {TESTtools.checkSolutionIsWithinBounds(x_res,fun.bounds_mod).item()}")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -141,7 +167,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     # Order points them
     x_opt, y_opt_residual, _, indeces = pointsOperation_order(x_opt, y_opt_residual, None, fun)
 
-    print(f"\t~ Order of ROOT points: {indeces.cpu().numpy()}")
+    print(f"\t- Points ordered: {indeces.cpu().numpy()}")
 
     # Get out
     numZ = 5

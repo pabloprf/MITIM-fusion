@@ -87,7 +87,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     membersOfInterest = copy.deepcopy(frontsOfInterest_Pareto)
     members = np.atleast_2d(GA.membersEvolution[GA.besttrial])
     cont = 0
-    while membersOfInterest.shape[0] < fun.optimization_params.get("keep_best",32):
+    while membersOfInterest.shape[0] < optimization_params.get("keep_best",32):
         membersOfInterest = np.append(
             membersOfInterest, np.atleast_2d(members[cont]), axis=0
         )
