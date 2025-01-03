@@ -9,12 +9,12 @@ from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
 
 
-def findOptima(fun, writeTrajectory=False, **kwargs):
+def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
     np.random.seed(fun.seed)
 
     # Options
-    numCases = fun.number_optimized_points
+    numCases = optimization_params["parallel_roots"]
     runCasesInParallelAsBatch = True
     solver = "lm"
     algorithmOptions = {"maxiter": 1000}
@@ -32,69 +32,43 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     # ~~~~~ Define evaluator
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
+        """
+        Notes:
+            - x comes extended, batch*dim
+            - y must be returned extended as well, batch*dim
+        """
+
+        X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+        # Transform from infinite bounds
+        X = bound_transform.transform(X)
+
+        # Evaluate residuals
+        _, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
+        y = y1 - y2
+
+        # Root requires that len(x)==len(y)
+        y = fixDimensions_ROOT(X, y)
+
+        # Compress again  [batch,dim]->[batch*dim]
+        y = y.view(x.shape)
+
+        return y
+
     acq_evaluated = []
-
     if writeTrajectory:
+        class CustomFunctionWrapper:
+            def __init__(self, func, eval_list):
+                self.func = func
+                self.eval_list = eval_list
 
-        def channel_residual_evaluator(
-            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
-        ):
-            """
-            Notes:
-                    - x comes extended, batch*dim
-                    - y must be returned extended as well, batch*dim
-            """
+            def __call__(self, x, *args, **kwargs):
+                f = self.func(x, *args, **kwargs)
+                self.eval_list.append(f.max().item())
+                return f
 
-            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
-
-            # Transform from infinite bounds
-            X = bound_transform.transform(X)
-
-            # Evaluate residuals
-            yOut, y1, y2, _ = fun.evaluators["residual_function"](
-                X, outputComponents=True
-            )
-            y = y1 - y2
-
-            acq_evaluated.append(
-                -yOut.abs().min().item()
-            )  # yOut has [batch] dimensions, so look at the best
-
-            # Root requires that len(x)==len(y)
-            y = fixDimensions_ROOT(X, y)
-
-            # Compress again  [batch,dim]->[batch*dim]
-            y = y.view(x.shape)
-
-            return y
-
-    else:
-
-        def channel_residual_evaluator(
-            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
-        ):
-            """
-            Notes:
-                    - x comes extended, batch*dim
-                    - y must be returned extended as well, batch*dim
-            """
-
-            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
-
-            # Transform from infinite bounds
-            X = bound_transform.transform(X)
-
-            # Evaluate residuals
-            _, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
-            y = y1 - y2
-
-            # Root requires that len(x)==len(y)
-            y = fixDimensions_ROOT(X, y)
-
-            # Compress again  [batch,dim]->[batch*dim]
-            y = y.view(x.shape)
-
-            return y
+        fun_opt = CustomFunctionWrapper(fun_opt, acq_evaluated)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Guesses
@@ -108,41 +82,31 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     # Untransform guesses
     xGuesses = bound_transform.untransform(xGuesses)
 
-    print(
-        f'\t\t- Running for {len(xGuesses)} starting points{", as a big 1D tensor" if runCasesInParallelAsBatch else ""}'
-    )
+    print(f'\t\t- Running for {len(xGuesses)} starting points{", as a big 1D tensor" if runCasesInParallelAsBatch else ""}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Process
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    # Convert to 1D
-    x0 = xGuesses.view(-1).unsqueeze(0) if runCasesInParallelAsBatch else xGuesses
+    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
 
-    time1 = datetime.datetime.now()
+        # Convert to 1D
+        x0 = xGuesses.view(-1).unsqueeze(0) if runCasesInParallelAsBatch else xGuesses
 
-    x_res = torch.Tensor().to(fun.stepSettings["dfT"])
-    for i in range(len(x0)):
-        if len(x0) > 1:
-            print(
-                "\n",
-                f"\t\t- ROOT from guessed point {i+1}/{x0.shape[0]}",
+        x_res = torch.Tensor().to(fun.stepSettings["dfT"])
+        for i in range(len(x0)):
+            if len(x0) > 1:  print("\n",f"\t\t- ROOT from guessed point {i+1}/{x0.shape[0]}")
+            x_res0 = optim.powell(
+                fun_opt,
+                x0[i, :],
+                fun,
+                writeTrajectory=writeTrajectory,
+                algorithmOptions=algorithmOptions,
+                solver=solver,
             )
-        x_res0 = optim.powell(
-            channel_residual_evaluator,
-            x0[i, :],
-            fun,
-            writeTrajectory=writeTrajectory,
-            algorithmOptions=algorithmOptions,
-            solver=solver,
-        )
-        x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)
+            x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)
 
     acq_evaluated = torch.Tensor(acq_evaluated)
-
-    print(
-        f"\t\t- Optimization took {IOtools.getTimeDifference(time1)}, and it found {x_res.shape[0]} optima"
-    )
 
     if runCasesInParallelAsBatch:
         x_res = x_res.view(
@@ -154,19 +118,13 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     bb = TESTtools.checkSolutionIsWithinBounds(x_res, fun.bounds).item()
     print(f"\t- Is this solution inside bounds? {bb}")
     if not bb:
-        print(
-            f"\t\t- with allowed extrapolations? {TESTtools.checkSolutionIsWithinBounds(x_res,fun.bounds_mod).item()}"
-        )
+        print(f"\t\t- with allowed extrapolations? {TESTtools.checkSolutionIsWithinBounds(x_res,fun.bounds_mod).item()}")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Post-process
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    from mitim_tools.opt_tools.OPTtools import (
-        summarizeSituation,
-        pointsOperation_bounds,
-        pointsOperation_order,
-    )
+    from mitim_tools.opt_tools.OPTtools import summarizeSituation, pointsOperation_bounds, pointsOperation_order
 
     # I apply the bounds correction BEFORE the summary because of possibility of crazy values (problems with GP)
     x_opt, _, _ = pointsOperation_bounds(
@@ -178,15 +136,10 @@ def findOptima(fun, writeTrajectory=False, **kwargs):
     )
 
     # Summary
-    if len(x_opt) > 0:
-        y_opt_residual = summarizeSituation(fun.xGuesses, fun, x_opt)
-    else:
-        y_opt_residual = torch.Tensor([]).to(fun.stepSettings["dfT"])
+    y_opt_residual = summarizeSituation(fun.xGuesses, fun, x_opt) if (len(x_opt) > 0) else torch.Tensor([]).to(fun.stepSettings["dfT"])
 
     # Order points them
-    x_opt, y_opt_residual, _, indeces = pointsOperation_order(
-        x_opt, y_opt_residual, None, fun
-    )
+    x_opt, y_opt_residual, _, indeces = pointsOperation_order(x_opt, y_opt_residual, None, fun)
 
     print(f"\t~ Order of ROOT points: {indeces.cpu().numpy()}")
 
