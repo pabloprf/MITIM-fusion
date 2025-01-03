@@ -399,8 +399,8 @@ def tglf_scan_trick(
                     cold_start=cold_start,
                     forceIfcold_start=True,
                     slurm_setup={
-                        "cores": 1,      # 1 core per radius, since this is going to launch ~ Nr=5 x (Nv=3 x Nd=2 + 1) = 35 TGLFs at once
-                        "minutes": 10,
+                        "cores": 4,      # 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+                        "minutes": 1,
                                  },
                     extra_name = f'{extra_name}_{name}',
                     )

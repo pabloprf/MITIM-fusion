@@ -920,7 +920,7 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=1e6,  # 32,
+    cores_todo_array=32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
@@ -973,31 +973,41 @@ def runTGLF(
         typeRun = "bash"
 
     if typeRun in ["bash", "job"]:
+
+        # TGLF launches
         TGLFcommand = ""
         for folder in folders_red:
-
-            TGLFcommand += (
-                f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
-            )
-
-        TGLFcommand += (
-            "\nwait"  # This is needed so that the script doesn't end before each job
-        )
-        rho_array = None
-
+            TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+        TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+        
+        # Slurm setup
+        array_list = None
+        shellPreCommands = None
+        shellPostCommands = None
         ntasks = total_tglf_cores
         cpuspertask = cores_tglf
 
     elif typeRun in ["array"]:
-        raise Exception("TGLF array not implemented yet")
-        print(
-            f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",
-            typeMsg="i",
-        )
+        #raise Exception("TGLF array not implemented yet")
+        print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",typeMsg="i")
 
-        rho_array = ",".join([f"{int(rho*1E4)}" for rho in rhos])
-        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID" -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
+        # As a pre-command, organize all folders in a simpler way
+        shellPreCommands = []
+        shellPostCommands = []
+        array_list = []
+        for i, folder in enumerate(folders_red):
+            array_list.append(f"{i}")
+            folder_temp_array = f"run{i}"
+            folder_actual = folder
+            shellPreCommands.append(f"mkdir {tglf_job.folderExecution}/{folder_temp_array}; cp {tglf_job.folderExecution}/{folder_actual}/*  {tglf_job.folderExecution}/{folder_temp_array}/.")
+            shellPostCommands.append(f"cp {tglf_job.folderExecution}/{folder_temp_array}/* {tglf_job.folderExecution}/{folder_actual}/.; rm -r {tglf_job.folderExecution}/{folder_temp_array}")
 
+        # TGLF launches
+        indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
+        TGLFcommand = f'tglf -e {indexed_folder} -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {tglf_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+
+        # Slurm setup
+        array_list = ",".join(array_list)
         ntasks = 1
         cpuspertask = cores_tglf
 
@@ -1014,7 +1024,7 @@ def runTGLF(
             "ntasks": ntasks,
             "name": name,
             "cpuspertask": cpuspertask,
-            "job_array": rho_array,
+            "job_array": array_list,
             #"nodes": 1,
         },
     )
@@ -1030,6 +1040,8 @@ def runTGLF(
         input_folders=folders,
         output_folders=folders_red,
         check_files_in_folder=check_files_in_folder,
+        shellPreCommands=shellPreCommands,
+        shellPostCommands=shellPostCommands,
     )
 
     tglf_job.run(removeScratchFolders=True)
