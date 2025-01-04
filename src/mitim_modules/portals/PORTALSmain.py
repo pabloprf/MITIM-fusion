@@ -83,7 +83,7 @@ def default_namelist(optimization_options, CGYROrun=False):
         optimization_options["acquisition"]["type"] = "posterior_mean"#"noisy_logei_mc"
         optimization_options["acquisition"]["optimization"] = {
             "root": {
-                "num_restarts": 5,
+                "num_restarts": 16,
                 "keep_best": 1
                 },
             "botorch": {
@@ -460,7 +460,7 @@ class portals(STRATEGYtools.opt_evaluator):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALSinteraction.calculatePseudos(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
+        of, cal, _, res = PORTALSinteraction.calculate_residuals(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
 
         return of, cal, res
 
