@@ -15,7 +15,7 @@ from mitim_tools.opt_tools.OPTtools import summarizeSituation
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def findOptima(fun, optimization_params = {}, writeTrajectory=False):
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print("- GA optimization techniques used to maximize acquisition")
 
     random.seed(fun.seed)

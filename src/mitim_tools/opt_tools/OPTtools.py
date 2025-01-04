@@ -214,15 +214,15 @@ def acquire_next_points(
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizer == "ga":           from mitim_tools.opt_tools.optimizers.GAtools import findOptima
-        elif optimizer == "botorch":    from mitim_tools.opt_tools.optimizers.BOTORCHoptim import findOptima
-        elif optimizer == "root" :      from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
+        if optimizer == "ga":           from mitim_tools.opt_tools.optimizers.GAtools import optimize_function
+        elif optimizer == "botorch":    from mitim_tools.opt_tools.optimizers.BOTORCHoptim import optimize_function
+        elif optimizer == "root" :      from mitim_tools.opt_tools.optimizers.ROOTtools import optimize_function
 
         fun.prep(xGuesses=x_opt,seed=it_number + seed)
 
         # *********** Optimize
         x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(
-            findOptima,
+            optimize_function,
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
             method_parameters=optimizers[optimizer],

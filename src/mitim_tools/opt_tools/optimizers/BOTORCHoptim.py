@@ -7,7 +7,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
 
-def findOptima(fun, optimization_params = {}, writeTrajectory=False):
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print("\t--> BOTORCH optimization techniques used to maximize acquisition")
 
     # Seeds

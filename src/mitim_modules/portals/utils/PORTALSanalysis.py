@@ -231,7 +231,7 @@ class PORTALSanalyzer:
             # Residual definitions
             # ------------------------------------------------
 
-            _, _, source, res = PORTALSinteraction.calculatePseudos(
+            _, _, source, res = PORTALSinteraction.calculate_residuals(
                 power,
                 self.PORTALSparameters,
             )
@@ -275,7 +275,7 @@ class PORTALSanalyzer:
                         y2,
                         y1_std,
                         y2_std,
-                    ) = PORTALSinteraction.calculatePseudos_distributions(
+                    ) = PORTALSinteraction.calculate_residuals_distributions(
                         power,
                         self.PORTALSparameters,
                     )

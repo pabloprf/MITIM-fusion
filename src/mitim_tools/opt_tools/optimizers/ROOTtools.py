@@ -1,23 +1,21 @@
 import torch
 import copy
-import datetime
 import numpy as np
-from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
+from IPython import embed
 
-
-def findOptima(fun, optimization_params = {}, writeTrajectory=False):
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
     np.random.seed(fun.seed)
 
     # Options
-    numCases = optimization_params.get("num_restarts",1)
-    runCasesInParallelAsBatch = True
+    num_restarts = optimization_params.get("num_restarts",1)
+    run_as_augmented_optimization = True
     solver = "lm"
-    algorithmOptions = {"maxiter": 1000}
+    algorithm_options = {"maxiter": 1000}
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Bounds
@@ -36,9 +34,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
 
     if writeTrajectory:
 
-        def fun_opt(
-            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
-        ):
+        def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
             """
             Notes:
                     - x comes extended, batch*dim
@@ -70,9 +66,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
 
     else:
 
-        def fun_opt(
-            x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform
-        ):
+        def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
             """
             Notes:
                     - x comes extended, batch*dim
@@ -103,12 +97,12 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     xGuesses = copy.deepcopy(fun.xGuesses)
 
     # Limit the guesses the the number of cases I want to run from
-    xGuesses = xGuesses[:numCases, :] if xGuesses.shape[0] > numCases else xGuesses
+    xGuesses = xGuesses[:num_restarts, :] if xGuesses.shape[0] > num_restarts else xGuesses
 
     # Untransform guesses
     xGuesses = bound_transform.untransform(xGuesses)
 
-    print(f'\t\t- Running for {len(xGuesses)} starting points{", as a big 1D tensor" if runCasesInParallelAsBatch else ""}')
+    print(f'\t\t- Running for {len(xGuesses)} starting points{", as a an augmented optimization problem" if run_as_augmented_optimization else ""}')
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Process
@@ -117,7 +111,7 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
     with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
 
         # Convert to 1D
-        x0 = xGuesses.view(-1).unsqueeze(0) if runCasesInParallelAsBatch else xGuesses
+        x0 = xGuesses.view(-1).unsqueeze(0) if run_as_augmented_optimization else xGuesses
 
         x_res = torch.Tensor().to(fun.stepSettings["dfT"])
         for i in range(len(x0)):
@@ -127,17 +121,15 @@ def findOptima(fun, optimization_params = {}, writeTrajectory=False):
                 x0[i, :],
                 fun,
                 writeTrajectory=writeTrajectory,
-                algorithmOptions=algorithmOptions,
+                algorithmOptions=algorithm_options,
                 solver=solver,
             )
             x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)
 
     acq_evaluated = torch.Tensor(acq_evaluated)
 
-    if runCasesInParallelAsBatch:
-        x_res = x_res.view(
-            (x_res.shape[1] // fun.xGuesses.shape[1], fun.xGuesses.shape[1])
-        )
+    if run_as_augmented_optimization:
+        x_res = x_res.view( (x_res.shape[1] // fun.xGuesses.shape[1], fun.xGuesses.shape[1]) )
 
     x_res = bound_transform.transform(x_res)
 

@@ -316,7 +316,7 @@ def TGYROmodeledVariables(TGYROresults,
     return powerstate
 
 
-def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
+def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     """
     Notes
     -----
@@ -457,7 +457,7 @@ def calculatePseudos(powerstate, PORTALSparameters, specific_vars=None):
     return of, cal, source, res
 
 
-def calculatePseudos_distributions(powerstate, PORTALSparameters):
+def calculate_residuals_distributions(powerstate, PORTALSparameters):
     """
     - Works with tensors
     - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs

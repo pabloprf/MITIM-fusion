@@ -335,9 +335,7 @@ class OPTstep:
         def residual(Y, X = None):
             return scalarized_objective(Y)[2]
 
-        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
-            residual
-        )
+        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(residual)
 
         # **************************************************************************************************
         # Acquisition functions (following BoTorch assumption of maximization)
@@ -408,7 +406,7 @@ class OPTstep:
                 )
             )
 
-        # Add this because of the way train_X is defined within the gpmodel, which is foundamental, but the acquisition for sample
+        # Add this because of the way train_X is defined within the gpmodel, which is fundamental, but the acquisition for sample
         # around best, needs the raw one! (for noisy it is automatic)
         self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
 
