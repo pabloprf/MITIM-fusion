@@ -315,21 +315,21 @@ def initializeProblem(
 
     portals_fun.name_objectives = name_objectives
     portals_fun.name_transformed_ofs = name_transformed_ofs
-    portals_fun.optimization_options["ofs"] = ofs
-    portals_fun.optimization_options["dvs"] = [*dictDVs]
-    portals_fun.optimization_options["dvs_min"] = []
+    portals_fun.optimization_options["problem_options"]["ofs"] = ofs
+    portals_fun.optimization_options["problem_options"]["dvs"] = [*dictDVs]
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_min"].append(dictDVs[i][0].cpu().numpy())
-    portals_fun.optimization_options["dvs_base"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_min"].append(dictDVs[i][0].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_base"].append(dictDVs[i][1].cpu().numpy())
-    portals_fun.optimization_options["dvs_max"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_base"].append(dictDVs[i][1].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_max"].append(dictDVs[i][2].cpu().numpy())
+        portals_fun.optimization_options["problem_options"]["dvs_max"].append(dictDVs[i][2].cpu().numpy())
 
-    portals_fun.optimization_options["dvs_min"] = np.array(portals_fun.optimization_options["dvs_min"])
-    portals_fun.optimization_options["dvs_max"] = np.array(portals_fun.optimization_options["dvs_max"])
-    portals_fun.optimization_options["dvs_base"] = np.array(portals_fun.optimization_options["dvs_base"])
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_min"])
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_max"])
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_base"])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # For surrogate
@@ -407,7 +407,7 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
 
 
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
-    allOuts = portals_fun.optimization_options["ofs"]
+    allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
     portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
     portals_transformation_variables_trace = portals_fun.PORTALSparameters[
         "portals_transformation_variables_trace"
@@ -535,7 +535,7 @@ def grabPrevious(foldermitim, dictCPs_base):
     opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(analysis_level=1)
     x = opt_fun.mitim_model.BOmetrics["overall"]["xBest"].cpu().numpy()
-    dvs = opt_fun.mitim_model.optimization_options["dvs"]
+    dvs = opt_fun.mitim_model.optimization_options["problem_options"]["dvs"]
     dvs_dict = {}
     for j in range(len(dvs)):
         dvs_dict[dvs[j]] = x[j]

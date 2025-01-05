@@ -23,7 +23,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         train_Yvar,
         input_transform=None,
         outcome_transform=None,
-        surrogateOptions={},
+        surrogate_options={},
         variables=None,
         train_X_added=torch.Tensor([]),
         train_Y_added=torch.Tensor([]),
@@ -33,11 +33,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         _added refers to already-transformed variables that are added from table
         """
 
-        TypeMean = surrogateOptions.get("TypeMean", 0)
-        TypeKernel = surrogateOptions.get("TypeKernel", 0)
-        FixedNoise = surrogateOptions.get("FixedNoise", False)
-        ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
-        learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
+        TypeMean = surrogate_options.get("TypeMean", 0)
+        TypeKernel = surrogate_options.get("TypeKernel", 0)
+        FixedNoise = surrogate_options.get("FixedNoise", False)
+        ConstrainNoise = surrogate_options.get("ConstrainNoise", -1e-4)
+        learn_additional_noise = surrogate_options.get("ExtraNoise", False)
         print("\t\t* Surrogate model options:")
         print(
             f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"

@@ -11,26 +11,22 @@ def default_namelist(optimization_options):
     This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
     """
 
-    optimization_options["initial_training"] = 8
-    optimization_options["BO_iterations"] = 20
-    optimization_options["acquisition"]["points_per_step"] = 4
-    optimization_options["parallel_evaluations"] = (
+    optimization_options["initialization_options"]["initial_training"] = 8
+    optimization_options["convergence_options"]["maximum_iterations"] = 20
+    optimization_options["acquisition_options"]["points_per_step"] = 4
+    optimization_options["evaluation_options"]["parallel_evaluations"] = (
         1  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )
-    optimization_options["surrogateOptions"]["TypeMean"] = 2
-    optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.1, 0.1]
-    optimization_options["StrategyOptions"]["HitBoundsIncrease"] = [1.1, 1.1]
-    optimization_options["StrategyOptions"]["TURBO"] = True
-    optimization_options["StrategyOptions"]["TURBO_addPoints"] = 16
+    optimization_options["surrogate_options"]["TypeMean"] = 2
+    optimization_options["strategy_options"]["AllowedExcursions"] = [0.1, 0.1]
+    optimization_options["strategy_options"]["HitBoundsIncrease"] = [1.1, 1.1]
+    optimization_options["strategy_options"]["TURBO"] = True
+    optimization_options["strategy_options"]["TURBO_addPoints"] = 16
 
     # Acquisition
-    optimization_options["acquisition"]["type"] = "posterior_mean"
-    optimization_options["acquisition"]["optimization"] = {
-        "root": {"num_restarts": 5},
-        "botorch": {},
-        "ga": {},
-        }
-    
+    optimization_options["acquisition_options"]["type"] = "posterior_mean"
+    optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
+
     return optimization_options
 
 class vitals(STRATEGYtools.opt_evaluator):
@@ -139,22 +135,22 @@ class vitals(STRATEGYtools.opt_evaluator):
         # Calofs depend on the definition of the metric (top of the file)
         # ----------------------------------------------------------------------------
 
-        self.optimization_options["ofs"] = ofs
-        o1 = copy.deepcopy(self.optimization_options["ofs"])
+        self.optimization_options["problem_options"]["ofs"] = ofs
+        o1 = copy.deepcopy(self.optimization_options["problem_options"]["ofs"])
 
         self.name_objectives = []
         for iof in o1:
             self.name_objectives.append(iof + "_devstd")
-            self.optimization_options["ofs"].append(iof + "_exp")
+            self.optimization_options["problem_options"]["ofs"].append(iof + "_exp")
 
-        self.optimization_options["dvs"] = dvs
-        self.optimization_options["dvs_min"] = dvs_min
-        self.optimization_options["dvs_max"] = dvs_max
+        self.optimization_options["problem_options"]["dvs"] = dvs
+        self.optimization_options["problem_options"]["dvs_min"] = dvs_min
+        self.optimization_options["problem_options"]["dvs_max"] = dvs_max
 
         if dvs_base is None:
-            self.optimization_options["dvs_base"] = [1.0 for i in dvs]
+            self.optimization_options["problem_options"]["dvs_base"] = [1.0 for i in dvs]
         else:
-            self.optimization_options["dvs_base"] = dvs_base
+            self.optimization_options["problem_options"]["dvs_base"] = dvs_base
 
         # ----------------------------------------------------------------------------
         #
@@ -252,7 +248,7 @@ class vitals(STRATEGYtools.opt_evaluator):
                   about number of dimensions
         """
 
-        ofs_ordered_names = np.array(self.optimization_options["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["problem_options"]["ofs"])
 
         of, cal, res = torch.Tensor().to(Y), torch.Tensor().to(Y), torch.Tensor().to(Y)
         for iquant in ofs_ordered_names:

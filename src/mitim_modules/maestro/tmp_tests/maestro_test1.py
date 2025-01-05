@@ -49,11 +49,11 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
                                              "transport_model": {"turbulence":'TGLF',"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
                         "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
                         "optimization_options": {
-                            "BO_iterations": 50,
+                            ["convergence_options"]["maximum_iterations": 50,
                             "stopping_criteria_parameters": {
                                 "maximum_value": 1e-3,"maximum_value_is_rel": True,
                                 },
-                            "StrategyOptions": {"AllowedExcursions":[0.0, 0.0]} },
+                            "strategy_options": {"AllowedExcursions":[0.0, 0.0]} },
                         "exploration_ranges": {
                             'ymax_rel': 1.0,
                             'ymin_rel': 0.9,

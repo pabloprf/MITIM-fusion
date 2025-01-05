@@ -883,7 +883,7 @@ def calcLinearizedModel(
 
     istep, aLTn_est, aLTn_base = 0, [], []
     for i in range(trainx.shape[0]):
-        if i >= mitim_model.optimization_options["initial_training"]:
+        if i >= mitim_model.optimization_options["initialization_options"]["initial_training"]:
             istep += 1
 
         # Jacobian

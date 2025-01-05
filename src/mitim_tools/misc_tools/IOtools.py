@@ -1,6 +1,7 @@
 import os
 import shutil
 import psutil
+import copy
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
 import numpy as np
@@ -365,21 +366,49 @@ def calculate_size_pickle(file):
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MITIM optimization namelist
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 def read_mitim_nml(json_file):
     jpath = Path(json_file).expanduser()
     with open(jpath, 'r') as file:
-        data = json.load(file)
-
-    optimization_options = data["optimization"]
-    optimization_options["StrategyOptions"] =  data["StrategyOptions"]
-    optimization_options["surrogateOptions"] = data["surrogateOptions"]
+        optimization_options = json.load(file)
 
     return optimization_options
 
+def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
+
+    # Optimization criterion
+    if optimization_options['convergence_options']['stopping_criteria'] is None:
+        optimization_options['convergence_options']['stopping_criteria'] = stopping_criteria_default
+
+    # Add optimization print
+    if optimization_options is not None:
+        unprint_fun = copy.deepcopy(optimization_options['convergence_options']['stopping_criteria'])
+        def opt_crit(*args,**kwargs):
+            print('\n')
+            print('--------------------------------------------------')
+            print('Convergence criteria')
+            print('--------------------------------------------------')
+            v = unprint_fun(*args,**kwargs)
+            print('--------------------------------------------------\n')
+            return v
+        optimization_options['convergence_options']['stopping_criteria'] = opt_crit
+
+    # Check if the optimization options are in the namelist
+    from mitim_tools import __mitimroot__
+    Optim_potential = read_mitim_nml(__mitimroot__ / "templates" / "main.namelist.json")
+    for ikey in optimization_options:
+        if ikey not in Optim_potential:
+            print(f"\t- Option {ikey} is an unexpected variable, prone to errors", typeMsg="q")
+
+    return optimization_options
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 def getpythonversion():
-    return [
-        int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".")
-    ]
+    return [ int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".") ]
 
 def zipFiles(files, outputFolder, name="info"):
     odir = Path(outputFolder).expanduser()

@@ -91,7 +91,7 @@ class portals_beat(beat):
         if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
             self._flux_match_for_first_point()
             # PORTALS just with one point
-            portals_fun.optimization_options['initial_training'] = 1
+            portals_fun.optimization_options['initialization_options']['initial_training'] = 1
         # -----------------------------------------------------------
 
         portals_fun.prep(
@@ -263,17 +263,17 @@ class portals_beat(beat):
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
             if 'stopping_criteria_parameters' not in self.optimization_options:
-                self.optimization_options['stopping_criteria_parameters'] = {}
-            self.optimization_options['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
-            self.optimization_options['stopping_criteria_parameters']['maximum_value_is_rel'] = False
+                self.optimization_options['convergence_options']['stopping_criteria_parameters'] = {}
+            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
+            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
 
-            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['stopping_criteria_parameters']['maximum_value']}")
+            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
         reusing_surrogate_data = False
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
-            if 'surrogateOptions' not in self.optimization_options:
-                self.optimization_options['surrogateOptions'] = {}
-            self.optimization_options['surrogateOptions']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
+            if 'surrogate_options' not in self.optimization_options:
+                self.optimization_options['surrogate_options'] = {}
+            self.optimization_options['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
@@ -329,7 +329,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
@@ -348,7 +348,7 @@ class portals_beat(beat):
             stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
             MODELparameters =portals_output.opt_fun_full.mitim_model.optimization_object.MODELparameters
 
-        max_value_neg_residual = stepSettings['optimization_options']['stopping_criteria_parameters']['maximum_value']
+        max_value_neg_residual = stepSettings['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
@@ -372,7 +372,7 @@ class portals_beat(beat):
 def portals_beat_soft_criteria():
 
     optimization_options = {
-        "BO_iterations": 15,
+        ["convergence_options"]["maximum_iterations": 15,
         'stopping_criteria_parameters': {
                 "maximum_value": 10e-3,  # Reducing residual by 100x is enough
                 "maximum_value_is_rel": True,

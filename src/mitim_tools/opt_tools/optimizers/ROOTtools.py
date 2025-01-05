@@ -150,7 +150,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
         None,
         None,
         fun,
-        maxExtrapolation=fun.StrategyOptions["AllowedExcursions"],
+        maxExtrapolation=fun.strategy_options["AllowedExcursions"],
     )
 
     # Summary

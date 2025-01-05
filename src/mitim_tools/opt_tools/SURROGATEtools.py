@@ -39,7 +39,7 @@ class surrogate_model:
         bounds=None,
         avoidPoints=None,
         dfT=None,
-        surrogateOptions={},
+        surrogate_options={},
         FixedValue=False,
         fileTraining=None,
         seed = 0
@@ -56,7 +56,7 @@ class surrogate_model:
         self.avoidPoints = avoidPoints
         self.output = output
         self.output_transformed = output_transformed
-        self.surrogateOptions = surrogateOptions
+        self.surrogate_options = surrogate_options
         self.dfT = dfT
         self.surrogate_parameters = surrogate_parameters
         self.bounds = bounds
@@ -82,8 +82,8 @@ class surrogate_model:
 
         # ---------- Print ----------
         print("\t- Surrogate options:")
-        for i in self.surrogateOptions:
-            print(f"\t\t{i:20} = {self.surrogateOptions[i]}")
+        for i in self.surrogate_options:
+            print(f"\t\t{i:20} = {self.surrogate_options[i]}")
 
         # --------------------------------------------------------------------
         # Eliminate points if needed (not from the "added" set)
@@ -110,13 +110,13 @@ class surrogate_model:
         # -------------------------------------------------------------------------------------
 
         # Points to be added from file
-        if ("extrapointsFile" in self.surrogateOptions) and (self.surrogateOptions["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogateOptions["extrapointsModels"]):
+        if ("extrapointsFile" in self.surrogate_options) and (self.surrogate_options["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogate_options["extrapointsModels"]):
 
             print(
-                f"\t* Requested extension of training set by points in file {self.surrogateOptions['extrapointsFile']}"
+                f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}"
             )
 
-            df = pd.read_csv(self.surrogateOptions["extrapointsFile"])
+            df = pd.read_csv(self.surrogate_options["extrapointsFile"])
             df_model = df[df['Model'] == self.output]
 
             if len(df_model) == 0:
@@ -277,7 +277,7 @@ class surrogate_model:
             self.train_Yvar,
             input_transform=input_transform,
             outcome_transform=outcome_transform,
-            surrogateOptions=self.surrogateOptions,
+            surrogate_options=self.surrogate_options,
             variables=self.variables,
             train_X_added=self.train_X_added,
             train_Y_added=self.train_Y_added,
@@ -790,8 +790,8 @@ class surrogate_model:
             )
 
     def ensureMinimumNoise(self):
-        if ("MinimumRelativeNoise" in self.surrogateOptions) and (
-            self.surrogateOptions["MinimumRelativeNoise"] is not None
+        if ("MinimumRelativeNoise" in self.surrogate_options) and (
+            self.surrogate_options["MinimumRelativeNoise"] is not None
         ):
             maxY = (
                 self.train_Y.abs().max()
@@ -805,7 +805,7 @@ class surrogate_model:
             )
             maxVal = torch.max(maxY, maxY_added)
 
-            minstd_constraint = maxVal * self.surrogateOptions["MinimumRelativeNoise"]
+            minstd_constraint = maxVal * self.surrogate_options["MinimumRelativeNoise"]
 
             # Actual points
             if self.train_Y.shape[0] > 0:
@@ -813,7 +813,7 @@ class surrogate_model:
 
                 if std.min().item() < minstd_constraint:
                     print(
-                        f"\t* std for output {self.output} has been clipped b/c std_min = {self.surrogateOptions['MinimumRelativeNoise']*100:.2f}%, {minstd_constraint:.1e}; and had {std.min().item():.1e} ",
+                        f"\t* std for output {self.output} has been clipped b/c std_min = {self.surrogate_options['MinimumRelativeNoise']*100:.2f}%, {minstd_constraint:.1e}; and had {std.min().item():.1e} ",
                         typeMsg="w",
                     )
                     std = std.clip(minstd_constraint)
@@ -826,7 +826,7 @@ class surrogate_model:
 
                 if std.min().item() < minstd_constraint:
                     print(
-                        f"\t- std for output {self.output} has been clipped (added points) b/c std_min = {self.surrogateOptions['MinimumRelativeNoise']*100:.2f}% ({minstd_constraint:.1e}) and had {std.min().item():.1e} ",
+                        f"\t- std for output {self.output} has been clipped (added points) b/c std_min = {self.surrogate_options['MinimumRelativeNoise']*100:.2f}% ({minstd_constraint:.1e}) and had {std.min().item():.1e} ",
                         typeMsg="w",
                     )
                     std = std.clip(minstd_constraint)

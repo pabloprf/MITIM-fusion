@@ -1,51 +1,58 @@
 {
-    "optimization": {
+    "problem_options": {
         "ofs": ["y0", "y1"],
-        "train_Ystd": null,
         "dvs": ["x0", "x1"],
         "dvs_min": [0.8, 0.8],
         "dvs_base": null,
-        "dvs_max": [1.2, 1.2],
-        "BO_iterations": 5,
+        "dvs_max": [1.2, 1.2]
+    },
+    "evaluation_options": {
+        "parallel_evaluations": 1,
+        "train_Ystd": null
+    },
+    "convergence_options": {
+        "maximum_iterations": 5,
         "stopping_criteria": null,
         "stopping_criteria_parameters": {
             "maximum_value": -1e-3,
             "maximum_value_is_rel": false,
             "minimum_dvs_variation": [10, 3, 0.01]
-        },
-        "type_initialization": 3,
+        }
+    },
+    "initialization_options": {
         "initial_training": 5,
+        "type_initialization": 3,
         "read_initial_training_from_csv": false,
         "initialization_fun": null,
         "ensure_within_bounds": false,
-        "expand_bounds": true,
-        "parallel_evaluations": 1,
-        "acquisition": {
-            "type": "noisy_logei_mc",
-            "parameters": {
-                "mc_samples": 1024
-                },
-            "optimization": {
-                "root": {
-                    "num_restarts": 5,
-                    "keep_best": 1
-                    },
-                "botorch": {
-                    "num_restarts": 64,
-                    "raw_samples": 4096,
-                    "keep_best": 1
-                    },
-                "ga": {
-                    "keep_best": 32
-                    }
-                },
-            "relative_improvement_for_stopping": null,
-            "favor_proximity_type": 0,
-            "ensure_new_points": true,
-            "points_per_step": 1
-            }
+        "expand_bounds": true    
     },
-    "surrogateOptions": {
+    "acquisition_options": {
+        "type": "noisy_logei_mc",
+        "parameters": {
+            "mc_samples": 1024
+            },
+        "optimizers": ["botorch"],
+        "optimizer_options": {
+            "root": {
+                "num_restarts": 5,
+                "keep_best": 1
+                },
+            "botorch": {
+                "num_restarts": 64,
+                "raw_samples": 4096,
+                "keep_best": 1
+                },
+            "ga": {
+                "keep_best": 32
+                }
+            },
+        "relative_improvement_for_stopping": null,
+        "favor_proximity_type": 0,
+        "ensure_new_points": true,
+        "points_per_step": 1
+        },
+    "surrogate_options": {
         "TypeKernel": 0,
         "TypeMean": 0,
         "selectSurrogate": null,
@@ -59,7 +66,7 @@
         "extrapointsModels": null,
         "extrapointsModelsAvoidContent": null
     },
-    "StrategyOptions": {
+    "strategy_options": {
         "boundsRefine": null,
         "RandomRangeBounds": 0.5,
         "AllowedExcursions": [0.0, 0.0],
