@@ -1,6 +1,5 @@
 import shutil
 import copy
-import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals import PORTALStools
@@ -63,30 +62,10 @@ class portals_beat(beat):
 
         portals_fun  = PORTALSmain.portals(self.folder, additional_params_in_surrogate = self.additional_params_in_surrogate)
 
-        for key in self.PORTALSparameters:
-            if not isinstance(portals_fun.PORTALSparameters[key], dict):
-                portals_fun.PORTALSparameters[key] = self.PORTALSparameters[key]
-            else:
-                for subkey in self.PORTALSparameters[key]:
-                    portals_fun.PORTALSparameters[key][subkey] = self.PORTALSparameters[key][subkey]
-        for key in self.MODELparameters:
-            if not isinstance(portals_fun.MODELparameters[key], dict):
-                portals_fun.MODELparameters[key] = self.MODELparameters[key]
-            else:
-                for subkey in self.MODELparameters[key]:
-                    portals_fun.MODELparameters[key][subkey] = self.MODELparameters[key][subkey]
-        for key in self.optimization_options:
-            if not isinstance(portals_fun.optimization_options[key], dict):
-                portals_fun.optimization_options[key] = self.optimization_options[key]
-            else:
-                for subkey in self.optimization_options[key]:
-                    portals_fun.optimization_options[key][subkey] = self.optimization_options[key][subkey]
-        for key in self.INITparameters:
-            if not isinstance(portals_fun.INITparameters[key], dict):
-                portals_fun.INITparameters[key] = self.INITparameters[key]
-            else:
-                for subkey in self.INITparameters[key]:
-                    portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
+        modify_dictionary(portals_fun.PORTALSparameters, self.PORTALSparameters)
+        modify_dictionary(portals_fun.MODELparameters, self.MODELparameters)
+        modify_dictionary(portals_fun.optimization_options, self.optimization_options)
+        modify_dictionary(portals_fun.INITparameters, self.INITparameters)
 
         # Flux-match first ------------------------------------------
         if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
@@ -263,8 +242,12 @@ class portals_beat(beat):
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
-            if 'stopping_criteria_parameters' not in self.optimization_options:
+            
+            if 'convergence_options' not in self.optimization_options:
+                self.optimization_options['convergence_options'] = {}
+            if 'stopping_criteria_parameters' not in self.optimization_options['convergence_options']:
                 self.optimization_options['convergence_options']['stopping_criteria_parameters'] = {}
+
             self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
             self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
 
@@ -365,6 +348,19 @@ class portals_beat(beat):
         elif 'RhoLocations' in MODELparameters:
             self.maestro_instance.parameters_trans_beat['RhoLocations'] = MODELparameters['RhoLocations']
             print(f'\t\t* RhoLocations saved for future beats: {MODELparameters["RhoLocations"]}')
+
+
+def modify_dictionary(original, new):
+    for key in new:
+        # If something on the new dictionary is not in the original, add it
+        if key not in original:
+            original[key] = new[key]
+        # If it is a dictionary, go deeper
+        elif isinstance(new[key], dict):
+                modify_dictionary(original[key], new[key])
+        # If it is not a dictionary, just replace the value
+        else:
+            original[key] = new[key]
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO

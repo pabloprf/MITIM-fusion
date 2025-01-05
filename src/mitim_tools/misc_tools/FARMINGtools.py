@@ -11,7 +11,6 @@ import subprocess
 import socket
 import signal
 import datetime
-import torch
 import copy
 import tarfile
 import paramiko
@@ -569,7 +568,7 @@ class mitim_job:
         )
 
         # Download the tarball
-        print("\t\t- Downloadin (remote -> local)")
+        print("\t\t- Downloading (remote -> local)")
         if self.ssh is not None:
             with TqdmUpTo(
                 unit="B",
