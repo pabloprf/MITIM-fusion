@@ -41,6 +41,7 @@
             "botorch": {
                 "num_restarts": 64,
                 "raw_samples": 4096,
+                "maxiter": null,
                 "keep_best": 1
                 },
             "ga": {

@@ -29,15 +29,18 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     
     raw_samples = optimization_params.get("raw_samples",100)
     num_restarts = optimization_params.get("num_restarts",10)
+    maxiter = optimization_params.get("maxiter",None)
    
     q = optimization_params.get("keep_best",1)
     sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
     options = {
         "sample_around_best": True,
-        "maxiter": 1000,
         "disp": 50 if read_verbose_level() == 5 else False,
         "seed": fun.seed,
     }
+
+    if maxiter is not None:
+        options["maxiter"] = maxiter
 
     """
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
