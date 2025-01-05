@@ -23,7 +23,7 @@ def default_namelist(optimization_options):
     optimization_options['convergence_options']['stopping_criteria_parameters']["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
     optimization_options["acquisition_options"]["points_per_step"] = 16  # I found this better
     optimization_options["surrogate_options"]["FixedNoise"] = False
-    optimization_options["strategy_options"]["TURBO"] = True
+    optimization_options["strategy_options"]["TURBO_options"]["apply"] = True
 
     # Acquisition
     optimization_options["acquisition_options"]["type"] = "posterior_mean"

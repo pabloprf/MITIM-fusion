@@ -21,7 +21,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
-
 """
 Reading analysis for PORTALS has more options than standard:
 --------------------------------------------------------------------------------------------------------
@@ -231,6 +230,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
+            "cores_per_tglf_instance": 4,  # Number of cores to use per TGLF instance
         }
 
         for key in self.PORTALSparameters.keys():

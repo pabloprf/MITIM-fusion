@@ -34,14 +34,14 @@
             },
         "optimizers": ["botorch"],
         "optimizer_options": {
-            "root": {
-                "num_restarts": 5,
-                "keep_best": 1
-                },
             "botorch": {
                 "num_restarts": 64,
                 "raw_samples": 4096,
                 "maxiter": null,
+                "keep_best": 1
+                },
+            "root": {
+                "num_restarts": 5,
                 "keep_best": 1
                 },
             "ga": {
@@ -68,16 +68,18 @@
         "extrapointsModelsAvoidContent": null
     },
     "strategy_options": {
+        "AllowedExcursions": [0.0, 0.0],
+        "HitBoundsIncrease": [1.0, 1.0],
         "boundsRefine": null,
         "RandomRangeBounds": 0.5,
-        "AllowedExcursions": [0.0, 0.0],
         "ToleranceNiche": 1e-3,
         "applyCorrections": true,
-        "HitBoundsIncrease": [1.0, 1.0],
         "SwitchIterationsReduction": [null, null],
-        "TURBO": false,
-        "TURBO_addPoints": 32,
-        "TURBO_changeBounds": [0.75, 1.33],
-        "TURBO_metricsRow": [3, 3]
+        "TURBO_options": {
+            "apply": false,
+            "points": 32,
+            "bounds": [0.75, 1.33],
+            "metrics": [3, 3]
+        }
     }
 }

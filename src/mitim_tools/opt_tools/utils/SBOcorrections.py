@@ -129,9 +129,9 @@ def TURBOupdate(self, strategy_options_use, position=0, seed=0):
 
     """
 
-    addPoints = strategy_options_use["TURBO_addPoints"]
-    changes = strategy_options_use["TURBO_changeBounds"]
-    metrics = strategy_options_use["TURBO_metricsRow"]
+    addPoints = strategy_options_use["TURBO_options"]["points"]
+    changes = strategy_options_use["TURBO_options"]["bounds"]
+    metrics = strategy_options_use["TURBO_options"]["metrics"]
 
     print("\n~~~~~~~~~~~~~~~~~~~~~~~ Performing TURBO update ~~~~~~~~~~~~~~~~~~~~~~~")
 

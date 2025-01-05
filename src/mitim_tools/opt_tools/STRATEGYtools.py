@@ -1050,7 +1050,7 @@ class MITIM_BO:
 
             changesMade = 0
             # Apply TURBO
-            if strategy_options_use["TURBO"]:
+            if strategy_options_use["TURBO_options"]["apply"]:
                 changesMade = SBOcorrections.TURBOupdate(
                     self,
                     strategy_options_use,

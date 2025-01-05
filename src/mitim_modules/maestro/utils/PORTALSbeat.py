@@ -370,9 +370,14 @@ class portals_beat(beat):
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
 
-def portals_beat_soft_criteria(optimization_options):
+def portals_beat_soft_criteria(portals_namelist):
 
-    optimization_options['convergence_options'] = {
+    portals_namelist_soft = copy.deepcopy(portals_namelist)
+
+    if 'optimization_options' not in portals_namelist_soft:
+        portals_namelist_soft['optimization_options'] = {}
+
+    portals_namelist_soft['optimization_options']['convergence_options'] = {
             "maximum_iterations": 15,
             "stopping_criteria": PORTALStools.stopping_criteria_portals,
             'stopping_criteria_parameters': {
@@ -383,4 +388,9 @@ def portals_beat_soft_criteria(optimization_options):
             }
         }
 
-    return optimization_options
+    if 'MODELparameters' not in portals_namelist_soft:
+        portals_namelist_soft['MODELparameters'] = {}
+
+    portals_namelist_soft["MODELparameters"]["Physics_options"] = {"TypeTarget": 2}
+
+    return portals_namelist_soft

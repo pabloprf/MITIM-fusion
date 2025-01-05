@@ -20,8 +20,8 @@ def default_namelist(optimization_options):
     optimization_options["surrogate_options"]["TypeMean"] = 2
     optimization_options["strategy_options"]["AllowedExcursions"] = [0.1, 0.1]
     optimization_options["strategy_options"]["HitBoundsIncrease"] = [1.1, 1.1]
-    optimization_options["strategy_options"]["TURBO"] = True
-    optimization_options["strategy_options"]["TURBO_addPoints"] = 16
+    optimization_options["strategy_options"]["TURBO_options"]["apply"] = True
+    optimization_options["strategy_options"]["TURBO_options"]["points"] = 16
 
     # Acquisition
     optimization_options["acquisition_options"]["type"] = "posterior_mean"
