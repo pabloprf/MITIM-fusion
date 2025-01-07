@@ -454,7 +454,7 @@ class portals(STRATEGYtools.opt_evaluator):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALSinteraction.calculatePseudos(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
+        of, cal, _, res = PORTALSinteraction.calculate_residuals(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
 
         return of, cal, res
 
