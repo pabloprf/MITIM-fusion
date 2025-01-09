@@ -23,7 +23,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         train_Yvar,
         input_transform=None,
         outcome_transform=None,
-        surrogate_options={},
+        surrogateOptions={},
         variables=None,
         train_X_added=torch.Tensor([]),
         train_Y_added=torch.Tensor([]),
@@ -33,11 +33,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         _added refers to already-transformed variables that are added from table
         """
 
-        TypeMean = surrogate_options.get("TypeMean", 0)
-        TypeKernel = surrogate_options.get("TypeKernel", 0)
-        FixedNoise = surrogate_options.get("FixedNoise", False)
-        ConstrainNoise = surrogate_options.get("ConstrainNoise", -1e-4)
-        learn_additional_noise = surrogate_options.get("ExtraNoise", False)
+        TypeMean = surrogateOptions.get("TypeMean", 0)
+        TypeKernel = surrogateOptions.get("TypeKernel", 0)
+        FixedNoise = surrogateOptions.get("FixedNoise", False)
+        ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
+        learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
         print("\t\t* Surrogate model options:")
         print(
             f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
@@ -319,23 +319,13 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
     def prepareToGenerateCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = True
         # Make sure that this ModelListGP evaluation is fresh
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
     def cold_startCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = False
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
     def transform_inputs(self, X):
         self.prepareToGenerateCommons()
@@ -403,9 +393,7 @@ class Transformation_Inputs(
     @botorch.models.transforms.utils.subset_transform
     def _transform(self, X):
         if (self.output is not None) and (self.flag_to_evaluate):
-            Xtr, parameters_combined = self.surrogate_parameters[
-                "transformationInputs"
-            ](
+            Xtr, parameters_combined = self.surrogate_parameters["transformationInputs"](
                 X,
                 self.output,
                 self.surrogate_parameters,

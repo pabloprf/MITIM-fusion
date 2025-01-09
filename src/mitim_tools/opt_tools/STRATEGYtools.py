@@ -281,9 +281,7 @@ class opt_evaluator:
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
-            analysis_level=(
-                retrieval_level if (retrieval_level is not None) else analysis_level
-            ),
+            analysis_level= retrieval_level if (retrieval_level is not None) else analysis_level,
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             rangePlot=rangesPlot,
         )
@@ -1582,7 +1580,10 @@ class MITIM_BO:
 		Acquisition
 		****************************************************************
 		"""
-        self.plotAcquisitionOptimizationSummary(fn=fn)
+        try:    
+            self.plotAcquisitionOptimizationSummary(fn=fn)
+        except: 
+            print('\t- Problem plotting acquisition optimization summary', typeMsg='w')
 
         return fn
 

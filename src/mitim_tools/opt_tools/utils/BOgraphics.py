@@ -1322,16 +1322,10 @@ class optimization_results:
 
         # Grab best case based on mean
         try:
-            (
-                self.best_absolute,
-                self.best_absolute_index,
-                self.best_absolute_full,
-            ) = self.getBest()
+            self.best_absolute,self.best_absolute_index,self.best_absolute_full = self.getBest()
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
-            self.best_absolute = self.best_absolute_index = self.best_absolute_full = (
-                None
-            )
+            self.best_absolute = self.best_absolute_index = self.best_absolute_full = None
 
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines
@@ -1530,6 +1524,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         if rangeT is not None:
             best_absolute_index += rangeT[0]
+        
         best_absolute_full = self.evaluations[best_absolute_index]
 
         return best_absolute, best_absolute_index, best_absolute_full

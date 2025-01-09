@@ -123,9 +123,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	"""
 
     _, num = output.split("_")
-    index = powerstate.indexes_simulation[
-        int(num)
-    ]  # num=1 -> pos=1, so that it takes the second value in vectors
+    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
@@ -372,9 +370,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
     """
 
-    if ("parameters_combined" in surrogate_parameters) and (
-        "powerstate" in surrogate_parameters["parameters_combined"]
-    ):
+    if ("parameters_combined" in surrogate_parameters) and ("powerstate" in surrogate_parameters["parameters_combined"]):
         powerstate = surrogate_parameters["parameters_combined"]["powerstate"]
 
     else:
