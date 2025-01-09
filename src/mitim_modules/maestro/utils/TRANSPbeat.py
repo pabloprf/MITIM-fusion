@@ -310,7 +310,7 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
         time_step_s  = 0.1
 
         transp_namelist['flattop_window'] = duration_s
-        transp_namelist['dtEquilMax_ms'] = time_step_s
+        transp_namelist['dtEquilMax_ms'] = time_step_s*1E3
         transp_namelist['dtHeating_ms'] = time_step_s*1E3
         transp_namelist['dtCurrentDiffusion_ms'] = time_step_s*1E3
         transp_namelist['dtOut_ms'] = time_step_s*1E3
