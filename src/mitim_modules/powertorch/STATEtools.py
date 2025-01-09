@@ -321,7 +321,7 @@ class powerstate:
             self.update_var(i)
 
     def findFluxMatchProfiles(
-        self, algorithm="root", algorithmOptions={}, bounds=None,
+        self, algorithm="root", algorithm_options={}, bounds=None,
     ):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
 
@@ -336,11 +336,11 @@ class powerstate:
         if algorithm == "root":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchRoot(
                 self,
-                algorithmOptions=algorithmOptions)
+                algorithm_options=algorithm_options)
         if algorithm == "simple_relax":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchSimpleRelax(
                 self,
-                algorithmOptions=algorithmOptions,
+                algorithm_options=algorithm_options,
                 bounds=bounds)
         if algorithm == "picard":
             ITtools.fluxMatchPicard(self)

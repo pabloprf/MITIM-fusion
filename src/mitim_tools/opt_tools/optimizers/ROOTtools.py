@@ -123,7 +123,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
                 x0[i, :],
                 fun,
                 writeTrajectory=writeTrajectory,
-                algorithmOptions=algorithm_options,
+                algorithm_options=algorithm_options,
                 solver=solver,
             )
             x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)

@@ -6,13 +6,13 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
-def fluxMatchRoot(self, algorithmOptions={}):
+def fluxMatchRoot(self, algorithm_options={}):
     
     dimX = (self.plasma["rho"].shape[-1]-1)*len(self.ProfilesPredicted)
 
     Xopt, Yopt = [], []
 
-    if algorithmOptions.get('storeValues',True):
+    if algorithm_options.get('storeValues',True):
         def evaluator(x):
             """
             Notes:
@@ -58,10 +58,10 @@ def fluxMatchRoot(self, algorithmOptions={}):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
     # **** Optimize ****
-    _ = optim.powell(evaluator, x0, None, algorithmOptions=algorithmOptions)
+    _ = optim.powell(evaluator, x0, None, algorithm_options=algorithm_options)
     # ******************
 
-    if algorithmOptions.get('storeValues',True):
+    if algorithm_options.get('storeValues',True):
         Xopt = torch.stack(Xopt)
         Yopt = torch.stack(Yopt)
     else:
@@ -69,19 +69,19 @@ def fluxMatchRoot(self, algorithmOptions={}):
 
     return Xopt, Yopt
 
-def fluxMatchSimpleRelax(self, algorithmOptions={}, bounds=None):
+def fluxMatchSimpleRelax(self, algorithm_options={}, bounds=None):
     
     # Default options
-    tol = algorithmOptions.get("tol", 1e-3)
-    max_it = algorithmOptions.get("max_it", 1e5)
-    relax = algorithmOptions.get("relax", 0.001)
-    dx_max = algorithmOptions.get("dx_max", 0.05)
-    dx_max_abs = algorithmOptions.get("dx_max_abs", None)
-    dx_min_abs = algorithmOptions.get("dx_min_abs", None)
-    print_each = algorithmOptions.get("print_each", 1e2)
-    MainFolder = algorithmOptions.get("MainFolder", "~/scratch/")
-    storeValues = algorithmOptions.get("storeValues", True)
-    namingConvention = algorithmOptions.get("namingConvention", "powerstate_sr_ev")
+    tol = algorithm_options.get("tol", 1e-3)
+    max_it = algorithm_options.get("max_it", 1e5)
+    relax = algorithm_options.get("relax", 0.001)
+    dx_max = algorithm_options.get("dx_max", 0.05)
+    dx_max_abs = algorithm_options.get("dx_max_abs", None)
+    dx_min_abs = algorithm_options.get("dx_min_abs", None)
+    print_each = algorithm_options.get("print_each", 1e2)
+    MainFolder = algorithm_options.get("MainFolder", "~/scratch/")
+    storeValues = algorithm_options.get("storeValues", True)
+    namingConvention = algorithm_options.get("namingConvention", "powerstate_sr_ev")
 
     MainFolder = IOtools.expandPath(MainFolder)
 

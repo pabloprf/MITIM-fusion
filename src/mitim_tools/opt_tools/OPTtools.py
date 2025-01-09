@@ -19,9 +19,7 @@ class fun_optimization:
 
         # Pass the original bounds of the problem already to the fun class (they may be modified by boundsRefine)
 
-        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(
-            self.evaluators["GP"].train_X
-        )
+        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(self.evaluators["GP"].train_X)
         for i, ikey in enumerate(self.evaluators["GP"].bounds):
             self.bounds[0, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][0])
             self.bounds[1, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][1])
@@ -424,17 +422,11 @@ def pointsOperation_bounds(
     x_removeds = torch.Tensor().to(fun.stepSettings["dfT"])
     for i in range(x_opt.shape[0]):
         if maxExtrapolation is not None:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=maxExtrapolation
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=maxExtrapolation)
         else:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=[0.0, 0.0]
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=[0.0, 0.0])
             if not insideBounds:
-                print(
-                    f"\t- Point #{i} is not inside bounds, but I am allowing it to exists"
-                )
+                print(f"\t- Point #{i} is not inside bounds, but I am allowing it to exists")
             insideBounds = True
 
         if insideBounds:
@@ -460,10 +452,10 @@ def pointsOperation_bounds(
 
     numRemoved = x_removeds.shape[0]
     if numRemoved > 0:
-        print(
-            f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}"
-        )
-        IOtools.printPoints(x_removeds, numtabs=2)
+        print(f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}")
+        IOtools.printPoints(x_removeds)
+        print('\t- Bounds:')
+        IOtools.printPoints(bounds)
 
     return x_opt_inbounds, y_opt_inbounds, z_opt_inbounds
 
@@ -919,10 +911,7 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
 
     # ~~~~~~~~~ Guessed Population (from previous GA) ~~~~~~~~~
 
-    if previousGA is not None and "Paretos_x_unnormalized" in previousGA:
-        x_opt = previousGA["Paretos_x_unnormalized"]
-    else:
-        x_opt = []
+    x_opt = previousGA["Paretos_x_unnormalized"] if previousGA is not None and "Paretos_x_unnormalized" in previousGA else []
 
     # --------------------------------------------------
     # Add to the previous optimum, all the trained points
@@ -948,9 +937,8 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     else:
         howmany = 0
         txt = ""
-    print(
-        f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}"
-    )
+
+    print(f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}")
 
     # --------------------------------------------------
     # Make sure that they are in between bounds (because in this step, the bounds may have changed if I processed it
@@ -968,9 +956,7 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
                     fun.stepSettings["dfT"]
                 )
 
-        print(
-            f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}"
-        )
+        print(f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}")
 
         xGuesses = xGuesses_new
         z_opt = z_opt_new
@@ -991,18 +977,12 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     if len(xGuesses) == 0:
         print("* Initial points equal to zero, will likely fail", typeMsg="q")
 
-    print(
-        "********************** Status update after prep phase **********************************"
-    )
+    print("********************** Status update after prep phase **********************************")
     y_opt_residual = summarizeSituation(xGuesses, fun)
-    print(
-        "****************************************************************************************"
-    )
+    print("****************************************************************************************")
 
     # Order by best
-    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(
-        xGuesses, y_opt_residual, z_opt, fun
-    )
+    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(xGuesses, y_opt_residual, z_opt, fun)
 
     return xGuesses, y_opt_residual, z_opt
 

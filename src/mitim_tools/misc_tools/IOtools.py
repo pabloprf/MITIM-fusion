@@ -187,7 +187,7 @@ def createCDF_simple(file, zvals, names):
 
     ncfile.close()
 
-def printPoints(x, numtabs=1):
+def printPoints(x, numtabs=2):
     """
     x is (batch, dim)
     """
