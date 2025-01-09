@@ -71,17 +71,18 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
-        if (len(self.mitim_bo.optimization_data.data) == 0) and self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
-            # Flux-match first ------------------------------------------
-            self._flux_match_for_first_point()
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+
             # PORTALS just with one point
             portals_fun.optimization_options['initialization_options']['initial_training'] = 1
-            # -----------------------------------------------------------
 
-            portals_fun.prep(
-                self.fileGACODE,
-                **self.exploration_ranges,
-                )
+            # If the point is not evaluated (for example, this was not a restart of this portals beat), then flux-match it
+            if len(self.mitim_bo.optimization_data.data) == 0:
+                # Flux-match-------------------------------------------------
+                self._flux_match_for_first_point()
+                # -----------------------------------------------------------
+
+            portals_fun.prep(self.fileGACODE,**self.exploration_ranges)
 
             self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
