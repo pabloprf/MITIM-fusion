@@ -836,21 +836,22 @@ def FrequencyOnAxis(Bt):
     return Bt * 10.0
 
 
-def getLowZimpurity(Fmain, Zeff, Zmini, Fmini, ZimpH, FimpH=0, Zother=1, Fother=0):
-    Delta_Zeff = Zeff - Fmini * Zmini**2 - FimpH * ZimpH**2 - Fother * Zother**2
-    Delta_quas = 1 - Fmini * Zmini - FimpH * ZimpH - Fother * Zother
+def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
-    ZimpL = (Delta_Zeff - Fmain) / (Delta_quas - Fmain)
-    ZimpL_mod = int(round(ZimpL))
+    factor1 = 1 - (fDT + Zmini * fmini + Zhigh * fhigh)
+    factor2 = Zeff - (Zmini**2 * fmini + Zhigh**2 * fhigh)
 
-    FimpL = (Delta_quas - Fmain) / ZimpL_mod
-    Rimp = FimpH / FimpL
+    Z = factor2 / factor1
 
-    print(
-        f"\t- Low-Z impurity must have Z_low = {ZimpL:.2f}~{ZimpL_mod}, with f_low = {FimpL:.2e} --> f_high/f_low = {Rimp:.2e}"
-    )
+    if force_integer:
+        print(f"\t- Low-Z impurity must have Z_low = {Z:.2f}~{int(round(Z))}")
+        Z = int(round(Z))
+    
+    r = 1/ (1/(Z*fhigh) * factor1)
 
-    return ZimpL_mod, Rimp
+    print(f'\t- f_high/f_lower = {r:.2e}  -> f_low = {fhigh*r:.2e}')
+
+    return Z, r
 
 
 def getICHefficiency(dictParams):
