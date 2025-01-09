@@ -25,17 +25,16 @@ def DVdistanceMetric(xT):
     return xG, yG_max
 
 
-def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0]):
+def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper = 1E-6):
     mi = bounds[0, :]
     ma = bounds[1, :]
 
     # Hard limits
     maxb, minb = ma, mi
-    insideBounds_original = (x <= maxb).all() and (x >= minb).all()
 
-    # Allow extrapolation
-    minb = mi - maxExtrapolation[0] * (ma - mi)
-    maxb = ma + maxExtrapolation[1] * (ma - mi)
+    # Allow extrapolation (added clip to avoid numerical issues of points very close to the boundary)
+    minb = mi - np.max([maxExtrapolation[0],clipper]) * (ma - mi) 
+    maxb = ma + np.max([maxExtrapolation[1],clipper]) * (ma - mi)
     insideBounds = (x <= maxb).all() and (x >= minb).all()
 
     return insideBounds
