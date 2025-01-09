@@ -282,11 +282,14 @@ class transp_beat(beat):
 
 def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current_diffusion = False):
 
+    duration_s   = 1.0
+    time_step_s = duration_s * 1E-2
+
     transp_namelist = {
         'flattop_window': 1.0,       
         'extractAC': False,      
-        'dtOut_ms' : 10.0,
-        'dtIn_ms' : 10.0,
+        'dtOut_ms' : time_step_s*1E3,
+        'dtIn_ms' : time_step_s*1E3,
         'nzones' : 60,
         'nzones_energetic' : 20, 
         'nzones_distfun' : 10,     
@@ -302,12 +305,17 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
         }
 
     if only_current_diffusion:
-        transp_namelist['flattop_window'] = 15.0
-        transp_namelist['dtEquilMax_ms'] = 100.0
-        transp_namelist['dtHeating_ms'] = 100.0 
-        transp_namelist['dtCurrentDiffusion_ms'] = 100.0
-        transp_namelist['dtOut_ms'] = 100.0
-        transp_namelist['dtIn_ms'] = 100.0
+
+        duration_s   = 15.0
+        time_step_s  = 0.1
+
+        transp_namelist['flattop_window'] = duration_s
+        transp_namelist['dtEquilMax_ms'] = time_step_s
+        transp_namelist['dtHeating_ms'] = time_step_s*1E3
+        transp_namelist['dtCurrentDiffusion_ms'] = time_step_s*1E3
+        transp_namelist['dtOut_ms'] = time_step_s*1E3
+        transp_namelist['dtIn_ms'] = time_step_s*1E3
+        
         transp_namelist['useNUBEAMforAlphas'] = False
         transp_namelist['Pich'] = False
 
