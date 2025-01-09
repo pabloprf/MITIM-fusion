@@ -64,9 +64,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-3
 
     # Surrogate
-    optimization_options["surrogate_options"]["selectSurrogate"] = partial(
-        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
-    )
+    optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
 
     optimization_options["initialization_options"]["ensure_within_bounds"] = True
 
@@ -75,7 +73,7 @@ def default_namelist(optimization_options, CGYROrun=False):
         optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
         optimization_options["acquisition_options"]["points_per_step"] = 1
     else:
-        optimization_options["acquisition_options"]["type"] = "posterior_mean"#"noisy_logei_mc"
+        optimization_options["acquisition_options"]["type"] = "posterior_mean"            # "noisy_logei_mc"
         optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch"]   # TGLF runs should prioritize speed, and botorch is robust enough
         optimization_options["acquisition_options"]["points_per_step"] = 1
 
@@ -100,13 +98,9 @@ class portals(STRATEGYtools.opt_evaluator):
         Note that additional_params_in_surrogate They must exist in the plasma dictionary of the powerstate object
         '''
         
-        print(
-            "\n-----------------------------------------------------------------------------------------"
-        )
+        print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t PORTALS class module")
-        print(
-            "-----------------------------------------------------------------------------------------\n"
-        )
+        print("-----------------------------------------------------------------------------------------\n")
 
         # Store folder, namelist. Read namelist
 
@@ -225,12 +219,13 @@ class portals(STRATEGYtools.opt_evaluator):
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
+            "fImp_orig": 1.0,
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
-            "cores_per_tglf_instance": 4,  # Number of cores to use per TGLF instance
+            "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
         }
 
         for key in self.PORTALSparameters.keys():

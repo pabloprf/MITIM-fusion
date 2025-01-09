@@ -146,16 +146,13 @@ class tgyro_model(power_transport):
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = ModelOptions.get("cores_per_tglf_instance", 4)
+        cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
         # ------------------------------------------------------------------------------------------------------------------------
 
-        RadiisToRun = [
-            self.powerstate.plasma["rho"][0, 1:][i].item()
-            for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
-        ]
+        RadiisToRun = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
         tgyro.prep(self.folder, profilesclass_custom=self.profiles_transport)
@@ -287,11 +284,7 @@ class tgyro_model(power_transport):
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
-                cgyro_trick(
-                    self,
-                    self.folder / "cgyro_neo",
-                    name=self.name,
-                )
+                cgyro_trick(self,self.folder / "cgyro_neo",name=self.name)
 
             # Read TGYRO files and construct portals variables
 
