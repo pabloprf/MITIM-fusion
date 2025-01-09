@@ -34,9 +34,18 @@ class fun_optimization:
             self.bounds_mod[0, i] -= self.strategy_options["AllowedExcursions"][0] * tot
             self.bounds_mod[1, i] += self.strategy_options["AllowedExcursions"][1] * tot
 
-    def prep(self, xGuesses=None, seed=0):
+    def prep(self, xGuesses=None, seed=0, adjust_bounds = True):
         self.xGuesses = xGuesses
         self.seed = seed
+
+        # Modify bounds_mod to include the guesses
+        if adjust_bounds and (xGuesses is not None):
+            
+            for i in range(self.bounds_mod.shape[-1]):
+                delta = (self.bounds_mod[1, i] - self.bounds_mod[0, i])*1E-6 # This avoids problems with the case in which the guess is exactly at bounds
+            
+                self.bounds_mod[0, i] = torch.min(self.bounds_mod[0, i], xGuesses[:, i].min() - delta)
+                self.bounds_mod[1, i] = torch.max(self.bounds_mod[1, i], xGuesses[:, i].max() + delta)
 
     def changeBounds(
         self, it_number, position_best_so_far, forceAllPointsInBounds=False
