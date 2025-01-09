@@ -281,9 +281,7 @@ def GBfromXnorm(x, output, powerstate):
     elif varFull[:5] == "Pexch":
         quantity = "Sgb"
 
-    T = powerstate.plasma[quantity][
-        : x.shape[0], powerstate.indexes_simulation[pos]
-    ].unsqueeze(-1)
+    T = powerstate.plasma[quantity][: x.shape[0], powerstate.indexes_simulation[pos]].unsqueeze(-1)
 
     return T
 

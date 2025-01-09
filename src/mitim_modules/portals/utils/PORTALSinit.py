@@ -96,20 +96,13 @@ def initializeProblem(
     profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
-        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
-            portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1
-        ]["dens"]
-        print(
-            f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",
-            typeMsg="i",
-        )
+        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1]["dens"]
+        print(f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",typeMsg="i",)
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
-    if checkForSpecies and (
-        portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3
-    ):
+    if checkForSpecies and (portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3):
         speciesNotFound = []
         for i in range(len(profiles.Species)):
             data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
@@ -343,15 +336,11 @@ def initializeProblem(
         "transformationInputs": PORTALStools.produceNewInputs,
         "transformationOutputs": PORTALStools.transformPORTALS,
         "powerstate": portals_fun.powerstate,
-        "applyImpurityGammaTrick": portals_fun.PORTALSparameters[
-            "applyImpurityGammaTrick"
-        ],
+        "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
         "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
         "useDiffusivities": portals_fun.PORTALSparameters["useDiffusivities"],
         "surrogate_transformation_variables_alltimes": Variables,
-        "surrogate_transformation_variables_lasttime": copy.deepcopy(
-            Variables[list(Variables.keys())[-1]]
-        ),
+        "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
     }
 

@@ -201,13 +201,9 @@ class logistic:
     def transform(self, x):
         # return self.l + (self.u-self.l)*(1/(1+torch.exp(-self.k*(x-self.x0))))
         # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.l + 0.5 * (torch.tanh(self.k * (x - self.x0)) + 1) * (
-            self.u - self.l
-        )
+        return self.l + 0.5 * (torch.tanh(self.k * (x - self.x0)) + 1) * (self.u - self.l)
 
     def untransform(self, y):
         # return self.x0-1/self.k * torch.log( (self.u-self.l)/(y-self.l)-1 )
         # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.x0 + (1 / self.k) * torch.atanh(
-            2 * (y - self.l) / (self.u - self.l) - 1
-        )
+        return self.x0 + (1 / self.k) * torch.atanh(2 * (y - self.l) / (self.u - self.l) - 1)

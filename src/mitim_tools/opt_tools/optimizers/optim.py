@@ -1,4 +1,3 @@
-from math import nan
 import torch
 import copy
 import numpy as np
@@ -11,9 +10,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # --------------------------------------------------------------------------------------------------------
 
 
-def powell(
-    flux, xGuess, optim_fun, writeTrajectory=False, algorithmOptions={}, solver="lm"
-):
+def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithmOptions={}, solver="lm"):
     """
     Inputs:
             - xGuess is the initial guess and must be a tensor of (1,dimX) or (dimX). It will be transformed to dimX.
@@ -25,8 +22,6 @@ def powell(
             - Must all be tensors that allow Jacobian calculation
     """
 
-    # torch.autograd.set_detect_anomaly(True)
-
     vectorize = True  # Fast calculation of the jacobian (much faster, but experimental)
 
     def func(x, dfT1=torch.zeros(1).to(xGuess)):
@@ -35,7 +30,7 @@ def powell(
 
         # Evaluate value and local jacobian
         QhatD = flux(X)
-        JD = torch.autograd.functional.jacobian(flux, X, strict=False, vectorize=vectorize)
+        JD = torch.autograd.functional.jacobian(flux, X, vectorize=vectorize)
 
         # Back to arrays
         return QhatD.detach().cpu().numpy(), JD.detach().cpu().numpy()
