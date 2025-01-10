@@ -995,7 +995,7 @@ class PORTALSinitializer:
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
         # ----------------------------
 
-        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
+        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
