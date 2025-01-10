@@ -3,6 +3,7 @@ import gpytorch
 import botorch
 import contextlib
 import ast
+import copy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -298,7 +299,7 @@ class surrogate_model:
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
                     np.where(self.num_training_points < np.array(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())))[0][0]]
 
-            self.surrogate_transformation_variables = self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position]
+            self.surrogate_transformation_variables = copy.deepcopy(self.surrogate_parameters["surrogate_transformation_variables_alltimes"][transition_position])
 
     def normalization_pass(
         self,
