@@ -32,7 +32,8 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     maxiter = optimization_params.get("maxiter",None)
    
     q = optimization_params.get("keep_best",1)
-    sequential_q = True # Not really relevant for q=1, but recommendation from BoTorch team for q>1
+    sequential_q = optimization_params.get("sequential_q",True) # Not really relevant for q=1, but recommendation from BoTorch team for q>1
+    
     options = {
         "sample_around_best": True,
         "disp": 50 if read_verbose_level() == 5 else False,

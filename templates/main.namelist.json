@@ -38,14 +38,18 @@
                 "num_restarts": 64,
                 "raw_samples": 4096,
                 "maxiter": 1000,
+                "sequential_q": true,
                 "keep_best": 1
                 },
             "root": {
                 "num_restarts": 5,
+                "augmented_optimization_mode": true,
                 "maxiter": 1000,
+                "solver": "lm",
                 "keep_best": 1
                 },
             "ga": {
+                "num_restarts": 1,
                 "keep_best": 32
                 }
             },

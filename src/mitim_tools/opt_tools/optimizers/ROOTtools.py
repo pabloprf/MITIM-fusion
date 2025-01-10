@@ -14,9 +14,9 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     # Options
     num_restarts = optimization_params.get("num_restarts",1)
     maxiter = optimization_params.get("maxiter",None)
+    run_as_augmented_optimization = optimization_params.get("augmented_optimization_mode",True)
+    solver = optimization_params.get("solver","lm")
     
-    run_as_augmented_optimization = True
-    solver = "lm"
     algorithm_options = {"maxiter": maxiter}
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
