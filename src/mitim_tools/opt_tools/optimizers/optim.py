@@ -1,4 +1,3 @@
-from math import nan
 import torch
 import copy
 import numpy as np
@@ -11,9 +10,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # --------------------------------------------------------------------------------------------------------
 
 
-def powell(
-    flux, xGuess, optim_fun, writeTrajectory=False, algorithmOptions={}, solver="lm"
-):
+def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={}, solver="lm"):
     """
     Inputs:
             - xGuess is the initial guess and must be a tensor of (1,dimX) or (dimX). It will be transformed to dimX.
@@ -25,44 +22,30 @@ def powell(
             - Must all be tensors that allow Jacobian calculation
     """
 
-    # torch.autograd.set_detect_anomaly(True)
-
-    vectorize = True  # Fast calculation of the jacobian (much faster, but experimental)
-
     def func(x, dfT1=torch.zeros(1).to(xGuess)):
         # Root will work with arrays, convert to tensor with AD
         X = torch.tensor(x, requires_grad=True).to(dfT1)
 
         # Evaluate value and local jacobian
         QhatD = flux(X)
-        JD = torch.autograd.functional.jacobian(
-            flux, X, strict=False, vectorize=vectorize
-        )
+        JD = torch.autograd.functional.jacobian(flux, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
 
         # Back to arrays
         return QhatD.detach().cpu().numpy(), JD.detach().cpu().numpy()
 
     # No batching is allowed in ROOT. If you want to run batching flux matching you need to concatenate the vector in one dim
-    xGuess0 = (
-        xGuess.squeeze(0).cpu().numpy() if xGuess.dim() > 1 else xGuess.cpu().numpy()
-    )
+    xGuess0 = xGuess.squeeze(0).cpu().numpy() if xGuess.dim() > 1 else xGuess.cpu().numpy()
 
     # ************
     # Root process
     # ************
     f0,_ = func(xGuess0)
-    print(
-        f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}",
-    )
+    print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}")
 
-    sol = root(
-        func, xGuess0, jac=True, method=solver, tol=None, options=algorithmOptions
-    )
+    sol = root(func, xGuess0, jac=True, method=solver, tol=None, options=algorithm_options)
 
     f,_ = func(sol.x)
-    print(
-        f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}",
-    )
+    print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
     # ************
 
     print("\t- Results from scipy solver:", sol)

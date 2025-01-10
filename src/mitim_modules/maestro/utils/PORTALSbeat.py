@@ -1,8 +1,8 @@
 import shutil
 import copy
-import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
+from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
@@ -62,44 +62,27 @@ class portals_beat(beat):
 
         portals_fun  = PORTALSmain.portals(self.folder, additional_params_in_surrogate = self.additional_params_in_surrogate)
 
-        for key in self.PORTALSparameters:
-            if not isinstance(portals_fun.PORTALSparameters[key], dict):
-                portals_fun.PORTALSparameters[key] = self.PORTALSparameters[key]
-            else:
-                for subkey in self.PORTALSparameters[key]:
-                    portals_fun.PORTALSparameters[key][subkey] = self.PORTALSparameters[key][subkey]
-        for key in self.MODELparameters:
-            if not isinstance(portals_fun.MODELparameters[key], dict):
-                portals_fun.MODELparameters[key] = self.MODELparameters[key]
-            else:
-                for subkey in self.MODELparameters[key]:
-                    portals_fun.MODELparameters[key][subkey] = self.MODELparameters[key][subkey]
-        for key in self.optimization_options:
-            if not isinstance(portals_fun.optimization_options[key], dict):
-                portals_fun.optimization_options[key] = self.optimization_options[key]
-            else:
-                for subkey in self.optimization_options[key]:
-                    portals_fun.optimization_options[key][subkey] = self.optimization_options[key][subkey]
-        for key in self.INITparameters:
-            if not isinstance(portals_fun.INITparameters[key], dict):
-                portals_fun.INITparameters[key] = self.INITparameters[key]
-            else:
-                for subkey in self.INITparameters[key]:
-                    portals_fun.INITparameters[key][subkey] = self.INITparameters[key][subkey]
+        modify_dictionary(portals_fun.PORTALSparameters, self.PORTALSparameters)
+        modify_dictionary(portals_fun.MODELparameters, self.MODELparameters)
+        modify_dictionary(portals_fun.optimization_options, self.optimization_options)
+        modify_dictionary(portals_fun.INITparameters, self.INITparameters)
 
-        # Flux-match first ------------------------------------------
-        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
-            self._flux_match_for_first_point()
-            # PORTALS just with one point
-            portals_fun.optimization_options['initial_training'] = 1
-        # -----------------------------------------------------------
-
-        portals_fun.prep(
-            self.fileGACODE,
-            **self.exploration_ranges,
-            )
+        portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
+
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+
+            # PORTALS just with one point
+            portals_fun.optimization_options['initialization_options']['initial_training'] = 1
+
+            # If the point is not evaluated (for example, this was not a restart of this portals beat), then flux-match it
+            if len(self.mitim_bo.optimization_data.data) == 0:
+                self._flux_match_for_first_point()
+
+            portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
+
+            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
         self.mitim_bo.run()
 
@@ -262,18 +245,22 @@ class portals_beat(beat):
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
         if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
-            if 'stopping_criteria_parameters' not in self.optimization_options:
-                self.optimization_options['stopping_criteria_parameters'] = {}
-            self.optimization_options['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
-            self.optimization_options['stopping_criteria_parameters']['maximum_value_is_rel'] = False
+            
+            if 'convergence_options' not in self.optimization_options:
+                self.optimization_options['convergence_options'] = {}
+            if 'stopping_criteria_parameters' not in self.optimization_options['convergence_options']:
+                self.optimization_options['convergence_options']['stopping_criteria_parameters'] = {}
 
-            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['stopping_criteria_parameters']['maximum_value']}")
+            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
+            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
+
+            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
         reusing_surrogate_data = False
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
-            if 'surrogateOptions' not in self.optimization_options:
-                self.optimization_options['surrogateOptions'] = {}
-            self.optimization_options['surrogateOptions']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
+            if 'surrogate_options' not in self.optimization_options:
+                self.optimization_options['surrogate_options'] = {}
+            self.optimization_options['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
@@ -329,7 +316,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogateOptions']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
@@ -348,7 +335,7 @@ class portals_beat(beat):
             stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
             MODELparameters =portals_output.opt_fun_full.mitim_model.optimization_object.MODELparameters
 
-        max_value_neg_residual = stepSettings['optimization_options']['stopping_criteria_parameters']['maximum_value']
+        max_value_neg_residual = stepSettings['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
@@ -365,19 +352,44 @@ class portals_beat(beat):
             self.maestro_instance.parameters_trans_beat['RhoLocations'] = MODELparameters['RhoLocations']
             print(f'\t\t* RhoLocations saved for future beats: {MODELparameters["RhoLocations"]}')
 
+
+def modify_dictionary(original, new):
+    for key in new:
+        # If something on the new dictionary is not in the original, add it
+        if key not in original:
+            original[key] = new[key]
+        # If it is a dictionary, go deeper
+        elif isinstance(new[key], dict):
+                modify_dictionary(original[key], new[key])
+        # If it is not a dictionary, just replace the value
+        else:
+            original[key] = new[key]
+
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
 
-def portals_beat_soft_criteria():
+def portals_beat_soft_criteria(portals_namelist):
 
-    optimization_options = {
-        "BO_iterations": 15,
-        'stopping_criteria_parameters': {
+    portals_namelist_soft = copy.deepcopy(portals_namelist)
+
+    if 'optimization_options' not in portals_namelist_soft:
+        portals_namelist_soft['optimization_options'] = {}
+
+    portals_namelist_soft['optimization_options']['convergence_options'] = {
+            "maximum_iterations": 15,
+            "stopping_criteria": PORTALStools.stopping_criteria_portals,
+            'stopping_criteria_parameters': {
                 "maximum_value": 10e-3,  # Reducing residual by 100x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 3, 1.0],  # After iteration 10, Check if 3 consecutive DVs are varying less than 1.0% from the rest that has been evaluated
                 "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 1.0,
-            } }
-    
-    return optimization_options
+            }
+        }
+
+    if 'MODELparameters' not in portals_namelist_soft:
+        portals_namelist_soft['MODELparameters'] = {}
+
+    portals_namelist_soft["MODELparameters"]["Physics_options"] = {"TypeTarget": 2}
+
+    return portals_namelist_soft

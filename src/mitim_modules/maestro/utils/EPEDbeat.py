@@ -30,6 +30,7 @@ class eped_beat(beat):
             Tesep_keV = None,       # Force this Te at the separatrix, otherwise from the profiles_current
             nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
             corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
+            ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
             **kwargs
             ):
 
@@ -46,6 +47,8 @@ class eped_beat(beat):
         self.nesep_20 = nesep_20 
 
         self.corrections_set = corrections_set
+
+        self.ptop_multiplier = ptop_multiplier
 
         self._inform()
 
@@ -178,6 +181,10 @@ class eped_beat(beat):
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
             
+            if self.ptop_multiplier != 1.0:
+                print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
+                ptop_kPa *= self.ptop_multiplier
+
             BetaNs.append(BetaN)
             ptop_kPas.append(ptop_kPa)
             wtop_psipols.append(wtop_psipol)

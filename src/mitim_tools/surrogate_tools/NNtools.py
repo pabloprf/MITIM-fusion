@@ -1,5 +1,6 @@
-from mitim_tools.misc_tools import IOtools
 import numpy as np
+from mitim_tools.misc_tools import IOtools
+from IPython import embed
 
 # ---------------------------------------------------------------------------------------------
 # Main class for Neural Network tools
@@ -69,11 +70,11 @@ class eped_nn(mitim_nn):
     def __call__(self, 
                 Ip,            # MA
                 Bt,            # T
-                R,             #m
-                a,             #m
+                R,             # m
+                a,             # m
                 kappa995, 
                 delta995, 
-                neped,         #10e19m^-3
+                neped,         # 10e19m^-3
                 betan, 
                 zeff, 
                 tesep=75,    #eV

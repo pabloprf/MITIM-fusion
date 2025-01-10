@@ -319,7 +319,7 @@ class MITIMgeqdsk:
 
         rhotor = self.g['RHOVN']
         psi = self.g['AuxQuantities']['PSI']                           # Wb/rad
-        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)     # Wb/rad
+        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)      # Wb/rad
         q = self.g['QPSI']
         pressure = self.g['PRES']       # Pa
         Ip = self.g['CURRENT']*1E-6     # MA

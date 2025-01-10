@@ -27,7 +27,7 @@ class OPTstep:
         bounds,
         stepSettings={},
         surrogate_parameters={},
-        StrategyOptions={},
+        strategy_options={},
         BOmetrics=None,
         currentIteration=1,
     ):
@@ -89,14 +89,16 @@ class OPTstep:
         self.stepSettings = stepSettings
         self.BOmetrics = BOmetrics
         self.currentIteration = currentIteration
-        self.StrategyOptions = StrategyOptions
+        self.strategy_options = strategy_options
 
         # **** Step settings
-        self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
-        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition"]["type"]
-        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition"]["parameters"]
-        self.favor_proximity_type = self.stepSettings["optimization_options"]["acquisition"]["favor_proximity_type"]
-        self.optimizers = self.stepSettings["optimization_options"]["acquisition"]["optimization"]        
+        self.surrogate_options = self.stepSettings["optimization_options"]["surrogate_options"]
+        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_options"]["type"]
+        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition_options"]["parameters"]
+        self.favor_proximity_type = self.stepSettings["optimization_options"]["acquisition_options"]["favor_proximity_type"]
+        self.optimizers = {}
+        for optimizer in self.stepSettings["optimization_options"]["acquisition_options"]["optimizers"]:
+            self.optimizers[optimizer] = self.stepSettings["optimization_options"]["acquisition_options"]["optimizer_options"][optimizer]     
         self.outputs = self.stepSettings["outputs"]
         self.dfT = self.stepSettings["dfT"]
         self.best_points_sequence = self.stepSettings["best_points_sequence"]
@@ -179,15 +181,15 @@ class OPTstep:
             # Define model-specific functions for this output
             # ---------------------------------------------------------------------------------------------------
 
-            surrogateOptions = copy.deepcopy(self.surrogateOptions)
+            surrogate_options = copy.deepcopy(self.surrogate_options)
 
             # Then, depending on application (e.g. targets in mitim are fitted differently)
             if (
-                "selectSurrogate" in surrogateOptions
-                and surrogateOptions["selectSurrogate"] is not None
+                "selectSurrogate" in surrogate_options
+                and surrogate_options["selectSurrogate"] is not None
             ):
-                surrogateOptions = surrogateOptions["selectSurrogate"](
-                    outi, surrogateOptions
+                surrogate_options = surrogate_options["selectSurrogate"](
+                    outi, surrogate_options
                 )
 
             # ---------------------------------------------------------------------------------------------------
@@ -211,8 +213,8 @@ class OPTstep:
                     typeMsg="w",
                 )
                 FixedValue = True
-                surrogateOptions["TypeMean"] = 0
-                surrogateOptions["TypeKernel"] = 6  # Constant kernel
+                surrogate_options["TypeMean"] = 0
+                surrogate_options["TypeKernel"] = 6  # Constant kernel
 
             else:
                 FixedValue = False
@@ -247,7 +249,7 @@ class OPTstep:
                 output_transformed=outi_transformed,
                 avoidPoints=self.avoidPoints,
                 dfT=self.dfT,
-                surrogateOptions=surrogateOptions,
+                surrogate_options=surrogate_options,
                 FixedValue=FixedValue,
                 fileTraining=fileTraining,
             )
@@ -273,7 +275,7 @@ class OPTstep:
             avoidPoints=self.avoidPoints,
             bounds=self.bounds,
             dfT=self.dfT,
-            surrogateOptions=self.surrogateOptions,
+            surrogate_options=self.surrogate_options,
         )
 
         models = ()
@@ -474,7 +476,7 @@ class OPTstep:
         self.x_next, self.InfoOptimization = OPTtools.acquire_next_points(
             stepSettings=self.stepSettings,
             evaluators=self.evaluators,
-            StrategyOptions=self.StrategyOptions,
+            strategy_options=self.strategy_options,
             best_points=int(self.best_points_sequence),
             optimizers=self.optimizers,
             it_number=self.currentIteration,
@@ -489,8 +491,8 @@ class OPTstep:
         # Remove outliers
         self.outliers = removeOutliers(
             self.y,
-            stds_outside=self.surrogateOptions["stds_outside"],
-            stds_outside_checker=self.surrogateOptions["stds_outside_checker"],
+            stds_outside=self.surrogate_options["stds_outside"],
+            stds_outside_checker=self.surrogate_options["stds_outside_checker"],
             alreadyAvoided=self.avoidPoints,
         )
 

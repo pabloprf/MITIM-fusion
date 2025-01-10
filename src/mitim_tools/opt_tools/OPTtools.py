@@ -9,19 +9,17 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class fun_optimization:
-    def __init__(self, stepSettings, evaluators, StrategyOptions):
+    def __init__(self, stepSettings, evaluators, strategy_options):
         self.stepSettings = stepSettings
         self.evaluators = evaluators
-        self.StrategyOptions = StrategyOptions
+        self.strategy_options = strategy_options
 
         self.dimOFs = 1  # len(self.stepSettings['name_objectives'])
         self.dimDVs = self.evaluators["GP"].train_X.shape[-1]
 
         # Pass the original bounds of the problem already to the fun class (they may be modified by boundsRefine)
 
-        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(
-            self.evaluators["GP"].train_X
-        )
+        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(self.evaluators["GP"].train_X)
         for i, ikey in enumerate(self.evaluators["GP"].bounds):
             self.bounds[0, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][0])
             self.bounds[1, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][1])
@@ -31,12 +29,21 @@ class fun_optimization:
         self.bounds_mod = self.bounds.clone()
         for i in range(self.bounds_mod.shape[-1]):
             tot = abs(self.bounds_mod[1, i] - self.bounds_mod[0, i])
-            self.bounds_mod[0, i] -= self.StrategyOptions["AllowedExcursions"][0] * tot
-            self.bounds_mod[1, i] += self.StrategyOptions["AllowedExcursions"][1] * tot
+            self.bounds_mod[0, i] -= self.strategy_options["AllowedExcursions"][0] * tot
+            self.bounds_mod[1, i] += self.strategy_options["AllowedExcursions"][1] * tot
 
-    def prep(self, xGuesses=None, seed=0):
+    def prep(self, xGuesses=None, seed=0, adjust_bounds = True):
         self.xGuesses = xGuesses
         self.seed = seed
+
+        # Modify bounds_mod to include the guesses
+        if adjust_bounds and (xGuesses is not None):
+            
+            for i in range(self.bounds_mod.shape[-1]):
+                delta = (self.bounds_mod[1, i] - self.bounds_mod[0, i])*1E-6 # This avoids problems with the case in which the guess is exactly at bounds
+            
+                self.bounds_mod[0, i] = torch.min(self.bounds_mod[0, i], xGuesses[:, i].min() - delta)
+                self.bounds_mod[1, i] = torch.max(self.bounds_mod[1, i], xGuesses[:, i].max() + delta)
 
     def changeBounds(
         self, it_number, position_best_so_far, forceAllPointsInBounds=False
@@ -62,11 +69,11 @@ class fun_optimization:
 
             self.bounds = bounds
 
-        if (self.StrategyOptions["boundsRefine"] is not None) and (
-            it_number >= self.StrategyOptions["boundsRefine"][0]
+        if (self.strategy_options["boundsRefine"] is not None) and (
+            it_number >= self.strategy_options["boundsRefine"][0]
         ):
-            relativeVariation = self.StrategyOptions["boundsRefine"][1]
-            basePoint = self.StrategyOptions["boundsRefine"][2]
+            relativeVariation = self.strategy_options["boundsRefine"][1]
+            basePoint = self.strategy_options["boundsRefine"][2]
 
             if basePoint is None:
                 basePoint = position_best_so_far
@@ -95,8 +102,8 @@ class fun_optimization:
         self.bounds_mod = self.bounds.clone()
         for i in range(self.bounds_mod.shape[-1]):
             tot = abs(self.bounds_mod[1, i] - self.bounds_mod[0, i])
-            self.bounds_mod[0, i] -= self.StrategyOptions["AllowedExcursions"][0] * tot
-            self.bounds_mod[1, i] += self.StrategyOptions["AllowedExcursions"][1] * tot
+            self.bounds_mod[0, i] -= self.strategy_options["AllowedExcursions"][0] * tot
+            self.bounds_mod[1, i] += self.strategy_options["AllowedExcursions"][1] * tot
 
     def optimize(
         self,
@@ -138,8 +145,8 @@ class fun_optimization:
                 x_opt,
                 y_opt_residual,
                 z_opt,
-                maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
-                ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
+                maxExtrapolation=self.strategy_options["AllowedExcursions"],
+                ToleranceNiche=self.strategy_options["ToleranceNiche"],
                 enoughPerformance_relative=enoughPerformance_relative
             )
 
@@ -156,7 +163,7 @@ class fun_optimization:
 def acquire_next_points(
     stepSettings={},
     evaluators={},
-    StrategyOptions={},
+    strategy_options={},
     best_points=5,
     optimizers={},
     it_number=1,
@@ -189,7 +196,7 @@ def acquire_next_points(
     # Instance fun
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    fun = fun_optimization(stepSettings, evaluators, StrategyOptions)
+    fun = fun_optimization(stepSettings, evaluators, strategy_options)
 
     fun.changeBounds(it_number, position_best_so_far, forceAllPointsInBounds=forceAllPointsInBounds)
 
@@ -226,7 +233,7 @@ def acquire_next_points(
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
             method_parameters=optimizers[optimizer],
-            enoughPerformance_relative=stepSettings['optimization_options']['acquisition']['relative_improvement_for_stopping']
+            enoughPerformance_relative=stepSettings['optimization_options']['acquisition_options']['relative_improvement_for_stopping']
         )
         # ****************************************************************************************
 
@@ -243,7 +250,7 @@ def acquire_next_points(
         if hard_finish_surrogate:
             x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
 
-            if (x_opt_test.shape[1] == 0) or (stepSettings['optimization_options']['acquisition']['ensure_new_points']and (x_opt_test.shape[0] < best_points)):
+            if (x_opt_test.shape[1] == 0) or (stepSettings['optimization_options']['acquisition_options']['ensure_new_points']and (x_opt_test.shape[0] < best_points)):
                 print("- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",typeMsg="i")
             else:
                 print("- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",typeMsg="i",)
@@ -259,8 +266,8 @@ def acquire_next_points(
         fun,
         x_initial,
         best_points=best_points,
-        ToleranceNiche=StrategyOptions["ToleranceNiche"],
-        RandomRangeBounds=StrategyOptions["RandomRangeBounds"],
+        ToleranceNiche=strategy_options["ToleranceNiche"],
+        RandomRangeBounds=strategy_options["RandomRangeBounds"],
         it_number=it_number,
         seed=seed,
     )
@@ -415,17 +422,11 @@ def pointsOperation_bounds(
     x_removeds = torch.Tensor().to(fun.stepSettings["dfT"])
     for i in range(x_opt.shape[0]):
         if maxExtrapolation is not None:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=maxExtrapolation
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=maxExtrapolation)
         else:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=[0.0, 0.0]
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=[0.0, 0.0])
             if not insideBounds:
-                print(
-                    f"\t- Point #{i} is not inside bounds, but I am allowing it to exists"
-                )
+                print(f"\t- Point #{i} is not inside bounds, but I am allowing it to exists")
             insideBounds = True
 
         if insideBounds:
@@ -451,10 +452,10 @@ def pointsOperation_bounds(
 
     numRemoved = x_removeds.shape[0]
     if numRemoved > 0:
-        print(
-            f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}"
-        )
-        IOtools.printPoints(x_removeds, numtabs=2)
+        print(f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}")
+        IOtools.printPoints(x_removeds)
+        print('\t- Bounds:')
+        IOtools.printPoints(bounds)
 
     return x_opt_inbounds, y_opt_inbounds, z_opt_inbounds
 
@@ -564,7 +565,7 @@ def pointsOperation_random(
         )
         ib = 0  # Around the best, which is the first one since I have ordered them
 
-        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"]["acquisition"]["ensure_new_points"]:
+        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"]["acquisition_options"]["ensure_new_points"]:
             print(f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point")
             draw_bounds, _, _ = SBOcorrections.factorBounds(
                 center=x_optRandom[ib],
@@ -815,7 +816,7 @@ def plotInfo(
             markersize=ms,
             color=color,
             label=label,
-            axislabels=["acquisition"],
+            axislabels=["acquisition_options"],
             alpha=alpha,
         )
         # ---------- Plot Calibration errors
@@ -850,7 +851,7 @@ def plotInfo(
             markersize=ms,
             color=color,
             label=label,
-            axislabels=["acquisition"],
+            axislabels=["acquisition_options"],
             alpha=alpha,
         )
         # ---------- Plot Calibration errors
@@ -910,10 +911,7 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
 
     # ~~~~~~~~~ Guessed Population (from previous GA) ~~~~~~~~~
 
-    if previousGA is not None and "Paretos_x_unnormalized" in previousGA:
-        x_opt = previousGA["Paretos_x_unnormalized"]
-    else:
-        x_opt = []
+    x_opt = previousGA["Paretos_x_unnormalized"] if previousGA is not None and "Paretos_x_unnormalized" in previousGA else []
 
     # --------------------------------------------------
     # Add to the previous optimum, all the trained points
@@ -939,9 +937,8 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     else:
         howmany = 0
         txt = ""
-    print(
-        f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}"
-    )
+
+    print(f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}")
 
     # --------------------------------------------------
     # Make sure that they are in between bounds (because in this step, the bounds may have changed if I processed it
@@ -959,9 +956,7 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
                     fun.stepSettings["dfT"]
                 )
 
-        print(
-            f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}"
-        )
+        print(f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}")
 
         xGuesses = xGuesses_new
         z_opt = z_opt_new
@@ -982,18 +977,12 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     if len(xGuesses) == 0:
         print("* Initial points equal to zero, will likely fail", typeMsg="q")
 
-    print(
-        "********************** Status update after prep phase **********************************"
-    )
+    print("********************** Status update after prep phase **********************************")
     y_opt_residual = summarizeSituation(xGuesses, fun)
-    print(
-        "****************************************************************************************"
-    )
+    print("****************************************************************************************")
 
     # Order by best
-    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(
-        xGuesses, y_opt_residual, z_opt, fun
-    )
+    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(xGuesses, y_opt_residual, z_opt, fun)
 
     return xGuesses, y_opt_residual, z_opt
 

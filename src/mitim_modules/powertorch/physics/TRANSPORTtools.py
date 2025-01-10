@@ -146,15 +146,13 @@ class tgyro_model(power_transport):
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
+        cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
         # ------------------------------------------------------------------------------------------------------------------------
 
-        RadiisToRun = [
-            self.powerstate.plasma["rho"][0, 1:][i].item()
-            for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
-        ]
+        RadiisToRun = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
         tgyro.prep(self.folder, profilesclass_custom=self.profiles_transport)
@@ -211,6 +209,7 @@ class tgyro_model(power_transport):
             use_tglf_scan_trick = use_tglf_scan_trick,
             cold_start=cold_start,
             extra_name = self.name,
+            cores_per_tglf_instance=cores_per_tglf_instance
         )
 
         # Read again to capture errors
@@ -285,11 +284,7 @@ class tgyro_model(power_transport):
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
-                cgyro_trick(
-                    self,
-                    self.folder / "cgyro_neo",
-                    name=self.name,
-                )
+                cgyro_trick(self,self.folder / "cgyro_neo",name=self.name)
 
             # Read TGYRO files and construct portals variables
 
@@ -350,7 +345,8 @@ def tglf_scan_trick(
     cold_start=False, 
     check_coincidence_thr=1E-2, 
     extra_name="", 
-    remove_folders_out = False
+    remove_folders_out = False,
+    cores_per_tglf_instance = 4 # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -399,7 +395,7 @@ def tglf_scan_trick(
                     cold_start=cold_start,
                     forceIfcold_start=True,
                     slurm_setup={
-                        "cores": 4,      # 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+                        "cores": cores_per_tglf_instance,      
                         "minutes": 1,
                                  },
                     extra_name = f'{extra_name}_{name}',
@@ -443,11 +439,11 @@ def tglf_scan_trick(
     def calculate_mean_std(Q):
         # Assumes Q is [radii, points], with [radii, 0] being the baseline
 
-        Qm = Q[:,0]
-        Qstd = np.std(Q, axis=1)
+        # Qm = Q[:,0]
+        # Qstd = np.std(Q, axis=1)
 
-        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
-        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+        Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
 
         return  Qm, Qstd
 
@@ -564,6 +560,7 @@ def curateTGYROfiles(
     use_tglf_scan_trick=None,
     cold_start=False,
     extra_name="",
+    cores_per_tglf_instance = 4
     ):
 
     tgyro = tgyroObject.results[label]
@@ -604,7 +601,8 @@ def curateTGYROfiles(
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
             cold_start=cold_start,
-            extra_name=extra_name
+            extra_name=extra_name,
+            cores_per_tglf_instance=cores_per_tglf_instance
             )
 
         min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum

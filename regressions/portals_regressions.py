@@ -53,12 +53,12 @@ for test in tests:
         os.system(f"rm -rf {folderWork} && mkdir {folderWork}")
         with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.optimization_options["BO_iterations"] = 2
-            portals_fun.optimization_options["initial_training"] = 3
+            portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
+            portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
             portals_fun.INITparameters["removeFast"] = True
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti"]
-            portals_fun.optimization_options["acquisition"]["optimization"] = {"botorch":{}}
+            portals_fun.optimization_options["acquisition_options"]["optimizers"] = ["botorch"]
 
             portals_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.diffusion_model
             ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
@@ -91,8 +91,8 @@ for test in tests:
         with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
             portals_fun = PORTALSmain.portals(folderWork)
-            portals_fun.optimization_options["BO_iterations"] = 1
-            portals_fun.optimization_options["initial_training"] = 3
+            portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
+            portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
             portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
             portals_fun.INITparameters["removeFast"] = True
             portals_fun.INITparameters["quasineutrality"] = True
@@ -132,8 +132,8 @@ for test in tests:
         # with LOGtools.redirect_all_output_to_file(f'{folderWork}/regression.log'):
 
         #     portals_fun = PORTALSmain.portals(folderWork)
-        #     portals_fun.optimization_options["BO_iterations"] = 2
-        #     portals_fun.optimization_options["initial_training"] = 3
+        #     portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
+        #     portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
         #     portals_fun.INITparameters["removeFast"] = True
 
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']

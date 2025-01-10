@@ -259,6 +259,14 @@ class log_to_file:
             warnings.showwarning = warnings._showwarning_orig
 
         # If still inside a context, don't close the file or restore the state
+    
+    def close(self):
+        """
+        We provide this so that any code (like Python's logging)
+        that attempts to close the stream doesn't blow up.
+        """
+        if self.log is not None and not self.log.closed:
+            self.log.close()
 
 class redirect_all_output_to_file:
     def __init__(self, logfile_path):

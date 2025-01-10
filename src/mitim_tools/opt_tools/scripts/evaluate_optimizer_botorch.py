@@ -42,7 +42,7 @@ opt_fun.read_optimization_results(analysis_level=4)
 step = opt_fun.mitim_model.steps[-1]
 
 fun = OPTtools.fun_optimization(
-    step.stepSettings, step.evaluators, step.StrategyOptions_use
+    step.stepSettings, step.evaluators, step.strategy_options_use
 )
 fun.prep()
 

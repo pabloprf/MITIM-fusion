@@ -7,7 +7,7 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def selectSurrogate(output, surrogateOptions, CGYROrun=False):
+def selectSurrogate(output, surrogate_options, CGYROrun=False):
 
     print(
         f'\t- Selecting surrogate options for "{output}" to be run'
@@ -16,15 +16,15 @@ def selectSurrogate(output, surrogateOptions, CGYROrun=False):
     if output is not None:
         # If it's a target, just linear
         if output[2:5] == "Tar":
-            surrogateOptions["TypeMean"] = 1
-            surrogateOptions["TypeKernel"] = 2  # Constant kernel
+            surrogate_options["TypeMean"] = 1
+            surrogate_options["TypeKernel"] = 2  # Constant kernel
         # If it's not, stndard
         else:
-            surrogateOptions["TypeMean"] = 2  # Linear in gradients, constant in rest
-            surrogateOptions["TypeKernel"] = 1  # RBF
-            # surrogateOptions['ExtraNoise']  = True
+            surrogate_options["TypeMean"] = 2  # Linear in gradients, constant in rest
+            surrogate_options["TypeKernel"] = 1  # RBF
+            # surrogate_options['ExtraNoise']  = True
 
-    return surrogateOptions
+    return surrogate_options
 
 def default_portals_transformation_variables(additional_params = []):
     """
@@ -123,9 +123,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	"""
 
     _, num = output.split("_")
-    index = powerstate.indexes_simulation[
-        int(num)
-    ]  # num=1 -> pos=1, so that it takes the second value in vectors
+    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
@@ -283,9 +281,7 @@ def GBfromXnorm(x, output, powerstate):
     elif varFull[:5] == "Pexch":
         quantity = "Sgb"
 
-    T = powerstate.plasma[quantity][
-        : x.shape[0], powerstate.indexes_simulation[pos]
-    ].unsqueeze(-1)
+    T = powerstate.plasma[quantity][: x.shape[0], powerstate.indexes_simulation[pos]].unsqueeze(-1)
 
     return T
 
@@ -372,9 +368,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
     """
 
-    if ("parameters_combined" in surrogate_parameters) and (
-        "powerstate" in surrogate_parameters["parameters_combined"]
-    ):
+    if ("parameters_combined" in surrogate_parameters) and ("powerstate" in surrogate_parameters["parameters_combined"]):
         powerstate = surrogate_parameters["parameters_combined"]["powerstate"]
 
     else:

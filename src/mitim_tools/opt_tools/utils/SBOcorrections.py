@@ -115,7 +115,7 @@ def modifyTrustRegion(
     return atleastone
 
 
-def TURBOupdate(self, StrategyOptions_use, position=0, seed=0):
+def TURBOupdate(self, strategy_options_use, position=0, seed=0):
     """
     Remember. Explanation of metrics:
 
@@ -129,9 +129,9 @@ def TURBOupdate(self, StrategyOptions_use, position=0, seed=0):
 
     """
 
-    addPoints = StrategyOptions_use["TURBO_addPoints"]
-    changes = StrategyOptions_use["TURBO_changeBounds"]
-    metrics = StrategyOptions_use["TURBO_metricsRow"]
+    addPoints = strategy_options_use["TURBO_options"]["points"]
+    changes = strategy_options_use["TURBO_options"]["bounds"]
+    metrics = strategy_options_use["TURBO_options"]["metrics"]
 
     print("\n~~~~~~~~~~~~~~~~~~~~~~~ Performing TURBO update ~~~~~~~~~~~~~~~~~~~~~~~")
 
@@ -236,7 +236,7 @@ def TURBOupdate(self, StrategyOptions_use, position=0, seed=0):
             self.x_next = torch.from_numpy(
                 SAMPLINGtools.LHS(addPoints, self.bounds, seed=seed + 1)
             ).to(self.dfT)
-            yE, yE_next = self.updateSet(StrategyOptions_use, isThisCorrected=True)
+            yE, yE_next = self.updateSet(strategy_options_use, isThisCorrected=True)
     else:
         print(
             "\t Nothing done. Next iteration will go on over the same trust region without adding points."
@@ -313,26 +313,26 @@ def hitbounds(self, hitbounds_var, changesMade=0):
     return changesMade
 
 
-def correctionsSet(self, StrategyOptions_use):
+def correctionsSet(self, strategy_options_use):
     print(
         "\n~~~~~~~~~~~~~~~~~~~~~~~ Entering correction module ~~~~~~~~~~~~~~~~~~~~~~~"
     )
 
     seed = 0  # Change this
 
-    StrategyOptions = copy.deepcopy(StrategyOptions_use)
+    strategy_options = copy.deepcopy(strategy_options_use)
 
-    if "MaxTrainedPoints" not in StrategyOptions:
-        StrategyOptions["MaxTrainedPoints"] = None
-    if "HitBoundsIncrease" not in StrategyOptions:
-        StrategyOptions["HitBoundsIncrease"] = [1.0, 1.0]
-    if "SwitchIterationsReduction" not in StrategyOptions:
-        StrategyOptions["SwitchIterationsReduction"] = [
+    if "MaxTrainedPoints" not in strategy_options:
+        strategy_options["MaxTrainedPoints"] = None
+    if "HitBoundsIncrease" not in strategy_options:
+        strategy_options["HitBoundsIncrease"] = [1.0, 1.0]
+    if "SwitchIterationsReduction" not in strategy_options:
+        strategy_options["SwitchIterationsReduction"] = [
             None,
             0.75,
         ]  # [np.arange(100,1000,1), 0.75],
-    if "BadMetricsReduction" not in StrategyOptions:
-        StrategyOptions["BadMetricsReduction"] = [None, 0.25]  # [100, 0.25],
+    if "BadMetricsReduction" not in strategy_options:
+        strategy_options["BadMetricsReduction"] = [None, 0.25]  # [100, 0.25],
 
     changesMade = 0
 
@@ -341,12 +341,12 @@ def correctionsSet(self, StrategyOptions_use):
 	Increase dimensions if one of the best solutions has hit the bounds
 	---------------------------------------------------------------------------------------------------
 	"""
-    changesMade = hitbounds(self, StrategyOptions["HitBoundsIncrease"])
+    changesMade = hitbounds(self, strategy_options["HitBoundsIncrease"])
 
     """
 	After a given mitim iteration, reduce bounds
 	"""
-    # [SwitchIterations, BoundsReduction]  = StrategyOptions['SwitchIterationsReduction']
+    # [SwitchIterations, BoundsReduction]  = strategy_options['SwitchIterationsReduction']
     # if SwitchIterations is not None:
     #     if self.currentIteration in SwitchIterations:
     #         changesMade += 1
@@ -362,8 +362,8 @@ def correctionsSet(self, StrategyOptions_use):
 	"""
     # PRF: Fix this with the new outside+failed
 
-    # if StrategyOptions['MaxTrainedPoints'] is not None:
-    #     if self.train_X.shape[0]-len(self.avoidPoints) > StrategyOptions['MaxTrainedPoints']:
+    # if strategy_options['MaxTrainedPoints'] is not None:
+    #     if self.train_X.shape[0]-len(self.avoidPoints) > strategy_options['MaxTrainedPoints']:
     #         changesMade += 1
     #         x,y = np.delete(self.train_X,self.avoidPoints,axis=0), np.delete(self.train_Y,self.avoidPoints,axis=0)
     #         resAn,resMn = gatherActualAndModel(x,y,self.GPmodels[-1]['stepSettings'])
@@ -379,7 +379,7 @@ def correctionsSet(self, StrategyOptions_use):
     """
 	If it has bad metrics in a row
 	"""
-    # [howmany, BoundsReduction] = StrategyOptions['BadMetricsReduction']
+    # [howmany, BoundsReduction] = strategy_options['BadMetricsReduction']
 
     # if howmany is not None:
     #     if len(self.BOmetrics['BOmetric']) >= howmany:

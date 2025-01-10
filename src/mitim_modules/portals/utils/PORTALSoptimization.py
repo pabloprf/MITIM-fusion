@@ -31,11 +31,13 @@ def initialization_simple_relax(self):
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     namingConvention = f"portals_sr_{b}_ev"
 
-    algorithmOptions = {
+    algorithm_options = {
         "tol": 1e-6,
         "max_it": self.Originalinitial_training,
-        "relax": 0.2,
-        "dx_max": 0.2,
+        "relax": 0.2,           # Defines relationship between flux and gradient
+        "dx_max": 0.2,          # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 20% each time)
+        "dx_max_abs": None,     # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
+        "dx_min_abs": 0.1,      # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
         "print_each": 1,
         "MainFolder": MainFolder,
         "storeValues": True,
@@ -44,14 +46,14 @@ def initialization_simple_relax(self):
 
     # Trick to actually start from different gradients than those in the initial_input_gacode
 
-    X = torch.from_numpy(self.optimization_options["dvs_base"]).to(self.dfT).unsqueeze(0)
+    X = torch.from_numpy(self.optimization_options["problem_options"]["dvs_base"]).to(self.dfT).unsqueeze(0)
     powerstate.modify(X)
 
     # Flux matching process
 
     powerstate.findFluxMatchProfiles(
         algorithm="simple_relax",
-        algorithmOptions=algorithmOptions,
+        algorithm_options=algorithm_options,
     )
     Xopt = powerstate.FluxMatch_Xopt
 
@@ -130,7 +132,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
 
     powerstate.findFluxMatchProfiles(
         algorithm=list(algorithm.keys())[0],
-        algorithmOptions=algorithm[list(algorithm.keys())[0]])
+        algorithm_options=algorithm[list(algorithm.keys())[0]])
 
     # ----------------------------------------------------
     # Plot

@@ -76,7 +76,7 @@ class fbmCDF:
         print("\t- Looking for birth data...")
         if (file.parent / f'{file.name.split("_fi_")[0] + "_birth.cdf1"}').exists():
             birthfile = file.parent / file.name.split("_fi_")[0] + "_birth.cdf1"
-        elif (file.parent / f'{file.split(".DATA")[0] + "_birth.cdf1"}').exists():
+        elif (file.parent / f'{file.name.split(".DATA")[0] + "_birth.cdf1"}').exists():
             birthfile = file.parent / file.name.split(".DATA")[0] + "_birth.cdf1"
         else:
             print("\t\t- NUBEAM birth cdf file could not be found", typeMsg="w")
@@ -409,9 +409,7 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
 
     if ACalreadyConverted is not None:
         try:
-            print(
-                f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM"
-            )
+            print(f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM")
             fbm_He4_gc = fbmCDF(
                 name,
                 ACalreadyConverted=ACalreadyConverted,

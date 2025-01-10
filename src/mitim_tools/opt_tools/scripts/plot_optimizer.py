@@ -61,7 +61,7 @@ for step in step_num:
 	ax.axhline(y=acq_trained.max(), c='r', ls='--', lw=0.5, label='max acq of trained points')
 
 	ax.set_title(f'BO Step #{step}')
-	ax.set_ylabel('acquisition')
+	ax.set_ylabel('acquisition_options')
 	ax.set_xlabel('iteration')
 	if step == step_num[0]:
 		ax.legend()

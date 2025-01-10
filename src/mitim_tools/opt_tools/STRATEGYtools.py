@@ -100,10 +100,7 @@ class opt_evaluator:
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
-            print(
-                "\t- Namelist not provided, using MITIM default for this optimization sub-module",
-                typeMsg="i",
-            )
+            print("\t- Namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
 
             namelist = __mitimroot__ / "templates" / "main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
@@ -126,9 +123,7 @@ class opt_evaluator:
         }
 
         # Determine type of tensors to work with
-        torch.set_default_dtype(
-            self.tensor_opts["dtype"]
-        )  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
+        torch.set_default_dtype(self.tensor_opts["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
         self.dfT = torch.randn( (2, 2), **tensor_opts)
 
         # Name of calibrated objectives (e.g. QiRes1 to represent the objective from Qi1-QiT1)
@@ -142,12 +137,8 @@ class opt_evaluator:
 
     def read(self, paramsfile, resultsfile):
         # Read stuff
-        (
-            FolderEvaluation,
-            numEval,
-            inputFilePath,
-            outputFilePath,
-        ) = IOtools.obtainGeneralParams(paramsfile, resultsfile)
+        FolderEvaluation,numEval,inputFilePath,outputFilePath = IOtools.obtainGeneralParams(paramsfile, resultsfile)
+        
         MITIMparams = IOtools.generateDictionaries(inputFilePath)
         dictDVs = MITIMparams["dictDVs"]
         dictOFs = MITIMparams["dictOFs"]
@@ -290,9 +281,7 @@ class opt_evaluator:
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
-            analysis_level=(
-                retrieval_level if (retrieval_level is not None) else analysis_level
-            ),
+            analysis_level= retrieval_level if (retrieval_level is not None) else analysis_level,
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             rangePlot=rangesPlot,
         )
@@ -432,35 +421,13 @@ class MITIM_BO:
         self.surrogate_parameters = self.optimization_object.surrogate_parameters
         self.optimization_options = self.optimization_object.optimization_options
 
-        # Optimization criterion
-        if (self.optimization_options is not None) and \
-           (self.optimization_options['stopping_criteria'] is None):
-                self.optimization_options['stopping_criteria'] = stopping_criteria_default
-
-        # Add optimization print
+        # Curate namelist ---------------------------------------------------------------------------------
         if self.optimization_options is not None:
-            unprint_fun = copy.deepcopy(self.optimization_options['stopping_criteria'])
-            def opt_crit(*args,**kwargs):
-                print('\n--------------------------------------------------')
-                print('Convergence criteria')
-                print('--------------------------------------------------')
-                v = unprint_fun(*args,**kwargs)
-                print('--------------------------------------------------\n')
-                return v
-            self.optimization_options['stopping_criteria'] = opt_crit
-
-
-        # Check if the variables are expected
-        if self.optimization_options is not None:
-            namelist = __mitimroot__ / "templates" / "main.namelist.json"
-            Optim_potential = IOtools.read_mitim_nml(namelist)
-            for ikey in self.optimization_options:
-                if ikey not in Optim_potential:
-                    print(
-                        f"\t- optimization_options['{ikey}'] is an unexpected variable, prone to errors or misinterpretation",
-                        typeMsg="q",
-                    )
-        # -----------------------------------
+            self.optimization_options = IOtools.curate_mitim_nml(
+                self.optimization_options,
+                stopping_criteria_default = stopping_criteria_default
+                )
+        # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
             print(
@@ -482,9 +449,9 @@ class MITIM_BO:
             self.logFile.activate()
 
             # Meta
-            self.numIterations = self.optimization_options["BO_iterations"]
-            self.StrategyOptions = self.optimization_options["StrategyOptions"]
-            self.parallel_evaluations = self.optimization_options["parallel_evaluations"]
+            self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
+            self.strategy_options = self.optimization_options["strategy_options"]
+            self.parallel_evaluations = self.optimization_options["evaluation_options"]["parallel_evaluations"]
             self.dfT = self.optimization_object.dfT
 
             """
@@ -518,7 +485,7 @@ class MITIM_BO:
             self.BOmetrics = {"overall": {}}
             for ikey in self.keys_metrics:
                 self.BOmetrics[ikey] = {}
-                for i in range(self.optimization_options["BO_iterations"] + 1):
+                for i in range(self.optimization_options["convergence_options"]["maximum_iterations"] + 1):
                     self.BOmetrics[ikey][i] = np.nan
 
             """
@@ -528,12 +495,12 @@ class MITIM_BO:
 			"""
 
             self.bounds, self.boundsInitialization = OrderedDict(), []
-            for cont, i in enumerate(self.optimization_options["dvs"]):
+            for cont, i in enumerate(self.optimization_options["problem_options"]["dvs"]):
                 self.bounds[i] = np.array(
-                    [self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]]
+                    [self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]]
                 )
                 self.boundsInitialization.append(
-                    np.array([self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]])
+                    np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]])
                 )
 
             self.boundsInitialization = np.transpose(self.boundsInitialization)
@@ -548,10 +515,10 @@ class MITIM_BO:
 			"""
 
             # Objective functions (OFs)
-            self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["ofs"]
+            self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["problem_options"]["ofs"]
 
             # How many points each iteration will produce?
-            self.best_points_sequence = self.optimization_options["acquisition"]["points_per_step"]
+            self.best_points_sequence = self.optimization_options["acquisition_options"]["points_per_step"]
             self.best_points = int(np.sum(self.best_points_sequence))
 
             """
@@ -561,7 +528,7 @@ class MITIM_BO:
 			"""
 
             if (
-                (self.optimization_options["type_initialization"] == 1)
+                (self.optimization_options["initialization_options"]["type_initialization"] == 1)
                 and ((self.folderExecution / "Execution" / "Evaluation.1").exists())
                 and (self.cold_start)
             ):
@@ -570,8 +537,8 @@ class MITIM_BO:
                     typeMsg="q" if self.askQuestions else "qa",
                 )
 
-            self.type_initialization = self.optimization_options["type_initialization"]
-            self.initial_training = self.optimization_options["initial_training"]
+            self.type_initialization = self.optimization_options["initialization_options"]["type_initialization"]
+            self.initial_training = self.optimization_options["initialization_options"]["initial_training"]
 
             """
 			------------------------------------------------------------------------------
@@ -647,7 +614,7 @@ class MITIM_BO:
         self.currentIteration = -1
 
         # Has the problem reached convergence in the training?
-        converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
+        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = 0
@@ -662,7 +629,7 @@ class MITIM_BO:
         # ~~~~~~~~ Iterative workflow
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.StrategyOptions_use = self.StrategyOptions
+        self.strategy_options_use = self.strategy_options
 
         self.steps, self.resultsSet = [], []
         for self.currentIteration in range(self.numIterations+1):
@@ -680,14 +647,14 @@ class MITIM_BO:
                 print(f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)")
 
                 # *NOTE*: self.x_next has been updated earlier, either from a cold_start or from the full workflow
-                yN, yNstd = self.updateSet(self.StrategyOptions_use)
+                yN, yNstd = self.updateSet(self.strategy_options_use)
 
                 # Stored in previous step
                 self.steps[-1].y_next = yN
                 self.steps[-1].ystd_next = yNstd
 
                 # Determine here when to stop the loop
-                if self.currentIteration == self.numIterations - 1:
+                if self.currentIteration > self.numIterations - 1:
                     print("- Last iteration has been reached",typeMsg="i")
                     self.hard_finish = True
 
@@ -697,7 +664,7 @@ class MITIM_BO:
 
                 # Removing those spaces in the metrics that were not filled up
                 for ikey in self.keys_metrics:
-                    for i in range(self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1):
+                    for i in range(self.currentIteration + 1, self.optimization_options["convergence_options"]["maximum_iterations"] + 1):
                         del self.BOmetrics[ikey][i]
                 # ------------------------------------------------------------------------------------------
 
@@ -762,14 +729,14 @@ class MITIM_BO:
                     self.steps.append(current_step)
 
                 # When cold_starting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
-                self.StrategyOptions_use = current_step.StrategyOptions_use
+                self.strategy_options_use = current_step.strategy_options_use
 
                 print("\t* Step successfully cold_started from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
             if self.cold_start:
-                # For standard use, use the actual strategyOptions launched
-                self.StrategyOptions_use = self.StrategyOptions
+                # For standard use, use the actual strategy_options launched
+                self.strategy_options_use = self.strategy_options
 
                 # Remove from tabular next points in case they were there. Since I'm not cold_starting, I don't care about what has come next
                 self.optimization_data.removePointsAfter(len(self.train_X) - 1)
@@ -781,7 +748,7 @@ class MITIM_BO:
 				---------------------------------------------------------------------------------------
 				"""
 
-                train_Ystd = self.train_Ystd if (self.optimization_options["train_Ystd"] is None) else self.optimization_options["train_Ystd"]
+                train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
 
                 current_step = STEPtools.OPTstep(
                     self.train_X,
@@ -790,13 +757,13 @@ class MITIM_BO:
                     bounds=self.bounds,
                     stepSettings=self.stepSettings,
                     currentIteration=self.currentIteration,
-                    StrategyOptions=self.StrategyOptions_use,
+                    strategy_options=self.strategy_options_use,
                     BOmetrics=self.BOmetrics,
                     surrogate_parameters=self.surrogate_parameters,
                 )
 
                 # Incorporate strategy_options for later retrieving
-                current_step.StrategyOptions_use = copy.deepcopy(self.StrategyOptions_use)
+                current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
 
                 self.steps.append(current_step)
 
@@ -958,7 +925,7 @@ class MITIM_BO:
         return aux if provideFullClass else step
 
     def updateSet(
-        self, StrategyOptions_use, isThisCorrected=False, ForceNotApplyCorrections=False
+        self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
     ):
         # ~~~~~~~~~~~~~~~~~~
         # What's the expected value of the next points?
@@ -1081,16 +1048,16 @@ class MITIM_BO:
 
             changesMade = 0
             # Apply TURBO
-            if StrategyOptions_use["TURBO"]:
+            if strategy_options_use["TURBO_options"]["apply"]:
                 changesMade = SBOcorrections.TURBOupdate(
                     self,
-                    StrategyOptions_use,
+                    strategy_options_use,
                     position=self.currentIteration,
                     seed=self.seed,
                 )
             # Apply some corrections
-            if StrategyOptions_use["applyCorrections"] and not ForceNotApplyCorrections:
-                changesMade = SBOcorrections.correctionsSet(self, StrategyOptions_use)
+            if strategy_options_use["applyCorrections"] and not ForceNotApplyCorrections:
+                changesMade = SBOcorrections.correctionsSet(self, strategy_options_use)
 
             if changesMade > 0:
                 print(
@@ -1109,7 +1076,7 @@ class MITIM_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        converged,_ = self.optimization_options['stopping_criteria'](self, parameters = self.optimization_options['stopping_criteria_parameters'])
+        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
         if converged:
             self.hard_finish = self.hard_finish or True
@@ -1137,7 +1104,7 @@ class MITIM_BO:
         print("* Optimization Settings:")
         for i in self.optimization_options:
             strs = f"\t\t{i:25}:"
-            if i in ["StrategyOptions", "surrogateOptions"]:
+            if i in ["strategy_options", "surrogate_options"]:
                 print(strs)
                 for j in self.optimization_options[i]:
                     print(f"\t\t\t{j:25}: {self.optimization_options[i][j]}")
@@ -1199,9 +1166,7 @@ class MITIM_BO:
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.cold_start) or self.optimization_options[
-            "read_initial_training_from_csv"
-        ]  # Read when starting from previous or forced it
+        readCasesFromTabular = (not self.cold_start) or self.optimization_options["initialization_options"]["read_initial_training_from_csv"]  # Read when starting from previous or forced it
 
         # cold_started run from previous. Grab DVs of initial set
         if readCasesFromTabular:
@@ -1212,7 +1177,7 @@ class MITIM_BO:
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
                 
-                if self.optimization_options["ensure_within_bounds"]:
+                if self.optimization_options["initialization_options"]["ensure_within_bounds"]:
                     for i in range(self.train_X.shape[0]):
                         insideBounds = TESTtools.checkSolutionIsWithinBounds(
                             torch.from_numpy(self.train_X[i, :]).to(self.dfT),
@@ -1246,7 +1211,7 @@ class MITIM_BO:
         # Standard - RUN
 
         if not readCasesFromTabular:
-            if self.type_initialization == 1 and self.optimization_options["dvs_base"] is not None:
+            if self.type_initialization == 1 and self.optimization_options["problem_options"]["dvs_base"] is not None:
                 self.initial_training = self.initial_training - 1
                 print(
                     f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",
@@ -1258,11 +1223,11 @@ class MITIM_BO:
 			--------------
 			"""
 
-            if self.optimization_options["initialization_fun"] is None:
+            if self.optimization_options["initialization_options"]["initialization_fun"] is None:
                 if self.type_initialization == 1:
                     if self.initial_training == 0:
                         self.train_X = np.atleast_2d(
-                            [i for i in self.optimization_options["dvs_base"]]
+                            [i for i in self.optimization_options["problem_options"]["dvs_base"]]
                         )
                     else:
                         self.train_X = SAMPLINGtools.LHS(
@@ -1272,8 +1237,8 @@ class MITIM_BO:
                         )
                         self.train_X = self.train_X.cpu().numpy().astype("float")
 
-                        # if (self.optimization_options['dvs_base'] is not None):
-                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.optimization_options['dvs_base']]),self.train_X,axis=0)
+                        # if (self.optimization_options['problem_options']['dvs_base'] is not None):
+                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.optimization_options['problem_options']['dvs_base']]),self.train_X,axis=0)
 
                 elif self.type_initialization == 2:
                     raise Exception("Option not implemented yet")
@@ -1281,7 +1246,7 @@ class MITIM_BO:
                     self.train_X = SAMPLINGtools.readInitializationFile(
                         self.folderExecution / "Outputs" / "optimization_data.csv",
                         self.initial_training,
-                        self.stepSettings["optimization_options"]["dvs"],
+                        self.stepSettings["optimization_options"]["problem_options"]["dvs"],
                     )
                 elif self.type_initialization == 4:
                     self.train_X = IOtools.readExecutionParams(
@@ -1290,18 +1255,18 @@ class MITIM_BO:
 
                 if (
                     (self.type_initialization == 1)
-                    and (self.optimization_options["dvs_base"] is not None)
+                    and (self.optimization_options["problem_options"]["dvs_base"] is not None)
                     and (self.initial_training > 0)
                 ):
                     self.train_X = np.append(
-                        np.atleast_2d([i for i in self.optimization_options["dvs_base"]]),
+                        np.atleast_2d([i for i in self.optimization_options["problem_options"]["dvs_base"]]),
                         self.train_X,
                         axis=0,
                     )
 
             else:
                 print("- Initialization function has been selected", typeMsg="i")
-                self.train_X = self.optimization_options["initialization_fun"](self)
+                self.train_X = self.optimization_options["initialization_options"]["initialization_fun"](self)
                 readCasesFromTabular = True
 
             # Initialize train_Y as nan until evaluated
@@ -1383,7 +1348,7 @@ class MITIM_BO:
         """
 		Some initialization strategies may create points outside of the original bounds, but I may want to include them!
 		"""
-        if self.optimization_options["expand_bounds"]:
+        if self.optimization_options["initialization_options"]["expand_bounds"]:
             for i, ikey in enumerate(self.bounds):
                 self.bounds[ikey][0] = np.min(
                     [self.bounds[ikey][0], self.train_X.min(axis=0)[i]]
@@ -1615,7 +1580,10 @@ class MITIM_BO:
 		Acquisition
 		****************************************************************
 		"""
-        self.plotAcquisitionOptimizationSummary(fn=fn)
+        try:    
+            self.plotAcquisitionOptimizationSummary(fn=fn)
+        except: 
+            print('\t- Problem plotting acquisition optimization summary', typeMsg='w')
 
         return fn
 
@@ -1983,10 +1951,7 @@ def read_from_scratch(file):
 
 
 def avoidClassInitialization(folderWork):
-    print(
-        "It was requested that I try read the class before I initialize and select parameters...",
-        typeMsg="i",
-    )
+    print("It was requested that I try read the class before I initialize and select parameters...",typeMsg="i")
 
     try:
         with open(
@@ -2012,7 +1977,6 @@ From:
 	https://github.com/pytorch/pytorch/issues/16797
 	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
 """
-
 
 class CPU_Unpickler(pickle_dill.Unpickler):
     def find_class(self, module, name):

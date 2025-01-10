@@ -96,33 +96,31 @@ def initializeProblem(
     profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
-        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
-            portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1
-        ]["dens"]
-        print(
-            f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",
-            typeMsg="i",
-        )
+        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1]["dens"]
+        print(f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",typeMsg="i",)
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
-    if checkForSpecies and (
-        portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3
-    ):
-        speciesNotFound = []
-        for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
-            if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
-                speciesNotFound.append(profiles.Species[i]["N"])
-        if len(speciesNotFound) > 0:
-            a = print(
-                f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions",
-                typeMsg="q",
-            )
-            if not a:
+    speciesNotFound = []
+    for i in range(len(profiles.Species)):
+        data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+        if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+            speciesNotFound.append(profiles.Species[i]["N"])
+
+    # Print warning or question to be careful!
+    if len(speciesNotFound) > 0:
+
+        if portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3:
+        
+            answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
+            if checkForSpecies and (not answerYN):
                 raise ValueError("Species not found")
-    
+            
+        else:
+
+            print(f'\t- Species {speciesNotFound} not found in radiation database, but this PORTALS prediction is not calculating radiation anyway',typeMsg="w")
+
     # Prepare and defaults
 
     xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
@@ -315,21 +313,21 @@ def initializeProblem(
 
     portals_fun.name_objectives = name_objectives
     portals_fun.name_transformed_ofs = name_transformed_ofs
-    portals_fun.optimization_options["ofs"] = ofs
-    portals_fun.optimization_options["dvs"] = [*dictDVs]
-    portals_fun.optimization_options["dvs_min"] = []
+    portals_fun.optimization_options["problem_options"]["ofs"] = ofs
+    portals_fun.optimization_options["problem_options"]["dvs"] = [*dictDVs]
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_min"].append(dictDVs[i][0].cpu().numpy())
-    portals_fun.optimization_options["dvs_base"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_min"].append(dictDVs[i][0].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_base"].append(dictDVs[i][1].cpu().numpy())
-    portals_fun.optimization_options["dvs_max"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_base"].append(dictDVs[i][1].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_max"].append(dictDVs[i][2].cpu().numpy())
+        portals_fun.optimization_options["problem_options"]["dvs_max"].append(dictDVs[i][2].cpu().numpy())
 
-    portals_fun.optimization_options["dvs_min"] = np.array(portals_fun.optimization_options["dvs_min"])
-    portals_fun.optimization_options["dvs_max"] = np.array(portals_fun.optimization_options["dvs_max"])
-    portals_fun.optimization_options["dvs_base"] = np.array(portals_fun.optimization_options["dvs_base"])
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_min"])
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_max"])
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_base"])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # For surrogate
@@ -343,15 +341,11 @@ def initializeProblem(
         "transformationInputs": PORTALStools.produceNewInputs,
         "transformationOutputs": PORTALStools.transformPORTALS,
         "powerstate": portals_fun.powerstate,
-        "applyImpurityGammaTrick": portals_fun.PORTALSparameters[
-            "applyImpurityGammaTrick"
-        ],
+        "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
         "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
         "useDiffusivities": portals_fun.PORTALSparameters["useDiffusivities"],
         "surrogate_transformation_variables_alltimes": Variables,
-        "surrogate_transformation_variables_lasttime": copy.deepcopy(
-            Variables[list(Variables.keys())[-1]]
-        ),
+        "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
     }
 
@@ -407,7 +401,7 @@ def defineNewPORTALSGrid(profiles, rhoMODEL):
 
 
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
-    allOuts = portals_fun.optimization_options["ofs"]
+    allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
     portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
     portals_transformation_variables_trace = portals_fun.PORTALSparameters[
         "portals_transformation_variables_trace"
@@ -535,7 +529,7 @@ def grabPrevious(foldermitim, dictCPs_base):
     opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(analysis_level=1)
     x = opt_fun.mitim_model.BOmetrics["overall"]["xBest"].cpu().numpy()
-    dvs = opt_fun.mitim_model.optimization_options["dvs"]
+    dvs = opt_fun.mitim_model.optimization_options["problem_options"]["dvs"]
     dvs_dict = {}
     for j in range(len(dvs)):
         dvs_dict[dvs[j]] = x[j]

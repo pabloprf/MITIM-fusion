@@ -883,7 +883,7 @@ def calcLinearizedModel(
 
     istep, aLTn_est, aLTn_base = 0, [], []
     for i in range(trainx.shape[0]):
-        if i >= mitim_model.optimization_options["initial_training"]:
+        if i >= mitim_model.optimization_options["initialization_options"]["initial_training"]:
             istep += 1
 
         # Jacobian
@@ -995,7 +995,7 @@ class PORTALSinitializer:
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
         # ----------------------------
 
-        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=len(self.powerstates[-1].ProfilesPredicted))
+        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []

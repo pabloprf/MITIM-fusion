@@ -21,7 +21,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
-
 """
 Reading analysis for PORTALS has more options than standard:
 --------------------------------------------------------------------------------------------------------
@@ -47,42 +46,36 @@ def default_namelist(optimization_options, CGYROrun=False):
     """
 
     # Initialization
-    optimization_options["initial_training"] = 5
-    optimization_options["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
+    optimization_options["initialization_options"]["initial_training"] = 5
+    optimization_options["initialization_options"]["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
 
     # Strategy for stopping
-    optimization_options["BO_iterations"] = 50
-    optimization_options['stopping_criteria'] = PORTALStools.stopping_criteria_portals
-    optimization_options['stopping_criteria_parameters'] =  {
-                "maximum_value": 1e-3,  # Reducing residual by 1000x is enough
+    optimization_options["convergence_options"]["maximum_iterations"] = 50
+    optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+    optimization_options['convergence_options']['stopping_criteria_parameters'] =  {
+                "maximum_value": 5e-3,  # Reducing residual by 1000x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.05,
+                "ricci_value": 0.15,
                 "ricci_d0": 2.0,
                 "ricci_lambda": 1.0,
             }
 
-    optimization_options['acquisition']['relative_improvement_for_stopping'] = 1e-3
+    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-3
 
     # Surrogate
-    optimization_options["surrogateOptions"]["selectSurrogate"] = partial(
-        PORTALStools.selectSurrogate, CGYROrun=CGYROrun
-    )
+    optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
 
-    optimization_options["surrogateOptions"]["ensure_within_bounds"] = True
+    optimization_options["initialization_options"]["ensure_within_bounds"] = True
 
     if CGYROrun:
-        optimization_options["acquisition"]["type"] = "posterior_mean"
-        optimization_options["acquisition"]["optimization"] = {
-            "root": {"num_restarts": 5},      # Added root which is not a default bc it needs dimX=dimY
-            "botorch": {},
-            "ga": {},
-            }
-        optimization_options["acquisition"]["points_per_step"] = 1
+        optimization_options["acquisition_options"]["type"] = "posterior_mean"
+        optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
+        optimization_options["acquisition_options"]["points_per_step"] = 1
     else:
-        optimization_options["acquisition"]["type"] = "noisy_logei_mc"
-        optimization_options["acquisition"]["optimization"] = {"botorch": {}}   # TGLF runs should prioritize speed, and botorch is robust enough
-        optimization_options["acquisition"]["points_per_step"] = 1
+        optimization_options["acquisition_options"]["type"] = "posterior_mean"            # "noisy_logei_mc"
+        optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch"]   # TGLF runs should prioritize speed, and botorch is robust enough
+        optimization_options["acquisition_options"]["points_per_step"] = 1
 
     return optimization_options
 
@@ -105,13 +98,9 @@ class portals(STRATEGYtools.opt_evaluator):
         Note that additional_params_in_surrogate They must exist in the plasma dictionary of the powerstate object
         '''
         
-        print(
-            "\n-----------------------------------------------------------------------------------------"
-        )
+        print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t PORTALS class module")
-        print(
-            "-----------------------------------------------------------------------------------------\n"
-        )
+        print("-----------------------------------------------------------------------------------------\n")
 
         # Store folder, namelist. Read namelist
 
@@ -210,11 +199,7 @@ class portals(STRATEGYtools.opt_evaluator):
         targets_evaluator = TARGETStools.analytical_model
 
         self.PORTALSparameters = {
-            "percentError": [
-                10,
-                10,
-                1,
-            ],  # (%) Error (std, in percent) of model evaluation [TGLF, NEO, TARGET]
+            "percentError": [5,10,1],  # (%) Error (std, in percent) of model evaluation [TGLF (treated as minimum if scan trick), NEO, TARGET]
             "transport_evaluator": transport_evaluator,
             "targets_evaluator": targets_evaluator,
             "TargetCalc": "powerstate",  # Method to calculate targets (tgyro or powerstate)
@@ -234,11 +219,13 @@ class portals(STRATEGYtools.opt_evaluator):
             "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
+            "fImp_orig": 1.0,
             "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.01,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
+            "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
         }
 
         for key in self.PORTALSparameters.keys():
@@ -343,9 +330,9 @@ class portals(STRATEGYtools.opt_evaluator):
         # Ignore targets in surrogate_data.csv
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if 'extrapointsModels' not in self.optimization_options['surrogateOptions'] or \
-            self.optimization_options['surrogateOptions']['extrapointsModels'] is None or \
-            len(self.optimization_options['surrogateOptions']['extrapointsModels'])==0:
+        if 'extrapointsModels' not in self.optimization_options['surrogate_options'] or \
+            self.optimization_options['surrogate_options']['extrapointsModels'] is None or \
+            len(self.optimization_options['surrogate_options']['extrapointsModels'])==0:
 
             self._define_reuse_models()
 
@@ -360,21 +347,21 @@ class portals(STRATEGYtools.opt_evaluator):
             '_5' to avoid reusing position 5
         '''
 
-        self.optimization_options['surrogateOptions']['extrapointsModels'] = []
+        self.optimization_options['surrogate_options']['extrapointsModels'] = []
 
         # Define avoiders
-        if self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] is None:
-            self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent'] = ['Tar']
+        if self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent'] is None:
+            self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent'] = ['Tar']
 
         # Define extrapointsModels
         for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
             add_key = True
-            for avoid in self.optimization_options['surrogateOptions']['extrapointsModelsAvoidContent']:
+            for avoid in self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent']:
                 if avoid in key:
                     add_key = False
                     break
             if add_key:
-                self.optimization_options['surrogateOptions']['extrapointsModels'].append(key)
+                self.optimization_options['surrogate_options']['extrapointsModels'].append(key)
 
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends
@@ -428,7 +415,7 @@ class portals(STRATEGYtools.opt_evaluator):
                   about number of dimensions
         """
 
-        ofs_ordered_names = np.array(self.optimization_options["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["problem_options"]["ofs"])
 
         """
 		-------------------------------------------------------------------------
@@ -542,17 +529,17 @@ class portals(STRATEGYtools.opt_evaluator):
         shutil.copy2(folderRead / "Outputs" / "optimization_extra.pkl", folderNew / "Outputs")
 
         optimization_data = BOgraphics.optimization_data(
-            self.optimization_options["dvs"],
-            self.optimization_options["ofs"],
+            self.optimization_options["problem_options"]["dvs"],
+            self.optimization_options["problem_options"]["ofs"],
             file=folderNew / "Outputs" / "optimization_data.csv",
         )
 
-        self.optimization_options["initial_training"] = len(optimization_data.data)
-        self.optimization_options["read_initial_training_from_csv"] = True
-        self.optimization_options["initialization_fun"] = None
+        self.optimization_options["initialization_options"]["initial_training"] = len(optimization_data.data)
+        self.optimization_options["initialization_options"]["read_initial_training_from_csv"] = True
+        self.optimization_options["initialization_options"]["initialization_fun"] = None
 
         print(
-            f'- Reusing the training set ({self.optimization_options["initial_training"]} points) from optimization_data in {folderRead}',
+            f'- Reusing the training set ({self.optimization_options["initialization_options"]["initial_training"]} points) from optimization_data in {folderRead}',
             typeMsg="i",
         )
 
@@ -571,10 +558,10 @@ class portals(STRATEGYtools.opt_evaluator):
                 # Produce design variables
                 # ------------------------------------------------------------------------------------
                 dictDVs = OrderedDict()
-                for i in self.optimization_options["dvs"]:
+                for i in self.optimization_options["problem_options"]["dvs"]:
                     dictDVs[i] = {"value": np.nan}
                 dictOFs = OrderedDict()
-                for i in self.optimization_options["ofs"]:
+                for i in self.optimization_options["problem_options"]["ofs"]:
                     dictOFs[i] = {"value": np.nan, "error": np.nan}
 
                 for i in dictDVs:

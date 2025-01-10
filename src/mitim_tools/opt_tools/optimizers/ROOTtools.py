@@ -13,9 +13,11 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     # Options
     num_restarts = optimization_params.get("num_restarts",1)
-    run_as_augmented_optimization = True
-    solver = "lm"
-    algorithm_options = {"maxiter": 1000}
+    maxiter = optimization_params.get("maxiter",None)
+    run_as_augmented_optimization = optimization_params.get("augmented_optimization_mode",True)
+    solver = optimization_params.get("solver","lm")
+    
+    algorithm_options = {"maxiter": maxiter}
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Bounds
@@ -121,7 +123,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
                 x0[i, :],
                 fun,
                 writeTrajectory=writeTrajectory,
-                algorithmOptions=algorithm_options,
+                algorithm_options=algorithm_options,
                 solver=solver,
             )
             x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)
@@ -150,7 +152,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
         None,
         None,
         fun,
-        maxExtrapolation=fun.StrategyOptions["AllowedExcursions"],
+        maxExtrapolation=fun.strategy_options["AllowedExcursions"],
     )
 
     # Summary
@@ -199,13 +201,9 @@ class logistic:
     def transform(self, x):
         # return self.l + (self.u-self.l)*(1/(1+torch.exp(-self.k*(x-self.x0))))
         # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.l + 0.5 * (torch.tanh(self.k * (x - self.x0)) + 1) * (
-            self.u - self.l
-        )
+        return self.l + 0.5 * (torch.tanh(self.k * (x - self.x0)) + 1) * (self.u - self.l)
 
     def untransform(self, y):
         # return self.x0-1/self.k * torch.log( (self.u-self.l)/(y-self.l)-1 )
         # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.x0 + (1 / self.k) * torch.atanh(
-            2 * (y - self.l) / (self.u - self.l) - 1
-        )
+        return self.x0 + (1 / self.k) * torch.atanh(2 * (y - self.l) / (self.u - self.l) - 1)

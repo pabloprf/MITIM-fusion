@@ -1322,16 +1322,10 @@ class optimization_results:
 
         # Grab best case based on mean
         try:
-            (
-                self.best_absolute,
-                self.best_absolute_index,
-                self.best_absolute_full,
-            ) = self.getBest()
+            self.best_absolute,self.best_absolute_index,self.best_absolute_full = self.getBest()
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
-            self.best_absolute = self.best_absolute_index = self.best_absolute_full = (
-                None
-            )
+            self.best_absolute = self.best_absolute_index = self.best_absolute_full = None
 
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines
@@ -1482,12 +1476,12 @@ MITIM version 0.2 (P. Rodriguez-Fernandez, 2020)
 Workflow start time: {IOtools.getStringFromTime()} 
 \t"""
 
-        if self.MITIM_BO.optimization_options["dvs_base"] is None:
+        if self.MITIM_BO.optimization_options["problem_options"]["dvs_base"] is None:
             STR_base = ""
         else:
             txtBase = ""
             for cont, i in enumerate(self.MITIM_BO.bounds):
-                txtBase += f"\t{i} = {self.MITIM_BO.optimization_options['dvs_base'][cont]:.5f}\n"
+                txtBase += f"\t{i} = {self.MITIM_BO.optimization_options['problem_options']['dvs_base'][cont]:.5f}\n"
             STR_base = f"""
 * Baseline point (added as Evaluation.0 to initial batch)
 {txtBase}
@@ -1523,13 +1517,14 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def getBest(self, rangeT=None):
 
-        converged, res = self.MITIM_BO.optimization_options['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['stopping_criteria_parameters'])
+        converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
         best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]
 
         if rangeT is not None:
             best_absolute_index += rangeT[0]
+        
         best_absolute_full = self.evaluations[best_absolute_index]
 
         return best_absolute, best_absolute_index, best_absolute_full
