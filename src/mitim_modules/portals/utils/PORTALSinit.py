@@ -102,20 +102,25 @@ def initializeProblem(
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
-    if checkForSpecies and (portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3):
-        speciesNotFound = []
-        for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
-            if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
-                speciesNotFound.append(profiles.Species[i]["N"])
-        if len(speciesNotFound) > 0:
-            a = print(
-                f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions",
-                typeMsg="q",
-            )
-            if not a:
+    speciesNotFound = []
+    for i in range(len(profiles.Species)):
+        data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+        if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+            speciesNotFound.append(profiles.Species[i]["N"])
+
+    # Print warning or question to be careful!
+    if len(speciesNotFound) > 0:
+
+        if portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3:
+        
+            answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
+            if checkForSpecies and (not answerYN):
                 raise ValueError("Species not found")
-    
+            
+        else:
+
+            print(f'\t- Species {speciesNotFound} not found in radiation database, but this PORTALS prediction is not calculating radiation anyway',typeMsg="w")
+
     # Prepare and defaults
 
     xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)

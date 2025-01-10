@@ -67,7 +67,7 @@ class portals_beat(beat):
         modify_dictionary(portals_fun.optimization_options, self.optimization_options)
         modify_dictionary(portals_fun.INITparameters, self.INITparameters)
 
-        portals_fun.prep(self.fileGACODE,**self.exploration_ranges)
+        portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
@@ -78,11 +78,9 @@ class portals_beat(beat):
 
             # If the point is not evaluated (for example, this was not a restart of this portals beat), then flux-match it
             if len(self.mitim_bo.optimization_data.data) == 0:
-                # Flux-match-------------------------------------------------
                 self._flux_match_for_first_point()
-                # -----------------------------------------------------------
 
-            portals_fun.prep(self.fileGACODE,**self.exploration_ranges)
+            portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
 
             self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
