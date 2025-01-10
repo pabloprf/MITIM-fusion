@@ -135,8 +135,8 @@ class MITIMgeqdsk:
 
         # Parameterizations of LCFS
         self.kappa = self.g.derived["miller_geo"]["kappa"][-1] # self.g["fluxSurfaces"]["geo"]["kap"][-1]
-        self.kappaU = self.kappa.copy() # self.g["fluxSurfaces"]["geo"]["kapu"][-1]
-        self.kappaL = self.kappa.copy() # self.g["fluxSurfaces"]["geo"]["kapl"][-1]
+        self.kappaU = self.g.derived["miller_geo"]["kappa_u"][-1] # self.g["fluxSurfaces"]["geo"]["kapu"][-1]
+        self.kappaL = self.g.derived["miller_geo"]["kappa_l"][-1] # self.g["fluxSurfaces"]["geo"]["kapl"][-1]
 
         self.delta = self.g.derived["miller_geo"]["delta"][-1] # self.g["fluxSurfaces"]["geo"]["delta"][-1]
         self.deltaU = self.g.derived["miller_geo"]["delta_u"][-1] # self.g["fluxSurfaces"]["geo"]["dell"][-1]
