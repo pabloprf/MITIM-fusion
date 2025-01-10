@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
-from scipy.integrate import quad, trapezoid
+from scipy.integrate import quad, trapezoid, cumulative_trapezoid
 import megpy
 import freegs
 from freegs import geqdsk
@@ -121,7 +121,12 @@ class MITIMgeqdsk:
 
         zero_vector = np.zeros(self.g.derived["rho_pol"].shape)
 
-        self.Jt = self.g.derived["j_tor"].copy() # self.g.surfAvg("Jt") * 1e-6
+        self.rho_pol = self.g.derived["rho_pol"].copy()
+        self.rho_tor = self.g.derived["rho_tor"].copy()
+        self.psi_pol_norm = self.rho_pol ** 2
+        self.psi_tor_norm = self.rho_tor ** 2
+
+        self.Jt = self.g.derived["j_tor"] * 1e-6 # self.g.surfAvg("Jt") * 1e-6
         self.Jt_fb = zero_vector.copy() # self.g.surfAvg("Jt_fb") * 1e-6
 
         self.Jerror = np.abs(self.Jt - self.Jt_fb)
@@ -158,7 +163,8 @@ class MITIMgeqdsk:
 
         vp = np.array(self.g.fluxsurfaces["Vprime"]).flatten()
         ir = np.array(self.g.fluxsurfaces["1/R"]).flatten()
-        self.kappa_a = trapezoid(vp * ir, self.g.derived["psi"]) / (np.pi * self.a**2)
+        self.cx_area = cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0)
+        self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
         #self.kappa_a = self.g["fluxSurfaces"]["geo"]["cxArea"][-1] / (np.pi * self.a**2)
 
         self.kappa995 = np.interp(
