@@ -839,7 +839,7 @@ def FrequencyOnAxis(Bt):
 def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
     factor1 = 1 - (fDT + Zmini * fmini + Zhigh * fhigh)
-    factor2 = Zeff - (Zmini**2 * fmini + Zhigh**2 * fhigh)
+    factor2 = Zeff - (fDT + Zmini**2 * fmini + Zhigh**2 * fhigh)
 
     Z = factor2 / factor1
 
