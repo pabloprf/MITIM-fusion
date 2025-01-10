@@ -8,3 +8,4 @@ Standalone Capabilities
    tgyro_capabilities
    transp_capabilities
    misc_capabilities
+   shell_scripts
