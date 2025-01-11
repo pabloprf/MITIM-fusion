@@ -1,4 +1,3 @@
-import os
 import shutil
 import copy
 import numpy as np
@@ -290,7 +289,7 @@ class creator:
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, rhotop = None, Ttop_keV = None, netop_20 = None, Tsep_keV = None, nesep_20 = None, BetaN = None, label = 'parameterization'):
+        def __init__(self, initialize_instance, rhotop = None, Ttop_keV = None, netop_20 = None, Tsep_keV = None, nesep_20 = None, BetaN = None, nu_ne = None, label = 'parameterization'):
             super().__init__(initialize_instance, label = label)
 
             self.rhotop = rhotop
@@ -298,10 +297,25 @@ class creator_from_parameterization(creator):
             self.netop_20 = netop_20
             self.Tsep_keV = Tsep_keV
             self.nesep_20 = nesep_20
-            self.BetaN = BetaN
 
-        def _return_profile_betan_residual(self, x, x_a, betan):
-            aLT, aLn = x
+            # Initialization parameters
+            self.BetaN = BetaN
+            self.nu_ne = nu_ne
+
+        def _return_profile_peaking_residual(self, aLn, x_a):
+
+            # returns the residual of the betaN to match the profile to the EPED guess
+
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
+
+            # Call the generic creator
+            self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne}
+            super().__call__()
+
+            return ((self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne) ** 2
+
+        def _return_profile_betan_residual(self, aLT, x_a, aLn):
+
             # returns the residual of the betaN to match the profile to the EPED guess
 
             rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
@@ -316,18 +330,35 @@ class creator_from_parameterization(creator):
     
         def __call__(self):
 
-            # Function to wrap the parameterization ------------------------------------------------------
-            aLT = 2.0
-            aLn = 0.2
             x_a = 0.3
 
-            x0 = [aLT, aLn]
-            bounds = [(1.0,3.0), (0.1, 0.3)] # in the future, fix aLT/aLn ?
-            print('\n\t -Optimizing aLT and aLn to match BetaN')
-            res = minimize(self._return_profile_betan_residual, x0, args=(x_a, self.BetaN), method='Nelder-Mead', tol=1e-3, bounds=bounds)
-            print(f'\n\t - Gradients: aLT = {res.x[0]:.2f}, aLn = {res.x[1]:.2f}')
-            print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN"]:.5f} (target: {self.BetaN:.5f})')
-            aLT, aLn = res.x
+            # Find the density gradient that matches the peaking
+            aLn_guess = 0.2
+            if self.nu_ne is not None:
+                print('\n\t -Optimizing aLn to match ne peaking')
+                bounds = [(0.0,3.0)]
+                res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                aLn = res.x[0]
+                print(f'\n\t - Gradient: aLn = {aLn:.2f}')
+                print(f'\t - ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
+            else:
+                print('\n\t - Using aLn = 0.2')
+                aLn = aLn_guess
+            
+            # Find the temperature gradient that matches the BetaN
+            aLT_guess = 2.0
+            if self.BetaN is not None:
+                print('\n\t -Optimizing aLT to match BetaN')
+                bounds = [(0.5,3.0)]
+                res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                aLT = res.x[0]
+                print(f'\n\t - Gradient: aLT = {aLT:.2f}')
+                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN"]:.5f} (target: {self.BetaN:.5f})')
+            else:
+                print('\n\t - Using aLT = 2.0')
+                aLT = aLT_guess
+
+            # Create profiles
 
             rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
             rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
@@ -337,8 +368,6 @@ class creator_from_parameterization(creator):
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-            # --------------------------------------------------------------------------------------------
-
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from EPED: Create parameterization using EPED
@@ -346,10 +375,11 @@ class creator_from_parameterization(creator):
 
 class creator_from_eped(creator_from_parameterization):
 
-    def __init__(self, initialize_instance, label = 'eped', BetaN = None, **kwargs_eped):
+    def __init__(self, initialize_instance, label = 'eped', BetaN = None, nu_ne = None, **kwargs_eped):
         super().__init__(initialize_instance, label = label)
 
         self.BetaN = BetaN
+        self.nu_ne = nu_ne
         self.parameters = kwargs_eped
         if self.BetaN is None:
             raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
