@@ -128,7 +128,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
         xx = powerstate.plasma[ikey][: X.shape[0], index]
-        xFit = torch.cat((xFit, xx.unsqueeze(1)), dim=1).to(X)
+        xFit = torch.cat((xFit, xx.unsqueeze(-1)), dim=-1).to(X)
 
     parameters_combined = {"powerstate": powerstate}
 
@@ -208,9 +208,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 	"""
 
     # Add zeros at zero
-    qExch = torch.cat(
-        (torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1
-    )
+    qExch = torch.cat((torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1)
 
     PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
@@ -222,45 +220,6 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     PexchTurb_integrated = PexchTurb_integrated.view(tuple(shape_orig))
 
     return PexchTurb_integrated
-
-
-# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
-# 	'''
-# 	Transform direct evaluation output to something that the model understands better.
-
-# 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
-# 		- Transforms and produces Y and Yvar (batch1,...,1)
-
-# 	Output of this function is what the surrogate model will be fitting, so make sure it has a physics-based
-# 	meaning behind it (e.g. GB fluxes), that makes sense to fit to variables
-# 	'''
-
-# 	factor = factorProducer(X,surrogate_parameters,output)
-
-# 	Ytr     = Y    / factor
-# 	Ytr_var = Yvar / factor**2
-
-# 	return Ytr,Ytr_var
-
-
-# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
-# 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
-
-# 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
-# 		- Transforms and produces Y and confidence bounds (batch1,...,)
-
-# 	This untransforms whatever has happened in the transformPORTALS function
-# 	'''
-
-# 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)
-
-# 	mean    = mean  * factor
-# 	upper   = upper * factor
-# 	lower   = lower * factor
-
-# 	return mean, upper, lower
-
 
 def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location

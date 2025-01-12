@@ -340,6 +340,18 @@ class OPTstep:
         self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(residual)
 
         # **************************************************************************************************
+        # Quick function to return components (I need this for ROOT too, since I need the components)
+        # **************************************************************************************************
+
+        def residual_function(x, outputComponents=False):
+            mean, _, _, _ = self.evaluators["GP"].predict(x) #TODO: make the predict method simply the callable of my GP
+            yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
+
+            return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut
+
+        self.evaluators["residual_function"] = residual_function
+
+        # **************************************************************************************************
         # Acquisition functions (following BoTorch assumption of maximization)
         # **************************************************************************************************
 
@@ -411,18 +423,6 @@ class OPTstep:
         # Add this because of the way train_X is defined within the gpmodel, which is fundamental, but the acquisition for sample
         # around best, needs the raw one! (for noisy it is automatic)
         self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
-
-        # **************************************************************************************************
-        # Quick function to return components (I need this for ROOT too, since I need the components)
-        # **************************************************************************************************
-
-        def residual_function(x, outputComponents=False):
-            mean, _, _, _ = self.evaluators["GP"].predict(x) #TODO: make the predict method simply the callable of my GP
-            yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
-
-            return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut
-
-        self.evaluators["residual_function"] = residual_function
 
         # **************************************************************************************************
         # Selector (Takes x and residuals of optimized points, and provides the indices for organization)

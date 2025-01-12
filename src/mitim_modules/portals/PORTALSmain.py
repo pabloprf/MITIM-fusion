@@ -69,11 +69,13 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["initialization_options"]["ensure_within_bounds"] = True
 
     if CGYROrun:
+        # CGYRO runs should prioritize accuracy
         optimization_options["acquisition_options"]["type"] = "posterior_mean"
         optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
     else:
-        optimization_options["acquisition_options"]["type"] = "posterior_mean"            # "noisy_logei_mc"
-        optimization_options["acquisition_options"]["optimizers"] = ["root"]#, "botorch"]   # TGLF runs should prioritize speed, and botorch is robust enough
+        # TGLF runs should prioritize speed
+        optimization_options["acquisition_options"]["type"] = "posterior_mean" # "noisy_logei_mc"
+        optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch"]   
 
     return optimization_options
 

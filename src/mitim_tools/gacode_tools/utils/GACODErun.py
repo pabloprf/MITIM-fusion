@@ -116,10 +116,7 @@ def modifyInputs(
         input_class.controls = CodeOptions
 
     else:
-        print(
-            "\t- Input file was not modified by Settings, using what was there before",
-            typeMsg="w",
-        )
+        print("\t- Input file was not modified by Settings, using what was there before",typeMsg="i")
 
     # Make all upper case
     extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}

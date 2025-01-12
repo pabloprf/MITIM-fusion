@@ -144,7 +144,7 @@ class MITIM_GA:
         writeTrajectory=False,
     ):
         """
-        If residual_function gives y to be maximized (should be in MITIM), then weights must be positive
+        If function gives y to be maximized (should be in MITIM), then weights must be positive
         """
 
         if xGuesses is None:
@@ -153,7 +153,7 @@ class MITIM_GA:
         if weights is None:
             weights = tuple(
                 np.ones(numOFs)
-            )  # If residual_function gives y to be maximized, then weights must be positive
+            )  # If function gives y to be maximized, then weights must be positive
 
         self.parallel_evaluations_inner = parallel_evaluations_inner
 
