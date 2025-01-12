@@ -44,8 +44,9 @@
             "root": {
                 "num_restarts": 5,
                 "augmented_optimization_mode": true,
-                "maxiter": 1000,
                 "solver": "lm",
+                "maxiter": 1000,
+                "relative_improvement_for_stopping": 1e-4,
                 "keep_best": 1
                 },
             "ga": {

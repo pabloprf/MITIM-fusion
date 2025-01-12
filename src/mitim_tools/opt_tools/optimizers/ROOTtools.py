@@ -14,10 +14,14 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     # Options
     num_restarts = optimization_params.get("num_restarts",1)
     maxiter = optimization_params.get("maxiter",None)
+    relative_improvement_for_stopping = optimization_params.get("relative_improvement_for_stopping",1e-8)
     run_as_augmented_optimization = optimization_params.get("augmented_optimization_mode",True)
     solver = optimization_params.get("solver","lm")
     
-    algorithm_options = {"maxiter": maxiter}
+    algorithm_options = {
+        "maxiter": maxiter,
+        "ftol": relative_improvement_for_stopping,
+        }
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Bounds
@@ -49,14 +53,10 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
             X = bound_transform.transform(X)
 
             # Evaluate residuals
-            yOut, y1, y2, _ = fun.evaluators["residual_function"](
-                X, outputComponents=True
-            )
+            yOut, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
             y = y1 - y2
 
-            acq_evaluated.append(
-                -yOut.abs().min().item()
-            )  # yOut has [batch] dimensions, so look at the best
+            acq_evaluated.append(-yOut.abs().min().item())  # yOut has [batch] dimensions, so look at the best
 
             # Root requires that len(x)==len(y)
             y = fixDimensions_ROOT(X, y)
@@ -112,7 +112,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
 
-        # Convert to 1D
+        # Convert to 1D if augmented optimization
         x0 = xGuesses.view(-1).unsqueeze(0) if run_as_augmented_optimization else xGuesses
 
         x_res = torch.Tensor().to(fun.stepSettings["dfT"])
