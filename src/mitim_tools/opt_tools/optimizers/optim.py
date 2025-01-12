@@ -3,6 +3,7 @@ import copy
 import numpy as np
 from scipy.optimize import root
 from IPython import embed
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # --------------------------------------------------------------------------------------------------------
@@ -20,6 +21,8 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
     Notes:
             - The porblem must be: dimX = dimY
             - Must all be tensors that allow Jacobian calculation
+            - tol in root is the same as xtol for LM
+            - ftol in LM will define the relative reduction in the sum of squares of the residuals between one iteration and another
     """
 
     def func(x, dfT1=torch.zeros(1).to(xGuess)):
@@ -27,11 +30,13 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
         X = torch.tensor(x, requires_grad=True).to(dfT1)
 
         # Evaluate value and local jacobian
-        QhatD = flux(X)
-        JD = torch.autograd.functional.jacobian(flux, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
+        QhatD, JD = mitim_jacobian(flux, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
+
+        # Avoid numerical artifacts for off-block-diagonal elements that should be zero but numerically are not
+        JD[JD.abs() <= 1e-10] = 0.0
 
         # Back to arrays
-        return QhatD.detach().cpu().numpy(), JD.detach().cpu().numpy()
+        return QhatD.detach().cpu().numpy(), JD.transpose(0,1).cpu().numpy()    # Transpose here so that I can use col_deriv=True
 
     # No batching is allowed in ROOT. If you want to run batching flux matching you need to concatenate the vector in one dim
     xGuess0 = xGuess.squeeze(0).cpu().numpy() if xGuess.dim() > 1 else xGuess.cpu().numpy()
@@ -42,10 +47,14 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
     f0,_ = func(xGuess0)
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}")
 
-    sol = root(func, xGuess0, jac=True, method=solver, tol=None, options=algorithm_options)
+    algorithm_options['col_deriv'] = True # Faster in scipy to avoid transposing the Jacobian. I can optimize it in pytorch instead, see above transpose
+
+    with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
+        sol = root(func, xGuess0, jac=True, method=solver, tol=None, options=algorithm_options)
 
     f,_ = func(sol.x)
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
+
     # ************
 
     print("\t- Results from scipy solver:", sol)
@@ -230,3 +239,85 @@ def relax(
             store_Q = torch.cat((store_Q, (Q - QT).abs().detach()), axis=0)
 
     return store_x, store_Q
+
+'''
+********************************************************************************************************************************** 
+The original implementation of torch.autograd.functional.jacobian runs the function once and then computes the jacobian.
+This implementation simply copies what the original does, but returns the outputs so that I don't need to calculate them again.
+**********************************************************************************************************************************
+'''
+
+from torch.autograd.functional import _autograd_grad, _construct_standard_basis_for, _grad_postprocess, _grad_preprocess, _tuple_postprocess, _as_tuple, _check_requires_grad
+
+def mitim_jacobian(
+    func,
+    inputs,
+    create_graph=False,
+    strict=False,
+    vectorize=False,
+    strategy="reverse-mode",
+    ):
+
+    with torch.enable_grad():
+        is_inputs_tuple, inputs = _as_tuple(inputs, "inputs", "jacobian")
+        inputs = _grad_preprocess(inputs, create_graph=create_graph, need_graph=True)
+
+        outputs = func(*inputs)
+        is_outputs_tuple, outputs = _as_tuple(
+            outputs, "outputs of the user-provided function", "jacobian"
+        )
+        _check_requires_grad(outputs, "outputs", strict=strict)
+
+        if vectorize:
+
+            # Step 1: Construct grad_outputs by splitting the standard basis
+            output_numels = tuple(output.numel() for output in outputs)
+            grad_outputs = _construct_standard_basis_for(outputs, output_numels)
+            flat_outputs = tuple(output.reshape(-1) for output in outputs)
+
+            # Step 2: Call vmap + autograd.grad
+            def vjp(grad_output):
+                vj = list(
+                    _autograd_grad(
+                        flat_outputs,
+                        inputs,
+                        grad_output,
+                        create_graph=create_graph,
+                        is_grads_batched=True,
+                    )
+                )
+                for el_idx, vj_el in enumerate(vj):
+                    if vj_el is not None:
+                        continue
+                    vj[el_idx] = torch.zeros_like(inputs[el_idx]).expand(
+                        (sum(output_numels),) + inputs[el_idx].shape
+                    )
+                return tuple(vj)
+
+            jacobians_of_flat_output = vjp(grad_outputs)
+
+            # Step 3: The returned jacobian is one big tensor per input. In this step,
+            # we split each Tensor by output.
+            jacobian_input_output = []
+            for jac_input_i, input_i in zip(jacobians_of_flat_output, inputs):
+                jacobian_input_i_output = []
+                for jac, output_j in zip(
+                    jac_input_i.split(output_numels, dim=0), outputs
+                ):
+                    jacobian_input_i_output_j = jac.view(output_j.shape + input_i.shape)
+                    jacobian_input_i_output.append(jacobian_input_i_output_j)
+                jacobian_input_output.append(jacobian_input_i_output)
+
+            # Step 4: Right now, `jacobian` is a List[List[Tensor]].
+            # The outer List corresponds to the number of inputs,
+            # the inner List corresponds to the number of outputs.
+            # We need to exchange the order of these and convert to tuples
+            # before returning.
+            jacobian_output_input = tuple(zip(*jacobian_input_output))
+
+            jacobian_output_input = _grad_postprocess(
+                jacobian_output_input, create_graph
+            )
+            return outputs[0],_tuple_postprocess(
+                jacobian_output_input, (is_outputs_tuple, is_inputs_tuple)
+            )
