@@ -121,17 +121,17 @@ class eped_beat(beat):
 
         # Store evaluation
         self.current_evaluation = {
-            'Ip': Ip,
-            'Bt': Bt,
-            'R': R,
-            'a': a,
-            'kappa995': kappa995,
-            'delta995': delta995,
-            'neped_20': neped_20,
-            'BetaN': BetaN,
-            'zeff': zeff,
-            'Tesep_keV': Tesep_keV,
-            'nesep_ratio': nesep_ratio,
+            'Ip': np.abs(Ip),
+            'Bt': np.abs(Bt),
+            'R': np.abs(R),
+            'a': np.abs(a),
+            'kappa995': np.abs(kappa995),
+            'delta995': np.abs(delta995),
+            'neped_20': np.abs(neped_20),
+            'BetaN': np.abs(BetaN),
+            'zeff': np.abs(zeff),
+            'Tesep_keV': np.abs(Tesep_keV),
+            'nesep_ratio': np.abs(nesep_ratio),
         }
 
         # --- Sometimes we may need specific EPED inputs
