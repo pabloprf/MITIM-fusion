@@ -311,6 +311,7 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
+    
     def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
 
         # -------------------------------------------------------------------------------------------------------
@@ -328,6 +329,17 @@ class MITIMgeqdsk:
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
         
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
+
+        # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
+        rhotor = np.array([np.abs(i) for i in rhotor])
+        psi = np.array([np.abs(i) for i in psi])
+        q = np.array([np.abs(i) for i in q])
+        pressure = np.array([np.abs(i) for i in pressure])
+        
+        torfluxa = np.abs(torfluxa)
+        Ip = np.abs(Ip)
+        B0 = np.abs(B0)
+        # ------------------------------------------
 
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
@@ -361,10 +373,6 @@ class MITIMgeqdsk:
         profiles['rho(-)'] = rhotor
         profiles['polflux(Wb/radian)'] = psi
         profiles['q(-)'] = q
-
-        if (profiles['q(-)'] < 0.0).any():
-            print("\t- Negative q detected, flipping the sign", typeMsg='w')
-            profiles['q(-)'] = -profiles['q(-)']
 
         # -------------------------------------------------------------------------------------------------------
         # Flux surfaces
