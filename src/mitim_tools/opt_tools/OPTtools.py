@@ -78,10 +78,7 @@ class fun_optimization:
             if basePoint is None:
                 basePoint = position_best_so_far
 
-            print(
-                f"\t- Optimization will be performed around {relativeVariation*100.0:.1f}% of the training point in position {basePoint}\n",
-                typeMsg="i",
-            )
+            print(f"\t- Optimization will be performed around {relativeVariation*100.0:.1f}% of the training point in position {basePoint}\n",typeMsg="i")
 
             x_best = self.evaluators["GP"].train_X[basePoint]
 

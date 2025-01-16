@@ -312,9 +312,7 @@ class mitim_job:
         self.target_user = self.machineSettings["user"]
 
         print("\t* Connecting to remote server:")
-        print(
-            f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with key " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}'
-        )
+        print(f'\t\t{self.target_user}@{self.target_host}{f", via tunnel {self.jump_user}@" +self.jump_host  if self.jump_host is not None else ""}{":" + str(self.machineSettings["port"]) if self.machineSettings["port"] is not None else ""}{" with key " + self.machineSettings["identity"] if self.machineSettings["identity"] is not None else ""}')
 
         if log_file is not None:
             paramiko.util.log_to_file(log_file)

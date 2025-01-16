@@ -1034,9 +1034,14 @@ def PORTALSanalyzer_plotMetrics(
 def define_extra_iterators(self):
 
     # Always plot initial and best
-    indeces_plot = [self.i0, self.ibest]
-    colors_plot = ["r", "g"]
-    labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+    if self.ibest != self.i0:
+        indeces_plot = [self.i0, self.ibest]
+        colors_plot = ["r", "g"]
+        labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+    else:
+        indeces_plot = [self.ibest]
+        colors_plot = ["g"]
+        labels_plot = [f"Best (#{self.ibest})"]
 
     if (len(self.iextra) == 0) and (self.ibest != self.evaluations[-1]):
         self.iextra = [-1]
@@ -3261,9 +3266,7 @@ def produceInfoRanges(
         if f"aLw0_{i+1}" in bounds:
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
-    X = torch.zeros(
-        ((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2)
-    )
+    X = torch.zeros(((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2))
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
