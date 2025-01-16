@@ -28,7 +28,7 @@ transp_namelist = { 'flattop_window': 0.1, 'zlump' :[ [6.0, 12.0, 0.1] ],
                     'nzones' : 60, 'nzones_energetic' : 20, 'nzones_distfun' : 10,      
                     'Pich': False, 'useNUBEAMforAlphas':False, 'DTplasma': False }
 
-portals_namelist = { "optimization_options": {["convergence_options"]["maximum_iterations": 2 },
+portals_namelist = { "optimization_options": {["convergence_options"]["maximum_iterations": 2] },
                      "exploration_ranges": {'ymax_rel': 1.0,'ymin_rel': 0.9,'hardGradientLimits': [None,2]} }
 
 @mitim_timer('\t\t* MAESTRO')
