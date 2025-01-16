@@ -32,8 +32,8 @@ class transp_output:
             self.R = self.f["r2d"][:]
             self.Z = self.f["z2d"][:]
         except:
-            self.R = self.f["r"][:]
-            self.Z = self.f["z"][:]
+            self.R = self.f["R"][:]
+            self.Z = self.f["Z"][:]
         self.rho = self.f["RHO"][:]
         self.xrho = self.f["XRHO"][:]
         self.na1 = self.f["NA1"][:]
@@ -437,10 +437,14 @@ class transp_output:
         ##  some global and performance parameters
         self.Q = (self.QDT[:,-1]/(self.QICRH[:,-1]+self.QOH[:,-1]))/0.2    ## in teh D+T fusion reactions 20% goes to He and 80% to neutrons
         self.Pfus = self.QDT/0.2
+        self.ne_PLHmin = 0.07*(self.IPL)**0.34*(self.BTOR)**0.62*(self.RTOR)**(-0.95)*(self.RTOR/self.ABC)**0.4
+        self.ne_PLHmin_perc = self.ne_avg/10/self.ne_PLHmin
         self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941*(2/self.AMAIN[:,-1])
+        self.PLH_metal = 0.044*(self.ne_avg/10.)**1.06*(self.BTOR)**0.54*(self.SLAT[:,-1])*(2/self.AMAIN[:,-1])**(0.965)
         self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922*(2/self.AMAIN[:,-1])
         self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96*(2/self.AMAIN[:,-1])
         self.PLH_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH
+        self.PLH_metal_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_metal
         self.PLH_lower_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_lower
         self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper
         self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])
