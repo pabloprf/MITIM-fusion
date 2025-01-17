@@ -12,6 +12,7 @@ from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+import time
 
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
@@ -533,7 +534,11 @@ class TGYRO:
                 shutil.copy2(self.FolderTGYRO / f"input.tglf_{rho:.4f}", self.FolderGACODE)
 
             # Remove temporary folder
-            shutil.rmtree(self.FolderTGYRO_tmp)
+            try: 
+                shutil.rmtree(self.FolderTGYRO_tmp)
+            except OSError:
+                print(f"\t- Could not remove {self.FolderTGYRO_tmp}. Trying again.", typeMsg="w")
+                shutil.rmtree(self.FolderTGYRO_tmp)
 
         else:
             print(" ~~~ Not running TGYRO", typeMsg="i")
