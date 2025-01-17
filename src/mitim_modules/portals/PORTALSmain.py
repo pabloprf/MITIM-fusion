@@ -66,8 +66,6 @@ def default_namelist(optimization_options, CGYROrun=False):
     # Surrogate
     optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
 
-    optimization_options["initialization_options"]["ensure_within_bounds"] = True
-
     if CGYROrun:
         # CGYRO runs should prioritize accuracy
         optimization_options["acquisition_options"]["type"] = "posterior_mean"
@@ -502,7 +500,7 @@ class portals(STRATEGYtools.opt_evaluator):
             self.MODELparameters["Physics_options"]["GradientsType"] = 0
 
         if 'TargetType' in self.MODELparameters["Physics_options"]:
-            raise Exception("\t- TargetType is not used in PORTALS anymore, removing")
+            raise Exception("\t- TargetType is not used in PORTALS anymore")
 
         if self.PORTALSparameters["TargetCalc"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
             print(
