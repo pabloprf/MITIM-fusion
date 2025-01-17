@@ -1,7 +1,7 @@
 import torch
 import copy
 import numpy as np
-from mitim_tools.opt_tools 	 	import STRATEGYtools
+from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import PLASMAtools
 from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -9,9 +9,7 @@ from IPython import embed
 
 def selectSurrogate(output, surrogate_options, CGYROrun=False):
 
-    print(
-        f'\t- Selecting surrogate options for "{output}" to be run'
-    )
+    print(f'\t- Selecting surrogate options for "{output}" to be run')
 
     if output is not None:
         # If it's a target, just linear

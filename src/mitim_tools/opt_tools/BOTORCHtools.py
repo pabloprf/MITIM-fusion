@@ -25,6 +25,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         outcome_transform=None,
         surrogate_options={},
         variables=None,
+        output=None,
         train_X_added=torch.Tensor([]),
         train_Y_added=torch.Tensor([]),
         train_Yvar_added=torch.Tensor([]),
@@ -168,7 +169,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             )
         elif TypeMean == 2:
             self.mean_module = MITIM_LinearMeanGradients(
-                batch_shape=self._aug_batch_shape, variables=variables
+                batch_shape=self._aug_batch_shape, variables=variables, output=output
             )
         elif TypeMean == 3:
             self.mean_module = MITIM_CriticalGradient(
@@ -667,15 +668,38 @@ class MITIM_ConstantKernel(gpytorch.kernels.Kernel):
 
 # mitim application: If a variable is a gradient, do linear, if not, do just bias
 class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
-    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
+    def __init__(
+        self,
+        batch_shape=torch.Size(),
+        variables=None,
+        output=None,
+        only_diffusive=True,
+        **kwargs
+        ):
         super().__init__()
 
         # Indeces of variables that are gradient, so subject to CG behavior
         grad_vector = []
         if variables is not None:
-            for i, variable in enumerate(variables):
-                if ("aL" in variable) or ("dw" in variable):
-                    grad_vector.append(i)
+
+            if not only_diffusive:
+                for i, variable in enumerate(variables):
+                    if ("aL" in variable) or ("dw" in variable):
+                        grad_vector.append(i)
+            else:
+
+                mapping = {
+                    'Qe': 'aLte',
+                    'Qi': 'aLti',
+                    'Ge': 'aLne',
+                    'GZ': 'aLnZ',
+                    'Mt': 'dw0dr'
+                }
+
+                for i, variable in enumerate(variables):
+                    if (mapping[output[:2]] == variable):
+                        grad_vector.append(i)
+
         self.indeces_grad = tuple(grad_vector)
         # ----------------------------------------------------------------
 
@@ -688,6 +712,13 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
         self.register_parameter(
             name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
         )
+
+        # set the parameter constraint to be [0,1], when nothing is specified
+        diffusion_constraint = gpytorch.constraints.constraints.Positive()
+
+        # positive diffusion coefficient
+        if only_diffusive:
+            self.register_constraint("weights_lin", diffusion_constraint)
 
     def forward(self, x):
         res = x[..., self.indeces_grad].matmul(self.weights_lin).squeeze(-1) + self.bias

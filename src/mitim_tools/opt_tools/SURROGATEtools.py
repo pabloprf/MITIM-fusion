@@ -268,6 +268,7 @@ class surrogate_model:
             input_transform=input_transform,
             outcome_transform=outcome_transform,
             surrogate_options=self.surrogate_options,
+            output=self.output,
             variables=self.variables,
             train_X_added=self.train_X_added,
             train_Y_added=self.train_Y_added,
