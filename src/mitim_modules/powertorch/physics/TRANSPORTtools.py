@@ -2,6 +2,7 @@ import copy
 import shutil
 import torch
 import numpy as np
+from sortedcontainers import SortedList
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.utils import PORTALScgyro
@@ -147,6 +148,7 @@ class tgyro_model(power_transport):
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
+        already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -209,9 +211,12 @@ class tgyro_model(power_transport):
             use_tglf_scan_trick = use_tglf_scan_trick,
             cold_start=cold_start,
             extra_name = self.name,
-            cores_per_tglf_instance=cores_per_tglf_instance
+            cores_per_tglf_instance=cores_per_tglf_instance,
+            already_evaluated_points=already_evaluated_points
         )
 
+        ModelOptions['extra_params']['PORTALSparameters']["already_evaluated_points"] = already_evaluated_points
+        
         # Read again to capture errors
         tgyro.read(label="tglf_neo", folder=self.folder / "tglf_neo")
 
@@ -346,7 +351,8 @@ def tglf_scan_trick(
     check_coincidence_thr=1E-2, 
     extra_name="", 
     remove_folders_out = False,
-    cores_per_tglf_instance = 4 # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    already_evaluated_points = None
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -410,15 +416,63 @@ def tglf_scan_trick(
     Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
 
+
+    def add_to_history(radius_index, xV, Qe, Qi, Ge, GZ):
+        if radius_index not in already_evaluated_points:
+            already_evaluated_points[radius_index] = SortedList(key=lambda values_tuple: values_tuple[0])
+        already_evaluated_points[radius_index].add((xV, Qe, Qi, Ge, GZ))
+
+    def find_in_history(radius_index, lower_bound, upper_bound):
+        if radius_index not in already_evaluated_points:
+            return []
+        else:
+            return list(already_evaluated_points[radius_index].irange((lower_bound, None), (upper_bound, None)))
+    
+
     cont = 0
     for vari in variables_to_scan:
-        jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
+        scan = tglf.scans[f'{name}_{vari}']
+        jump = scan['Qe'].shape[-1]
 
-        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe']
-        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
-        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
-        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
+        Qe[:,cont:cont+jump] = scan['Qe']
+        Qi[:,cont:cont+jump] = scan['Qi']
+        Ge[:,cont:cont+jump] = scan['Ge']
+        GZ[:,cont:cont+jump] = scan['Gi']
         cont += jump
+
+
+        found_Qe = []
+        found_Qi = []
+        found_Ge = []
+        found_GZ = []
+
+        for radius_index in range(len(scan['xV'])):
+            candidates = find_in_history(radius_index, scan['xV'][radius_index][0], scan['xV'][radius_index][-1])
+            if len(candidates) > 0:
+                for candidate in candidates:
+                    found_Qe.append((radius_index, candidate[1]))
+                    found_Qi.append((radius_index, candidate[2]))
+                    found_Ge.append((radius_index, candidate[3]))
+                    found_GZ.append((radius_index, candidate[4]))
+
+            for i in range(len(scan['xV'][radius_index])):
+                add_to_history(
+                    radius_index,
+                    scan['xV'][radius_index][i],
+                    scan['Qe'][radius_index][i],
+                    scan['Qi'][radius_index][i],
+                    scan['Ge'][radius_index][i],
+                    scan['Gi'][radius_index][i]
+                )
+
+    if found_Qe:
+        Qe = np.insert(Qe, [x[0] for x in found_Qe], [x[1] for x in found_Qe], axis=1)
+    if found_Qi:
+        Qi = np.insert(Qi, [x[0] for x in found_Qi], [x[1] for x in found_Qi], axis=1)
+    if found_Ge:
+        Ge = np.insert(Ge, [x[0] for x in found_Ge], [x[1] for x in found_Ge], axis=1)
+    if found_GZ:
+        GZ = np.insert(GZ, [x[0] for x in found_GZ], [x[1] for x in found_GZ], axis=1)
 
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
@@ -560,7 +614,8 @@ def curateTGYROfiles(
     use_tglf_scan_trick=None,
     cold_start=False,
     extra_name="",
-    cores_per_tglf_instance = 4
+    cores_per_tglf_instance = 4,
+    already_evaluated_points = None
     ):
 
     tgyro = tgyroObject.results[label]
@@ -602,8 +657,9 @@ def curateTGYROfiles(
             delta = use_tglf_scan_trick,
             cold_start=cold_start,
             extra_name=extra_name,
-            cores_per_tglf_instance=cores_per_tglf_instance
-            )
+            cores_per_tglf_instance=cores_per_tglf_instance,
+            already_evaluated_points = already_evaluated_points
+        )
 
         min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum
 
