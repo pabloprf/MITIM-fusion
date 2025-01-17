@@ -24,9 +24,19 @@ class mitim_nn:
         self.normalization = None
 
         if norm is not None:
-            self.normalization = np.loadtxt(norm)
+            with open(norm, 'r') as f:
+                self.normalization = np.array([float(x) for x in f.readline().split()])
+                try:
+                    self.inputs = np.array([x for x in f.readline().split()])
+                except:
+                    self.inputs = None
             print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
             print("Norm:", self.normalization)
+            if self.inputs is not None:
+                print("Expected inputs to NN:")
+                print(self.inputs)
+            else:
+                print("No input information found in normalization file")
         
         print(f'\t- Weights file from {IOtools.clipstr(model_path,30)} loaded')
         
@@ -81,7 +91,30 @@ class eped_nn(mitim_nn):
                 nesep_ratio=0.3
                  ):
 
-        nesep = neped*nesep_ratio
-        inputs = np.array([Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep, nesep])
 
+        # 1) Calculate any extra derived quantities
+        nesep = neped * nesep_ratio
+
+        # 2) Collect all possible arguments in a dictionary
+        all_args = {
+            'Ip':         Ip,
+            'Bt':         Bt,
+            'R':          R,
+            'a':          a,
+            'kappa995':   kappa995,
+            'delta995':   delta995,
+            'neped':      neped,
+            'betan':      betan,
+            'zeff':       zeff,
+            'tesep':      tesep,
+            'nesep':      nesep
+        }
+
+        # 3) Construct the input list/array in the exact order the parent expects (as listed in self.inputs).
+        if self.inputs is not None:
+            inputs = [all_args[key] for key in self.inputs]
+        else:
+            inputs = list(all_args.values())
+
+        # 4) Call the parent method to run the actual inference 
         return self.__call__(inputs)
