@@ -580,7 +580,10 @@ class mitim_flux_surfaces:
         # Squareness (not parallel for the time being)
         self.zeta = np.zeros(self.R0.shape)
         for i in range(self.R0.shape[0]):
-            Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+            try:
+                Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+            except AttributeError:
+                zeta_uo = np.nan
             self.zeta[i] = zeta_uo
 
     def plot(self, ax = None, color = 'r', label = None, plot_extremes=False):
