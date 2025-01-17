@@ -8,6 +8,9 @@ from mitim_tools.gs_tools import GEQtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools import __mitimroot__
 from IPython import embed
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
+
 class ASTRA():
 
     def __init__(self):
@@ -301,8 +304,30 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
     print("Finding flux surface geometry ...")
     r=c.R[ai,:,:]
     z=c.Z[ai,:,:]
+    r=np.atleast_2d(r)
+    z=np.atleast_2d(z)
     psi=c.FP_norm[ai,:]
-    shape_cos, shape_sin, bbox, psin_grid  = GEQtools.get_MXH_coeff_fromRZ(r,z,psi)
+    
+    surfaces = GEQtools.mitim_flux_surfaces()
+    surfaces.reconstruct_from_RZ(r, z)
+    coeffs_MXH=6
+    surfaces._to_mxh(n_coeff=coeffs_MXH)
+    print('r is '+str(r))
+    print('z is '+str(z))
+    print(f"Shape of r: {r.shape}")
+    print(f"Shape of z: {z.shape}")
+    for i in range(coeffs_MXH):
+        shape_cos = surfaces.cn[:,i]
+        if i > 2:
+            shape_sin = surfaces.sn[:,i]
+    kappa = surfaces.kappa
+    delta = np.sin(surfaces.sn[:,1])
+    zeta= -surfaces.sn[:,2]
+    rmin= surfaces.a
+    rmaj= surfaces.R0
+    zmag= surfaces.Z0
+
+    #shape_cos, shape_sin, bbox, psin_grid  = GEQtools.get_MXH_coeff_fromRZ(r,z,psi)
     print("Done.")
 
     params["nexp"] = np.array([str(nexp)])
@@ -329,7 +354,10 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
     polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
 
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
-                                         
+    
+    f_interp=interp1d(np.linspace(0,1,len(psi)),psi)
+    psis=f_interp(np.linspace(0,1,len(r)))
+
     # interpolate geqdsk quantities from psin grid to rho grid using polflux_norm
     interp_to_rho = lambda x: np.interp(polflux_norm, psis, x)    
 
@@ -338,18 +366,18 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
     rmin = interp_to_rho(rmin)            ; params['rmin(m)'] = rmin
     zmag = interp_to_rho(zmag)            ; params['zmag(m)'] = zmag
     kappa = interp_to_rho(kappa)           ; params['kappa(-)'] = kappa
-    delta = interp_to_rho(sn[:,1])      ; params['delta(-)'] = delta
-    zeta = interp_to_rho(-sn[:,2])      ; params['zeta(-)'] = zeta
-    shape_cos0 = interp_to_rho(cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
-    shape_cos1 = interp_to_rho(cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
-    shape_cos2 = interp_to_rho(cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
-    shape_cos3 = interp_to_rho(cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
-    shape_cos4 = interp_to_rho(cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
-    shape_cos5 = interp_to_rho(cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
+    delta = interp_to_rho(surfaces.sn[:,1])      ; params['delta(-)'] = delta
+    zeta = interp_to_rho(-surfaces.sn[:,2])      ; params['zeta(-)'] = zeta
+    shape_cos0 = interp_to_rho(surfaces.cn[:,0]) ; params['shape_cos0(-)'] = shape_cos0
+    shape_cos1 = interp_to_rho(surfaces.cn[:,1]) ; params['shape_cos1(-)'] = shape_cos1
+    shape_cos2 = interp_to_rho(surfaces.cn[:,2]) ; params['shape_cos2(-)'] = shape_cos2
+    shape_cos3 = interp_to_rho(surfaces.cn[:,3]) ; params['shape_cos3(-)'] = shape_cos3
+    shape_cos4 = interp_to_rho(surfaces.cn[:,4]) ; params['shape_cos4(-)'] = shape_cos4
+    shape_cos5 = interp_to_rho(surfaces.cn[:,5]) ; params['shape_cos5(-)'] = shape_cos5
     shape_cos6 = np.zeros(nexp)                ; params['shape_cos6(-)'] = shape_cos6
-    shape_sin3 = interp_to_rho(sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
-    shape_sin4 = interp_to_rho(sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
-    shape_sin5 = interp_to_rho(sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
+    shape_sin3 = interp_to_rho(surfaces.sn[:,3]) ; params['shape_sin3(-)'] = shape_sin3
+    shape_sin4 = interp_to_rho(surfaces.sn[:,4]) ; params['shape_sin4(-)'] = shape_sin4
+    shape_sin5 = interp_to_rho(surfaces.sn[:,5]) ; params['shape_sin5(-)'] = shape_sin5
     shape_sin6 = np.zeros(nexp)                ; params['shape_sin6(-)'] = shape_sin6
 
     ne = interp_to_nexp(c.ne[ai,:])            ; params['ne(10^19/m^3)'] = ne

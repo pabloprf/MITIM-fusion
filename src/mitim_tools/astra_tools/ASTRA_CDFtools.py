@@ -28,8 +28,12 @@ class transp_output:
             del self.nc_file
 
     def getProfiles(self):
-        self.R = self.f["r2d"][:]
-        self.Z = self.f["z2d"][:]
+        try:
+            self.R = self.f["r2d"][:]
+            self.Z = self.f["z2d"][:]
+        except:
+            self.R = self.f["R"][:]
+            self.Z = self.f["Z"][:]
         self.rho = self.f["RHO"][:]
         self.xrho = self.f["XRHO"][:]
         self.BTOR = self.f["BTOR"][:]
