@@ -224,6 +224,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
             "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
+            "add_already_evaluated_points": False,  # Use previous history of TGLF scans to evaluate error for the next generations 
         }
 
         for key in self.PORTALSparameters.keys():

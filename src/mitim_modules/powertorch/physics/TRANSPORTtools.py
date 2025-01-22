@@ -2,7 +2,7 @@ import copy
 import shutil
 import torch
 import numpy as np
-from sortedcontainers import SortedList
+from copy import deepcopy
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.utils import PORTALScgyro
@@ -148,7 +148,12 @@ class tgyro_model(power_transport):
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
-        already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
+        
+        add_already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("add_already_evaluated_points", False)
+        if add_already_evaluated_points:
+            already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
+        else:
+            already_evaluated_points = None
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -417,19 +422,32 @@ def tglf_scan_trick(
     GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
 
 
-    def add_to_history(radius_index, xV, Qe, Qi, Ge, GZ):
+    def add_to_history(radius_index, variable, xV, Qe, Qi, Ge, GZ):
         if radius_index not in already_evaluated_points:
-            already_evaluated_points[radius_index] = SortedList(key=lambda values_tuple: values_tuple[0])
-        already_evaluated_points[radius_index].add((xV, Qe, Qi, Ge, GZ))
-
-    def find_in_history(radius_index, lower_bound, upper_bound):
-        if radius_index not in already_evaluated_points:
-            return []
+            already_evaluated_points[radius_index] = {}
+        if variable not in already_evaluated_points[radius_index]:
+            already_evaluated_points[radius_index][variable] = [(xV, Qe, Qi, Ge, GZ)]
         else:
-            return list(already_evaluated_points[radius_index].irange((lower_bound, None), (upper_bound, None)))
+            already_evaluated_points[radius_index][variable].append((xV, Qe, Qi, Ge, GZ))
+
+    def find_in_history(history, radius_index, variable, lower_bound, upper_bound):
+        if history is None:
+            return []
+        if radius_index not in history:
+            return []
+        if variable not in history[radius_index]:
+            return []
+        
+        candidates = []
+        for i in range(len(history[radius_index][variable])):
+            if history[radius_index][variable][i][0] >= lower_bound and history[radius_index][variable][i][0] <= upper_bound:
+                candidates.append(i)
+        return candidates
     
 
     cont = 0
+    history = deepcopy(already_evaluated_points)
+    candidates_sets = {}
     for vari in variables_to_scan:
         scan = tglf.scans[f'{name}_{vari}']
         jump = scan['Qe'].shape[-1]
@@ -440,31 +458,41 @@ def tglf_scan_trick(
         GZ[:,cont:cont+jump] = scan['Gi']
         cont += jump
 
+        if already_evaluated_points is not None:
+            for radius_index in range(len(scan['xV'])):
+                candidates = set(find_in_history(history, radius_index, vari, scan['xV'][radius_index][0], scan['xV'][radius_index][-1]))
 
-        found_Qe = []
-        found_Qi = []
-        found_Ge = []
-        found_GZ = []
+                if radius_index not in candidates_sets or candidates_sets[radius_index] is None:
+                    candidates_sets[radius_index] = candidates
+                else:
+                    candidates_sets[radius_index] = candidates_sets[radius_index].intersection_update(candidates)
 
-        for radius_index in range(len(scan['xV'])):
-            candidates = find_in_history(radius_index, scan['xV'][radius_index][0], scan['xV'][radius_index][-1])
-            if len(candidates) > 0:
-                for candidate in candidates:
-                    found_Qe.append((radius_index, candidate[1]))
-                    found_Qi.append((radius_index, candidate[2]))
-                    found_Ge.append((radius_index, candidate[3]))
-                    found_GZ.append((radius_index, candidate[4]))
+                for i in range(len(scan['xV'][radius_index])):
+                    add_to_history(
+                        radius_index,
+                        vari,
+                        scan['xV'][radius_index][i],
+                        scan['Qe'][radius_index][i],
+                        scan['Qi'][radius_index][i],
+                        scan['Ge'][radius_index][i],
+                        scan['Gi'][radius_index][i]
+                    )
+                
+    found_Qe = []
+    found_Qi = []
+    found_Ge = []
+    found_GZ = []
 
-            for i in range(len(scan['xV'][radius_index])):
-                add_to_history(
-                    radius_index,
-                    scan['xV'][radius_index][i],
-                    scan['Qe'][radius_index][i],
-                    scan['Qi'][radius_index][i],
-                    scan['Ge'][radius_index][i],
-                    scan['Gi'][radius_index][i]
-                )
-
+    for radius_index in range(len(scan['xV'])):
+        if len(candidates_sets[radius_index]) > 0:
+            print(f"\t- Found {len(candidates_sets[radius_index])} candidates for radius {radius_index} in TGLF scan trick history")
+            for candidate in candidates_sets[radius_index]:
+                for vari in variables_to_scan:
+                    found_Qe.append((radius_index, history[radius_index][vari][candidate][1]))
+                    found_Qi.append((radius_index, history[radius_index][vari][candidate][2]))
+                    found_Ge.append((radius_index, history[radius_index][vari][candidate][3]))
+                    found_GZ.append((radius_index, history[radius_index][vari][candidate][4]))
+        
     if found_Qe:
         Qe = np.insert(Qe, [x[0] for x in found_Qe], [x[1] for x in found_Qe], axis=1)
     if found_Qi:
