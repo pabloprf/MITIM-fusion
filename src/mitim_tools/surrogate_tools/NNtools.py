@@ -1,5 +1,6 @@
 import numpy as np
 from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ---------------------------------------------------------------------------------------------
@@ -8,13 +9,15 @@ from IPython import embed
 
 class mitim_nn:
 
-    def __init__(self, type = 'tf'):
+    def __init__(self, type = 'tf', force_within_range = False):
         
         if type == 'tf':
             print('Initializing Tensorflow Neural Network')
 
             self.load = self._load_tf
             self.__call__ = self._evaluate_tf
+        
+        self.force_within_range = force_within_range
 
     def _load_tf(self, model_path, norm=None):
 
@@ -30,6 +33,14 @@ class mitim_nn:
                     self.inputs = np.array([x for x in f.readline().split()])
                 except:
                     self.inputs = None
+
+                try:
+                    self.ranges = {}
+                    for inp in self.inputs:
+                        self.ranges[inp] = [float(x) for x in f.readline().split()]
+                except:
+                    self.ranges = None
+
             print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
             print("Norm:", self.normalization)
             if self.inputs is not None:
@@ -37,6 +48,11 @@ class mitim_nn:
                 print(self.inputs)
             else:
                 print("No input information found in normalization file")
+            if self.ranges is not None:
+                print("Trained ranges:")
+                print(self.ranges)
+            else:
+                print("No ranges found in normalization file")
         
         print(f'\t- Weights file from {IOtools.clipstr(model_path,30)} loaded')
         
@@ -116,5 +132,11 @@ class eped_nn(mitim_nn):
         else:
             inputs = list(all_args.values())
 
-        # 4) Call the parent method to run the actual inference 
+        # 4) Potentially check the ranges
+        if self.ranges is not None:
+            for i, inp in enumerate(self.inputs):
+                if inputs[i] < self.ranges[inp][0] or inputs[i] > self.ranges[inp][1]:
+                    print(f'\t- Input {inp} out of range: {inputs[i]} not in {self.ranges[inp]}', typeMsg='w' if not self.force_within_range else 'q')
+
+        # 5) Call the parent method to run the actual inference 
         return self.__call__(inputs)
