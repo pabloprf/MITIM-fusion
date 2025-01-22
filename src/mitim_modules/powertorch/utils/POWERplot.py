@@ -3,7 +3,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_orig=None, c_orig = 'b'):
+def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_state=None, c_orig = 'b'):
     
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot profiles object
@@ -52,9 +52,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_o
     cont = 0
     for set_plot in set_plots:
             
-            if compare_to_orig is not None:
+            if compare_to_state is not None:
                 plot_kp(
-                    compare_to_orig.plasma,
+                    compare_to_state.plasma,
                     axs[cont], axs[cont+1], axs[cont+2], axs[cont+3],
                     *set_plot,
                     c_orig, 'original', batch_num=batch_num)

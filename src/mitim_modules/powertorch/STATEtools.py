@@ -271,7 +271,7 @@ class powerstate:
     # ------------------------------------------------------------------
 
     def calculate(
-        self, X, nameRun="test", folder="~/scratch/", evaluation_number=0
+        self, X=None, nameRun="test", folder="~/scratch/", evaluation_number=0
     ):
         """
         Inputs:
@@ -356,7 +356,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="", batch_num=0, compare_to_orig=None, c_orig = 'b'):
+    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="", batch_num=0, compare_to_state=None, c_orig = 'b'):
         if axs is None:
             axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -385,10 +385,10 @@ class powerstate:
 
         # Make sure tensors are detached
         self._detach_tensors()
-        if compare_to_orig is not None:
-            compare_to_orig._detach_tensors()
+        if compare_to_state is not None:
+            compare_to_state._detach_tensors()
 
-        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_orig=compare_to_orig, c_orig = c_orig)
+        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig = c_orig)
 
         if axsNotGiven:
             fn.show()

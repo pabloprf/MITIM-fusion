@@ -139,7 +139,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     # ----------------------------------------------------
 
     if plot_results:
-        powerstate.plot(label='optimized',c='r',compare_to_orig=powerstate_orig, c_orig = 'b')
+        powerstate.plot(label='optimized',c='r',compare_to_state=powerstate_orig, c_orig = 'b')
 
     # ----------------------------------------------------
     # Write In Table
