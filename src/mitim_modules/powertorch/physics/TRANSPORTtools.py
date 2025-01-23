@@ -443,7 +443,7 @@ def tglf_scan_trick(
             if history[radius_index][variable][i][0] >= lower_bound and history[radius_index][variable][i][0] <= upper_bound:
                 candidates.append(i)
         return candidates
-    
+
 
     cont = 0
     history = deepcopy(already_evaluated_points)
@@ -459,48 +459,51 @@ def tglf_scan_trick(
         cont += jump
 
         if already_evaluated_points is not None:
-            for radius_index in range(len(scan['xV'])):
-                candidates = set(find_in_history(history, radius_index, vari, scan['xV'][radius_index][0], scan['xV'][radius_index][-1]))
-
+            for radius_index, x_values in enumerate(scan['xV']):
+                # Find candidates in history to add to error bar calculations
+                # candidates = set(find_in_history(history, radius_index, vari, x_values[0], x_values[-1]))
+                candidates = set(find_in_history(history, radius_index, vari, 0, 10))
+        
                 if radius_index not in candidates_sets or candidates_sets[radius_index] is None:
                     candidates_sets[radius_index] = candidates
                 else:
-                    candidates_sets[radius_index] = candidates_sets[radius_index].intersection_update(candidates)
+                    candidates_sets[radius_index].intersection_update(candidates)
 
-                for i in range(len(scan['xV'][radius_index])):
-                    add_to_history(
-                        radius_index,
-                        vari,
-                        scan['xV'][radius_index][i],
-                        scan['Qe'][radius_index][i],
-                        scan['Qi'][radius_index][i],
-                        scan['Ge'][radius_index][i],
-                        scan['Gi'][radius_index][i]
-                    )
-                
-    found_Qe = []
-    found_Qi = []
-    found_Ge = []
-    found_GZ = []
+                # Add calulated points to history
+                for x, qe, qi, ge, gi in zip(
+                    x_values,
+                    scan['Qe'][radius_index],
+                    scan['Qi'][radius_index],
+                    scan['Ge'][radius_index],
+                    scan['Gi'][radius_index]
+                ):
+                    add_to_history(radius_index, vari, x, qe, qi, ge, gi)
 
-    for radius_index in range(len(scan['xV'])):
-        if len(candidates_sets[radius_index]) > 0:
+
+    found_Qe, found_Qi, found_Ge, found_GZ = [], [], [], []
+
+    for radius_index, candidates in candidates_sets.items():
+        if candidates_sets[radius_index]:
             print(f"\t- Found {len(candidates_sets[radius_index])} candidates for radius {radius_index} in TGLF scan trick history")
-            for candidate in candidates_sets[radius_index]:
-                for vari in variables_to_scan:
-                    found_Qe.append((radius_index, history[radius_index][vari][candidate][1]))
-                    found_Qi.append((radius_index, history[radius_index][vari][candidate][2]))
-                    found_Ge.append((radius_index, history[radius_index][vari][candidate][3]))
-                    found_GZ.append((radius_index, history[radius_index][vari][candidate][4]))
-        
-    if found_Qe:
-        Qe = np.insert(Qe, [x[0] for x in found_Qe], [x[1] for x in found_Qe], axis=1)
-    if found_Qi:
-        Qi = np.insert(Qi, [x[0] for x in found_Qi], [x[1] for x in found_Qi], axis=1)
-    if found_Ge:
-        Ge = np.insert(Ge, [x[0] for x in found_Ge], [x[1] for x in found_Ge], axis=1)
-    if found_GZ:
-        GZ = np.insert(GZ, [x[0] for x in found_GZ], [x[1] for x in found_GZ], axis=1)
+            aux_set = {
+                history[radius_index][vari][candidate]
+                for vari in variables_to_scan
+                for candidate in candidates
+            }
+
+            aux_Qe, aux_Qi, aux_Ge, aux_GZ = zip(*[(c[1], c[2], c[3], c[4]) for c in aux_set])
+            found_Qe.append(aux_Qe)
+            found_Qi.append(aux_Qi)
+            found_Ge.append(aux_Ge)
+            found_GZ.append(aux_GZ)
+        else:
+            print(f"\t- No candidates found for radius {radius_index} in TGLF scan trick history")
+
+    if found_Qe: Qe = np.hstack((Qe, np.array(found_Qe)))
+    if found_Qi: Qi = np.hstack((Qi, np.array(found_Qi)))
+    if found_Ge: Ge = np.hstack((Ge, np.array(found_Ge)))
+    if found_GZ: GZ = np.hstack((GZ, np.array(found_GZ)))
+
 
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
