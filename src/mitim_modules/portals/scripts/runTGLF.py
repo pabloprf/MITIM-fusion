@@ -22,13 +22,9 @@ parser.add_argument("--ev", type=int, required=False, default=None)
 parser.add_argument("--pos", type=int, required=False, default=[0.5], nargs="*")
 parser.add_argument("--params", type=str, required=False, default=["RLTS_2"], nargs="*")
 parser.add_argument("--wf", type=float, required=False, default=[], nargs="*")
-parser.add_argument(
-    "--var", type=float, required=False, default=0.05
-)  # Variation in inputs (5% default)
+parser.add_argument("--var", type=float, required=False, default=0.05)  # Variation in inputs (5% default)
 parser.add_argument("--num", type=int, required=False, default=10)
-parser.add_argument(
-    "--cold_start", "-r", required=False, default=False, action="store_true"
-)
+parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
 parser.add_argument("--drives", required=False, default=False, action="store_true")
 
 args = parser.parse_args()
