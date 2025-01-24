@@ -361,9 +361,6 @@ def tglf_scan_trick(
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
-    print("-_"*50)
-    print(already_evaluated_points)
-    input()
 
     # Grab fluxes from TGYRO
     Qe_tgyro, Qi_tgyro, Ge_tgyro, GZ_tgyro, Mt_tgyro, Pexch_tgyro = fluxesTGYRO
