@@ -361,6 +361,9 @@ def tglf_scan_trick(
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
+    print("-_"*50)
+    print(already_evaluated_points)
+    input()
 
     # Grab fluxes from TGYRO
     Qe_tgyro, Qi_tgyro, Ge_tgyro, GZ_tgyro, Mt_tgyro, Pexch_tgyro = fluxesTGYRO
@@ -416,11 +419,10 @@ def tglf_scan_trick(
     if remove_folders_out:
         shutil.rmtree(tglf.FolderGACODE)
 
-    Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-
+    Qe = [np.zeros(len(variables_to_scan)*len(relative_scan) + 1) for _ in range(len(RadiisToRun))]
+    Qi = [np.zeros(len(variables_to_scan)*len(relative_scan) + 1) for _ in range(len(RadiisToRun))]
+    Ge = [np.zeros(len(variables_to_scan)*len(relative_scan) + 1) for _ in range(len(RadiisToRun))]
+    GZ = [np.zeros(len(variables_to_scan)*len(relative_scan) + 1) for _ in range(len(RadiisToRun))]
 
     def add_to_history(radius_index, variable, xV, Qe, Qi, Ge, GZ):
         if radius_index not in already_evaluated_points:
@@ -452,10 +454,12 @@ def tglf_scan_trick(
         scan = tglf.scans[f'{name}_{vari}']
         jump = scan['Qe'].shape[-1]
 
-        Qe[:,cont:cont+jump] = scan['Qe']
-        Qi[:,cont:cont+jump] = scan['Qi']
-        Ge[:,cont:cont+jump] = scan['Ge']
-        GZ[:,cont:cont+jump] = scan['Gi']
+        for i in range(len(RadiisToRun)):
+            Qe[i][cont:cont+jump] = scan['Qe'][i]
+            Qi[i][cont:cont+jump] = scan['Qi'][i]
+            Ge[i][cont:cont+jump] = scan['Ge'][i]
+            GZ[i][cont:cont+jump] = scan['Gi'][i]
+
         cont += jump
 
         if already_evaluated_points is not None:
@@ -480,37 +484,32 @@ def tglf_scan_trick(
                     add_to_history(radius_index, vari, x, qe, qi, ge, gi)
 
 
-    found_Qe, found_Qi, found_Ge, found_GZ = [], [], [], []
-
     for radius_index, candidates in candidates_sets.items():
-        if candidates_sets[radius_index]:
-            print(f"\t- Found {len(candidates_sets[radius_index])} candidates for radius {radius_index} in TGLF scan trick history")
+        if candidates:
+            print(f"\t- Found {len(candidates)} candidates for radius {radius_index} in TGLF scan trick history")
+
             aux_set = {
                 history[radius_index][vari][candidate]
                 for vari in variables_to_scan
                 for candidate in candidates
             }
 
-            aux_Qe, aux_Qi, aux_Ge, aux_GZ = zip(*[(c[1], c[2], c[3], c[4]) for c in aux_set])
-            found_Qe.append(aux_Qe)
-            found_Qi.append(aux_Qi)
-            found_Ge.append(aux_Ge)
-            found_GZ.append(aux_GZ)
+            found_Qe, found_Qi, found_Ge, found_GZ = zip(*[(c[1], c[2], c[3], c[4]) for c in aux_set])
+
+            Qe[radius_index] = np.append(Qe[radius_index], found_Qe)
+            Qi[radius_index] = np.append(Qi[radius_index], found_Qi) 
+            Ge[radius_index] = np.append(Ge[radius_index], found_Ge)
+            GZ[radius_index] = np.append(GZ[radius_index], found_GZ)
+
         else:
             print(f"\t- No candidates found for radius {radius_index} in TGLF scan trick history")
 
-    if found_Qe: Qe = np.hstack((Qe, np.array(found_Qe)))
-    if found_Qi: Qi = np.hstack((Qi, np.array(found_Qi)))
-    if found_Ge: Ge = np.hstack((Ge, np.array(found_Ge)))
-    if found_GZ: GZ = np.hstack((GZ, np.array(found_GZ)))
-
-
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
-    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro )
-    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro )
-    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro )
-    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro )
+    Qe_err = np.array([np.abs((q[0] - Qe_tgyro) / Qe_tgyro) for q in Qe])
+    Qi_err = np.array([np.abs((q[0] - Qi_tgyro) / Qi_tgyro) for q in Qi])
+    Ge_err = np.array([np.abs((q[0] - Ge_tgyro) / Ge_tgyro) for q in Ge])
+    GZ_err = np.array([np.abs((q[0] - GZ_tgyro) / GZ_tgyro) for q in GZ])
 
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
@@ -523,14 +522,17 @@ def tglf_scan_trick(
 
     def calculate_mean_std(Q):
         # Assumes Q is [radii, points], with [radii, 0] being the baseline
-
-        # Qm = Q[:,0]
-        # Qstd = np.std(Q, axis=1)
-
-        Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
-        Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
-
-        return  Qm, Qstd
+        Qm = []
+        Qstd = []
+        
+        for q in Q:
+            q_std = (q.max() - q.min()) / 2 / 2  # Such that the range is 2*std
+            q_mean = q.min() + q_std * 2        # Mean is at the middle of the range
+            
+            Qm.append(q_mean)
+            Qstd.append(q_std)
+        
+        return np.array(Qm), np.array(Qstd)
 
     Qe_point, Qe_std = calculate_mean_std(Qe)
     Qi_point, Qi_std = calculate_mean_std(Qi)
