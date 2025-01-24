@@ -523,9 +523,9 @@ def tglf_scan_trick(
         Qstd = []
         
         for q in Q:
-            q_std = (q.max() - q.min()) / 2 / 2  # Such that the range is 2*std
-            q_mean = q.min() + q_std * 2        # Mean is at the middle of the range
-            
+            q_mean = q.mean()
+            q_std = q.std()
+
             Qm.append(q_mean)
             Qstd.append(q_std)
         
