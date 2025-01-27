@@ -462,8 +462,7 @@ def tglf_scan_trick(
         if already_evaluated_points is not None:
             for radius_index, x_values in enumerate(scan['xV']):
                 # Find candidates in history to add to error bar calculations
-                # candidates = set(find_in_history(history, radius_index, vari, x_values[0], x_values[-1]))
-                candidates = set(find_in_history(history, radius_index, vari, 0, 10))
+                candidates = set(find_in_history(history, radius_index, vari, x_values[0], x_values[-1]))
         
                 if radius_index not in candidates_sets or candidates_sets[radius_index] is None:
                     candidates_sets[radius_index] = candidates
