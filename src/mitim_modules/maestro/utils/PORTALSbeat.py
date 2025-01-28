@@ -230,7 +230,8 @@ class portals_beat(beat):
         try:
             self.maestro_instance.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
         # Converged in training case
-        except AttributeError:
+        except AttributeError as e:
+            print('\t\t- PORTALS probably converged in training, so analyzing a bit differently, error:', e)
             self.maestro_instance.final_p = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
         
         final_file = self.maestro_instance.folder_output / 'input.gacode_final'

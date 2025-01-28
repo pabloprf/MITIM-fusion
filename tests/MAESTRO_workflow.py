@@ -12,7 +12,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
 
-# Let's not consume the entire computer resources when running test... limit to 4 threads
+# Let's not consume the entire computer resources when running test... limit threads
 torch.set_num_threads(8)
 
 folder.mkdir(parents=True, exist_ok=True)
