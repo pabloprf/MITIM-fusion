@@ -14773,19 +14773,14 @@ class transp_output:
                 gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
-                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
+                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
                     break
         if gf is None:
-            print(
-                "\t\t- Reference g-file associated to this run could not be found",
-                typeMsg="w",
-            )
+            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="w")
 
         # Try to read boundary too
         if (self.FolderCDF / "MIT12345.RFS").exists():
-            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
-                self.FolderCDF / "MIT12345.RFS", self.FolderCDF / "MIT12345.ZFS"
-            )
+            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(self.FolderCDF / "MIT12345.RFS", self.FolderCDF / "MIT12345.ZFS")
 
     def getICRFantennas(self, namelist):
         nicha = int(IOtools.findValue(namelist, "nicha", "="))
