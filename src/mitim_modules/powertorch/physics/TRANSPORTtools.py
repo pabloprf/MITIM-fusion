@@ -411,8 +411,6 @@ def tglf_scan_trick(
                     extra_name = f'{extra_name}_{name}',
                     )
 
-    embed()
-
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:
         shutil.rmtree(tglf.FolderGACODE)
