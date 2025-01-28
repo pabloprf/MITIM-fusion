@@ -249,7 +249,7 @@ class transp_beat(beat):
 
     def finalize_maestro(self):
 
-        cdf = CDFtools.transp_output(self.folder / f"{self.transp.shot}{self.transp.runid}.CDF")
+        cdf = CDFtools.transp_output(self.folder_output / f"{self.transp.shot}{self.transp.runid}.CDF")
         self.maestro_instance.final_p = cdf.to_profiles()
         
         final_file = self.maestro_instance.folder_output / 'input.gacode_final'

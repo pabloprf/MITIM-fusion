@@ -224,7 +224,7 @@ class portals_beat(beat):
 
     def finalize_maestro(self):
 
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
 
         # Standard PORTALS output
         try:
