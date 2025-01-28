@@ -502,10 +502,10 @@ def tglf_scan_trick(
 
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
-    Qe_err = np.array([np.abs((q[0] - Qe_tgyro) / Qe_tgyro) for q in Qe])
-    Qi_err = np.array([np.abs((q[0] - Qi_tgyro) / Qi_tgyro) for q in Qi])
-    Ge_err = np.array([np.abs((q[0] - Ge_tgyro) / Ge_tgyro) for q in Ge])
-    GZ_err = np.array([np.abs((q[0] - GZ_tgyro) / GZ_tgyro) for q in GZ])
+    Qe_err = (np.array([q[0] for q in Qe]) - Qe_tgyro) / Qe_tgyro
+    Qi_err = (np.array([q[0] for q in Qi]) - Qi_tgyro) / Qi_tgyro
+    Ge_err = (np.array([q[0] for q in Ge]) - Ge_tgyro) / Ge_tgyro
+    GZ_err = (np.array([q[0] for q in GZ]) - GZ_tgyro) / GZ_tgyro
 
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
