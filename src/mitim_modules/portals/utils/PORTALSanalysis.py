@@ -432,7 +432,10 @@ class PORTALSanalyzer:
         elif evaluation < 0:
             evaluation = self.ilast
 
-        p0 =  self.mitim_runs[evaluation]["powerstate"].profiles
+        try:
+            p0 =  self.mitim_runs[evaluation]["powerstate"].profiles
+        except TypeError:
+            raise Exception(f"[MITIM] Could not extract profiles from evaluation {evaluation}, are you sure you have the right index?")
 
         p = copy.deepcopy(p0)
 
