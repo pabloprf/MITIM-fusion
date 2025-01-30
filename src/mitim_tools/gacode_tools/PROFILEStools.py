@@ -1782,7 +1782,7 @@ class PROFILES_GACODE:
         fq = ( 1 - fZj - fk*Zk ) / Zq
 
         if (fq<0).any():
-            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
+            raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
 
         # ------------------------------------------------------
         # Insert
@@ -1802,9 +1802,7 @@ class PROFILES_GACODE:
             self.scaleAllThermalDensities()
             self.deriveQuantities()
 
-        print(
-            f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]',
-        )
+        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
     def moveSpecie(self, pos=2, pos_new=1):
         """

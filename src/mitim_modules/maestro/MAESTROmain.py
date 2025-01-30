@@ -14,6 +14,7 @@ from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator
+from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
 '''
 MAESTRO:
@@ -93,7 +94,10 @@ class maestro:
         timeBeginning = datetime.datetime.now()
 
         self.counter_current += 1
-        if beat == 'transp':
+        if beat is None:
+            print(f'\n- Beat {self.counter_current}: EMPTY ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = beat_generic(self)
+        elif beat == 'transp':
             print(f'\n- Beat {self.counter_current}: TRANSP ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = transp_beat(self)
         elif beat == 'portals':
