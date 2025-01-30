@@ -172,7 +172,7 @@ class eped_beat(beat):
                 BetaN,
                 self.current_evaluation["zeff"],
                 self.current_evaluation["Tesep_keV"]* 1E3,
-                nesep_ratio
+                self.current_evaluation["nesep_ratio"]
                 )
 
             ptop_kPa, wtop_psipol = self.nn(*inputs_to_nn)
@@ -180,7 +180,7 @@ class eped_beat(beat):
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
-            
+
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
                 ptop_kPa *= self.ptop_multiplier
@@ -193,24 +193,7 @@ class eped_beat(beat):
             # Produce relevant quantities
             # -------------------------------------------------------
 
-            # psi_pol to rhoN
-            rhotop = interpolation_function(1-wtop_psipol,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-            rhoped = interpolation_function(1-2*wtop_psipol/3,self.profiles_current.derived['psi_pol_n'],self.profiles_current.profiles['rho(-)'])
-
-            # Find ne at the top
-            # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
-            # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
-            pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, nesep_20, 1-rhotop, x=x)[1]
-
-            n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
-            netop_20 = n0[0]
-
-            # Find factor to account that it's not a pure plasma
-            n = self.profiles_current.derived['ni_thrAll']/self.profiles_current.profiles['ne(10^19/m^3)']
-            factor = 1 + interpolation_function(rhotop, self.profiles_current.profiles['rho(-)'], n )
-
-            # Temperature from pressure, assuming Te=Ti
-            Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+            rhotop, netop_20, Ttop_keV, rhoped = eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol, self.profiles_current)
 
             print('\t- Post-processed quantities:')
             print(f'\t\t- rhotop: {rhotop:.3f}')
@@ -224,11 +207,6 @@ class eped_beat(beat):
 
             print('\t- Applying EPED results to profiles:')
 
-            self.profiles_output = copy.deepcopy(self.profiles_current)
-
-            x = self.profiles_current.profiles['rho(-)']
-            xroa = self.profiles_current.derived['roa']
-
             if 'rhotop' in self.__dict__:
                 print(f'\t\t- Using previously-stored rhotop: {self.rhotop:.3f}')
                 xp_old = self.rhotop
@@ -236,24 +214,7 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-
-            if abs(rhotop-xp_old)/xp_old < minimum_relative_change_in_x:
-                print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
-                rhotop = xp_old
-
-            self.profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['te(keV)'],rhotop,Ttop_keV,xp_old, label = 'Te', roa = xroa)
-
-            self.profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,self.profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
-            self.profiles_output.makeAllThermalIonsHaveSameTemp()
-
-            self.profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,self.profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
-            self.profiles_output.enforceQuasineutrality()
-
-            # ---------------------------------
-            # Re-derive
-            # ---------------------------------
-
-            self.profiles_output.deriveQuantities()
+            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN']
 
@@ -454,3 +415,57 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         plt.show()
 
     return ynew
+
+# --------------------------------------------------------------------------------------------
+# Additional EPED utilities
+# --------------------------------------------------------------------------------------------
+
+def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
+
+    # psi_pol to rhoN
+    rhotop = interpolation_function(1-wtop_psipol,profiles.derived['psi_pol_n'],profiles.profiles['rho(-)'])
+    rhoped = interpolation_function(1-2*wtop_psipol/3,profiles.derived['psi_pol_n'],profiles.profiles['rho(-)'])
+
+    # Find ne at the top
+    # basically, we are finding Ytop such that the functional form goes through the Yped and Ysep
+    # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
+    pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, nesep_20, 1-rhotop, x=x)[1]
+
+    n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+    netop_20 = n0[0]
+
+    # Find factor to account that it's not a pure plasma
+    n = profiles.derived['ni_thrAll']/profiles.profiles['ne(10^19/m^3)']
+    factor = 1 + interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
+
+    # Temperature from pressure, assuming Te=Ti
+    Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+
+    return rhotop, netop_20, Ttop_keV, rhoped
+
+def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=0.005):
+
+    profiles_output = copy.deepcopy(profiles)
+
+    x = profiles.profiles['rho(-)']
+    xroa = profiles.derived['roa']
+
+    if abs(rhotop-xp_old)/xp_old < minimum_relative_change_in_x:
+        print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
+        rhotop = xp_old
+
+    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Ttop_keV,xp_old, label = 'Te', roa = xroa)
+
+    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
+    profiles_output.makeAllThermalIonsHaveSameTemp()
+
+    profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
+    profiles_output.enforceQuasineutrality()
+
+    # ---------------------------------
+    # Re-derive
+    # ---------------------------------
+
+    profiles_output.deriveQuantities()
+
+    return profiles_output
