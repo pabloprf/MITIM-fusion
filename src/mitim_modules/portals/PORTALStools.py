@@ -1,4 +1,5 @@
 import torch
+import gpytorch
 import copy
 import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
@@ -21,6 +22,10 @@ def selectSurrogate(output, surrogate_options, CGYROrun=False):
             surrogate_options["TypeMean"] = 2  # Linear in gradients, constant in rest
             surrogate_options["TypeKernel"] = 1  # RBF
             # surrogate_options['ExtraNoise']  = True
+
+    surrogate_options["additional_constraints"] = {
+        'lenghtscale_constraint': gpytorch.constraints.constraints.GreaterThan(0.01) # inputs normalized to [0,1], this is  1% lengthscale
+    }
 
     return surrogate_options
 
