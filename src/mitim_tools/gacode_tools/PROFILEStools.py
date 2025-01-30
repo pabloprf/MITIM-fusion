@@ -1953,15 +1953,7 @@ class PROFILES_GACODE:
 
         # Make all thermal ions have the same gradient as the electron density, by keeping volume average constant
         if sameDensityGradients:
-            print(
-                "\t\t- Making all thermal ions have the same a/Ln as electrons (making them an exact flat fraction)",
-                typeMsg="i",
-            )
-            for sp in range(len(self.Species)):
-                if self.Species[sp]["S"] == "therm":
-                    self.profiles["ni(10^19/m^3)"][:, sp] = (
-                        self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
-                    )
+            self.enforce_same_density_gradients()
 
         # Enforce quasineutrality
         if quasineutrality:
@@ -1996,19 +1988,19 @@ class PROFILES_GACODE:
         if write:
             self.writeCurrentStatus(file=new_file)
             self.printInfo()
+        
+    def enforce_same_density_gradients(self):
+        print("\t\t- Making all thermal ions have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
+        for sp in range(len(self.Species)):
+            if self.Species[sp]["S"] == "therm":
+                self.profiles["ni(10^19/m^3)"][:, sp] = self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
 
     def selfconsistentPTOT(self):
-        print(
-            f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",
-            typeMsg="i",
-        )
+        print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
 
     def enforceQuasineutrality(self):
-        print(
-            f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",
-            typeMsg="i",
-        )
+        print(f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",typeMsg="i",)
 
         # What's the lack of quasineutrality?
         ni = self.profiles["ne(10^19/m^3)"] * 0.0
