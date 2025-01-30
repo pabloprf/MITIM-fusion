@@ -439,11 +439,14 @@ def tglf_scan_trick(
     def calculate_mean_std(Q):
         # Assumes Q is [radii, points], with [radii, 0] being the baseline
 
+        Qm = np.mean(Q, axis=1)
+        Qstd = np.std(Q, axis=1)
+
         # Qm = Q[:,0]
         # Qstd = np.std(Q, axis=1)
 
-        Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
-        Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
 
         return  Qm, Qstd
 
