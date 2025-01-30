@@ -3984,6 +3984,25 @@ class PROFILES_GACODE:
 
         return transp
 
+    def to_eped(self, ped_rho = 0.95):
+
+        neped_19 = np.interp(ped_rho, self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)'])
+
+        eped_evaluation = {
+            'Ip': np.abs(self.profiles['current(MA)'][0]),
+            'Bt': np.abs(self.profiles['bcentr(T)'][0]),
+            'R': np.abs(self.profiles['rcentr(m)'][0]),
+            'a': np.abs(self.derived['a']),
+            'kappa995': np.abs(self.derived['kappa995']),
+            'delta995': np.abs(self.derived['delta995']),
+            'neped': np.abs(neped_19),
+            'betan': np.abs(self.derived['BetaN']),
+            'zeff': np.abs(self.derived['Zeff_vol']),
+            'tesep': np.abs(self.profiles['te(keV)'][-1])*1E3,
+            'nesep_ratio': np.abs(self.profiles['ne(10^19/m^3)'][-1] / neped_19),
+        }
+
+        return eped_evaluation
 
 class DataTable:
     def __init__(self, variables=None):
