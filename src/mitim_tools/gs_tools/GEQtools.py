@@ -358,7 +358,7 @@ class MITIMgeqdsk:
 
         # Just one specie
         profiles['name'] = np.array(['D','F'])
-        profiles['type'] = np.array(['therm','therm'])
+        profiles['type'] = np.array(['[therm]','[therm]'])
         profiles['masse'] = np.array([5.4488748e-04])
         profiles['mass'] = np.array([2.0, Z*2])
         profiles['ze'] = np.array([-1.0])
