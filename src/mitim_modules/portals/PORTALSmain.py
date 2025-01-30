@@ -73,7 +73,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     else:
         # TGLF runs should prioritize speed
         optimization_options["acquisition_options"]["type"] = "posterior_mean" # "noisy_logei_mc"
-        optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch"]   
+        optimization_options["acquisition_options"]["optimizers"] = ["root"] #, "botorch"]   
 
     return optimization_options
 
