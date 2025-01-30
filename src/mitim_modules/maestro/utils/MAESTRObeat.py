@@ -349,7 +349,7 @@ class creator_from_parameterization(creator):
             x_a = 0.3
 
             if (self.aLn_guess is not None) or (self.nu_ne is None):
-                aLn = self.aLn_guess
+                aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
                 print(f'\n\t - Using aLn = {aLn}')
             else:
                 aLn_guess = 0.2
@@ -363,7 +363,7 @@ class creator_from_parameterization(creator):
 
             # Find the temperature gradient that matches the BetaN
             if (self.aLT_guess is not None) or (self.BetaN is None):
-                aLT = self.aLT_guess
+                aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
                 print(f'\n\t - Using aLT = {aLT}')
             else:
                 aLT_guess = 2.0
