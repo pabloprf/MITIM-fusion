@@ -65,6 +65,7 @@
         "selectSurrogate": null,
         "FixedNoise": true,
         "ExtraNoise": false,
+        "additional_constraints": null,
         "ConstrainNoise": -1e-3,
         "MinimumRelativeNoise": null,
         "stds_outside": null,

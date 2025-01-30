@@ -39,10 +39,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         FixedNoise = surrogate_options.get("FixedNoise", False)
         ConstrainNoise = surrogate_options.get("ConstrainNoise", -1e-4)
         learn_additional_noise = surrogate_options.get("ExtraNoise", False)
+        additional_constraints = surrogate_options.get("additional_constraints", None)
         print("\t\t* Surrogate model options:")
-        print(
-            f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
-        )
+        print(f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}")
 
         self.store_training(
             train_X,
@@ -187,9 +186,10 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         outputscale_prior = gpytorch.priors.torch_priors.GammaPrior(2.0, 0.15)
 
         # Do not allow too small lengthscales?
-        lengthscale_constraint = (
-            None  # gpytorch.constraints.constraints.GreaterThan(0.05)
-        )
+        if (additional_constraints is not None) and ("lenghtscale_constraint" in additional_constraints):
+            lengthscale_constraint = additional_constraints["lenghtscale_constraint"]
+        else:
+            lengthscale_constraint = None
 
         self._subset_batch_dict["covar_module.raw_outputscale"] = -1
         self._subset_batch_dict["covar_module.base_kernel.raw_lengthscale"] = -3
