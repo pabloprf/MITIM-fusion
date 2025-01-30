@@ -289,7 +289,20 @@ class creator:
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, rhotop = None, Ttop_keV = None, netop_20 = None, Tsep_keV = None, nesep_20 = None, BetaN = None, nu_ne = None, label = 'parameterization'):
+        def __init__(
+            self,
+            initialize_instance,
+            rhotop = None,
+            Ttop_keV = None,
+            netop_20 = None,
+            Tsep_keV = None,
+            nesep_20 = None,
+            BetaN = None,
+            nu_ne = None,
+            aLn = None,
+            aLT = None,
+            label = 'parameterization'
+            ):
             super().__init__(initialize_instance, label = label)
 
             self.rhotop = rhotop
@@ -301,6 +314,9 @@ class creator_from_parameterization(creator):
             # Initialization parameters
             self.BetaN = BetaN
             self.nu_ne = nu_ne
+
+            self.aLn_guess = aLn
+            self.aLT_guess = aLT
 
         def _return_profile_peaking_residual(self, aLn, x_a):
 
@@ -332,31 +348,32 @@ class creator_from_parameterization(creator):
 
             x_a = 0.3
 
-            # Find the density gradient that matches the peaking
-            aLn_guess = 0.2
-            if self.nu_ne is not None:
+            if (self.aLn_guess is not None) or (self.nu_ne is None):
+                aLn = self.aLn_guess
+                print(f'\n\t - Using aLn = {aLn}')
+            else:
+                aLn_guess = 0.2
+                # Find the density gradient that matches the peaking
                 print('\n\t -Optimizing aLn to match ne peaking')
                 bounds = [(0.0,3.0)]
                 res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLn = res.x[0]
                 print(f'\n\t - Gradient: aLn = {aLn:.2f}')
                 print(f'\t - ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
-            else:
-                print('\n\t - Using aLn = 0.2')
-                aLn = aLn_guess
-            
+
             # Find the temperature gradient that matches the BetaN
-            aLT_guess = 2.0
-            if self.BetaN is not None:
+            if (self.aLT_guess is not None) or (self.BetaN is None):
+                aLT = self.aLT_guess
+                print(f'\n\t - Using aLT = {aLT}')
+            else:
+                aLT_guess = 2.0
+                # Find the temperature gradient that matches the BetaN
                 print('\n\t -Optimizing aLT to match BetaN')
                 bounds = [(0.5,3.0)]
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
                 print(f'\n\t - Gradient: aLT = {aLT:.2f}')
                 print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN"]:.5f} (target: {self.BetaN:.5f})')
-            else:
-                print('\n\t - Using aLT = 2.0')
-                aLT = aLT_guess
 
             # Create profiles
 
@@ -375,11 +392,22 @@ class creator_from_parameterization(creator):
 
 class creator_from_eped(creator_from_parameterization):
 
-    def __init__(self, initialize_instance, label = 'eped', BetaN = None, nu_ne = None, **kwargs_eped):
+    def __init__(
+        self,
+        initialize_instance,
+        label = 'eped',
+        BetaN = None,
+        nu_ne = None,
+        aLT = None,
+        aLn = None,
+        **kwargs_eped
+        ):
         super().__init__(initialize_instance, label = label)
 
         self.BetaN = BetaN
         self.nu_ne = nu_ne
+        self.aLT_guess = aLT
+        self.aLn_guess = aLn
         self.parameters = kwargs_eped
         if self.BetaN is None:
             raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
@@ -388,18 +416,18 @@ class creator_from_eped(creator_from_parameterization):
 
         # Create a beat within here
         from mitim_modules.maestro.utils.EPEDbeat import eped_beat
-        beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
-        beat_eped.prepare(BetaN = self.BetaN, **self.parameters)
+        self.beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
+        self.beat_eped.prepare(BetaN = self.BetaN, **self.parameters)
 
         # Work with this profile
-        beat_eped.profiles_current = self.initialize_instance.profiles_current
+        self.beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        eped_results = beat_eped._run(loopBetaN = 1)
+        eped_results = self.beat_eped._run(loopBetaN = 1)
 
         # Potentially save variables
-        np.save(beat_eped.folder_output / 'eped_results.npy', eped_results)
-        beat_eped._inform_save(eped_results)
+        np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)
+        self.beat_eped._inform_save(eped_results)
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
@@ -407,7 +435,7 @@ class creator_from_eped(creator_from_parameterization):
         self.netop_20 = eped_results['netop_20']        
         self.Tsep_keV = eped_results['Tesep_keV']
         self.nesep_20 = eped_results['nesep_20']
-        self.BetaN = beat_eped.BetaN
+        self.BetaN = self.beat_eped.BetaN
         super().__call__()
 
         # Save
