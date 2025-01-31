@@ -459,13 +459,20 @@ def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative
     profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
     profiles_output.makeAllThermalIonsHaveSameTemp()
 
+    pos = np.argmin(np.abs(x-xp_old))
+    factor_keep = profiles_output.profiles['ni(10^19/m^3)'][pos,:]/profiles.profiles['ne(10^19/m^3)'][pos]
+
     profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
-    profiles_output.enforceQuasineutrality()
+    
+    # Kepp the same ion concentration as before at the top
+    for i in range(profiles_output.profiles['ni(10^19/m^3)'].shape[-1]):
+        nitop_20 = netop_20*factor_keep[i]
+        profiles_output.profiles['ni(10^19/m^3)'][:,i] = scale_profile_by_stretching(x,profiles_output.profiles['ni(10^19/m^3)'][:,i],rhotop,nitop_20*1E1,xp_old, label = f'ni{i}', roa = xroa)
 
     # ---------------------------------
     # Re-derive
     # ---------------------------------
 
-    profiles_output.deriveQuantities()
+    profiles_output.deriveQuantities(rederiveGeometry=False)
 
     return profiles_output
