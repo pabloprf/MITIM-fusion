@@ -7,9 +7,11 @@ from mitim_tools.popcon_tools import FunctionalForms
 from mitim_modules.maestro.utils.EPEDbeat import eped_postprocessing,eped_profiler
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+'''
+        RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
+'''
 
-
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3):
+def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0):
 
     p = copy.deepcopy(p_base)
 
@@ -33,6 +35,11 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     # Change plasma current
     p.profiles['current(MA)'][0] = Ip
     p.profiles['polflux(Wb/radian)'] *= Ip/p.profiles['current(MA)'][0]
+
+    # Change auxiliary power
+    p.changeRFpower(PrfMW=Paux)
+    for i in ["qohme(MW/m^3)"]:
+        p.profiles[i] *= 0.0
 
     # Gradient-based profiles
     rhotop_assume = 0.9
@@ -135,22 +142,29 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     ax.set_xlabel('$V$ ($m^3$)')
     ax.set_ylabel('$P_{fus}$ (MW)')
 
+    ax = axs[0,3]
+    ax.plot(results['x'], results['H98'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('$H_{98y2}$')
+    ax.set_ylim(0, 2.0)
+    ax.axhline(y=1.0,ls='-.',lw=1.0,c='k')
 
-def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100):
+def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0):
     
     if axs is None:
-        plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=3,figsize=(10,10))
+        plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=4,figsize=(20,10))
 
     values = copy.deepcopy(nominal_parameters)
 
     results1 = {
         'x' : x if not relative else x*nominal_parameters[xparam],
         'profs' : [],'eped_inputs': [],'Ptop' : [],
-        'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': []
+        'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': [], 'H98': [],
         }
     for x in results1['x']:
         values[xparam] = x
-        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, **values)
+        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, Paux=Paux, **values)
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['eped_inputs'].append(eped_evaluation)
@@ -160,6 +174,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['Pfus'].append(profiles_new.derived['Pfus'])
         results1['vol'].append(profiles_new.derived['volume'])
         results1['qstar_ITER'].append(profiles_new.derived['qstar_ITER'])
+        results1['H98'].append(profiles_new.derived['H98'])
 
     plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
     axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
@@ -180,17 +195,19 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     axs[1,0].set_ylim(0, goal_pfusion*1.5)
     axs[1,1].set_ylim(0, goal_pfusion*1.5)
 
+    axs[0,3].axhspan(0.85, 0.85, facecolor="g", alpha=0.1, edgecolor="none")
+   
     return results1
 
 
-def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, paramlabel,x0=1.0,xf=3.0,num=20,fig=None, keep_qstar=False, keep_eps=False):
+def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, paramlabel,x0=1.0,xf=3.0,num=20,fig=None, keep_qstar=False, keep_eps=False, Paux=0.0):
 
     if fig is None:
         fig = plt.figure(figsize=(14,10))
     axsL = fig.subplot_mosaic(
         """
-        ABFE
-        CDGE
+        ABFHE
+        CDGIE
         """
     )
 
@@ -200,7 +217,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
     if keep_eps:
         extr += ' (fixed $\\epsilon$)'
 
-    axs = np.array([[axsL['A'], axsL['B'], axsL['F']], [axsL['C'], axsL['D'], axsL['G']]])
+    axs = np.array([[axsL['A'], axsL['B'], axsL['F'], axsL['H']], [axsL['C'], axsL['D'], axsL['G'], axsL['I']]])
 
     resultsS = []
     for varrel,c,leg in zip(
@@ -238,7 +255,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
 
             print(f"\t-> Keeping qstar constant, hence changing current from {nominal_parameters['Ip']} to {parameters['Ip']}")
 
-        results = scan_parameter(nn, p_base, 'neped',  np.linspace(x0,xf,num), parameters, core, xparamlab='$n_{e,ped}$ ($10^{20}/m^3$)', axs=axs, c=c, leg=leg)
+        results = scan_parameter(nn, p_base, 'neped',  np.linspace(x0,xf,num), parameters, core, xparamlab='$n_{e,ped}$ ($10^{20}/m^3$)', axs=axs, c=c, leg=leg, Paux=Paux)
         resultsS.append(results)
 
 
