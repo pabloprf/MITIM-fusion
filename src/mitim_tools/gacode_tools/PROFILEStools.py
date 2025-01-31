@@ -156,7 +156,7 @@ class PROFILES_GACODE:
         # ------------------------------------------------------------------------------------------------
 
         if calculateDerived:
-            self.deriveQuantities_full()
+            self.deriveQuantities_full(rederiveGeometry=rederiveGeometry)
 
     # -------------------------------------------------------------------------------------
     # Method to write a scratch file
@@ -370,9 +370,7 @@ class PROFILES_GACODE:
         self.derived["a"] = self.profiles["rmin(m)"][-1]
         # self.derived['epsX'] = self.profiles['rmaj(m)'] / self.profiles['rmin(m)']
         # self.derived['eps'] = self.derived['epsX'][-1]
-        self.derived["eps"] = (
-            self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
-        )
+        self.derived["eps"] = self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
 
         self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
         self.derived["Rmajoa"] = self.profiles["rmaj(m)"] / self.derived["a"]
@@ -1796,11 +1794,11 @@ class PROFILES_GACODE:
 
         self.readSpecies()
 
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         if enforceSameGradients:
             self.scaleAllThermalDensities()
-            self.deriveQuantities()
+            self.deriveQuantities(rederiveGeometry=False)
 
         print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
@@ -2027,7 +2025,7 @@ class PROFILES_GACODE:
             f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)"
         )
 
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
     def introduceRotationProfile(self, Mach_LF=1.0, new_file=None):
         print(f"\t- Enforcing Mach Number in LF of {Mach_LF}")
