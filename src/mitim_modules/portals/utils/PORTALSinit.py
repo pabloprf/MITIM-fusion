@@ -246,8 +246,8 @@ def initializeProblem(
     for var in dictCPs_base:
         for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
             if limitsAreRelative:
-                y1 = dictCPs_base[var][i] * (1 - RelVar_y_min[var][conti])
-                y2 = dictCPs_base[var][i] * (1 + RelVar_y_max[var][conti])
+                y1 = dictCPs_base[var][i] - abs(dictCPs_base[var][i])*RelVar_y_min[var][conti]
+                y1 = dictCPs_base[var][i] + abs(dictCPs_base[var][i])*RelVar_y_max[var][conti]
             else:
                 y1 = torch.tensor(RelVar_y_min[var][conti]).to(dfT)
                 y2 = torch.tensor(RelVar_y_max[var][conti]).to(dfT)
