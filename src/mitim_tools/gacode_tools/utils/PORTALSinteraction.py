@@ -41,13 +41,13 @@ def changeRFpower(self, PrfMW=25.0):
     """
     keeps same partition
     """
-    print(
-        f"- Changing the RF power from {self.derived['qRF_MWmiller'][-1]:.1f} MW to {PrfMW:.1f} MW",
-        typeMsg="i",
-    )
+    print(f"- Changing the RF power from {self.derived['qRF_MWmiller'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
+    
+    if self.derived["qRF_MWmiller"][-1] == 0.0:
+        raise Exception("No RF power in the input.gacode, cannot modify the RF power")
+
     for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
         self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MWmiller"][-1]
-
 
 def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
     ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
