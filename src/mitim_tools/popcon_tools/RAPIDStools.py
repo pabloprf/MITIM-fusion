@@ -195,7 +195,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     axs[1,0].set_ylim(0, goal_pfusion*1.5)
     axs[1,1].set_ylim(0, goal_pfusion*1.5)
 
-    axs[0,3].axhspan(0.85, 0.85, facecolor="g", alpha=0.1, edgecolor="none")
+    axs[0,3].axhspan(0.85, 1.15, facecolor="g", alpha=0.1, edgecolor="none")
    
     return results1
 
