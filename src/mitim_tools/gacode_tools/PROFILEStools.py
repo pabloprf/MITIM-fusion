@@ -1002,8 +1002,8 @@ class PROFILES_GACODE:
         )
 
         # Retain the old beta definition for comparison with 0D modeling
-        Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
-        self.derived["BetaN_approx"] = (Beta_old / 
+        Beta_old = (self.derived["ptot_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+        self.derived["BetaN_engineering"] = (Beta_old / 
                                         (np.abs(float(self.profiles["current(MA)"][-1])) / 
                                          (self.derived["a"] * self.derived["B0"])
                                          )* 100.0
@@ -1042,6 +1042,7 @@ class PROFILES_GACODE:
             )
             * 100.0
         )
+
         # ---
 
         nG = PLASMAtools.Greenwald_density(
@@ -1309,9 +1310,7 @@ class PROFILES_GACODE:
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(
-                "\tBetaN =  {0:.3f}".format(
-                    self.derived["BetaN"]
-                )
+                f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})"
             )
             print(
                 "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
@@ -3994,7 +3993,7 @@ class PROFILES_GACODE:
             'kappa995': np.abs(self.derived['kappa995']),
             'delta995': np.abs(self.derived['delta995']),
             'neped': np.abs(neped_19),
-            'betan': np.abs(self.derived['BetaN']),
+            'betan': np.abs(self.derived['BetaN_engineering']),
             'zeff': np.abs(self.derived['Zeff_vol']),
             'tesep': np.abs(self.profiles['te(keV)'][-1])*1E3,
             'nesep_ratio': np.abs(self.profiles['ne(10^19/m^3)'][-1] / neped_19),

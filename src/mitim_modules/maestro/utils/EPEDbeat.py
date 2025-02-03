@@ -107,7 +107,7 @@ class eped_beat(beat):
 
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
-        BetaN = self.profiles_current.derived['BetaN']
+        BetaN = self.profiles_current.derived['BetaN_engineering']
         Tesep_keV = self.profiles_current.profiles['te(keV)'][-1]
         nesep_20 = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*0.1
         
@@ -216,7 +216,7 @@ class eped_beat(beat):
 
             self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
-            BetaN = self.profiles_output.derived['BetaN']
+            BetaN = self.profiles_output.derived['BetaN_engineering']
 
         if loopBetaN > 1:
             print('\t- Looping over BetaN:')

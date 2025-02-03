@@ -342,7 +342,7 @@ class creator_from_parameterization(creator):
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-            return ((self.initialize_instance.profiles_current.derived['BetaN'] - self.BetaN) / self.BetaN) ** 2
+            return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
     
         def __call__(self):
 
@@ -373,7 +373,7 @@ class creator_from_parameterization(creator):
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
                 print(f'\n\t - Gradient: aLT = {aLT:.2f}')
-                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN"]:.5f} (target: {self.BetaN:.5f})')
+                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived['BetaN_engineering']:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
 

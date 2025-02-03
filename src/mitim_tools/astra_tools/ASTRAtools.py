@@ -591,9 +591,9 @@ def create_initial_conditions(te_avg,
                 profiles.enforceQuasineutrality()
                 profiles.deriveQuantities()
 
-                print("residual:", ((profiles.derived['BetaN_approx']-betan_desired) / betan_desired)**2)
+                print("residual:", ((profiles.derived['BetaN_engineering']-betan_desired) / betan_desired)**2)
 
-                return ((profiles.derived['BetaN_approx']-betan_desired) / betan_desired)**2
+                return ((profiles.derived['BetaN_engineering']-betan_desired) / betan_desired)**2
 
             aLT = 2.0
             aLn = 0.2

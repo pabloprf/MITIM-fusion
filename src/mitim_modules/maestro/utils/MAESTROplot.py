@@ -1,4 +1,3 @@
-import os
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
@@ -191,7 +190,7 @@ def plot_results(self, fn):
     x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
-        BetaN.append(p.derived['BetaN'])
+        BetaN.append(p.derived['BetaN_engineering'])
         Pfus.append(p.derived['Pfus'])
         p_th.append(p.derived['pthr_manual_vol'])
         p_tot.append(p.derived['ptot_manual_vol'])
@@ -207,7 +206,7 @@ def plot_results(self, fn):
     # -----------------------------------------------------------------
     ax = axs['A']
     ax.plot(x, BetaN, '-s', markersize=7, lw = 1)
-    ax.set_ylabel('$\\beta_N$')
+    ax.set_ylabel('$\\beta_N$ (engineering)')
     ax.set_title('Pressure Evolution')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
