@@ -11,9 +11,13 @@ from IPython import embed
         RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0):
+def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0, thr_beta=0.02):
 
     p = copy.deepcopy(p_base)
+
+    # -------------------------------------------------------
+    # Main quantities
+    # -------------------------------------------------------
 
     # Change major radius
     p.profiles['rcentr(m)'][0] = R
@@ -30,18 +34,38 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
 
     # Change magnetic field
     p.profiles['bcentr(T)'][0] = Bt
-    p.profiles['torfluxa(Wb/radian)'] *= Bt/p.profiles['bcentr(T)'][0]
-
+    
     # Change plasma current
     p.profiles['current(MA)'][0] = Ip
-    p.profiles['polflux(Wb/radian)'] *= Ip/p.profiles['current(MA)'][0]
+
+    # -------------------------------------------------------
+    # Derived quantities
+    # -------------------------------------------------------
+
+    # Approximate XS area
+    area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
+    area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
+
+    # Make sure that q95 is roughly consistent
+    p.profiles['q(-)'] *= p_base.profiles['current(MA)'][0] / Ip
+
+    # Make sure that toroidal flux is roughly consistent
+    p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
+    p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
+
+    # -------------------------------------------------------
+    # Others
+    # -------------------------------------------------------
 
     # Change auxiliary power
     p.changeRFpower(PrfMW=Paux)
     for i in ["qohme(MW/m^3)"]:
         p.profiles[i] *= 0.0
 
+    # -------------------------------------------------------
     # Gradient-based profiles
+    # -------------------------------------------------------
+
     rhotop_assume = 0.9
     Ttop_assume = 4.0
     ntop_assume = 1.0
@@ -78,18 +102,18 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         # Derive quantities
         p.deriveQuantities(rederiveGeometry=False)
 
-        error_betaN = np.abs(p.derived['BetaN'] - eped_evaluation["betan"])/p.derived['BetaN']
-        print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {p.derived['BetaN']} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+        error_betaN = np.abs(p.derived['BetaN_engineering'] - eped_evaluation["betan"])/p.derived['BetaN_engineering']
+        print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {p.derived['BetaN_engineering']} ({error_betaN*100:.1f}%)',typeMsg = 'i')
 
         return p, ptop_kPa, error_betaN, eped_evaluation
 
     # Loop for better beta definition
-    for i in range(5):
+    for i in range(10):
         p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
-        if error_betaN < 0.05:
+        if error_betaN < thr_beta:
             break
 
-    if error_betaN > 0.05:
+    if error_betaN > thr_beta:
         raise Exception('BetaN error too high')
 
     # Power
@@ -150,6 +174,12 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     ax.set_ylim(0, 2.0)
     ax.axhline(y=1.0,ls='-.',lw=1.0,c='k')
 
+    ax = axs[1,3]
+    ax.plot(results['x'], results['betaN'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
+
 def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0):
     
     if axs is None:
@@ -160,7 +190,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     results1 = {
         'x' : x if not relative else x*nominal_parameters[xparam],
         'profs' : [],'eped_inputs': [],'Ptop' : [],
-        'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': [], 'H98': [],
+        'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': [], 'H98': [], 'betaN': []
         }
     for x in results1['x']:
         values[xparam] = x
@@ -175,6 +205,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['vol'].append(profiles_new.derived['volume'])
         results1['qstar_ITER'].append(profiles_new.derived['qstar_ITER'])
         results1['H98'].append(profiles_new.derived['H98'])
+        results1['betaN'].append(profiles_new.derived['BetaN_engineering'])
 
     plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
     axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
