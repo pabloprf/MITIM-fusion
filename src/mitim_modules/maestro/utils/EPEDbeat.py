@@ -401,7 +401,8 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
 
 
     if plotYN:
-        fig, ax = plt.subplots()
+        fig, axs = plt.subplots(nrows=2, figsize=(6,10))
+        ax = axs[0]
         ax.plot(x,y,'-o',color='b', label='old')
         ax.axvline(x=xp_old,color='b',ls='--')
         ax.plot(x,ynew,'-o',color='r',label='new')
@@ -411,8 +412,24 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         ax.set_xlabel('x'); ax.set_ylabel('y')
         ax.set_xlim([0,1]); ax.set_ylim(bottom=0)
         ax.legend()
+
+        ax = axs[1]
+        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+        ax.plot(x,aLy,'-o',color='b', label='old')
+        ax.axvline(x=xp_old,color='b',ls='--')
+
+        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(ynew) )
+        ax.plot(x,aLy,'-o',color='r', label='new')
+        ax.axvline(x=xp,color='r',ls='--')
+
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel('r/a'); ax.set_ylabel('aLx')
+        ax.set_xlim([0,1]); ax.set_ylim(bottom=0)
+        ax.legend()
+
     
         plt.show()
+        embed()
 
     return ynew
 
