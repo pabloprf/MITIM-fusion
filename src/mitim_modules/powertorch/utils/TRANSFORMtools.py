@@ -2,6 +2,7 @@ import copy
 import torch
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools import LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -20,6 +21,7 @@ def powerstate_to_gacode(
     position_in_powerstate_batch=0,
     insert_highres_powers=True,
     rederive=True,
+    plotYN=False,
     ):
     """
     Notes:
@@ -120,6 +122,21 @@ def powerstate_to_gacode(
 
     if recompute_ptot:
         profiles.selfconsistentPTOT()
+
+    if plotYN:
+        fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+        axs = axs.flatten()
+        profiles.plotGradients(axs, color='r', lw=1.0, lastRho=self.plasma['rho'][0,-1].item())
+
+        axs[0].plot(self.plasma['rho'][0,:], self.plasma['te'][0,:], '--s',c = 'k', lw=1.0, markersize=5)
+        axs[1].plot(self.plasma['rho'][0,:], self.plasma['aLte'][0,:], '--s',c = 'k', lw=1.0, markersize=5)
+        axs[2].plot(self.plasma['rho'][0,:], self.plasma['ti'][0,:], '--s',c = 'k', lw=1.0, markersize=5)
+        axs[3].plot(self.plasma['rho'][0,:], self.plasma['aLti'][0,:], '--s',c = 'k', lw=1.0, markersize=5)
+        axs[4].plot(self.plasma['rho'][0,:], self.plasma['ne'][0,:]*0.1, '--s',c = 'k', lw=1.0, markersize=5)
+        axs[5].plot(self.plasma['rho'][0,:], self.plasma['aLne'][0,:], '--s',c = 'k', lw=1.0, markersize=5)
+
+        plt.show()
+        embed()
 
     return profiles
 
@@ -536,9 +553,7 @@ def parameterize_curve(
         y = torch.cat((y, aLy_coarse[-1][-1].repeat((y.shape[0], 1))), dim=1)
 
         # Model curve (basically, what happens in between points)
-        yBS = CALCtools.Interp1d()(
-            x.repeat(y.shape[0], 1), y, x_notrail.repeat(y.shape[0], 1)
-        )
+        yBS = CALCtools.Interp1d()(x.repeat(y.shape[0], 1), y, x_notrail.repeat(y.shape[0], 1))
 
         """
         ---------------------------------------------------------------------------------------------------------
