@@ -82,16 +82,17 @@ def powerstate_to_gacode(
             # ------------------------------------------------------------------------------------------
 
             if key[0] == "te" and Tfast_ratio:
-                print(
-                    "\t\t* If any fast species, changing Tfast to ensure fixed Tfast/Te ratio",
-                    typeMsg="i",
-                )
+                print("\t\t* If any fast species, changing Tfast to ensure fixed Tfast/Te ratio",typeMsg="i",)
+                done_once = False
                 for sp in range(len(profiles.Species)):
                     if profiles.Species[sp]["S"] == "fast":
                         print(f"\t\t\t- Modifying temperature of species #{sp}")
                         profiles.profiles["ti(keV)"][:, sp] = profiles.profiles["ti(keV)"][:, sp] * (
                             profiles.profiles["te(keV)"] / Y_copy
                         )
+                        done_once = True
+                if done_once:
+                    print("\t\t* Changing Tfast to ensure fixed Tfast/Te ratio",typeMsg="i",)
 
             if key[0] == "ti" and Ti_thermals:
                 print("\t\t* Ensuring Ti is equal for all thermal ions", typeMsg="i")
@@ -198,7 +199,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         - Pe_orig_fusrad and so on are to also include radiation, alpha and exchange, in case I want to run powerstate with fixed those
     """
 
-    print("\t- Producing powerstate")
+    print("\t- Producing powerstate object from input.gacode")
 
     # *********************************************************************************************
     # Radial grid

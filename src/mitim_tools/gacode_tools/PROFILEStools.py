@@ -76,9 +76,7 @@ class PROFILES_GACODE:
             self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
 
         if "qmom(Nm)" in self.profiles:
-            self.varqmom = (
-                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-            )
+            self.varqmom = "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
         else:
             self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
 
@@ -129,10 +127,7 @@ class PROFILES_GACODE:
 
         if mi_ref is not None:
             self.derived["mi_ref"] = mi_ref
-            print(
-                f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",
-                typeMsg="w",
-            )
+            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",typeMsg="w")
         else:
             self.derived["mi_ref"] = self.mi_first
             print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
@@ -3846,7 +3841,7 @@ class PROFILES_GACODE:
     # Code conversions
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    def to_tglf(self, rhos=[0.5], TGLFsettings=0):
+    def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function

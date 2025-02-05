@@ -48,6 +48,8 @@ class powerstate:
             - TargetOptions: dictionary with targets_evaluator and ModelOptions
         '''
 
+        print('>> Creating powerstate object...')
+
         self.TransportOptions = TransportOptions
         self.TargetOptions = TargetOptions
 
@@ -325,7 +327,7 @@ class powerstate:
     ):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
 
-        print(f'\n- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
+        print(f'\t- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
         print("**********************************************************************************************")
         timeBeginning = datetime.datetime.now()
 
@@ -341,12 +343,8 @@ class powerstate:
         if algorithm == "picard":
             ITtools.fluxMatchPicard(self)
 
-        print(
-            "**********************************************************************************************"
-        )
-        print(
-            f"- Flux matching of powerstate file has been found, and took {IOtools.getTimeDifference(timeBeginning)}\n"
-        )
+        print("**********************************************************************************************")
+        print(f"\t- Flux matching of powerstate file has been found, and took {IOtools.getTimeDifference(timeBeginning)}\n")
 
     # ------------------------------------------------------------------
     # Plotting tools

@@ -43,9 +43,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    with open(
-        __mitimroot__ / "templates" / "input.tglf.models.json", "r"
-    ) as f:
+    with open(__mitimroot__ / "templates" / "input.tglf.models.json", "r") as f:
         settings = json.load(f)
 
     if str(TGLFsettings) in settings:
