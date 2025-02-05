@@ -325,12 +325,8 @@ class powerstate:
     ):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
 
-        print(
-            f'\n- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...'
-        )
-        print(
-            "**********************************************************************************************"
-        )
+        print(f'\n- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
+        print("**********************************************************************************************")
         timeBeginning = datetime.datetime.now()
 
         if algorithm == "root":

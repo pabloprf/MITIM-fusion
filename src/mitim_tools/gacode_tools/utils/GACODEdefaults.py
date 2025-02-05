@@ -54,10 +54,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
         for ikey in sett["controls"]:
             TGLFoptions[ikey] = sett["controls"][ikey]
     else:
-        print(
-            "\t- TGLFsettings not found in input.tglf.models.json, using defaults",
-            typeMsg="w",
-        )
+        print("\t- TGLFsettings not found in input.tglf.models.json, using defaults",typeMsg="w",)
         label = "unspecified"
 
     # --------------------------------

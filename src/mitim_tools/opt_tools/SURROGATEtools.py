@@ -127,6 +127,8 @@ class surrogate_model:
             x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
             x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.output]
             if x_names != x_names_check:
+                print('x_names in file:', x_names)
+                print('x_names in this run:', x_names_check)
                 print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
 
             self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
@@ -863,10 +865,15 @@ class fundamental_model_context(object):
 
 def create_df_portals(x, y, yvar, x_names, output, max_x = 20):
 
+    if isinstance(output, str):
+        outputs = [output]*x.shape[0]
+    else:
+        outputs = output
+
     new_data = []
     for i in range(x.shape[0]):
         data_point = {
-            'Model': output,
+            'Model': outputs[i],
             'y': y[i,:].item(),
             'yvar': yvar[i,:].item(),
             'x_names': x_names,

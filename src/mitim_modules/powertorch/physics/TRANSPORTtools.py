@@ -74,11 +74,7 @@ class power_transport:
 
     def _produce_profiles(self,deriveQuantities=True):
 
-        self.applyCorrections = (
-            self.powerstate.TransportOptions["ModelOptions"]
-            .get("MODELparameters", {})
-            .get("applyCorrections", {})
-        )
+        self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters", {}).get("applyCorrections", {})
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = self.folder / "input.gacode"
@@ -146,7 +142,7 @@ class tgyro_model(power_transport):
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
+        cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -306,12 +302,8 @@ class tgyro_model(power_transport):
 
             print("\t- Checking model modifications:")
             for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
-                print(
-                    f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}"
-                )
-                print(
-                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}"
-                )
+                print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
+                print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 
             # **
             tgyro.results["use"] = tgyro.results["cgyro_neo"]
