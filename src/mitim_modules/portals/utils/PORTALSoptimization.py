@@ -33,13 +33,13 @@ def initialization_simple_relax(self):
 
     algorithm_options = {
         "tol": 1e-6,
-        "max_it": self.Originalinitial_training,
+        "maxiter": self.Originalinitial_training,
         "relax": 0.2,           # Defines relationship between flux and gradient
         "dx_max": 0.2,          # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 20% each time)
         "dx_max_abs": None,     # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
         "dx_min_abs": 0.1,      # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
         "print_each": 1,
-        "MainFolder": MainFolder,
+        "folder": MainFolder,
         "storeValues": True,
         "namingConvention": namingConvention,
     }

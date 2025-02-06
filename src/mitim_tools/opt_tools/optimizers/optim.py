@@ -11,7 +11,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # --------------------------------------------------------------------------------------------------------
 
 
-def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={}, solver="lm"):
+def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={}, solver="lm", jac_ad=True):
     """
     Inputs:
             - xGuess is the initial guess and must be a tensor of (1,dimX) or (dimX). It will be transformed to dimX.
@@ -36,7 +36,10 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
         JD[JD.abs() <= 1e-10] = 0.0
 
         # Back to arrays
-        return QhatD.detach().cpu().numpy(), JD.transpose(0,1).cpu().numpy()    # Transpose here so that I can use col_deriv=True
+        if jac_ad:
+            return QhatD.detach().cpu().numpy(), JD.transpose(0,1).cpu().numpy()    # Transpose here so that I can use col_deriv=True
+        else:
+            return QhatD.detach().cpu().numpy()
 
     # No batching is allowed in ROOT. If you want to run batching flux matching you need to concatenate the vector in one dim
     xGuess0 = xGuess.squeeze(0).cpu().numpy() if xGuess.dim() > 1 else xGuess.cpu().numpy()
@@ -44,15 +47,17 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
     # ************
     # Root process
     # ************
-    f0,_ = func(xGuess0)
+    f0 = func(xGuess0)
+    if jac_ad: f0 = f0[0]
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}")
 
     algorithm_options['col_deriv'] = True # Faster in scipy to avoid transposing the Jacobian. I can optimize it in pytorch instead, see above transpose
 
     with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
-        sol = root(func, xGuess0, jac=True, method=solver, tol=None, options=algorithm_options)
+        sol = root(func, xGuess0, jac=jac_ad, method=solver, tol=None, options=algorithm_options)
 
-    f,_ = func(sol.x)
+    f = func(sol.x)
+    if jac_ad: f = f[0]
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
 
     # ************
@@ -69,7 +74,7 @@ def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={},
 # --------------------------------------------------------------------------------------------------------
 
 
-def picard(fun, xGuess, tol=1e-6, max_it=1e3, relax_param=1.0):
+def picard(fun, xGuess, tol=1e-6, maxiter=1e3, relax_param=1.0):
     """
     Inputs:
             - xGuess is the initial guess and must be a tensor of (batch,dimX). It will be converted to batch.
@@ -109,7 +114,7 @@ def picard(fun, xGuess, tol=1e-6, max_it=1e3, relax_param=1.0):
     # ******************************************************************************************************
 
     cont = 0
-    while (resMean > tol) and (cont < max_it):
+    while (resMean > tol) and (cont < maxiter):
         # ---------------------------------------------------------------------------
         # Multiplier of source term for faster/slower steps towards flux matching
         # ---------------------------------------------------------------------------
@@ -183,7 +188,7 @@ def relax(
     xGuess,
     bounds=None,
     tol=None,
-    max_it=1e5,
+    maxiter=1e5,
     relax=0.1,
     dx_max=0.05,
     dx_max_abs = None,
@@ -197,19 +202,19 @@ def relax(
     """
 
     print(
-        f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {max_it:.0f} iterations"
+        f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations"
     )
 
     x = copy.deepcopy(xGuess)
     Q, QT = flux(x, cont=0)
     print(
-        f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(max_it)-1} more evaluations",
+        f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",
         typeMsg="i",
     )
 
     store_x = x.clone()
     store_Q = (Q - QT).abs()
-    for i in range(int(max_it) - 1):
+    for i in range(int(maxiter) - 1):
         # --------------------------------------------------------------------------------------------------------
         # Iterative Strategy
         # --------------------------------------------------------------------------------------------------------

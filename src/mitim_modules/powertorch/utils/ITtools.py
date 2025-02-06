@@ -6,12 +6,15 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
-def fluxMatchRoot(self, algorithm_options={}):
+def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
     
     dimX = (self.plasma["rho"].shape[-1]-1)*len(self.ProfilesPredicted)
 
     Xopt, Yopt = [], []
 
+    folder = algorithm_options.get("folder", '~/scratch/')
+    
+    cont = 0
     if algorithm_options.get('storeValues',True):
         def evaluator(x):
             """
@@ -19,11 +22,13 @@ def fluxMatchRoot(self, algorithm_options={}):
                 - x comes extended, batch*dim
                 - y must be returned extended as well, batch*dim
             """
+            nonlocal cont
 
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
 
             # Evaluate source term
-            _, _, y, _ = self.calculate(X)
+            _, _, y, _ = self.calculate(X,folder=f'{folder}/ev{cont}', nameRun=f"ev{cont}", evaluation_number=cont)
+            cont += 1
 
             # Compress again  [batch,dim]->[batch*dim]
             y = y.view(x.shape)
@@ -40,11 +45,13 @@ def fluxMatchRoot(self, algorithm_options={}):
                 - x comes extended, batch*dim
                 - y must be returned extended as well, batch*dim
             """
+            nonlocal cont
 
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
 
             # Evaluate source term
-            _, _, y, _ = self.calculate(X)
+            _, _, y, _ = self.calculate(X,folder=f'{folder}/ev{cont}', nameRun=f"ev{cont}", evaluation_number=cont)
+            cont += 1
 
             # Compress again  [batch,dim]->[batch*dim]
             y = y.view(x.shape)
@@ -58,7 +65,7 @@ def fluxMatchRoot(self, algorithm_options={}):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
     # **** Optimize ****
-    _ = optim.powell(evaluator, x0, None, algorithm_options=algorithm_options)
+    _ = optim.powell(evaluator, x0, None, algorithm_options=algorithm_options,jac_ad=jac_ad)
     # ******************
 
     if algorithm_options.get('storeValues',True):
@@ -73,13 +80,13 @@ def fluxMatchSimpleRelax(self, algorithm_options={}, bounds=None):
     
     # Default options
     tol = algorithm_options.get("tol", 1e-3)
-    max_it = algorithm_options.get("max_it", 1e5)
+    maxiter = algorithm_options.get("maxiter", 1e5)
     relax = algorithm_options.get("relax", 0.001)
     dx_max = algorithm_options.get("dx_max", 0.05)
     dx_max_abs = algorithm_options.get("dx_max_abs", None)
     dx_min_abs = algorithm_options.get("dx_min_abs", None)
     print_each = algorithm_options.get("print_each", 1e2)
-    MainFolder = algorithm_options.get("MainFolder", "~/scratch/")
+    MainFolder = algorithm_options.get("folder", "~/scratch/")
     storeValues = algorithm_options.get("storeValues", True)
     namingConvention = algorithm_options.get("namingConvention", "powerstate_sr_ev")
 
@@ -125,7 +132,7 @@ def fluxMatchSimpleRelax(self, algorithm_options={}, bounds=None):
         evaluator,
         x0,
         tol=tol,
-        max_it=max_it,
+        maxiter=maxiter,
         relax=relax,
         dx_max=dx_max,
         bounds=bounds,
@@ -138,7 +145,7 @@ def fluxMatchSimpleRelax(self, algorithm_options={}, bounds=None):
     return Xopt, Yopt
 
 
-def fluxMatchPicard(self, tol=1e-6, max_it=1e3):
+def fluxMatchPicard(self, tol=1e-6, maxiter=1e3):
     """
     I should figure out what to do with the cases with too much transport that never converge
     """
@@ -166,7 +173,7 @@ def fluxMatchPicard(self, tol=1e-6, max_it=1e3):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
     # **** Optimize ****
-    _ = optim.picard(evaluator, x0, tol=tol, max_it=max_it)
+    _ = optim.picard(evaluator, x0, tol=tol, maxiter=maxiter)
     # ******************
     
     Xopt = torch.stack(Xopt)
