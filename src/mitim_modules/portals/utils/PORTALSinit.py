@@ -89,12 +89,6 @@ def initializeProblem(
     ):
         profiles.correct(options=INITparameters)
 
-    # Resolution of input.gacode
-    defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
-
-    # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
-
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
         portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1]["dens"]
         print(f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",typeMsg="i",)
@@ -182,6 +176,9 @@ def initializeProblem(
         },
         tensor_opts = tensor_opts
     )
+
+    # After resolution and corrections, store.
+    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     # ***************************************************************************************************
     # ***************************************************************************************************
@@ -348,57 +345,6 @@ def initializeProblem(
         "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
     }
-
-def defineNewPORTALSGrid(profiles, rhoMODEL):
-    """
-    Resolution of input.gacode
-    **************************
-    - Change resolution to a fine grid in which doing the flattening around coarse points has a small effect on the profile.
-    - It is recommended that it goes through the points, with more points around the trailing edge transition.
-    - Also, avoid adding too points near axis. (NOT NOW?)
-    """
-
-    # ----------------------------------------
-    # Parameters
-    # ----------------------------------------
-
-    total_points = 100
-    d_spacing_coarse = 1e-3
-    points_updown = 2
-
-    # ----------------------------------------------------------------------------------
-    # 1. Fill up spaces in between the points until the total is total_points
-    # ----------------------------------------------------------------------------------
-
-    num_points_rest = int(np.max([3, total_points / (len(rhoMODEL) + 1)]))
-
-    # Correction: If I do a very fine grid, but with a first point away from 0.0, it'll	have a piecewise behavior from 0 to the first points, so ensure a few more
-    num_points_0 = int(np.max([num_points_rest, 10]))
-    # *******
-
-    rho_new0 = np.append(np.append([0], rhoMODEL), [1])
-    rho_new = np.array([])
-    for i in range(rho_new0.shape[0] - 1):
-        num_points = num_points_rest if i > 0 else num_points_0
-        rho_new = np.append(
-            rho_new, np.linspace(rho_new0[i], rho_new0[i + 1], num_points)
-        )
-
-    # ----------------------------------------------------------------------------------
-    # 2. Add extra resolution around the modelled (e.g. TGYRO) points
-    # ----------------------------------------------------------------------------------
-
-    for i in range(points_updown):
-        rho_new = np.append(
-            np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
-            rhoMODEL - d_spacing_coarse * (i + 1),
-        )
-
-    # ----------------------------------------------------------------------------------
-    # Change resolution
-    # ----------------------------------------------------------------------------------
-    profiles.changeResolution(rho_new=rho_new)
-
 
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
     allOuts = portals_fun.optimization_options["problem_options"]["ofs"]

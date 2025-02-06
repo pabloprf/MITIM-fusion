@@ -130,6 +130,10 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
+        # Resolution of input.gacode
+        TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
+
+        # Convert to powerstate
         TRANSFORMtools.gacode_to_powerstate(self, self.profiles, self.plasma["rho"])
 
         # Convert into a batch so that always the quantities are (batch,dimX)
@@ -187,11 +191,9 @@ class powerstate:
         postprocess_input_gacode={},
         insert_highres_powers=False,
         rederive_profiles=True,
-        profiles_base=None,
     ):
         '''
         Notes:
-            - profiles_base is a PROFILES_GACODE object to use as basecase. If None, it will use the one stored in the class (original), so no interpolation required
             - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
         '''
         print(">> Inserting powerstate into input.gacode")
@@ -202,7 +204,6 @@ class powerstate:
             postprocess_input_gacode=postprocess_input_gacode,
             insert_highres_powers=insert_highres_powers,
             rederive=rederive_profiles,
-            profiles_base=profiles_base,
         )
 
         # Write input.gacode

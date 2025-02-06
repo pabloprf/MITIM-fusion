@@ -82,10 +82,7 @@ class power_targets:
         # Integrate through fine de-parameterization
         # ----------------------------------------------------
         for i in self.powerstate.ProfilesPredicted:
-            _ = self.powerstate.update_var(
-                i,
-                specific_deparametrizer=self.powerstate.deparametrizers_coarse_middle,
-            )
+            _ = self.powerstate.update_var(i,specific_deparametrizer=self.powerstate.deparametrizers_coarse_middle)
 
     def flux_integrate(self):
         """
