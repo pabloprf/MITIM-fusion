@@ -78,7 +78,10 @@ class power_transport:
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = self.folder / "input.gacode"
-        self.powerstate.profiles = self.powerstate.to_gacode(
+
+        powerstate_detached = self.powerstate.copy_state()
+
+        self.powerstate.profiles = powerstate_detached.to_gacode(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
             rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
