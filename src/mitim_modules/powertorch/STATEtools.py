@@ -261,6 +261,13 @@ class powerstate:
             del state_shallow_copy.fn
         if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
             del state_shallow_copy.model_results.fn
+        
+        # Plasma dictionary may have gradients that I cannot copy, I need to detach them
+        state_shallow_copy.plasma = {}
+        for key in self.plasma:
+            state_shallow_copy.plasma[key] = self.plasma[key].detach()
+        state_shallow_copy.Xcurrent = self.Xcurrent.detach() if self.Xcurrent is not None else None
+
         state_temp = copy.deepcopy(state_shallow_copy)
 
         return state_temp
