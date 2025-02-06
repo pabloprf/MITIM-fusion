@@ -117,7 +117,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         raise Exception('BetaN error too high')
 
     # Power
-    power = STATEtools.powerstate(p,EvolutionOptions={"rhoPredicted": np.linspace(0.0, 0.9, 50)})
+    power = STATEtools.powerstate(p,EvolutionOptions={"rhoPredicted": np.linspace(0.0, 0.9, 50)[1:]})
 
     power.calculate(None, folder='~/scratch/power/')
     profiles_new = power.to_gacode(insert_highres_powers=True)

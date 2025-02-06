@@ -310,7 +310,7 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
     extra_points = 2  # If I don't allow this, it will fail
     rhoy = profiles.profiles["rho(-)"][1:-extra_points]
     with LOGtools.HiddenPrints():
-        state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy})
+        state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy}, increase_profile_resol = False)
     state_temp.calculateProfileFunctions()
     state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
     state_temp.calculateTargets()

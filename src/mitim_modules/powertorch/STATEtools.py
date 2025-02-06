@@ -18,6 +18,7 @@ class powerstate:
     def __init__(
         self,
         profiles,
+        increase_profile_resol=True,
         EvolutionOptions={},
         TransportOptions={
             "transport_evaluator": None,
@@ -60,6 +61,9 @@ class powerstate:
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
         self.scaleIonDensities = EvolutionOptions.get("scaleIonDensities", True)
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
+
+        if rho_vec[0] == 0:
+            raise ValueError("[MITIM] The radial grid must not contain the initial zero")
 
         # Ensure that nZ is always after ne, because of how the scaling of ni rules are imposed
         def _ensure_ne_before_nz(lst):
@@ -131,7 +135,8 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Resolution of input.gacode
-        TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
+        if increase_profile_resol:
+            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
 
         # Convert to powerstate
         TRANSFORMtools.gacode_to_powerstate(self, self.profiles, self.plasma["rho"])
