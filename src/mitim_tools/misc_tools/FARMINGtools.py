@@ -479,7 +479,7 @@ class mitim_job:
             )
 
         # Extract it
-        print("\t\t- Extracting tarball")
+        print("\t\t- Extracting tarball (remote side)")
         self.execute(
             "tar -xzf "
             + f'{self.folderExecution}/mitim_send.tar.gz'
@@ -488,8 +488,9 @@ class mitim_job:
         )
 
         # Remove tarballs
-        print("\t\t- Removing tarball")
+        print("\t\t- Removing tarball (local side)")
         (self.folder_local / "mitim_send.tar.gz").unlink(missing_ok=True)
+        print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, **kwargs):
@@ -589,31 +590,26 @@ class mitim_job:
         print(self.folderExecution, self.folder_local)
 
         # Extract the tarball locally
-        print("\t\t- Extracting tarball")
-        with tarfile.open(
-            self.folder_local / "mitim_receive.tar.gz", "r:gz"
-        ) as tar:
+        print("\t\t- Extracting tarball (local side)")
+        with tarfile.open(self.folder_local / "mitim_receive.tar.gz", "r:gz") as tar:
             tar.extractall(path=self.folder_local)
 
         # Remove tarballs
-        print("\t\t- Removing tarball")
+        print("\t\t- Removing tarball (local side)")
         (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
+        print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
         # Check if all files were received
         if check_if_files_received:
-            received = self.check_all_received(
-                check_files_in_folder=check_files_in_folder
-            )
+            received = self.check_all_received(check_files_in_folder=check_files_in_folder)
             if received:
                 print("\t\t- All correct", typeMsg="i")
             else:
                 print("\t* Not all received, trying once again", typeMsg="w")
                 time.sleep(10)
                 _ = self.retrieve(check_if_files_received=False)
-                received = self.check_all_received(
-                    check_files_in_folder=check_files_in_folder
-                )
+                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
         else:
             received = True
 
