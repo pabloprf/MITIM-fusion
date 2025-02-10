@@ -214,7 +214,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "surrogateForTurbExch": False,  # Run turbulent exchange as surrogate?
             "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes
             "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
-            "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching
+            "ImpurityOfInterest": 1,  # Position in ions vector of the impurity to do flux matching (indeces AFTER postprocessing), 1 indicates first ion
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": True,  # If True, using original nZ/ne as scaling factor for GZ
             "fImp_orig": 1.0,
