@@ -149,8 +149,8 @@ class tgyro_model(power_transport):
         cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
         
         add_already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("add_already_evaluated_points", False)
-        if add_already_evaluated_points:
-            already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
+        if add_already_evaluated_points and hasattr(self.powerstate, 'already_evaluated_points'):
+            already_evaluated_points = self.powerstate.already_evaluated_points
         else:
             already_evaluated_points = None
 
@@ -460,7 +460,6 @@ def tglf_scan_trick(
         # Find candidates in history to add to error bar calculations
         if already_evaluated_points is not None:
             for radius_index, x_values in enumerate(scan['xV']):
-                
                 # Find candidates in history that matches for this variable
                 candidates = set(find_in_history(history, radius_index, vari, x_values[0], x_values[-1]))
         
@@ -518,7 +517,7 @@ def tglf_scan_trick(
 
     def calculate_mean_std(Q):
         # Assumes Q is [radii][points], with [radii][0] being the baseline
-        
+
         Qm, Qstd = [], []
         for q in Q:
             q_mean = q.mean()

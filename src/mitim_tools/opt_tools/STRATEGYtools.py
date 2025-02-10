@@ -578,11 +578,14 @@ class MITIM_BO:
                 "name_objectives": self.optimization_object.name_objectives,
                 "name_transformed_ofs": self.optimization_object.name_transformed_ofs,
                 "outputs": self.outputs,
+                "already_evaluated_points" : {}
             }
 
             self.optimization_results = BOgraphics.optimization_results(file=res_file)
 
             self.optimization_results.initialize(self)
+
+            self.optimization_object.already_evaluated_points = self.stepSettings['already_evaluated_points']
 
     def run(self):
         """
@@ -695,6 +698,8 @@ class MITIM_BO:
                     )
 
                     self.cold_start = True
+                else: 
+                    self.optimization_object.already_evaluated_points = current_step.stepSettings['already_evaluated_points']
 
             if not self.cold_start:
                 # Read next from Tabular
@@ -894,11 +899,9 @@ class MITIM_BO:
 
             step = aux.steps[iteration]
             print(f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",typeMsg="i")
-        
         except FileNotFoundError:
             print(f"\t- State file {IOtools.clipstr(stateFile)} not found", typeMsg="w")
             step, aux = None, None
-        
         except IndexError:
             print(f"\t- State file {IOtools.clipstr(stateFile)} does not have all iterations required to continue from it", typeMsg="w")
             step = None

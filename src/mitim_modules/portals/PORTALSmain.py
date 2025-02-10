@@ -225,7 +225,6 @@ class portals(STRATEGYtools.opt_evaluator):
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
             "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
             "add_already_evaluated_points": False,  # Use previous history of TGLF scans to evaluate error for the next generations
-            "already_evaluated_points": {},  # If add_already_evaluated_points is True, this is the dictionary to use for the history
         }
 
         for key in self.PORTALSparameters.keys():
@@ -599,6 +598,9 @@ def runModelEvaluator(
 
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
+    
+    # We want to make a pointer to already_evaluated_points so that it is mutable and gets saved
+    powerstate.already_evaluated_points = self.already_evaluated_points
 
     # ---------------------------------------------------------------------------------------------------
     # Prep run
@@ -628,10 +630,6 @@ def runModelEvaluator(
 
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
     powerstate.TransportOptions["ModelOptions"]["cold_start"] = cold_start
-
-    # We want to keep the already evaluated points mutable so we overwrite the copy in the powerstate in this case
-    powerstate.TransportOptions["ModelOptions"]['extra_params']['PORTALSparameters']['already_evaluated_points'] = \
-          self.powerstate.TransportOptions["ModelOptions"]['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)
