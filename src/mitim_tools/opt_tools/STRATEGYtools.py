@@ -496,8 +496,12 @@ class MITIM_BO:
 
             self.bounds, self.boundsInitialization = OrderedDict(), []
             for cont, i in enumerate(self.optimization_options["problem_options"]["dvs"]):
-                self.bounds[i] = np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]])
-                self.boundsInitialization.append(np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]]))
+                self.bounds[i] = np.array(
+                    [self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]]
+                )
+                self.boundsInitialization.append(
+                    np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]])
+                )
 
             self.boundsInitialization = np.transpose(self.boundsInitialization)
 
@@ -528,7 +532,10 @@ class MITIM_BO:
                 and ((self.folderExecution / "Execution" / "Evaluation.1").exists())
                 and (self.cold_start)
             ):
-                print("\t--> Random initialization has been requested",typeMsg="q" if self.askQuestions else "qa")
+                print(
+                    "\t--> Random initialization has been requested",
+                    typeMsg="q" if self.askQuestions else "qa",
+                )
 
             self.type_initialization = self.optimization_options["initialization_options"]["type_initialization"]
             self.initial_training = self.optimization_options["initialization_options"]["initial_training"]
@@ -540,9 +547,14 @@ class MITIM_BO:
 			"""
 
             if (self.type_initialization == 3) and (self.cold_start):
-                print("\t* Initialization based on Tabular, yet cold_start has been requested. I am NOT removing the previous optimization_data",typeMsg="w")
+                print(
+                    "\t* Initialization based on Tabular, yet cold_start has been requested. I am NOT removing the previous optimization_data",
+                    typeMsg="w",
+                )
                 if self.askQuestions:
-                    flagger = print("\t\t* Are you sure this was your intention?", typeMsg="q")
+                    flagger = print(
+                        "\t\t* Are you sure this was your intention?", typeMsg="q"
+                    )
                     if not flagger:
                         embed()
                 forceNewTabulars = False
@@ -578,11 +590,14 @@ class MITIM_BO:
                 "name_objectives": self.optimization_object.name_objectives,
                 "name_transformed_ofs": self.optimization_object.name_transformed_ofs,
                 "outputs": self.outputs,
+                "already_evaluated_points" : {}
             }
 
             self.optimization_results = BOgraphics.optimization_results(file=res_file)
 
             self.optimization_results.initialize(self)
+
+            self.optimization_object.already_evaluated_points = self.stepSettings['already_evaluated_points']
 
     def run(self):
         """
@@ -695,6 +710,8 @@ class MITIM_BO:
                     )
 
                     self.cold_start = True
+                else: 
+                    self.optimization_object.already_evaluated_points = current_step.stepSettings['already_evaluated_points']
 
             if not self.cold_start:
                 # Read next from Tabular
@@ -866,9 +883,13 @@ class MITIM_BO:
 
         stateFile_tmp.replace(stateFile)  # This way I reduce the risk of getting a mid-creation file
 
-        print(f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the MITIM_BO class")
+        print(
+            f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the MITIM_BO class"
+        )
 
-    def read(self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False):
+    def read(
+        self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False
+    ):
         iteration = iteration or self.currentIteration
 
         print("- Reading pickle file with optimization_object class")
@@ -878,27 +899,30 @@ class MITIM_BO:
             # If I don't create an Individual attribute I cannot unpickle GA information
             try:
                 import deap
+
                 deap.creator.create("Individual", array.array)
             except:
                 pass
-
             with open(stateFile, "rb") as f:
                 try:
                     aux = pickle_dill.load(f)
                 except:
-                    print("Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler...")
+                    print(
+                        "Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler..."
+                    )
                     f.seek(0)
                     aux = CPU_Unpickler(f).load()
 
             aux = self.prepare_for_read_MITIMBO(aux)
 
             step = aux.steps[iteration]
-            print(f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",typeMsg="i")
-        
+            print(
+                f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",
+                typeMsg="i",
+            )
         except FileNotFoundError:
             print(f"\t- State file {IOtools.clipstr(stateFile)} not found", typeMsg="w")
             step, aux = None, None
-        
         except IndexError:
             print(f"\t- State file {IOtools.clipstr(stateFile)} does not have all iterations required to continue from it", typeMsg="w")
             step = None
@@ -1967,3 +1991,4 @@ class CPU_Unpickler(pickle_dill.Unpickler):
             return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
         else:
             return super().find_class(module, name)
+

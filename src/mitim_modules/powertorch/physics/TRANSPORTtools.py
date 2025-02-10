@@ -2,6 +2,7 @@ import copy
 import shutil
 import torch
 import numpy as np
+from copy import deepcopy
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_modules.portals.utils import PORTALScgyro
@@ -149,8 +150,8 @@ class tgyro_model(power_transport):
         cores_per_tglf_instance = ModelOptions['extra_params']['PORTALSparameters'].get("cores_per_tglf_instance", 1)
         
         add_already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("add_already_evaluated_points", False)
-        if add_already_evaluated_points:
-            already_evaluated_points = ModelOptions['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
+        if add_already_evaluated_points and hasattr(self.powerstate, 'already_evaluated_points'):
+            already_evaluated_points = self.powerstate.already_evaluated_points
         else:
             already_evaluated_points = None
 
@@ -407,7 +408,7 @@ def tglf_scan_trick(
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
                         "minutes": 1,
-                                 },
+                                },
                     extra_name = f'{extra_name}_{name}',
                     )
 
@@ -442,8 +443,9 @@ def tglf_scan_trick(
                 candidates.append(i)
         return candidates
 
+
     cont = 0
-    history = copy.deepcopy(already_evaluated_points)
+    history = deepcopy(already_evaluated_points)
     candidates_sets = {}
     for vari in variables_to_scan:
         scan = tglf.scans[f'{name}_{vari}']
@@ -457,17 +459,14 @@ def tglf_scan_trick(
 
         cont += jump
 
-        # Find candidates in history to add to error bar calculations
         if already_evaluated_points is not None:
             for radius_index, x_values in enumerate(scan['xV']):
-                
-                # Find candidates in history that matches for this variable
+                # Find candidates in history to add to error bar calculations
                 candidates = set(find_in_history(history, radius_index, vari, x_values[0], x_values[-1]))
         
-                if (radius_index not in candidates_sets) or (candidates_sets[radius_index] is None):
+                if radius_index not in candidates_sets or candidates_sets[radius_index] is None:
                     candidates_sets[radius_index] = candidates
                 else:
-                    # Ensures that all variables meet the criteria
                     candidates_sets[radius_index].intersection_update(candidates)
 
                 # Add calulated points to history
@@ -480,9 +479,10 @@ def tglf_scan_trick(
                 ):
                     add_to_history(radius_index, vari, x, qe, qi, ge, gi)
 
+
     for radius_index, candidates in candidates_sets.items():
         if candidates:
-            print(f"\t- Found {len(candidates)} candidates for radius #{radius_index} in TGLF scan trick history")
+            print(f"\t- Found {len(candidates)} candidates for radius {radius_index} in TGLF scan trick history")
 
             aux_set = {
                 history[radius_index][vari][candidate]
@@ -498,14 +498,14 @@ def tglf_scan_trick(
             GZ[radius_index] = np.append(GZ[radius_index], found_GZ)
 
         else:
-            print(f"\t- Found no candidates for radius #{radius_index} in TGLF scan trick history")
+            print(f"\t- No candidates found for radius {radius_index} in TGLF scan trick history")
 
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
-    Qe_err = (np.array([q[0] for q in Qe]) - Qe_tgyro) / Qe_tgyro
-    Qi_err = (np.array([q[0] for q in Qi]) - Qi_tgyro) / Qi_tgyro
-    Ge_err = (np.array([q[0] for q in Ge]) - Ge_tgyro) / Ge_tgyro
-    GZ_err = (np.array([q[0] for q in GZ]) - GZ_tgyro) / GZ_tgyro
+    Qe_err = np.array([np.abs((q[0] - Qe_tgyro) / Qe_tgyro) for q in Qe])
+    Qi_err = np.array([np.abs((q[0] - Qi_tgyro) / Qi_tgyro) for q in Qi])
+    Ge_err = np.array([np.abs((q[0] - Ge_tgyro) / Ge_tgyro) for q in Ge])
+    GZ_err = np.array([np.abs((q[0] - GZ_tgyro) / GZ_tgyro) for q in GZ])
 
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
@@ -517,9 +517,10 @@ def tglf_scan_trick(
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
     def calculate_mean_std(Q):
-        # Assumes Q is [radii][points], with [radii][0] being the baseline
+        # Assumes Q is [radii, points], with [radii, 0] being the baseline
+        Qm = []
+        Qstd = []
         
-        Qm, Qstd = [], []
         for q in Q:
             q_mean = q.mean()
             q_std = q.std()
@@ -913,3 +914,4 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
     cdf = FolderEvaluation / f"{subname}_ev{name}.CDF"
 
     return cdf
+

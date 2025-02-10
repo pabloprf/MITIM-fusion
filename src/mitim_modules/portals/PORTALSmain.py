@@ -35,7 +35,7 @@ Reading analysis for PORTALS has more options than standard:
 	**************************************
 		3:  1 + PORTALSplot metrics  (only works if optimization_extra is provided or Execution exists)
 		4:  3 + PORTALSplot expected (only works if optimization_extra is provided or Execution exists)
-		5:  2 + 4                    (only works if optimization_extra is provided or Execution exists)
+		5:  2 + 4                  (only works if optimization_extra is provided or Execution exists)
 
 		>2 will also plot profiles & gradients comparison (original, initial, best)
 """
@@ -225,7 +225,6 @@ class portals(STRATEGYtools.opt_evaluator):
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
             "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
             "add_already_evaluated_points": False,  # Use previous history of TGLF scans to evaluate error for the next generations
-            "already_evaluated_points": {},  # If add_already_evaluated_points is True, this is the dictionary to use for the history
         }
 
         for key in self.PORTALSparameters.keys():
@@ -365,7 +364,9 @@ class portals(STRATEGYtools.opt_evaluator):
 
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends
-        FolderEvaluation, numPORTALS, dictDVs, dictOFs = self.read(paramsfile, resultsfile)
+        FolderEvaluation, numPORTALS, dictDVs, dictOFs = self.read(
+            paramsfile, resultsfile
+        )
 
         a, b = IOtools.reducePathLevel(self.folder, level=1)
         name = f"portals_{b}_ev{numPORTALS}"  # e.g. portals_jet37_ev0
@@ -468,26 +469,45 @@ class portals(STRATEGYtools.opt_evaluator):
 
         if self.PORTALSparameters["fineTargetsResolution"] is not None:
             if self.PORTALSparameters["TargetCalc"] != "powerstate":
-                print("\t- Requested fineTargetsResolution, so running powerstate target calculations",typeMsg="w")
+                print(
+                    "\t- Requested fineTargetsResolution, so running powerstate target calculations",
+                    typeMsg="w",
+                )
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
         if not issubclass(self.PORTALSparameters["transport_evaluator"], TRANSPORTtools.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
-            print("\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",typeMsg="w")
+            print(
+                "\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",
+                typeMsg="w",
+            )
             self.PORTALSparameters["TargetCalc"] = "powerstate"
 
-        if ("InputType" not in self.MODELparameters["Physics_options"]) or self.MODELparameters["Physics_options"]["InputType"] != 1:
-            print("\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",typeMsg="i")
+        if (
+            "InputType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["InputType"] != 1:
+            print(
+                "\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",
+                typeMsg="i",
+            )
             self.MODELparameters["Physics_options"]["InputType"] = 1
 
-        if ("GradientsType" not in self.MODELparameters["Physics_options"]) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
-            print("\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",typeMsg="i")
+        if (
+            "GradientsType" not in self.MODELparameters["Physics_options"]
+        ) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
+            print(
+                "\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",
+                typeMsg="i",
+            )
             self.MODELparameters["Physics_options"]["GradientsType"] = 0
 
         if 'TargetType' in self.MODELparameters["Physics_options"]:
             raise Exception("\t- TargetType is not used in PORTALS anymore")
 
         if self.PORTALSparameters["TargetCalc"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
-            print("\t- Requested custom modification of postprocessing function but targets from tgyro... are you sure?",typeMsg="q")
+            print(
+                "\t- Requested custom modification of postprocessing function but targets from tgyro... are you sure?",
+                typeMsg="q",
+            )
 
         key_rhos = "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
 
@@ -599,6 +619,9 @@ def runModelEvaluator(
 
     # Copy powerstate (that was initialized) but will be different per call to the evaluator
     powerstate = copy.deepcopy(self.powerstate)
+    
+    # We want to make a pointer to already_evaluated_points so that it is mutable and gets saved
+    powerstate.already_evaluated_points = self.already_evaluated_points
 
     # ---------------------------------------------------------------------------------------------------
     # Prep run
@@ -611,7 +634,9 @@ def runModelEvaluator(
     # Prepare evaluating vector X
     # ---------------------------------------------------------------------------------------------------
 
-    X = torch.zeros(len(powerstate.ProfilesPredicted) * (powerstate.plasma["rho"].shape[1] - 1)).to(powerstate.dfT)
+    X = torch.zeros(
+        len(powerstate.ProfilesPredicted) * (powerstate.plasma["rho"].shape[1] - 1)
+    ).to(powerstate.dfT)
     cont = 0
     for ikey in powerstate.ProfilesPredicted:
         for ix in range(powerstate.plasma["rho"].shape[1] - 1):
@@ -629,12 +654,10 @@ def runModelEvaluator(
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
     powerstate.TransportOptions["ModelOptions"]["cold_start"] = cold_start
 
-    # We want to keep the already evaluated points mutable so we overwrite the copy in the powerstate in this case
-    powerstate.TransportOptions["ModelOptions"]['extra_params']['PORTALSparameters']['already_evaluated_points'] = \
-          self.powerstate.TransportOptions["ModelOptions"]['extra_params']['PORTALSparameters'].get("already_evaluated_points", {})
-
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
-    powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)
+    powerstate.calculate(
+        X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS
+    )
 
     # ---------------------------------------------------------------------------------------------------
     # Produce dictOFs
@@ -747,3 +770,4 @@ def analyze_results(
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.mitim_model.optimization_object
+
