@@ -288,6 +288,11 @@ class PROFILES_GACODE:
             if self.profiles[title].shape[1] == 1:
                 self.profiles[title] = self.profiles[title][:, 0]
 
+        # Accept omega0
+        if ("w0(rad/s)" not in self.profiles) and ("omega0(rad/s)" in self.profiles):
+            self.profiles["w0(rad/s)"] = self.profiles["omega0(rad/s)"]
+            del self.profiles["omega0(rad/s)"]
+
 
     def produce_shape_lists(self):
         self.shape_cos = [
