@@ -40,10 +40,11 @@ class fun_optimization:
         if adjust_bounds and (xGuesses is not None):
             
             for i in range(self.bounds_mod.shape[-1]):
-                delta = (self.bounds_mod[1, i] - self.bounds_mod[0, i])*1E-6 # This avoids problems with the case in which the guess is exactly at bounds
+                delta = (self.bounds_mod[1, i] - self.bounds_mod[0, i]) * 1E-6 # This avoids problems with the case in which the guess is exactly at bounds
             
                 self.bounds_mod[0, i] = torch.min(self.bounds_mod[0, i], xGuesses[:, i].min() - delta)
                 self.bounds_mod[1, i] = torch.max(self.bounds_mod[1, i], xGuesses[:, i].max() + delta)
+                
 
     def changeBounds(
         self, it_number, position_best_so_far, forceAllPointsInBounds=False
@@ -333,9 +334,7 @@ def pointsOperation_concat(
     y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2)).to(x_opt2)
     z_opt = torch.cat((z_opt_previous, z_opt2)).to(x_opt2)
 
-    print(
-        f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima"
-    )
+    print(f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima")
 
     return x_opt, y_opt_residual, z_opt
 
@@ -362,9 +361,7 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
     )
 
     # Normalizations now occur inside model, extract such function ************************
-    normalizeVar = botorch.models.transforms.input.Normalize(
-        x_opt.shape[-1], bounds=None
-    )
+    normalizeVar = botorch.models.transforms.input.Normalize(x_opt.shape[-1], bounds=None)
     denormalizeVar = normalizeVar._untransform
     # *************************************************************************************
 
@@ -372,12 +369,8 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
         x_opt_Norm = normalizeVar(x_opt)
 
         # Niches
-        _, z_opt = MATHtools.applyNiche(
-            x_opt_Norm.cpu(), z_opt.unsqueeze(1).cpu(), tol=ToleranceNiche
-        )
-        x_opt_Norm, y_opt_residual = MATHtools.applyNiche(
-            x_opt_Norm.cpu(), y_opt_residual.cpu(), tol=ToleranceNiche
-        )
+        _, z_opt = MATHtools.applyNiche(x_opt_Norm.cpu(), z_opt.unsqueeze(1).cpu(), tol=ToleranceNiche)
+        x_opt_Norm, y_opt_residual = MATHtools.applyNiche(x_opt_Norm.cpu(), y_opt_residual.cpu(), tol=ToleranceNiche)
         # ------
         x_opt_Norm, y_opt_residual, z_opt = (
             x_opt_Norm.to(fun.stepSettings["dfT"]),
@@ -390,9 +383,7 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
         x_opt = denormalizeVar(x_opt_Norm)
 
         if removedNum > 0:
-            print(
-                f"\t- Removed {removedNum} points because I applied a niching tolerance in relative [0,1] bounds of {ToleranceNiche*100:.1f}%"
-            )
+            print(f"\t- Removed {removedNum} points because I applied a niching tolerance in relative [0,1] bounds of {ToleranceNiche*100:.1f}%")
 
     return x_opt, y_opt_residual, z_opt
 
@@ -546,9 +537,7 @@ def pointsOperation_random(
     randomSeed = seed + it_number
 
     if x_opt.nelement() == 0:
-        print(
-            f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none"
-        )
+        print(f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none")
         draw_bounds = fun.bounds
         x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed)
         y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach()
@@ -893,7 +882,7 @@ def plotInfo(
     return it_start, xypair
 
 
-def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0):
+def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
     """
     x_opt is unnormalized
     Output is unnormalized
@@ -906,10 +895,6 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
             2 - Random
     """
 
-    # ~~~~~~~~~ Guessed Population (from previous GA) ~~~~~~~~~
-
-    x_opt = previousGA["Paretos_x_unnormalized"] if previousGA is not None and "Paretos_x_unnormalized" in previousGA else []
-
     # --------------------------------------------------
     # Add to the previous optimum, all the trained points
     # --------------------------------------------------
@@ -919,12 +904,9 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     z_train = torch.ones(x_train.shape[0]).to(x_train)
 
     # Concatenate together
-    if len(x_opt) == 0:
-        x_opt = torch.Tensor([]).to(x_train)
-        z_opt = torch.Tensor([]).to(x_train)
-    if type(x_opt) == np.ndarray:
-        x_opt = torch.from_numpy(x_opt).to(fun.stepSettings["dfT"])
-        z_opt = torch.zeros(x_opt.shape[0]).to(fun.stepSettings["dfT"])
+    x_opt = torch.Tensor([]).to(x_train)
+    z_opt = torch.Tensor([]).to(x_train)
+
     xGuesses = torch.cat((x_opt, x_train), axis=0).to(fun.stepSettings["dfT"])
     z_opt = torch.cat((z_opt, z_train), axis=0).to(fun.stepSettings["dfT"])
 
@@ -981,6 +963,10 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     # Order by best
     xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(xGuesses, y_opt_residual, z_opt, fun)
 
+    # Apply niche such that the initial points are not so close to each other
+    if niche_tol is not None:
+        xGuesses, y_opt_residual, z_opt = pointsOperation_niche(xGuesses, y_opt_residual, z_opt, fun, ToleranceNiche=niche_tol)
+
     return xGuesses, y_opt_residual, z_opt
 
 
@@ -1002,12 +988,8 @@ def summarizeSituation(previous_x, fun, new_x=None, printYN=True):
     # Print Info
 
     if printYN:
-        print(
-            f"\t- Previous iteration had a best minimization-based objective (residue) of {best_y:.4e} (note that real trained value is {best_yReal:.4e})"
-        )
-        print(
-            f"\t- Previous iteration had a best maximization-based acquisition of {best_y_acq:.4e} (remember it may be MC, some randomness)"
-        )
+        print(f"\t- Previous iteration had a best minimization-based objective (residue) of {best_y:.4e} (note that real trained value is {best_yReal:.4e})")
+        print(f"\t- Previous iteration had a best maximization-based acquisition of {best_y_acq:.4e} (remember it may be MC, some randomness)")
 
     # ------------------------------------------------------------------------
     # New iteration

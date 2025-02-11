@@ -98,8 +98,12 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     xGuesses = copy.deepcopy(fun.xGuesses)
 
-    # Limit the guesses the the number of cases I want to run from
-    xGuesses = xGuesses[:num_restarts, :] if xGuesses.shape[0] > num_restarts else xGuesses
+    num_random = int(np.ceil(num_restarts/2)) # Half of the restarts will be random, the other half will be the best guesses
+
+    # Take the best num_restarts-num_random points, then add random points (to avoid local minima and getting stuck as much as possible)
+    xGuesses = xGuesses[:num_restarts-num_random, :] if xGuesses.shape[0] > num_restarts-num_random else xGuesses
+    random_choice = num_random+np.random.choice(fun.xGuesses.shape[0]-num_random, num_random, replace=False)
+    xGuesses = torch.cat((xGuesses, fun.xGuesses[random_choice, :]), axis=0) 
 
     # Untransform guesses
     xGuesses = bound_transform.untransform(xGuesses)

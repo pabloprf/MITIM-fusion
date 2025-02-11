@@ -10,7 +10,7 @@ Script to grab the GP object from a full run, at a given step, for a given outpu
 This way, you can try plot, re-ft, find best parameters, etc.
 It calculates speed, and generates profile file to look at bottlenecks
 e.g.
-	evaluate_model.py --folder run1/ --output QiTurb_5 --input aLti_5
+	evaluate_model.py --folder run1/ --output QiTurb_5 --input aLti_5 --around -3
 	evaluate_model.py --folder run1/ --step -1 --output QiTurb_5 --file figure.eps
 """
 
@@ -21,10 +21,11 @@ parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--step", type=int, required=False, default=-1)
 parser.add_argument("--output", required=False, type=str, default="QiTurb_1")
 parser.add_argument("--input", required=False, type=str, default="aLti_1")
-parser.add_argument(
-    "--file", type=str, required=False, default=None
-)  # File to save .eps
+parser.add_argument("--around", type=int, required=False, default=-1)
+parser.add_argument("--xrange", type=float, required=False, default=0.5)
+parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
 parser.add_argument("--plot", type=bool, required=False, default=True)
+
 args = parser.parse_args()
 
 folderWork = IOtools.expandPath(args.folder)
@@ -33,6 +34,8 @@ output_label = args.output
 input_label = args.input
 file = args.file
 plotYN = args.plot
+around = args.around
+xrange = args.xrange
 
 # ***************** Read
 
@@ -41,9 +44,7 @@ opt_fun.read_optimization_results(analysis_level=4)
 strat = opt_fun.mitim_model
 step = strat.steps[step_num]
 gpA = step.GP["combined_model"]
-gp = step.GP["individual_models"][
-    np.where(np.array(opt_fun.mitim_model.outputs) == output_label)[0][0]
-]
+gp = step.GP["individual_models"][np.where(np.array(opt_fun.mitim_model.outputs) == output_label)[0][0]]
 
 # ***************** Plot
 
@@ -52,7 +53,7 @@ if plotYN:
     if file is not None:
         plt.savefig(file, transparent=True, dpi=300)
 
-    gp.localBehavior_scan(gpA.train_X[-1, :], dimension_label=input_label)
+    gp.localBehavior_scan(gpA.train_X[around, :], dimension_label=input_label,xrange=xrange)
 
     # gp.plot(plotFundamental=False)
     # gp.plotTraining()

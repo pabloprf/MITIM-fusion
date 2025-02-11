@@ -247,9 +247,7 @@ def applyNiche(x, y=None, tol=1e-3):
             yN = np.delete(yN, ident, 0)
 
     if x.shape[0] < x_orig.shape[0]:
-        print(
-            f"\t\t\t\t- Niche correction of {tol} has been applied so {x_orig.shape[0]-x.shape[0]} members have been removed, remaining {x.shape[0]}"
-        )
+        print(f"\t\t\t\t- Niche correction of {tol} has been applied so {x_orig.shape[0]-x.shape[0]} members have been removed, remaining {x.shape[0]}")
 
     return x, yN
 
