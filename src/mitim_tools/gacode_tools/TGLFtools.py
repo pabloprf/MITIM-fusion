@@ -2463,6 +2463,8 @@ class TGLF:
         self.scans[label]["unnormalization_successful"] = True
         self.scans[label]["results_tags"] = []
 
+        self.positionIon_scan = positionIon
+
         # ----
         x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = (
             [],
@@ -2479,7 +2481,7 @@ class TGLF:
             [],
             [],
         )
-        Qe_gb, Qi_gb, Ge_gb = [], [], []
+        Qe_gb, Qi_gb, Ge_gb, Gi_gb = [], [], [], []
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
@@ -2507,18 +2509,17 @@ class TGLF:
                     [],
                     [],
                 )
-                Qe_gb0, Qi_gb0, Ge_gb0 = [], [], []
+                Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0 = [], [], [], []
                 etalow_g0, etalow_f0, etalow_k0 = [], [], []
                 for irho_cont in range(len(self.rhos)):
-                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][
-                        0
-                    ]
+                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
 
                     # Unnormalized
                     x0.append(self.results[ikey]["parsed"][irho][variable])
                     Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
                     Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
                     Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
+                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 1])
                     ky0.append(self.results[ikey]["TGLFout"][irho].ky)
                     g0.append(self.results[ikey]["TGLFout"][irho].g)
                     f0.append(self.results[ikey]["TGLFout"][irho].f)
@@ -2561,7 +2562,7 @@ class TGLF:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[positionIon - 1]) 
+                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 1]) 
                     else:
                         self.scans[label]["unnormalization_successful"] = False
 
@@ -2572,6 +2573,7 @@ class TGLF:
                 Qe_gb.append(Qe_gb0)
                 Qi_gb.append(Qi_gb0)
                 Ge_gb.append(Ge_gb0)
+                Gi_gb.append(Gi_gb0)
                 Gi.append(Gi0)
                 ky.append(ky0)
                 g.append(g0)
@@ -2594,6 +2596,7 @@ class TGLF:
         self.scans[label]["Qe_gb"] = np.atleast_2d(np.transpose(Qe_gb))
         self.scans[label]["Qi_gb"] = np.atleast_2d(np.transpose(Qi_gb))
         self.scans[label]["Ge_gb"] = np.atleast_2d(np.transpose(Ge_gb))
+        self.scans[label]["Gi_gb"] = np.atleast_2d(np.transpose(Gi_gb))
         self.scans[label]["Qe"] = np.atleast_2d(np.transpose(Qe))
         self.scans[label]["Qi"] = np.atleast_2d(np.transpose(Qi))
         self.scans[label]["Ge"] = np.atleast_2d(np.transpose(Ge))
@@ -2665,15 +2668,17 @@ class TGLF:
         colorsLines = GRAPHICStools.listColors()[5:]
 
         if unnormalization_successful:
-            grid = plt.GridSpec(1, 3, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
             ax1_00 = fig1.add_subplot(grid[0, 0])
             ax1_10 = fig1.add_subplot(grid[0, 1], sharex=ax1_00)
             ax1_20 = fig1.add_subplot(grid[0, 2], sharex=ax1_00)
+            ax1_30 = fig1.add_subplot(grid[0, 3], sharex=ax1_00)
 
-        grid = plt.GridSpec(1, 3, hspace=0.3, wspace=0.3)
+        grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
         ax1_00e = fig1e.add_subplot(grid[0, 0])
         ax1_10e = fig1e.add_subplot(grid[0, 1], sharex=ax1_00e)
         ax1_20e = fig1e.add_subplot(grid[0, 2], sharex=ax1_00e)
+        ax1_30e = fig1e.add_subplot(grid[0, 3], sharex=ax1_00e)
 
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax2_00 = fig2.add_subplot(grid[0, 0])
@@ -2716,15 +2721,17 @@ class TGLF:
                 xbase = x[:, positionBase : positionBase + 1]
                 x = (x - xbase) / xbase * 100.0
 
-            Qe, Qi, Ge = (
+            Qe, Qi, Ge, Gi = (
                 self.scans[label]["Qe"],
                 self.scans[label]["Qi"],
                 self.scans[label]["Ge"],
+                self.scans[label]["Gi"],
             )
-            Qe_gb, Qi_gb, Ge_gb = (
+            Qe_gb, Qi_gb, Ge_gb, Gi_gb = (
                 self.scans[label]["Qe_gb"],
                 self.scans[label]["Qi_gb"],
                 self.scans[label]["Ge_gb"],
+                self.scans[label]["Gi_gb"],
             )
             eta1, eta2 = self.scans[label]["eta1"], self.scans[label]["eta2"]
             itg, tem, etg = (
@@ -2906,6 +2913,37 @@ class TGLF:
                     yy = exp_y[ix]
                     ax.axhline(y=yy, ls="--", c=scan_colors[0], lw=1.0)
 
+                if unnormalization_successful:
+                    ax = ax1_30
+                    ax.plot(
+                        x[irho],
+                        Gi[irho],
+                        "-",
+                        c=colorLine,
+                        lw=1.0,
+                        label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$",
+                    )
+                    ax.scatter(x[irho], Gi[irho], marker="o", facecolor=colorsC, s=ms)
+                    if positionBase is not None:
+                        ax.axvline(
+                            x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0
+                        )
+
+                ax = ax1_30e
+                ax.plot(
+                    x[irho],
+                    Gi_gb[irho],
+                    "-",
+                    c=colorLine,
+                    lw=1.0,
+                    label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$",
+                )
+                ax.scatter(x[irho], Gi_gb[irho], marker="o", facecolor=colorsC, s=ms)
+                if positionBase is not None:
+                    ax.axvline(
+                        x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0
+                    )
+
                 axs = [ax2_00, ax2_10]
 
                 for ivar in range(ky.shape[1]):
@@ -3041,6 +3079,14 @@ class TGLF:
             ax.set_title("Electron particle flux")
             GRAPHICStools.addDenseAxis(ax)
 
+            ax = ax1_30
+            ax.set_xlabel(variableLabel)
+            ax.set_ylabel("$\\Gamma_i$ ($1E20/s/m^2$)")
+            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.axhline(y=0, ls="-.", c="k", lw=1)
+            ax.set_title(f"Ion particle flux (ION_{self.positionIon_scan})")
+            GRAPHICStools.addDenseAxis(ax)
+
         ax = ax1_00e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$Q_e$ (GB)")
@@ -3063,6 +3109,14 @@ class TGLF:
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title("Electron particle flux")
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = ax1_30e
+        ax.set_xlabel(variableLabel)
+        ax.set_ylabel("$\\Gamma_i$ (GB)")
+        # ax.legend(loc='best')
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.set_title(f"Ion #{self.positionIon_scan} particle flux")
         GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_11
@@ -3141,7 +3195,7 @@ class TGLF:
         varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
-        add_baseline_to = 'all', # 'all' or 'first' or 'none'
+        add_baseline_to = 'none', # 'all' or 'first' or 'none'
         add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         positionIon=2,
