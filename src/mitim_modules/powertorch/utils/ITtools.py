@@ -6,7 +6,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
-def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
+def fluxMatchRoot(self, algorithm_options={},jac_ad=True, bounds=None):
     
     dimX = (self.plasma["rho"].shape[-1]-1)*len(self.ProfilesPredicted)
 
@@ -14,9 +14,13 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
 
     folder = algorithm_options.get("folder", '~/scratch/')
     
+    if bounds is not None:
+        bound_transform = optim.logistic(l=bounds[0, :], u=bounds[1, :])
+
+
     cont = 0
     if algorithm_options.get('storeValues',True):
-        def evaluator(x):
+        def evaluator(x, bound_transform=bound_transform):
             """
             Notes:
                 - x comes extended, batch*dim
@@ -25,6 +29,9 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
             nonlocal cont
 
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+            # Transform from infinite bounds
+            X = bound_transform.transform(X)
 
             # Evaluate source term
             _, _, y, _ = self.calculate(X,folder=f'{folder}/ev{cont}', nameRun=f"ev{cont}", evaluation_number=cont)
@@ -39,7 +46,7 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
 
             return y
     else:
-        def evaluator(x):
+        def evaluator(x, bound_transform=bound_transform):
             """
             Notes:
                 - x comes extended, batch*dim
@@ -48,6 +55,9 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
             nonlocal cont
 
             X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+            # Transform from infinite bounds
+            X = bound_transform.transform(X)
 
             # Evaluate source term
             _, _, y, _ = self.calculate(X,folder=f'{folder}/ev{cont}', nameRun=f"ev{cont}", evaluation_number=cont)
@@ -64,6 +74,8 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
     for c, i in enumerate(self.ProfilesPredicted):
         x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
+    x0 = bound_transform.untransform(x0)
+
     # **** Optimize ****
     _ = optim.powell(evaluator, x0, None, algorithm_options=algorithm_options,jac_ad=jac_ad)
     # ******************
@@ -73,6 +85,8 @@ def fluxMatchRoot(self, algorithm_options={},jac_ad=True):
         Yopt = torch.stack(Yopt)
     else:
         Xopt, Yopt = torch.Tensor(), torch.Tensor()
+
+    #Xopt = bound_transform.untransform(Xopt)
 
     return Xopt, Yopt
 

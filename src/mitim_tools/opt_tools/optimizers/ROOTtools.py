@@ -30,7 +30,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     bounds = fun.bounds_mod
 
     # transform from unbounded to bounded
-    bound_transform = logistic(l=bounds[0, :], u=bounds[1, :])
+    bound_transform = optim.logistic(l=bounds[0, :], u=bounds[1, :])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~ Define evaluator
@@ -196,22 +196,3 @@ def fixDimensions_ROOT(x, y):
         y = yn
 
     return y
-
-
-class logistic:
-    """
-    To transform from bounds to unbound
-    """
-
-    def __init__(self, l=0.0, u=1.0, k=0.5, x0=0.0):
-        self.l, self.u, self.k, self.x0 = l, u, k, x0
-
-    def transform(self, x):
-        # return self.l + (self.u-self.l)*(1/(1+torch.exp(-self.k*(x-self.x0))))
-        # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.l + 0.5 * (torch.tanh(self.k * (x - self.x0)) + 1) * (self.u - self.l)
-
-    def untransform(self, y):
-        # return self.x0-1/self.k * torch.log( (self.u-self.l)/(y-self.l)-1 )
-        # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
-        return self.x0 + (1 / self.k) * torch.atanh(2 * (y - self.l) / (self.u - self.l) - 1)

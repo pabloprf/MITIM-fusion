@@ -1802,14 +1802,14 @@ class PROFILES_GACODE:
         """
         if (D,Z1,Z2), pos 1 pos_new 2-> (Z1,D,Z2)
         """
+        
+        if pos_new > pos:
+            pos, pos_new = pos_new, pos
 
         position_to_moveFROM_in_profiles = pos - 1
         position_to_moveTO_in_profiles = pos_new - 1
 
-        print(
-            f'\t\t- Moving ion in position (of ions order, no zero) {pos} ({self.profiles["name"][position_to_moveFROM_in_profiles]}) to {pos_new}',
-            typeMsg="i",
-        )
+        print(f'\t\t- Moving ion in position (of ions order, no zero) {pos} ({self.profiles["name"][position_to_moveFROM_in_profiles]}) to {pos_new}',typeMsg="i",)
 
         self.profiles["nion"] = np.array([f"{int(self.profiles['nion'][0])+1}"])
 

@@ -348,7 +348,8 @@ class powerstate:
         if algorithm == "root":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchRoot(
                 self,
-                algorithm_options=algorithm_options, jac_ad = jac_ad)
+                algorithm_options=algorithm_options, jac_ad = jac_ad,
+                bounds=bounds)
         if algorithm == "simple_relax":
             self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchSimpleRelax(
                 self,
