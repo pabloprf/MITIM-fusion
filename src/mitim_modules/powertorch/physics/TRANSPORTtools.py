@@ -295,7 +295,8 @@ class tgyro_model(power_transport):
                 print("\t\t\t* No, it was not, repating process", typeMsg="i")
 
                 # Remove cgyro_neo folder
-                shutil.rmtree(self.folder / "cgyro_neo")
+                if (self.folder / "cgyro_neo").exists():
+                    shutil.rmtree(self.folder / "cgyro_neo")
 
                 # Copy tglf_neo results
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")

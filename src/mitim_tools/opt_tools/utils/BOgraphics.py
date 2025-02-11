@@ -878,8 +878,9 @@ def retrieveResults(
         try:
             with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
                 mitim_model.dictStore = pickle_dill.load(handle)
-        except:
-            print("Could not load optimization_extra", typeMsg="w")
+        except Exception as e:
+            print("Could not load optimization_extra because:", typeMsg="w")
+            print(e)
             mitim_model.dictStore = None
         # -------------------
 

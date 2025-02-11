@@ -96,14 +96,18 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     # ~~~~~ Guesses
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    print("\t- Preparing starting points for ROOT method")
+
     xGuesses = copy.deepcopy(fun.xGuesses)
 
     num_random = int(np.ceil(num_restarts/2)) # Half of the restarts will be random, the other half will be the best guesses
 
     # Take the best num_restarts-num_random points, then add random points (to avoid local minima and getting stuck as much as possible)
     xGuesses = xGuesses[:num_restarts-num_random, :] if xGuesses.shape[0] > num_restarts-num_random else xGuesses
-    random_choice = num_random+np.random.choice(fun.xGuesses.shape[0]-num_random, num_random, replace=False)
+    random_choice = xGuesses.shape[0]+np.random.choice(fun.xGuesses.shape[0]-xGuesses.shape[0], num_random, replace=False)
     xGuesses = torch.cat((xGuesses, fun.xGuesses[random_choice, :]), axis=0) 
+
+    print(f"\t\t- From training set, taking the best {num_restarts-num_random} points and adding {num_random} random points (ordered positions {random_choice})")
 
     # Untransform guesses
     xGuesses = bound_transform.untransform(xGuesses)
