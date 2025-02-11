@@ -419,14 +419,19 @@ class PORTALSanalyzer:
     # UTILITIES to extract aspects of PORTALS
     # ****************************************************************************
 
-    def extractProfiles(self, evaluation=None):
+    def extractProfiles(self, evaluation=None, modified_profiles=False):
+        '''
+        modified_profiles: if True, it will extract the profiles that supposedly has been modified by the model (e.g. lumping, etc)
+        '''
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
             evaluation = self.ilast
 
+        powerstate = self.mitim_runs[evaluation]["powerstate"]
+
         try:
-            p0 =  self.mitim_runs[evaluation]["powerstate"].profiles
+            p0 =  powerstate.profiles if not modified_profiles else powerstate.model_results.profiles
         except TypeError:
             raise Exception(f"[MITIM] Could not extract profiles from evaluation {evaluation}, are you sure you have the right index?")
 
@@ -468,7 +473,7 @@ class PORTALSanalyzer:
 
         return wrapped_model_portals(models)
 
-    def extractPORTALS(self, evaluation=None, folder=None):
+    def extractPORTALS(self, evaluation=None, folder=None, modified_profiles=False):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -485,7 +490,7 @@ class PORTALSanalyzer:
 
         # Start from the profiles of that step
         fileGACODE = folder / "input.gacode_transferred"
-        p = self.extractProfiles(evaluation=evaluation)
+        p = self.extractProfiles(evaluation=evaluation, modified_profiles=modified_profiles)
         p.writeCurrentStatus(file=fileGACODE)
 
         # New class
@@ -515,7 +520,7 @@ class PORTALSanalyzer:
 
         return portals_fun, fileGACODE, folder
 
-    def extractTGYRO(self, folder=None, cold_start=False, evaluation=0):
+    def extractTGYRO(self, folder=None, cold_start=False, evaluation=0, modified_profiles=False):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -529,7 +534,7 @@ class PORTALSanalyzer:
 
         print(f"> Extracting and preparing TGYRO in {IOtools.clipstr(folder)}")
 
-        profiles = self.extractProfiles(evaluation=evaluation)
+        profiles = self.extractProfiles(evaluation=evaluation, modified_profiles=modified_profiles)
 
         tgyro = TGYROtools.TGYRO()
         tgyro.prep(
@@ -546,7 +551,7 @@ class PORTALSanalyzer:
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
 
-    def extractTGLF(self, folder=None, positions=None, evaluation=None, cold_start=False):
+    def extractTGLF(self, folder=None, positions=None, evaluation=None, cold_start=False, modified_profiles=False):
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -576,12 +581,10 @@ class PORTALSanalyzer:
 
         folder.mkdir(parents=True, exist_ok=True)
 
-        print(
-            f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}"
-        )
+        print(f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}")
 
         inputgacode = folder / f"input.gacode.start"
-        p = self.extractProfiles(evaluation=evaluation)
+        p = self.extractProfiles(evaluation=evaluation,modified_profiles=modified_profiles)
         p.writeCurrentStatus(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)

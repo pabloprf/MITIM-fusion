@@ -26,6 +26,7 @@ parser.add_argument("--var", type=float, required=False, default=0.05)  # Variat
 parser.add_argument("--num", type=int, required=False, default=10)
 parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
 parser.add_argument("--drives", required=False, default=False, action="store_true")
+parser.add_argument("--ion", type=int, required=False, default=2)
 
 args = parser.parse_args()
 folder = IOtools.expandPath(args.folder)
@@ -37,11 +38,12 @@ var = args.var
 cold_start = args.cold_start
 drives = args.drives
 num = args.num
+ion = args.ion
 
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
 
 if not drives:
     varUpDown = np.linspace(1.0 - var, 1.0 + var, num)
@@ -58,7 +60,7 @@ if not drives:
             runWaveForms=wf,
         )
 
-        tglf.readScan(label=f"scan_{param}", variable=param)
+        tglf.readScan(label=f"scan_{param}", variable=param, positionIon = ion)
         labels.append(f"scan_{param}")
 
     # --- Extra TGLF plotting

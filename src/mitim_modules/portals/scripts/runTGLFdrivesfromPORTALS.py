@@ -21,7 +21,8 @@ parser.add_argument("--pos", type=int, required=False, default=[0], nargs="*")
 parser.add_argument("--wf", type=float, required=False, default=None, nargs="*")
 parser.add_argument("--var", type=float, required=False, default=0.01)  # Variation in inputs (1% default)
 parser.add_argument("--num",type=int, required=False, default=5)
-parser.add_argument("-r", required=False, default=False, action="store_true")
+parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
+parser.add_argument("--ion", type=int, required=False, default=2)
 
 
 args = parser.parse_args()
@@ -31,12 +32,13 @@ pos = args.pos
 wf = args.wf
 var = args.var
 num = args.num
-cold_start = args.r
+cold_start = args.cold_start
+ion = args.ion
 
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
 
 tglf.runScanTurbulenceDrives(
     subFolderTGLF="turb",
@@ -47,6 +49,7 @@ tglf.runScanTurbulenceDrives(
     extraOptions=extraOptions,
     cold_start=cold_start,
     runWaveForms=wf,
+    positionIon=ion,
 )
 
 tglf.plotScanTurbulenceDrives(label="turb")
