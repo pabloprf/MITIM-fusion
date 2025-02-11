@@ -2561,11 +2561,7 @@ class TGLF:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(
-                            self.results[ikey]["TGLFout"][irho].GiAll_unn[
-                                positionIon - 2
-                            ]
-                        )  # minus 2 because first is electrons and python starts at 0
+                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[positionIon - 1]) 
                     else:
                         self.scans[label]["unnormalization_successful"] = False
 
@@ -3148,6 +3144,7 @@ class TGLF:
         add_baseline_to = 'all', # 'all' or 'first' or 'none'
         add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
+        positionIon=2,
         **kwargs_TGLFrun,
     ):
 
@@ -3212,7 +3209,7 @@ class TGLF:
 
             scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.readScan(label=scan_name, variable=variable)
+            self.readScan(label=scan_name, variable=variable,positionIon=positionIon)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot

@@ -67,7 +67,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["te", "te(keV)", None, True, False],
         ["ti", "ti(keV)", 0, True, False],
         ["ne", "ne(10^19/m^3)", None, True, False],
-        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1, True, False],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition, True, False],
         ["w0", "w0(rad/s)", None, True, False],
         ["B_unit", "B_unit", None, True, True],
         ["B_ref", "B_ref", None, True, True],
@@ -155,7 +155,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["te", "te(keV)", None, 1.0, True],
         ["ti", "ti(keV)", 0, 1.0, True],
         ["ne", "ne(10^19/m^3)", None, 1.0, True],
-        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1, 1.0, True],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition, 1.0, True],
         ["w0", "w0(rad/s)", None, self.plasma["kradcm"], False], 
     ]
 
@@ -222,7 +222,7 @@ def powerstate_to_gacode(
         ["te", "te(keV)", None],
         ["ti", "ti(keV)", 0],
         ["ne", "ne(10^19/m^3)", None],
-        ["nZ", "ni(10^19/m^3)", self.impurityPosition - 1],
+        ["nZ", "ni(10^19/m^3)", self.impurityPosition],
         ["w0", "w0(rad/s)", None],
     ]
 

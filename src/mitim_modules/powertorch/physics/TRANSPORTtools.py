@@ -3,7 +3,7 @@ import shutil
 import torch
 import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
-from mitim_tools.gacode_tools import TGYROtools
+from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_modules.portals.utils import PORTALScgyro
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -108,6 +108,18 @@ class power_transport:
             print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")
             self.profiles_transport = profiles_postprocessing_fun(self.file_profs)
 
+        # Position of impurity ion may have changed
+        p_old = PROFILEStools.PROFILES_GACODE(self.file_profs_unmod)
+        p_new = PROFILEStools.PROFILES_GACODE(self.file_profs)
+
+        impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
+
+        impurityPosition_new = p_new.Species.index(impurity_of_interest)
+
+        if impurityPosition_new != self.powerstate.impurityPosition:
+            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
+            self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
+
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
@@ -136,7 +148,6 @@ class tgyro_model(power_transport):
 
         MODELparameters = ModelOptions.get("MODELparameters",None)
         includeFast = ModelOptions.get("includeFastInQi",False)
-        impurityPosition = ModelOptions.get("impurityPosition", 1)
         useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
         UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
         launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
@@ -147,6 +158,9 @@ class tgyro_model(power_transport):
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
+
+        # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
+        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -280,6 +294,9 @@ class tgyro_model(power_transport):
             else:
                 print("\t\t\t* No, it was not, repating process", typeMsg="i")
 
+                # Remove cgyro_neo folder
+                shutil.rmtree(self.folder / "cgyro_neo")
+
                 # Copy tglf_neo results
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
@@ -363,7 +380,7 @@ def tglf_scan_trick(
         if i == 'te': variables_to_scan.append('RLTS_1')
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
-        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+1}')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
         if i == 'w0': 
             raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
 
@@ -395,6 +412,7 @@ def tglf_scan_trick(
                         "minutes": 1,
                                  },
                     extra_name = f'{extra_name}_{name}',
+                    positionIon=impurityPosition+1
                     )
 
     # Remove folders because they are heavy to carry many throughout
@@ -576,7 +594,7 @@ def curateTGYROfiles(
     Qe = tgyro.Qe_sim_turb[0, 1:]
     Qi = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
     Ge = tgyro.Ge_sim_turb[0, 1:]
-    GZ = tgyro.Gi_sim_turb[impurityPosition - 1, 0, 1:]
+    GZ = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
     Mt = tgyro.Mt_sim_turb[0, 1:]
     Pexch = tgyro.EXe_sim_turb[0, 1:]
     
@@ -638,7 +656,7 @@ def curateTGYROfiles(
     else:
         QiNeo = tgyro.QiIons_sim_neo_thr[0, 1:]
     GeNeo = tgyro.Ge_sim_neo[0, 1:]
-    GZNeo = tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]
+    GZNeo = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
     MtNeo = tgyro.Mt_sim_neo[0, 1:]
 
     QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
@@ -647,7 +665,7 @@ def curateTGYROfiles(
     else:
         QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
     GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
-    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]) * relativeErrorNEO
+    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
     MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
 
     # Merge

@@ -138,7 +138,7 @@ for test in tests:
 
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']
 
-        #     portals_fun.PORTALSparameters["ImpurityOfInterest"] = 3
+        #     portals_fun.PORTALSparameters["ImpurityOfInterest"] = 'W'
         #     portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
 
         #     portals_fun.prep(inputgacode, folderWork)

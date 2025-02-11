@@ -89,9 +89,11 @@ def initializeProblem(
     ):
         profiles.correct(options=INITparameters)
 
-    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
-        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1]["dens"]
-        print(f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",typeMsg="i",)
+    position_of_impurity = PROFILEStools.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
+    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None:
+        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
+        portals_fun.PORTALSparameters["fImp_orig"] = f0/portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]
+        print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]}',typeMsg="i")
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
@@ -131,7 +133,7 @@ def initializeProblem(
             "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
                 "profiles_postprocessing_fun"
             ],
-            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "impurityPosition": position_of_impurity,
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
@@ -161,7 +163,7 @@ def initializeProblem(
             "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
             "rhoPredicted": xCPs,
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "impurityPosition": position_of_impurity,
             "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
         },
         TransportOptions={
@@ -210,16 +212,14 @@ def initializeProblem(
     # Define input dictionaries (Define ranges of variation)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    if (
-        define_ranges_from_profiles is not None
-    ):  # If I want to define ranges from a different profile
+    if define_ranges_from_profiles is not None:  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
             define_ranges_from_profiles,
             EvolutionOptions={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
                 "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-                "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+                "impurityPosition": position_of_impurity,
                 "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
             TargetOptions={
@@ -494,3 +494,4 @@ def grabPrevious(foldermitim, dictCPs_base):
                 pass
 
     return dictCPs_base
+

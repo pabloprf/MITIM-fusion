@@ -1223,7 +1223,7 @@ def PORTALSanalyzer_plotExpected(
     for i in plotPoints:
         cont += 1
 
-        p = p = self.powerstates[i].profiles
+        p = self.powerstates[i].profiles
 
         ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
 
@@ -2025,6 +2025,7 @@ def PORTALSanalyzer_plotModelComparison(
         plt.subplots_adjust(wspace=0.25, hspace=0.25)
 
     axs = axs.flatten()
+    cont = 0
 
     metrics = {}
 
@@ -2035,7 +2036,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "QeGB_sim_turb_stds"
     metrics["Qe"] = plotModelComparison_quantity(
         self,
-        axs[0],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -2047,8 +2048,10 @@ def PORTALSanalyzer_plotModelComparison(
         includeLeg=True,
     )
 
-    axs[0].set_xscale("log")
-    axs[0].set_yscale("log")
+    axs[cont].set_xscale("log")
+    axs[cont].set_yscale("log")
+
+    cont += 1
 
     # ti
     quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
@@ -2057,7 +2060,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "QiGBIons_sim_turb_thr_stds"
     metrics["Qi"] = plotModelComparison_quantity(
         self,
-        axs[1],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -2069,8 +2072,10 @@ def PORTALSanalyzer_plotModelComparison(
         includeLeg=includeLegAll,
     )
 
-    axs[1].set_xscale("log")
-    axs[1].set_yscale("log")
+    axs[cont].set_xscale("log")
+    axs[cont].set_yscale("log")
+
+    cont += 1
 
     # ne
     quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
@@ -2079,7 +2084,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "GeGB_sim_turb_stds"
     metrics["Ge"] = plotModelComparison_quantity(
         self,
-        axs[2],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -2105,14 +2110,18 @@ def PORTALSanalyzer_plotModelComparison(
 
     try:
         thre = 10 ** round(np.log10(np.abs(val_calc).min()))
-        axs[2].set_xscale("symlog", linthresh=thre)
-        axs[2].set_yscale("symlog", linthresh=thre)
+        axs[cont].set_xscale("symlog", linthresh=thre)
+        axs[cont].set_yscale("symlog", linthresh=thre)
         # axs[2].tick_params(axis="both", which="major", labelsize=8)
     except OverflowError:
         pass
 
-    cont = 1
+    cont += 1
+
     if "nZ" in self.ProfilesPredicted:
+
+        impurity_search = self.runWithImpurity_transport
+
         # nZ
         quantityX = "GiGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]GiAll"
         quantityX_stds = "GiGB_sim_turb_stds" if UseTGLFfull_x is None else None
@@ -2127,7 +2136,7 @@ def PORTALSanalyzer_plotModelComparison(
             quantityY_stds=quantityY_stds,
             quantity_label="$\\Gamma_Z^{GB}$",
             title="Impurity particle flux (GB)",
-            runWithImpurity=self.runWithImpurity,
+            runWithImpurity=impurity_search,
             includeErrors=includeErrors,
             includeMetric=includeMetric,
             includeLeg=includeLegAll,
@@ -2136,7 +2145,7 @@ def PORTALSanalyzer_plotModelComparison(
         if UseTGLFfull_x is None:
             val_calc = (
                 self.mitim_runs[0]["powerstate"].model_results
-                .__dict__[quantityX][self.runWithImpurity, 0, 1:]
+                .__dict__[quantityX][impurity_search, 0, 1:]
             )
         else:
             val_calc = np.array(
@@ -2146,7 +2155,7 @@ def PORTALSanalyzer_plotModelComparison(
                     ]
                     for j in range(len(self.rhos))
                 ]
-            )[self.runWithImpurity]
+            )[impurity_search]
 
         thre = 10 ** round(np.log10(np.abs(val_calc).min()))
         axs[cont].set_xscale("symlog", linthresh=thre)

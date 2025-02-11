@@ -256,11 +256,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
     pos = int(output.split("_")[1])
 
     if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
-        factor = powerstate.plasma["ni"][
-            : x.shape[0],
-            powerstate.indexes_simulation[pos],
-            powerstate.impurityPosition - 1,
-        ].unsqueeze(-1)
+        factor = powerstate.plasma["ni"][: x.shape[0],powerstate.indexes_simulation[pos],powerstate.impurityPosition].unsqueeze(-1)
 
     else:
         factor = torch.ones(tuple(x.shape[:-1]) + (1,)).to(x)

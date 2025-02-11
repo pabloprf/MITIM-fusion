@@ -58,6 +58,7 @@ class powerstate:
         self.ProfilesPredicted = EvolutionOptions.get("ProfilePredicted", ["te", "ti", "ne"])
         self.useConvectiveFluxes = EvolutionOptions.get("useConvectiveFluxes", True)
         self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
+        self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
         self.scaleIonDensities = EvolutionOptions.get("scaleIonDensities", True)
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
@@ -546,7 +547,7 @@ class powerstate:
             '''
             If nZ is updated, change its position in the ions set
             '''
-            self.plasma["ni"][..., self.impurityPosition - 1] = self.plasma["nZ"]
+            self.plasma["ni"][..., self.impurityPosition] = self.plasma["nZ"]
 
         return aLT_withZero
 

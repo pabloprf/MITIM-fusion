@@ -40,9 +40,7 @@ class PORTALSanalyzer:
         self.step = self.opt_fun.mitim_model.steps[-1]
         self.gp = self.step.GP["combined_model"]
 
-        self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters[
-            "powerstate"
-        ]
+        self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters["powerstate"]
 
         # Read dictionaries
         with open(self.opt_fun.mitim_model.optimization_object.optimization_extra, "rb") as f:
@@ -159,11 +157,7 @@ class PORTALSanalyzer:
         # Useful flags
         self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
 
-        self.runWithImpurity = (
-            self.PORTALSparameters["ImpurityOfInterest"] - 1
-            if "nZ" in self.ProfilesPredicted
-            else None
-        )
+        self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.ProfilesPredicted else None
 
         self.runWithRotation = "w0" in self.ProfilesPredicted
         self.includeFast = self.PORTALSparameters["includeFastInQi"]
@@ -177,22 +171,21 @@ class PORTALSanalyzer:
         for i in range(self.ilast + 1):
             self.powerstates.append(self.mitim_runs[i]["powerstate"])
 
+        # runWithImpurity_transport is stored after powerstate has run transport
+        self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.ProfilesPredicted else None
+
+
         if len(self.powerstates) <= self.ibest:
-            print(
-                "\t- PORTALS was read after new residual was computed but before pickle was written!",
-                typeMsg="w",
-            )
+            print("\t- PORTALS was read after new residual was computed but before pickle was written!",typeMsg="w")
             self.ibest -= 1
             self.iextra = None
 
         self.profiles_next = None
         x_train_num = self.step.train_X.shape[0]
-        file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode"
+        file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode_unmodified"
         if file.exists():
             print("\t\t- Reading next profile to evaluate (from folder)")
-            self.profiles_next = PROFILEStools.PROFILES_GACODE(
-                file, calculateDerived=False
-            )
+            self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
 
             file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode.new"
             if file.exists():

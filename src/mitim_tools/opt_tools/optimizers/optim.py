@@ -201,16 +201,11 @@ def relax(
             - flux is a function that must take X (dimX) and provide Q and QT as tensors of dimensions (1,dimY) each
     """
 
-    print(
-        f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations"
-    )
+    print(f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations")
 
     x = copy.deepcopy(xGuess)
     Q, QT = flux(x, cont=0)
-    print(
-        f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",
-        typeMsg="i",
-    )
+    print(f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",typeMsg="i",)
 
     store_x = x.clone()
     store_Q = (Q - QT).abs()

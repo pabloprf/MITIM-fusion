@@ -349,7 +349,7 @@ def addTGYROspecies(Species, onlyThermal=False, limitSpecies=100):
     TGYROoptions = {}
     cont = 0
     for i in range(lenSpec):
-        if (Species[i]["S"] == "fast" and onlyThermal) or Species[i]["dens"] == 0.0:
+        if (Species[i]["S"] == "fast" and onlyThermal) or Species[i]["n0"] == 0.0:
             continue
 
         print(f'\t\t- Specie Z={Species[i]["Z"]} added')

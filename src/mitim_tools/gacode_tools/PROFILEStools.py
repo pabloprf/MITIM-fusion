@@ -17,10 +17,7 @@ from IPython import embed
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
 except ImportError:
-    print(
-        "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
-        typeMsg="w",
-    )
+    print("- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",typeMsg="w")
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode
@@ -320,14 +317,14 @@ class PROFILES_GACODE:
         Species = []
         for j in range(maxSpecies):
             # To determine later if this specie has zero density
-            niT = self.profiles["ni(10^19/m^3)"][:, j].max()
+            niT = self.profiles["ni(10^19/m^3)"][0, j]
 
             sp = {
                 "N": self.profiles["name"][j],
                 "Z": float(self.profiles["z"][j]),
                 "A": float(self.profiles["mass"][j]),
                 "S": self.profiles["type"][j].split("[")[-1].split("]")[0],
-                "dens": niT,
+                "n0": niT,
             }
 
             Species.append(sp)
@@ -1243,7 +1240,7 @@ class PROFILES_GACODE:
                 np.expand_dims(self.profiles["te(keV)"][:i], 0),
                 np.expand_dims(np.transpose(self.profiles["ti(keV)"][:i]), 0),
                 np.expand_dims(
-                    self.profiles["ni(10^19/m^3)"][:i, impurityPosition - 1] * 0.1, 0
+                    self.profiles["ni(10^19/m^3)"][:i, impurityPosition] * 0.1, 0
                 ),
                 np.expand_dims(
                     np.transpose(self.profiles["ni(10^19/m^3)"][:i] * 0.1), 0
@@ -4351,3 +4348,15 @@ def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
     return figs
 
+def impurity_location(profiles, impurity_of_interest):
+
+    position_of_impurity = None
+    for i in range(len(profiles.Species)):
+        if profiles.Species[i]["N"] == impurity_of_interest:
+            if position_of_impurity is not None:
+                raise ValueError(f"[MITIM] Species {impurity_of_interest} found at positions {position_of_impurity} and {i}")
+            position_of_impurity = i
+    if position_of_impurity is None:
+        raise ValueError(f"[MITIM] Species {impurity_of_interest} not found in profiles")
+
+    return position_of_impurity

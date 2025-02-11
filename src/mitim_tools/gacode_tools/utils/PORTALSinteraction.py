@@ -139,9 +139,6 @@ def TGYROmodeledVariables(TGYROresults,
     ):
     """
     This function is used to extract the TGYRO results and store them in the powerstate object, from numpy arrays to torch tensors.
-
-    Notes:
-    - impurityPosition will be substracted one
     """
 
     if "tgyro_stds" not in TGYROresults.__dict__:
@@ -252,15 +249,15 @@ def TGYROmodeledVariables(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["CZ_tr_turb_raw"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
-    powerstate.plasma["CZ_tr_neo_raw"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
+    powerstate.plasma["CZ_tr_turb_raw"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+    powerstate.plasma["CZ_tr_neo_raw"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
     
-    powerstate.plasma["CZ_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     if provideTargets:
-        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     if not useConvectiveFluxes:
 
@@ -276,15 +273,15 @@ def TGYROmodeledVariables(TGYROresults,
 
     else:
 
-        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
 
-        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
         
         if provideTargets:
-            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp
-            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition - 1, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Energy Exchange
