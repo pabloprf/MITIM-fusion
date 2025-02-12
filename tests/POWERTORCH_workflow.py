@@ -27,7 +27,7 @@ s_orig = copy.deepcopy(s)
 s_orig.calculate()
 
 # Find flux matching profiles
-s.findFluxMatchProfiles(algorithm='root')
+s.flux_match(algorithm='root')
 
 # Plot two cases together
 fn = s.plot(compare_to_state=s_orig)

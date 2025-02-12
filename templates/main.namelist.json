@@ -43,7 +43,6 @@
                 },
             "root": {
                 "num_restarts": 5,
-                "augmented_optimization_mode": true,
                 "solver": "lm",
                 "maxiter": 1000,
                 "relative_improvement_for_stopping": 1e-4,

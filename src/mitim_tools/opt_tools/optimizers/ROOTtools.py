@@ -1,7 +1,6 @@
 import torch
 import copy
 import numpy as np
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
@@ -11,90 +10,41 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
     np.random.seed(fun.seed)
 
-    # Options
+    # --------------------------------------------------------------------------------------------------------
+    # Solver options
+    # --------------------------------------------------------------------------------------------------------
+
     num_restarts = optimization_params.get("num_restarts",1)
-    maxiter = optimization_params.get("maxiter",None)
-    relative_improvement_for_stopping = optimization_params.get("relative_improvement_for_stopping",1e-8)
-    run_as_augmented_optimization = optimization_params.get("augmented_optimization_mode",True)
-    solver = optimization_params.get("solver","lm")
-    
-    algorithm_options = {
-        "maxiter": maxiter,
-        "ftol": relative_improvement_for_stopping,
-        }
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Bounds
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     bounds = fun.bounds_mod
 
-    # transform from unbounded to bounded
-    bound_transform = optim.logistic(l=bounds[0, :], u=bounds[1, :])
+    solver_options = {
+        'algorithm_options': {
+            "maxiter": optimization_params.get("maxiter",None),
+            "ftol": optimization_params.get("relative_improvement_for_stopping",1e-8),
+            },
+        'solver': optimization_params.get("solver","lm"),
+        'write_trajectory': writeTrajectory
+    }
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~ Define evaluator
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # --------------------------------------------------------------------------------------------------------
+    # Evaluator
+    # --------------------------------------------------------------------------------------------------------
 
-    acq_evaluated = []
+    def flux_residual_evaluator(X, y_history=None, **kwargs):
 
-    if writeTrajectory:
+        # Evaluate source term
+        yOut, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
+        y = y1 - y2
 
-        def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
-            """
-            Notes:
-                    - x comes extended, batch*dim
-                    - y must be returned extended as well, batch*dim
-            """
+        # Store values
+        if y_history is not None:
+            y_history.append(-yOut.abs().min().item())  # yOut has [batch] dimensions, so look at the best
 
-            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+        return y
 
-            # Transform from infinite bounds
-            X = bound_transform.transform(X)
-
-            # Evaluate residuals
-            yOut, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
-            y = y1 - y2
-
-            acq_evaluated.append(-yOut.abs().min().item())  # yOut has [batch] dimensions, so look at the best
-
-            # Root requires that len(x)==len(y)
-            y = fixDimensions_ROOT(X, y)
-
-            # Compress again  [batch,dim]->[batch*dim]
-            y = y.view(x.shape)
-
-            return y
-
-    else:
-
-        def fun_opt(x, dimX=fun.xGuesses.shape[-1], fun=fun, bound_transform=bound_transform):
-            """
-            Notes:
-                    - x comes extended, batch*dim
-                    - y must be returned extended as well, batch*dim
-            """
-
-            X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
-
-            # Transform from infinite bounds
-            X = bound_transform.transform(X)
-
-            # Evaluate residuals
-            _, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
-            y = y1 - y2
-
-            # Root requires that len(x)==len(y)
-            y = fixDimensions_ROOT(X, y)
-
-            # Compress again  [batch,dim]->[batch*dim]
-            y = y.view(x.shape)
-
-            return y
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~ Guesses
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # --------------------------------------------------------------------------------------------------------
+    # Preparation of guesses
+    # --------------------------------------------------------------------------------------------------------
 
     print("\t- Preparing starting points for ROOT method")
 
@@ -102,55 +52,32 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     num_random = int(np.ceil(num_restarts/2)) # Half of the restarts will be random, the other half will be the best guesses
 
-    # Take the best num_restarts-num_random points, then add random points (to avoid local minima and getting stuck as much as possible)
+    # Take the best num_restarts-num_random points
     xGuesses = xGuesses[:num_restarts-num_random, :] if xGuesses.shape[0] > num_restarts-num_random else xGuesses
-    random_choice = xGuesses.shape[0]+np.random.choice(fun.xGuesses.shape[0]-xGuesses.shape[0], num_random, replace=False)
+    
+    # Add random points (to avoid local minima and getting stuck as much as possible) 
+    cases_to_choose_from = fun.xGuesses.shape[0]-xGuesses.shape[0]
+    random_choice = xGuesses.shape[0]+np.random.choice(cases_to_choose_from, np.min([cases_to_choose_from,num_random]), replace=False)
     xGuesses = torch.cat((xGuesses, fun.xGuesses[random_choice, :]), axis=0) 
 
     print(f"\t\t- From training set, taking the best {num_restarts-num_random} points and adding {num_random} random points (ordered positions {random_choice})")
 
-    # Untransform guesses
-    xGuesses = bound_transform.untransform(xGuesses)
+    print(f'\t\t- Running for {len(xGuesses)} starting points , as a an augmented optimization problem')
 
-    print(f'\t\t- Running for {len(xGuesses)} starting points{", as a an augmented optimization problem" if run_as_augmented_optimization else ""}')
+    # --------------------------------------------------------------------------------------------------------
+    # Solver
+    # --------------------------------------------------------------------------------------------------------
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~ Process
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    x_res, acq_evaluated, _ = optim.powell(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
 
-    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
-
-        # Convert to 1D if augmented optimization
-        x0 = xGuesses.view(-1).unsqueeze(0) if run_as_augmented_optimization else xGuesses
-
-        x_res = torch.Tensor().to(fun.stepSettings["dfT"])
-        for i in range(len(x0)):
-            if len(x0) > 1:  print("\n",f"\t\t- ROOT from guessed point {i+1}/{x0.shape[0]}")
-            x_res0 = optim.powell(
-                fun_opt,
-                x0[i, :],
-                fun,
-                writeTrajectory=writeTrajectory,
-                algorithm_options=algorithm_options,
-                solver=solver,
-            )
-            x_res = torch.cat((x_res, x_res0.unsqueeze(0)), axis=0)
-
-    acq_evaluated = torch.Tensor(acq_evaluated)
-
-    if run_as_augmented_optimization:
-        x_res = x_res.view( (x_res.shape[1] // fun.xGuesses.shape[1], fun.xGuesses.shape[1]) )
-
-    x_res = bound_transform.transform(x_res)
+    # --------------------------------------------------------------------------------------------------------
+    # Post-process
+    # --------------------------------------------------------------------------------------------------------
 
     bb = TESTtools.checkSolutionIsWithinBounds(x_res, fun.bounds).item()
     if not bb:
         print(f"\t- Is this solution inside bounds? {bb}")
         print(f"\t\t- with allowed extrapolations? {TESTtools.checkSolutionIsWithinBounds(x_res,fun.bounds_mod).item()}")
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # ~~~~~ Post-process
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     from mitim_tools.opt_tools.OPTtools import summarizeSituation, pointsOperation_bounds, pointsOperation_order
 
@@ -176,23 +103,3 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     z_opt = torch.ones(x_opt.shape[0]).to(fun.stepSettings["dfT"]) * numZ
 
     return x_opt, y_opt_residual, z_opt, acq_evaluated
-
-
-def fixDimensions_ROOT(x, y):
-    # ------------------------------------------------------------
-    # Root requires that len(x)==len(y)
-    # ------------------------------------------------------------
-
-    # If dim_x larger than dim_y, completing now with repeating objectives
-    i = 0
-    while x.shape[-1] > y.shape[-1]:
-        y = torch.cat((y, y[:, i].unsqueeze(1)), axis=1)
-        i += 1
-
-    # If dim_y larger than dim_x, building the last y as the means
-    if x.shape[-1] < y.shape[-1]:
-        yn = y[:, : x.shape[-1] - 1]
-        yn = torch.cat((yn, y[:, x.shape[1] - 1 :].mean(axis=1).unsqueeze(0)), axis=1)
-        y = yn
-
-    return y

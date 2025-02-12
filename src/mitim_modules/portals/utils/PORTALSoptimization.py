@@ -31,7 +31,7 @@ def initialization_simple_relax(self):
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     namingConvention = f"portals_sr_{b}_ev"
 
-    algorithm_options = {
+    solver_options = {
         "tol": 1e-6,
         "maxiter": self.Originalinitial_training,
         "relax": 0.2,           # Defines relationship between flux and gradient
@@ -51,9 +51,9 @@ def initialization_simple_relax(self):
 
     # Flux matching process
 
-    powerstate.findFluxMatchProfiles(
+    powerstate.flux_match(
         algorithm="simple_relax",
-        algorithm_options=algorithm_options,
+        solver_options=solver_options,
     )
     Xopt = powerstate.FluxMatch_Xopt
 
@@ -130,9 +130,15 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     powerstate_orig = copy.deepcopy(powerstate)
     powerstate_orig.calculate(None)
 
-    powerstate.findFluxMatchProfiles(
-        algorithm=list(algorithm.keys())[0],
-        algorithm_options=algorithm[list(algorithm.keys())[0]])
+    algorithm = list(algorithm.keys())[0]
+    solver_options = {
+        'algorithm_options': algorithm[list(algorithm.keys())[0]]
+    }
+
+    powerstate.flux_match(
+        algorithm=algorithm,
+        solver_options=solver_options
+    )
 
     # ----------------------------------------------------
     # Plot

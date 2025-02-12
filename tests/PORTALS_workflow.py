@@ -10,12 +10,12 @@ cold_start = True
 
 # Inputs
 inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
-folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
+folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test2"
 
 if cold_start and folderWork.exists():
     os.system(f"rm -r {folderWork.resolve()}")
 
-# Let's not consume the entire computer resources when running test... limit to 4 threads
+# Let's not consume the entire computer resources when running test... limit threads
 torch.set_num_threads(8)
 
 # --------------------------------------------------------------------------------------------

@@ -2,159 +2,223 @@ import torch
 import copy
 import numpy as np
 from scipy.optimize import root
-from IPython import embed
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from IPython import embed
 
 # --------------------------------------------------------------------------------------------------------
 #  Ready to go optimization tool: MV
 # --------------------------------------------------------------------------------------------------------
 
-
-def powell(flux, xGuess, optim_fun, writeTrajectory=False, algorithm_options={}, solver="lm", jac_ad=True):
+def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None):
     """
     Inputs:
-            - xGuess is the initial guess and must be a tensor of (1,dimX) or (dimX). It will be transformed to dimX.
-            - optim_fun is a function that must take X (dimX) and provide Q and QT as tensors of dimensions (1,dimY) each
+        - x_initial is the initial guesses and must be a tensor of (batches,dimX)
+        - flux_residual_evaluator is a function that must take X (batches,dimX) and provide the source term (batches,dimY).
+            It must also take optional arguments x_history,y_history that will be a list of the evaluations of the residual
     Outputs:
-            - Optium vector x with (dimX)
+        - Optium vector x_sol with (batches,dimX) and the trajectory of the acquisition function evaluations (best per batch)
     Notes:
-            - The porblem must be: dimX = dimY
-            - Must all be tensors that allow Jacobian calculation
-            - tol in root is the same as xtol for LM
-            - ftol in LM will define the relative reduction in the sum of squares of the residuals between one iteration and another
+        - tol in root is the same as xtol for LM
+        - ftol in LM will define the relative reduction in the sum of squares of the residuals between one iteration and another
     """
 
-    def func(x, dfT1=torch.zeros(1).to(xGuess)):
+    # --------------------------------------------------------------------------------------------------------
+    # Solver options
+    # --------------------------------------------------------------------------------------------------------
+
+    if solver_options is None:
+        solver_options = {}
+
+    solver = solver_options.get("solver", "lm")
+    jac_ad = solver_options.get("jac_ad", True)
+    tol = solver_options.get("tol", None)
+    jacobian_numerical_filter = solver_options.get("jacobian_numerical_filter", 1e-10)
+    write_trajectory = solver_options.get("write_trajectory", True)
+    algorithm_options = solver_options.get("algorithm_options", {})
+
+    # Forced parameters based on implementation here
+    algorithm_options['col_deriv'] = True # Faster in scipy to avoid transposing the Jacobian. I can optimize it in pytorch instead, see above transpose
+
+    # --------------------------------------------------------------------------------------------------------
+    # Bounds treatment
+    # --------------------------------------------------------------------------------------------------------
+
+    bound_transform = logistic(l=bounds[0, :], u=bounds[1, :]) if bounds is not None else no_bounds()
+
+    # --------------------------------------------------------------------------------------------------------
+    # Curation of function to be optimized: tensorization, reshaping and jacobian
+    # --------------------------------------------------------------------------------------------------------
+
+    x_history, y_history = [], []
+    def function_for_optimizer_prep(x, dimX=x_initial.shape[-1], flux_residual_evaluator=flux_residual_evaluator, bound_transform=bound_transform):
+        """
+        Notes:
+            - x comes extended, batch*dim
+            - y must be returned extended as well, batch*dim
+        """
+
+        X = x.view((x.shape[0] // dimX, dimX))  # [batch*dim]->[batch,dim]
+
+        # Transform from infinite bounds
+        X = bound_transform.transform(X)
+
+        # Evaluate residuals
+        y = flux_residual_evaluator(X, y_history = y_history if write_trajectory else None, x_history = x_history if write_trajectory else None)
+
+        # Root requires that len(x)==len(y)
+        y = fixDimensions_ROOT(X, y)
+
+        # Compress again  [batch,dim]->[batch*dim]
+        y = y.view(x.shape)
+
+        return y
+
+    def function_for_optimizer(x, dfT1=torch.zeros(1).to(x_initial)):
+
         # Root will work with arrays, convert to tensor with AD
         X = torch.tensor(x, requires_grad=True).to(dfT1)
 
         # Evaluate value and local jacobian
-        QhatD, JD = mitim_jacobian(flux, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
+        QhatD, JD = mitim_jacobian(function_for_optimizer_prep, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
 
         # Avoid numerical artifacts for off-block-diagonal elements that should be zero but numerically are not
-        JD[JD.abs() <= 1e-10] = 0.0
+        JD[JD.abs() <= jacobian_numerical_filter] = 0.0
 
         # Back to arrays
-        if jac_ad:
+        if jac_ad:  
             return QhatD.detach().cpu().numpy(), JD.transpose(0,1).cpu().numpy()    # Transpose here so that I can use col_deriv=True
-        else:
+        else:       
             return QhatD.detach().cpu().numpy()
 
-    # No batching is allowed in ROOT. If you want to run batching flux matching you need to concatenate the vector in one dim
-    xGuess0 = xGuess.squeeze(0).cpu().numpy() if xGuess.dim() > 1 else xGuess.cpu().numpy()
+    # --------------------------------------------------------------------------------------------------------
+    # Preparation of the initial guess
+    # --------------------------------------------------------------------------------------------------------
 
-    # ************
-    # Root process
-    # ************
-    f0 = func(xGuess0)
+    # Untransform guesses (from bounds to infinite)
+    x_initial0 = bound_transform.untransform(x_initial)
+
+    # Convert to 1D ([batch,dim]->[batch*dim])
+    x_initial0 = x_initial0.view(-1)
+
+    # To numpy
+    x_initial0 = x_initial0.cpu().numpy()
+
+    # --------------------------------------------------------------------------------------------------------
+    # Initial evaluation
+    # --------------------------------------------------------------------------------------------------------
+
+    f0 = function_for_optimizer(x_initial0)
     if jac_ad: f0 = f0[0]
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}")
 
-    algorithm_options['col_deriv'] = True # Faster in scipy to avoid transposing the Jacobian. I can optimize it in pytorch instead, see above transpose
+    # --------------------------------------------------------------------------------------------------------
+    # Perform optimization
+    # --------------------------------------------------------------------------------------------------------
 
     with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
-        sol = root(func, xGuess0, jac=jac_ad, method=solver, tol=None, options=algorithm_options)
+        sol = root(function_for_optimizer, x_initial0, jac=jac_ad, method=solver, tol=tol, options=algorithm_options)
 
-    f = func(sol.x)
+    # --------------------------------------------------------------------------------------------------------
+    # Evaluate final case to compare
+    # --------------------------------------------------------------------------------------------------------
+
+    f = function_for_optimizer(sol.x)
     if jac_ad: f = f[0]
     print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
 
-    # ************
-
     print("\t- Results from scipy solver:", sol)
 
-    x_best = torch.tensor(sol.x).to(xGuess)
+    if write_trajectory:
+        try:
+            y_history = torch.stack(y_history)
+        except (TypeError,RuntimeError):
+            y_history = torch.Tensor(y_history)
+        try:
+            x_history = torch.stack(x_history)
+        except (TypeError,RuntimeError):
+            x_history = torch.Tensor(x_history)
+    else:
+        y_history, x_history = torch.Tensor(), torch.Tensor()
 
-    return x_best
+    # --------------------------------------------------------------------------------------------------------
+    # Preparation of the final solution
+    # --------------------------------------------------------------------------------------------------------
 
+    # Convert to tensor
+    x_best = torch.tensor(sol.x).to(x_initial)
 
-# --------------------------------------------------------------------------------------------------------
-#  Ready to go optimization tool: Picard
-# --------------------------------------------------------------------------------------------------------
+    # Reshape to original shape
+    x_best = x_best.view( (x_best.shape[0] // x_initial.shape[1], x_initial.shape[1]) )
 
+    # Transform to bounded
+    x_best = bound_transform.transform(x_best)
 
-def picard(fun, xGuess, tol=1e-6, maxiter=1e3, relax_param=1.0):
-    """
-    Inputs:
-            - xGuess is the initial guess and must be a tensor of (batch,dimX). It will be converted to batch.
-            - fun is a function that must take X (batch,dimX) and provide the source term (batch,dimY)
-
-    Outputs:
-            - Optium vector x with (batch,dimX)
-
-    """
-
-    # xGuess = xGuess[0,:].unsqueeze(0)
-
-    def func(X):
-        S = fun(X)
-        # Residual (batch)
-        res = S.abs().mean(axis=1)
-        # Average and Max residual between batches
-        return S, res, res.mean().item(), res.max().item()
-
-    # ******************************************************************************************************
-    # Evaluate initial condition
-    # ******************************************************************************************************
-
-    # If no batch dimension add it
-    x = xGuess.unsqueeze(0).clone() if xGuess.dim() == 1 else xGuess.clone()
-
-    S, res, resMean, resMax = func(x)
-    print(f"* Residual at it#0: {resMean:.2e} (max = {resMax:.2e})")
-    if res.shape[0] > 1 and res.shape[0] < 100:
-        str_txt = ""
-        for i in range(res.shape[0]):
-            str_txt += f"{res[i]:.2e}, "
-        print("* Per individual:", str_txt[:-2])
-
-    # ******************************************************************************************************
-    # Peform loop
-    # ******************************************************************************************************
-
-    cont = 0
-    while (resMean > tol) and (cont < maxiter):
-        # ---------------------------------------------------------------------------
-        # Multiplier of source term for faster/slower steps towards flux matching
-        # ---------------------------------------------------------------------------
-
-        factor_motion = relax_param  # / S.abs().mean(axis=1).unsqueeze(1)
-
-        # ---------------------------------------------------------------------------
-        # Make step
-        # ---------------------------------------------------------------------------
-
-        x += S * factor_motion
-
-        # ---------------------------------------------------------------------------
-        # Evaluate and update counter
-        # ---------------------------------------------------------------------------
-
-        S, res, resMean, resMax = func(x)
-        cont += 1
-
-        if True:  # cont%25 == 0:
-            print(f"\t- Residual at it#{cont}: {resMean:.2e} (max = {resMax:.2e})")
-
-    # ---------------------------------------------------------------------------
-    # Final residual
-    # ---------------------------------------------------------------------------
-
-    print(f"* Residual at it#{cont}: {resMean:.1e} (max = {resMax:.2e})")
-    if res.shape[0] > 1 and res.shape[0] < 100:
-        str_txt = ""
-        for i in range(res.shape[0]):
-            str_txt += f"{res[i]:.2e}, "
-        print("* Per individual:", str_txt[:-2])
-
-    return x
+    return x_best, y_history, x_history
 
 
 # --------------------------------------------------------------------------------------------------------
 #  Ready to go optimization tool: Simple Relax
 # --------------------------------------------------------------------------------------------------------
 
+def simple_relaxation(
+    flux,
+    x_initial,
+    bounds=None,
+    solver_options=None
+    ):
+    """
+    Inputs:
+            - flux is a function that must take X (dimX) and provide Q and QT as tensors of dimensions (1,dimY) each
+    """
+
+    tol = solver_options.get("tol", 1e-6)
+    maxiter = solver_options.get("maxiter", 1e5)
+    relax = solver_options.get("relax", 0.1)
+    dx_max = solver_options.get("dx_max", 0.05)
+    dx_max_abs = solver_options.get("dx_max_abs", None)
+    dx_min_abs = solver_options.get("dx_min_abs", None)
+    print_each = solver_options.get("print_each", 1e2)
+    storeValues = solver_options.get("storeValues", False)
+
+    print(f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations")
+
+    x = copy.deepcopy(x_initial)
+    Q, QT = flux(x, cont=0)
+    print(f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",typeMsg="i",)
+
+    store_x = x.clone()
+    store_Q = (Q - QT).abs()
+    for i in range(int(maxiter) - 1):
+        # --------------------------------------------------------------------------------------------------------
+        # Iterative Strategy
+        # --------------------------------------------------------------------------------------------------------
+
+        x_new = simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
+
+        # Clamp to bounds
+        if bounds is not None:
+            x_new = x_new.clamp(min=bounds[0,:], max=bounds[1,:])
+
+        x = x_new.clone()
+
+        # --------------------------------------------------------------------------------------------------------
+        Q, QT = flux(x, cont=i + 1)
+
+        if (i + 1) % int(print_each) == 0:
+            print(
+                f"\t- Residual @ #{i+1}: {(Q-QT).abs().mean(axis=1)[0].item():.2e}",
+                typeMsg="i",
+            )
+
+        if (Q - QT).abs().mean(axis=1)[0].item() < tol:
+            break
+
+        if storeValues:
+            store_x = torch.cat((store_x, x.detach()), axis=0)
+            store_Q = torch.cat((store_Q, (Q - QT).abs().detach()), axis=0)
+
+    return store_x, store_Q
 
 def simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None):
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
@@ -181,64 +245,6 @@ def simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_ab
     x_new = x + x_step
 
     return x_new
-
-
-def relax(
-    flux,
-    xGuess,
-    bounds=None,
-    tol=None,
-    maxiter=1e5,
-    relax=0.1,
-    dx_max=0.05,
-    dx_max_abs = None,
-    dx_min_abs = None,
-    print_each=1e2,
-    storeValues=False,
-):
-    """
-    Inputs:
-            - flux is a function that must take X (dimX) and provide Q and QT as tensors of dimensions (1,dimY) each
-    """
-
-    print(f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations")
-
-    x = copy.deepcopy(xGuess)
-    Q, QT = flux(x, cont=0)
-    print(f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",typeMsg="i",)
-
-    store_x = x.clone()
-    store_Q = (Q - QT).abs()
-    for i in range(int(maxiter) - 1):
-        # --------------------------------------------------------------------------------------------------------
-        # Iterative Strategy
-        # --------------------------------------------------------------------------------------------------------
-
-        x_new = simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
-
-        # Clamp to bounds
-        if bounds is not None:
-            x_new = x_new.clamp(min=bounds[:, 0], max=bounds[:, 1])
-
-        x = x_new.clone()
-
-        # --------------------------------------------------------------------------------------------------------
-        Q, QT = flux(x, cont=i + 1)
-
-        if (i + 1) % int(print_each) == 0:
-            print(
-                f"\t- Residual @ #{i+1}: {(Q-QT).abs().mean(axis=1)[0].item():.2e}",
-                typeMsg="i",
-            )
-
-        if (Q - QT).abs().mean(axis=1)[0].item() < tol:
-            break
-
-        if storeValues:
-            store_x = torch.cat((store_x, x.detach()), axis=0)
-            store_Q = torch.cat((store_Q, (Q - QT).abs().detach()), axis=0)
-
-    return store_x, store_Q
 
 '''
 ********************************************************************************************************************************** 
@@ -339,3 +345,32 @@ class logistic:
         # return self.x0-1/self.k * torch.log( (self.u-self.l)/(y-self.l)-1 )
         # Proposed by chatGPT3.5 to solve the exponential overflow (torch autograd failed for large x):
         return self.x0 + (1 / self.k) * torch.atanh(2 * (y - self.l) / (self.u - self.l) - 1)
+
+class no_bounds:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def transform(self, x):
+        return x
+
+    def untransform(self, y):
+        return y
+
+def fixDimensions_ROOT(x, y):
+    # ------------------------------------------------------------
+    # Root requires that len(x)==len(y)
+    # ------------------------------------------------------------
+
+    # If dim_x larger than dim_y, completing now with repeating objectives
+    i = 0
+    while x.shape[-1] > y.shape[-1]:
+        y = torch.cat((y, y[:, i].unsqueeze(1)), axis=1)
+        i += 1
+
+    # If dim_y larger than dim_x, building the last y as the means
+    if x.shape[-1] < y.shape[-1]:
+        yn = y[:, : x.shape[-1] - 1]
+        yn = torch.cat((yn, y[:, x.shape[1] - 1 :].mean(axis=1).unsqueeze(0)), axis=1)
+        y = yn
+
+    return y
