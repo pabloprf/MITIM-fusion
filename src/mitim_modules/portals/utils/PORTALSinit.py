@@ -89,8 +89,12 @@ def initializeProblem(
     ):
         profiles.correct(options=INITparameters)
 
-    position_of_impurity = PROFILEStools.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
-    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None:
+    if portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
+        position_of_impurity = PROFILEStools.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
+    else:
+        position_of_impurity = 1
+
+    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None and portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
         f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
         portals_fun.PORTALSparameters["fImp_orig"] = f0/portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]
         print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]}',typeMsg="i")
