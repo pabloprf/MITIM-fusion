@@ -3,7 +3,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_state=None, c_orig = 'b'):
+def plot(self, axs, axsRes, figs=None, c="g", label="powerstate",batch_num=0, compare_to_state=None, c_orig = 'r'):
     
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot profiles object
@@ -90,24 +90,31 @@ def plot(self, axs, axsRes, figs=None, c="r", label="",batch_num=0, compare_to_s
             # Plot gradient evolution
             ax = axsRes[1+cont]
             for j in range(self.plasma['rho'].shape[-1]-1):    
-                ax.plot(self.FluxMatch_Xopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=2)
+                ax.plot(self.FluxMatch_Xopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
             ax.set_ylabel(self.labelsFM[i][0])
             
+            if i == len(self.ProfilesPredicted)-1:
+                GRAPHICStools.addLegendApart(ax, ratio=1.0,extraPad=0.05, size=9)
+
             # Plot residual evolution
-            ax = axsRes[1+cont+2]
+            ax = axsRes[1+cont+1]
             for j in range(self.plasma['rho'].shape[-1]-1):    
-                ax.plot(self.FluxMatch_Yopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0,markersize=2)
+                ax.plot(self.FluxMatch_Yopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0,markersize=1)
             ax.set_ylabel(f'{self.labelsFM[i][1]} residual')
             ax.set_yscale("log")
 
-            cont += 3
+        
+
+            cont += 2
 
         for ax in axsRes:
             ax.set_xlabel("Iteration")
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
         
-        axsRes[1].legend(loc='best',prop={'size': 6})
+
+        
+        # .legend(loc='best',prop={'size': 6})
 
 def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile,labelGB, c, label, batch_num=0):
 

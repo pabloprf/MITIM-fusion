@@ -359,7 +359,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="", batch_num=0, compare_to_state=None, c_orig = 'b'):
+    def plot(self, axs=None, axsRes=None, figs=None, c="g", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "r"):
         if axs is None:
             axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -370,11 +370,11 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState", tab_color='r')
             # Optimization
             figOpt = fn.add_figure(label="Optimization", tab_color='r')
-            grid = plt.GridSpec(3, 1+len(self.ProfilesPredicted), hspace=0.5, wspace=0.5)
+            grid = plt.GridSpec(2, 1+len(self.ProfilesPredicted), hspace=0.3, wspace=0.3)
 
             axsRes = [figOpt.add_subplot(grid[:, 0])]
             for i in range(len(self.ProfilesPredicted)):
-                for j in range(3):
+                for j in range(2):
                     axsRes.append(figOpt.add_subplot(grid[j, i+1]))
 
             # Profiles
