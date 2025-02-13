@@ -1739,10 +1739,7 @@ class PROFILES_GACODE:
             else:
                 quasineutral_ions = [self.Mion]
 
-        print(
-            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',
-            typeMsg="i",
-        )
+        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i",)
 
         # Plasma needs to be in quasineutrality to start with
         self.enforceQuasineutrality()
