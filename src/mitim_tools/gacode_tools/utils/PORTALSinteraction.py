@@ -309,6 +309,10 @@ def TGYROmodeledVariables(TGYROresults,
     quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
+    
+    quantities = ['Ce', 'CZ']
+    for ikey in quantities:
+        powerstate.plasma[ikey+"_tr_raw"] = powerstate.plasma[ikey+"_tr_turb_raw"] + powerstate.plasma[ikey+"_tr_neo_raw"]
 
     return powerstate
 
