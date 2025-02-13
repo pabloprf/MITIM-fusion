@@ -215,7 +215,7 @@ def checkSame(
 
 def summaryTypes(z_opt):
     types = ""
-    for i in [0, 1, 2, 3, 4, 5]:
+    for i in [0, 1, 2, 3, 4, 5, 6]:
         types += f"{(z_opt == i).sum()} from {identifyType(i)}, "
 
     return types[:-2]
@@ -234,5 +234,7 @@ def identifyType(z):
         method = "GA"
     elif z == 5.0:
         method = "ROOT"
+    elif z == 6.0:
+        method = "SR"
 
     return method

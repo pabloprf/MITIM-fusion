@@ -10,7 +10,7 @@ cold_start = True
 
 # Inputs
 inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
-folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test2"
+folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
 if cold_start and folderWork.exists():
     os.system(f"rm -r {folderWork.resolve()}")
@@ -24,7 +24,7 @@ torch.set_num_threads(8)
 
 # Initialize class
 portals_fun = PORTALSmain.portals(folderWork)
-portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
+portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
 portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.INITparameters["removeFast"] = True

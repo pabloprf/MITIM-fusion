@@ -6,8 +6,8 @@ from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
 from IPython import embed
 
-def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
-    print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False, method = 'scipy_root'):
+    
     np.random.seed(fun.seed)
 
     # --------------------------------------------------------------------------------------------------------
@@ -17,36 +17,71 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     num_restarts = optimization_params.get("num_restarts",1)
     bounds = fun.bounds_mod
 
-    solver_options = {
-        'algorithm_options': {
-            "maxiter": optimization_params.get("maxiter",None),
-            "ftol": optimization_params.get("relative_improvement_for_stopping",1e-8),
-            },
-        'solver': optimization_params.get("solver","lm"),
-        'write_trajectory': writeTrajectory
-    }
+    if method == 'scipy_root':
 
+        print("\t- Implementation of SCIPY.ROOT multi-variate root finding method")
+
+        solver_options = {
+            'algorithm_options': {
+                "maxiter": optimization_params.get("maxiter",None),
+                "ftol": optimization_params.get("relative_improvement_for_stopping",1e-8),
+                },
+            'solver': optimization_params.get("solver","lm"),
+            'write_trajectory': writeTrajectory
+        }
+        solver_fun = optim.scipy_root
+        numZ = 5
+    
+    elif method == "sr":
+
+        print("\t- Implementation of simple relaxation method")
+        
+        solver_options = {
+            "tol": optimization_params.get("tol",-1e-6),
+            "tol_rel": optimization_params.get("relative_improvement_for_stopping",1e-4),
+            "maxiter": optimization_params.get("maxiter",2000),
+            "relax": optimization_params.get("relax",0.1),     
+            "relax_dyn": optimization_params.get("relax_dyn",True),
+            "print_each": optimization_params.get("maxiter",2000)//20,
+        }
+        solver_fun = optim.simple_relaxation
+        numZ = 6
+    
     # --------------------------------------------------------------------------------------------------------
     # Evaluator
     # --------------------------------------------------------------------------------------------------------
 
-    def flux_residual_evaluator(X, y_history=None, **kwargs):
+    def flux_residual_evaluator(X, y_history=None, x_history=None, metric_history=None):
 
         # Evaluate source term
         yOut, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
-        y = y1 - y2
+
+        # -----------------------------------------
+        # Post-process
+        # -----------------------------------------
+
+        # Best in batch
+        best_candidate = yOut.argmax().item()
+        # Only pass the best candidate
+        yRes = (y2-y1)[best_candidate, :].detach()
+        yMetric = yOut[best_candidate].detach()
+        Xpass = X[best_candidate, :].detach()
 
         # Store values
+        if metric_history is not None:
+            metric_history.append(yMetric)
+        if x_history is not None:
+            x_history.append(Xpass)
         if y_history is not None:
-            y_history.append(-yOut.abs().min().item())  # yOut has [batch] dimensions, so look at the best
+            y_history.append(yRes)
 
-        return y
+        return y1, y2, yOut
 
     # --------------------------------------------------------------------------------------------------------
     # Preparation of guesses
     # --------------------------------------------------------------------------------------------------------
 
-    print("\t- Preparing starting points for ROOT method")
+    print("\t- Preparing starting points")
 
     xGuesses = copy.deepcopy(fun.xGuesses)
 
@@ -68,7 +103,9 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     # Solver
     # --------------------------------------------------------------------------------------------------------
 
-    x_res, acq_evaluated, _ = optim.powell(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    print("************************************************************************************************")
+    x_res, _, _, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    print("************************************************************************************************")
 
     # --------------------------------------------------------------------------------------------------------
     # Post-process
@@ -99,7 +136,6 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print(f"\t- Points ordered: {indeces.cpu().numpy()}")
 
     # Get out
-    numZ = 5
     z_opt = torch.ones(x_opt.shape[0]).to(fun.stepSettings["dfT"]) * numZ
 
     return x_opt, y_opt_residual, z_opt, acq_evaluated

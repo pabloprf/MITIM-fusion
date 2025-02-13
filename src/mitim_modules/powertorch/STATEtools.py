@@ -344,13 +344,81 @@ class powerstate:
         timeBeginning = datetime.datetime.now()
 
         if algorithm == "root":
-            flux_match_method = flux_match_root
+            solver_fun = optim.scipy_root
         elif algorithm == "simple_relax":
-            flux_match_method = flux_match_sr
+            solver_fun = optim.simple_relaxation
         else:
             raise ValueError(f"[MITIM] Algorithm {algorithm} not recognized")
+    
+        if solver_options is None:
+            solver_options = {}
 
-        self.FluxMatch_Xopt, self.FluxMatch_Yopt = flux_match_method(self,bounds=bounds,solver_options=solver_options)
+        folder_main = solver_options.get("folder", None)
+        namingConvention = solver_options.get("namingConvention", "powerstate_sr_ev")
+
+        cont = 0
+        def evaluator(X, y_history=None, x_history=None, metric_history=None):
+
+            nonlocal cont
+
+            nameRun = f"{namingConvention}_{cont}"
+
+            if folder_main is not None:
+                folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
+                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                    (folder / "model_complete").mkdir(parents=True, exist_ok=True)
+
+            # ***************************************************************************************************************
+            # Calculate
+            # ***************************************************************************************************************
+
+            folder_run = folder / "model_complete" if folder_main is not None else IOtools.expandPath('~/scratch/')
+            QTransport, QTarget, _, _ = self.calculate(X, nameRun=nameRun, folder=folder_run, evaluation_number=cont)
+
+            cont += 1
+
+            # Save state so that I can check initializations
+            if folder_main is not None:
+                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                    self.save(folder / "powerstate.pkl")
+                    shutil.copy2(folder_run / "input.gacode", folder)
+
+            # ***************************************************************************************************************
+            # Postprocess
+            # ***************************************************************************************************************
+
+            # Residual is the difference between the target and the transport
+            yRes = (QTarget - QTransport).abs()
+            # Metric is the mean of the absolute value of the residual
+            yMetric = -yRes.mean(axis=-1)
+            # Best in batch
+            best_candidate = yMetric.argmax().item()
+            # Only pass the best candidate
+            yRes = yRes[best_candidate, :].detach()
+            yMetric = yMetric[best_candidate].detach()
+            Xpass = X[best_candidate, :].detach()
+
+            # Store values
+            if y_history is not None:       y_history.append(yRes)
+            if x_history is not None:       x_history.append(Xpass)
+            if metric_history is not None:  metric_history.append(yMetric)
+
+            return QTransport, QTarget, yMetric
+
+        # Concatenate the input gradients
+        x0 = torch.Tensor().to(self.plasma["aLte"])
+        for c, i in enumerate(self.ProfilesPredicted):
+            x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
+
+        # Make sure is properly batched
+        x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
+
+        # Optimize
+        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=bounds,solver_options=solver_options)
+
+        # For simplicity, return the trajectory of only the best candidate
+        self.FluxMatch_Yopt = Yopt
+        self.FluxMatch_Xopt = Xopt
 
         print("**********************************************************************************************")
         print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")
@@ -359,7 +427,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="g", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "r"):
+    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
         if axs is None:
             axsNotGiven = True
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -705,88 +773,3 @@ def read_saved_state(file):
     with open(file, "rb") as handle:
         state = pickle.load(handle)
     return state
-
-def flux_match_root(self, bounds=None, solver_options=None):
-    
-    folder = solver_options.get("folder", '~/scratch/')
-
-    # --------------------------------------------------------------------------------------------------------
-    # Evaluator
-    # --------------------------------------------------------------------------------------------------------
-    
-    cont = 0
-    def evaluator(X, y_history=None, x_history=None):
-
-        nonlocal cont
-
-        # Evaluate source term
-        _, _, y, _ = self.calculate(X,folder=f'{folder}/ev{cont}', nameRun=f"ev{cont}", evaluation_number=cont)
-        cont += 1
-
-        # Store values
-        if y_history is not None:
-            y_history.append(y.abs().clone().detach().squeeze())
-        if x_history is not None:
-            x_history.append(X.clone().detach()[0,...])
-
-        return y
-
-    # --------------------------------------------------------------------------------------------------------
-    # Initial guess
-    # --------------------------------------------------------------------------------------------------------
-
-    x0 = torch.Tensor().to(self.dfT)
-    for c, i in enumerate(self.ProfilesPredicted):
-        x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
-
-    # --------------------------------------------------------------------------------------------------------
-    # Perform optimization
-    # --------------------------------------------------------------------------------------------------------
-
-    _, Yopt, Xopt = optim.powell(evaluator, x0, bounds=bounds, solver_options=solver_options)
-
-    return Xopt, Yopt
-
-def flux_match_sr(self, solver_options=None, bounds=None):
-    
-    if solver_options is None:
-        solver_options = {}
-
-    folder_main = solver_options.get("folder", None)
-    namingConvention = solver_options.get("namingConvention", "powerstate_sr_ev")
-
-    def evaluator(X, cont=0):
-        nameRun = f"{namingConvention}_{cont}"
-
-        if folder_main is not None:
-            folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
-            if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
-                (folder / "model_complete").mkdir(parents=True, exist_ok=True)
-
-        # ***************************************************************************************************************
-        # Calculate
-        # ***************************************************************************************************************
-
-        folder_run = folder / "model_complete" if folder_main is not None else IOtools.expandPath('~/scratch/')
-        QTransport, QTarget, _, _ = self.calculate(X, nameRun=nameRun, folder=folder_run, evaluation_number=cont)
-
-        # Save state so that I can check initializations
-        if folder_main is not None:
-            if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
-                self.save(folder / "powerstate.pkl")
-                shutil.copy2(folder_run / "input.gacode", folder)
-
-        return QTransport, QTarget
-
-    # Concatenate the input gradients
-    x0 = torch.Tensor().to(self.plasma["aLte"])
-    for c, i in enumerate(self.ProfilesPredicted):
-        x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
-
-    # Make sure is properly batched
-    x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
-
-    # Optimize
-    Xopt, Yopt = optim.simple_relaxation(evaluator,x0, bounds=bounds,solver_options=solver_options)
-
-    return Xopt, Yopt

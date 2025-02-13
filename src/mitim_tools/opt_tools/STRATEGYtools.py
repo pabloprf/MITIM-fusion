@@ -1776,24 +1776,27 @@ class MITIM_BO:
         # Loop over posterior steps
         for ipost in range(len(info) - 1):
             iinfo = info[ipost]["info"]
-            it_start, xypair = OPTtools.plotInfo(
-                iinfo,
-                label=info[ipost]["method"],
-                plotStart=False,
-                xypair=xypair,
-                axTraj=ax0_r,
-                axDVs_r=ax1_r,
-                axOFs_r=ax2_r,
-                axDVs=axsDVs,
-                axOFs=axsOFs,
-                axR=axR,
-                axislabels_x=axislabels,
-                axislabels_y=self.optimization_object.name_objectives,
-                color=colors[ipost],
-                ms=8 - ipost * 1.5,
-                alpha=0.5,
-                it_start=it_start,
-            )
+            try:
+                it_start, xypair = OPTtools.plotInfo(
+                    iinfo,
+                    label=info[ipost]["method"],
+                    plotStart=False,
+                    xypair=xypair,
+                    axTraj=ax0_r,
+                    axDVs_r=ax1_r,
+                    axOFs_r=ax2_r,
+                    axDVs=axsDVs,
+                    axOFs=axsOFs,
+                    axR=axR,
+                    axislabels_x=axislabels,
+                    axislabels_y=self.optimization_object.name_objectives,
+                    color=colors[ipost],
+                    ms=8 - ipost * 1.5,
+                    alpha=0.5,
+                    it_start=it_start,
+                )
+            except KeyError:
+                print(f"\t- Problem plotting {info[ipost]['method']}", typeMsg="w")
 
         xypair = np.array(xypair)
 

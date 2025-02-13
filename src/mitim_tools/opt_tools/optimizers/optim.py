@@ -10,12 +10,17 @@ from IPython import embed
 #  Ready to go optimization tool: MV
 # --------------------------------------------------------------------------------------------------------
 
-def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None):
+def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=None):
     """
     Inputs:
         - x_initial is the initial guesses and must be a tensor of (batches,dimX)
-        - flux_residual_evaluator is a function that must take X (batches,dimX) and provide the source term (batches,dimY).
-            It must also take optional arguments x_history,y_history that will be a list of the evaluations of the residual
+        - flux_residual_evaluator is a function that:
+            - Takes X (batches,dimX)
+            - Provides Y1: transport (batches,dimY), Y2: target (batches,dimY) and M: maximization metric (batches,1)
+            It must also take optional arguments, to capture the best in the batch:
+                x_history
+                y_history () 
+                metric_history (to maximize, similar to acquisition definition, must be 1D, best in batch)
     Outputs:
         - Optium vector x_sol with (batches,dimX) and the trajectory of the acquisition function evaluations (best per batch)
     Notes:
@@ -50,7 +55,7 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
     # Curation of function to be optimized: tensorization, reshaping and jacobian
     # --------------------------------------------------------------------------------------------------------
 
-    x_history, y_history = [], []
+    x_history, y_history, metric_history = [], [], []
     def function_for_optimizer_prep(x, dimX=x_initial.shape[-1], flux_residual_evaluator=flux_residual_evaluator, bound_transform=bound_transform):
         """
         Notes:
@@ -64,10 +69,16 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
         X = bound_transform.transform(X)
 
         # Evaluate residuals
-        y = flux_residual_evaluator(X, y_history = y_history if write_trajectory else None, x_history = x_history if write_trajectory else None)
+        y1, y2, _ = flux_residual_evaluator(
+            X,
+            y_history = y_history if write_trajectory else None,
+            x_history = x_history if write_trajectory else None,
+            metric_history = metric_history if write_trajectory else None
+            )
+        y = y2-y1
 
         # Root requires that len(x)==len(y)
-        y = fixDimensions_ROOT(X, y)
+        y = equal_dimensions(X, y)
 
         # Compress again  [batch,dim]->[batch*dim]
         y = y.view(x.shape)
@@ -110,7 +121,7 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
 
     f0 = function_for_optimizer(x_initial0)
     if jac_ad: f0 = f0[0]
-    print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}")
+    print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f0)):.3e} of {f0.shape[0]} channels):\n\t{f0}\n")
 
     # --------------------------------------------------------------------------------------------------------
     # Perform optimization
@@ -125,7 +136,7 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
 
     f = function_for_optimizer(sol.x)
     if jac_ad: f = f[0]
-    print(f"\t|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
+    print(f"\t\n|f-fT|*w (mean (over batched members) = {np.mean(np.abs(f)):.3e} of {f.shape[0]} channels):\n\t{f}")
 
     print("\t- Results from scipy solver:", sol)
 
@@ -138,8 +149,12 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
             x_history = torch.stack(x_history)
         except (TypeError,RuntimeError):
             x_history = torch.Tensor(x_history)
+        try:
+            metric_history = torch.stack(metric_history)
+        except (TypeError,RuntimeError):
+            metric_history = torch.Tensor(metric_history)
     else:
-        y_history, x_history = torch.Tensor(), torch.Tensor()
+        y_history, x_history, metric_history = torch.Tensor(), torch.Tensor(), torch.Tensor()
 
     # --------------------------------------------------------------------------------------------------------
     # Preparation of the final solution
@@ -154,75 +169,145 @@ def powell(flux_residual_evaluator, x_initial, bounds=None, solver_options=None)
     # Transform to bounded
     x_best = bound_transform.transform(x_best)
 
-    return x_best, y_history, x_history
+    return x_best, y_history, x_history, metric_history
 
 
 # --------------------------------------------------------------------------------------------------------
 #  Ready to go optimization tool: Simple Relax
 # --------------------------------------------------------------------------------------------------------
 
-def simple_relaxation(
-    flux,
-    x_initial,
-    bounds=None,
-    solver_options=None
-    ):
+def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_options=None ):
     """
-    Inputs:
-            - flux is a function that must take X (dimX) and provide Q and QT as tensors of dimensions (1,dimY) each
+    See scipy_root for the inputs and outputs
     """
 
-    tol = solver_options.get("tol", 1e-6)
+    tol = solver_options.get("tol", -1e-6)                      # Tolerance for the residual (negative because I want to maximize)
+    tol_rel = solver_options.get("tol_rel", None)               # Relative tolerance for the residual (superseeds tol)
+    
     maxiter = solver_options.get("maxiter", 1e5)
-    relax = solver_options.get("relax", 0.1)
-    dx_max = solver_options.get("dx_max", 0.05)
-    dx_max_abs = solver_options.get("dx_max_abs", None)
-    dx_min_abs = solver_options.get("dx_min_abs", None)
-    print_each = solver_options.get("print_each", 1e2)
-    storeValues = solver_options.get("storeValues", False)
+    relax = solver_options.get("relax", 0.1)                    # Defines relationship between flux_residual_evaluator and gradient
+    dx_max = solver_options.get("dx_max", 0.1)                  # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 10% each time)
+    dx_max_abs = solver_options.get("dx_max_abs", None)         # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
+    dx_min_abs = solver_options.get("dx_min_abs", None)         # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
+    
+    relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
+    relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
+    relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
+    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
 
-    print(f"* Flux-grad relationship of {relax} and maximum gradient jump of {dx_max*100.0:.1f}%, to achieve residual of {tol:.1e} in {maxiter:.0f} iterations")
+    print_each = solver_options.get("print_each", 1e2)
+    
+    write_trajectory = solver_options.get("write_trajectory", True)
+    x_history, y_history, metric_history = [], [], []
+
+    thr_bounds = 1e-4 # To avoid being exactly in the bounds (relative -> 0.01%)
 
     x = copy.deepcopy(x_initial)
-    Q, QT = flux(x, cont=0)
-    print(f"* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations",typeMsg="i",)
+    Q, QT, M = flux_residual_evaluator(
+        x,
+        y_history = y_history if write_trajectory else None,
+        x_history = x_history if write_trajectory else None,
+        metric_history = metric_history if write_trajectory else None
+        )
+    print(f"\t* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations, printing every {print_each} iteration:",typeMsg="i")
 
-    store_x = x.clone()
-    store_Q = (Q - QT).abs()
+    if tol_rel is not None:
+        tol = tol_rel * M.max().item()
+        print(f"\t* Relative tolerance of {tol_rel:.1e} will be used, resulting in an absolute tolerance of {tol:.1e}")
+
+
+    print(f"\t* Flux-grad relationship of {relax*100.0:.1f}% and maximum gradient jump of {dx_max*100.0:.1f}%,{f' to achieve residual of {tol:.1e}' if tol is not None else ''} in maximum of {maxiter:.0f} iterations")
+
+    its_since_last_dyn_relax = 0
     for i in range(int(maxiter) - 1):
         # --------------------------------------------------------------------------------------------------------
         # Iterative Strategy
         # --------------------------------------------------------------------------------------------------------
 
-        x_new = simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
+        x_new = _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
 
         # Clamp to bounds
         if bounds is not None:
-            x_new = x_new.clamp(min=bounds[0,:], max=bounds[1,:])
+            bb = bounds[1,:]-bounds[0,:]
+            x_new = x_new.clamp(min=bounds[0,:]+thr_bounds*bb, max=bounds[1,:]-thr_bounds*bb)
 
         x = x_new.clone()
 
         # --------------------------------------------------------------------------------------------------------
-        Q, QT = flux(x, cont=i + 1)
-
-        if (i + 1) % int(print_each) == 0:
-            print(
-                f"\t- Residual @ #{i+1}: {(Q-QT).abs().mean(axis=1)[0].item():.2e}",
-                typeMsg="i",
+        Q, QT, M = flux_residual_evaluator(
+            x,
+            y_history = y_history if write_trajectory else None,
+            x_history = x_history if write_trajectory else None,
+            metric_history = metric_history
             )
 
-        if (Q - QT).abs().mean(axis=1)[0].item() < tol:
+        # Best metric of the batch
+        metric_best = M.max(axis=-1)[0].item()
+
+        if (i + 1) % int(print_each) == 0:
+            print(f"\t\t- Metric (to maximize) @{i+1}: {metric_best:.2e}")
+
+        # Stopping based on the best of the batch based on the metric
+        if tol is not None and M.max().item() > tol:
+            print(f"\t\t- Metric (to maximize) @{i+1}: {metric_best:.2e}",typeMsg="i")
+            print(f"\t* Converged in {i+1} iterations with metric of {metric_best:.2e} > {tol:.2e}",typeMsg="i")
             break
 
-        if storeValues:
-            store_x = torch.cat((store_x, x.detach()), axis=0)
-            store_Q = torch.cat((store_Q, (Q - QT).abs().detach()), axis=0)
+        if relax_dyn and (i-its_since_last_dyn_relax > relax_dyn_num):
+            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol,i+1)
+            if changed:
+                its_since_last_dyn_relax = i
+            if hardbreak:
+                break
 
-    return store_x, store_Q
+    if i == int(maxiter) - 2:
+        print(f"\t* Did not converge in {maxiter} iterations",typeMsg="i")
 
-def simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None):
+    if write_trajectory:
+        try:
+            y_history = torch.stack(y_history)
+        except (TypeError,RuntimeError):
+            y_history = torch.Tensor(y_history)
+        try:
+            x_history = torch.stack(x_history)
+        except (TypeError,RuntimeError):
+            x_history = torch.Tensor(x_history)
+        try:
+            metric_history = torch.stack(metric_history)
+        except(TypeError,RuntimeError):
+            metric_history = torch.Tensor(metric_history)
+    else:
+        y_history, x_history, metric_history = torch.Tensor(), torch.Tensor(), torch.Tensor()
+
+    index_best = metric_history.argmax()
+    print(f"\t* Best metric: {metric_history[index_best].mean().item():.2e} at iteration {index_best}",typeMsg="i")
+    
+    # The best candidate, regardless of the restarts
+    x_best = x_history[index_best,:].unsqueeze(0)
+
+    return x_best, y_history, x_history, metric_history
+
+
+def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol, it, min_relax=1e-6):
+
+    metric0 = metric_history[-relax_dyn_num].item()
+    metric1 = metric_history[-1].item()
+    improvement = metric1 - metric0
+
+    if (improvement < relax_dyn_tol):
+        if relax > min_relax:
+            print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax:.1e} to {relax/relax_dyn_decrease:.1e}")
+            relax = relax / relax_dyn_decrease
+            return relax, True, False
+        else:
+            print(f"\t\t\t<> Metric not improving enough (@{it}), relax already at minimum of {min_relax:.1e}, not worth continuing", typeMsg="i")
+            return relax, False, True
+    else:
+        return relax, False, False
+
+def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10):
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
-    dx = relax * (QT - Q) / (Q**2 + QT**2) ** 0.5
+    dx = relax * (QT - Q) / (Q**2 + QT**2).clamp(min=threshold_zero_flux_issue) ** 0.5
 
     # Prevent big steps - Clamp to the max step (with the right sign)
     ix = dx.abs() > dx_max
@@ -356,7 +441,7 @@ class no_bounds:
     def untransform(self, y):
         return y
 
-def fixDimensions_ROOT(x, y):
+def equal_dimensions(x, y):
     # ------------------------------------------------------------
     # Root requires that len(x)==len(y)
     # ------------------------------------------------------------

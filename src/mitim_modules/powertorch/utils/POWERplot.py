@@ -3,7 +3,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def plot(self, axs, axsRes, figs=None, c="g", label="powerstate",batch_num=0, compare_to_state=None, c_orig = 'r'):
+def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, compare_to_state=None, c_orig = "b"):
     
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot profiles object

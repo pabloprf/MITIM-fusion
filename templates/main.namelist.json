@@ -48,6 +48,14 @@
                 "relative_improvement_for_stopping": 1e-4,
                 "keep_best": 1
                 },
+            "sr": {
+                "num_restarts": 5,
+                "maxiter": 1000,
+                "relative_improvement_for_stopping": 1e-3,
+                "relax": 0.1,
+                "relax_dyn": true,
+                "keep_best": 1
+                },
             "ga": {
                 "num_restarts": 1,
                 "keep_best": 32

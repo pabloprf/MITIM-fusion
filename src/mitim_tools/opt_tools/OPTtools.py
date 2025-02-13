@@ -2,6 +2,7 @@ import torch
 import datetime
 import copy
 import botorch
+from functools import partial
 import numpy as np
 from mitim_tools.opt_tools.utils import SBOcorrections, TESTtools, SAMPLINGtools
 from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
@@ -219,9 +220,18 @@ def acquire_next_points(
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizer == "ga":           from mitim_tools.opt_tools.optimizers.GAtools import optimize_function
-        elif optimizer == "botorch":    from mitim_tools.opt_tools.optimizers.BOTORCHoptim import optimize_function
-        elif optimizer == "root" :      from mitim_tools.opt_tools.optimizers.ROOTtools import optimize_function
+        if optimizer == "ga":           
+            from mitim_tools.opt_tools.optimizers.GAtools import optimize_function
+        elif optimizer == "botorch":    
+            from mitim_tools.opt_tools.optimizers.BOTORCHoptim import optimize_function
+        elif optimizer == "root" or optimizer == "sr":      
+            from mitim_tools.opt_tools.optimizers.ROOTtools import optimize_function
+            if optimizer == "root":
+                optimize_function = partial(optimize_function, method="scipy_root")
+            elif optimizer == "sr" : 
+                optimize_function = partial(optimize_function, method="sr")
+        else:
+            raise ValueError(f"[MITIM] Unknown optimizer {optimizer}")
 
         fun.prep(xGuesses=x_opt,seed=it_number + seed)
 
@@ -253,7 +263,6 @@ def acquire_next_points(
             else:
                 print("- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",typeMsg="i",)
                 break
-
 
     # ~~~~ Clean-up set and complete with actual OFs
 

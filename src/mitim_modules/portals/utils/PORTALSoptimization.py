@@ -31,16 +31,17 @@ def initialization_simple_relax(self):
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     namingConvention = f"portals_sr_{b}_ev"
 
+    # Solver options tuned for simple relax of beginning of PORTALS (big jumps)
     solver_options = {
-        "tol": 1e-6,
+        "tol": None,
         "maxiter": self.Originalinitial_training,
         "relax": 0.2,           # Defines relationship between flux and gradient
         "dx_max": 0.2,          # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 20% each time)
+        "relax_dyn": False,
         "dx_max_abs": None,     # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
         "dx_min_abs": 0.1,      # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
         "print_each": 1,
         "folder": MainFolder,
-        "storeValues": True,
         "namingConvention": namingConvention,
     }
 
@@ -101,7 +102,6 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     # Define transport calculation function as a surrogate model
     TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
     TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
-
 
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
