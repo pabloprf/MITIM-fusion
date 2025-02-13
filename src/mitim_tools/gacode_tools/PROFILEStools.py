@@ -1623,7 +1623,7 @@ class PROFILES_GACODE:
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         print("\t\t\t- Set of ions in updated profiles: ", self.profiles["name"])
 
@@ -1705,7 +1705,7 @@ class PROFILES_GACODE:
         )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         # Remove species
         self.remove(ions_list)
@@ -1821,7 +1821,7 @@ class PROFILES_GACODE:
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         if position_to_moveTO_in_profiles > position_to_moveFROM_in_profiles:
             self.remove([position_to_moveFROM_in_profiles + 1])
@@ -1861,7 +1861,7 @@ class PROFILES_GACODE:
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
     def correct(self, options={}, write=False, new_file=None):
         """
@@ -1953,7 +1953,7 @@ class PROFILES_GACODE:
 
         # Recompute ptot
         if recompute_ptot:
-            self.deriveQuantities()
+            self.deriveQuantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
@@ -1970,7 +1970,7 @@ class PROFILES_GACODE:
         # Re-derive
         # ----------------------------------------------------------------------
 
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         # ----------------------------------------------------------------------
         # Write
@@ -1980,10 +1980,13 @@ class PROFILES_GACODE:
             self.printInfo()
         
     def enforce_same_density_gradients(self):
-        print("\t\t- Making all thermal ions have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
+        txt = ""
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 self.profiles["ni(10^19/m^3)"][:, sp] = self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
+                txt += f"{self.Species[sp]['N']} "
+        print(f"\t\t- Making all thermal ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
+        self.deriveQuantities(rederiveGeometry=False)
 
     def selfconsistentPTOT(self):
         print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
