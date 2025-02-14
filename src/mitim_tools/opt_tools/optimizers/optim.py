@@ -188,12 +188,12 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     relax = solver_options.get("relax", 0.1)                    # Defines relationship between flux_residual_evaluator and gradient
     dx_max = solver_options.get("dx_max", 0.1)                  # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 10% each time)
     dx_max_abs = solver_options.get("dx_max_abs", None)         # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
-    dx_min_abs = solver_options.get("dx_min_abs", None)         # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
+    dx_min_abs = solver_options.get("dx_min_abs", None)         # Minimum step size in gradient, absolute (e.g. a/Lx must at least increase by 0.01 each time)
     
     relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
     relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
     relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
-    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
+    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-6)          # Tolerance to consider that the residual is not decreasing
 
     print_each = solver_options.get("print_each", 1e2)
     
@@ -289,12 +289,23 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
 
 
 def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol, it, min_relax=1e-6):
+    '''
+    Logic:  If the metric is not improving enough, decrease the relax parameter. To determine
+            if the metric is improving enough, I will fit a line to the last relax_dyn_num points and
+            check if the slope is small enough. If it is, I will decrease the relax parameter.
+    '''
 
-    metric0 = metric_history[-relax_dyn_num].item()
-    metric1 = metric_history[-1].item()
-    improvement = metric1 - metric0
+    metric_history_considered = torch.Tensor(metric_history[-relax_dyn_num:])
 
-    if (improvement < relax_dyn_tol):
+    # Linear fit to the time series
+    x = np.arange(len(metric_history_considered))
+    y = metric_history_considered
+    slope, intercept = np.polyfit(x, y, 1)
+    metric0 = intercept
+    metric1 = slope * len(metric_history_considered) + intercept
+    change_in_metric = abs(metric1 - metric0)
+
+    if (change_in_metric < relax_dyn_tol):
         if relax > min_relax:
             print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax:.1e} to {relax/relax_dyn_decrease:.1e}")
             relax = relax / relax_dyn_decrease
