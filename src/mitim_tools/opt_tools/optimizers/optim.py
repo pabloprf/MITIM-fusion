@@ -193,7 +193,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
     relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
     relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
-    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-6)          # Tolerance to consider that the residual is not decreasing
+    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
 
     print_each = solver_options.get("print_each", 1e2)
     
