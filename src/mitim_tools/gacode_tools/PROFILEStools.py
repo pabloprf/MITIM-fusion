@@ -1898,21 +1898,7 @@ class PROFILES_GACODE:
                 self.remove(ions_fast)
         # Fast as thermal
         elif FastIsThermal:
-            modified_num = 0
-            for i in range(len(self.Species)):
-                if self.Species[i]["S"] != "therm":
-                    print(
-                        f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal'
-                    )
-                    self.Species[i]["S"] = "therm"
-                    self.profiles["type"][i] = "[therm]"
-                    self.profiles["ti(keV)"][:, i] = self.profiles["ti(keV)"][:, 0]
-                    modified_num += 1
-            if modified_num > 0:
-                print(
-                    "\t- Making fast species as if they were thermal (to keep dilution effect and Qi-sum of fluxes)",
-                    typeMsg="w",
-                )
+            self.make_fast_ions_thermal()
 
         # Correct LUMPED
         for i in range(len(self.profiles["name"])):
@@ -1985,6 +1971,20 @@ class PROFILES_GACODE:
         print(f"\t\t- Making all thermal ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
         self.deriveQuantities(rederiveGeometry=False)
 
+    def make_fast_ions_thermal(self):
+        modified_num = 0
+        for i in range(len(self.Species)):
+            if self.Species[i]["S"] != "therm":
+                print(
+                    f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal'
+                )
+                self.Species[i]["S"] = "therm"
+                self.profiles["type"][i] = "[therm]"
+                self.profiles["ti(keV)"][:, i] = self.profiles["ti(keV)"][:, 0]
+                modified_num += 1
+        if modified_num > 0:
+            print("\t- Making fast species as if they were thermal (to keep dilution effect and Qi-sum of fluxes)",typeMsg="w")
+    
     def selfconsistentPTOT(self):
         print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6

@@ -41,7 +41,8 @@ dependencies = [
   "freegs",
   "botorch",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
-  "psutil"
+  "psutil",
+  "onnx2pytorch"    # Stricly not for MITIM, but good to use ONNX models
 ]
 
 [project.optional-dependencies]

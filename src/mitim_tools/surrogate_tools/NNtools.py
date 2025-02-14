@@ -16,7 +16,12 @@ class mitim_nn:
 
             self.load = self._load_tf
             self.__call__ = self._evaluate_tf
-        
+        if type == 'pt':
+            print('Initializing Pytorch Neural Network')
+
+            self.load = self._load_pt
+            self.__call__ = self._evaluate_pt
+
         self.force_within_range = force_within_range
 
     def _load_tf(self, model_path, norm=None):
@@ -27,43 +32,76 @@ class mitim_nn:
         self.normalization = None
 
         if norm is not None:
-            with open(norm, 'r') as f:
-                self.normalization = np.array([float(x) for x in f.readline().split()])
-                try:
-                    self.inputs = np.array([x for x in f.readline().split()])
-                except:
-                    self.inputs = None
+            self._read_norm_file(norm)
+        
+        print(f'\t- Model file from {IOtools.clipstr(model_path,30)} loaded')
 
-                try:
-                    self.ranges = {}
-                    for inp in self.inputs:
-                        self.ranges[inp] = [float(x) for x in f.readline().split()]
-                except:
-                    self.ranges = None
+    def _read_norm_file(self, norm):
 
-            print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
-            print("Norm:", self.normalization)
-            if self.inputs is not None:
-                print("Expected inputs to NN:")
-                print(self.inputs)
-            else:
-                print("No input information found in normalization file")
-            if self.ranges is not None:
-                print("Trained ranges:")
-                print(self.ranges)
-            else:
-                print("No ranges found in normalization file")
+        with open(norm, 'r') as f:
+            self.normalization = np.array([float(x) for x in f.readline().split()])
+            try:
+                self.inputs = np.array([x for x in f.readline().split()])
+            except:
+                self.inputs = None
+
+            try:
+                self.ranges = {}
+                for inp in self.inputs:
+                    self.ranges[inp] = [float(x) for x in f.readline().split()]
+            except:
+                self.ranges = None
+
+        print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
+        print("Norm:", self.normalization)
+        if self.inputs is not None:
+            print("Expected inputs to NN:")
+            print(self.inputs)
+        else:
+            print("No input information found in normalization file")
+        if self.ranges is not None:
+            print("Trained ranges:")
+            print(self.ranges)
+        else:
+            print("No ranges found in normalization file")
         
-        print(f'\t- Weights file from {IOtools.clipstr(model_path,30)} loaded')
+    def _evaluate_tf(self, inputs, print_msg=True):
         
-    def _evaluate_tf(self, inputs):
-        
-        print('Evaluating NN with inputs: ', inputs)
+        if print_msg:
+            print('Evaluating NN with inputs: ', inputs)
 
         if self.normalization is not None:
             return self.model.predict(np.expand_dims(inputs, axis=0))[0]*self.normalization
         else:
             return self.model.predict(np.expand_dims(inputs, axis=0))[0]
+
+    def _load_pt(self, model_path, norm=None):
+
+        import torch
+        self.model = torch.load(model_path, weights_only=False).eval()
+
+        self.normalization = None
+
+        if norm is not None:
+            self._read_norm_file(norm)
+        self.normalization = 1.0
+
+        print(f'\t- Model file from {IOtools.clipstr(model_path,30)} loaded')
+
+    def _evaluate_pt(self, inputs, print_msg=True):
+
+        if print_msg:
+            print('Evaluating NN with inputs: ', inputs)
+
+        output = self.model(inputs.unsqueeze(0)).squeeze()
+
+        if output.dim() == 0:
+            output = output.unsqueeze(0)
+
+        if self.normalization is not None:
+            return output*self.normalization
+        else:
+            return output
 
 '''
 ---------------------------------------------------------------------------------------------
@@ -83,10 +121,6 @@ Example usage:
     print(ptop, wtop)
 
 '''
-
-# ---------------------------------------------------------------------------------------------
-# Class for the EPED NN
-# ---------------------------------------------------------------------------------------------
 
 class eped_nn(mitim_nn):
 
@@ -108,10 +142,10 @@ class eped_nn(mitim_nn):
                  ):
 
 
-        # 1) Calculate any extra derived quantities
+        # 0) Calculate any extra derived quantities
         nesep = neped * nesep_ratio
 
-        # 2) Collect all possible arguments in a dictionary
+        # 1) Collect all possible arguments in a dictionary
         all_args = {
             'Ip':         Ip,
             'Bt':         Bt,
@@ -126,17 +160,45 @@ class eped_nn(mitim_nn):
             'nesep':      nesep
         }
 
-        # 3) Construct the input list/array in the exact order the parent expects (as listed in self.inputs).
+        # 2) Construct the input list/array in the exact order the parent expects (as listed in self.inputs).
         if self.inputs is not None:
             inputs = [all_args[key] for key in self.inputs]
         else:
             inputs = list(all_args.values())
 
-        # 4) Potentially check the ranges
-        if self.ranges is not None:
+        # 3) Potentially check the ranges
+        if self.ranges is not None and self.force_within_range is not None:
             for i, inp in enumerate(self.inputs):
                 if inputs[i] < self.ranges[inp][0] or inputs[i] > self.ranges[inp][1]:
                     print(f'\t- Input {inp} out of range: {inputs[i]} not in {self.ranges[inp]}', typeMsg='w' if not self.force_within_range else 'q')
 
         # 5) Call the parent method to run the actual inference 
         return self.__call__(inputs)
+
+
+'''
+---------------------------------------------------------------------------------------------
+Class for the TGLF NN
+---------------------------------------------------------------------------------------------
+'''
+
+class tglf_nn(mitim_nn):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def __call__(self, inputs):
+        '''
+        inputs could be [batch, dim]
+        '''
+
+        # Potentially check the ranges
+        if self.ranges is not None and self.force_within_range is not None:
+            for k in range(inputs.shape[0]):
+                input0 = inputs[k,:]
+                for i, inp in enumerate(self.inputs):
+                    if input0[i] < self.ranges[inp][0] or input0[i] > self.ranges[inp][1]:
+                        print(f'\t- Input {inp} out of range for batch position {k}: {inputs[k,i]} not in {self.ranges[inp]}', typeMsg='w' if not self.force_within_range else 'q')
+
+        # 5) Call the parent method to run the actual inference 
+        return self.__call__(inputs, print_msg=False)
