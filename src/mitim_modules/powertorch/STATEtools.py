@@ -333,7 +333,17 @@ class powerstate:
 
         for c, i in enumerate(self.ProfilesPredicted):
             if X is not None:
+
+                aLx_before = self.plasma[f"aL{i}"][:, 1:].clone()
+
                 self.plasma[f"aL{i}"][:, 1:] = self.Xcurrent[:, numeach * c : numeach * (c + 1)]
+
+                # For now, scale also the ion gradients by same ammount (for p_prime) #TODO: improve this treatment
+                if i == "ne":
+                    for j in range(self.plasma["ni"].shape[-1]):
+                        f = aLx_before / self.plasma[f"aLni{j}"][:, 1:].clone()
+                        self.plasma[f"aLni{j}"][:, 1:] *= f
+
             self.update_var(i)
 
     def flux_match(self, algorithm="root", solver_options=None, bounds=None):
@@ -599,11 +609,11 @@ class powerstate:
             If ne is updated, then ni must be updated as well, but keeping the thermal ion concentrations constant
             '''
             if self.scaleIonDensities:
+
+                # Keep the thermal ion concentrations constant, scale their densities
                 self.plasma["ni"] = ni_0orig.clone()
                 for i in range(self.plasma["ni"].shape[-1]):
-                    self.plasma["ni"][..., i] = self.plasma["ne"] * (
-                        ni_0orig[..., i] / ne_0orig
-                    )
+                    self.plasma["ni"][..., i] = self.plasma["ne"] * (ni_0orig[..., i] / ne_0orig)
 
         if name == "nZ":
 
@@ -641,22 +651,23 @@ class powerstate:
         )
 
         # Collisionality
-        self.plasma["nuei"] = PLASMAtools.xnue(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref
-        )
+        self.plasma["nuei"] = PLASMAtools.xnue(self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref)
 
         # Gyro-radius
-        self.plasma["rho_s"] = PLASMAtools.rho_s(
-            self.plasma["te"], mref, self.plasma["B_unit"]
-        )
+        self.plasma["rho_s"] = PLASMAtools.rho_s(self.plasma["te"], mref, self.plasma["B_unit"])
         self.plasma["c_s"] = PLASMAtools.c_s(self.plasma["te"], mref)
 
         # Other
         self.plasma["tite"] = self.plasma["ti"] / self.plasma["te"]
         self.plasma["fZ"] = self.plasma["nZ"] / self.plasma["ne"]
-        self.plasma["beta_e"] = PLASMAtools.betae(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["B_unit"]
-        )
+        self.plasma["beta_e"] = PLASMAtools.betae(self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["B_unit"])
+        
+        aLni = [self.plasma[f"aLni{i}"] for i in range(self.plasma["ni"].shape[-1])]
+        
+        self.plasma["p_prime"] = PLASMAtools.p_prime(
+                                    self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["aLte"], self.plasma["aLne"],
+                                    self.plasma["ti"], self.plasma["ni"] * 1e-1, self.plasma["aLti"], aLni,
+                                    self.plasma["a"].unsqueeze(-1), self.plasma["B_unit"], self.plasma["q"], self.plasma["roa"]*self.plasma["a"].unsqueeze(-1))
 
         """
 		Rotation stuff
@@ -667,9 +678,7 @@ class powerstate:
 		"""
         if calculateRotationQuantities:
             self.plasma["w0_n"] = self.plasma["w0"] / self.plasma["c_s"]
-            self.plasma["aLw0_n"] = (
-                self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"]
-            )  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
+            self.plasma["aLw0_n"] = (self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"])  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
 
     def calculateTargets(self, assumedPercentError=1.0):
         """

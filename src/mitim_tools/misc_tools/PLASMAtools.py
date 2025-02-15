@@ -249,6 +249,23 @@ def betae(Te_keV, ne_20, B_T):
 
     return beta_e
 
+def p_prime(te, ne, aLte, aLne, ti, ni, aLti, aLni, a, B_unit, q, r):
+    
+    # pressure gradient
+    dpdr = ne*te*(aLte + aLne)
+    for i in range(ni.shape[-1]):
+        dpdr += ni[...,i]*ti*(aLti + aLni[i][:])
+
+    dpdr = -1/a * 1e3 * e_J * 1e20 * dpdr
+
+    # p_prime is q*a^2/r/B^2 * dpdr
+    p_prime = 1E-7 * q * a**2 / r / B_unit**2 * dpdr
+
+    # First one would be nan because of the division by r, correct that
+    p_prime = torch.where(r == 0, torch.tensor(0.0, dtype=torch.float64), p_prime)
+
+    return p_prime
+
 
 def calculatePressure(Te, Ti, ne, ni):
     """

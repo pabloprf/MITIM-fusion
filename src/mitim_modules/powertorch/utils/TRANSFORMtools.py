@@ -159,6 +159,10 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["w0", "w0(rad/s)", None, self.plasma["kradcm"], False], 
     ]
 
+    # Add all ions
+    for i in range(input_gacode.profiles['ni(10^19/m^3)'].shape[1]):
+        cases_to_parameterize.append([f"ni{i}", "ni(10^19/m^3)", i, 1.0, True])
+
     self.deparametrizers_fine, self.deparametrizers_coarse, self.deparametrizers_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
         quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
@@ -348,17 +352,14 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     rho_use = input_gacode.profiles["rho(-)"]
 
     # If I'm grabbing original axis, include as part of powerstate all the grid points near axis
-    rho_vec = rho_vec.clone()
-    rho_vec = rho_vec.cpu()
+    rho_vec = rho_vec.clone().cpu()
 
     # ** Store the information about the thermal ions, including the cooling coefficients
     self.plasma["ni"], mi, Zi, c_rad = [], [], [], []
     for i in range(len(input_gacode.profiles["mass"])):
         if input_gacode.profiles["type"][i] == "[therm]":
             self.plasma["ni"].append(
-                interpolation_function(
-                    rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i]
-                )
+                interpolation_function(rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i])
             )
             mi.append(input_gacode.profiles["mass"][i])
             Zi.append(input_gacode.profiles["z"][i])
@@ -368,10 +369,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             try:
                 c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,1:].astype(float)
             except IndexError:
-                print(
-                    f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',
-                    typeMsg="w",
-                )
+                print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',typeMsg="w")
                 c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
             c_rad.append(c)
@@ -398,7 +396,6 @@ def parameterize_curve(
     x_coarse_tensor,
     parameterize_in_aLx=True,
     multiplier_quantity=1.0,
-    preSmoothing=False,
     PreventNegative=False,
     ):
     """
@@ -425,10 +422,7 @@ def parameterize_curve(
 
     y_coord = torch.from_numpy(y_coord_raw).to(x_coarse_tensor) * multiplier_quantity
 
-    ygrad_coord = derivator_function(
-        torch.from_numpy(x_coord).to(x_coarse_tensor),
-        y_coord
-    )
+    ygrad_coord = derivator_function( torch.from_numpy(x_coord).to(x_coarse_tensor), y_coord )
 
     # **********************************************************************************************************
     # Get control points
@@ -438,14 +432,6 @@ def parameterize_curve(
 
     # Clip to zero if I want to prevent negative values
     ygrad_coord = ygrad_coord.clip(0) if PreventNegative else ygrad_coord
-
-    # Perform smoothing to grab from when smoothing option is active
-    if preSmoothing:
-        from scipy.signal import savgol_filter
-
-        filterlen = int(int(len(x_coord) / 20 / 2) * 10) + 1  # 651
-        yV_smth = torch.from_numpy(savgol_filter(ygrad_coord, filterlen, 2)).to(ygrad_coord)
-        points_untouched = 5
 
     """
     Define region to get control points from
@@ -471,21 +457,7 @@ def parameterize_curve(
     # Produce control points, including a zero at the beginning
     aLy_coarse = [[0.0, 0.0]]
     for cont, i in enumerate(x_coarse):
-        if (
-            preSmoothing
-            and (cont < len(x_coarse) - 1 - points_untouched)
-            and (cont > 0)
-        ):
-            """
-            Perform some radial averaging if points are not the last ones or the first
-            """
-            yValue = yV_smth[np.argmin(np.abs(x_coord - i))]
-        else:
-            """
-            Simply grab the values
-            """
-            yValue = ygrad_coord[np.argmin(np.abs(x_coord - i))]
-
+        yValue = ygrad_coord[np.argmin(np.abs(x_coord - i))]
         aLy_coarse.append([i, yValue.cpu().item()])
 
     aLy_coarse = torch.from_numpy(np.array(aLy_coarse)).to(ygrad_coord)
@@ -494,14 +466,10 @@ def parameterize_curve(
     aLy_coarse[-1, 1] = aLy_coarse[-2, 1]
 
     # Boundary condition at point moved by gridPointsAllowed
-    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.cpu().numpy())).to(
-        ygrad_coord
-    )
+    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
 
     # Boundary condition at point (ACTUAL THAT I WANT to keep fixed, i.e. rho=0.8)
-    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.cpu().numpy())).to(
-        ygrad_coord
-    )
+    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
 
     # **********************************************************************************************************
     # Define deparametrizer functions
