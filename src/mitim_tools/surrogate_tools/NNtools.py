@@ -1,5 +1,8 @@
+import torch
 import numpy as np
-from mitim_tools.misc_tools import IOtools
+import matplotlib.pyplot as plt
+from torch.autograd.functional import jacobian
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -16,6 +19,7 @@ class mitim_nn:
 
             self.load = self._load_tf
             self.__call__ = self._evaluate_tf
+
         if type == 'pt':
             print('Initializing Pytorch Neural Network')
 
@@ -84,7 +88,7 @@ class mitim_nn:
 
         if norm is not None:
             self._read_norm_file(norm)
-        self.normalization = 1.0
+            self.normalization = 1.0
 
         print(f'\t- Model file from {IOtools.clipstr(model_path,30)} loaded')
 
@@ -202,3 +206,53 @@ class tglf_nn(mitim_nn):
 
         # 5) Call the parent method to run the actual inference 
         return self.__call__(inputs, print_msg=False)
+
+
+    def scan_parameter(self, inputs, param, values=np.linspace(0.5, 2.0, 100), values_are_relative=True):
+
+        if self.inputs is not None:
+            print(f'- Scanning parameter {param}')
+        else:
+            raise ValueError('No input information found in normalization file')
+    
+        param_i = np.where(self.inputs == param)[0][0]
+
+        inputs_c = inputs.clone()
+
+        x = []
+        results, resultsJ = [], []
+        for val in values:
+            if values_are_relative:
+                inputs[:,param_i] = val*inputs_c[:,param_i]
+            else:
+                inputs[:,param_i] = val
+            x.append(inputs[:,param_i].clone())
+        
+            q = self.__call__(inputs, print_msg=False)
+
+            results.append(q)
+            qJ = []
+            for j in range(inputs.shape[0]):
+                qJ0 = jacobian(self,inputs[j,:].unsqueeze(0)).squeeze()[param_i].item()
+                qJ.append(qJ0)
+            resultsJ.append(qJ)
+        
+        x = torch.stack(x, dim=1)    
+        results = torch.stack(results, dim=1)
+        resultsJ = torch.Tensor(resultsJ).transpose(0,1)
+
+        plt.ion(); fig, axs = plt.subplots(nrows=2, sharex=True, figsize=(12,6))
+        for candidate in range(results.shape[0]):
+            axs[0].plot(x[candidate,:], results[candidate,:].detach().numpy(), 'o-', lw=0.5, ms=1, label=f'Candidate {candidate}' if results.shape[0] > 1 else '')
+            axs[1].plot(x[candidate,:], resultsJ[candidate,:].detach().numpy(), 'o-', lw=0.5, ms=1, label=f'Candidate {candidate}' if results.shape[0] > 1 else '')
+
+        ax = axs[0]
+        ax.set_ylabel('Q')
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, size=8, withleg=results.shape[1] > 1)
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.set_xlabel(param)
+        ax.set_ylabel(f'dQ/d{param}')
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, size=8, withleg=False)
