@@ -1031,14 +1031,9 @@ class PROFILES_GACODE:
 
         self.derived["Beta"] = 1/(1/self.derived["Beta_p"]+1/self.derived["Beta_t"])
 
-        self.derived["BetaN"] = (
-            self.derived["Beta"]
-            / (
-                np.abs(float(self.profiles["current(MA)"][-1]))
-                / (self.derived["a"] * self.derived["B0"])
-            )
-            * 100.0
-        )
+        TroyonFactor = np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"])
+
+        self.derived["BetaN"] = self.derived["Beta"] / TroyonFactor * 100.0
 
         # ---
 

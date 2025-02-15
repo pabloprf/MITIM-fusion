@@ -159,9 +159,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["w0", "w0(rad/s)", None, self.plasma["kradcm"], False], 
     ]
 
-    self.deparametrizers_fine = {}
-    self.deparametrizers_coarse = {}
-    self.deparametrizers_coarse_middle = {}
+    self.deparametrizers_fine, self.deparametrizers_coarse, self.deparametrizers_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
         quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
 
