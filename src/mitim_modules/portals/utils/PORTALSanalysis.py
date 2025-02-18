@@ -1033,7 +1033,7 @@ class PORTALSinitializer:
             self.profiles[-1].plotGradients(
                 axsGrads_extra,
                 color=colors[i+1],
-                plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
+                plotImpurity=self.powerstates[-1].impurityPosition_transport if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
                 plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
                 ls='-',
                 lw=1.0,
@@ -1065,7 +1065,7 @@ class PORTALSinitializer:
                     prof.plotGradients(
                         axsGrads,
                         color=colors[i+1],
-                        plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
+                        plotImpurity=p.impurityPosition_transport if 'nZ' in p.ProfilesPredicted else None,
                         plotRotation='w0' in p.ProfilesPredicted,
                         lastRho=p.plasma["rho"][-1, -1].item(),
                         label="next",
