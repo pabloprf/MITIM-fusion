@@ -79,7 +79,7 @@ def initialization_simple_relax(self):
 """
 
 
-def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=None, algorithm = 'root', solver_options = {}):
+def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=None, algorithm = None, solver_options = None):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
@@ -92,15 +92,16 @@ def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=N
 
     '''
 
-    algorithm  = 'simple_relax'
-    solver_options = {
-        "tol": -1e-4,
-        "tol_rel": 1e-3,        # Residual residual by 1000x (superseeds tol)
-        "maxiter": 2000,
-        "relax": 0.1,          # Defines relationship between flux and gradient
-        "relax_dyn": True,     # If True, relax will be adjusted dynamically
-        "print_each": 100,
-    }
+    if algorithm is None:
+        algorithm  = 'simple_relax'
+        solver_options = {
+            "tol": -1e-4,
+            "tol_rel": 1e-3,        # Residual residual by 1000x (superseeds tol)
+            "maxiter": 2000,
+            "relax": 0.1,          # Defines relationship between flux and gradient
+            "relax_dyn": True,     # If True, relax will be adjusted dynamically
+            "print_each": 100,
+        }
 
     # Prepare tensor bou
     bounds = torch.zeros((2, len(step.GP['combined_model'].bounds))).to(step.GP['combined_model'].train_X)
