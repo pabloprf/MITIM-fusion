@@ -7,11 +7,75 @@ from IPython import embed
 
 class NEO:
     '''
+    NEO class that manages the run and the results.
 
+    The philosophy of this is that a single 'neo' class will handle the neo simulation and results
+    at one time slice but with possibility of several radii at once.
+
+    It can also handle different NEO settings, running them one by one, storing results in folders and then
+    grabbing them.
+
+    Scans can also be run. At several radii at once if wanted.
 
     '''
-    def __init__(self):
-        pass
+    ### --- Default I/O --- ###
+    def __init__(
+        self,
+        rhos=[0.4, 0.6],  # rho locations of interest
+        cdf=None,  # Option1: Start from CDF file (TRANSP) - Path to file
+        time=100.0,  # 		   Time to extract CDF file
+        avTime=0.0,  # 		   Averaging window to extract CDF file
+        alreadyRun=None,  # Option2: Do more stuff with a class that has already been created and store
+        ):
+        # Init
+        print(
+            "\n-----------------------------------------------------------------------------------------"
+        )
+        print("\t\t\t NEO class module")
+        print(
+            "-----------------------------------------------------------------------------------------\n"
+        )
+
+        # Reload previous case
+        if alreadyRun is not None:
+            # For the case in which I have run NEO somewhere else, not using to plot and modify the class
+            self.__class__ = alreadyRun.__class__
+            self.__dict__ = alreadyRun.__dict__
+            print("* Readying previously-run NEO class", typeMsg="i")
+        
+        # Prepare new case
+        else:
+            # List of output files
+            self.ResultsFiles = [
+                "out.neo.run",
+            ]
+
+            # Prepares run metadata
+            self.LocationCDF = cdf
+            if self.LocationCDF is not None:
+                _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
+            else:
+                self.nameRunid = "0"
+            self.time, self.avTime = time, avTime
+            self.rhos = np.array(rhos)
+
+            # Init attrs for outputs
+            (
+                self.results,
+                self.scans,
+                self.tgyro,
+                self.ky_single,
+            ) = ({}, {}, None, None)
+
+            # Init normalizations
+            self.NormalizationSets = {
+                "TRANSP": None,
+                "PROFILES": None,
+                "TGYRO": None,
+                "EXP": None,
+                "input_gacode": None,
+                "SELECTED": None,
+            }
 
     def prep(self, inputgacode, folder):
         self.inputgacode = inputgacode
