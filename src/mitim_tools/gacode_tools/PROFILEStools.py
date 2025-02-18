@@ -11,13 +11,10 @@ from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
+from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
-try:
-    from mitim_tools.gacode_tools.utils import PORTALSinteraction
-except ImportError:
-    print("- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",typeMsg="w")
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode

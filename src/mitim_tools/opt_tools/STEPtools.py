@@ -441,17 +441,10 @@ class OPTstep:
 
     def optimize(
         self,
-        scalarized_objective,
         position_best_so_far=-1,
         seed=0,
         forceAllPointsInBounds=False,
     ):
-        """
-        ***********************************************
-        Update functions to be used during optimization
-        ***********************************************
-        """
-        self.defineFunctions(scalarized_objective)
 
         """
 		***********************************************

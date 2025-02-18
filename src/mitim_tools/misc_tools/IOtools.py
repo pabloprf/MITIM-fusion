@@ -33,7 +33,7 @@ import urllib.error as urlERR  # urllibE
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
-    def __init__(self, file):
+    def __init__(self, file='./profiler.prof'):
         self.file = Path(file).expanduser()
 
     def __enter__(self):

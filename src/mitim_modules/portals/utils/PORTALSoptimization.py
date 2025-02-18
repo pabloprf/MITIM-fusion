@@ -79,8 +79,7 @@ def initialization_simple_relax(self):
 """
 
 
-def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=None,
-    algorithm = {'root':{'storeValues':True}}):
+def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=None, algorithm = 'root', solver_options = {}):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
@@ -92,6 +91,22 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
         #TODO: So far only works if Te,Ti,ne
 
     '''
+
+    algorithm  = 'simple_relax'
+    solver_options = {
+        "tol": -1e-4,
+        "tol_rel": 1e-3,        # Residual residual by 1000x (superseeds tol)
+        "maxiter": 2000,
+        "relax": 0.1,          # Defines relationship between flux and gradient
+        "relax_dyn": True,     # If True, relax will be adjusted dynamically
+        "print_each": 100,
+    }
+
+    # Prepare tensor bou
+    bounds = torch.zeros((2, len(step.GP['combined_model'].bounds))).to(step.GP['combined_model'].train_X)
+    for i, ikey in enumerate(step.GP['combined_model'].bounds):
+        bounds[0, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][0])
+        bounds[1, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][1])
 
     # ----------------------------------------------------
     # Create powerstate with new profiles
@@ -130,14 +145,10 @@ def flux_match_surrogate(step,profiles_new, plot_results=True, file_write_csv=No
     powerstate_orig = copy.deepcopy(powerstate)
     powerstate_orig.calculate(None)
 
-    algorithm = list(algorithm.keys())[0]
-    solver_options = {
-        'algorithm_options': algorithm[list(algorithm.keys())[0]]
-    }
-
     powerstate.flux_match(
         algorithm=algorithm,
-        solver_options=solver_options
+        solver_options=solver_options,
+        bounds=bounds
     )
 
     # ----------------------------------------------------

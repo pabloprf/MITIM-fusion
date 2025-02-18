@@ -484,7 +484,7 @@ def tglf_scan_trick(
 
 
 # ------------------------------------------------------------------
-# SIMPLE Diffusion
+# SIMPLE Diffusion (#TODO: implement with particle flux and the raw)
 # ------------------------------------------------------------------
 
 class diffusion_model(power_transport):
@@ -550,7 +550,7 @@ class surrogate_model(power_transport):
 
         X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
 
-        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X) #self.Xcurrent[0])
+        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X)
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 

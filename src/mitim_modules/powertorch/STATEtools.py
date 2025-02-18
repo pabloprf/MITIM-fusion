@@ -348,6 +348,7 @@ class powerstate:
 
     def flux_match(self, algorithm="root", solver_options=None, bounds=None):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
+        self.bounds_current = bounds
 
         print(f'\t- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
         print("**********************************************************************************************")
@@ -424,7 +425,7 @@ class powerstate:
         x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
 
         # Optimize
-        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=bounds,solver_options=solver_options)
+        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
 
         # For simplicity, return the trajectory of only the best candidate
         self.FluxMatch_Yopt = Yopt

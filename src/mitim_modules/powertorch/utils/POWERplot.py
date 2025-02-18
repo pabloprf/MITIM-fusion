@@ -34,15 +34,45 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                 'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)',
                 1.0,"Qgb"])
     if "ne" in self.ProfilesPredicted:
-        set_plots.append(
-            [   'ne', 'aLne', 'Ce_tr_raw', 'Ce_raw',
-                'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
-                1E-1,"Ggb"])
+
+        # If this model provides the raw particle flux, go for it
+        if 'Ce_tr_raw' in self.plasma:
+            set_plots.append(
+                [   'ne', 'aLne', 'Ce_tr_raw', 'Ce_raw',
+                    'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
+                    1E-1,"Ggb"])
+        else:
+            if self.useConvectiveFluxes:
+                set_plots.append(
+                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
+                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
+                        1.0,"Qgb"])
+            else:
+                set_plots.append(
+                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
+                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
+                        1E-1,"Ggb"])
+
     if "nZ" in self.ProfilesPredicted:
-        set_plots.append(
-            [   'nZ', 'aLnZ', 'CZ_tr_raw', 'CZ_raw',
-                'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
-                1E-1,"Ggb"])
+
+        # If this model provides the raw particle flux, go for it
+        if 'CZ_tr_raw' in self.plasma:
+            set_plots.append(
+                [   'nZ', 'aLZe', 'CZ_tr_raw', 'CZ_raw',
+                    'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
+                    1E-1,"Ggb"])
+        else:
+            if self.useConvectiveFluxes:
+                set_plots.append(
+                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
+                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$Q_{conv,Z}$ (GB)','$Q_{conv,Z}$ ($MW/m^2$)',
+                        1.0,"Qgb"])
+            else:
+                set_plots.append(
+                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
+                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
+                        1E-1,"Ggb"])
+
     if "w0" in self.ProfilesPredicted:
         set_plots.append(
             [   'w0', 'aLw0', 'Mt_tr', 'Mt',
@@ -90,7 +120,13 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             # Plot gradient evolution
             ax = axsRes[1+cont]
             for j in range(self.plasma['rho'].shape[-1]-1):    
-                ax.plot(self.FluxMatch_Xopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
+
+                position_in_batch = i * ( len(self.ProfilesPredicted) +1 ) + j
+
+                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
+                for u in [0,1]:
+                    ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
+
             ax.set_ylabel(self.labelsFM[i][0])
             
             if i == len(self.ProfilesPredicted)-1:
@@ -99,11 +135,13 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             # Plot residual evolution
             ax = axsRes[1+cont+1]
             for j in range(self.plasma['rho'].shape[-1]-1):    
-                ax.plot(self.FluxMatch_Yopt[:,i*len(self.ProfilesPredicted)+j], "-o", color=colors[j], lw=1.0,markersize=1)
+
+                position_in_batch = i * ( len(self.ProfilesPredicted) +1 ) + j
+
+                ax.plot(self.FluxMatch_Yopt[:,position_in_batch], "-o", color=colors[j], lw=1.0,markersize=1)
+
             ax.set_ylabel(f'{self.labelsFM[i][1]} residual')
             ax.set_yscale("log")
-
-        
 
             cont += 2
 
@@ -112,10 +150,6 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
         
-
-        
-        # .legend(loc='best',prop={'size': 6})
-
 def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile,labelGB, c, label, batch_num=0):
 
     ax.set_title(title)

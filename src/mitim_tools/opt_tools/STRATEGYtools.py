@@ -430,13 +430,9 @@ class MITIM_BO:
         # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
-            print(
-                "\n-----------------------------------------------------------------------------------------"
-            )
+            print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")
-            print(
-                "-----------------------------------------------------------------------------------------\n"
-            )
+            print("-----------------------------------------------------------------------------------------\n")
 
             """
 			------------------------------------------------------------------------------
@@ -762,14 +758,16 @@ class MITIM_BO:
                 # ***** Fit
                 self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
 
-                # Store class with the model fitted
+                # ***** Define evaluators
+                self.steps[-1].defineFunctions(self.scalarized_objective)
+
+                # Store class with the model fitted and evaluators defined
                 if self.storeClass:
                     self.save()
 
                 # ***** Optimize
                 if not self.hard_finish:
                     self.steps[-1].optimize(
-                        self.scalarized_objective,
                         position_best_so_far=self.BOmetrics["overall"]["indBest"],
                         seed=self.seed,
                     )
