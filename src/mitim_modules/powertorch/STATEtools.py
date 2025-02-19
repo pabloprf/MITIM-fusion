@@ -463,7 +463,7 @@ class powerstate:
             # Profiles
             figs = PROFILEStools.add_figures(fn, tab_color='b')
 
-            axs = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, _ = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -773,14 +773,33 @@ class powerstate:
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 
-    grid = plt.GridSpec(4, num_kp, hspace=0.5, wspace=0.5)
+    mosaic = [] 
+    cont = 0
+    for row in range(4):
+        if row < 2:
+            first_cell = "A"
+        else:
+            first_cell = "B"        
+        row_list = [first_cell]
+        
+        for col in range(num_kp):
+            row_list.append(str(cont))
+            cont += 1
+
+        mosaic.append(row_list)
+
+    axsM = figMain.subplot_mosaic(mosaic)
 
     axs = []
-    for i in range(num_kp):
-        for j in range(4):
-            axs.append(figMain.add_subplot(grid[j, i]))
+    cont = 0
+    for j in range(4):
+        for i in range(num_kp):
+            axs.append(axsM[f"{cont}"])
+            cont += 1
 
-    return axs
+    axsB = [axsM["A"], axsM["B"]]
+
+    return axs, axsB
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")

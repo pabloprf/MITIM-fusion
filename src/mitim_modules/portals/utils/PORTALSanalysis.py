@@ -994,7 +994,7 @@ class PORTALSinitializer:
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
         # ----------------------------
 
-        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
+        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
@@ -1010,9 +1010,7 @@ class PORTALSinitializer:
 
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
-                self.powerstates[i].plot(
-                    axs=axs, c=colors[i], label=f"#{i}"
-                )
+                self.powerstates[i].plot(axs=axs, c=colors[i], label=f"#{i}")
 
                 # Add profiles too
                 self.powerstates[i].profiles.plotGradients(
@@ -1038,8 +1036,44 @@ class PORTALSinitializer:
                 ls='-',
                 lw=1.0,
                 lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                label='next',
+                label=f"next ({len(self.profiles)-len(self.powerstates)})",
             )
+
+        # Metrics
+        ax = axsM[0]
+        x , y = [], []
+        for h in range(len(self.powerstates)):
+            x.append(h)
+            y.append(self.powerstates[h].plasma['residual'].item())
+            
+        ax.plot(x,y,'-s', color='b', lw=1, ms=5)
+        ax.set_yscale('log')
+        #ax.set_xlabel('Evaluation')
+        ax.set_ylabel('Residual')
+        ax.set_xlim([0,len(self.powerstates)+1])
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axsM[1]
+        x , y = [], []
+        for h in range(len(self.powerstates)):
+            x.append(h)
+            Pfus = self.powerstates[h].volume_integrate(
+                (self.powerstates[h].plasma["qfuse"] + self.powerstates[h].plasma["qfusi"]) * 5.0
+                ) * self.powerstates[h].plasma["volp"]
+            y.append(Pfus[..., -1].item())
+
+        if len(self.profiles) > len(self.powerstates):
+            x.append(h+1)
+            y.append(self.profiles[-1].derived["Pfus"])
+        ax.plot(x,y,'-s', color='b', lw=1, ms=5)
+        if len(self.profiles) > len(self.powerstates):
+            ax.plot(x[-1],y[-1],'s', color=colors[i+1], ms=5)
+
+        ax.set_xlabel('Evaluation')
+        ax.set_ylabel('Fusion Power (MW)')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_ylim(bottom=0)
+        ax.set_xlim([0,len(self.powerstates)+1])
 
         # GRADIENTS
         if figG is not None:
