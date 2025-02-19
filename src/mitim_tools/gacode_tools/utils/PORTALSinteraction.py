@@ -210,11 +210,11 @@ def TGYROmodeledVariables(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["Ce_tr_turb_raw"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ce_tr_neo_raw"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ce_raw_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ce_raw_tr_neo"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
 
-    powerstate.plasma["Ce_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ce_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ce_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ce_raw_tr_neo_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
         powerstate.plasma["Ce_raw"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
@@ -222,11 +222,11 @@ def TGYROmodeledVariables(TGYROresults,
 
     if not useConvectiveFluxes:
 
-        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ce_tr_turb_raw"]
-        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ce_tr_neo_raw"]
+        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ce_raw_tr_turb"]
+        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ce_raw_tr_neo"]
 
-        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ce_tr_turb_raw_stds"]
-        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ce_tr_neo_raw_stds"]
+        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ce_raw_tr_turb_stds"]
+        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ce_raw_tr_neo_stds"]
         
         if provideTargets:
             powerstate.plasma["Ce"] = powerstate.plasma["Ce_raw"]
@@ -249,27 +249,27 @@ def TGYROmodeledVariables(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["CZ_tr_turb_raw"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-    powerstate.plasma["CZ_tr_neo_raw"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+    powerstate.plasma["CZ_raw_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["CZ_raw_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
     
-    powerstate.plasma["CZ_tr_turb_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_tr_neo_raw_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_raw_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     if provideTargets:
-        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
+        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     if not useConvectiveFluxes:
 
-        powerstate.plasma["CZ_tr_turb"] = powerstate.plasma["CZ_tr_turb_raw"]
-        powerstate.plasma["CZ_tr_neo"] = powerstate.plasma["CZ_tr_neo_raw"]
+        powerstate.plasma["CZ_tr_turb"] = powerstate.plasma["CZ_raw_tr_turb"] / OriginalFimp
+        powerstate.plasma["CZ_tr_neo"] = powerstate.plasma["CZ_raw_tr_neo"] / OriginalFimp
         
-        powerstate.plasma["CZ_tr_turb_stds"] = powerstate.plasma["CZ_tr_turb_raw_stds"]
-        powerstate.plasma["CZ_tr_neo_stds"] = powerstate.plasma["CZ_tr_neo_raw_stds"]
+        powerstate.plasma["CZ_tr_turb_stds"] = powerstate.plasma["CZ_raw_tr_turb_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neo_stds"] = powerstate.plasma["CZ_raw_tr_neo_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
         
         if provideTargets:
-            powerstate.plasma["CZ"] = powerstate.plasma["CZ_raw"]
-            powerstate.plasma["CZ_stds"] = powerstate.plasma["CZ_raw_stds"]
+            powerstate.plasma["CZ"] = powerstate.plasma["CZ_raw"] / OriginalFimp
+            powerstate.plasma["CZ_stds"] = powerstate.plasma["CZ_raw_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
 
     else:
 
@@ -306,14 +306,10 @@ def TGYROmodeledVariables(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
+    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt', 'Ce_raw', 'CZ_raw']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
     
-    quantities = ['Ce', 'CZ']
-    for ikey in quantities:
-        powerstate.plasma[ikey+"_tr_raw"] = powerstate.plasma[ikey+"_tr_turb_raw"] + powerstate.plasma[ikey+"_tr_neo_raw"]
-
     return powerstate
 
 

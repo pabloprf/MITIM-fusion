@@ -124,6 +124,19 @@ class power_transport:
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
+        '''
+        This needs to populate the following in self.powerstate.plasma
+            - Pe, Pe_tr, Pe_tr_turb, Pe_tr_neo -> MW/m^2
+            - Pi, Pi_tr, Pi_tr_turb, Pi_tr_neo -> MW/m^2
+            - Ce, Ce_tr, Ce_tr_turb, Ce_tr_neo -> MW/m^2
+                * Ce_raw, Ce_raw_tr, Ce_raw_tr_turb, Ce_raw_tr_neo -> 10^20/s/m^2
+            - CZ, CZ_tr, CZ_tr_turb, CZ_tr_neo -> MW/m^2 (but modified as needed, for example dividing by fZ0)
+                * CZ_raw, CZ_raw_tr, CZ_raw_tr_turb, CZ_raw_tr_neo -> 10^20/s/m^2  (NOT modified)
+            - Mt, Mt_tr, Mt_tr_turb, Mt_tr_neo -> J/m^2
+            - PexchTurb -> MW/m^3
+        and their respective standard deviations
+        '''
+
         print(">> No transport fluxes to evaluate", typeMsg="w")
         pass
 

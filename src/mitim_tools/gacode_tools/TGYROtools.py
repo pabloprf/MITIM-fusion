@@ -1634,6 +1634,7 @@ class TGYROoutput:
 
         # Q is MW/m^2
         # Pi in J/m^2
+        # S in MW/m^3
 
         # Convert Gamma to 1E20
         self.Gamma_GB = self.Gamma_GB * 1e-1
@@ -3576,7 +3577,7 @@ class TGYROoutput:
         ax.set_xlabel("$r/a$")
         ax.set_xlim([0, 1])
         ax.axhline(y=0, lw=0.5, c="k", ls="--")
-        ax.set_ylabel("Exchange: $S$ ($MJ/m^3$)")
+        ax.set_ylabel("Exchange: $S$ ($MW/m^3$)")
 
         GRAPHICStools.addDenseAxis(ax)
 

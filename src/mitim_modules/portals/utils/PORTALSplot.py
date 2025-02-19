@@ -236,11 +236,11 @@ def PORTALSanalyzer_plotMetrics(
 
             
             if axne_f is not None:
-                # By default, use particle fluxes
+                # By default, use particle fluxes (_raw)
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ce_tr_turb_raw'].cpu().numpy()+power.plasma['Ce_tr_neo_raw'].cpu().numpy(),
+                    power.plasma['Ce_raw_tr_turb'].cpu().numpy()+power.plasma['Ce_raw_tr_neo'].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
@@ -253,7 +253,7 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['CZ_tr_turb_raw'].cpu().numpy()+power.plasma['CZ_tr_neo_raw'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neo'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
                 axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
@@ -1915,7 +1915,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs, _ = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
@@ -2935,7 +2935,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        Ge = power.plasma['Ce_tr_turb_raw'].cpu().numpy() + power.plasma['Ce_tr_neo_raw'].cpu().numpy()
+        Ge = power.plasma['Ce_raw_tr_turb'].cpu().numpy() + power.plasma['Ce_raw_tr_neo'].cpu().numpy()
 
         axne_f.plot(
             r[0][ixF:],
@@ -2948,7 +2948,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ce_tr_turb_raw_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_tr_neo_raw_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['Ce_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -2959,7 +2959,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        GZ = power.plasma['CZ_tr_turb_raw'].cpu().numpy() + power.plasma['CZ_tr_neo_raw'].cpu().numpy()
+        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neo'].cpu().numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2972,7 +2972,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['CZ_tr_turb_raw_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_tr_neo_raw_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,

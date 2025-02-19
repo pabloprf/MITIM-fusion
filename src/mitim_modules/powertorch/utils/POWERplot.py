@@ -36,9 +36,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     if "ne" in self.ProfilesPredicted:
 
         # If this model provides the raw particle flux, go for it
-        if 'Ce_tr_raw' in self.plasma:
+        if 'Ce_raw_tr' in self.plasma:
             set_plots.append(
-                [   'ne', 'aLne', 'Ce_tr_raw', 'Ce_raw',
+                [   'ne', 'aLne', 'Ce_raw_tr', 'Ce_raw',
                     'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
@@ -56,9 +56,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     if "nZ" in self.ProfilesPredicted:
 
         # If this model provides the raw particle flux, go for it
-        if 'CZ_tr_raw' in self.plasma:
+        if 'CZ_raw_tr' in self.plasma:
             set_plots.append(
-                [   'nZ', 'aLnZ', 'CZ_tr_raw', 'CZ_raw',
+                [   'nZ', 'aLnZ', 'CZ_raw_tr', 'CZ_raw',
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
