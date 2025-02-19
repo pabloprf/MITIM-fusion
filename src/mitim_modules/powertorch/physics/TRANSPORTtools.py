@@ -114,10 +114,15 @@ class power_transport:
 
         impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
 
-        impurityPosition_new = p_new.Species.index(impurity_of_interest)
+        try:
+            impurityPosition_new = p_new.Species.index(impurity_of_interest)
+
+        except ValueError:
+            print(f"\t- Impurity {impurity_of_interest} not found in new profiles, keeping position {self.powerstate.impurityPosition}",typeMsg="w")
+            impurityPosition_new = self.powerstate.impurityPosition
 
         if impurityPosition_new != self.powerstate.impurityPosition:
-            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
+            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="w")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
     # ----------------------------------------------------------------------------------------------------
