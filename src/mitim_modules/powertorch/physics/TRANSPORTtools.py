@@ -382,8 +382,7 @@ def tglf_scan_trick(
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
         if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
-        if i == 'w0': 
-            raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
     if 'te' in profiles or 'ti' in profiles:
@@ -410,7 +409,7 @@ def tglf_scan_trick(
                     forceIfcold_start=True,
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
-                        "minutes": 1,
+                        "minutes": 5 if cores_per_tglf_instance == 1 else 1,
                                  },
                     extra_name = f'{extra_name}_{name}',
                     positionIon=impurityPosition+1
@@ -548,7 +547,9 @@ class surrogate_model(power_transport):
         flux_fun as given in ModelOptions must produce Q and Qtargets in order of te,ti,ne
         """
 
-        X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
+        X = torch.Tensor()
+        for prof in self.powerstate.ProfilesPredicted:
+            X = torch.cat((X,self.powerstate.plasma['aL'+prof][:,1:]),axis=1)
 
         _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X)
 
@@ -607,7 +608,7 @@ def curateTGYROfiles(
     if use_tglf_scan_trick is not None:
 
         if provideTurbulentExchange:
-            raise ValueError("[mitim] Turbulent exchange not implemented yet in TGLF scans")
+            print("> Turbulent exchange not implemented yet in TGLF scans", typeMsg="w") #TODO
 
         # --------------------------------------------------------------
         # If using the scan trick

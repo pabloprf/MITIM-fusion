@@ -273,15 +273,15 @@ def TGYROmodeledVariables(TGYROresults,
 
     else:
 
-        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
 
-        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Ci_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
         
         if provideTargets:
-            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Ci_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Energy Exchange
