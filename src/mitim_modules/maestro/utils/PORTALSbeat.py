@@ -96,7 +96,7 @@ class portals_beat(beat):
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
-        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv', plot_results = False)
+        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv')
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)

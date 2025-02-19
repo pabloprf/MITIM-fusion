@@ -438,12 +438,16 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
+    def plot(self, axs=None, axsRes=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
         if axs is None:
-            axsNotGiven = True
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook("PowerState", geometry="1800x900")
+            if fn is None:
+                axsNotGiven = True
+                from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+                fn = FigureNotebook("PowerState", geometry="1800x900")
+            else:
+                axsNotGiven = False
 
             # Powerstate
             figMain = fn.add_figure(label="PowerState", tab_color='r')

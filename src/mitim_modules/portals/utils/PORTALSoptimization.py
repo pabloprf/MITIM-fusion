@@ -79,16 +79,13 @@ def initialization_simple_relax(self):
 """
 
 
-def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=None, algorithm = None, solver_options = None):
+def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_write_csv=None, algorithm = None, solver_options = None, keep_within_bounds = True):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
     Usage:
         - Requires "step" to be a MITIM step with the proper surrogate parameters, the surrogates fitted and residual function defined
-        - Requires "profiles_new" to be an object with the new profiles to be predicted (e.g. can have different BC)
-
-    Notes:
-        #TODO: So far only works if Te,Ti,ne
+        - Requires "profiles" to be an object with the new profiles to be predicted (e.g. can have different BC)
 
     '''
 
@@ -103,11 +100,14 @@ def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=N
             "print_each": 100,
         }
 
-    # Prepare tensor bou
-    bounds = torch.zeros((2, len(step.GP['combined_model'].bounds))).to(step.GP['combined_model'].train_X)
-    for i, ikey in enumerate(step.GP['combined_model'].bounds):
-        bounds[0, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][0])
-        bounds[1, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][1])
+    # Prepare tensor bounds
+    if keep_within_bounds:
+        bounds = torch.zeros((2, len(step.GP['combined_model'].bounds))).to(step.GP['combined_model'].train_X)
+        for i, ikey in enumerate(step.GP['combined_model'].bounds):
+            bounds[0, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][0])
+            bounds[1, i] = copy.deepcopy(step.GP['combined_model'].bounds[ikey][1])
+    else:
+        bounds = None
 
     # ----------------------------------------------------
     # Create powerstate with new profiles
@@ -121,7 +121,7 @@ def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=N
 
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
-        profiles_new,
+        profiles,
         EvolutionOptions={
             "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
             "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
@@ -143,9 +143,12 @@ def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=N
     # Flux match
     # ----------------------------------------------------
     
-    powerstate_orig = copy.deepcopy(powerstate)
-    powerstate_orig.calculate(None)
+    # Calculate original powerstate (for later comparison in plot)
+    if plot_results:
+        powerstate_orig = copy.deepcopy(powerstate)
+        powerstate_orig.calculate(None)
 
+    # Flux match
     powerstate.flux_match(
         algorithm=algorithm,
         solver_options=solver_options,
@@ -157,15 +160,16 @@ def flux_match_surrogate(step,profiles_new, plot_results=False, file_write_csv=N
     # ----------------------------------------------------
 
     if plot_results:
-        powerstate.plot(label='optimized',c='r',compare_to_state=powerstate_orig, c_orig = 'b')
+        powerstate.plot(label='optimized',c='r',compare_to_state=powerstate_orig, c_orig = 'b', fn = fn)
 
     # ----------------------------------------------------
     # Write In Table
     # ----------------------------------------------------
 
-    X = powerstate.Xcurrent[-1,:].unsqueeze(0).cpu().numpy()
-
     if file_write_csv is not None:
+
+        X = powerstate.Xcurrent[-1,:].unsqueeze(0).cpu().numpy()
+
         inputs = []
         for i in step.bounds:
             inputs.append(i)

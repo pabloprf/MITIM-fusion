@@ -1793,8 +1793,8 @@ class MITIM_BO:
                     alpha=0.5,
                     it_start=it_start,
                 )
-            except KeyError:
-                print(f"\t- Problem plotting {info[ipost]['method']}", typeMsg="w")
+            except KeyError as e:
+                print(f"\t- Problem plotting {info[ipost]['method']}: ",e, typeMsg="w")
 
         xypair = np.array(xypair)
 

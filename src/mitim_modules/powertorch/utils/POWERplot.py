@@ -46,7 +46,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                 set_plots.append(
                     [   'ne', 'aLne', 'Ce_tr', 'Ce',
                         'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
-                        1.0,"Qgb"])
+                        1E-1,"Qgb"])
             else:
                 set_plots.append(
                     [   'ne', 'aLne', 'Ce_tr', 'Ce',
@@ -58,7 +58,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
         # If this model provides the raw particle flux, go for it
         if 'CZ_tr_raw' in self.plasma:
             set_plots.append(
-                [   'nZ', 'aLZe', 'CZ_tr_raw', 'CZ_raw',
+                [   'nZ', 'aLnZ', 'CZ_tr_raw', 'CZ_raw',
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
@@ -66,7 +66,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                 set_plots.append(
                     [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
                         'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$Q_{conv,Z}$ (GB)','$Q_{conv,Z}$ ($MW/m^2$)',
-                        1.0,"Qgb"])
+                        1E-1,"Qgb"])
             else:
                 set_plots.append(
                     [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
@@ -121,11 +121,12 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             ax = axsRes[1+cont]
             for j in range(self.plasma['rho'].shape[-1]-1):    
 
-                position_in_batch = i * ( len(self.ProfilesPredicted) +1 ) + j
+                position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
                 ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
-                for u in [0,1]:
-                    ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
+                if self.bounds_current is not None:
+                    for u in [0,1]:
+                        ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
 
             ax.set_ylabel(self.labelsFM[i][0])
             
@@ -136,7 +137,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             ax = axsRes[1+cont+1]
             for j in range(self.plasma['rho'].shape[-1]-1):    
 
-                position_in_batch = i * ( len(self.ProfilesPredicted) +1 ) + j
+                position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
                 ax.plot(self.FluxMatch_Yopt[:,position_in_batch], "-o", color=colors[j], lw=1.0,markersize=1)
 
