@@ -219,3 +219,41 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
 
     for ax in [ax, ax_aL, ax_Fgb, ax_F]:
         GRAPHICStools.addDenseAxis(ax)
+
+
+def plot_metrics_powerstates(axsM, powerstates, profiles=None, profiles_color='b'):
+
+    ax = axsM[0]
+    x , y = [], []
+    for h in range(len(powerstates)):
+        x.append(h)
+        y.append(powerstates[h].plasma['residual'].item())
+        
+    ax.plot(x,y,'-s', color='b', lw=1, ms=5)
+    ax.set_yscale('log')
+    #ax.set_xlabel('Evaluation')
+    ax.set_ylabel('Mean Residual')
+    ax.set_xlim([0,len(powerstates)+1])
+    GRAPHICStools.addDenseAxis(ax)
+
+    ax = axsM[1]
+    x , y = [], []
+    for h in range(len(powerstates)):
+        x.append(h)
+        Pfus = powerstates[h].volume_integrate(
+            (powerstates[h].plasma["qfuse"] + powerstates[h].plasma["qfusi"]) * 5.0
+            ) * powerstates[h].plasma["volp"]
+        y.append(Pfus[..., -1].item())
+
+    if profiles is not None:
+        x.append(h+1)
+        y.append(profiles.derived["Pfus"])
+    ax.plot(x,y,'-s', color='b', lw=1, ms=5)
+    if profiles is not None:
+            ax.plot(x[-1],y[-1],'s', color=profiles_color, ms=5)
+
+    ax.set_xlabel('Evaluation')
+    ax.set_ylabel('Fusion Power (MW)')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom=0)
+    ax.set_xlim([0,len(powerstates)+1])

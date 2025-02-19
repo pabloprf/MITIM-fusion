@@ -10,6 +10,7 @@ from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals.utils import PORTALSplot
 from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -980,7 +981,7 @@ class PORTALSinitializer:
             print("- No powerstates available to plot metrics", typeMsg="w")
             return
 
-        # Prepare figure -------------
+        # Prepare figure --------------------------------------------------
         if 'fig' in kwargs and kwargs['fig'] is not None:
             print('Using provided figure, assuming I only want a summary')
             figMain = kwargs['fig']
@@ -989,10 +990,9 @@ class PORTALSinitializer:
             if self.fn is None:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
                 self.fn = FigureNotebook("PowerState", geometry="1800x900")
-
             figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
-        # ----------------------------
+        # -----------------------------------------------------------------
 
         axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
 
@@ -1040,40 +1040,12 @@ class PORTALSinitializer:
             )
 
         # Metrics
-        ax = axsM[0]
-        x , y = [], []
-        for h in range(len(self.powerstates)):
-            x.append(h)
-            y.append(self.powerstates[h].plasma['residual'].item())
-            
-        ax.plot(x,y,'-s', color='b', lw=1, ms=5)
-        ax.set_yscale('log')
-        #ax.set_xlabel('Evaluation')
-        ax.set_ylabel('Residual')
-        ax.set_xlim([0,len(self.powerstates)+1])
-        GRAPHICStools.addDenseAxis(ax)
-
-        ax = axsM[1]
-        x , y = [], []
-        for h in range(len(self.powerstates)):
-            x.append(h)
-            Pfus = self.powerstates[h].volume_integrate(
-                (self.powerstates[h].plasma["qfuse"] + self.powerstates[h].plasma["qfusi"]) * 5.0
-                ) * self.powerstates[h].plasma["volp"]
-            y.append(Pfus[..., -1].item())
-
-        if len(self.profiles) > len(self.powerstates):
-            x.append(h+1)
-            y.append(self.profiles[-1].derived["Pfus"])
-        ax.plot(x,y,'-s', color='b', lw=1, ms=5)
-        if len(self.profiles) > len(self.powerstates):
-            ax.plot(x[-1],y[-1],'s', color=colors[i+1], ms=5)
-
-        ax.set_xlabel('Evaluation')
-        ax.set_ylabel('Fusion Power (MW)')
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_ylim(bottom=0)
-        ax.set_xlim([0,len(self.powerstates)+1])
+        POWERplot.plot_metrics_powerstates(
+            axsM,
+            self.powerstates,
+            profiles = self.profiles[-1] if len(self.profiles) > len(self.powerstates) else None,
+            profiles_color=colors[i+1],
+        )
 
         # GRADIENTS
         if figG is not None:

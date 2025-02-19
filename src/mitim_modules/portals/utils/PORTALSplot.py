@@ -6,6 +6,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -1915,11 +1916,15 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs, _ = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs, axsM = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
             self.powerstates[indeces].plot(axs, label=f"({indeces})", c=c)
+
+    powers = [self.powerstates[indecesPlot[1]], self.powerstates[indecesPlot[0]]]
+
+    POWERplot.plot_metrics_powerstates(axsM,powers)
 
     axs[0].legend(loc="best")
 

@@ -438,7 +438,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
+    def plot(self, axs=None, axsRes=None, axsMetrics=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
         if axs is None:
 
             if fn is None:
@@ -463,7 +463,7 @@ class powerstate:
             # Profiles
             figs = PROFILEStools.add_figures(fn, tab_color='b')
 
-            axs, _ = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -471,10 +471,15 @@ class powerstate:
 
         # Make sure tensors are detached
         self._detach_tensors()
+        powers = [self]
         if compare_to_state is not None:
             compare_to_state._detach_tensors()
+            powers.append(compare_to_state)
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig = c_orig)
+
+        if axsMetrics is not None:
+            POWERplot.plot_metrics_powerstates(axsMetrics,powers[::-1])
 
         if axsNotGiven:
             fn.show()
@@ -773,19 +778,15 @@ class powerstate:
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 
-    mosaic = [] 
-    cont = 0
+    numbers = [str(i) for i in range(4 * num_kp)]
+    mosaic = []
     for row in range(4):
-        if row < 2:
-            first_cell = "A"
-        else:
-            first_cell = "B"        
+        first_cell = "A" if row < 2 else "B"        
         row_list = [first_cell]
-        
         for col in range(num_kp):
-            row_list.append(str(cont))
-            cont += 1
-
+            index = col * 4 + row
+            row_list.append(numbers[index])
+        
         mosaic.append(row_list)
 
     axsM = figMain.subplot_mosaic(mosaic)
