@@ -46,8 +46,32 @@ class NEO:
         # Prepare new case
         else:
             # List of output files
+            # Description under: https://gafusion.github.io/doc/neo/outputs.html
             self.ResultsFiles = [
-                "out.neo.run",
+                "out.neo.run",              # Run settings info
+                "out.neo.equil",            # eq/geom data
+                "out.neo.f",                # 1st-order distribution function
+                "out.neo.grid",             # Numerical grid of (species, energy, pitch, poloidal angle, radius)
+                "out.neo.phi",              # Poloidal variation of 1st-order ES potential perturbation
+                "out.neo.theory",           # Fluxes from analytic theory
+                "out.neo.species",          # masses/charges of species
+                #"out.neo.theory_nclass",    # Fluxes from NCLASS code
+                "out.neo.transport",        # Numerical normlized DKE fluxes
+                "out.neo.transport_flux",   # GyroBohm normalized all fluxes
+                "out.neo.transport_gv",     # Fluxes from gyroviscosity (add to DKE solution)
+                "out.neo.vel",              # 1st-order poloidal variation of the neoclassical toroidal flow
+                "out.neo.vel_fourier",      # Fourier components for poloidal variation of neoclassical flow vector
+                #"out.neo.transport_exp",    # Fluxes in real units
+                #"out.neo.exp_norm",         # Profile normalization parameters
+                "out.neo.rotation",         # Polodial asymmetry from strong rotation
+                #"out.neo_diagnostic_geo",   # ????
+                #"out.neo.diagnostic_geo2",  # ????
+                #"out.neo.diagnositc_rot",   # ????
+                #"out.neo.gxi",              # ????
+                #"out.neo.gxi_t",            # ????
+                #"out.neo.gxi_x",            # ????
+                #"out.neo.localdump",        # Seems to list contents of input.neo
+                #"out.neo.prec",             # ????
             ]
 
             # Prepares run metadata
