@@ -180,7 +180,7 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     ax.set_xlabel(xlabel)
     ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
 
-def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0):
+def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True):
     
     if axs is None:
         plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=4,figsize=(20,10))
@@ -208,8 +208,9 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['betaN'].append(profiles_new.derived['BetaN_engineering'])
 
     plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
-    axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
-    axs[1,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+    if vertical_at_nominal:
+        axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+        axs[1,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
 
     axs[0,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
     axs[1,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")

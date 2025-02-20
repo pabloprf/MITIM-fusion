@@ -218,6 +218,9 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
 
     print(f"\t* Flux-grad relationship of {relax*100.0:.1f}% and maximum gradient jump of {dx_max*100.0:.1f}%,{f' to achieve residual of {tol:.1e}' if tol is not None else ''} in maximum of {maxiter:.0f} iterations")
 
+    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel
+    relax = torch.ones_like(x) * relax
+
     its_since_last_dyn_relax = 0
     for i in range(int(maxiter) - 1):
         # --------------------------------------------------------------------------------------------------------
@@ -303,11 +306,11 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num
     slope, intercept = np.polyfit(x, y, 1)
     metric0 = intercept
     metric1 = slope * len(metric_history_considered) + intercept
-    change_in_metric = abs(metric1 - metric0)
+    change_in_metric = metric1 - metric0
 
     if (change_in_metric < relax_dyn_tol):
-        if relax > min_relax:
-            print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax:.1e} to {relax/relax_dyn_decrease:.1e}")
+        if relax.all() > min_relax:
+            print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax.max():.1e} to {relax.max()/relax_dyn_decrease:.1e}")
             relax = relax / relax_dyn_decrease
             return relax, True, False
         else:
