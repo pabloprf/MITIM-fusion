@@ -325,7 +325,7 @@ def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_a
     dx[ix] = dx_max * (dx[ix] / dx[ix].abs())
 
     # Define absolute step (Note for PRF: abs() was added by me, I think it performs better that way!)
-    x_step = x.abs() * dx
+    x_step = dx * x.abs()
 
     # Absolute steps limits
     if dx_max_abs is not None:

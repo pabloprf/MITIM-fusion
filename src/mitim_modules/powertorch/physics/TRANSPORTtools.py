@@ -416,6 +416,13 @@ def tglf_scan_trick(
 
     tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
 
+    # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
+    num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
+    if cores_per_tglf_instance == 1:
+        minutes = 5 * (num_cases / 60) # Ad-hoc formula
+    else:
+        minutes = 1 * (num_cases / 60) # Ad-hoc formula
+
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
@@ -427,7 +434,7 @@ def tglf_scan_trick(
                     forceIfcold_start=True,
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
-                        "minutes": 5 if cores_per_tglf_instance == 1 else 1,
+                        "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
                     positionIon=impurityPosition+1

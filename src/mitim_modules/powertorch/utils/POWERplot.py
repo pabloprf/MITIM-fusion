@@ -65,7 +65,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             if self.useConvectiveFluxes:
                 set_plots.append(
                     [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$Q_{conv,Z}$ (GB)','$Q_{conv,Z}$ ($MW/m^2$)',
+                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
                         1E-1,"Qgb"])
             else:
                 set_plots.append(
