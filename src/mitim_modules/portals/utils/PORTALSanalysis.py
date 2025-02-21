@@ -210,6 +210,12 @@ class PORTALSanalyzer:
         else:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 
+        # Try grab thresholds
+        try:
+            self.chiR_Ricci_thr = self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_value']
+        except:
+            self.chiR_Ricci_thr = None
+
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 

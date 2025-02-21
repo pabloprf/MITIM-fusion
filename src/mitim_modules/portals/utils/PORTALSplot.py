@@ -76,7 +76,7 @@ def PORTALSanalyzer_plotMetrics(
 
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
         axnZ = fig.add_subplot(grid[:4, cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, cont])
@@ -726,16 +726,6 @@ def PORTALSanalyzer_plotMetrics(
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         v = self.chiR_Ricci
-        # try:
-        #     axt.plot(
-        #         [self.evaluations[indexUse]],
-        #         [self.DVdistMetric_y[indexUse]],
-        #         "o",
-        #         color=col,
-        #         markersize=4,
-        #     )
-        # except:
-        #     pass
 
     if separator is not None:
         GRAPHICStools.drawLineWithTxt(
@@ -781,9 +771,10 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$\\chi_R$",
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
-            self
-        )
+        if self.chiR_Ricci_thr is not None:
+            axt.axhline(self.chiR_Ricci_thr, color="rebeccapurple", lw=0.5, ls="-.")
+
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -1175,7 +1166,7 @@ def PORTALSanalyzer_plotExpected(
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
         axnZ = fig.add_subplot(grid[0, cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, cont], sharex=axTe)

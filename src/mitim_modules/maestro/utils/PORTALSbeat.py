@@ -384,7 +384,7 @@ def portals_beat_soft_criteria(portals_namelist):
                 "maximum_value": 10e-3,  # Reducing residual by 100x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 3, 1.0],  # After iteration 10, Check if 3 consecutive DVs are varying less than 1.0% from the rest that has been evaluated
-                "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 1.0,
+                "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 0.5,
             }
         }
 

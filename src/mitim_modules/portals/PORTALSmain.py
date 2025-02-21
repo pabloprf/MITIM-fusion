@@ -56,9 +56,9 @@ def default_namelist(optimization_options, CGYROrun=False):
                 "maximum_value": 5e-3,  # Reducing residual by 1000x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.15,
+                "ricci_value": 0.1,
                 "ricci_d0": 2.0,
-                "ricci_lambda": 1.0,
+                "ricci_lambda": 0.5,
             }
 
     optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-3
