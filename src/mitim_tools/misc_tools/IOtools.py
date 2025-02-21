@@ -1871,5 +1871,6 @@ def shutil_rmtree(item):
         try:
             shutil.rmtree(item)
         except OSError:
-            shutil.move(item, item+"_old")
-            print(f"> Folder {clipstr(item)} could not be removed. Renamed to {item}_old",typeMsg='w')
+            new_item = item.with_name(item.name + "_cannotrm")
+            shutil.move(item, new_item)
+            print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')
