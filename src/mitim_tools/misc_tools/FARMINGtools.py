@@ -553,7 +553,7 @@ class mitim_job:
             (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
             if (self.folder_local / folder).exists():
-                shutil.rmtree(self.folder_local / folder)
+                IOtools.shutil_rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remote side)")

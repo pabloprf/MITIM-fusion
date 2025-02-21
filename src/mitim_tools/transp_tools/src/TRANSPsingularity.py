@@ -314,7 +314,7 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         folder_inputs = folderWork / "tmp_inputs"
         if folder_inputs.exists():
-            shutil.rmtree(folder_inputs)
+            IOtools.shutil_rmtree(folder_inputs)
         
         IOtools.askNewFolder(folder_inputs, force=True)
         for item in folderWork.glob('*'):
@@ -443,7 +443,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     transp_job.run(waitYN=False)
 
-    shutil.rmtree(folderWork / 'tmp_inputs')
+    IOtools.shutil_rmtree(folderWork / 'tmp_inputs')
 
 
 def interpretRun(infoSLURM, log_file):

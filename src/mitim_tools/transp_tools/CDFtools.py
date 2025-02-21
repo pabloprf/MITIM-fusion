@@ -15219,7 +15219,7 @@ class transp_output:
 
         os.chdir(self.FolderCDF)
         os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
-        shutil.rmtree(self.FolderCDF / 'RELEASE_folder')
+        IOtools.shutil_rmtree(self.FolderCDF / 'RELEASE_folder')
         (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):

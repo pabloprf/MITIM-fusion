@@ -224,7 +224,7 @@ class tgyro_model(power_transport):
 
         # Copy original TGYRO folder
         if (self.folder / "tglf_neo").exists():
-            shutil.rmtree(self.folder / "tglf_neo")
+            IOtools.shutil_rmtree(self.folder / "tglf_neo")
         shutil.copytree(self.folder / "tglf_neo_original", self.folder / "tglf_neo")
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
@@ -314,7 +314,7 @@ class tgyro_model(power_transport):
 
                 # Remove cgyro_neo folder
                 if (self.folder / "cgyro_neo").exists():
-                    shutil.rmtree(self.folder / "cgyro_neo")
+                    IOtools.shutil_rmtree(self.folder / "cgyro_neo")
 
                 # Copy tglf_neo results
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
@@ -442,7 +442,7 @@ def tglf_scan_trick(
 
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:
-        shutil.rmtree(tglf.FolderGACODE)
+        IOtools.shutil_rmtree(tglf.FolderGACODE)
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))

@@ -164,7 +164,7 @@ class TGYRO:
                 "\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",
                 typeMsg="i",
             )
-            shutil.rmtree(self.FolderGACODE_tmp)
+            IOtools.shutil_rmtree(self.FolderGACODE_tmp)
 
     def run(
         self,
@@ -535,10 +535,10 @@ class TGYRO:
 
             # Remove temporary folder
             try: 
-                shutil.rmtree(self.FolderTGYRO_tmp)
+                IOtools.shutil_rmtree(self.FolderTGYRO_tmp)
             except OSError:
                 print(f"\t- Could not remove {self.FolderTGYRO_tmp}. Trying again.", typeMsg="w")
-                shutil.rmtree(self.FolderTGYRO_tmp)
+                IOtools.shutil_rmtree(self.FolderTGYRO_tmp)
 
         else:
             print(" ~~~ Not running TGYRO", typeMsg="i")

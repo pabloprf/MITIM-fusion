@@ -109,7 +109,7 @@ class portals_beat(beat):
             if item.is_file():
                 item.unlink(missing_ok=True)
             elif item.is_dir():
-                shutil.rmtree(item)
+                IOtools.shutil_rmtree(item)
 
         # Copy to outputs
         shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')

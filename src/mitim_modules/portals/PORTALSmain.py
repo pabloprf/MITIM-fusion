@@ -642,7 +642,7 @@ def runModelEvaluator(
     # ---------------------------------------------------------------------------------------------------
     if remove_folder_upon_completion:
         print(f"\t- To avoid exceedingly large PORTALS runs, removing ...{IOtools.clipstr(folder_model)}")
-        shutil.rmtree(folder_model)
+        IOtools.shutil_rmtree(folder_model)
 
     return powerstate, dictOFs
 

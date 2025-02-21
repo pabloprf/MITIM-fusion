@@ -241,7 +241,7 @@ class maestro:
         # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
         if not self.keep_all_files:
             for item in self.beat.folder .iterdir():
-                shutil.rmtree(item) if item.is_dir() else item.unlink()
+                IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
 
     def _freeze_parameters(self, profiles = None):
 

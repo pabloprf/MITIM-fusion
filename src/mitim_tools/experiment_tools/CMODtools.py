@@ -1028,4 +1028,4 @@ def getMMX(shotNumber, runid, folderWork):
     for ufile in ["PLF", "PF0", "TRF", "PRS", "QPR", "LIM", "GRB", "MMX"]:
         (folderScratch / f"MIT{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"MIT{runid}.{ufile}")
 
-    shutil.rmtree(folderScratch)
+    IOtools.shutil_rmtree(folderScratch)

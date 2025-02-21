@@ -418,7 +418,7 @@ def zipFiles(files, outputFolder, name="info"):
     for i in files:
         shutil.copy2(expandPath(i), opath)
     shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
-    shutil.rmtree(opath)
+    shutil_rmtree(opath)
 
 
 def unzipFiles(file, destinyFolder, clear=True):
@@ -668,7 +668,7 @@ def askNewFolder(folderWork, force=False, move=None):
     workpath = Path(folderWork).expanduser()
     if workpath.exists():
         if force:
-            shutil.rmtree(workpath)
+            shutil_rmtree(workpath)
         else:
             if move is not None:
                 workpath.replace(workpath.parent / f"{workpath.name}_{move}")
@@ -676,7 +676,7 @@ def askNewFolder(folderWork, force=False, move=None):
                 print(
                     f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
-                shutil.rmtree(workpath)
+                shutil_rmtree(workpath)
     if not workpath.exists():
         workpath.mkdir(parents=True)
     if workpath.is_dir():
@@ -1854,3 +1854,22 @@ def plot_metrics(log_file="resource_log.txt", output_image="resource_metrics.png
         GRAPHICStools.addDenseAxis(ax)
 
     plt.tight_layout()
+
+def shutil_rmtree(item):
+    '''
+    Removal of folders may fail because of a "Directory not empty" error, 
+    even if the files were properly removed. This is because of potential syncronization
+    or back-up processes that may be running in the background in some file systems.
+    Temporary solution for now is to use the shutil.rmtree function with a try-except block,
+    one that waits a second and one that just renames the folder to a temporary name.
+    '''
+
+    try:
+        shutil.rmtree(item)
+    except OSError:
+        time.sleep(1)
+        try:
+            shutil.rmtree(item)
+        except OSError:
+            shutil.move(item, item+"_old")
+            print(f"> Folder {clipstr(item)} could not be removed. Renamed to {item}_old",typeMsg='w')
