@@ -41,7 +41,7 @@ Use ``pip3`` to install all the required MITIM requirements:
 
    .. code-block:: console
 
-      pip3 install -e MITIM-fusion[pyqt,omfit,nn]
+      pip3 install -e MITIM-fusion[pyqt,omfit]
 
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
