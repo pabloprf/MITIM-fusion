@@ -5,16 +5,16 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.vitals import VITALSmain
 from mitim_tools import __mitimroot__
 
-restart = True
+cold_start = False
 
 # ********************************************************************************
 # Inputs
 # ********************************************************************************
 
-inputgacode = __mitimroot__ + "/tests/data/input.gacode"
-folderWork = __mitimroot__ + "/tests/scratch/vitals_test/"
+inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+folderWork = __mitimroot__ / "tests" / "scratch" / "vitals_test"
 
-if restart and os.path.exists(folderWork):
+if cold_start and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
 
 rho = 0.5
@@ -30,8 +30,8 @@ dvs_max = [1.3, 1.3, 1.3, 1.3, 1.3]
 # ********************************************************************************
 
 tglf = TGLFtools.TGLF(rhos=[rho])
-cdf = tglf.prep(folderWork, restart=restart, inputgacode=inputgacode)
-tglf.run(subFolderTGLF="run_base/", TGLFsettings=TGLFsettings, restart=restart)
+cdf = tglf.prep(folderWork, cold_start=cold_start, inputgacode=inputgacode)
+tglf.run(subFolderTGLF="run_base/", TGLFsettings=TGLFsettings, cold_start=cold_start)
 
 # ********************************************************************************
 # Then, add experimental data of fluctuation information and error bars
@@ -65,11 +65,11 @@ tglf.NormalizationSets["EXP"]["exp_Qi_error"] = [Qi_base * 0.2]
 # Prepare VITALS
 # ********************************************************************************
 
-file = folderWork + "tglf.pkl"
+file = folderWork / "tglf.pkl"
 tglf.save_pkl(file)
 
 vitals_fun = VITALSmain.vitals(folderWork)
-vitals_fun.optimization_options["BO_iterations"] = 2
+vitals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 vitals_fun.TGLFparameters["TGLFsettings"] = TGLFsettings
 
 vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
@@ -78,8 +78,8 @@ vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
 # Run VITALS
 # ********************************************************************************
 
-PRF_BO = STRATEGYtools.PRF_BO(vitals_fun, restartYN=False, askQuestions=False)
-PRF_BO.run()
+MITIM_BO = STRATEGYtools.MITIM_BO(vitals_fun, cold_start=cold_start, askQuestions=False)
+MITIM_BO.run()
 
 vitals_fun.plot_optimization_results(analysis_level=4)
 

@@ -1,12 +1,9 @@
 import copy
-import os
 import torch
 import csv
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
-from IPython import embed
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
@@ -14,21 +11,10 @@ from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.gacode_tools.utils import PORTALSinteraction
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
-
-try:
-    from mitim_tools.gacode_tools.utils import PORTALSinteraction
-except ImportError:
-    print(
-        "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
-        typeMsg="w",
-    )
-
-# Suppress only the "divide by zero" warning
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
+from IPython import embed
 
 # -------------------------------------------------------------------------------------
 # 		input.gacode
@@ -84,9 +70,7 @@ class PROFILES_GACODE:
             self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
 
         if "qmom(Nm)" in self.profiles:
-            self.varqmom = (
-                "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-            )
+            self.varqmom = "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
         else:
             self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
 
@@ -120,8 +104,11 @@ class PROFILES_GACODE:
             if ikey not in self.profiles.keys():
                 self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
 
+        self.deriveQuantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
 
+    def deriveQuantities(self, mi_ref=None, calculateDerived=True, n_theta_geo=1001, rederiveGeometry=True):
 
+        # -------------------------------------------------------------------------------------------------------------------
         self.readSpecies()
         self.produce_shape_lists()
         self.mi_first = self.Species[0]["A"]
@@ -134,10 +121,7 @@ class PROFILES_GACODE:
 
         if mi_ref is not None:
             self.derived["mi_ref"] = mi_ref
-            print(
-                f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",
-                typeMsg="w",
-            )
+            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",typeMsg="w")
         else:
             self.derived["mi_ref"] = self.mi_first
             print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
@@ -161,7 +145,7 @@ class PROFILES_GACODE:
         # ------------------------------------------------------------------------------------------------
 
         if calculateDerived:
-            self.deriveQuantities()
+            self.deriveQuantities_full(rederiveGeometry=rederiveGeometry)
 
     # -------------------------------------------------------------------------------------
     # Method to write a scratch file
@@ -194,7 +178,7 @@ class PROFILES_GACODE:
         name="vgen1",
         includeAll=False,
         write_new_file=None,
-        restart=False,
+        cold_start=False,
         ):
         profiles = copy.deepcopy(self)
 
@@ -206,7 +190,7 @@ class PROFILES_GACODE:
 
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
-        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, restart=restart)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, cold_start=cold_start)
 
         profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
         if resol_changed:
@@ -298,6 +282,11 @@ class PROFILES_GACODE:
             if self.profiles[title].shape[1] == 1:
                 self.profiles[title] = self.profiles[title][:, 0]
 
+        # Accept omega0
+        if ("w0(rad/s)" not in self.profiles) and ("omega0(rad/s)" in self.profiles):
+            self.profiles["w0(rad/s)"] = self.profiles["omega0(rad/s)"]
+            del self.profiles["omega0(rad/s)"]
+
 
     def produce_shape_lists(self):
         self.shape_cos = [
@@ -325,14 +314,14 @@ class PROFILES_GACODE:
         Species = []
         for j in range(maxSpecies):
             # To determine later if this specie has zero density
-            niT = self.profiles["ni(10^19/m^3)"][:, j].max()
+            niT = self.profiles["ni(10^19/m^3)"][0, j]
 
             sp = {
                 "N": self.profiles["name"][j],
                 "Z": float(self.profiles["z"][j]),
                 "A": float(self.profiles["mass"][j]),
                 "S": self.profiles["type"][j].split("[")[-1].split("]")[0],
-                "dens": niT,
+                "n0": niT,
             }
 
             Species.append(sp)
@@ -356,7 +345,7 @@ class PROFILES_GACODE:
                     self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
                 )
 
-    def deriveQuantities(self, mi_ref=None, n_theta_geo=1001, rederiveGeometry=True):
+    def deriveQuantities_full(self, mi_ref=None, n_theta_geo=1001, rederiveGeometry=True):
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
@@ -375,9 +364,7 @@ class PROFILES_GACODE:
         self.derived["a"] = self.profiles["rmin(m)"][-1]
         # self.derived['epsX'] = self.profiles['rmaj(m)'] / self.profiles['rmin(m)']
         # self.derived['eps'] = self.derived['epsX'][-1]
-        self.derived["eps"] = (
-            self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
-        )
+        self.derived["eps"] = self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
 
         self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
         self.derived["Rmajoa"] = self.profiles["rmaj(m)"] / self.derived["a"]
@@ -405,6 +392,15 @@ class PROFILES_GACODE:
             0.95, self.derived["psi_pol_n"], self.profiles["q(-)"]
         )
 
+        self.derived["q0"] = self.profiles["q(-)"][0]
+
+        if self.profiles["q(-)"].min() > 1.0: 
+            self.derived["rho_saw"] = np.nan
+        else:
+            self.derived["rho_saw"] = np.interp(
+                1.0, self.profiles["q(-)"], self.profiles["rho(-)"]
+            )
+
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_miller" not in self.derived):
@@ -415,6 +411,8 @@ class PROFILES_GACODE:
                 self.derived["volp_miller"],
                 self.derived["surf_miller"],
                 self.derived["gradr_miller"],
+                self.derived["bp2_miller"],
+                self.derived["bt2_miller"],
                 self.derived["geo_bt"],
             ) = GEOMETRYtools.calculateGeometricFactors(
                 self,
@@ -859,7 +857,8 @@ class PROFILES_GACODE:
 
         self.derived["tauE"] = self.derived["Wthr"] / self.derived["qHeat"]  # Seconds
 
-        self.derived["tauP"] = self.derived["Ne"] / self.derived["geIn"]  # Seconds
+        self.derived["tauP"] = np.where(self.derived["geIn"] != 0, self.derived["Ne"] / self.derived["geIn"], np.inf)   # Seconds
+        
 
         self.derived["tauPotauE"] = self.derived["tauP"] / self.derived["tauE"]
 
@@ -996,20 +995,43 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        # Beta = CALCtools.integrateFS( self.derived['ptot_manual']*1E6 / (self.derived['B_ref']**2/(2*4*np.pi*1E-7 )),r,volp)[-1] / self.derived['volume']
-        # Beta = self.derived['ptot_manual_vol']*1E6 / (self.derived['B0']**2/(2*4*np.pi*1E-7 ))
-        Beta_old = (self.derived["pthr_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
-        #self.derived["BetaN_old"] = (Beta_old / (np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"]))* 100.0)
-        # Beta = self.derived['ptot_manual_vol']*1E6 / ( np.mean(self.derived["B_ref"])**2 / (2*4*np.pi*1E-7) )
+        # Retain the old beta definition for comparison with 0D modeling
+        Beta_old = (self.derived["ptot_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+        self.derived["BetaN_engineering"] = (Beta_old / 
+                                        (np.abs(float(self.profiles["current(MA)"][-1])) / 
+                                         (self.derived["a"] * self.derived["B0"])
+                                         )* 100.0
+                                         ) # expressed in percent
 
-        self.derived["BetaN"] = (
-            Beta_old
-            / (
-                np.abs(float(self.profiles["current(MA)"][-1]))
-                / (self.derived["a"] * self.derived["B0"])
-            )
-            * 100.0
-        )
+        ''' 
+        ---------------------------------------------------------------------------------------------------
+        Using B_unit, derive <B_p^2> and <Bt^2> for betap and betat calculations.
+        Equivalent to GACODE expro_bp2, expro_bt2
+        ---------------------------------------------------------------------------------------------------
+        '''
+
+        self.derived["bp2_exp"] = self.derived["bp2_miller"] * self.derived["B_unit"] ** 2
+        self.derived["bt2_exp"] = self.derived["bt2_miller"] * self.derived["B_unit"] ** 2
+
+        # Calculate the volume averages of bt2 and bp2
+
+        P = self.derived["bp2_exp"]
+        self.derived["bp2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+        P = self.derived["bt2_exp"]
+        self.derived["bt2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+
+        # calculate beta_poloidal and beta_toroidal using volume averaged values
+        # mu0 = 4pi x 10^-7, also need to convert MPa to Pa
+
+        self.derived["Beta_p"] = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_vol_avg"]
+        self.derived["Beta_t"] = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bt2_vol_avg"]
+
+        self.derived["Beta"] = 1/(1/self.derived["Beta_p"]+1/self.derived["Beta_t"])
+
+        TroyonFactor = np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"])
+
+        self.derived["BetaN"] = self.derived["Beta"] / TroyonFactor * 100.0
+
         # ---
 
         nG = PLASMAtools.Greenwald_density(
@@ -1050,23 +1072,48 @@ class PROFILES_GACODE:
         self.derived["qstar"] = PLASMAtools.evaluate_qstar(
             self.profiles['current(MA)'][0],
             self.profiles['rcentr(m)'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.derived['kappa95'],
             self.profiles['bcentr(T)'],
             self.derived['eps'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            self.derived['delta95'],
             ITERcorrection=False,
             includeShaping=True,
-        )
+        )[0]
         self.derived["qstar_ITER"] = PLASMAtools.evaluate_qstar(
             self.profiles['current(MA)'][0],
             self.profiles['rcentr(m)'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['kappa(-)']),
+            self.derived['kappa95'],
             self.profiles['bcentr(T)'],
             self.derived['eps'],
-            np.interp(0.95,self.derived['psi_pol_n'],self.profiles['delta(-)']),
+            self.derived['delta95'],
             ITERcorrection=True,
             includeShaping=True,
-        )
+        )[0]
+
+        # -------------------------------------------------------
+        # Separatrix estimations
+        # -------------------------------------------------------
+
+        # ~~~~ Estimate lambda_q
+        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
+        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
+
+        # ~~~~ Estimate upstream temperature
+        Bt = self.profiles["bcentr(T)"][0]
+        Bp = self.derived["eps"] * Bt / self.derived["q95"] #TODO: VERY ROUGH APPROXIMATION!!!!
+
+        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q, 
+                self.derived["q95"], 
+                self.derived["ne_vol20"], 
+                self.derived["Psol"], 
+                self.profiles["rcentr(m)"][0], 
+                Bp, 
+                Bt
+                )[0]
+                
+        # ~~~~ Estimate upstream density
+        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
 
         # -------------------------------------------------------
         # TGLF-relevant quantities
@@ -1077,7 +1124,7 @@ class PROFILES_GACODE:
     def tglf_plasma(self):
 
         def deriv_gacode(y):
-            return grad(self.profiles["rmin(m)"],y).numpy()
+            return grad(self.profiles["rmin(m)"],y).cpu().numpy()
 
         self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
 
@@ -1090,7 +1137,7 @@ class PROFILES_GACODE:
             torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
             torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
             self.derived["a"],
-            mref_u=self.derived["mi_ref"]).numpy()
+            mref_u=self.derived["mi_ref"]).cpu().numpy()
 
         self.derived['debye'] = PLASMAtools.debye(
             self.profiles['te(keV)'],
@@ -1110,7 +1157,7 @@ class PROFILES_GACODE:
         self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
         
         s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
-        self.derived['s_q'] =  (self.profiles["q(-)"]/self.derived['roa'])**2 * s
+        self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
 
         '''
         Rotations
@@ -1185,7 +1232,7 @@ class PROFILES_GACODE:
                 np.expand_dims(self.profiles["te(keV)"][:i], 0),
                 np.expand_dims(np.transpose(self.profiles["ti(keV)"][:i]), 0),
                 np.expand_dims(
-                    self.profiles["ni(10^19/m^3)"][:i, impurityPosition - 1] * 0.1, 0
+                    self.profiles["ni(10^19/m^3)"][:i, impurityPosition] * 0.1, 0
                 ),
                 np.expand_dims(
                     np.transpose(self.profiles["ni(10^19/m^3)"][:i] * 0.1), 0
@@ -1216,8 +1263,10 @@ class PROFILES_GACODE:
 
             print(f"\n***********************{label}****************")
             print("Engineering Parameters:")
-            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA, Pin = {self.derived['qIn']:.2f}MW")
-            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m, kappa_a = {self.derived['kappa_a']:.2f} (kappa_sep = {self.profiles['kappa(-)'][-1]:.2f}), delta_sep = {self.profiles['delta(-)'][-1]:.2f}")
+            print(f"\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}, q*ITER = {self.derived['qstar_ITER']:.2f}), Pin = {self.derived['qIn']:.2f}MW")
+            print(f"\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m (eps = {self.derived['eps']:.3f})")
+            print(f"\tkappa_sep = {self.profiles['kappa(-)'][-1]:.2f}, kappa_995 = {self.derived['kappa995']:.2f}, kappa_95 = {self.derived['kappa95']:.2f}, kappa_a = {self.derived['kappa_a']:.2f}")
+            print(f"\tdelta_sep  = {self.profiles['delta(-)'][-1]:.2f}, delta_995  = {self.derived['delta995']:.2f}, delta_95  = {self.derived['delta95']:.2f}")
             print("Performance:")
             print(
                 "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
@@ -1246,9 +1295,7 @@ class PROFILES_GACODE:
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(
-                "\tBetaN =  {0:.3f} (approx, based on B0 and p_thr)".format(
-                    self.derived["BetaN"]
-                )
+                f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})"
             )
             print(
                 "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
@@ -1367,6 +1414,10 @@ class PROFILES_GACODE:
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
+    def toNumpyArrays(self):
+        self.profiles.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
+        self.derived.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.derived.items() if isinstance(tensor, torch.Tensor)})
+
     def writeCurrentStatus(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
 
@@ -1419,7 +1470,7 @@ class PROFILES_GACODE:
                     if len(self.profiles[i].shape) == 1:
                         for j, val in enumerate(self.profiles[i]):
                             pos = f"{j + 1}".rjust(3)
-                            valt = f"{val:.7e}".rjust(15)
+                            valt = f"{round(val,99):.7e}".rjust(15)
                             f.write(f"{pos}{valt}\n")
                     else:
                         for j, val in enumerate(self.profiles[i]):
@@ -1427,10 +1478,7 @@ class PROFILES_GACODE:
                             txt = "".join([f"{k:.7e}".rjust(15) for k in val])
                             f.write(f"{pos}{txt}\n")
 
-        print(
-            f"\t\t~ File {IOtools.clipstr(file)} written",
-            verbose=read_verbose_level(),
-        )
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
         # Update file
         self.file = file
@@ -1522,6 +1570,14 @@ class PROFILES_GACODE:
                     0  # If no D or T, assume that the main ion is the first and only
                 )
 
+        self.ion_list_main = []
+        if self.DTplasmaBool:
+            self.ion_list_main = [self.Dion+1, self.Tion+1]
+        else:
+            self.ion_list_main = [self.Mion+1]
+        
+        self.ion_list_impurities = [i+1 for i in range(len(self.Species)) if i+1 not in self.ion_list_main]
+
     def remove(self, ions_list):
         # First order them
         ions_list.sort()
@@ -1553,17 +1609,18 @@ class PROFILES_GACODE:
                 self.profiles[i] = np.delete(self.profiles[i], ions_list, axis=1)
 
         if not fail:
+            # Ensure we extract the scalar value from the array
             self.profiles["nion"] = np.array(
-                [str(int(self.profiles["nion"]) - len(ions_list))]
+                [str(int(self.profiles["nion"][0]) - len(ions_list))]
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         print("\t\t\t- Set of ions in updated profiles: ", self.profiles["name"])
 
     def lumpSpecies(
-        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False,
+        self, ions_list=[2, 3], allthermal=False, forcename=None, force_integer=False, force_mass=None
         ):
         """
         if (D,Z1,Z2), lumping Z1 and Z2 requires ions_list = [2,3]
@@ -1619,7 +1676,7 @@ class PROFILES_GACODE:
         else:
             Z = Zr_vol
 
-        A = Z * 2
+        A = Z * 2 if force_mass is None else force_mass
         nZ = fZ1 / Z * self.profiles["ne(10^19/m^3)"]
 
         print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f} (calculated as 2*Z)")
@@ -1640,7 +1697,7 @@ class PROFILES_GACODE:
         )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         # Remove species
         self.remove(ions_list)
@@ -1649,6 +1706,19 @@ class PROFILES_GACODE:
         print(
             f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
         )
+
+    def lumpImpurities(self):
+
+        self.lumpSpecies(ions_list=self.ion_list_impurities)
+
+    def lumpDT(self):
+
+        if self.DTplasmaBool:
+            self.lumpSpecies(ions_list=self.ion_list_main, forcename="DT", force_mass=2.5)
+        else:
+            print('\t\t- No DT plasma, so no lumping of main ions')
+
+        self.moveSpecie(pos=len(self.Species), pos_new=1)
 
     def changeZeff(self, Zeff, ion_pos=2, quasineutral_ions=None, enforceSameGradients=False):
         """
@@ -1661,10 +1731,7 @@ class PROFILES_GACODE:
             else:
                 quasineutral_ions = [self.Mion]
 
-        print(
-            f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',
-            typeMsg="i",
-        )
+        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i",)
 
         # Plasma needs to be in quasineutrality to start with
         self.enforceQuasineutrality()
@@ -1694,7 +1761,7 @@ class PROFILES_GACODE:
         fq = ( 1 - fZj - fk*Zk ) / Zq
 
         if (fq<0).any():
-            raise ValueError(f"Zeff cannot be reduced by changing ion {ion_pos}")
+            raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
 
         # ------------------------------------------------------
         # Insert
@@ -1708,28 +1775,26 @@ class PROFILES_GACODE:
 
         self.readSpecies()
 
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         if enforceSameGradients:
             self.scaleAllThermalDensities()
-            self.deriveQuantities()
+            self.deriveQuantities(rederiveGeometry=False)
 
-        print(
-            f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]',
-        )
+        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
         if (D,Z1,Z2), pos 1 pos_new 2-> (Z1,D,Z2)
         """
+        
+        if pos_new > pos:
+            pos, pos_new = pos_new, pos
 
         position_to_moveFROM_in_profiles = pos - 1
         position_to_moveTO_in_profiles = pos_new - 1
 
-        print(
-            f'\t\t- Moving ion in position (of ions order, no zero) {pos} ({self.profiles["name"][position_to_moveFROM_in_profiles]}) to {pos_new}',
-            typeMsg="i",
-        )
+        print(f'\t\t- Moving ion in position (of ions order, no zero) {pos} ({self.profiles["name"][position_to_moveFROM_in_profiles]}) to {pos_new}',typeMsg="i",)
 
         self.profiles["nion"] = np.array([f"{int(self.profiles['nion'][0])+1}"])
 
@@ -1745,7 +1810,7 @@ class PROFILES_GACODE:
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         if position_to_moveTO_in_profiles > position_to_moveFROM_in_profiles:
             self.remove([position_to_moveFROM_in_profiles + 1])
@@ -1785,7 +1850,7 @@ class PROFILES_GACODE:
             )
 
         self.readSpecies()
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
     def correct(self, options={}, write=False, new_file=None):
         """
@@ -1825,21 +1890,7 @@ class PROFILES_GACODE:
                 self.remove(ions_fast)
         # Fast as thermal
         elif FastIsThermal:
-            modified_num = 0
-            for i in range(len(self.Species)):
-                if self.Species[i]["S"] != "therm":
-                    print(
-                        f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal'
-                    )
-                    self.Species[i]["S"] = "therm"
-                    self.profiles["type"][i] = "[therm]"
-                    self.profiles["ti(keV)"][:, i] = self.profiles["ti(keV)"][:, 0]
-                    modified_num += 1
-            if modified_num > 0:
-                print(
-                    "\t- Making fast species as if they were thermal (to keep dilution effect and Qi-sum of fluxes)",
-                    typeMsg="w",
-                )
+            self.make_fast_ions_thermal()
 
         # Correct LUMPED
         for i in range(len(self.profiles["name"])):
@@ -1867,15 +1918,7 @@ class PROFILES_GACODE:
 
         # Make all thermal ions have the same gradient as the electron density, by keeping volume average constant
         if sameDensityGradients:
-            print(
-                "\t\t- Making all thermal ions have the same a/Ln as electrons (making them an exact flat fraction)",
-                typeMsg="i",
-            )
-            for sp in range(len(self.Species)):
-                if self.Species[sp]["S"] == "therm":
-                    self.profiles["ni(10^19/m^3)"][:, sp] = (
-                        self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
-                    )
+            self.enforce_same_density_gradients()
 
         # Enforce quasineutrality
         if quasineutrality:
@@ -1885,7 +1928,7 @@ class PROFILES_GACODE:
 
         # Recompute ptot
         if recompute_ptot:
-            self.deriveQuantities()
+            self.deriveQuantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
@@ -1902,7 +1945,7 @@ class PROFILES_GACODE:
         # Re-derive
         # ----------------------------------------------------------------------
 
-        self.deriveQuantities()
+        self.deriveQuantities(rederiveGeometry=False)
 
         # ----------------------------------------------------------------------
         # Write
@@ -1910,19 +1953,36 @@ class PROFILES_GACODE:
         if write:
             self.writeCurrentStatus(file=new_file)
             self.printInfo()
+        
+    def enforce_same_density_gradients(self):
+        txt = ""
+        for sp in range(len(self.Species)):
+            if self.Species[sp]["S"] == "therm":
+                self.profiles["ni(10^19/m^3)"][:, sp] = self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
+                txt += f"{self.Species[sp]['N']} "
+        print(f"\t\t- Making all thermal ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
+        self.deriveQuantities(rederiveGeometry=False)
 
+    def make_fast_ions_thermal(self):
+        modified_num = 0
+        for i in range(len(self.Species)):
+            if self.Species[i]["S"] != "therm":
+                print(
+                    f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal'
+                )
+                self.Species[i]["S"] = "therm"
+                self.profiles["type"][i] = "[therm]"
+                self.profiles["ti(keV)"][:, i] = self.profiles["ti(keV)"][:, 0]
+                modified_num += 1
+        if modified_num > 0:
+            print("\t- Making fast species as if they were thermal (to keep dilution effect and Qi-sum of fluxes)",typeMsg="w")
+    
     def selfconsistentPTOT(self):
-        print(
-            f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",
-            typeMsg="i",
-        )
+        print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
 
     def enforceQuasineutrality(self):
-        print(
-            f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",
-            typeMsg="i",
-        )
+        print(f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",typeMsg="i",)
 
         # What's the lack of quasineutrality?
         ni = self.profiles["ne(10^19/m^3)"] * 0.0
@@ -1949,30 +2009,7 @@ class PROFILES_GACODE:
             f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)"
         )
 
-        self.deriveQuantities()
-
-    def calculateModeledQuantities(self):
-        n20 = self.derived["ne_vol20"]
-        p_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
-        Psol_MW = self.derived["Psol"]
-        R = self.profiles["rcentr(m)"][0]
-        Bt = self.profiles["bcentr(T)"][0]
-        q95 = self.derived["q95"]
-        Bp = (
-            self.derived["eps"] * Bt / q95
-        )  # ----------------------------------- VERY ROUGH APPROXIMATION!!!!
-
-        ne_LCFS, Te_LCFS, Lambda_q = PLASMAtools.evaluateLCFS_Lmode(
-            n20, pressure_atm=p_atm, Psol_MW=Psol_MW, R=R, Bp=Bp, Bt=Bt, q95=q95
-        )
-
-        print(
-            f"- ne_sep ~ {ne_LCFS*1E-20:.1f}    1E20/m3 ({(ne_LCFS*1E-20)/n20 *100:.1f}% from vol.avg.)"
-        )
-        print(
-            f"- Te_sep ~ {Te_LCFS:.1f}  eV (using Psol = {Psol_MW:.1f}MW, p = {p_atm:.1f} atm --> lambda_q = {Lambda_q:.2f} mm)"
-        )
-        print(f"- Ti_sep ~ {2*Te_LCFS:.1f}  eV")
+        self.deriveQuantities(rederiveGeometry=False)
 
     def introduceRotationProfile(self, Mach_LF=1.0, new_file=None):
         print(f"\t- Enforcing Mach Number in LF of {Mach_LF}")
@@ -1987,77 +2024,6 @@ class PROFILES_GACODE:
 
         if new_file is not None:
             self.writeCurrentStatus(file=new_file)
-
-    def introducePedestalProfile(
-        self, rho_loc_top=0.95, folderWork="~/scratch/", p1_over_ptot=0.79, debug=False
-        ):
-        folderWork = IOtools.expandPath(folderWork)
-
-        plasmastate = folderWork + "state.cdf"
-        rhob = self.profiles["rho(-)"]
-        psipol = self.derived["psi_pol_n"]
-        rho = self.profiles["rho(-)"]
-        ne = self.profiles["ne(10^19/m^3)"] * 1e19
-        Te = self.profiles["te(keV)"] * 1e3
-        Ti = self.profiles["ti(keV)"][:, 0] * 1e3
-        FunctionalForms.create_dummy_plasmastate(
-            plasmastate, rho, rhob, psipol, ne, Te * 1e-3, Ti * 1e-3
-        )
-
-        ix = np.argmin(np.abs(self.profiles["rho(-)"] - rho_loc_top))
-
-        width_top_psi = 1 - psipol[ix]
-        netop = ne[ix]
-        tetop = Te[ix]
-        ptop = tetop * (netop * 1e-20) * 3.2e1 * 1e-6
-        p1 = ptop * p1_over_ptot
-
-        x, neP, TeP, TiP = FunctionalForms.fit_pedestal_mtanh(
-            width_top_psi,
-            netop * 1e-20,
-            p1 * 1e6,
-            ptop * 1e6,
-            plasmastate,
-            folderWork=folderWork,
-        )
-
-        neP = neP[x <= 1.0]
-        TeP = TeP[x <= 1.0]
-        TiP = TiP[x <= 1.0]
-        x = x[x <= 1.0]
-
-        neP = np.interp(psipol, x, neP)
-        TeP = np.interp(psipol, x, TeP)
-        TiP = np.interp(psipol, x, TiP)
-
-        ne_new = np.append(ne[:ix] * 1e-20, neP[ix:])
-        Te_new = np.append(Te[:ix] * 1e-3, TeP[ix:])
-        Ti_new = np.append(Ti[:ix] * 1e-3, TiP[ix:])
-
-        if debug:
-            fig, axs = plt.subplots(nrows=3)
-            axs[0].plot(rho, Te * 1e-3, "r")
-            axs[0].plot(rho, TeP, "g")
-            axs[0].plot(rho, Te_new, "m")
-            axs[1].plot(rho, Ti * 1e-3, "r")
-            axs[1].plot(rho, TiP, "g")
-            axs[1].plot(rho, Ti_new, "m")
-            axs[2].plot(rho, ne * 1e-20, "r")
-            axs[2].plot(rho, neP, "g")
-            axs[2].plot(rho, ne_new, "m")
-
-            plt.show()
-            embed()
-
-        # Introduce
-        self.profiles["te(keV)"] = Te_new
-
-        self.profiles["ti(keV)"][:, 0] = Ti_new
-        self.makeAllThermalIonsHaveSameTemp()
-
-        scaleFactor = ne_new / (ne * 1e-20)
-        self.profiles["ne(10^19/m^3)"] = ne_new * 1e1
-        self.scaleAllThermalDensities(scaleFactor=scaleFactor)
 
     def plot(
         self,
@@ -2786,11 +2752,11 @@ class PROFILES_GACODE:
             safe_division,
             c=color,
             lw=lw,
-            label=extralab + "Q_i/Q_e",
+            label=extralab + "$Q_i/Q_e$",
         )
         safe_division = np.divide(
             self.derived["qi_aux_MWmiller"],
-            self.derived["qe_MWm2"],
+            self.derived["qe_aux_MWmiller"],
             where=self.derived["qe_aux_MWmiller"] != 0,
             out=np.full_like(self.derived["qi_aux_MWmiller"], np.nan),
         )
@@ -2800,7 +2766,7 @@ class PROFILES_GACODE:
             c=color,
             lw=lw,
             ls="--",
-            label=extralab + "P_i/P_e",
+            label=extralab + "$P_i/P_e$",
         )
         ax.set_ylabel("Power ratios")
         ax.set_xlabel("$\\rho$")
@@ -2952,11 +2918,14 @@ class PROFILES_GACODE:
         ms=2,
         alpha=1.0,
         useRoa=False,
-        RhoLocationsPlot=[],
+        RhoLocationsPlot=None,
         plotImpurity=None,
         plotRotation=False,
         autoscale=True,
         ):
+
+        if RhoLocationsPlot is None: RhoLocationsPlot=[]
+
         if axs4 is None:
             plt.ion()
             fig, axs = plt.subplots(
@@ -3862,7 +3831,7 @@ class PROFILES_GACODE:
     # Code conversions
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    def to_tglf(self, rhos=[0.5], TGLFsettings=0):
+    def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -3987,8 +3956,7 @@ class PROFILES_GACODE:
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
@@ -3998,6 +3966,25 @@ class PROFILES_GACODE:
 
         return transp
 
+    def to_eped(self, ped_rho = 0.95):
+
+        neped_19 = np.interp(ped_rho, self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)'])
+
+        eped_evaluation = {
+            'Ip': np.abs(self.profiles['current(MA)'][0]),
+            'Bt': np.abs(self.profiles['bcentr(T)'][0]),
+            'R': np.abs(self.profiles['rcentr(m)'][0]),
+            'a': np.abs(self.derived['a']),
+            'kappa995': np.abs(self.derived['kappa995']),
+            'delta995': np.abs(self.derived['delta995']),
+            'neped': np.abs(neped_19),
+            'betan': np.abs(self.derived['BetaN_engineering']),
+            'zeff': np.abs(self.derived['Zeff_vol']),
+            'tesep': np.abs(self.profiles['te(keV)'][-1])*1E3,
+            'nesep_ratio': np.abs(self.profiles['ne(10^19/m^3)'][-1] / neped_19),
+        }
+
+        return eped_evaluation
 
 class DataTable:
     def __init__(self, variables=None):
@@ -4223,7 +4210,7 @@ def aLT(r, p):
             torch.from_numpy(r).to(torch.double), torch.from_numpy(p).to(torch.double)
         )
         .cpu()
-        .numpy()
+        .cpu().numpy()
     )
 
 
@@ -4287,7 +4274,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["te(keV)"][-1],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     aLT0 = aLTi_true[: ix1 + 1]
@@ -4306,7 +4293,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["ti(keV)"][-1, 0],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     aLT0 = aLne_true[: ix1 + 1]
@@ -4325,7 +4312,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
             p.profiles["ne(10^19/m^3)"][-1],
         )
         .cpu()
-        .numpy()[0]
+        .cpu().numpy()[0]
     )
 
     p.profiles["te(keV)"] = Te
@@ -4349,3 +4336,15 @@ def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
     return figs
 
+def impurity_location(profiles, impurity_of_interest):
+
+    position_of_impurity = None
+    for i in range(len(profiles.Species)):
+        if profiles.Species[i]["N"] == impurity_of_interest:
+            if position_of_impurity is not None:
+                raise ValueError(f"[MITIM] Species {impurity_of_interest} found at positions {position_of_impurity} and {i}")
+            position_of_impurity = i
+    if position_of_impurity is None:
+        raise ValueError(f"[MITIM] Species {impurity_of_interest} not found in profiles")
+
+    return position_of_impurity

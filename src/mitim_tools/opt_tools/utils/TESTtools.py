@@ -1,11 +1,7 @@
-import torch, copy
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from IPython import embed
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 def DVdistanceMetric(xT):
@@ -29,17 +25,16 @@ def DVdistanceMetric(xT):
     return xG, yG_max
 
 
-def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0]):
+def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper = 1E-6):
     mi = bounds[0, :]
     ma = bounds[1, :]
 
     # Hard limits
     maxb, minb = ma, mi
-    insideBounds_original = (x <= maxb).all() and (x >= minb).all()
 
-    # Allow extrapolation
-    minb = mi - maxExtrapolation[0] * (ma - mi)
-    maxb = ma + maxExtrapolation[1] * (ma - mi)
+    # Allow extrapolation (added clip to avoid numerical issues of points very close to the boundary)
+    minb = mi - np.max([maxExtrapolation[0],clipper]) * (ma - mi) 
+    maxb = ma + np.max([maxExtrapolation[1],clipper]) * (ma - mi)
     insideBounds = (x <= maxb).all() and (x >= minb).all()
 
     return insideBounds
@@ -149,7 +144,6 @@ def checkSame(
 ):
     print(
         f"\t\t- Checking evaluation quality between {labels[0]} and {labels[1]}",
-        verbose=read_verbose_level(),
     )
 
     try:
@@ -180,14 +174,12 @@ def checkSame(
                 "\t\t\t~ Evaluators provided error in all individuals less than {0:.1e}% (< {1:.1f}%)".format(
                     percents.max(), thresholdTrigger
                 ),
-                verbose=read_verbose_level(),
             )
         else:
             print(
                 "\t\t\t~ Evaluators provided error in all individuals of {0:.1e}% (> {1:.1f}%), but the absolute value is very low".format(
                     percents.max(), thresholdTrigger
                 ),
-                verbose=read_verbose_level(),
             )
         trouble = False
     else:
@@ -223,7 +215,7 @@ def checkSame(
 
 def summaryTypes(z_opt):
     types = ""
-    for i in [0, 1, 2, 3, 4, 5]:
+    for i in [0, 1, 2, 3, 4, 5, 6]:
         types += f"{(z_opt == i).sum()} from {identifyType(i)}, "
 
     return types[:-2]
@@ -242,5 +234,7 @@ def identifyType(z):
         method = "GA"
     elif z == 5.0:
         method = "ROOT"
+    elif z == 6.0:
+        method = "SR"
 
     return method

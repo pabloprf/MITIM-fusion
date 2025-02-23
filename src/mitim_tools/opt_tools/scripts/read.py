@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # These import are usually needed if they are called within the pickling object
 import torch  
@@ -18,7 +18,7 @@ This script is to read results of a MITIM optimization, and to compare among opt
 
 * Basic use:
 
-	python3 read.py --type [analysis_level] [optional: --remote remoteFolder] --folders [folder_run1, folder_run2, etc] [optional: --seeds 10] [optional: --conv 1E-3]
+	python3 read.py --type [analysis_level] [folder_run1, folder_run2, etc] [optional: --remote remoteFolder] [optional: --seeds 10] [optional: --conv 1E-3]
 		- Full analysis (analysis level 2) performs analysis in the current machine for the base case and optimized case
 		- If remote folder is provided, read from machine and copy stuff to folders
 		- If more than one run specified, analysis_level will forced to -1, meaning... only compare them.
@@ -26,11 +26,11 @@ This script is to read results of a MITIM optimization, and to compare among opt
 * Examples:
 
 	Local:
-		 run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type -1 --folders run44 run45
+		 run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 run45 --type -1
 
 	Remote:
-		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type -1 --remote eofe7.mit.edu:/nobackup1/pablorf/runs_portals/dev/ --folders run44 run45
-		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py --type 2 --remote  mferws01.psfc.mit.edu-9224:/nobackup1/pablorf/runs_portals/dev/ --folders run44
+		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 run45 --type -1 --remote eofe7.mit.edu:/nobackup1/pablorf/runs_portals/dev/ 
+		run ~/MITIM/mitim_opt/opt_tools/scripts/read.py run44 --type 2 --remote  mferws01.psfc.mit.edu-9224:/nobackup1/pablorf/runs_portals/dev/
 
 * Notes:
 	- Analysis higher than 2 may be enabling other options for mitim and others
@@ -43,12 +43,11 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     folderWorks = []
     names = []
     for cont, i in enumerate(folders):
-        folderWorks.append(IOtools.expandPath(i + "/"))
-        names.append("run" + folderWorks[-1].replace("/", "").split("run")[-1])
+        folderWorks.append(IOtools.expandPath(i))
+        names.append("run" + f"{folderWorks[-1].name}".replace("/", "").split("run")[-1])
     colors = GRAPHICStools.listColors()
 
     plt.close("all")
-    plt.ion()
     fig = plt.figure(figsize=(16, 10))
     grid = plt.GridSpec(3, 2, hspace=0.2, wspace=0.1)
     ax0 = fig.add_subplot(grid[0, 0])
@@ -150,14 +149,14 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     logS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
         res = BOgraphics.optimization_results(
-            f"{folderWork}/Outputs/optimization_results.out"
+            folderWork / "Outputs" / "optimization_results.out"
         )
         res.readClass(
-            STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
+            STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
         )
         res.read()
 
-        log_class = BOgraphics.LogFile(folderWork + "/Outputs/optimization_log.txt")
+        log_class = BOgraphics.LogFile(folderWork / "Outputs" / "optimization_log.txt")
 
         try:
             log_class.interpret()
@@ -167,7 +166,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
 
         plotAllmembers = len(folderWorks) <= 3
         xe, yCummMean = res.plotImprovement(
-            axs=[ax0, ax1, ax1i],
+            axs=[ax0, ax1, ax1i, None],
             color=color,
             extralab=name + " ",
             plotAllmembers=plotAllmembers,
@@ -176,9 +175,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         if xe[-1] > maxEv:
             maxEv = xe[-1]
 
-        compared = -yCummMean[0] * conv if conv < 0 else conv
-
-        ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
+        #compared = -yCummMean[0] * conv if conv < 0 else conv
+        #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
         if log_class is not None:
             log_class.plot(
@@ -218,56 +216,53 @@ def main():
     parser.add_argument("--resolution", type=int, required=False, default=50)
     parser.add_argument("--save", type=str, required=False, default=None)
     parser.add_argument("--conv", type=float, required=False, default=-1e-2)
+    parser.add_argument("--its", type=int, nargs="*", required=False, default=None)
 
     args = parser.parse_args()
 
     analysis_level = args.type
-    folders_reduced = args.folders
-    folderRemote_reduced = args.remote
+    folders = args.folders
+    remote_parent = args.remote
     seeds = args.seeds
     resolution = args.resolution
     save_folder = args.save
     conv = args.conv
+    rangePlot = args.its
 
 # -----------------------------------------
 
-    folders_reduced_original = copy.deepcopy(folders_reduced)
+    # ----- Folders (complete local path)
+    folders_complete = []
+    for i in range(len(folders)):
+        if seeds is not None:
+            aux = [f"{folders[i]}_s{k}" for k in range(seeds)]
+            folders_complete.extend(aux)
+        else:
+            folders_complete.append(folders[i])
 
-    if seeds is not None:
-        for i in range(len(folders_reduced)):
-            if folders_reduced[i][-1] == "/":
-                folders_reduced[i] = folders_reduced[i][:-1]
+    txt = "***************************************************************************\n"
+    for i in range(len(folders_complete)):
+        folders_complete[i] = IOtools.expandPath(folders_complete[i])
+        folders_complete[i].mkdir(parents=True, exist_ok=True)
+        txt += f"* Reading results in {folders_complete[i]}\n"
+        
+    # ----- Folders (reduced local path)
+    folders_reduced = [IOtools.reducePathLevel(folderWork)[-1] for folderWork in folders_complete]
 
-            aux = [f"{folders_reduced[i]}_s{k}" for k in range(seeds)]
-            del folders_reduced[i]
-            folders_reduced.extend(aux)
-
-    foldersWork = [
-        IOtools.expandPath(folder_reduced + "/", ensurePathValid=True)
-        for folder_reduced in folders_reduced
-    ]
-    reduced_folders = [
-        IOtools.reducePathLevel(folderWork)[-1] for folderWork in foldersWork
-    ]
-
-    if len(foldersWork) > 1:
+    if len(folders_complete) > 1:
         retrieval_level = copy.deepcopy(analysis_level)
         analysis_level = -1
     else:
         retrieval_level = analysis_level
 
-    txt = "***************************************************************************\n"
-    for folderWork in foldersWork:
-        txt += f"* Reading results in {folderWork}\n"
-
-    if folderRemote_reduced is None:
-        foldersRemote = [None] * len(foldersWork)
+    if remote_parent is None:
+        folders_remote = [None] * len(folders_complete)
     else:
-        foldersRemote = [
-            f"{folderRemote_reduced}/{reduced_folder}/"
-            for reduced_folder in reduced_folders
+        folders_remote = [
+            f"{remote_parent}/{reduced_folder}/"
+            for reduced_folder in folders_reduced
         ]
-        txt += f"\n\t...From remote folder {folderRemote_reduced}\n"
+        txt += f"\n\t...From remote folder {remote_parent}\n"
 
     print(
         "\n"
@@ -276,18 +271,19 @@ def main():
     )
     print(f"(Analysis level {analysis_level})\n")
 
-    if len(foldersWork) == 1:
-        opt_fun = STRATEGYtools.opt_evaluator(foldersWork[0])
+    if len(folders_complete) == 1:
+        opt_fun = STRATEGYtools.opt_evaluator(folders_complete[0])
         opt_fun.plot_optimization_results(
             analysis_level=analysis_level,
-            folderRemote=foldersRemote[0],
+            folderRemote=folders_remote[0],
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
             save_folder=save_folder,
+            rangesPlot=rangePlot,
         )
     else:
         opt_funs = []
-        for folderWork, folderRemote in zip(foldersWork, foldersRemote):
+        for folderWork, folderRemote in zip(folders_complete, folders_remote):
             opt_fun = STRATEGYtools.opt_evaluator(folderWork)
             try:
                 opt_fun.plot_optimization_results(
@@ -295,6 +291,7 @@ def main():
                     folderRemote=folderRemote,
                     retrieval_level=retrieval_level,
                     save_folder=save_folder,
+                    rangesPlot=rangePlot,
                 )
             except:
                 print(f"Could not retrieve #{folderWork}", typeMsg="w")
@@ -302,7 +299,7 @@ def main():
 
     if analysis_level == -1:
         yCummMeans, xes, resS, logS, fig = plotCompare(
-            foldersWork, plotMeanMax=[True, len(foldersWork) < 2]
+            folders_complete, plotMeanMax=[True, len(folders_complete) < 2]
         )
 
     # ------
@@ -334,7 +331,10 @@ def main():
                 f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
                 typeMsg="w",
             )
-    opt_fun.fn.show()
+    if opt_fun.fn is not None:
+        opt_fun.fn.show()
+    else:
+        plt.show()
 
     embed()
 

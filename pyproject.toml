@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MITIM"
-version = "2.1.0"
+version = "3.0.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest BOTORCH, 3.13 has issues with tensorflow (nn) and omfit_classesv (omfit_new)
 license = {file = "LICENSE"}
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
 ]
 classifiers = [
-  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: MIT License",
   "Topic :: Scientific/Engineering",
   "Operating System :: OS Independent",
@@ -39,8 +39,11 @@ dependencies = [
   "tqdm",
   "shapely",
   "freegs",
-  "botorch==0.9.4",   # Comes w/ gpytorch==1.11, torch>=1.13.1. PRF also tested w/ torch-2.3.0
-  "scikit-image",     # Stricly not for MITIM, but good to have for pygacode
+  "botorch",
+  "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
+  "psutil",
+  "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
+  "tensorflow"
 ]
 
 [project.optional-dependencies]
@@ -48,11 +51,10 @@ pyqt = [
   "PyQt6",
 ]
 omfit = [
-  "omfit_classes",
+  "omfit_classes>3.2024.19.2", # Otherwise, it will need an old version of matplotlib, matplotlib<3.6
   "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
   "numpy<2.0.0",      # For the xarray requirement below to work
   "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
-  "matplotlib<3.6",   # As of 12/07/2023, omfit_classes fails for higher versions
   "omas",
   "fortranformat",
   "openpyxl",
@@ -60,9 +62,6 @@ omfit = [
 test = [
   "pytest",
   "coverage",
-]
-nn = [
-  "tensorflow==2.15.0", #  As of 08/15/2023, requires python>3.10 (J. Hall)
 ]
 
 [project.urls]
@@ -95,11 +94,12 @@ mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 
 # MAESTRO
 mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
 
-# To run TRANSP (in folder with required files): transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
+# To run TRANSP (in folder with required files): mitim_run_transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
 mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
 
 # Others
 mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
+mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim_scp mfews15 --files /home/pablorf/file1 --folders /home/pablorf/folder1
 #eff_job="mitim_tools.misc_tools.PARALLELtools.py $1" # Give mitim.out or slurm_output.dat
 
 [tool.pytest.ini_options]

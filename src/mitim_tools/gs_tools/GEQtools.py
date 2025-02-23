@@ -4,14 +4,14 @@ import tempfile
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, MATHtools, IOtools, PLASMAtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
 from scipy.integrate import quad
 import freegs
 from freegs import geqdsk
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """
@@ -53,6 +53,7 @@ def fix_file(filename):
     filename = noCoils_file
 
     return filename
+
 class MITIMgeqdsk:
     def __init__(self, filename):
 
@@ -104,7 +105,7 @@ class MITIMgeqdsk:
                     f"{filename}_time{i}.geqdsk",**kwargs,
                 )
             )
-            os.system(f"rm {filename}_time{i}.geqdsk")
+            os.remove(f"{filename}_time{i}.geqdsk")
 
         return gs
 
@@ -143,6 +144,9 @@ class MITIMgeqdsk:
         self.eps = self.a / self.Rmajor
 
         # Core values
+
+        self.kappa_a = self.g["fluxSurfaces"]["geo"]["cxArea"][-1] / (np.pi * self.a**2)
+
         self.kappa995 = np.interp(
             0.995,
             self.g["AuxQuantities"]["PSI_NORM"],
@@ -307,6 +311,7 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
+    
     def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
 
         # -------------------------------------------------------------------------------------------------------
@@ -315,7 +320,7 @@ class MITIMgeqdsk:
 
         rhotor = self.g['RHOVN']
         psi = self.g['AuxQuantities']['PSI']                           # Wb/rad
-        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)     # Wb/rad
+        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)      # Wb/rad
         q = self.g['QPSI']
         pressure = self.g['PRES']       # Pa
         Ip = self.g['CURRENT']*1E-6     # MA
@@ -324,6 +329,17 @@ class MITIMgeqdsk:
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
         
         B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
+
+        # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
+        rhotor = np.array([np.abs(i) for i in rhotor])
+        psi = np.array([np.abs(i) for i in psi])
+        q = np.array([np.abs(i) for i in q])
+        pressure = np.array([np.abs(i) for i in pressure])
+        
+        torfluxa = np.abs(torfluxa)
+        Ip = np.abs(Ip)
+        B0 = np.abs(B0)
+        # ------------------------------------------
 
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
@@ -342,7 +358,7 @@ class MITIMgeqdsk:
 
         # Just one specie
         profiles['name'] = np.array(['D','F'])
-        profiles['type'] = np.array(['therm','therm'])
+        profiles['type'] = np.array(['[therm]','[therm]'])
         profiles['masse'] = np.array([5.4488748e-04])
         profiles['mass'] = np.array([2.0, Z*2])
         profiles['ze'] = np.array([-1.0])
@@ -431,11 +447,11 @@ class MITIMgeqdsk:
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder = IOtools.expandPath(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
-        p.writeCurrentStatus(f'{folder}/input.gacode')
+        p.writeCurrentStatus(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
 
@@ -535,13 +551,13 @@ class mitim_flux_surfaces:
 
     def _to_miller(self):
 
-        self.R0 = np.mean(self.R, axis=-1)
-        self.Z0 = np.mean(self.Z, axis=-1)
-
         Rmin = np.min(self.R, axis=-1)
         Rmax = np.max(self.R, axis=-1)
         Zmax = np.max(self.Z, axis=-1)
         Zmin = np.min(self.Z, axis=-1)
+
+        self.R0 = 0.5* (Rmax + Rmin)
+        self.Z0 = 0.5* (Zmax + Zmin)
 
         self.a = (Rmax - Rmin) / 2
 
@@ -563,9 +579,12 @@ class mitim_flux_surfaces:
 
         # Squareness (not parallel for the time being)
         self.zeta = np.zeros(self.R0.shape)
-        # for i in range(self.R0.shape[0]):
-        #     Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
-        #     self.zeta[i] = zeta_uo
+        for i in range(self.R0.shape[0]):
+            try:
+                Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
+            except AttributeError:
+                zeta_uo = np.nan
+            self.zeta[i] = zeta_uo
 
     def plot(self, ax = None, color = 'r', label = None, plot_extremes=False):
 
@@ -589,31 +608,47 @@ class mitim_flux_surfaces:
 def find_squareness_points(R, Z, debug = False):
 
     # Reference point (A)
-    R_of_maxZ = R[Z.argmax()] 
-    Z_of_maxR = Z[R.argmax()]
+    A_r = R_of_maxZ = R[Z.argmax()] 
+    A_z = Z_of_maxR = Z[R.argmax()]
 
     # Upper Outer Squareness point (D)
-    R_of_maxR = R.max()
-    Z_of_maxZ = Z.max()
+    C_r = R_of_maxR = R.max()
+    C_z = Z_of_maxZ = Z.max()
     
     # Find intersection with separatrix (C)
     Ri_uo, Zi_uo = find_intersection_squareness(R, Z, R_of_maxZ, Z_of_maxR, R_of_maxR, Z_of_maxZ)
+    C_r, C_z = Ri_uo, Zi_uo
 
     # Find point B
-    Rs_uo = R_of_maxZ + (R_of_maxR-R_of_maxZ)/2
-    Zs_uo = Z_of_maxR + (Z_of_maxZ-Z_of_maxR)/2
+    B_r = Rs_uo = R_of_maxZ + (R_of_maxR-R_of_maxZ)/2
+    B_z = Zs_uo = Z_of_maxR + (Z_of_maxZ-Z_of_maxR)/2
 
     # Squareness is defined as the distance BC divided by the distance AB
-    zeta_uo = np.sqrt((Ri_uo-Rs_uo)**2 + (Zi_uo-Zs_uo)**2) / np.sqrt((R_of_maxZ-R_of_maxR)**2 + (Z_of_maxZ-Z_of_maxR)**2)
+    zeta_uo = np.sqrt((C_r-B_r)**2 + (C_z-B_z)**2) / np.sqrt((A_r-B_r)**2 + (A_z-B_z)**2)
+    #zeta_uo = np.sqrt((Ri_uo-Rs_uo)**2 + (Zi_uo-Zs_uo)**2) / np.sqrt((R_of_maxZ-R_of_maxR)**2 + (Z_of_maxZ-Z_of_maxR)**2)
 
     if debug:
         plt.ion()
         fig, ax = plt.subplots()
-        ax.plot(R, Z, 'o-')
+        ax.plot(R, Z, 'o-', markersize=3, color='k')
+        ax.plot([Ri_uo], [Zi_uo], 'o', color='k', label = 'C', markersize=6)
+        
         ax.plot([R_of_maxZ], [Z_of_maxR], 'o', color='b', label = 'A')
+        ax.axvline(x=R_of_maxZ, ls='--', color='b')
+        ax.axhline(y=Z_of_maxR, ls='--', color='b')
+
         ax.plot([R_of_maxR], [Z_of_maxZ], 'o', color='r', label = 'D')
-        ax.plot([Ri_uo], [Zi_uo], 'o', color='k', label = 'C')
+        ax.axhline(y=Z_of_maxZ, ls='--', color='r')
+        ax.axvline(x=R_of_maxR, ls='--', color='r')
+
         ax.plot([Rs_uo], [Zs_uo], 'o', color='g', label = 'B')
+
+        # Connect A and D
+        ax.plot([R_of_maxZ, R_of_maxR], [Z_of_maxR, Z_of_maxZ], 'm--')
+
+        # Connect maxZ with maxR
+        ax.plot([R_of_maxZ, R_of_maxR], [Z_of_maxZ, Z_of_maxR], 'm--')
+
         ax.set_aspect('equal')
         ax.legend()
         ax.set_xlabel('R [m]')
@@ -677,21 +712,20 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
     theta_r_cont[min_theta:] = 2*np.pi - theta_r[min_theta:]
 
     theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
-    
+
     # Fourier decompose to find coefficients
+
     c, s = np.zeros(n_coeff), np.zeros(n_coeff)
+
     def f_theta_r(theta):
         return np.interp(theta, theta_cont, theta_r_cont)
     
     for i in np.arange(n_coeff):
-        def integrand_sin(theta):
-            return np.sin(i*theta)*(f_theta_r(theta))
-        def integrand_cos(theta):
-            return np.cos(i*theta)*(f_theta_r(theta))
+        s[i] = quad(f_theta_r,0,2*np.pi, weight="sin", wvar=i)[0]/np.pi
+        c[i] = quad(f_theta_r,0,2*np.pi, weight="cos", wvar=i)[0]/np.pi
+    
+    c[0] /= 2
 
-        s[i] = quad(integrand_sin,0,2*np.pi)[0]/np.pi
-        c[i] = quad(integrand_cos,0,2*np.pi)[0]/np.pi
-        
     return c, s, bbox
 
 def from_mxh_to_RZ(R0, a, kappa, Z0, cn, sn, thetas = None):
@@ -749,13 +783,16 @@ class freegs_millerized:
         self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
         self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
 
-    def prep(self,  p0_MPa, Ip_MA, B_T, beta_pol = None, n_coils = 10, resol_eq = 2**8+1, parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0}):
+    def prep(self,  p0_MPa, Ip_MA, B_T,
+            beta_pol = None, n_coils = 10, resol_eq = 2**8+1,
+            parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0},
+            constraint_miller_squareness_point = False):
 
         print("\t- Initializing plasma parameters")
         if beta_pol is not None:
-            print(f"\t\t* beta_pol={beta_pol}, Ip={Ip_MA} MA, B={B_T} T")
+            print(f"\t\t* beta_pol={beta_pol:.5f}, Ip={Ip_MA:.5f} MA, B={B_T:.5f} T")
         else:
-            print(f"\t\t* p0={p0_MPa} MPa, Ip={Ip_MA} MA, B={B_T} T")
+            print(f"\t\t* p0={p0_MPa:.5f} MPa, Ip={Ip_MA:.5f} MA, B={B_T:.5f} T")
 
         self.p0_MPa = p0_MPa
         self.Ip_MA = Ip_MA
@@ -786,14 +823,15 @@ class freegs_millerized:
         print("\t\t* Defining squareness isoflux point")
 
         # Find squareness point
-        Rsq, Zsq, _ = find_squareness_points(self.R_sep, self.Z_sep)
+        if constraint_miller_squareness_point:
+            Rsq, Zsq, _ = find_squareness_points(self.R_sep, self.Z_sep)
 
-        self.isoflux.append(
-            (self.xpoints[0][0], self.xpoints[0][1], Rsq, Zsq)         # Upper x-point with squareness point
-        )
-        self.isoflux.append(
-            (self.xpoints[0][0], self.xpoints[0][1], Rsq, -Zsq)        # Upper x-point with squareness point
-        )
+            self.isoflux.append(
+                (self.xpoints[0][0], self.xpoints[0][1], Rsq, Zsq)         # Upper x-point with squareness point
+            )
+            self.isoflux.append(
+                (self.xpoints[0][0], self.xpoints[0][1], Rsq, -Zsq)        # Upper x-point with squareness point
+            )
 
         # Combine
         self.constrain = freegs.control.constrain(
@@ -906,7 +944,7 @@ class freegs_millerized:
         # --------------------------------------------------------------
 
         max_error = 0.0
-        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep', 'zeta_sep']:
             miller_value = getattr(self, key)
             sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
             error = abs( (miller_value-sep_value)/miller_value )
@@ -925,7 +963,6 @@ class freegs_millerized:
 
         if plotYN:
 
-            plt.ion()
             fig = plt.figure(figsize=(12,8))
             axs = fig.subplot_mosaic(
                 """
@@ -971,6 +1008,8 @@ class freegs_millerized:
             self.mitim_separatrix_eq.plot(ax=ax, color = 'r', label = 'Separatrix (freegs)', plot_extremes=True)
 
             ax.legend(prop={'size': 10})
+
+            plt.show()
 
     def derive(self, psi_surfaces = np.linspace(0,1.0,10), psi_profiles = np.linspace(0,1.0,100)):
 
@@ -1127,7 +1166,7 @@ class freegs_millerized:
     # Writing
     # --------------------------------------------------------------
 
-    def write(self, filename = "mitim_freegs.geqdsk"):
+    def write(self, filename):
 
         print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
 
@@ -1138,7 +1177,7 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(scratch_folder)
-        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
@@ -1151,7 +1190,8 @@ class freegs_millerized:
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
-        file_scratch = f'{scratch_folder}/mitim_freegs.geqdsk'
+        scratch_folder.mkdir(parents=True, exist_ok=True)
+        file_scratch = scratch_folder / 'mitim_freegs.geqdsk'
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 

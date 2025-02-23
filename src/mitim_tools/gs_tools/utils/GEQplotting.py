@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -532,10 +532,10 @@ def plotParameterization(self, axs=None):
     )
     patch = matplotlib.patches.PathPatch(path, facecolor="none")
     ax.add_patch(patch)
-    for col in cs.collections:
-        col.set_clip_path(patch)
-    for col in csA.collections:
-        col.set_clip_path(patch)
+    # for col in cs.collections:
+    #     col.set_clip_path(patch)
+    # for col in csA.collections:
+    #     col.set_clip_path(patch)
 
     self.plotEnclosingBox(ax=ax)
 
@@ -639,6 +639,17 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         7.0,
+        f"    kappa_areal = {self.kappa_a:.3f}",
+        color="k",
+        fontsize=10,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        rotation=0,
+    )
+    ax.text(
+        0.0,
+        6.0,
         "delta = {0:.3f} (dU = {1:.3f}, dL = {2:.3f})".format(
             self.delta, self.deltaU, self.deltaL
         ),
@@ -651,7 +662,7 @@ def plotParameterization(self, axs=None):
     )
     ax.text(
         0.0,
-        6.0,
+        5.0,
         f"    delta95 = {self.delta95:.3f},  delta995 = {self.delta995:.3f}",
         color="k",
         fontsize=10,
@@ -662,7 +673,7 @@ def plotParameterization(self, axs=None):
     )
     ax.text(
         0.0,
-        5.0,
+        4.0,
         f"zeta = {self.zeta:.3f}",
         color="k",
         fontsize=10,

@@ -1,10 +1,8 @@
-import torch, pdb
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools import MATHtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 def doubleLinear_aLT(x, g1, g2, t, T1):
@@ -44,6 +42,6 @@ def calculate_simplified_volavg(x, T):
             :, -1
         ]
         / vol[:, -1]
-    ).numpy()
+    ).cpu().numpy()
 
     return Tvol

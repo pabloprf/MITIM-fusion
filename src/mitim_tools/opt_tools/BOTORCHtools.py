@@ -8,11 +8,7 @@ import torch
 import botorch
 import gpytorch
 from IPython import embed
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-from mitim_tools.misc_tools.IOtools import printMsg as print
-
-
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
@@ -27,8 +23,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         train_Yvar,
         input_transform=None,
         outcome_transform=None,
-        surrogateOptions={},
+        surrogate_options={},
         variables=None,
+        output=None,
         train_X_added=torch.Tensor([]),
         train_Y_added=torch.Tensor([]),
         train_Yvar_added=torch.Tensor([]),
@@ -37,16 +34,14 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         _added refers to already-transformed variables that are added from table
         """
 
-        TypeMean = surrogateOptions.get("TypeMean", 0)
-        TypeKernel = surrogateOptions.get("TypeKernel", 0)
-        FixedNoise = surrogateOptions.get("FixedNoise", False)
-        ConstrainNoise = surrogateOptions.get("ConstrainNoise", -1e-4)
-        learn_additional_noise = surrogateOptions.get("ExtraNoise", False)
-        if read_verbose_level() in [4, 5]:
-            print("\t\t* Surrogate model options:")
-            print(
-                f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}"
-            )
+        TypeMean = surrogate_options.get("TypeMean", 0)
+        TypeKernel = surrogate_options.get("TypeKernel", 0)
+        FixedNoise = surrogate_options.get("FixedNoise", False)
+        ConstrainNoise = surrogate_options.get("ConstrainNoise", -1e-4)
+        learn_additional_noise = surrogate_options.get("ExtraNoise", False)
+        additional_constraints = surrogate_options.get("additional_constraints", None)
+        print("\t\t* Surrogate model options:")
+        print(f"\t\t\t- FixedNoise: {FixedNoise} (extra noise: {learn_additional_noise}), TypeMean: {TypeMean}, TypeKernel: {TypeKernel}, ConstrainNoise: {ConstrainNoise:.1e}")
 
         self.store_training(
             train_X,
@@ -112,14 +107,15 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
 
         if FixedNoise:
             # Noise not inferred, given by data
-
+            
             likelihood = (
                 gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood(
-                    noise=train_Yvar_usedToTrain,
+                    noise=train_Yvar_usedToTrain.clip(1e-6), # I clip the noise to avoid numerical issues (gpytorch would do it anyway, but this way it doesn't throw a warning)
                     batch_shape=self._aug_batch_shape,
                     learn_additional_noise=learn_additional_noise,
                 )
             )
+
         else:
             # Infer Noise
 
@@ -171,11 +167,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 self.ard_num_dims, batch_shape=self._aug_batch_shape, bias=True
             )
         elif TypeMean == 2:
-            self.mean_module = PRF_LinearMeanGradients(
-                batch_shape=self._aug_batch_shape, variables=variables
+            self.mean_module = MITIM_LinearMeanGradients(
+                batch_shape=self._aug_batch_shape, variables=variables, output=output
             )
         elif TypeMean == 3:
-            self.mean_module = PRF_CriticalGradient(
+            self.mean_module = MITIM_CriticalGradient(
                 batch_shape=self._aug_batch_shape, variables=variables
             )
 
@@ -190,9 +186,10 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         outputscale_prior = gpytorch.priors.torch_priors.GammaPrior(2.0, 0.15)
 
         # Do not allow too small lengthscales?
-        lengthscale_constraint = (
-            None  # gpytorch.constraints.constraints.GreaterThan(0.05)
-        )
+        if (additional_constraints is not None) and ("lenghtscale_constraint" in additional_constraints):
+            lengthscale_constraint = additional_constraints["lenghtscale_constraint"]
+        else:
+            lengthscale_constraint = None
 
         self._subset_batch_dict["covar_module.raw_outputscale"] = -1
         self._subset_batch_dict["covar_module.base_kernel.raw_lengthscale"] = -3
@@ -221,7 +218,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 outputscale_prior=outputscale_prior,
             )
         elif TypeKernel == 2:
-            self.covar_module = PRF_ConstantKernel(
+            self.covar_module = MITIM_ConstantKernel(
                 ard_num_dims=self.ard_num_dims,
                 batch_shape=self._aug_batch_shape,
                 lengthscale_prior=lengthscale_prior,
@@ -229,7 +226,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             )
         elif TypeKernel == 3:
             self.covar_module = gpytorch.kernels.scale_kernel.ScaleKernel(
-                base_kernel=PRF_NNKernel(
+                base_kernel=MITIM_NNKernel(
                     ard_num_dims=self.ard_num_dims,
                     batch_shape=self._aug_batch_shape,
                     lengthscale_prior=lengthscale_prior,
@@ -276,7 +273,9 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         posterior_transform=None,
         **kwargs,
     ):
-        self.eval()
+        self.eval()  # make sure model is in eval mode
+        # input transforms are applied at `posterior` in `eval` mode, and at
+        # `model.forward()` at the training time
         Xtr = self.transform_inputs(X)
         with botorch.models.utils.gpt_posterior_settings():
             # insert a dimension for the output dimension
@@ -284,25 +283,11 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                 Xtr, output_dim_idx = botorch.models.utils.add_output_dim(
                     X=Xtr, original_batch_shape=self._input_batch_shape
                 )
+            # NOTE: BoTorch's GPyTorchModels also inherit from GPyTorch's ExactGP, thus
+            # self(X) calls GPyTorch's ExactGP's __call__, which computes the posterior,
+            # rather than e.g. SingleTaskGP's forward, which computes the prior.
             mvn = self(Xtr)
-            if observation_noise is not False:
-                if torch.is_tensor(observation_noise):
-                    # TODO: Validate noise shape
-                    # make observation_noise `batch_shape x q x n`
-                    if self.num_outputs > 1:
-                        obs_noise = observation_noise.transpose(-1, -2)
-                    else:
-                        obs_noise = observation_noise.squeeze(-1)
-                    mvn = self.likelihood(mvn, Xtr, noise=obs_noise)
-                elif isinstance(
-                    self.likelihood,
-                    gpytorch.likelihoods.gaussian_likelihood.FixedNoiseGaussianLikelihood,
-                ):
-                    # Use the mean of the previous noise values (TODO: be smarter here).
-                    noise = self.likelihood.noise.mean().expand(X.shape[:-1])
-                    mvn = self.likelihood(mvn, Xtr, noise=noise)
-                else:
-                    mvn = self.likelihood(mvn, Xtr)
+            mvn = self._apply_noise(X=Xtr, mvn=mvn, observation_noise=observation_noise)
             if self._num_outputs > 1:
                 mean_x = mvn.mean
                 covar_x = mvn.lazy_covariance_matrix
@@ -314,9 +299,7 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
                     )
                     for t in output_indices
                 ]
-                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(
-                    mvns=mvns
-                )
+                mvn = gpytorch.distributions.MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
 
         posterior = botorch.posteriors.gpytorch.GPyTorchPosterior(distribution=mvn)
         if hasattr(self, "outcome_transform"):
@@ -324,7 +307,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
         if posterior_transform is not None:
             return posterior_transform(posterior)
         return posterior
-
 
 # ----------------------------------------------------------------------------------------------------------------------------
 # ModelListGP needs to be modified to allow me to have "common" parameters to models, to not run at every transformation again
@@ -338,28 +320,18 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
     def prepareToGenerateCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = True
         # Make sure that this ModelListGP evaluation is fresh
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
-    def restartCommons(self):
+    def cold_startCommons(self):
         self.models[0].input_transform.tf1.flag_to_store = False
-        if (
-            "parameters_combined"
-            in self.models[0].input_transform.tf1.surrogate_parameters
-        ):
-            del self.models[0].input_transform.tf1.surrogate_parameters[
-                "parameters_combined"
-            ]
+        if ("parameters_combined" in self.models[0].input_transform.tf1.surrogate_parameters):
+            del self.models[0].input_transform.tf1.surrogate_parameters["parameters_combined"]
 
     def transform_inputs(self, X):
         self.prepareToGenerateCommons()
         X_tr = super().transform_inputs(X)
-        self.restartCommons()
+        self.cold_startCommons()
 
         return X_tr
 
@@ -379,7 +351,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             posterior_transform=posterior_transform,
             **kwargs,
         )
-        self.restartCommons()
+        self.cold_startCommons()
 
         return posterior
 
@@ -396,6 +368,7 @@ class Transformation_Inputs(
         self,
         output,
         surrogate_parameters,
+        surrogate_transformation_variables,
         indices=None,
         transform_on_train: bool = True,
         transform_on_eval: bool = True,
@@ -414,19 +387,18 @@ class Transformation_Inputs(
         # Custom parameters
         self.output = output
         self.surrogate_parameters = surrogate_parameters
+        self.surrogate_transformation_variables = surrogate_transformation_variables
         self.flag_to_store = False
         self.flag_to_evaluate = True
 
     @botorch.models.transforms.utils.subset_transform
     def _transform(self, X):
         if (self.output is not None) and (self.flag_to_evaluate):
-            Xtr, parameters_combined = self.surrogate_parameters[
-                "transformationInputs"
-            ](
+            Xtr, parameters_combined = self.surrogate_parameters["transformationInputs"](
                 X,
                 self.output,
                 self.surrogate_parameters,
-                self.surrogate_parameters["surrogate_transformation_variables"],
+                self.surrogate_transformation_variables,
             )
 
             # Store the expensive parameters (not for training, or to call outside of ModelList)
@@ -461,9 +433,9 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
         else:
-            factor = Y.mean(dim=-2, keepdim=True) * 0.0 + 1.0
+            factor = Y.mean(dim=-2, keepdim=True).to(Y.device) * 0.0 + 1.0
 
         self.stdvs = factor
         self.means = self.stdvs * 0.0
@@ -480,7 +452,7 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
         if (self.output is not None) and (self.flag_to_evaluate):
             factor = self.surrogate_parameters["transformationOutputs"](
                 X, self.surrogate_parameters, self.output
-            )
+            ).to(X.device)
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
@@ -527,7 +499,6 @@ class ChainedOutcomeTransform(
 # Mean acquisition function in botorch doesn't allow objectives because it's analytic
 # ----------------------------------------------------------------------------------------------------------------------------
 
-
 class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def __init__(
         self,
@@ -549,10 +520,11 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
     def forward(self, X):
         """
         Notes:
-                - X in the form of [batch,restarts,q,dim]
+                - X in the form of [batch,cold_starts,q,dim]
                 - The output of the acquisition must be something to MAXIMIZE. That's something that should be given in objective
         """
 
+        # Posterior distribution
         posterior = self.model.posterior(
             X=X, posterior_transform=self.posterior_transform
         )
@@ -560,7 +532,7 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
         # mean as [batch1...N,q,dimY]
         mean = posterior.mean
 
-        # objective [batch1...N,q]
+        # objective [batch1...N,q] -> This assumes the nonlinearity of the objective is not significant, so obj(mean) = mean(obj)
         obj = self.objective(mean)
 
         # max over q
@@ -568,47 +540,11 @@ class PosteriorMean(botorch.acquisition.monte_carlo.MCAcquisitionFunction):
 
         return acq
 
-
-# ----------------------------------------------------------------------------------------------------------------------------
-# My own IC generator that uses previous points too
-# ----------------------------------------------------------------------------------------------------------------------------
-
-
-def ic_generator_wrapper(batch_initial_conditions):
-    def ic_generator(acq_function, bounds, q, num_restarts, raw_samples, **kwargs):
-        if q > 1:
-            raise NotImplementedError(
-                "[MITIM] This situation has not been implemented yet"
-            )
-
-        # Points already provided
-        provided_points = batch_initial_conditions.unsqueeze(1)
-
-        # Only generate the rest
-        num_restarts_new = num_restarts - provided_points.shape[0]
-
-        if num_restarts_new < 1:
-            print(
-                f"\t- More or same points provided than num_restarts ({provided_points.shape[0]} vs {num_restarts}), clipping...",
-                typeMsg="w",
-            )
-            return provided_points[provided_points.shape[0] - num_restarts :, ...]
-        else:
-            new_points = botorch.optim.initializers.gen_batch_initial_conditions(
-                acq_function, bounds, q, num_restarts_new, raw_samples, **kwargs
-            )
-
-            return torch.cat([provided_points, new_points], dim=0)
-
-    return ic_generator
-
-
 # ----------------------------------------------------------------------------------------------------------------------------
 # Custom kernels
 # ----------------------------------------------------------------------------------------------------------------------------
 
-
-class PRF_NNKernel(gpytorch.kernels.Kernel):
+class MITIM_NNKernel(gpytorch.kernels.Kernel):
     has_lengthscale, is_stationary = True, False
 
     def __init__(self, tau_prior=None, tau_constraint=None, **kwargs):
@@ -695,7 +631,7 @@ class PRF_NNKernel(gpytorch.kernels.Kernel):
         return val
 
 
-class PRF_ConstantKernel(gpytorch.kernels.Kernel):
+class MITIM_ConstantKernel(gpytorch.kernels.Kernel):
     has_lengthscale = False
 
     def forward(
@@ -730,18 +666,41 @@ class PRF_ConstantKernel(gpytorch.kernels.Kernel):
 # Custom means
 # ----------------------------------------------------------------------------------------------------------------------------
 
-
 # mitim application: If a variable is a gradient, do linear, if not, do just bias
-class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):
-    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
+class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
+    def __init__(
+        self,
+        batch_shape=torch.Size(),
+        variables=None,
+        output=None,
+        only_diffusive=True,
+        **kwargs
+        ):
         super().__init__()
 
         # Indeces of variables that are gradient, so subject to CG behavior
         grad_vector = []
         if variables is not None:
-            for i, variable in enumerate(variables):
-                if ("aL" in variable) or ("dw" in variable):
-                    grad_vector.append(i)
+
+            if not only_diffusive:
+                for i, variable in enumerate(variables):
+                    if ("aL" in variable) or ("dw" in variable):
+                        grad_vector.append(i)
+            else:
+
+                mapping = {
+                    'Qe': 'aLte',
+                    'Qi': 'aLti',
+                    'Ge': 'aLne',
+                    'GZ': 'aLnZ',
+                    'Mt': 'dw0dr',
+                    'Pe': None  # Referring to energy exchange
+                }
+
+                for i, variable in enumerate(variables):
+                    if (mapping[output[:2]] is not None) and (mapping[output[:2]] == variable):
+                        grad_vector.append(i)
+
         self.indeces_grad = tuple(grad_vector)
         # ----------------------------------------------------------------
 
@@ -755,12 +714,19 @@ class PRF_LinearMeanGradients(gpytorch.means.mean.Mean):
             name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
         )
 
+        # set the parameter constraint to be [0,1], when nothing is specified
+        diffusion_constraint = gpytorch.constraints.constraints.Positive()
+
+        # positive diffusion coefficient
+        if only_diffusive:
+            self.register_constraint("weights_lin", diffusion_constraint)
+
     def forward(self, x):
         res = x[..., self.indeces_grad].matmul(self.weights_lin).squeeze(-1) + self.bias
         return res
 
 
-class PRF_CriticalGradient(gpytorch.means.mean.Mean):
+class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
     def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
         super().__init__()
 

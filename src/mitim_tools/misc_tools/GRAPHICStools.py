@@ -94,13 +94,17 @@ def plotRange(
     it1=0,
     it2=-1,
     howmany=None,
-    itBig=[],
+    itBig=None,
     lw=0.2,
     colors=["r", "b"],
     colorsBig=["r", "b"],
     legend=True,
     alpha=1.0,
 ):
+
+    if itBig is None: 
+        itBig = []
+
     if ax is None:
         fig, ax = plt.subplots()
 
@@ -377,12 +381,15 @@ def output_figure_papers(name, fig=None, dpi=445):
 
 
 
-def prep_figure_papers(size=15, slower_but_latex=False):
+def prep_figure_papers(size=15, slower_but_latex=False, darkMode=False):
     plt.rc("font", family="serif", serif="Times", size=size)
     plt.rc("xtick.minor", size=size)
     plt.rc("legend", fontsize=size)  # *0.8)
     if slower_but_latex:
         plt.rc("text", usetex=True)
+    
+    if darkMode:
+        plt.style.use('dark_background')
 
     # Had to a
     # plt.rcParams['axes.linewidth'] = 0.2
@@ -707,7 +714,7 @@ def listColors():
         "dimgrey",
         "indianred",
     ]
-    for i in range(5):
+    for i in range(10):
         col.extend(col)
 
     return col
@@ -793,7 +800,7 @@ def addColorbarSubplot(
     fontsize=10,
     fontsizeTitle=None,
     ylabel="",
-    ticks=[],
+    ticks=None,
     ticklabels=None,
     orientation="horizontal",
     drawedges=False,
@@ -805,6 +812,9 @@ def addColorbarSubplot(
     Note that the figure that I apply this to has to be the last one open. Otherwise the axes are messed up.
     To solve this, pass the figure as kwarg
     """
+
+    if ticks is None:
+        ticks = []
 
     # cs is contour
 
@@ -1472,3 +1482,15 @@ def plotLScontour(
         clb.set_label(zlabel + " /$\\mathrm{k_\\theta\\rho_s}$", size=size)
     elif division == 2:
         clb.set_label(zlabel + " /$\\mathrm{k^2_\\theta\\rho^2_s}$", size=size)
+
+def PSFCcolors():
+    colors = {}
+    colors["Plasma Pink"] = "#DF1AD2"
+    colors["Hydrogen Periwinkle"] = "#BFB3FF"
+    colors["Aurora Green"] = "#9DFC7E"
+    colors["Electric Arc Aqua"] = "#98ECFF"
+    colors["Industrial Blue"] = "#1966FF"
+    colors["Heated"] = "#F25757"
+    colors["Orange Edge"] = "#FFA630"
+
+    return colors

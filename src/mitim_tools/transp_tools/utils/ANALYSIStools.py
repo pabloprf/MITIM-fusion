@@ -257,7 +257,7 @@ class Porcelli:
         self.eps1 = np.zeros(len(transp.t))
         self.s1 = np.zeros(len(transp.t))
         self.s1_por = np.zeros(len(transp.t))
-        self.s1_prf = np.zeros(len(transp.t))
+        self.s1_mitim = np.zeros(len(transp.t))
         self.s1 = np.zeros(len(transp.t))
         self.BpC = np.zeros(len(transp.t))
         self.li1 = np.zeros(len(transp.t))
@@ -304,7 +304,7 @@ class Porcelli:
 
             self.r1[it] = x
             self.k1[it] = extrap(x, transp.rmin[it], transp.kappaS[it])
-            self.s1_prf[it] = (
+            self.s1_mitim[it] = (
                 extrap(x, transp.rmin[it], transp.shat[it]) / transp.a[it] * self.r1[it]
             )
             self.s1_por[it] = transp.porcelli_s1[it]
@@ -1136,9 +1136,9 @@ class ISOLVERinputs:
     def __init__(self, folder, name="sprc"):
         self.folder = IOtools.expandPath(folder)
 
-        self.file_conductor = f"{self.folder}/{name}_conductor_regions.dat"
-        self.file_limiters = f"{self.folder}/{name}_limiter_surface.dat"
-        self.file_connections = f"{self.folder}/{name}_coil_connections.dat"
+        self.file_conductor = self.folder / f"{name}_conductor_regions.dat"
+        self.file_limiters = self.folder / f"{name}_limiter_surface.dat"
+        self.file_connections = self.folder / f"{name}_coil_connections.dat"
 
         self.readCoils()
 

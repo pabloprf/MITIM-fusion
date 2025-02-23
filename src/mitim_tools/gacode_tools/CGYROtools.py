@@ -1,13 +1,14 @@
 import os
-import copy
+import shutil
 import datetime
 import time
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed
@@ -68,11 +69,10 @@ class CGYRO:
         # Prepare main folder with input.gacode
         self.folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(self.folder):
-            os.system(f"mkdir -p {self.folder}")
+        self.folder.mkdir(parents=True, exist_ok=True)
 
-        self.inputgacode_file = f"{self.folder}/input.gacode"
-        os.system(f"cp {inputgacode_file} {self.inputgacode_file}")
+        self.inputgacode_file = self.folder / "input.gacode"
+        shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
 
     def run(
         self,
@@ -86,16 +86,15 @@ class CGYRO:
         nomp=1,
     ):
 
-        self.folderCGYRO = f"{self.folder}/{subFolderCGYRO}_{roa:.6f}/"
+        self.folderCGYRO = self.folder / f"{subFolderCGYRO}_{roa:.6f}"
 
-        if not os.path.exists(self.folderCGYRO):
-            os.system(f"mkdir -p {self.folderCGYRO}")
+        self.folderCGYRO.mkdir(parents=True, exist_ok=True)
 
-        input_cgyro_file = f"{self.folderCGYRO}/input.cgyro"
+        input_cgyro_file = self.folderCGYRO / "input.cgyro"
         inputCGYRO = CGYROinput(file=input_cgyro_file)
 
-        inputgacode_file_this = f"{self.folderCGYRO}/input.gacode"
-        os.system(f"cp {self.inputgacode_file} {inputgacode_file_this}")
+        inputgacode_file_this = self.folderCGYRO / "input.gacode"
+        shutil.copy2(self.inputgacode_file, inputgacode_file_this)
 
         ResultsFiles_new = []
         for i in self.output_files:
@@ -197,7 +196,7 @@ class CGYRO:
 
     def read(self, label="cgyro1", folder=None):
 
-        folder = folder or self.folderCGYRO
+        folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
         try:
             self.results[label] = cgyrodata_plot(folder)
@@ -205,8 +204,9 @@ class CGYRO:
             if (
                 True
             ):  # print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.system(f"cd {folder} && cgyro -t")
-            self.results[label] = cgyrodata_plot(folder)
+                os.chdir(folder)
+                os.system("cgyro -t")
+            self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
 
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
@@ -398,16 +398,16 @@ class CGYRO:
         ys = np.sum(cgyro.ky_flux, axis=(2, 3))
         if moment == "n":
             y = ys[ispec, 0, :]
-            mtag = "\Gamma"
+            mtag = r"\Gamma"
         elif moment == "e":
             y = ys[ispec, 1, :] / cgyro.qc
-            mtag = "Q"
+            mtag = r"Q"
         elif moment == "v":
             y = ys[ispec, 2, :]
-            mtag = "\Pi"
+            mtag = r"\Pi"
         elif moment == "s":
             y = ys[ispec, 3, :]
-            mtag = "S"
+            mtag = r"S"
 
         name = gacodefuncs.specmap(cgyro.mass[ispec], cgyro.z[ispec])
 
@@ -649,9 +649,9 @@ class CGYRO:
 
 class CGYROinput:
     def __init__(self, file=None):
-        self.file = file
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
 
-        if self.file is not None and os.path.exists(self.file):
+        if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
                 lines = f.readlines()
             self.file_txt = "".join(lines)

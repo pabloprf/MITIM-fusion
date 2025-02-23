@@ -1,15 +1,15 @@
-import os
 import copy
 import datetime
 import array
 import traceback
 import torch
+from pathlib import Path
 from collections import OrderedDict
 from IPython import embed
 import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -18,11 +18,8 @@ from mitim_tools.opt_tools.utils import (
     EVALUATORtools,
     SAMPLINGtools,
 )
-from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
-
-UseCUDAifAvailable = True
 
 """
 Example usage (see tutorials for actual examples and parameter definitions):
@@ -54,8 +51,8 @@ Example usage (see tutorials for actual examples and parameter definitions):
 
 	# Run Workflow
 
-	PRF_BO = STRATEGYtools.PRF_BO(optimization_object)
-	PRF_BO.run()
+	MITIM_BO = STRATEGYtools.MITIM_BO(optimization_object)
+	MITIM_BO.run()
 
 Notes:
 	- A "nan" in the evaluator output (e.g. written in optimization_data) means that it has not been evaluated, so this is prone to be tried again.
@@ -71,12 +68,17 @@ class opt_evaluator:
         self,
         folder,
         namelist=None,
-        TensorsType=torch.double,
         default_namelist_function=None,
+        tensor_opts = {
+            "dtype": torch.double,
+            "device": torch.device("cpu"),
+        }
     ):
         """
         Namelist file can be provided and will be copied to the folder
         """
+
+        self.tensor_opts = tensor_opts
 
         print("- Parent opt_evaluator function initialized")
 
@@ -86,14 +88,11 @@ class opt_evaluator:
 
         if self.folder is not None:
 
-            if self.folder[-1] != "/":
-                self.folder += "/"
-
             self.folder = IOtools.expandPath(self.folder)
-            if not os.path.exists(self.folder):
+            if not self.folder.exists():
                 IOtools.askNewFolder(self.folder)
-            if not os.path.exists(self.folder + "/Outputs/"):
-                IOtools.askNewFolder(self.folder + "/Outputs/")
+            if not (self.folder / "Outputs").exists():
+                IOtools.askNewFolder(self.folder / "Outputs")
 
         if namelist is not None:
             print(f"\t- Namelist provided: {namelist}", typeMsg="i")
@@ -101,12 +100,9 @@ class opt_evaluator:
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
-            print(
-                "\t- Namelist not provided, using MITIM default for this optimization sub-module",
-                typeMsg="i",
-            )
+            print("\t- Namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
 
-            namelist = __mitimroot__ +"/templates/main.namelist.json"
+            namelist = __mitimroot__ / "templates" / "main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
             self.optimization_options = default_namelist_function(self.optimization_options)
@@ -127,18 +123,8 @@ class opt_evaluator:
         }
 
         # Determine type of tensors to work with
-        torch.set_default_dtype(
-            TensorsType
-        )  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
-        self.dfT = torch.randn(
-            (2, 2),
-            dtype=TensorsType,
-            device=torch.device(
-                "cpu"
-                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                else "cuda"
-            ),
-        )
+        torch.set_default_dtype(self.tensor_opts["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
+        self.dfT = torch.randn( (2, 2), **tensor_opts)
 
         # Name of calibrated objectives (e.g. QiRes1 to represent the objective from Qi1-QiT1)
         self.name_objectives = None
@@ -151,12 +137,8 @@ class opt_evaluator:
 
     def read(self, paramsfile, resultsfile):
         # Read stuff
-        (
-            FolderEvaluation,
-            numEval,
-            inputFilePath,
-            outputFilePath,
-        ) = IOtools.obtainGeneralParams(paramsfile, resultsfile)
+        FolderEvaluation,numEval,inputFilePath,outputFilePath = IOtools.obtainGeneralParams(paramsfile, resultsfile)
+        
         MITIMparams = IOtools.generateDictionaries(inputFilePath)
         dictDVs = MITIMparams["dictDVs"]
         dictOFs = MITIMparams["dictOFs"]
@@ -203,13 +185,14 @@ class opt_evaluator:
         folderRemote=None,
         analysis_level=0,
         pointsEvaluateEachGPdimension=50,
+        rangePlot=None,
     ):
         with np.errstate(all="ignore"):
-            CONFIGread.ignoreWarnings()
+            LOGtools.ignoreWarnings()
             (
                 self.fn,
                 self.res,
-                self.prfs_model,
+                self.mitim_model,
                 self.log,
                 self.data,
             ) = BOgraphics.retrieveResults(
@@ -219,23 +202,25 @@ class opt_evaluator:
                 plotFN=plotFN,
                 folderRemote=folderRemote,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot=rangePlot,
             )
 
         # Make folders local
         try:
-            self.prfs_model.folderOutputs = self.prfs_model.folderOutputs.replace(
-                self.prfs_model.folderExecution, self.folder
+            self.mitim_model.folderOutputs = Path(str(self.mitim_model.folderOutputs).replace(
+                str(self.mitim_model.folderExecution), str(self.folder)
+            ))
+            self.mitim_model.optimization_extra = self.mitim_model.optimization_object.optimization_extra = (
+                Path(str(self.mitim_model.optimization_extra).replace(
+                    str(self.mitim_model.folderExecution), str(self.folder)
+                ))
             )
-            self.prfs_model.optimization_extra = self.prfs_model.optimization_object.optimization_extra = (
-                self.prfs_model.optimization_extra.replace(
-                    self.prfs_model.folderExecution, self.folder
-                )
-            )
-            self.prfs_model.folderExecution = self.prfs_model.optimization_object.folder = (
+            self.mitim_model.folderExecution = self.mitim_model.optimization_object.folder = (
                 self.folder
             )
         except:
             pass
+            
 
     def analyze_optimization_results(self):
         print("- Analyzing MITIM BO results")
@@ -256,7 +241,7 @@ class opt_evaluator:
             print(f"\t\t* {ikey} = {variations_best[ikey]}")
 
         try:
-            self_complete = self.prfs_model.optimization_object
+            self_complete = self.mitim_model.optimization_object
         except:
             self_complete = None
             print("\t- Problem retrieving function", typeMsg="w")
@@ -270,7 +255,9 @@ class opt_evaluator:
         retrieval_level=None,
         plotYN=True,
         pointsEvaluateEachGPdimension=50,
+        rangesPlot=None,
         save_folder=None,
+        tabs_colors=0,
     ):
         time1 = datetime.datetime.now()
 
@@ -294,10 +281,9 @@ class opt_evaluator:
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
-            analysis_level=(
-                retrieval_level if (retrieval_level is not None) else analysis_level
-            ),
+            analysis_level= retrieval_level if (retrieval_level is not None) else analysis_level,
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+            rangePlot=rangesPlot,
         )
 
         self_complete = None
@@ -313,7 +299,7 @@ class opt_evaluator:
 
             else:
                 # What function is it?
-                class_name = str(self.prfs_model.optimization_object).split()[0].split(".")[-1]
+                class_name = str(self.mitim_model.optimization_object).split()[0].split(".")[-1]
                 print(
                     f'\t- Retrieving "analyze_results" method from class "{class_name}"',
                     typeMsg="i",
@@ -348,11 +334,11 @@ class opt_evaluator:
 
 
 # Main BO class that performs optimization
-class PRF_BO:
+class MITIM_BO:
     def __init__(
         self,
         optimization_object,
-        restartYN=False,
+        cold_start=False,
         storeClass=True,
         onlyInitialize=False,
         seed=0,
@@ -364,21 +350,21 @@ class PRF_BO:
                         with .optimization_options in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_nml))
                         and .folder (Where the function runs)
                         and surrogate_parameters: Parameters to pass to surrogate (e.g. for transformed function), It can be different from function_parameters because of making evaluations fast.
-                - restartYN 	 :  If False, try to find the values from Outputs/optimization_data.csv
-                - storeClass 	 :  If True, write a class pickle for well-behaved restarting
+                - cold_start 	 :  If False, try to find the values from Outputs/optimization_data.csv
+                - storeClass 	 :  If True, write a class pickle for well-behaved cold_starting
                 - askQuestions 	 :  To avoid that a SLURM job gets stop becuase something is asked, set to False
         """
 
         self.optimization_object = optimization_object
-        self.restartYN = restartYN
+        self.cold_start = cold_start
         self.storeClass = storeClass
         self.askQuestions = askQuestions
         self.seed = seed
         self.avoidPoints = []
 
-        if (not self.restartYN) and askQuestions:
+        if (not self.cold_start) and askQuestions:
             if not print(
-                f"\t* Because {restartYN = }, MITIM will try to read existing results from folder",
+                f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",
                 typeMsg="q",
             ):
                 raise Exception("[MITIM] - User requested to stop")
@@ -390,13 +376,13 @@ class PRF_BO:
         self.folderExecution = (
             IOtools.expandPath(self.optimization_object.folder)
             if (self.optimization_object.folder is not None)
-            else ""
+            else Path("")
         )
 
-        self.folderOutputs = self.folderExecution + "/Outputs/"
+        self.folderOutputs = self.folderExecution / "Outputs"
 
         if optimization_object.optimization_options is not None:
-            if not os.path.exists(self.folderOutputs):
+            if not self.folderOutputs.exists():
                 IOtools.askNewFolder(self.folderOutputs, force=True)
 
             """
@@ -405,11 +391,11 @@ class PRF_BO:
 			Do not carry out this dictionary through the workflow, just read and write
 			"""
 
-            self.optimization_extra = f"{self.folderOutputs}/optimization_extra.pkl"
+            self.optimization_extra = self.folderOutputs / "optimization_extra.pkl"
 
             # Read if exists
             exists = False
-            if os.path.exists(self.optimization_extra):
+            if self.optimization_extra.exists():
                 try:
                     with open(self.optimization_extra, "rb") as handle:
                         dictStore = pickle_dill.load(handle)
@@ -426,7 +412,7 @@ class PRF_BO:
 
             # Write
             with open(self.optimization_extra, "wb") as handle:
-                pickle_dill.dump(dictStore, handle)
+                pickle_dill.dump(dictStore, handle, protocol=4)
 
             # Write the class into the optimization_object
             optimization_object.optimization_extra = self.optimization_extra
@@ -435,26 +421,18 @@ class PRF_BO:
         self.surrogate_parameters = self.optimization_object.surrogate_parameters
         self.optimization_options = self.optimization_object.optimization_options
 
-        # Check if the variables are expected
+        # Curate namelist ---------------------------------------------------------------------------------
         if self.optimization_options is not None:
-            namelist = __mitimroot__ +"/templates/main.namelist.json"
-            Optim_potential = IOtools.read_mitim_nml(namelist)
-            for ikey in self.optimization_options:
-                if ikey not in Optim_potential:
-                    print(
-                        f"\t- optimization_options['{ikey}'] is an unexpected variable, prone to errors or misinterpretation",
-                        typeMsg="q",
-                    )
-        # -----------------------------------
+            self.optimization_options = IOtools.curate_mitim_nml(
+                self.optimization_options,
+                stopping_criteria_default = stopping_criteria_default
+                )
+        # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
-            print(
-                "\n-----------------------------------------------------------------------------------------"
-            )
+            print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")
-            print(
-                "-----------------------------------------------------------------------------------------\n"
-            )
+            print("-----------------------------------------------------------------------------------------\n")
 
             """
 			------------------------------------------------------------------------------
@@ -463,13 +441,13 @@ class PRF_BO:
 			"""
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs + "optimization_log.txt")
+            self.logFile = BOgraphics.LogFile(self.folderOutputs / "optimization_log.txt")
             self.logFile.activate()
 
             # Meta
-            self.numIterations = self.optimization_options["BO_iterations"]
-            self.StrategyOptions = self.optimization_options["StrategyOptions"]
-            self.parallel_evaluations = self.optimization_options["parallel_evaluations"]
+            self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
+            self.strategy_options = self.optimization_options["strategy_options"]
+            self.parallel_evaluations = self.optimization_options["evaluation_options"]["parallel_evaluations"]
             self.dfT = self.optimization_object.dfT
 
             """
@@ -503,7 +481,7 @@ class PRF_BO:
             self.BOmetrics = {"overall": {}}
             for ikey in self.keys_metrics:
                 self.BOmetrics[ikey] = {}
-                for i in range(self.optimization_options["BO_iterations"] + 1):
+                for i in range(self.optimization_options["convergence_options"]["maximum_iterations"] + 1):
                     self.BOmetrics[ikey][i] = np.nan
 
             """
@@ -513,13 +491,9 @@ class PRF_BO:
 			"""
 
             self.bounds, self.boundsInitialization = OrderedDict(), []
-            for cont, i in enumerate(self.optimization_options["dvs"]):
-                self.bounds[i] = np.array(
-                    [self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]]
-                )
-                self.boundsInitialization.append(
-                    np.array([self.optimization_options["dvs_min"][cont], self.optimization_options["dvs_max"][cont]])
-                )
+            for cont, i in enumerate(self.optimization_options["problem_options"]["dvs"]):
+                self.bounds[i] = np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]])
+                self.boundsInitialization.append(np.array([self.optimization_options["problem_options"]["dvs_min"][cont], self.optimization_options["problem_options"]["dvs_max"][cont]]))
 
             self.boundsInitialization = np.transpose(self.boundsInitialization)
 
@@ -533,10 +507,10 @@ class PRF_BO:
 			"""
 
             # Objective functions (OFs)
-            self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["ofs"]
+            self.outputs = self.surrogate_parameters["outputs"] = self.optimization_options["problem_options"]["ofs"]
 
             # How many points each iteration will produce?
-            self.best_points_sequence = self.optimization_options["newPoints"]
+            self.best_points_sequence = self.optimization_options["acquisition_options"]["points_per_step"]
             self.best_points = int(np.sum(self.best_points_sequence))
 
             """
@@ -546,17 +520,14 @@ class PRF_BO:
 			"""
 
             if (
-                (self.optimization_options["type_initialization"] == 1)
-                and (os.path.exists(self.folderExecution + "Execution/Evaluation.1/"))
-                and (self.restartYN)
+                (self.optimization_options["initialization_options"]["type_initialization"] == 1)
+                and ((self.folderExecution / "Execution" / "Evaluation.1").exists())
+                and (self.cold_start)
             ):
-                print(
-                    "\t--> Random initialization has been requested",
-                    typeMsg="q" if self.askQuestions else "qa",
-                )
+                print("\t--> Random initialization has been requested",typeMsg="q" if self.askQuestions else "qa")
 
-            self.type_initialization = self.optimization_options["type_initialization"]
-            self.initial_training = self.optimization_options["initial_training"]
+            self.type_initialization = self.optimization_options["initialization_options"]["type_initialization"]
+            self.initial_training = self.optimization_options["initialization_options"]["initial_training"]
 
             """
 			------------------------------------------------------------------------------
@@ -564,33 +535,28 @@ class PRF_BO:
 			------------------------------------------------------------------------------
 			"""
 
-            if (self.type_initialization == 3) and (self.restartYN):
-                print(
-                    "\t* Initialization based on Tabular, yet restart has been requested. I am NOT removing the previous optimization_data",
-                    typeMsg="w",
-                )
+            if (self.type_initialization == 3) and (self.cold_start):
+                print("\t* Initialization based on Tabular, yet cold_start has been requested. I am NOT removing the previous optimization_data",typeMsg="w")
                 if self.askQuestions:
-                    flagger = print(
-                        "\t\t* Are you sure this was your intention?", typeMsg="q"
-                    )
+                    flagger = print("\t\t* Are you sure this was your intention?", typeMsg="q")
                     if not flagger:
                         embed()
                 forceNewTabulars = False
             else:
-                forceNewTabulars = self.restartYN
+                forceNewTabulars = self.cold_start
 
             inputs = [i for i in self.bounds]
 
-            self.lambdaSingleObjective = self.optimization_object.scalarized_objective
+            self.scalarized_objective = self.optimization_object.scalarized_objective
 
             self.optimization_data = BOgraphics.optimization_data(
                 inputs,
                 self.outputs,
-                file=self.folderOutputs + "/optimization_data.csv",
+                file=self.folderOutputs / "optimization_data.csv",
                 forceNew=forceNewTabulars,
             )
 
-            res_file = self.folderOutputs + "/optimization_results.out"
+            res_file = self.folderOutputs / "optimization_results.out"
 
             """
 			------------------------------------------------------------------------------
@@ -629,20 +595,32 @@ class PRF_BO:
 
         self.initializeOptimization()
 
+        self.currentIteration = -1
+
+        # Has the problem reached convergence in the training?
+        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        if converged:
+            print("- Optimization has converged in training!",typeMsg="i")
+            self.numIterations = 0
+
+        # If no iterations are requested, just run the training step
+        if self.numIterations == 0:
+            print("- No BO iterations requested, workflow will stop after running a training step (to enable reading later)",typeMsg="i")
+            self.numIterations = 1
+            self.hard_finish = True
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ~~~~~~~~ Iterative workflow
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.StrategyOptions_use = self.StrategyOptions
+        self.strategy_options_use = self.strategy_options
 
         self.steps, self.resultsSet = [], []
-        for self.currentIteration in range(self.numIterations + 1):
+        for self.currentIteration in range(self.numIterations+1):
             timeBeginningThis = datetime.datetime.now()
 
             print("\n------------------------------------------------------------")
-            print(
-                f'\tMITIM Step {self.currentIteration} ({timeBeginningThis.strftime("%Y-%m-%d %H:%M:%S")})'
-            )
+            print(f'\tMITIM Step {self.currentIteration} ({timeBeginningThis.strftime("%Y-%m-%d %H:%M:%S")})')
             print("------------------------------------------------------------")
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -650,16 +628,19 @@ class PRF_BO:
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             if self.currentIteration > 0:
-                print(
-                    f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)"
-                )
+                print(f"--> Proceeding to updating set (which currently has {len(self.train_X)} points)")
 
-                # *NOTE*: self.x_next has been updated earlier, either from a restart or from the full workflow
-                yN, yNstd = self.updateSet(self.StrategyOptions_use)
+                # *NOTE*: self.x_next has been updated earlier, either from a cold_start or from the full workflow
+                yN, yNstd = self.updateSet(self.strategy_options_use)
 
                 # Stored in previous step
                 self.steps[-1].y_next = yN
                 self.steps[-1].ystd_next = yNstd
+
+                # Determine here when to stop the loop
+                if self.currentIteration > self.numIterations - 1:
+                    print("- Last iteration has been reached",typeMsg="i")
+                    self.hard_finish = True
 
             # After evaluating metrics inside updateSet, I may have requested a hard finish
             if self.hard_finish:
@@ -667,43 +648,31 @@ class PRF_BO:
 
                 # Removing those spaces in the metrics that were not filled up
                 for ikey in self.keys_metrics:
-                    for i in range(
-                        self.currentIteration + 1, self.optimization_options["BO_iterations"] + 1
-                    ):
+                    for i in range(self.currentIteration + 1, self.optimization_options["convergence_options"]["maximum_iterations"] + 1):
                         del self.BOmetrics[ikey][i]
                 # ------------------------------------------------------------------------------------------
-
-                break
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # ~~~~~~~~ Perform BO step
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             # Does the tabular file include at least as many rows as requested to be run in this step?
-            pointsTabular = len(
-                self.optimization_data.data
-            )  # Number of points that the Tabular contains
+            pointsTabular = len(self.optimization_data.data)  # Number of points that the Tabular contains
             pointsExpected = len(self.train_X) + self.best_points
-            if not self.restartYN:
+            if not self.cold_start:
                 if not pointsTabular >= pointsExpected:
-                    print(
-                        f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling restarting-from-previous from this point on",
-                        typeMsg="w",
-                    )
-                    self.restartYN = True
+                    print(f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
+                    self.cold_start = True
                 else:
-                    print(
-                        f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",
-                        typeMsg="f",
-                    )
+                    print(f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
 
             # In the case of starting from previous, do not run BO process.
-            if not self.restartYN:
+            if not self.cold_start:
                 """
-                Philosophy of restarting is:
-                        - Restarting requires that settings are the same (e.g. best_points).
-                        - Restarting requires Tabular data, since I will be grabbing from it.
-                        - The pkl file in restarting is only used to store the "step" data with opt info, but not
+                Philosophy of cold_starting is:
+                        - cold_starting requires that settings are the same (e.g. best_points).
+                        - cold_starting requires Tabular data, since I will be grabbing from it.
+                        - The pkl file in cold_starting is only used to store the "step" data with opt info, but not
                                 required to continue. But here I enforce it anyway. I want to know what I have done.
                         - Later I pass the x_next from the pickle, so I could just trust the pickle if I wanted.
                 """
@@ -713,7 +682,7 @@ class PRF_BO:
 
                 if current_step is None:
                     print(
-                        "\t* Because reading pkl step had problems, disabling restarting-from-previous from this point on",
+                        "\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",
                         typeMsg="w",
                     )
                     print(
@@ -721,14 +690,12 @@ class PRF_BO:
                         typeMsg="q",
                     )
 
-                    self.restartYN = True
+                    self.cold_start = True
 
-            if not self.restartYN:
+            if not self.cold_start:
                 # Read next from Tabular
                 self.x_next, _, _ = self.optimization_data.extract_points(
-                    points=np.arange(
-                        len(self.train_X), len(self.train_X) + self.best_points
-                    )
+                    points=np.arange(len(self.train_X), len(self.train_X) + self.best_points)
                 )
                 self.x_next = torch.from_numpy(self.x_next).to(self.dfT)
 
@@ -736,29 +703,26 @@ class PRF_BO:
                 if current_step is not None:
                     current_step.x_next = self.x_next
 
-                # If there is any Nan, assume that I cannot restart this step
+                # If there is any Nan, assume that I cannot cold_start this step
                 if IOtools.isAnyNan(self.x_next.cpu()):
-                    print(
-                        "\t* Because x_next points have NaNs, disabling restarting-from-previous from this point on",
-                        typeMsg="w",
-                    )
-                    self.restartYN = True
+                    print("\t* Because x_next points have NaNs, disabling cold_starting-from-previous from this point on",typeMsg="w")
+                    self.cold_start = True
 
                 # Step is valid, append to this current one
-                if not self.restartYN:
+                if not self.cold_start:
                     self.steps.append(current_step)
 
-                # When restarting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
-                self.StrategyOptions_use = current_step.StrategyOptions_use
+                # When cold_starting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
+                self.strategy_options_use = current_step.strategy_options_use
 
-                print("\t* Step successfully restarted from pkl file", typeMsg="f")
+                print("\t* Step successfully cold_started from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
-            if self.restartYN:
-                # For standard use, use the actual strategyOptions launched
-                self.StrategyOptions_use = self.StrategyOptions
+            if self.cold_start:
+                # For standard use, use the actual strategy_options launched
+                self.strategy_options_use = self.strategy_options
 
-                # Remove from tabular next points in case they were there. Since I'm not restarting, I don't care about what has come next
+                # Remove from tabular next points in case they were there. Since I'm not cold_starting, I don't care about what has come next
                 self.optimization_data.removePointsAfter(len(self.train_X) - 1)
 
                 """
@@ -768,15 +732,7 @@ class PRF_BO:
 				---------------------------------------------------------------------------------------
 				"""
 
-                train_Ystd = (
-                    self.train_Ystd
-                    if (self.optimization_options["train_Ystd"] is None)
-                    else self.optimization_options["train_Ystd"]
-                )
-
-                # Making copy because it changes per step ---- ---- ---- ---- ----
-                surrogate_parameters = copy.deepcopy(self.surrogate_parameters)
-                # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+                train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
 
                 current_step = STEPtools.OPTstep(
                     self.train_X,
@@ -785,79 +741,71 @@ class PRF_BO:
                     bounds=self.bounds,
                     stepSettings=self.stepSettings,
                     currentIteration=self.currentIteration,
-                    StrategyOptions=self.StrategyOptions_use,
+                    strategy_options=self.strategy_options_use,
                     BOmetrics=self.BOmetrics,
-                    surrogate_parameters=surrogate_parameters,
+                    surrogate_parameters=self.surrogate_parameters,
                 )
 
                 # Incorporate strategy_options for later retrieving
-                current_step.StrategyOptions_use = copy.deepcopy(
-                    self.StrategyOptions_use
-                )
+                current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
 
                 self.steps.append(current_step)
 
                 # Avoid points
-                avoidPoints = np.append(
-                    self.avoidPoints_failed, self.avoidPoints_outside
-                )
+                avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
                 self.avoidPoints = np.unique([int(j) for j in avoidPoints])
 
                 # ***** Fit
                 self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
 
-                # Store class with the model fitted
+                # ***** Define evaluators
+                self.steps[-1].defineFunctions(self.scalarized_objective)
+
+                # Store class with the model fitted and evaluators defined
                 if self.storeClass:
                     self.save()
 
                 # ***** Optimize
-                self.steps[-1].optimize(
-                    self.lambdaSingleObjective,
-                    position_best_so_far=self.BOmetrics["overall"]["indBest"],
-                    seed=self.seed,
-                )
+                if not self.hard_finish:
+                    self.steps[-1].optimize(
+                        position_best_so_far=self.BOmetrics["overall"]["indBest"],
+                        seed=self.seed,
+                    )
+                else:
+                    self.steps[-1].x_next = None
 
             # Pass the information about next step
             self.x_next = self.steps[-1].x_next
 
             # ~~~~~~~~ Store class now with the next points found (after optimization)
-            if self.storeClass and self.restartYN:
+            if self.storeClass and self.cold_start:
                 self.save()
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~ Run last point with actual model
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if not self.hard_finish:
-            print("\n\n------------------------------------------------------------")
-            print(" Final evaluation of optima predicted at last MITIM step")
-            print("------------------------------------------------------------\n\n")
-
-            _, _ = self.updateSet(self.StrategyOptions, ForceNotApplyCorrections=True)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            if self.hard_finish:
+                break
 
         self.save()
 
-        print(
-            f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~"
-        )
+        print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
         print("********************************************************\n")
 
-    def prepare_for_save_PRFBO(self, copyClass):
+    def prepare_for_save_MITIMBO(self, copyClass):
         """
         Downselect what elements to store
         """
 
         # -------------------------------------------------------------------------------------------------
-        # To avoid circularity when restarting, do not store the class in the optimization_results sub-class
+        # To avoid circularity when cold_starting, do not store the class in the optimization_results sub-class
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.optimization_results.PRF_BO
+        del copyClass.optimization_results.MITIM_BO
 
         # -------------------------------------------------------------------------------------------------
-        # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TO REMOVE]
+        # Saving state files with functions is very expensive (deprecated maybe when I had lambdas?) [TODO: Remove]
         # -------------------------------------------------------------------------------------------------
 
-        del copyClass.lambdaSingleObjective
+        del copyClass.scalarized_objective
 
         for i in range(len(self.steps)):
             if "functions" in copyClass.steps[i].__dict__:
@@ -873,24 +821,24 @@ class PRF_BO:
 
         return copyClass
 
-    def prepare_for_read_PRFBO(self, copyClass):
+    def prepare_for_read_MITIMBO(self, copyClass):
         """
         Repair the downselection
         """
 
-        copyClass.optimization_results.PRF_BO = copy.deepcopy(self)
+        copyClass.optimization_results.MITIM_BO = copy.deepcopy(self)
 
-        copyClass.lambdaSingleObjective = copyClass.optimization_object.scalarized_objective
+        copyClass.scalarized_objective = copyClass.optimization_object.scalarized_objective
 
         for i in range(len(copyClass.steps)):
-            copyClass.steps[i].defineFunctions(copyClass.lambdaSingleObjective)
+            copyClass.steps[i].defineFunctions(copyClass.scalarized_objective)
 
         return copyClass
 
     def save(self, name="optimization_object.pkl"):
         print("* Proceeding to save new MITIM state pickle file")
-        stateFile = f"{self.folderOutputs}/{name}"
-        stateFile_tmp = f"{self.folderOutputs}/{name}_tmp"
+        stateFile = self.folderOutputs / f"{name}"
+        stateFile_tmp = self.folderOutputs / f"{name}_tmp"
 
         # Do not store certain variables (that cannot even be copied, that's why I do it here)
         saver = {}
@@ -899,73 +847,64 @@ class PRF_BO:
             del self.optimization_object.__dict__[ikey]
         # -----------------------------------------------------------------------------------
 
-        copyClass = self.prepare_for_save_PRFBO(copy.deepcopy(self))
+        copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
 
         with open(stateFile_tmp, "wb") as handle:
             try:
-                pickle_dill.dump(copyClass, handle)
+                pickle_dill.dump(copyClass, handle, protocol=4)
             except:
-                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables with the variables you think cannot be pickled", typeMsg="w")
+                print(f"\t* Problem saving {name}, trying without the optimization_object, but that will lead to limiting applications. I recommend you populate self.optimization_object.doNotSaveVariables = ['variable1', 'variable2'] with the variables you think cannot be pickled", typeMsg="w")
                 del copyClass.optimization_object
-                pickle_dill.dump(copyClass, handle)
+                pickle_dill.dump(copyClass, handle, protocol=4)
 
         # Get variables back ----------------------------------------------------------------
         for ikey in saver:
             self.optimization_object.__dict__[ikey] = saver[ikey]
         # -----------------------------------------------------------------------------------
 
-        os.system(
-            f"mv {stateFile_tmp} {stateFile}"
-        )  # This way I reduce the risk of getting a mid-creation file
+        stateFile_tmp.replace(stateFile)  # This way I reduce the risk of getting a mid-creation file
 
-        print(
-            f"\t- MITIM state file {stateFile} generated, containing the PRF_BO class"
-        )
+        print(f"\t- MITIM state file {IOtools.clipstr(stateFile)} generated, containing the MITIM_BO class")
 
-    def read(
-        self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False
-    ):
+    def read(self, name="optimization_object.pkl", iteration=None, file=None, provideFullClass=False):
         iteration = iteration or self.currentIteration
 
         print("- Reading pickle file with optimization_object class")
-        stateFile = file if (file is not None) else f"{self.folderOutputs}/{name}"
+        stateFile = file if (file is not None) else self.folderOutputs / f"{name}"
 
         try:
             # If I don't create an Individual attribute I cannot unpickle GA information
             try:
                 import deap
-
                 deap.creator.create("Individual", array.array)
             except:
                 pass
+
             with open(stateFile, "rb") as f:
                 try:
                     aux = pickle_dill.load(f)
                 except:
-                    print(
-                        "Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler..."
-                    )
+                    print("Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler...")
                     f.seek(0)
                     aux = CPU_Unpickler(f).load()
 
-            aux = self.prepare_for_read_PRFBO(aux)
+            aux = self.prepare_for_read_MITIMBO(aux)
 
             step = aux.steps[iteration]
-            print(
-                f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",
-                typeMsg="f",
-            )
+            print(f"\t* Read {IOtools.clipstr(stateFile)} state file, grabbed step #{iteration}",typeMsg="i")
+        
         except FileNotFoundError:
-            print(f"\t- State file {stateFile} not found", typeMsg="w")
+            print(f"\t- State file {IOtools.clipstr(stateFile)} not found", typeMsg="w")
             step, aux = None, None
+        
         except IndexError:
-            print(f"\t- State file {stateFile} does not have all iterations required to continue from it", typeMsg="w")
-            step, aux = None, None
+            print(f"\t- State file {IOtools.clipstr(stateFile)} does not have all iterations required to continue from it", typeMsg="w")
+            step = None
 
         return aux if provideFullClass else step
 
     def updateSet(
-        self, StrategyOptions_use, isThisCorrected=False, ForceNotApplyCorrections=False
+        self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
     ):
         # ~~~~~~~~~~~~~~~~~~
         # What's the expected value of the next points?
@@ -985,7 +924,7 @@ class PRF_BO:
 
         # Update optimization_data with nans
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Update optimization_results only as "predicted"
         if not isThisCorrected:
@@ -1015,7 +954,7 @@ class PRF_BO:
             self.outputs,
             self.optimization_data,
             parallel=self.parallel_evaluations,
-            restartYN=self.restartYN,
+            cold_start=self.cold_start,
             numEval=self.numEval,
         )
         txt_time = IOtools.getTimeDifference(time1)
@@ -1041,7 +980,7 @@ class PRF_BO:
 
         # Update Tabular data with the actual evaluations
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Update optimization_results with the actual evaluations
         if not isThisCorrected:
@@ -1088,16 +1027,16 @@ class PRF_BO:
 
             changesMade = 0
             # Apply TURBO
-            if StrategyOptions_use["TURBO"]:
+            if strategy_options_use["TURBO_options"]["apply"]:
                 changesMade = SBOcorrections.TURBOupdate(
                     self,
-                    StrategyOptions_use,
+                    strategy_options_use,
                     position=self.currentIteration,
                     seed=self.seed,
                 )
             # Apply some corrections
-            if StrategyOptions_use["applyCorrections"] and not ForceNotApplyCorrections:
-                changesMade = SBOcorrections.correctionsSet(self, StrategyOptions_use)
+            if strategy_options_use["applyCorrections"] and not ForceNotApplyCorrections:
+                changesMade = SBOcorrections.correctionsSet(self, strategy_options_use)
 
             if changesMade > 0:
                 print(
@@ -1116,63 +1055,13 @@ class PRF_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        self.evaluateIfConverged()
+        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
-        return y_next, ystd_next
-
-    def evaluateIfConverged(self):
-        hard_finish_residual, hard_finish_variation = False, False
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Stopping criterion based on the minimum residual indicated in namelist
-        # ~~~~~~~~~~~~~~~~~~
-
-        if self.optimization_options["maximum_value"] is not None:
-            print("- Checking residual...")
-            _, _, maximization_value = self.lambdaSingleObjective(
-                torch.from_numpy(self.train_Y).to(self.dfT)
-            )
-
-            best_value_so_far = np.nanmax(maximization_value.cpu().numpy())
-
-            print(
-                f'\t- Best scalar function so far (to maximize): {best_value_so_far:.3e} (absolute stopping criterion: {self.optimization_options["maximum_value"]:.3e}), based on original: {self.original_maximum_value:.3e}'
-            )
-
-            if best_value_so_far > self.optimization_options["maximum_value"]:
-                hard_finish_residual = True
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Stopping criterion based on the minimum variation indicated in namelist
-        # ~~~~~~~~~~~~~~~~~~
-
-        if self.optimization_options["minimum_dvs_variation"] is not None:
-            print("- Checking DV variations...")
-
-            _, yG_max = TESTtools.DVdistanceMetric(self.train_X)
-
-            hard_finish_variation = (
-                self.currentIteration
-                >= self.optimization_options["minimum_dvs_variation"][0]
-                + self.optimization_options["minimum_dvs_variation"][1]
-            )
-            for i in range(int(self.optimization_options["minimum_dvs_variation"][1])):
-                hard_finish_variation = hard_finish_variation and (
-                    yG_max[-1 - i] < self.optimization_options["minimum_dvs_variation"][2]
-                )
-
-            if hard_finish_variation:
-                print(
-                    f"\t- DVs varied by less than {self.optimization_options['minimum_dvs_variation'][2]}% compared to the rest of individuals for the past {int(self.optimization_options['minimum_dvs_variation'][1])} iterations"
-                )
-
-        # ~~~~~~~~~~~~~~~~~~
-        # Final convergence
-        # ~~~~~~~~~~~~~~~~~~
-
-        if hard_finish_residual or hard_finish_variation:
+        if converged:
             self.hard_finish = self.hard_finish or True
             print("- * Optimization considered converged *", typeMsg="w")
+
+        return y_next, ystd_next
 
     def initializeOptimization(self):
         print("\n")
@@ -1194,7 +1083,7 @@ class PRF_BO:
         print("* Optimization Settings:")
         for i in self.optimization_options:
             strs = f"\t\t{i:25}:"
-            if i in ["StrategyOptions", "surrogateOptions"]:
+            if i in ["strategy_options", "surrogate_options"]:
                 print(strs)
                 for j in self.optimization_options[i]:
                     print(f"\t\t\t{j:25}: {self.optimization_options[i][j]}")
@@ -1219,10 +1108,10 @@ class PRF_BO:
         # Force certain optimizations depending on existence of folders
         # -----------------------------------------------------------------
 
-        if (not self.restartYN) and (self.optimization_data is not None):
+        if (not self.cold_start) and (self.optimization_data is not None):
             self.type_initialization = 3
             print(
-                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
+                "--> Since cold_start from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
                 typeMsg="i",
             )
 
@@ -1241,7 +1130,7 @@ class PRF_BO:
 
             if not tabExists:
                 print(
-                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and restarting from scratch",
+                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",
                     typeMsg="i",
                 )
                 if self.askQuestions:
@@ -1250,17 +1139,15 @@ class PRF_BO:
                         embed()
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
 
         # -----------------------------------------------------------------
         # Initialization
         # -----------------------------------------------------------------
 
-        readCasesFromTabular = (not self.restartYN) or self.optimization_options[
-            "read_initial_training_from_csv"
-        ]  # Read when starting from previous or forced it
+        readCasesFromTabular = (not self.cold_start) or self.optimization_options["initialization_options"]["read_initial_training_from_csv"]  # Read when starting from previous or forced it
 
-        # Restarted run from previous. Grab DVs of initial set
+        # cold_started run from previous. Grab DVs of initial set
         if readCasesFromTabular:
             try:
                 self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(
@@ -1269,7 +1156,7 @@ class PRF_BO:
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
                 
-                if self.optimization_options["ensure_within_bounds"]:
+                if self.optimization_options["initialization_options"]["ensure_within_bounds"]:
                     for i in range(self.train_X.shape[0]):
                         insideBounds = TESTtools.checkSolutionIsWithinBounds(
                             torch.from_numpy(self.train_X[i, :]).to(self.dfT),
@@ -1280,30 +1167,30 @@ class PRF_BO:
 
             except:
                 flagger = print(
-                    "Error reading Tabular. Do you want to continue without restart and do standard initialization instead?",
+                    "Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",
                     typeMsg="q",
                 )
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
                 readCasesFromTabular = False
 
             if readCasesFromTabular and IOtools.isAnyNan(self.train_X):
                 flagger = print(
-                    " --> Restart requires non-nan DVs, doing normal initialization",
+                    " --> cold_start requires non-nan DVs, doing normal initialization",
                     typeMsg="q",
                 )
                 if not flagger:
                     embed()
 
                 self.type_initialization = 1
-                self.restartYN = True
+                self.cold_start = True
                 readCasesFromTabular = False
 
         # Standard - RUN
 
         if not readCasesFromTabular:
-            if self.type_initialization == 1 and self.optimization_options["dvs_base"] is not None:
+            if self.type_initialization == 1 and self.optimization_options["problem_options"]["dvs_base"] is not None:
                 self.initial_training = self.initial_training - 1
                 print(
                     f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",
@@ -1315,11 +1202,11 @@ class PRF_BO:
 			--------------
 			"""
 
-            if self.optimization_options["initialization_fun"] is None:
+            if self.optimization_options["initialization_options"]["initialization_fun"] is None:
                 if self.type_initialization == 1:
                     if self.initial_training == 0:
                         self.train_X = np.atleast_2d(
-                            [i for i in self.optimization_options["dvs_base"]]
+                            [i for i in self.optimization_options["problem_options"]["dvs_base"]]
                         )
                     else:
                         self.train_X = SAMPLINGtools.LHS(
@@ -1329,16 +1216,16 @@ class PRF_BO:
                         )
                         self.train_X = self.train_X.cpu().numpy().astype("float")
 
-                        # if (self.optimization_options['dvs_base'] is not None):
-                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.optimization_options['dvs_base']]),self.train_X,axis=0)
+                        # if (self.optimization_options['problem_options']['dvs_base'] is not None):
+                        # 	self.train_X = np.append(np.atleast_2d([i for i in self.optimization_options['problem_options']['dvs_base']]),self.train_X,axis=0)
 
                 elif self.type_initialization == 2:
                     raise Exception("Option not implemented yet")
                 elif self.type_initialization == 3:
                     self.train_X = SAMPLINGtools.readInitializationFile(
-                        f"{self.folderExecution}/Outputs/optimization_data.csv",
+                        self.folderExecution / "Outputs" / "optimization_data.csv",
                         self.initial_training,
-                        self.stepSettings["optimization_options"]["dvs"],
+                        self.stepSettings["optimization_options"]["problem_options"]["dvs"],
                     )
                 elif self.type_initialization == 4:
                     self.train_X = IOtools.readExecutionParams(
@@ -1347,18 +1234,18 @@ class PRF_BO:
 
                 if (
                     (self.type_initialization == 1)
-                    and (self.optimization_options["dvs_base"] is not None)
+                    and (self.optimization_options["problem_options"]["dvs_base"] is not None)
                     and (self.initial_training > 0)
                 ):
                     self.train_X = np.append(
-                        np.atleast_2d([i for i in self.optimization_options["dvs_base"]]),
+                        np.atleast_2d([i for i in self.optimization_options["problem_options"]["dvs_base"]]),
                         self.train_X,
                         axis=0,
                     )
 
             else:
                 print("- Initialization function has been selected", typeMsg="i")
-                self.train_X = self.optimization_options["initialization_fun"](self)
+                self.train_X = self.optimization_options["initialization_options"]["initialization_fun"](self)
                 readCasesFromTabular = True
 
             # Initialize train_Y as nan until evaluated
@@ -1375,7 +1262,7 @@ class PRF_BO:
 
         # Write initialization in Tabular
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Write optimization_results
         self.optimization_results.addPoints(
@@ -1399,7 +1286,7 @@ class PRF_BO:
             self.outputs,
             self.optimization_data,
             parallel=self.parallel_evaluations,
-            restartYN=(not readCasesFromTabular),
+            cold_start=(not readCasesFromTabular),
             numEval=self.numEval,
         )
 
@@ -1420,7 +1307,7 @@ class PRF_BO:
             )
         # ------------------
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
         self.optimization_results.addPoints(
             includePoints=[0, self.Originalinitial_training],
             executed=True,
@@ -1437,37 +1324,10 @@ class PRF_BO:
         # Make sure is 2D
         self.train_X = np.atleast_2d(self.train_X)
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # ~~~~~~~~ Determine relative residuals
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        self.original_maximum_value = copy.deepcopy(self.optimization_options["maximum_value"])
-
-        if self.optimization_options["maximum_value"] is not None:
-
-            res_base = -self.BOmetrics["overall"]["Residual"][0].item()
-
-            if self.optimization_options["maximum_value_is_rel"]:
-
-                res_new = self.optimization_options["maximum_value"] * res_base
-                print(
-                    f'\n* Maximum value for MITIM optimization convergence provided as relative value of {self.optimization_options["maximum_value"]} from base {res_base:.3e} --> {res_new:.3e}',
-                    typeMsg="i",
-                )
-
-                self.stepSettings["optimization_options"]["maximum_value"] = self.optimization_options[
-                    "maximum_value"
-                ] = res_new
-            else:
-                print(
-                    f'\n* Maximum value for MITIM optimization convergence: {self.optimization_options["maximum_value"]} (starting case has {res_base:.3e})',
-                    typeMsg="i",
-                )
-
         """
 		Some initialization strategies may create points outside of the original bounds, but I may want to include them!
 		"""
-        if self.optimization_options["expand_bounds"]:
+        if self.optimization_options["initialization_options"]["expand_bounds"]:
             for i, ikey in enumerate(self.bounds):
                 self.bounds[ikey][0] = np.min(
                     [self.bounds[ikey][0], self.train_X.min(axis=0)[i]]
@@ -1484,6 +1344,7 @@ class PRF_BO:
         number_of_models_per_tab=5,
         stds=2,
         pointsEvaluateEachGPdimension=50,
+        rangePlot_force=None,
     ):
         print(
             "\n ***************************************************************************"
@@ -1515,12 +1376,15 @@ class PRF_BO:
         number_of_models_per_tab = np.min([number_of_models_per_tab, len(self.outputs)])
         Tabs_needed = int(np.ceil(len(self.outputs) / number_of_models_per_tab))
 
-        if len(GPs) == 1:
-            rangePlot = [0]
-        elif len(GPs) == 2:
-            rangePlot = range(len(GPs))
+        if rangePlot_force is not None:
+            rangePlot = rangePlot_force[:len(GPs)]
         else:
-            rangePlot = [len(GPs) - 2, len(GPs) - 1]
+            if len(GPs) == 1:
+                rangePlot = [0]
+            elif len(GPs) == 2:
+                rangePlot = range(len(GPs))
+            else:
+                rangePlot = [len(GPs) - 2, len(GPs) - 1]
 
         for ck, k in enumerate(rangePlot):
             print(
@@ -1690,7 +1554,66 @@ class PRF_BO:
                 fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
             )
 
+        """
+		****************************************************************
+		Acquisition
+		****************************************************************
+		"""
+        try:    
+            self.plotAcquisitionOptimizationSummary(fn=fn)
+        except: 
+            print('\t- Problem plotting acquisition optimization summary', typeMsg='w')
+
         return fn
+
+
+    def plotAcquisitionOptimizationSummary(self, fn=None, step_from=0, step_to=-1):
+
+        if step_to == -1:
+            step_to = len(self.steps)
+
+        step_to = np.min([step_to, len(self.steps)])
+
+        step_num = np.arange(step_from, step_to)
+
+        fig = fn.add_figure(label='Acquisition Convergence')
+
+        axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3)
+        colors = GRAPHICStools.listColors()
+
+        for step in step_num:
+
+            ax = axs[step]
+
+            if 'InfoOptimization' not in self.steps[step].__dict__: break
+
+            # Grab info from optimization
+            infoOPT = self.steps[step].InfoOptimization
+            acq = self.steps[step].evaluators['acq_function']
+
+            acq_trained = np.zeros(self.steps[step].train_X.shape[0])
+            for ix in range(self.steps[step].train_X.shape[0]):
+                acq_trained[ix] = acq(torch.Tensor(self.steps[step].train_X[ix,:]).unsqueeze(0)).item()
+
+            # Plot trained acquisition
+            ax.axhline(y=acq_trained.max(), c='k', ls='--', lw=1.0, label='max of trained')
+
+            # Plot acquisition evolution 
+            for i in range(len(infoOPT)-1): #no cleanup stage
+                y_acq = infoOPT[i]['info']['acq_evaluated'].cpu().numpy()
+                ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]} (max of batch)')
+                
+                # Plot max of guesses
+                if len(y_acq)>0:
+                    ax.axhline(y=y_acq[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
+
+            ax.set_title(f'BO Step #{step}')
+            ax.set_ylabel('$f_{acq}$ (to max)')
+            ax.set_xlabel('Evaluations')
+            if step == step_num[0]:
+                ax.legend(loc='best', fontsize=6)
+
+            GRAPHICStools.addDenseAxis(ax)
 
     def plotModelStatus(
         self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None
@@ -1703,7 +1626,7 @@ class PRF_BO:
         fig = fn.add_figure(label=f"#{boStep}: Jacobian", tab_color=tab_color)
         maxPoints = 1  # 4
         xExplore = []
-        if "x_next" in step.__dict__.keys():
+        if "x_next" in step.__dict__.keys() and step.x_next is not None:
             for i in range(np.min([step.x_next.shape[0], maxPoints])):
                 xExplore.append(step.x_next[i].cpu().numpy())
         else:
@@ -1775,7 +1698,7 @@ class PRF_BO:
 
         bounds = torch.Tensor([boundsRaw[b] for b in boundsRaw])
         boundsThis = (
-            info[0]["bounds"].numpy().transpose(1, 0) if "bounds" in info[0] else None
+            info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
         )
 
         # ----------------------------------------------------------------------
@@ -1812,9 +1735,7 @@ class PRF_BO:
             num_axes_y += 1
 
         num_plots = num_axes_x + num_axes_y + num_axes_res
-        axs = GRAPHICStools.producePlotsGrid(
-            num_plots, fig=fig1, hspace=0.4, wspace=0.4
-        )
+        axs = GRAPHICStools.producePlotsGrid(num_plots, fig=fig1, hspace=0.4, wspace=0.4)
 
         axsDVs = axs[:num_axes_x]
         axsOFs = axs[num_axes_x:-1]
@@ -1853,42 +1774,36 @@ class PRF_BO:
         # Loop over posterior steps
         for ipost in range(len(info) - 1):
             iinfo = info[ipost]["info"]
-            it_start, xypair = OPTtools.plotInfo(
-                iinfo,
-                label=info[ipost]["method"],
-                plotStart=False,
-                xypair=xypair,
-                axTraj=ax0_r,
-                axDVs_r=ax1_r,
-                axOFs_r=ax2_r,
-                axDVs=axsDVs,
-                axOFs=axsOFs,
-                axR=axR,
-                axislabels_x=axislabels,
-                axislabels_y=self.optimization_object.name_objectives,
-                color=colors[ipost],
-                ms=8 - ipost * 1.5,
-                alpha=0.5,
-                it_start=it_start,
-            )
+            try:
+                it_start, xypair = OPTtools.plotInfo(
+                    iinfo,
+                    label=info[ipost]["method"],
+                    plotStart=False,
+                    xypair=xypair,
+                    axTraj=ax0_r,
+                    axDVs_r=ax1_r,
+                    axOFs_r=ax2_r,
+                    axDVs=axsDVs,
+                    axOFs=axsOFs,
+                    axR=axR,
+                    axislabels_x=axislabels,
+                    axislabels_y=self.optimization_object.name_objectives,
+                    color=colors[ipost],
+                    ms=8 - ipost * 1.5,
+                    alpha=0.5,
+                    it_start=it_start,
+                )
+            except KeyError as e:
+                print(f"\t- Problem plotting {info[ipost]['method']}: ",e, typeMsg="w")
 
         xypair = np.array(xypair)
 
-        loga = True if xypair[:, 1].min() > 0 else False
-
         axsDVs[0].legend(prop={"size": 5})
-        if loga:
-            for p in range(len(axsOFs)):
-                axsOFs[p].set_xscale("log")
-                axsOFs[p].set_yscale("log")
-
         ax1_r.set_ylabel("DV values")
         GRAPHICStools.addDenseAxis(ax1_r)
         GRAPHICStools.autoscale_y(ax1_r)
 
-        ax2_r.set_ylabel("Residual values")
-        if loga:
-            ax2_r.set_yscale("log")
+        ax2_r.set_ylabel("Acquisition values")
         GRAPHICStools.addDenseAxis(ax2_r)
         GRAPHICStools.autoscale_y(ax2_r)
 
@@ -1897,26 +1812,113 @@ class PRF_BO:
         iinfo = info[-1]["info"]
         for i, y in enumerate(iinfo["y_res"]):
             ax0_r.axhline(
-                y=-y,
+                y=y,
                 c=colors[ipost + 1],
                 ls="--",
                 lw=2,
                 label=info[-1]["method"] if i == 0 else "",
             )
         iinfo = info[0]["info"]
-        ax0_r.axhline(y=-iinfo["y_res_start"][0], c="k", ls="--", lw=2)
+        ax0_r.axhline(y=iinfo["y_res_start"][0], c="k", ls="--", lw=2)
 
         ax0_r.set_xlabel("Optimization iterations")
-        ax0_r.set_ylabel("$-f_{acq}$")
+        ax0_r.set_ylabel("$f_{acq}$")
         GRAPHICStools.addDenseAxis(ax0_r)
-        if loga:
-            ax0_r.set_yscale("log")
         ax0_r.legend(loc="best", prop={"size": 8})
         ax0_r.set_title("Evolution of acquisition in optimization stages")
 
         for i in range(len(axs)):
             GRAPHICStools.addDenseAxis(axs[i])
 
+# ----------------------------------------------------------------------
+# Stopping criteria
+# ----------------------------------------------------------------------
+
+def max_val(maximum_value_orig, maximum_value_is_rel, res_base):
+    if maximum_value_is_rel:
+        maximum_value = maximum_value_orig * res_base
+        print(f'\t* Maximum value for convergence provided as relative value of {maximum_value_orig} from base {res_base:.3e} --> {maximum_value:.3e}')
+    else:
+        maximum_value = maximum_value_orig
+        print(f'\t* Maximum value for convergence: {maximum_value} (starting case has {res_base:.3e})' )
+
+    return maximum_value
+
+def stopping_criteria_default(mitim_bo, parameters = {}):
+
+    # ------------------------------------------------------------------------------------
+    # Determine the stopping criteria
+    # ------------------------------------------------------------------------------------
+
+    maximum_value_is_rel    = parameters["maximum_value_is_rel"]
+    maximum_value_orig      = parameters["maximum_value"]
+    minimum_dvs_variation   = parameters["minimum_dvs_variation"]
+
+    res_base = -mitim_bo.BOmetrics["overall"]["Residual"][0].item()
+
+    maximum_value = max_val(maximum_value_orig, maximum_value_is_rel, res_base)
+
+    # ------------------------------------------------------------------------------------
+    # Stopping criteria
+    # ------------------------------------------------------------------------------------
+
+    if minimum_dvs_variation is not None:
+        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation)
+    else:
+        converged_by_dvs = False
+        yvals = None
+
+    if maximum_value is not None:
+        converged_by_value, yvals = stopping_criteria_by_value(mitim_bo, maximum_value)
+    else:
+        converged_by_value = False
+        yvals = None
+
+    converged = converged_by_value or converged_by_dvs
+
+    return converged, yvals
+
+def stopping_criteria_by_value(mitim_bo, maximum_value):
+
+    # Grab scalarized objectives for each case
+    print("\t- Checking maximum value so far...")
+    _, _, maximization_value = mitim_bo.scalarized_objective(torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT))
+    yvals = maximization_value.cpu().numpy()
+
+    # Best case (maximization)
+    best_value_so_far = np.nanmax(yvals)
+
+    # Converged?
+    print(f'\t\t* Best scalar function so far (to maximize): {best_value_so_far:.3e} (threshold: {maximum_value:.3e})')
+    criterion_is_met = best_value_so_far > maximum_value
+
+    return criterion_is_met, -yvals
+
+def stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation):
+
+    print("\t- Checking DV variations...")
+    _, yG_max = TESTtools.DVdistanceMetric(mitim_bo.train_X)
+
+    criterion_is_met = (
+        mitim_bo.currentIteration
+        >= minimum_dvs_variation[0]
+        + minimum_dvs_variation[1]
+    )
+    for i in range(int(minimum_dvs_variation[1])):
+        criterion_is_met = criterion_is_met and (
+            yG_max[-1 - i] < minimum_dvs_variation[2]
+        )
+
+    if criterion_is_met:
+        print(
+            f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+        )
+    else:
+        print(
+            f"\t\t* DVs have varied by more than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+        )
+
+    return criterion_is_met, yG_max
 
 def read_from_scratch(file):
     """
@@ -1924,34 +1926,31 @@ def read_from_scratch(file):
     """
 
     optimization_object = opt_evaluator(None)
-    prf = PRF_BO(optimization_object, onlyInitialize=True, askQuestions=False)
-    prf = prf.read(file=file, iteration=-1, provideFullClass=True)
+    mitim = MITIM_BO(optimization_object, onlyInitialize=True, askQuestions=False)
+    mitim = mitim.read(file=file, iteration=-1, provideFullClass=True)
 
-    return prf
+    return mitim
 
 
 def avoidClassInitialization(folderWork):
-    print(
-        "It was requested that I try read the class before I initialize and select parameters...",
-        typeMsg="i",
-    )
+    print("It was requested that I try read the class before I initialize and select parameters...",typeMsg="i")
 
     try:
         with open(
-            f"{IOtools.expandPath(folderWork)}/Outputs/optimization_object.pkl", "rb"
+            IOtools.expandPath(folderWork) / "Outputs" / "optimization_object.pkl", "rb"
         ) as handle:
             aux = pickle_dill.load(handle)
         opt_fun = aux.optimization_object
-        restart = False
-        print("\t- Restart was successful", typeMsg="i")
+        cold_start = False
+        print("\t- cold_start was successful", typeMsg="i")
     except:
         opt_fun = None
-        restart = True
-        flagger = print("\t- Restart was requested but it didnt work (c)", typeMsg="q")
+        cold_start = True
+        flagger = print("\t- cold_start was requested but it didnt work (c)", typeMsg="q")
         if not flagger:
             embed()
 
-    return opt_fun, restart
+    return opt_fun, cold_start
 
 
 """
@@ -1961,12 +1960,11 @@ From:
 	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
 """
 
-
 class CPU_Unpickler(pickle_dill.Unpickler):
     def find_class(self, module, name):
         import io
 
         if module == "torch.storage" and name == "_load_from_bytes":
-            return lambda b: torch.load(io.BytesIO(b), map_location="cpu")
+            return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
         else:
             return super().find_class(module, name)

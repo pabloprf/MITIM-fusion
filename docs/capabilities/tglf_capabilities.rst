@@ -48,14 +48,15 @@ For this tutorial we will need the following modules:
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
 Select the location of the input.gacode file to start the simulation from. You should also select the folder where the simulation will be run:
 
 .. code-block:: python
 
-    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
-    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
+    inputgacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+    folder           = Path('MITIM-fusion/tests/scratch/tglf_tut')
 
 The TGLF class can be initialized by providing the radial location (in square root of normalized toroidal flux, ``rho``) to run. Note that the values are given as a list, and several radial locations can be run at once:
 
@@ -63,17 +64,17 @@ The TGLF class can be initialized by providing the radial location (in square ro
 
     tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 
-To generate the input files (input.tglf) to TGLF at each radial location, MITIM needs to run a few commands to correctly map the quantities in the input.gacode file to the ones required by TGLF. This is done automatically with the ``prep()`` command. Note that MITIM has a *only-run-if-needed* philosophy and if it finds that the input files to TGLF already exist in the working folder, the preparation method will not run any command, unless a ``restart = True`` argument is provided.
+To generate the input files (input.tglf) to TGLF at each radial location, MITIM needs to run a few commands to correctly map the quantities in the input.gacode file to the ones required by TGLF. This is done automatically with the ``prep()`` command. Note that MITIM has a *only-run-if-needed* philosophy and if it finds that the input files to TGLF already exist in the working folder, the preparation method will not run any command, unless a ``cold_start = True`` argument is provided.
 
 .. code-block:: python
 
-    cdf = tglf.prep(folder,inputgacode=inputgacode_file,restart=False )
+    cdf = tglf.prep(folder,inputgacode=inputgacode_file,cold_start=False )
 
 .. tip::
 
     The ``.prep()`` method, when applied to a case that starts with an input.gacode file, launches a `TGYRO` run for a "zero" iteration to generate *input.tglf* at specific ``rho`` locations from the *input.gacode*. This method to generate input files is inspired by how the `OMFIT framework <https://omfit.io/index.html>`_ works.
 
-Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``restart`` flag can be provided.
+Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``cold_start`` flag can be provided.
 The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
 First, the argument ``TGLFsettings`` indicates the base case to start with.
 The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
@@ -82,17 +83,17 @@ For example, the following two commands will run TGLF with saturation rule numbe
 
 .. code-block:: python
 
-    tglf.run( subFolderTGLF = 'yes_em_folder/', 
+    tglf.run( subFolderTGLF = 'yes_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {},
-              restart       = False )
+              cold_start       = False )
 
     tglf.read( label = 'yes_em' )
 
-    tglf.run( subFolderTGLF = 'no_em_folder/', 
+    tglf.run( subFolderTGLF = 'no_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {'USE_BPER':False},
-              restart       = False )
+              cold_start       = False )
 
     tglf.read( label = 'no_em' )
 
@@ -123,10 +124,11 @@ If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and wa
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
-    cdf_file = 'MITIM-fusion/tests/data/12345.CDF'
-    folder   = 'MITIM-fusion/tests/scratch/tglf_tut/'
+    cdf_file = Path('MITIM-fusion/tests/data/12345.CDF')
+    folder   = Path('MITIM-fusion/tests/scratch/tglf_tut')
 
     tglf     = TGLFtools.TGLF(  cdf    = cdf_file,
                                 rhos   = [0.5,0.7],
@@ -137,7 +139,7 @@ Similarly as in the previous section, you need to run the ``prep()`` command, bu
 
 .. code-block:: python
 
-    cdf = tglf.prep(folder,restart=False)
+    cdf = tglf.prep(folder,cold_start=False)
 
 .. note::
 
@@ -158,11 +160,12 @@ If you have a input.tglf file already, you can still use this script to run it.
 
 .. code-block:: python
 
+    from pathlib import Path
     from mitim_tools.gacode_tools import TGLFtools
 
-    inputgacode_file = 'MITIM-fusion/tests/data/input.gacode'
-    folder           = 'MITIM-fusion/tests/scratch/tglf_tut/'
-    inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
+    inputgacode_file = Path('MITIM-fusion/tests/data/input.gacode')
+    folder           = Path('MITIM-fusion/tests/scratch/tglf_tut')
+    inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
     tglf = TGLFtools.TGLF()
     tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
@@ -180,10 +183,11 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
 
     .. code-block:: python
 
+        from pathlib import Path
         from mitim_tools.gacode_tools import TGLFtools
 
-        folder           = 'MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder/'
-        inputtglf_file   = 'MITIM-fusion/tests/data/input.tglf'
+        folder           = Path('MITIM-fusion/tests/scratch/tglf_tut/yes_em_folder')
+        inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
         tglf = TGLFtools.TGLF()
         tglf.prep_from_tglf( folder, inputtglf_file )

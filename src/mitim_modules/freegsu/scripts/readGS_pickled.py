@@ -11,33 +11,35 @@ import copy
 import numpy as np
 from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_modules.freegsu import FREEGSUtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 files = sys.argv[1:]
+files = [IOtools.expandPath(file) for file in files]
 
 # ---------------------------
-# Read pickles, extract prfs
+# Read pickles, extract mitims
 # ---------------------------
 
 onlyLast = len(files) > 1
 
-prfs = []
+mitims = []
 for file in files:
-    m = pickle.load(open(f"{file}/Outputs/final_analysis/results.pkl", "rb"))
+    m = pickle.load(open(file / "Outputs" / "final_analysis" / "results.pkl", "rb"))
     if onlyLast:
-        prfs.extend([m["prfs"][-1]])
+        mitims.extend([m["mitims"][-1]])
     else:
-        prfs.extend(m["prfs"])
+        mitims.extend(m["mitims"])
 
 params = copy.deepcopy(m["params"])
 
 # ---------------------------------------------------
-# Re calculate metrics with these extended prfs
+# Re calculate metrics with these extended mitims
 # ---------------------------------------------------
 
-metrics, opts = FREEGSUtools.calculateMetrics(prfs, separatrixPoint=None)
+metrics, opts = FREEGSUtools.calculateMetrics(mitims, separatrixPoint=None)
 
-params["times"] = np.arange(0, 0.3 * len(prfs), 0.3)
+params["times"] = np.arange(0, 0.3 * len(mitims), 0.3)
 print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMsg="w")
 
 # ---------------------------------------------------
@@ -45,5 +47,5 @@ print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMs
 # ---------------------------------------------------
 
 FREEGSUplotting.plotResult(
-    prfs, metrics, m["function_parameters"]["Constraints"], ProblemExtras=params
+    mitims, metrics, m["function_parameters"]["Constraints"], ProblemExtras=params
 )

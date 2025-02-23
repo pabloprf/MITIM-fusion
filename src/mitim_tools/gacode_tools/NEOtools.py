@@ -1,8 +1,7 @@
-import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODErun
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -14,14 +13,11 @@ class NEO:
         self.inputgacode = inputgacode
         self.folder = IOtools.expandPath(folder)
 
-        if not os.path.exists(self.folder):
-            os.system(f"mkdir {self.folder}")
+        self.folder.mkdir(parents=True, exist_ok=True)
 
-    def run_vgen(self, subfolder="vgen1", vgenOptions={}, restart=False):
-        while subfolder[-1] == "/":
-            subfolder = subfolder[:-1]
+    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
 
-        self.folder_vgen = f"{self.folder}/{subfolder}/"
+        self.folder_vgen = self.folder / f"{subfolder}"
 
         # ---- Default options
 
@@ -36,25 +32,25 @@ class NEO:
         runThisCase = check_if_files_exist(
             self.folder_vgen,
             [
-                "vgen/input.gacode",
-                "vgen/input.neo.gen",
-                "out.vgen.neoequil00",
-                "out.vgen.neoexpnorm00",
-                "out.vgen.neontheta00",
-                "vgen.dat",
+                ["vgen", "input.gacode"],
+                ["vgen", "input.neo.gen"],
+                ["out.vgen.neoequil00"],
+                ["out.vgen.neoexpnorm00"],
+                ["out.vgen.neontheta00"],
+                ["vgen.dat"],
             ],
         )
 
-        if (not runThisCase) and restart:
+        if (not runThisCase) and cold_start:
             runThisCase = print(
-                "\t- Files found in folder, but restart requested. Are you sure?",
+                "\t- Files found in folder, but cold_start requested. Are you sure?",
                 typeMsg="q",
             )
 
             if runThisCase:
                 IOtools.askNewFolder(self.folder_vgen, force=True)
 
-        self.inputgacode.writeCurrentStatus(file=f"{self.folder_vgen}/input.gacode")
+        self.inputgacode.writeCurrentStatus(file=(self.folder_vgen / f"input.gacode"))
 
         # ---- Run
 
@@ -67,7 +63,7 @@ class NEO:
                 f"\t- Required files found in {subfolder}, not running VGEN",
                 typeMsg="i",
             )
-            file_new = f"{self.folder_vgen}/vgen/input.gacode"
+            file_new = self.folder_vgen / f"vgen" / f"input.gacode"
 
         # ---- Postprocess
 
@@ -79,8 +75,11 @@ class NEO:
 def check_if_files_exist(folder, list_files):
     folder = IOtools.expandPath(folder)
 
-    for file in list_files:
-        if not os.path.exists(f"{folder}/{file}"):
+    for file_parts in list_files:
+        checkfile = folder
+        for ii in range(len(file_parts)):
+            checkfile = checkfile / f"{file_parts[ii]}"
+        if not checkfile.exists():
             return False
 
     return True

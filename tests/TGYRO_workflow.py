@@ -7,20 +7,20 @@ Regression test to run and plot TGYRO results from am example input.gacode file
 To run: python3  tests/TGYRO_workflow.py
 """
 
-restart = True
+cold_start = True
 
-if not os.path.exists(__mitimroot__ + "/tests/scratch/"):
-    os.system("mkdir " + __mitimroot__ + "/tests/scratch/")
+rundir = __mitimroot__ / "tests" / "scratch/"
+rundir.mkdir(parents=True, exist_ok=True)
 
-gacode_file = __mitimroot__ + "/tests/data/input.gacode"
-folder = __mitimroot__ + "/tests/scratch/tgyro_test/"
+gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
+folder = __mitimroot__ / "tests" / "scratch" / "tgyro_test"
 
-if restart and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+if cold_start and folder.exists():
+    os.system(f"rm -r {folder.resolve()}")
 
 profiles = PROFILEStools.PROFILES_GACODE(gacode_file)
 tgyro = TGYROtools.TGYRO()
-tgyro.prep(folder, profilesclass_custom=profiles, restart=True, forceIfRestart=True)
+tgyro.prep(folder, profilesclass_custom=profiles, cold_start=True, forceIfcold_start=True)
 
 # ---
 rhos = [0.3, 0.5, 0.6, 0.8]
@@ -34,10 +34,10 @@ solver = {
 physics_options = {"TypeTarget": 2}
 
 tgyro.run(
-    subFolderTGYRO="run1/",
+    subFolderTGYRO="run1",
     iterations=3,
-    restart=True,
-    forceIfRestart=True,
+    cold_start=True,
+    forceIfcold_start=True,
     special_radii=rhos,
     PredictionSet=[1, 1, 0],
     TGLFsettings=1,

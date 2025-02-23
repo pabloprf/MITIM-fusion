@@ -22,6 +22,7 @@ For this tutorial we will need the following modules:
 .. code-block:: python
 
 	import os
+	from pathlib import Path
 	from mitim_tools.transp_tools import TRANSPtools
 
 TRANSP runs are very personal and specific to each tokamak and plasma, as diagnostic availability strongly varies and namelist settings are not standarized.
@@ -29,25 +30,25 @@ For this reason, this workflow assumes that a folder exists with all the plasma 
 
 .. code-block:: python
 
-	folder_original = 'MITIM-fusion/tests/data/FolderTRANSP/'
-	folder 			= "MITIM-fusion/tests/scratch/transp_tut/"
-	os.system(f'rm -r {folder}')
-	os.system(f'cp -r {folder_original} {folder}')
+	folder_original = Path("MITIM-fusion/tests/data/FolderTRANSP/")
+	folder 			= Path("MITIM-fusion/tests/scratch/transp_tut/")
+	os.system(f"rm -r {folder}")
+	os.system(f"cp -r {folder_original} {folder}")
 
 First, one would initialize the TRANSP class with the given folder and the tokamak name:
 
 .. code-block:: python
 
-	tokamak = 'CMOD'
+	tokamak = "CMOD"
 	transp  = TRANSPtools.TRANSP( folder, tokamak )
 
 Then, select a shotnumber and run name, such that the TRANSP simulation will have the complete name `shotnumber+runname`, and the MPI settings for the TRANSP run:
 
 .. code-block:: python
 
-	shotnumber  = '12345'
-	runname     = 'X01'
-	mpisettings = { 'trmpi': 1, 'toricmpi': 64, 'ptrmpi': 1 }
+	shotnumber  = "12345"
+	runname     = "X01"
+	mpisettings = { "trmpi": 1, "toricmpi": 64, "ptrmpi": 1 }
 
 	transp.defineRunParameters( shotnumber+runname, shotnumber, mpisettings = mpisettings )
 

@@ -1,12 +1,10 @@
 import os
-import sys
 import json
 import socket
-import warnings
-import logging
 import getpass
-from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from pathlib import Path
+from mitim_tools.misc_tools import IOtools, LOGtools
+from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -26,18 +24,23 @@ class ConfigManager:
         return cls._instance
 
     def set(self, path: str):
-        print(f"MITIM > Setting configuration file to: {path}")
+        if self._config_file_path is not None:
+            printMsg(f"MITIM > Setting configuration file to: {path}")
+        else:
+            print(f"MITIM > Setting configuration file to: {path}")
         self._config_file_path = path
 
     def get(self):
         if self._config_file_path is None:
-            self._config_file_path = IOtools.expandPath("$MITIM_CONFIG")
-            if os.path.exists(self._config_file_path):
-                print(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
+            if "MITIM_CONFIG" in os.environ:
+                self._config_file_path = Path(os.environ["MITIM_CONFIG"]).expanduser()
+            
+            if self._config_file_path is not None and self._config_file_path.exists():
+                printMsg(f"MITIM Configuration file path taken from $MITIM_CONFIG = {self._config_file_path}", typeMsg='i')
             else:
                 from mitim_tools import __mitimroot__
-                self._config_file_path = __mitimroot__ + "/templates/config_user.json"
-                print(f"MITIM Configuration file path not set, assuming {self._config_file_path}", typeMsg='i')
+                self._config_file_path = __mitimroot__ / "templates" / "config_user.json"
+                printMsg(f"\t[MITIM Configuration file path not set, assuming {self._config_file_path}]", typeMsg='i')
         return self._config_file_path
 
 config_manager = ConfigManager()
@@ -59,14 +62,13 @@ def read_verbose_level():
     if "verbose_level" in s["preferences"]:
         verbose = int(s["preferences"]["verbose_level"])
     else:
-        verbose = 1
+        verbose = 5
 
     # Ignore warnings automatically if low level of verbose
     if verbose in [1, 2]:
-        ignoreWarnings()
+        LOGtools.ignoreWarnings()
 
     return verbose
-
 
 def read_dpi():
     s = load_settings()
@@ -77,75 +79,12 @@ def read_dpi():
 
     return dpi
 
-
-def ignoreWarnings(module=None):
-    if module is None:
-        warnings.filterwarnings("ignore")
-        logging.getLogger().setLevel(logging.CRITICAL)
-    else:
-        warnings.filterwarnings("ignore", module=module)  # "matplotlib\..*" )
-
-
-class redirect_all_output_to_file:
-    def __init__(self, logfile_path):
-        self.logfile_path = logfile_path
-        self.stdout_fd = None
-        self.stderr_fd = None
-        self.saved_stdout_fd = None
-        self.saved_stderr_fd = None
-        self.logfile = None
-
-    def __enter__(self):
-        # Save the actual stdout and stderr file descriptors.
-        self.stdout_fd = sys.__stdout__.fileno()
-        self.stderr_fd = sys.__stderr__.fileno()
-
-        # Save a copy of the original file descriptors.
-        self.saved_stdout_fd = os.dup(self.stdout_fd)
-        self.saved_stderr_fd = os.dup(self.stderr_fd)
-
-        # Open the log file.
-        self.logfile = open(self.logfile_path, 'w')
-
-        # Redirect stdout and stderr to the log file.
-        os.dup2(self.logfile.fileno(), self.stdout_fd)
-        os.dup2(self.logfile.fileno(), self.stderr_fd)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Restore stdout and stderr from the saved file descriptors.
-        os.dup2(self.saved_stdout_fd, self.stdout_fd)
-        os.dup2(self.saved_stderr_fd, self.stderr_fd)
-
-        # Close the duplicated file descriptors.
-        os.close(self.saved_stdout_fd)
-        os.close(self.saved_stderr_fd)
-
-        # Close the log file.
-        if self.logfile:
-            self.logfile.close()
-
-
-
-def isThisEngaging():
-    try:
-        hostname = os.environ["SLURM_SUBMIT_HOST"][:6]
-    except:
-        try:
-            hostname = os.environ["HOSTNAME"][:6]
-        except:
-            return False
-
-    bo = hostname in ["eofe7.", "eofe8.", "eofe10"]
-
-    #print(f"\t- Is this engaging? {hostname}: {bo}")
-
-    return bo
-
-
 def machineSettings(
     code="tgyro",
-    nameScratch="mitim_tmp/",
+    nameScratch="mitim_tmp",
     forceUsername=None,
+    forceMachine=None,
+    append_folder_local=None,
 ):
     """
     This script uses the config json file and completes the information required to run each code
@@ -155,7 +94,10 @@ def machineSettings(
 
     # Determine where to run this code, depending on config file
     s = load_settings()
-    machine = s["preferences"][code]
+    machine = s["preferences"][code] if forceMachine is None else forceMachine
+
+    # Paths in scratch should have a one-to-one (and only one) correspondence with local, to avoid overlapping
+    nameScratch_full = IOtools.path_overlapping(nameScratch, append_folder_local) if append_folder_local is not None else nameScratch
 
     """
     Set-up per code and machine
@@ -164,10 +106,14 @@ def machineSettings(
 
     if forceUsername is not None:
         username = forceUsername
-        scratch = f"/home/{username}/scratch/{nameScratch}"
+        scratch = f"/home/{username}/scratch/{nameScratch_full}"
     else:
         username = s[machine]["username"] if ("username" in s[machine]) else "dummy"
-        scratch = f"{s[machine]['scratch']}/{nameScratch}"
+        scratch = f"{s[machine]['scratch']}/{nameScratch_full}"
+
+    # General limit of 255 characters in path
+    scratch = scratch[:255]
+    # ----  
 
     machineSettings = {
         "machine": s[machine]["machine"],
@@ -175,7 +121,7 @@ def machineSettings(
         "tunnel": None,
         "port": None,
         "identity": None,
-        "modules": "source ~/.bashrc",
+        "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
         "slurm": {},
         "isTunnelSameMachine": (
@@ -202,7 +148,7 @@ def machineSettings(
 
     if "scratch_tunnel" in s[machine]:
         machineSettings["folderWorkTunnel"] = (
-            f"{s[machine]['scratch_tunnel']}/{nameScratch}"
+            f"{s[machine]['scratch_tunnel']}/{nameScratch_full}"
         )
 
     # ************************************************************************************************************************
@@ -210,7 +156,7 @@ def machineSettings(
     # ************************************************************************************************************************
 
     # Am I already in this machine?
-    if machine in socket.gethostname():
+    if machineSettings["machine"] in socket.gethostname():
         # Avoid tunneling and porting if I'm already there
         machineSettings["tunnel"] = machineSettings["port"] = None
 

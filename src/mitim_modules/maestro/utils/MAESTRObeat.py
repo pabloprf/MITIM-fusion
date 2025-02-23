@@ -1,11 +1,11 @@
-import torch
-import os
+import shutil
 import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
-from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.popcon_tools import FunctionalForms
+from mitim_tools.misc_tools.LOGtools import printMsg as print
+from scipy.optimize import minimize
 from IPython import embed
 
 # --------------------------------------------------------------------------------------------
@@ -19,18 +19,18 @@ class beat:
         self.maestro_instance = maestro_instance
 
         if folder_name is None:
-            folder_name = f'{self.maestro_instance.folder_beats}/Beat_{self.maestro_instance.counter_current}'
+            folder_name = self.maestro_instance.folder_beats / f'Beat_{self.maestro_instance.counter_current}'
         
-        self.folder_beat = f'{folder_name}/'
+        self.folder_beat = folder_name
 
         # Where to run it
         self.name = beat_name
-        self.folder = f'{self.folder_beat}/run_{self.name}/'
-        os.makedirs(self.folder, exist_ok=True)
+        self.folder = self.folder_beat / f'run_{self.name}'
+        self.folder.mkdir(parents=True, exist_ok=True)
 
         # Where to save the results
-        self.folder_output = f'{self.folder_beat}/beat_results/'
-        os.makedirs(self.folder_output, exist_ok=True)
+        self.folder_output = self.folder_beat / 'beat_results'
+        self.folder_output.mkdir(parents=True, exist_ok=True)
 
         self.initialize_called = False
 
@@ -84,10 +84,10 @@ class beat_initializer:
     def __init__(self, beat_instance, label = 'profiles'):
 
         self.beat_instance = beat_instance
-        self.folder = f'{self.beat_instance.folder_beat}/initializer_{label}/'
+        self.folder = self.beat_instance.folder_beat / f'initializer_{label}'
 
         if len(label) > 0:
-            os.makedirs(self.folder, exist_ok=True)
+            self.folder.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, profiles_file = None, profiles = {}, Vsurf = None,  **kwargs_beat):
 
@@ -112,13 +112,16 @@ class beat_initializer:
         # --------------------------------------------------------------------------------------------
 
         # Write it to initialization folder
-        self.profiles_current.writeCurrentStatus(file=self.folder+'/input.gacode' )
+        self.profiles_current.writeCurrentStatus(file=self.folder / 'input.gacode')
 
         # Pass the profiles to the beat instance
         self.beat_instance.profiles_current = self.profiles_current
 
         # Initializer has been called
         self.beat_instance.initialize_called = True
+
+    def _inform_save(self):
+        pass
 
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
@@ -137,7 +140,7 @@ class initializer_from_previous(beat_initializer):
         print("\t- Initializing profiles from previous beat's result", typeMsg = 'i')
         
         beat_num = self.beat_instance.maestro_instance.counter_current-1
-        profiles_file = f"{self.beat_instance.maestro_instance.beats[beat_num].folder_output}/input.gacode"
+        profiles_file = self.beat_instance.maestro_instance.beats[beat_num].folder_output / 'input.gacode'
 
         super().__call__(profiles_file)
 
@@ -170,27 +173,30 @@ class initializer_from_geqdsk(beat_initializer):
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
 
-        # Potentially save variables
-        self._inform_save()
-
         # Convert to profiles
+        print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder+'/input.gacode' )
+        p.writeCurrentStatus(file=self.folder / 'input.gacode.geqdsk')
 
         # Copy original geqdsk for reference use
-        os.system(f'cp {geqdsk_file} {self.folder}/input.geqdsk')
+        shutil.copy2(geqdsk_file, self.folder / "input.geqdsk")
+
+        # Save parameters also here in case they are needed already at this beat (e.g. for EPED)
+        self._inform_save()
 
         # Call the profiles initializer
-        super().__call__(self.folder+'/input.gacode', **kwargs_profiles)
+        super().__call__(self.folder / 'input.gacode.geqdsk', **kwargs_profiles)
 
     def _inform_save(self):
 
-        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = self.f.kappa995
-        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = self.f.delta995
+        f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
 
-        print('\t\t- 0.995 flux surface kappa and delta saved for future beats')
+        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
+        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.delta995
+
+        print('\t\t- 0.995 flux surface kappa and delta saved for future beats -> ', f.kappa995, f.delta995)
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FreeGS: load the equilibrium, convert to geqdsk and call the geqdsk initializer
@@ -217,14 +223,19 @@ class initializer_from_freegs(initializer_from_geqdsk):
         ):
         
         # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
-        if 'ne' in kwargs_geqdsk.get('profiles',{}):
+        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
             print('\t- Using ne profile instead of the ne0 guess')
-            ne0_20 = kwargs_geqdsk['profiles']['ne'][1][0]
-        if 'Te' in kwargs_geqdsk.get('profiles',{}):
+            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
             print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
-            Te0_keV = kwargs_geqdsk['profiles']['Te'][1][0]
+            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
             p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
-            
+        # If betaN provided, use it to estimate the pressure
+        elif 'BetaN' in kwargs_geqdsk:
+            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
+            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
+            p0_MPa = pvol_MPa * 3.0
+
+
         # Run freegs to generate equilibrium
         f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
         f.prep(p0_MPa, Ip_MA, B_T)
@@ -232,10 +243,10 @@ class initializer_from_freegs(initializer_from_geqdsk):
         f.derive()
 
         # Convert to geqdsk and write it to initialization folder
-        f.write(f'{self.folder}/freegs.geqdsk')
+        f.write(self.folder / 'freegs.geqdsk')
 
         # Call the geqdsk initializer
-        super().__call__(geqdsk_file = f'{self.folder}/freegs.geqdsk',**kwargs_geqdsk)
+        super().__call__(geqdsk_file = self.folder / 'freegs.geqdsk',**kwargs_geqdsk)
 
 # --------------------------------------------------------------------------------------------
 # [Generic] Profile creator: Insert profiles
@@ -246,10 +257,10 @@ class creator:
         def __init__(self, initialize_instance, profiles_insert = {}, label = 'generic'):
     
             self.initialize_instance = initialize_instance
-            self.folder = f'{self.initialize_instance.folder}/creator_{label}/'
+            self.folder = self.initialize_instance.folder / f'creator_{label}'
     
             if len(label) > 0:
-                os.makedirs(self.folder, exist_ok=True)
+                self.folder.mkdir(parents=True, exist_ok=True)
     
             self.profiles_insert = profiles_insert
 
@@ -269,45 +280,111 @@ class creator:
             self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
+            # Update derived
+            self.initialize_instance.profiles_current.deriveQuantities()
+
 # --------------------------------------------------------------------------------------------
 # Profile creator from parameterization: Create profiles from a parameterization
 # --------------------------------------------------------------------------------------------
 
 class creator_from_parameterization(creator):
     
-        def __init__(self, initialize_instance, rhotop = None, Ttop = None, netop = None, label = 'parameterization'):
+        def __init__(
+            self,
+            initialize_instance,
+            rhotop = None,
+            Ttop_keV = None,
+            netop_20 = None,
+            Tsep_keV = None,
+            nesep_20 = None,
+            BetaN = None,
+            nu_ne = None,
+            aLn = None,
+            aLT = None,
+            label = 'parameterization'
+            ):
             super().__init__(initialize_instance, label = label)
 
             self.rhotop = rhotop
-            self.Ttop = Ttop
-            self.netop = netop
-    
-        def __call__(self):
+            self.Ttop_keV = Ttop_keV
+            self.netop_20 = netop_20
+            self.Tsep_keV = Tsep_keV
+            self.nesep_20 = nesep_20
 
-            # Produce profiles
-            rho, Te = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.7, w_a = 0.3)
-            rho, Ti = self.param_profiles(y_top = self.Ttop, y_sep = 0.1, w_top = 1-self.rhotop, aLy = 1.5, w_a = 0.3)
-            rho, ne = self.param_profiles(y_top = self.netop, y_sep = self.netop/3.0, w_top = 1-self.rhotop, aLy = 0.2, w_a = 0.3)
+            # Initialization parameters
+            self.BetaN = BetaN
+            self.nu_ne = nu_ne
+
+            self.aLn_guess = aLn
+            self.aLT_guess = aLT
+
+        def _return_profile_peaking_residual(self, aLn, x_a):
+
+            # returns the residual of the betaN to match the profile to the EPED guess
+
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
+
+            # Call the generic creator
+            self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne}
+            super().__call__()
+
+            return ((self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne) ** 2
+
+        def _return_profile_betan_residual(self, aLT, x_a, aLn):
+
+            # returns the residual of the betaN to match the profile to the EPED guess
+
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-        def param_profiles(self,y_top = 2.0, y_sep = 0.1, w_top = 0.07, aLy = 2.0, w_a = 0.3):
-            
-            roa = np.linspace(0.0, 1-w_top, 100)
-            aL_profile = np.zeros_like(roa)
-            linear_region = roa <= w_a
-            aL_profile[linear_region] = (aLy / w_a) * roa[linear_region]
-            aL_profile[~linear_region] = aLy
-            y = CALCtools.integrateGradient(torch.from_numpy(roa).unsqueeze(0), torch.from_numpy(aL_profile).unsqueeze(0), y_top).numpy()
-            roa = np.append( roa, 1.0)
-            y = np.append(y, y_sep)
+            return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
+    
+        def __call__(self):
 
-            roa_new = np.linspace(0.0, 1.0, 200)
-            y = np.interp(roa_new, roa, y)
+            x_a = 0.3
 
-            return roa_new, y
+            if (self.aLn_guess is not None) or (self.nu_ne is None):
+                aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
+                print(f'\n\t - Using aLn = {aLn}')
+            else:
+                aLn_guess = 0.2
+                # Find the density gradient that matches the peaking
+                print('\n\t -Optimizing aLn to match ne peaking')
+                bounds = [(0.0,3.0)]
+                res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                aLn = res.x[0]
+                print(f'\n\t - Gradient: aLn = {aLn:.2f}')
+                print(f'\t - ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
+
+            # Find the temperature gradient that matches the BetaN
+            if (self.aLT_guess is not None) or (self.BetaN is None):
+                aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
+                print(f'\n\t - Using aLT = {aLT}')
+            else:
+                aLT_guess = 2.0
+                # Find the temperature gradient that matches the BetaN
+                print('\n\t -Optimizing aLT to match BetaN')
+                bounds = [(0.5,3.0)]
+                res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                aLT = res.x[0]
+                print(f'\n\t - Gradient: aLT = {aLT:.2f}')
+                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+
+            # Create profiles
+
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a)
+
+            # Call the generic creator
+            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            super().__call__()
+
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from EPED: Create parameterization using EPED
@@ -315,30 +392,51 @@ class creator_from_parameterization(creator):
 
 class creator_from_eped(creator_from_parameterization):
 
-    def __init__(self, initialize_instance, parameters = None, label = 'eped'):
+    def __init__(
+        self,
+        initialize_instance,
+        label = 'eped',
+        BetaN = None,
+        nu_ne = None,
+        aLT = None,
+        aLn = None,
+        **kwargs_eped
+        ):
         super().__init__(initialize_instance, label = label)
 
-        self.parameters = parameters
+        self.BetaN = BetaN
+        self.nu_ne = nu_ne
+        self.aLT_guess = aLT
+        self.aLn_guess = aLn
+        self.parameters = kwargs_eped
+        if self.BetaN is None:
+            raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
 
     def __call__(self):
 
         # Create a beat within here
         from mitim_modules.maestro.utils.EPEDbeat import eped_beat
-        folder_name = f'{self.initialize_instance.beat_instance.maestro_instance.folder}/Creator_EPED'
-        beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = folder_name)
-        beat_eped.prepare(**self.parameters)
+        self.beat_eped = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
+        self.beat_eped.prepare(BetaN = self.BetaN, **self.parameters)
 
         # Work with this profile
-        beat_eped.profiles_current = self.initialize_instance.profiles_current
+        self.beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        eped_results = beat_eped._run()
+        eped_results = self.beat_eped._run(loopBetaN = 1)
+
+        # Potentially save variables
+        np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)
+        self.beat_eped._inform_save(eped_results)
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
-        self.Ttop = eped_results['Ttop']
-        self.netop = eped_results['netop']
+        self.Ttop_keV = eped_results['Ttop_keV']
+        self.netop_20 = eped_results['netop_20']        
+        self.Tsep_keV = eped_results['Tesep_keV']
+        self.nesep_20 = eped_results['nesep_20']
+        self.BetaN = self.beat_eped.BetaN
         super().__call__()
 
         # Save
-        np.save(f'{self.folder}/eped_results.npy', eped_results)
+        np.save(self.folder / 'eped_results.npy', eped_results)

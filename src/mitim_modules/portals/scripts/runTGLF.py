@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+from mitim_tools.misc_tools import IOtools
 from mitim_modules.portals.utils import PORTALSanalysis
 
 """
@@ -21,30 +22,28 @@ parser.add_argument("--ev", type=int, required=False, default=None)
 parser.add_argument("--pos", type=int, required=False, default=[0.5], nargs="*")
 parser.add_argument("--params", type=str, required=False, default=["RLTS_2"], nargs="*")
 parser.add_argument("--wf", type=float, required=False, default=[], nargs="*")
-parser.add_argument(
-    "--var", type=float, required=False, default=0.05
-)  # Variation in inputs (5% default)
+parser.add_argument("--var", type=float, required=False, default=0.05)  # Variation in inputs (5% default)
 parser.add_argument("--num", type=int, required=False, default=10)
-parser.add_argument(
-    "--restart", "-r", required=False, default=False, action="store_true"
-)
+parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
 parser.add_argument("--drives", required=False, default=False, action="store_true")
+parser.add_argument("--ion", type=int, required=False, default=2)
 
 args = parser.parse_args()
-folder = args.folder
+folder = IOtools.expandPath(args.folder)
 ev = args.ev
 params = args.params
 pos = args.pos
 wf = args.wf
 var = args.var
-restart = args.restart
+cold_start = args.cold_start
 drives = args.drives
 num = args.num
+ion = args.ion
 
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev)
+tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
 
 if not drives:
     varUpDown = np.linspace(1.0 - var, 1.0 + var, num)
@@ -57,11 +56,11 @@ if not drives:
             varUpDown=varUpDown,
             TGLFsettings=TGLFsettings,
             extraOptions=extraOptions,
-            restart=restart,
+            cold_start=cold_start,
             runWaveForms=wf,
         )
 
-        tglf.readScan(label=f"scan_{param}", variable=param)
+        tglf.readScan(label=f"scan_{param}", variable=param, positionIon = ion)
         labels.append(f"scan_{param}")
 
     # --- Extra TGLF plotting
@@ -76,7 +75,7 @@ else:
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
         TGLFsettings=TGLFsettings,
         extraOptions=extraOptions,
-        restart=restart,
+        cold_start=cold_start,
         runWaveForms=wf,
     )
 

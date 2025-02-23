@@ -55,7 +55,7 @@ def surface_integral(x, y, z_xy):
     return I
 
 
-def PRF_rosen(x, y, a=1, b=100):
+def MITIM_rosen(x, y, a=1, b=100):
     """
     https://en.wikipedia.org/wiki/Rosenbrock_function
     Global minimum with f=0 is at (a,a**2)
@@ -70,7 +70,7 @@ def rosenGrid(x=np.linspace(-2, 2, 1000), ax=None):
     y = x
     x0, y0 = np.meshgrid(x, y)
 
-    z = PRF_rosen(x0, y0)
+    z = MITIM_rosen(x0, y0)
 
     if ax is not None:
         BOgraphics.plot2D(ax, x0, y0, z, flevels=len(x), levels=[1e-2, 1e-1])
@@ -247,9 +247,7 @@ def applyNiche(x, y=None, tol=1e-3):
             yN = np.delete(yN, ident, 0)
 
     if x.shape[0] < x_orig.shape[0]:
-        print(
-            f"\t\t\t\t- Niche correction of {tol} has been applied so {x_orig.shape[0]-x.shape[0]} members have been removed, remaining {x.shape[0]}"
-        )
+        print(f"\t\t\t\t- Niche correction of {tol} has been applied so {x_orig.shape[0]-x.shape[0]} members have been removed, remaining {x.shape[0]}")
 
     return x, yN
 
@@ -316,7 +314,7 @@ def HighDimSearch(vectorsLUT, valuesLUT, valuesEval, method="linear"):
     return val
 
 
-def sigmoid_PRF(xo, xbo, h=1e3):
+def sigmoid_MITIM(xo, xbo, h=1e3):
     """
     xo is the points to evaluate, (batch, dim)
     xbo are the bounds (2,dim)
@@ -556,7 +554,7 @@ def profileMARS(peaking, average, rho=np.linspace(0, 1, 100)):
     return average * peaking * ((1 - rho**2) ** (peaking - 1)), rho
 
 
-def profileMARS_PRF(peaking, average, lambda_correction=2, rho=np.linspace(0, 1, 100)):
+def profileMARS_MITIM(peaking, average, lambda_correction=2, rho=np.linspace(0, 1, 100)):
     c = lambda_correction  # TendTav/(1-TendTav)
 
     peaking = (c + 1) * peaking - c

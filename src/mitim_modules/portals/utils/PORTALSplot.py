@@ -6,7 +6,8 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_modules.powertorch.utils import POWERplot
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 factor_dw0dr = 1e-5
@@ -22,7 +23,7 @@ def PORTALSanalyzer_plotMetrics(
     fig=None,
     indexToMaximize=None,
     plotAllFluxes=False,
-    indeces_extra=[],
+    indeces_extra=None,
     stds=2,
     plotFlows=True,
     fontsize_leg=5,
@@ -32,7 +33,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
     print("- Plotting PORTALS Metrics")
 
-    self.iextra = indeces_extra
+    self.iextra = indeces_extra if indeces_extra is not None else []
 
     if fig is None:
         plt.ion()
@@ -42,43 +43,53 @@ def PORTALSanalyzer_plotMetrics(
 
     grid = plt.GridSpec(nrows=8, ncols=numprofs + 1, hspace=0.3, wspace=0.35)
 
-    # Te
-    axTe = fig.add_subplot(grid[:4, 0])
-    axTe.set_title("Electron Temperature")
-    axTe_g = fig.add_subplot(grid[4:6, 0])
-    axTe_f = fig.add_subplot(grid[6:, 0])
-
-    axTi = fig.add_subplot(grid[:4, 1])
-    axTi.set_title("Ion Temperature")
-    axTi_g = fig.add_subplot(grid[4:6, 1])
-    axTi_f = fig.add_subplot(grid[6:, 1])
-
     cont = 0
+
+    # Te
+    if "te" in self.ProfilesPredicted:
+        axTe = fig.add_subplot(grid[:4, cont])
+        axTe.set_title("Electron Temperature")
+        axTe_g = fig.add_subplot(grid[4:6, cont])
+        axTe_f = fig.add_subplot(grid[6:, cont])
+        cont += 1
+    else:
+        axTe = axTe_g = axTe_f = None
+
+    if "ti" in self.ProfilesPredicted:
+        axTi = fig.add_subplot(grid[:4, cont])
+        axTi.set_title("Ion Temperature")
+        axTi_g = fig.add_subplot(grid[4:6, cont])
+        axTi_f = fig.add_subplot(grid[6:, cont])
+        cont += 1
+    else:
+        axTi = axTi_g = axTi_f = None
+
+    
     if "ne" in self.ProfilesPredicted:
-        axne = fig.add_subplot(grid[:4, 2 + cont])
+        axne = fig.add_subplot(grid[:4, cont])
         axne.set_title("Electron Density")
-        axne_g = fig.add_subplot(grid[4:6, 2 + cont])
-        axne_f = fig.add_subplot(grid[6:, 2 + cont])
+        axne_g = fig.add_subplot(grid[4:6, cont])
+        axne_f = fig.add_subplot(grid[6:, cont])
         cont += 1
     else:
         axne = axne_g = axne_f = None
 
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
-        axnZ = fig.add_subplot(grid[:4, 2 + cont])
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
+        axnZ = fig.add_subplot(grid[:4, cont])
         axnZ.set_title(f"{labIon} Density")
-        axnZ_g = fig.add_subplot(grid[4:6, 2 + cont])
-        axnZ_f = fig.add_subplot(grid[6:, 2 + cont])
+        axnZ_g = fig.add_subplot(grid[4:6, cont])
+        axnZ_f = fig.add_subplot(grid[6:, cont])
         cont += 1
     else:
         axnZ = axnZ_g = axnZ_f = None
 
     if self.runWithRotation:
-        axw0 = fig.add_subplot(grid[:4, 2 + cont])
+        axw0 = fig.add_subplot(grid[:4, cont])
         axw0.set_title("Rotation")
-        axw0_g = fig.add_subplot(grid[4:6, 2 + cont])
-        axw0_f = fig.add_subplot(grid[6:, 2 + cont])
+        axw0_g = fig.add_subplot(grid[4:6, cont])
+        axw0_f = fig.add_subplot(grid[6:, cont])
     else:
         axw0 = axw0_g = axw0_f = None
 
@@ -114,41 +125,43 @@ def PORTALSanalyzer_plotMetrics(
                 lab = ""
 
             p = power.profiles
-            rho = power.plasma['rho'][0].numpy()
+            rho = power.plasma['rho'][0].cpu().numpy()
 
             ix = np.argmin(
                 np.abs(p.profiles["rho(-)"] - rho[-1].item())
             )
-            axTe.plot(
-                p.profiles["rho(-)"],
-                p.profiles["te(keV)"],
-                lw=lw,
-                color=col,
-                label=lab,
-                alpha=alph,
-            )
-            axTe_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTe"][:ix],
-                lw=lw,
-                color=col,
-                alpha=alph,
-            )
-            axTi.plot(
-                p.profiles["rho(-)"],
-                p.profiles["ti(keV)"][:, 0],
-                lw=lw,
-                color=col,
-                label=lab,
-                alpha=alph,
-            )
-            axTi_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTi"][:ix, 0],
-                lw=lw,
-                color=col,
-                alpha=alph,
-            )
+            if axTe is not None:
+                axTe.plot(
+                    p.profiles["rho(-)"],
+                    p.profiles["te(keV)"],
+                    lw=lw,
+                    color=col,
+                    label=lab,
+                    alpha=alph,
+                )
+                axTe_g.plot(
+                    p.profiles["rho(-)"][:ix],
+                    p.derived["aLTe"][:ix],
+                    lw=lw,
+                    color=col,
+                    alpha=alph,
+                )
+            if axTi is not None:
+                axTi.plot(
+                    p.profiles["rho(-)"],
+                    p.profiles["ti(keV)"][:, 0],
+                    lw=lw,
+                    color=col,
+                    label=lab,
+                    alpha=alph,
+                )
+                axTi_g.plot(
+                    p.profiles["rho(-)"][:ix],
+                    p.derived["aLTi"][:ix, 0],
+                    lw=lw,
+                    color=col,
+                    alpha=alph,
+                )
             if axne is not None:
                 axne.plot(
                     p.profiles["rho(-)"],
@@ -201,36 +214,38 @@ def PORTALSanalyzer_plotMetrics(
                 )
 
         if plotAllFluxes:
-            axTe_f.plot(
-                rho,
-                power.plasma['Pe_tr_turb'].numpy() + power.plasma['Pe_tr_neo'].numpy(),
-                "-",
-                c=col,
-                lw=lwt,
-                alpha=alph,
-            )
-            axTe_f.plot(rho, power.plasma['Pe'].numpy(), "--", c=col, lw=lwt, alpha=alph)
-            axTi_f.plot(
-                rho,
-                power.plasma['Pi_tr_turb'].numpy() + power.plasma['Pi_tr_neo'].numpy(),
-                "-",
-                c=col,
-                lw=lwt,
-                alpha=alph,
-            )
-            axTi_f.plot(rho, power.plasma['Pi'].numpy(), "--", c=col, lw=lwt, alpha=alph)
+            if axTe_f is not None:
+                axTe_f.plot(
+                    rho,
+                    power.plasma['Pe_tr_turb'].cpu().numpy() + power.plasma['Pe_tr_neo'].cpu().numpy(),
+                    "-",
+                    c=col,
+                    lw=lwt,
+                    alpha=alph,
+                )
+                axTe_f.plot(rho, power.plasma['Pe'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+            if axTi_f is not None:
+                axTi_f.plot(
+                    rho,
+                    power.plasma['Pi_tr_turb'].cpu().numpy() + power.plasma['Pi_tr_neo'].cpu().numpy(),
+                    "-",
+                    c=col,
+                    lw=lwt,
+                    alpha=alph,
+                )
+                axTi_f.plot(rho, power.plasma['Pi'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             
             if axne_f is not None:
-                # By default, use particle fluxes
+                # By default, use particle fluxes (_raw)
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ce_tr_turb_raw'].numpy()+power.plasma['Ce_tr_neo_raw'].numpy(),
+                    power.plasma['Ce_raw_tr_turb'].cpu().numpy()+power.plasma['Ce_raw_tr_neo'].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
-                    power.plasma['Ce_raw'].numpy() * (1 - int(self.forceZeroParticleFlux)),
+                    power.plasma['Ce_raw'].cpu().numpy() * (1 - int(self.forceZeroParticleFlux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -239,19 +254,19 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['CZ_tr_turb_raw'].numpy()+power.plasma['CZ_tr_neo_raw'].numpy(), "-", c=col, lw=lwt, alpha=alph)
-                axnZ_f.plot(rho, power.plasma['CZ_raw'].numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neo'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
                     rho,
-                    power.plasma['Mt_tr_turb'].numpy() + power.plasma['Mt_tr_neo'].numpy(),
+                    power.plasma['Mt_tr_turb'].cpu().numpy() + power.plasma['Mt_tr_neo'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axw0_f.plot(rho, power.plasma['Mt'].numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axw0_f.plot(rho, power.plasma['Mt'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
     # ---------------------------------------------------------------------------------------------------------
 
@@ -274,32 +289,35 @@ def PORTALSanalyzer_plotMetrics(
         p = power.profiles
         
         ix = np.argmin(np.abs(p.profiles["rho(-)"] - rho[-1]))
-        axTe.plot(
-            p.profiles["rho(-)"], p.profiles["te(keV)"], lw=2, color=col, label=lab
-        )
-        axTe_g.plot(
-            p.profiles["rho(-)"][:ix],
-            p.derived["aLTe"][:ix],
-            "-",
-            markersize=msFlux,
-            lw=2,
-            color=col,
-        )
-        axTi.plot(
-            p.profiles["rho(-)"],
-            p.profiles["ti(keV)"][:, 0],
-            lw=2,
-            color=col,
-            label=lab,
-        )
-        axTi_g.plot(
-            p.profiles["rho(-)"][:ix],
-            p.derived["aLTi"][:ix, 0],
-            "-",
-            markersize=msFlux,
-            lw=2,
-            color=col,
-        )
+
+        if axTe_g is not None:
+            axTe.plot(
+                p.profiles["rho(-)"], p.profiles["te(keV)"], lw=2, color=col, label=lab
+            )
+            axTe_g.plot(
+                p.profiles["rho(-)"][:ix],
+                p.derived["aLTe"][:ix],
+                "-",
+                markersize=msFlux,
+                lw=2,
+                color=col,
+            )
+        if axTi_g is not None:
+            axTi.plot(
+                p.profiles["rho(-)"],
+                p.profiles["ti(keV)"][:, 0],
+                lw=2,
+                color=col,
+                label=lab,
+            )
+            axTi_g.plot(
+                p.profiles["rho(-)"][:ix],
+                p.derived["aLTi"][:ix, 0],
+                "-",
+                markersize=msFlux,
+                lw=2,
+                color=col,
+            )
         if axne is not None:
             axne.plot(
                 p.profiles["rho(-)"],
@@ -370,38 +388,40 @@ def PORTALSanalyzer_plotMetrics(
             addFlowLegend=cont == len(indeces_plot) - 1,
         )
     
-    ax = axTe
-    GRAPHICStools.addDenseAxis(ax)
-    # ax.set_xlabel('$\\rho_N$')
-    ax.set_ylabel("$T_e$ (keV)")
-    ax.set_xlim([0, 1])
-    ax.set_ylim(bottom=0)
-    ax.set_xticklabels([])
-    ax.legend(prop={"size": fontsize_leg * 1.5})
+    if axTe is not None:
+        ax = axTe
+        GRAPHICStools.addDenseAxis(ax)
+        # ax.set_xlabel('$\\rho_N$')
+        ax.set_ylabel("$T_e$ (keV)")
+        ax.set_xlim([0, 1])
+        ax.set_ylim(bottom=0)
+        ax.set_xticklabels([])
+        ax.legend(prop={"size": fontsize_leg * 1.5})
 
-    ax = axTe_g
-    GRAPHICStools.addDenseAxis(ax)
-    # ax.set_xlabel('$\\rho_N$')
-    ax.set_ylabel("$a/L_{Te}$")
-    ax.set_xlim([0, 1])
-    ax.set_ylim(bottom=0)
-    ax.set_xticklabels([])
+        ax = axTe_g
+        GRAPHICStools.addDenseAxis(ax)
+        # ax.set_xlabel('$\\rho_N$')
+        ax.set_ylabel("$a/L_{Te}$")
+        ax.set_xlim([0, 1])
+        ax.set_ylim(bottom=0)
+        ax.set_xticklabels([])
 
-    ax = axTi
-    GRAPHICStools.addDenseAxis(ax)
-    # ax.set_xlabel('$\\rho_N$')
-    ax.set_ylabel("$T_i$ (keV)")
-    ax.set_xlim([0, 1])
-    ax.set_ylim(bottom=0)
-    ax.set_xticklabels([])
+    if axTi is not None:
+        ax = axTi
+        GRAPHICStools.addDenseAxis(ax)
+        # ax.set_xlabel('$\\rho_N$')
+        ax.set_ylabel("$T_i$ (keV)")
+        ax.set_xlim([0, 1])
+        ax.set_ylim(bottom=0)
+        ax.set_xticklabels([])
 
-    ax = axTi_g
-    GRAPHICStools.addDenseAxis(ax)
-    # ax.set_xlabel('$\\rho_N$')
-    ax.set_ylabel("$a/L_{Ti}$")
-    ax.set_xlim([0, 1])
-    ax.set_ylim(bottom=0)
-    ax.set_xticklabels([])
+        ax = axTi_g
+        GRAPHICStools.addDenseAxis(ax)
+        # ax.set_xlabel('$\\rho_N$')
+        ax.set_ylabel("$a/L_{Ti}$")
+        ax.set_xlim([0, 1])
+        ax.set_ylim(bottom=0)
+        ax.set_xticklabels([])
 
     if axne is not None:
         ax = axne
@@ -574,7 +594,7 @@ def PORTALSanalyzer_plotMetrics(
     # Plot las point as check
     ax.plot([self.evaluations[-1]], [self.resCheck[-1]], "-o", markersize=2, color="k")
 
-    separator = self.opt_fun.prfs_model.optimization_options["initial_training"] + 0.5 - 1
+    separator = self.opt_fun.mitim_model.optimization_options["initialization_options"]["initial_training"] + 0.5 - 1
 
     if self.evaluations[-1] < separator:
         separator = None
@@ -706,16 +726,6 @@ def PORTALSanalyzer_plotMetrics(
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         v = self.chiR_Ricci
-        # try:
-        #     axt.plot(
-        #         [self.evaluations[indexUse]],
-        #         [self.DVdistMetric_y[indexUse]],
-        #         "o",
-        #         color=col,
-        #         markersize=4,
-        #     )
-        # except:
-        #     pass
 
     if separator is not None:
         GRAPHICStools.drawLineWithTxt(
@@ -761,9 +771,10 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$\\chi_R$",
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
-            self
-        )
+        if self.chiR_Ricci_thr is not None:
+            axt.axhline(self.chiR_Ricci_thr, color="rebeccapurple", lw=0.5, ls="-.")
+
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -1015,9 +1026,14 @@ def PORTALSanalyzer_plotMetrics(
 def define_extra_iterators(self):
 
     # Always plot initial and best
-    indeces_plot = [self.i0, self.ibest]
-    colors_plot = ["r", "g"]
-    labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+    if self.ibest != self.i0:
+        indeces_plot = [self.i0, self.ibest]
+        colors_plot = ["r", "g"]
+        labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+    else:
+        indeces_plot = [self.ibest]
+        colors_plot = ["g"]
+        labels_plot = [f"Best (#{self.ibest})"]
 
     if (len(self.iextra) == 0) and (self.ibest != self.evaluations[-1]):
         self.iextra = [-1]
@@ -1120,46 +1136,52 @@ def PORTALSanalyzer_plotExpected(
 
     grid = plt.GridSpec(nrows=4, ncols=numprofs, hspace=0.2, wspace=wspace)
 
-    axTe = fig.add_subplot(grid[0, 0])
-    axTe.set_title("Electron Temperature")
-    axTe_g = fig.add_subplot(grid[1, 0], sharex=axTe)
-    axTe_f = fig.add_subplot(grid[2, 0], sharex=axTe)
-    axTe_r = fig.add_subplot(grid[3, 0], sharex=axTe)
-
-    axTi = fig.add_subplot(grid[0, 1], sharex=axTe)
-    axTi.set_title("Ion Temperature")
-    axTi_g = fig.add_subplot(grid[1, 1], sharex=axTe)
-    axTi_f = fig.add_subplot(grid[2, 1], sharex=axTe)
-    axTi_r = fig.add_subplot(grid[3, 1], sharex=axTe)
-
     cont = 0
+    if "te" in self.ProfilesPredicted:
+        axTe = fig.add_subplot(grid[0, cont])
+        axTe.set_title("Electron Temperature")
+        axTe_g = fig.add_subplot(grid[1, cont], sharex=axTe)
+        axTe_f = fig.add_subplot(grid[2, cont], sharex=axTe)
+        axTe_r = fig.add_subplot(grid[3, cont], sharex=axTe)
+        cont += 1
+    else:
+        axTe = axTe_g = axTe_f = axTe_r = None
+    if "ti" in self.ProfilesPredicted:
+        axTi = fig.add_subplot(grid[0, cont], sharex=axTe)
+        axTi.set_title("Ion Temperature")
+        axTi_g = fig.add_subplot(grid[1, cont], sharex=axTe)
+        axTi_f = fig.add_subplot(grid[2, cont], sharex=axTe)
+        axTi_r = fig.add_subplot(grid[3, cont], sharex=axTe)
+        cont += 1
+    else:
+        axTi = axTi_g = axTi_f = axTi_r = None
     if "ne" in self.ProfilesPredicted:
-        axne = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        axne = fig.add_subplot(grid[0, cont], sharex=axTe)
         axne.set_title("Electron Density")
-        axne_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axne_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axne_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        axne_g = fig.add_subplot(grid[1, cont], sharex=axTe)
+        axne_f = fig.add_subplot(grid[2, cont], sharex=axTe)
+        axne_r = fig.add_subplot(grid[3, cont], sharex=axTe)
         cont += 1
     else:
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
-        axnZ = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
+        axnZ = fig.add_subplot(grid[0, cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
-        axnZ_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axnZ_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axnZ_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        axnZ_g = fig.add_subplot(grid[1, cont], sharex=axTe)
+        axnZ_f = fig.add_subplot(grid[2, cont], sharex=axTe)
+        axnZ_r = fig.add_subplot(grid[3, cont], sharex=axTe)
         cont += 1
     else:
         axnZ = axnZ_g = axnZ_f = axnZ_r = None
 
     if self.runWithRotation:
-        axw0 = fig.add_subplot(grid[0, 2 + cont], sharex=axTe)
+        axw0 = fig.add_subplot(grid[0, cont], sharex=axTe)
         axw0.set_title("Rotation")
-        axw0_g = fig.add_subplot(grid[1, 2 + cont], sharex=axTe)
-        axw0_f = fig.add_subplot(grid[2, 2 + cont], sharex=axTe)
-        axw0_r = fig.add_subplot(grid[3, 2 + cont], sharex=axTe)
+        axw0_g = fig.add_subplot(grid[1, cont], sharex=axTe)
+        axw0_f = fig.add_subplot(grid[2, cont], sharex=axTe)
+        axw0_r = fig.add_subplot(grid[3, cont], sharex=axTe)
         cont += 1
     else:
         axw0 = axw0_g = axw0_f = axw0_r = None
@@ -1193,25 +1215,27 @@ def PORTALSanalyzer_plotExpected(
     for i in plotPoints:
         cont += 1
 
-        p = p = self.powerstates[i].profiles
+        p = self.powerstates[i].profiles
 
         ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
 
         lw = 1.0 if cont > 0 else 1.5
 
-        ax = axTe
-        ax.plot(
-            p.derived["roa"],
-            p.profiles["te(keV)"],
-            "-",
-            c=colors[cont],
-            label=labelAssigned[cont],
-            lw=lw,
-        )
-        ax = axTi
-        ax.plot(
-            p.derived["roa"], p.profiles["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
-        )
+        if axTe is not None:
+            ax = axTe
+            ax.plot(
+                p.derived["roa"],
+                p.profiles["te(keV)"],
+                "-",
+                c=colors[cont],
+                label=labelAssigned[cont],
+                lw=lw,
+            )
+        if axTi is not None:
+            ax = axTi
+            ax.plot(
+                p.derived["roa"], p.profiles["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
+            )
         if axne is not None:
             ax = axne
             ax.plot(
@@ -1240,24 +1264,26 @@ def PORTALSanalyzer_plotExpected(
                 lw=lw,
             )
 
-        ax = axTe_g
-        ax.plot(
-            p.derived["roa"][:ix],
-            p.derived["aLTe"][:ix],
-            "-o",
-            c=colors[cont],
-            markersize=0,
-            lw=lw,
-        )
-        ax = axTi_g
-        ax.plot(
-            p.derived["roa"][:ix],
-            p.derived["aLTi"][:ix, 0],
-            "-o",
-            c=colors[cont],
-            markersize=0,
-            lw=lw,
-        )
+        if axTe_g is not None:
+            ax = axTe_g
+            ax.plot(
+                p.derived["roa"][:ix],
+                p.derived["aLTe"][:ix],
+                "-o",
+                c=colors[cont],
+                markersize=0,
+                lw=lw,
+            )
+        if axTi_g is not None:
+            ax = axTi_g
+            ax.plot(
+                p.derived["roa"][:ix],
+                p.derived["aLTi"][:ix, 0],
+                "-o",
+                c=colors[cont],
+                markersize=0,
+                lw=lw,
+            )
         if axne_g is not None:
             ax = axne_g
             ax.plot(
@@ -1303,17 +1329,19 @@ def PORTALSanalyzer_plotExpected(
 
         lw = 1.5
 
-        ax = axTe
-        ax.plot(
-            roa,
-            p.profiles["te(keV)"],
-            "-",
-            c="k",
-            label=f"#{x_train_num} (next)",
-            lw=lw,
-        )
-        ax = axTi
-        ax.plot(roa, p.profiles["ti(keV)"][:, 0], "-", c="k", lw=lw)
+        if axTe is not None:
+            ax = axTe
+            ax.plot(
+                roa,
+                p.profiles["te(keV)"],
+                "-",
+                c="k",
+                label=f"#{x_train_num} (next)",
+                lw=lw,
+            )
+        if axTi is not None:
+            ax = axTi
+            ax.plot(roa, p.profiles["ti(keV)"][:, 0], "-", c="k", lw=lw)
         if axne is not None:
             ax = axne
             ax.plot(roa, p.profiles["ne(10^19/m^3)"] * 1e-1, "-", c="k", lw=lw)
@@ -1331,10 +1359,12 @@ def PORTALSanalyzer_plotExpected(
             ax = axw0
             ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
 
-        ax = axTe_g
-        ax.plot(roa[:ix], p.derived["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
-        ax = axTi_g
-        ax.plot(roa[:ix], p.derived["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
+        if axTe_g is not None:
+            ax = axTe_g
+            ax.plot(roa[:ix], p.derived["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
+        if axTi_g is not None:
+            ax = axTi_g
+            ax.plot(roa[:ix], p.derived["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
 
         if axne_g is not None:
             ax = axne_g
@@ -1356,45 +1386,39 @@ def PORTALSanalyzer_plotExpected(
                 roa[:ix], dw0dr[:ix] * factor_dw0dr, "-o", c="k", markersize=0, lw=lw
             )
 
-        axTe_g_twin = axTe_g.twinx()
-        axTi_g_twin = axTi_g.twinx()
-
         ranges = [-30, 30]
 
-        rho = self.profiles_next_new.profiles["rho(-)"]
-        rhoVals = self.MODELparameters["RhoLocations"]
-        roaVals = np.interp(rhoVals, rho, roa)
+        if axTe_g is not None:
+            axTe_g_twin = axTe_g.twinx()
 
-        p0 = self.powerstates[plotPoints[0]].profiles
-        zVals = []
-        z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
-        for roai in roaVals:
-            zVals.append(np.interp(roai, roa, z))
-        axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+            
 
-        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.powerstates[plotPoints[1]].profiles
+            rho = self.profiles_next_new.profiles["rho(-)"]
+            rhoVals = self.MODELparameters["RhoLocations"]
+            roaVals = np.interp(rhoVals, rho, roa)
+
+            p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
-            axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
+            axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
-        axTe_g_twin.set_ylim(ranges)
-        axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+                p0 = self.powerstates[plotPoints[1]].profiles
+                zVals = []
+                z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
+                for roai in roaVals:
+                    zVals.append(np.interp(roai, roa, z))
+                axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
 
-        p0 = self.powerstates[plotPoints[0]].profiles
-        zVals = []
-        z = (
-            (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
-            / p0.derived["aLTi"][:, 0]
-        ) * 100.0
-        for roai in roaVals:
-            zVals.append(np.interp(roai, roa, z))
-        axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
+            axTe_g_twin.set_ylim(ranges)
+            axTe_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+            axTe_g_twin.axhline(y=0, ls="-.", lw=0.2, c="k")
 
-        if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
-            p0 = self.powerstates[plotPoints[1]].profiles
+        if axTi_g is not None:
+            axTi_g_twin = axTi_g.twinx()
+            p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = (
                 (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
@@ -1402,13 +1426,24 @@ def PORTALSanalyzer_plotExpected(
             ) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
-            axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
+            axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
 
-        axTi_g_twin.set_ylim(ranges)
-        axTi_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+            if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
+                p0 = self.powerstates[plotPoints[1]].profiles
+                zVals = []
+                z = (
+                    (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
+                    / p0.derived["aLTi"][:, 0]
+                ) * 100.0
+                for roai in roaVals:
+                    zVals.append(np.interp(roai, roa, z))
+                axTi_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
 
-        for ax in [axTe_g_twin, axTi_g_twin]:
-            ax.axhline(y=0, ls="-.", lw=0.2, c="k")
+            axTi_g_twin.set_ylim(ranges)
+            axTi_g_twin.set_ylabel("(%) from last or best", fontsize=8)
+
+            
+            axTi_g_twin.axhline(y=0, ls="-.", lw=0.2, c="k")
 
         if axne_g is not None:
             axne_g_twin = axne_g.twinx()
@@ -1509,7 +1544,7 @@ def PORTALSanalyzer_plotExpected(
 
     # ---- Plot fluxes
     cont = plotVars(
-        self.opt_fun.prfs_model,
+        self.opt_fun.mitim_model,
         y_trainreal,
         [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
         [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1522,7 +1557,7 @@ def PORTALSanalyzer_plotExpected(
         colors=colors,
     )
     _ = plotVars(
-        self.opt_fun.prfs_model,
+        self.opt_fun.mitim_model,
         y_train,
         [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
         [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1536,7 +1571,7 @@ def PORTALSanalyzer_plotExpected(
 
     if y_next is not None:
         cont = plotVars(
-            self.opt_fun.prfs_model,
+            self.opt_fun.mitim_model,
             y_next,
             [axTe_f, axTi_f, axne_f, axnZ_f, axw0_f],
             [axTe_r, axTi_r, axne_r, axnZ_r, axw0_r],
@@ -1551,19 +1586,21 @@ def PORTALSanalyzer_plotExpected(
 
     # ---------------
     n = 10  # 5
-    ax = axTe
-    ax.legend()
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("Te (keV)")
-    ax.set_ylim(bottom=0)
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    # ax.	set_xticklabels([])
-    ax = axTi
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("Ti (keV)")
-    ax.set_ylim(bottom=0)
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    # ax.set_xticklabels([])
+    if axTe is not None:
+        ax = axTe
+        ax.legend()
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("Te (keV)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        # ax.	set_xticklabels([])
+    if axTi is not None:
+        ax = axTi
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("Ti (keV)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        # ax.set_xticklabels([])
     if axne is not None:
         ax = axne
         ax.set_xlim([0, 1])
@@ -1587,33 +1624,35 @@ def PORTALSanalyzer_plotExpected(
 
     roacoarse = self.powerstate.plasma["roa"][0, 1:].cpu().numpy()
 
-    ax = axTe_g
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("$a/L_{Te}$")
-    ax.set_ylim(bottom=0)
-    # ax.set_ylim([0,5]);
-    # ax.set_xticklabels([])
-    if axTe_g_twin is not None:
-        axTe_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-        if len(roacoarse) < 6:
-            axTe_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-        GRAPHICStools.addDenseAxis(axTe_g_twin, n=n)
-    else:
-        GRAPHICStools.addDenseAxis(ax, n=n)
+    if axTe_g is not None:
+        ax = axTe_g
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("$a/L_{Te}$")
+        ax.set_ylim(bottom=0)
+        # ax.set_ylim([0,5]);
+        # ax.set_xticklabels([])
+        if axTe_g_twin is not None:
+            axTe_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+            if len(roacoarse) < 6:
+                axTe_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+            GRAPHICStools.addDenseAxis(axTe_g_twin, n=n)
+        else:
+            GRAPHICStools.addDenseAxis(ax, n=n)
 
-    ax = axTi_g
-    ax.set_xlim([0, 1])
-    ax.set_ylabel("$a/L_{Ti}$")
-    ax.set_ylim(bottom=0)
-    # ax.set_ylim([0,5]);
-    # ax.set_xticklabels([])
-    if axTi_g_twin is not None:
-        axTi_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
-        if len(roacoarse) < 6:
-            axTi_g_twin.set_xticks([round(i, 2) for i in roacoarse])
-        GRAPHICStools.addDenseAxis(axTi_g_twin, n=n)
-    else:
-        GRAPHICStools.addDenseAxis(ax, n=n)
+    if axTi_g is not None:
+        ax = axTi_g
+        ax.set_xlim([0, 1])
+        ax.set_ylabel("$a/L_{Ti}$")
+        ax.set_ylim(bottom=0)
+        # ax.set_ylim([0,5]);
+        # ax.set_xticklabels([])
+        if axTi_g_twin is not None:
+            axTi_g_twin.set_yticks(np.arange(ranges[0], ranges[1], 5))
+            if len(roacoarse) < 6:
+                axTi_g_twin.set_xticks([round(i, 2) for i in roacoarse])
+            GRAPHICStools.addDenseAxis(axTi_g_twin, n=n)
+        else:
+            GRAPHICStools.addDenseAxis(ax, n=n)
 
     if axne_g is not None:
         ax = axne_g
@@ -1657,20 +1696,22 @@ def PORTALSanalyzer_plotExpected(
         else:
             GRAPHICStools.addDenseAxis(ax, n=n)
 
-    ax = axTe_f
-    ax.set_xlim([0, 1])
-    ax.set_ylabel(self.labelsFluxes["te"])
-    ax.set_ylim(bottom=0)
-    # ax.legend(loc='best',prop={'size':6})
-    # ax.set_xticklabels([])
-    GRAPHICStools.addDenseAxis(ax, n=n)
+    if axTe_f is not None:
+        ax = axTe_f
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(self.labelsFluxes["te"])
+        ax.set_ylim(bottom=0)
+        # ax.legend(loc='best',prop={'size':6})
+        # ax.set_xticklabels([])
+        GRAPHICStools.addDenseAxis(ax, n=n)
 
-    ax = axTi_f
-    ax.set_xlim([0, 1])
-    ax.set_ylabel(self.labelsFluxes["ti"])
-    ax.set_ylim(bottom=0)
-    # ax.set_xticklabels([])
-    GRAPHICStools.addDenseAxis(ax, n=n)
+    if axTi_f is not None:
+        ax = axTi_f
+        ax.set_xlim([0, 1])
+        ax.set_ylabel(self.labelsFluxes["ti"])
+        ax.set_ylim(bottom=0)
+        # ax.set_xticklabels([])
+        GRAPHICStools.addDenseAxis(ax, n=n)
 
     if axne_f is not None:
         ax = axne_f
@@ -1696,19 +1737,21 @@ def PORTALSanalyzer_plotExpected(
         # ax.set_xticklabels([])
         GRAPHICStools.addDenseAxis(ax, n=n)
 
-    ax = axTe_r
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$r/a$")
-    ax.set_ylabel("Residual " + self.labelsFluxes["te"])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+    if axTe_r is not None:
+        ax = axTe_r
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("Residual " + self.labelsFluxes["te"])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
-    ax = axTi_r
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$r/a$")
-    ax.set_ylabel("Residual " + self.labelsFluxes["ti"])
-    GRAPHICStools.addDenseAxis(ax, n=n)
-    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+    if axTi_r is not None:
+        ax = axTi_r
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("Residual " + self.labelsFluxes["ti"])
+        GRAPHICStools.addDenseAxis(ax, n=n)
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
     if axne_r is not None:
         ax = axne_r
@@ -1736,11 +1779,11 @@ def PORTALSanalyzer_plotExpected(
 
     try:
         Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
-            y_trainreal[self.opt_fun.prfs_model.BOmetrics["overall"]["indBest"], :]
+            y_trainreal[self.opt_fun.mitim_model.BOmetrics["overall"]["indBest"], :]
             .detach()
             .cpu()
-            .numpy(),
-            self.opt_fun.prfs_model,
+            .cpu().numpy(),
+            self.opt_fun.mitim_model,
         )
         rangePlotResidual = np.max([np.max(Qe_tar), np.max(Qi_tar), np.max(Ge_tar)])
         for ax in [axTe_r, axTi_r, axne_r]:
@@ -1823,12 +1866,12 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
 
     cont = 1
     if self.runWithImpurity:
-        axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-        axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
+        axs4.append(fig4.add_subplot(grid[0, cont]))
+        axs4.append(fig4.add_subplot(grid[1, cont]))
         cont += 1
     if self.runWithRotation:
-        axs4.append(fig4.add_subplot(grid[0, 2 + cont]))
-        axs4.append(fig4.add_subplot(grid[1, 2 + cont]))
+        axs4.append(fig4.add_subplot(grid[0, cont]))
+        axs4.append(fig4.add_subplot(grid[1, cont]))
 
     colors = GRAPHICStools.listColors()
 
@@ -1864,11 +1907,15 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs, axsM = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
             self.powerstates[indeces].plot(axs, label=f"({indeces})", c=c)
+
+    powers = [self.powerstates[indecesPlot[1]], self.powerstates[indecesPlot[0]]]
+
+    POWERplot.plot_metrics_powerstates(axsM,powers)
 
     axs[0].legend(loc="best")
 
@@ -1887,8 +1934,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         axsR.append(fig.add_subplot(grid[1, i]))
 
     produceInfoRanges(
-        self.opt_fun.prfs_model.optimization_object,
-        self.opt_fun.prfs_model.bounds_orig,
+        self.opt_fun.mitim_model.optimization_object,
+        self.opt_fun.mitim_model.bounds_orig,
         axsR=axsR,
         color="k",
         lw=0.2,
@@ -1896,8 +1943,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         label="original",
     )
     produceInfoRanges(
-        self.opt_fun.prfs_model.optimization_object,
-        self.opt_fun.prfs_model.bounds,
+        self.opt_fun.mitim_model.optimization_object,
+        self.opt_fun.mitim_model.bounds,
         axsR=axsR,
         color="c",
         lw=0.2,
@@ -1915,7 +1962,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
-        ls="-o" if self.opt_fun.prfs_model.avoidPoints else "--o",
+        ls="-o" if self.opt_fun.mitim_model.avoidPoints else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -1931,7 +1978,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
-            ls="-o" if self.opt_fun.prfs_model.avoidPoints else "-.o",
+            ls="-o" if self.opt_fun.mitim_model.avoidPoints else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
@@ -1974,6 +2021,7 @@ def PORTALSanalyzer_plotModelComparison(
         plt.subplots_adjust(wspace=0.25, hspace=0.25)
 
     axs = axs.flatten()
+    cont = 0
 
     metrics = {}
 
@@ -1984,7 +2032,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "QeGB_sim_turb_stds"
     metrics["Qe"] = plotModelComparison_quantity(
         self,
-        axs[0],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -1996,8 +2044,10 @@ def PORTALSanalyzer_plotModelComparison(
         includeLeg=True,
     )
 
-    axs[0].set_xscale("log")
-    axs[0].set_yscale("log")
+    axs[cont].set_xscale("log")
+    axs[cont].set_yscale("log")
+
+    cont += 1
 
     # ti
     quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
@@ -2006,7 +2056,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "QiGBIons_sim_turb_thr_stds"
     metrics["Qi"] = plotModelComparison_quantity(
         self,
-        axs[1],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -2018,8 +2068,10 @@ def PORTALSanalyzer_plotModelComparison(
         includeLeg=includeLegAll,
     )
 
-    axs[1].set_xscale("log")
-    axs[1].set_yscale("log")
+    axs[cont].set_xscale("log")
+    axs[cont].set_yscale("log")
+
+    cont += 1
 
     # ne
     quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
@@ -2028,7 +2080,7 @@ def PORTALSanalyzer_plotModelComparison(
     quantityY_stds = "GeGB_sim_turb_stds"
     metrics["Ge"] = plotModelComparison_quantity(
         self,
-        axs[2],
+        axs[cont],
         quantityX=quantityX,
         quantityX_stds=quantityX_stds,
         quantityY=quantityY,
@@ -2054,14 +2106,18 @@ def PORTALSanalyzer_plotModelComparison(
 
     try:
         thre = 10 ** round(np.log10(np.abs(val_calc).min()))
-        axs[2].set_xscale("symlog", linthresh=thre)
-        axs[2].set_yscale("symlog", linthresh=thre)
+        axs[cont].set_xscale("symlog", linthresh=thre)
+        axs[cont].set_yscale("symlog", linthresh=thre)
         # axs[2].tick_params(axis="both", which="major", labelsize=8)
     except OverflowError:
         pass
 
-    cont = 1
+    cont += 1
+
     if "nZ" in self.ProfilesPredicted:
+
+        impurity_search = self.runWithImpurity_transport
+
         # nZ
         quantityX = "GiGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]GiAll"
         quantityX_stds = "GiGB_sim_turb_stds" if UseTGLFfull_x is None else None
@@ -2069,14 +2125,14 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds = "GiGB_sim_turb_stds"
         metrics["Gi"] = plotModelComparison_quantity(
             self,
-            axs[2 + cont],
+            axs[cont],
             quantityX=quantityX,
             quantityX_stds=quantityX_stds,
             quantityY=quantityY,
             quantityY_stds=quantityY_stds,
             quantity_label="$\\Gamma_Z^{GB}$",
             title="Impurity particle flux (GB)",
-            runWithImpurity=self.runWithImpurity,
+            runWithImpurity=impurity_search,
             includeErrors=includeErrors,
             includeMetric=includeMetric,
             includeLeg=includeLegAll,
@@ -2085,7 +2141,7 @@ def PORTALSanalyzer_plotModelComparison(
         if UseTGLFfull_x is None:
             val_calc = (
                 self.mitim_runs[0]["powerstate"].model_results
-                .__dict__[quantityX][self.runWithImpurity, 0, 1:]
+                .__dict__[quantityX][impurity_search, 0, 1:]
             )
         else:
             val_calc = np.array(
@@ -2095,12 +2151,12 @@ def PORTALSanalyzer_plotModelComparison(
                     ]
                     for j in range(len(self.rhos))
                 ]
-            )[self.runWithImpurity]
+            )[impurity_search]
 
         thre = 10 ** round(np.log10(np.abs(val_calc).min()))
-        axs[2 + cont].set_xscale("symlog", linthresh=thre)
-        axs[2 + cont].set_yscale("symlog", linthresh=thre)
-        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+        axs[cont].set_xscale("symlog", linthresh=thre)
+        axs[cont].set_yscale("symlog", linthresh=thre)
+        axs[cont].tick_params(axis="both", which="major", labelsize=8)
 
         cont += 1
 
@@ -2114,7 +2170,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds = "MtGB_sim_turb_stds"
         metrics["Mt"] = plotModelComparison_quantity(
             self,
-            axs[2 + cont],
+            axs[cont],
             quantityX=quantityX,
             quantityX_stds=quantityX_stds,
             quantityY=quantityY,
@@ -2134,9 +2190,9 @@ def PORTALSanalyzer_plotModelComparison(
                 ).min()
             )
         )
-        axs[2 + cont].set_xscale("symlog", linthresh=thre)
-        axs[2 + cont].set_yscale("symlog", linthresh=thre)
-        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+        axs[cont].set_xscale("symlog", linthresh=thre)
+        axs[cont].set_yscale("symlog", linthresh=thre)
+        axs[cont].tick_params(axis="both", which="major", labelsize=8)
 
         cont += 1
 
@@ -2150,7 +2206,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityY_stds = "EXeGB_sim_turb_stds"
         metrics["EX"] = plotModelComparison_quantity(
             self,
-            axs[2 + cont],
+            axs[cont],
             quantityX=quantityX,
             quantityX_stds=quantityX_stds,
             quantityY=quantityY,
@@ -2170,9 +2226,9 @@ def PORTALSanalyzer_plotModelComparison(
                 ).min()
             )
         )
-        axs[2 + cont].set_xscale("symlog", linthresh=thre)
-        axs[2 + cont].set_yscale("symlog", linthresh=thre)
-        axs[2 + cont].tick_params(axis="both", which="major", labelsize=8)
+        axs[cont].set_xscale("symlog", linthresh=thre)
+        axs[cont].set_yscale("symlog", linthresh=thre)
+        axs[cont].tick_params(axis="both", which="major", labelsize=8)
 
         cont += 1
 
@@ -2202,6 +2258,8 @@ def plotModelComparison_quantity(
         resultsY = resultsX
         quantity_label_resultsY = quantity_label_resultsX
 
+    nr = len(self.rhos)
+
     X, X_stds = [], []
     Y, Y_stds = [], []
     for i in range(self.ilast + 1):
@@ -2211,12 +2269,12 @@ def plotModelComparison_quantity(
         t = self.mitim_runs[i]["powerstate"].model_results.extra_analysis
         Y.append(
             t[resultsY].__dict__[quantityY][
-                ... if runWithImpurity is None else runWithImpurity, 0, 1:
+                ... if runWithImpurity is None else runWithImpurity, 0, 1:nr+1
             ]
         )
         Y_stds.append(
             t[resultsY].__dict__[quantityY_stds][
-                ... if runWithImpurity is None else runWithImpurity, 0, 1:
+                ... if runWithImpurity is None else runWithImpurity, 0, 1:nr+1
             ]
         )
 
@@ -2240,12 +2298,12 @@ def plotModelComparison_quantity(
         else:
             X.append(
                 t[resultsX].__dict__[quantityX][
-                    (... if runWithImpurity is None else runWithImpurity), 0, 1:
+                    (... if runWithImpurity is None else runWithImpurity), 0, 1:nr+1
                 ]
             )
             X_stds.append(
                 t[resultsX].__dict__[quantityX_stds][
-                    ... if runWithImpurity is None else runWithImpurity, 0, 1:
+                    ... if runWithImpurity is None else runWithImpurity, 0, 1:nr+1
                 ]
             )
 
@@ -2347,17 +2405,17 @@ def add_metric(ax, X, Y, typeM="RMSE", fontsize=8):
     return metric, metric_lab
 
 
-def varToReal(y, prfs_model):
+def varToReal(y, mitim_model):
 
-    of, cal, res = prfs_model.optimization_object.scalarized_objective(
-        torch.Tensor(y).to(prfs_model.optimization_object.dfT).unsqueeze(0)
+    of, cal, res = mitim_model.optimization_object.scalarized_objective(
+        torch.Tensor(y).to(mitim_model.optimization_object.dfT).unsqueeze(0)
     )
 
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in prfs_model.optimization_object.MODELparameters["ProfilesPredicted"]:
-        for rad in prfs_model.optimization_object.MODELparameters["RhoLocations"]:
+    for prof in mitim_model.optimization_object.MODELparameters["ProfilesPredicted"]:
+        for rad in mitim_model.optimization_object.MODELparameters["RhoLocations"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2395,7 +2453,7 @@ def varToReal(y, prfs_model):
 
 
 def plotVars(
-    prfs_model,
+    mitim_model,
     y,
     axs,
     axsR,
@@ -2426,15 +2484,15 @@ def plotVars(
         contP += 1
 
         x_var = (
-            prfs_model.optimization_object.surrogate_parameters["powerstate"]
+            mitim_model.optimization_object.surrogate_parameters["powerstate"]
             .plasma["roa"][0, 1:]
             .cpu()
-            .numpy()
-        )  # prfs_model.optimization_object.MODELparameters['RhoLocations']
+            .cpu().numpy()
+        )  # mitim_model.optimization_object.MODELparameters['RhoLocations']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
-                y[i, :].detach().cpu().numpy(), prfs_model
+                y[i, :].detach().cpu().numpy(), mitim_model
             )
         except:
             continue
@@ -2451,7 +2509,7 @@ def plotVars(
                 Ge_tarEl,
                 GZ_tarEl,
                 Mt_tarEl,
-            ) = varToReal(yerr[0][i, :].detach().cpu().numpy(), prfs_model)
+            ) = varToReal(yerr[0][i, :].detach().cpu().numpy(), mitim_model)
             (
                 QeEu,
                 QiEu,
@@ -2463,76 +2521,78 @@ def plotVars(
                 Ge_tarEu,
                 GZ_tarEu,
                 Mt_tarEu,
-            ) = varToReal(yerr[1][i, :].detach().cpu().numpy(), prfs_model)
+            ) = varToReal(yerr[1][i, :].detach().cpu().numpy(), mitim_model)
 
-        ax = axTe_f
+        if axTe_f is not None:
+            ax = axTe_f
 
-        if lines[0] is not None:
-            ax.plot(
-                x_var,
-                Qe,
-                lines[0],
-                c=colors[contP] if color is None else color,
-                label="$Q$" + lab if i == 0 else "",
-                lw=lw,
-                markersize=ms,
-            )
-        if lines[1] is not None:
-            ax.plot(
-                x_var,
-                Qe_tar,
-                lines[1],
-                c=colors[contP] if color is None else color,
-                lw=lw,
-                markersize=ms,
-                label="$Q^T$" + lab if i == 0 else "",
-            )
-        if yerr is not None:
-            ax.errorbar(
-                x_var,
-                Qe,
-                c=colors[contP] if color is None else color,
-                yerr=[QeEl, QeEu],
-                capsize=cp,
-                capthick=lwc,
-                fmt="none",
-                lw=lw,
-                markersize=ms,
-                label="$Q$" + lab if i == 0 else "",
-            )
+            if lines[0] is not None:
+                ax.plot(
+                    x_var,
+                    Qe,
+                    lines[0],
+                    c=colors[contP] if color is None else color,
+                    label="$Q$" + lab if i == 0 else "",
+                    lw=lw,
+                    markersize=ms,
+                )
+            if lines[1] is not None:
+                ax.plot(
+                    x_var,
+                    Qe_tar,
+                    lines[1],
+                    c=colors[contP] if color is None else color,
+                    lw=lw,
+                    markersize=ms,
+                    label="$Q^T$" + lab if i == 0 else "",
+                )
+            if yerr is not None:
+                ax.errorbar(
+                    x_var,
+                    Qe,
+                    c=colors[contP] if color is None else color,
+                    yerr=[QeEl, QeEu],
+                    capsize=cp,
+                    capthick=lwc,
+                    fmt="none",
+                    lw=lw,
+                    markersize=ms,
+                    label="$Q$" + lab if i == 0 else "",
+                )
 
-        ax = axTi_f
-        if lines[0] is not None:
-            ax.plot(
-                x_var,
-                Qi,
-                lines[0],
-                c=colors[contP] if color is None else color,
-                label=f"#{i}",
-                lw=lw,
-                markersize=ms,
-            )
-        if lines[1] is not None:
-            ax.plot(
-                x_var,
-                Qi_tar,
-                lines[1],
-                c=colors[contP] if color is None else color,
-                lw=lw,
-                markersize=ms,
-            )
-        if yerr is not None:
-            ax.errorbar(
-                x_var,
-                Qi,
-                c=colors[contP] if color is None else color,
-                yerr=[QiEl, QiEu],
-                capsize=cp,
-                capthick=lwc,
-                fmt="none",
-                lw=lw,
-                markersize=ms,
-            )
+        if axTi_f is not None:
+            ax = axTi_f
+            if lines[0] is not None:
+                ax.plot(
+                    x_var,
+                    Qi,
+                    lines[0],
+                    c=colors[contP] if color is None else color,
+                    label=f"#{i}",
+                    lw=lw,
+                    markersize=ms,
+                )
+            if lines[1] is not None:
+                ax.plot(
+                    x_var,
+                    Qi_tar,
+                    lines[1],
+                    c=colors[contP] if color is None else color,
+                    lw=lw,
+                    markersize=ms,
+                )
+            if yerr is not None:
+                ax.errorbar(
+                    x_var,
+                    Qi,
+                    c=colors[contP] if color is None else color,
+                    yerr=[QiEl, QiEu],
+                    capsize=cp,
+                    capthick=lwc,
+                    fmt="none",
+                    lw=lw,
+                    markersize=ms,
+                )
 
         if axne_f is not None:
             ax = axne_f
@@ -2637,53 +2697,54 @@ def plotVars(
                 )
 
         if plotResidual:
-            ax = axTe_r
-            if lines[0] is not None:
-                ax.plot(
-                    x_var,
-                    (Qe - Qe_tar),
-                    lines[0],
-                    c=colors[contP] if color is None else color,
-                    label="$Q-Q^T$" + lab if i == 0 else "",
-                    lw=lw,
-                    markersize=ms,
-                )
-                if plotErr[cont]:
-                    ax.errorbar(
+            if axTe_r is not None:
+                ax = axTe_r
+                if lines[0] is not None:
+                    ax.plot(
                         x_var,
                         (Qe - Qe_tar),
+                        lines[0],
                         c=colors[contP] if color is None else color,
-                        yerr=[QeEl, QeEu],
-                        capsize=cp,
-                        capthick=lwc,
-                        fmt="none",
-                        lw=0.5,
-                        markersize=0,
+                        label="$Q-Q^T$" + lab if i == 0 else "",
+                        lw=lw,
+                        markersize=ms,
                     )
-
-            ax = axTi_r
-            if lines[0] is not None:
-                ax.plot(
-                    x_var,
-                    (Qi - Qi_tar),
-                    lines[0],
-                    c=colors[contP] if color is None else color,
-                    label=f"#{i}",
-                    lw=lw,
-                    markersize=ms,
-                )
-                if plotErr[cont]:
-                    ax.errorbar(
+                    if plotErr[cont]:
+                        ax.errorbar(
+                            x_var,
+                            (Qe - Qe_tar),
+                            c=colors[contP] if color is None else color,
+                            yerr=[QeEl, QeEu],
+                            capsize=cp,
+                            capthick=lwc,
+                            fmt="none",
+                            lw=0.5,
+                            markersize=0,
+                        )
+            if axTi_r is not None:
+                ax = axTi_r
+                if lines[0] is not None:
+                    ax.plot(
                         x_var,
                         (Qi - Qi_tar),
+                        lines[0],
                         c=colors[contP] if color is None else color,
-                        yerr=[QiEl, QiEu],
-                        capsize=cp,
-                        capthick=lwc,
-                        fmt="none",
-                        lw=0.5,
-                        markersize=0,
+                        label=f"#{i}",
+                        lw=lw,
+                        markersize=ms,
                     )
+                    if plotErr[cont]:
+                        ax.errorbar(
+                            x_var,
+                            (Qi - Qi_tar),
+                            c=colors[contP] if color is None else color,
+                            yerr=[QiEl, QiEu],
+                            capsize=cp,
+                            capthick=lwc,
+                            fmt="none",
+                            lw=0.5,
+                            markersize=0,
+                        )
 
             if axne_r is not None:
                 ax = axne_r
@@ -2787,7 +2848,7 @@ def plotFluxComparison(
     locLeg="upper left",
 ):
 
-    r = power.plasma['rho'].numpy() if not useRoa else power.plasma['roa'].numpy()
+    r = power.plasma['rho'].cpu().numpy() if not useRoa else power.plasma['roa'].cpu().numpy()
 
     ixF = 0 if includeFirst else 1
 
@@ -2821,7 +2882,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         axTe_f.plot(
             r[0][ixF:],
-            power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:],
+            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             c=col,
             lw=2,
@@ -2830,10 +2891,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Pe_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo_stds'].numpy()[0][ixF:]
+        sigma = power.plasma['Pe_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
-        m_Qe, M_Qe = (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]
+        m_Qe, M_Qe = (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
@@ -2844,7 +2905,7 @@ def plotFluxComparison(
     if axTi_f is not None:
         axTi_f.plot(
             r[0][ixF:],
-            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:],
+            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2854,13 +2915,13 @@ def plotFluxComparison(
         )
 
         sigma = (
-            power.plasma['Pi_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo_stds'].numpy()[0][ixF:]
+            power.plasma['Pi_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo_stds'].cpu().numpy()[0][ixF:]
         )
 
         m_Qi, M_Qi = (
-            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:]
+            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:]
         ) - stds * sigma, (
-            power.plasma['Pi_tr_turb'].numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].numpy()[0][ixF:]
+            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
 
@@ -2870,7 +2931,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        Ge = power.plasma['Ce_tr_turb_raw'].numpy() + power.plasma['Ce_tr_neo_raw'].numpy()
+        Ge = power.plasma['Ce_raw_tr_turb'].cpu().numpy() + power.plasma['Ce_raw_tr_neo'].cpu().numpy()
 
         axne_f.plot(
             r[0][ixF:],
@@ -2883,7 +2944,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ce_tr_turb_raw_stds'].numpy()[0][ixF:] + power.plasma['Ce_tr_neo_raw_stds'].numpy()[0][ixF:]
+        sigma = power.plasma['Ce_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -2894,7 +2955,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        GZ = power.plasma['CZ_tr_turb_raw'].numpy() + power.plasma['CZ_tr_neo_raw'].numpy()
+        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neo'].cpu().numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2907,7 +2968,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['CZ_tr_turb_raw_stds'].numpy()[0][ixF:] + power.plasma['CZ_tr_neo_raw_stds'].numpy()[0][ixF:]
+        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,
@@ -2922,7 +2983,7 @@ def plotFluxComparison(
     if axw0_f is not None:
         axw0_f.plot(
             r[0][ixF:],
-            power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:],
+            power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2931,10 +2992,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Mt_tr_turb_stds'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo_stds'].numpy()[0][ixF:]
+        sigma = power.plasma['Mt_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
-        m_Mt, M_Mt = (power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['Mt_tr_turb'].numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].numpy()[0][ixF:]
+        m_Mt, M_Mt = (power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
@@ -2944,11 +3005,11 @@ def plotFluxComparison(
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Qe_tar = power.plasma['Pe'].numpy()[0][ixF:]
-    Qi_tar = power.plasma['Pi'].numpy()[0][ixF:]
-    Ge_tar = power.plasma['Ce_raw'].numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
-    GZ_tar = power.plasma['CZ_raw'].numpy()[0][ixF:]
-    Mt_tar = power.plasma['Mt'].numpy()[0][ixF:]
+    Qe_tar = power.plasma['Pe'].cpu().numpy()[0][ixF:]
+    Qi_tar = power.plasma['Pi'].cpu().numpy()[0][ixF:]
+    Ge_tar = power.plasma['Ce_raw'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
+    GZ_tar = power.plasma['CZ_raw'].cpu().numpy()[0][ixF:]
+    Mt_tar = power.plasma['Mt'].cpu().numpy()[0][ixF:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3063,62 +3124,65 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     # -- for legend
-    (l1,) = axTe_f.plot(
-        r[0][ixF:],
-        power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:],
-        "-",
-        c="k",
-        lw=2,
-        markersize=0,
-        label="Transport",
-    )
-    (l2,) = axTe_f.plot(
-        r[0][ixF:], power.plasma['Pe'].numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
-    )
-    l3 = axTe_f.fill_between(
-        r[0][ixF:],
-        (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) - stds,
-        (power.plasma['Pe_tr_turb'].numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].numpy()[0][ixF:]) + stds,
-        facecolor="k",
-        alpha=0.3,
-    )
-
-    setl = [l1, l3, l2]
-    setlab = ["Transport", f"$\\pm{stds}\\sigma$"] #, "Target"]
-
-    if addFlowLegend:
-        (l4,) = axTe_f.plot(
-            tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
-            tBest.derived["qe_MWm2"],
-            "-.",
+    if axTe_f is not None:
+        (l1,) = axTe_f.plot(
+            r[0][ixF:],
+            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:],
+            "-",
             c="k",
-            lw=1,
+            lw=2,
             markersize=0,
+            label="Transport",
         )
-        setl.append(l4)
-        setlab.append("Target HR")
-    else:
-        l4 = l3
+        (l2,) = axTe_f.plot(
+            r[0][ixF:], power.plasma['Pe'].cpu().numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
+        )
+        l3 = axTe_f.fill_between(
+            r[0][ixF:],
+            (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) - stds,
+            (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) + stds,
+            facecolor="k",
+            alpha=0.3,
+        )
 
-    axTe_f.legend(setl, setlab, loc=locLeg, prop={"size": fontsize_leg})
-    l1.set_visible(False)
-    l2.set_visible(False)
-    l3.set_visible(False)
-    l4.set_visible(False)
-    # ---------------
+        setl = [l1, l3, l2]
+        setlab = ["Transport", f"$\\pm{stds}\\sigma$"] #, "Target"]
+
+        if addFlowLegend:
+            (l4,) = axTe_f.plot(
+                tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
+                tBest.derived["qe_MWm2"],
+                "-.",
+                c="k",
+                lw=1,
+                markersize=0,
+            )
+            setl.append(l4)
+            setlab.append("Target HR")
+        else:
+            l4 = l3
+
+        axTe_f.legend(setl, setlab, loc=locLeg, prop={"size": fontsize_leg})
+        l1.set_visible(False)
+        l2.set_visible(False)
+        l3.set_visible(False)
+        l4.set_visible(False)
+        # ---------------
 
     if decor:
-        ax = axTe_f
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_xlabel("$\\rho_N$") if not useRoa else ax.set_xlabel("$r/a$")
-        ax.set_ylabel(labelsFluxesF["te"])
-        ax.set_xlim([0, 1])
+        if axTe_f is not None:
+            ax = axTe_f
+            GRAPHICStools.addDenseAxis(ax)
+            ax.set_xlabel("$\\rho_N$") if not useRoa else ax.set_xlabel("$r/a$")
+            ax.set_ylabel(labelsFluxesF["te"])
+            ax.set_xlim([0, 1])
 
-        ax = axTi_f
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_xlabel("$\\rho_N$") if not useRoa else ax.set_xlabel("$r/a$")
-        ax.set_ylabel(labelsFluxesF["ti"])
-        ax.set_xlim([0, 1])
+        if axTi_f is not None:
+            ax = axTi_f
+            GRAPHICStools.addDenseAxis(ax)
+            ax.set_xlabel("$\\rho_N$") if not useRoa else ax.set_xlabel("$r/a$")
+            ax.set_ylabel(labelsFluxesF["ti"])
+            ax.set_xlim([0, 1])
 
         if axne_f is not None:
             ax = axne_f
@@ -3144,17 +3208,19 @@ def plotFluxComparison(
             ax.set_xlim([0, 1])
 
         if maxStore:
-            Qmax = QeBest_max
-            Qmax += np.abs(Qmax) * 0.5
-            Qmin = QeBest_min
-            Qmin -= np.abs(Qmin) * 0.5
-            axTe_f.set_ylim([0, Qmax])
+            if axTe_f is not None:
+                Qmax = QeBest_max
+                Qmax += np.abs(Qmax) * 0.5
+                Qmin = QeBest_min
+                Qmin -= np.abs(Qmin) * 0.5
+                axTe_f.set_ylim([0, Qmax])
 
-            Qmax = QiBest_max
-            Qmax += np.abs(Qmax) * 0.5
-            Qmin = QiBest_min
-            Qmin -= np.abs(Qmin) * 0.5
-            axTi_f.set_ylim([0, Qmax])
+            if axTi_f is not None:
+                Qmax = QiBest_max
+                Qmax += np.abs(Qmax) * 0.5
+                Qmin = QiBest_min
+                Qmin -= np.abs(Qmin) * 0.5
+                axTi_f.set_ylim([0, Qmax])
 
             if axne_f is not None:
                 Qmax = GeBest_max
@@ -3205,9 +3271,7 @@ def produceInfoRanges(
         if f"aLw0_{i+1}" in bounds:
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
-    X = torch.zeros(
-        ((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2)
-    )
+    X = torch.zeros(((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2))
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])

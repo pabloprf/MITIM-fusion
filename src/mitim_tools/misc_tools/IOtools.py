@@ -1,6 +1,11 @@
-import re
 import os
 import shutil
+import psutil
+import copy
+import pandas as pd
+from mitim_tools.misc_tools import GRAPHICStools
+import numpy as np
+import matplotlib.pyplot as plt
 import sys
 import time
 import datetime
@@ -8,24 +13,15 @@ import socket
 import random
 import zipfile
 import cProfile
-import termios
-import tty
 import h5py
-import warnings
 import subprocess
 import json
 import functools
-import contextlib
 import hashlib
 from collections import OrderedDict
-import numpy as np
-import matplotlib.pyplot as plt
-
-try:
-    import pandas
-except ImportError:
-    pass
-
+from pathlib import Path
+import platform
+import torch
 try:
     from IPython import embed
 except ImportError:
@@ -34,10 +30,11 @@ except ImportError:
 import urllib.request as urlREQ  # urllibR
 import urllib.error as urlERR  # urllibE
 
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
-    def __init__(self, file):
-        self.file = file
+    def __init__(self, file='./profiler.prof'):
+        self.file = Path(file).expanduser()
 
     def __enter__(self):
         
@@ -67,11 +64,13 @@ class speeder(object):
 
 class timer(object):
 
-    def __init__(self, name="\t* Script"):
+    def __init__(self, name="\t* Script", name_timer = '\t* Start time: '):
         self.name = name
+        self.name_timer = name_timer
 
     def __enter__(self):
         self.timeBeginning = datetime.datetime.now()
+        if self.name_timer is not None: print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
         return self
 
     def __exit__(self, *args):
@@ -85,16 +84,18 @@ class timer(object):
 
 # Decorator to time functions
 
-def mitim_timer(name="\t* Script"):
+def mitim_timer(name="\t* Script",name_timer = '\t* Start time: '):
     def decorator_timer(func):
         @functools.wraps(func)
         def wrapper_timer(*args, **kwargs):
-            with timer(name):
+            with timer(name,name_timer=name_timer):
                 return func(*args, **kwargs)
         return wrapper_timer
     return decorator_timer
 
 def clipstr(txt, chars=40):
+    if not isinstance(txt, str):
+        txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
 def receiveWebsite(url, data=None):
@@ -146,61 +147,19 @@ def page(url):
 
     return the_page
 
-def printMsg(*args, typeMsg="", verbose=None):
-    """
-    Print messages with different colors (blue-red is better for colorblind)
-    """
-
-    # Info (about a choice or something found): Blue
-    if typeMsg == "i":
-        extra = "\u001b[34m"
-    # Warning (about something to be careful about, even if chosen): Red
-    elif typeMsg == "w":
-        extra = "\u001b[31;1m"
-    # Decision to go faster (e.g. because results are found are a step is skipped): Cyan
-    elif typeMsg == "f":
-        extra = "\u001b[36m"
-    # Question or something that is stopped
-    elif (typeMsg == "q") or (typeMsg == "qa"):
-        extra = "\u001b[44;1m\u001b[37m"
-    # Note: Nothing
-    else:
-        extra = "\u001b[0m"
-
-    total = (extra,) + args + ("\u001b[0m",)
-
-    # Take into account the verbose level is it was provided
-    if (verbose is None) or (verbose in [4, 5]):
-        print(*total)
-
-    if typeMsg == "q":
-        return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
-
-class HiddenPrints:
-    """
-    Usage:
-            with IOtools.HiddenPrints():
-                    print("This will not be printed")
-    """
-
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
-
 def get_git_info(repo_path):
+    
+    repopath = f"{repo_path.expanduser().resolve()}" if isinstance(repo_path, Path) else expandPath(repo_path)
+
     # Get branch
-    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(['git', '-C', repopath, 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
         branch = result.stdout.strip()
     else:
         branch = None
 
     # Get hash
-    result = subprocess.run(['git', '-C', repo_path, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(['git', '-C', repopath, 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode == 0:
         commit_hash = result.stdout.strip()
     else:
@@ -217,7 +176,8 @@ def createCDF_simple(file, zvals, names):
 
     import netCDF4  # Importing here because some machines require netCDF4 libraries
 
-    ncfile = netCDF4.Dataset(file, mode="w", format="NETCDF4_CLASSIC")
+    fpath = Path(file).expanduser()
+    ncfile = netCDF4.Dataset(fpath, mode="w", format="NETCDF4_CLASSIC")
 
     x = ncfile.createDimension("xdim", zvals.shape[1])
 
@@ -227,7 +187,7 @@ def createCDF_simple(file, zvals, names):
 
     ncfile.close()
 
-def printPoints(x, numtabs=1):
+def printPoints(x, numtabs=2):
     """
     x is (batch, dim)
     """
@@ -286,45 +246,52 @@ def randomWait(dakNumUnit, multiplierMin=1):
 
 
 def safeBackUp(FolderToZip, NameZippedFile="Contents", locationZipped="~/scratch/"):
+    ziptargetpath = Path(FolderToZip).expanduser()
+    zipdir = Path(locationZipped).expanduser()
     f1 = moveRecursive(
         check=1,
-        commonpreffix=expandPath(locationZipped) + NameZippedFile + "_",
+        commonprefix=NameZippedFile + "_",
         commonsuffix=".zip",
         eliminateAfter=5,
+        rootFolder=zipdir
     )
-    zipFolder(FolderToZip, ZippedFile=f1)
-    print(f" --> Most current {expandPath(FolderToZip)} folder zipped to {f1}")
+    zipFolder(ziptargetpath, ZippedFile=f1)
+    print(f" --> Most current {ziptargetpath.resolve()} folder zipped to {f1}")
 
 
 def zipFolder(FolderToZip, ZippedFile="Contents.zip"):
-    def zipdir(path, ziph):
-        # ziph is zipfile handle
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                ziph.write(os.path.join(root, file))
-
+    zpath = Path(FolderToZip).expanduser()
+    zipitems = zpath.glob('**/*')
     with zipfile.ZipFile(ZippedFile, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipdir(FolderToZip, zipf)
+        for itempath in zipitems:
+            if itempath.is_file():
+                zipf.write(itempath)
 
 
-def moveRecursive(check=1, commonpreffix="~/Contents_", commonsuffix=".zip", eliminateAfter=5):
-    file_current = f"{commonpreffix}{check}{commonsuffix}"
+def moveRecursive(check=1, commonprefix="Contents_", commonsuffix=".zip", eliminateAfter=5, rootFolder="~"):
+    '''
+    Shifts all existing file numbers up by one, keeping only a limited number due to memory requirements
+    '''
 
-    if os.path.exists(file_current):
+    root_current = Path(rootFolder).expanduser()
+    file_current = root_current / f"{commonprefix}{check}{commonsuffix}"
+
+    if file_current.exists():
         if check >= eliminateAfter:
-            os.system("rm " + file_current)
+            file_current.unlink(missing_ok=True)
         else:
-            file_next = f"{commonpreffix}{check + 1}{commonsuffix}"
-            if os.path.exists(file_next):
+            file_next = root_current / f"{commonprefix}{check + 1}{commonsuffix}"
+            if file_next.exists():
                 moveRecursive(
                     check=check + 1,
-                    commonpreffix=commonpreffix,
+                    commonprefix=commonprefix,
                     commonsuffix=commonsuffix,
                     eliminateAfter=eliminateAfter,
+                    rootFolder=root_current,
                 )
-            os.system(f"mv {file_current} {file_next}")
+            file_current.replace(file_next)
 
-    return file_current
+    return file_current #f"{file_current}"
 
 def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
     '''
@@ -338,12 +305,17 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
 
     if isinstance(obj, dict):
         items = obj.items()
-    elif isinstance(obj, list) or isinstance(obj, tuple):
+    elif isinstance(obj, (list, np.ndarray, tuple)):
         items = enumerate(obj)
     elif isinstance(obj, str):
         return
     else:
-        items = vars(obj).items()
+        try:
+            items = vars(obj).items()
+        except:
+            print('Type not recognized, probably out of depth:')
+            print(obj)
+            return
 
     # Collect the size of each item in the object
     for attr_name, attr_value in items:
@@ -374,59 +346,93 @@ def calculate_sizes_obj_recursive(obj, N=5, parent_name="", recursion = 5):
         if isinstance(obj, dict):
             parent_name = list(sorted_sizes.keys())[0]
             child_obj = obj[list(sorted_sizes.keys())[0]]
-        elif isinstance(obj, list) or isinstance(obj, tuple):
+        elif isinstance(obj, (list, np.ndarray, tuple)):
             parent_name = f"{prefix}{list(sorted_sizes.keys())[0]}"
             child_obj = obj[list(sorted_sizes.keys())[0]]
         else:
             parent_name = list(sorted_sizes.items())[0][0]
             child_obj = getattr(obj,parent_name)
         calculate_sizes_obj_recursive(child_obj, N, recursion = recursion - 1, parent_name=parent_name)
-        
+
 def calculate_size_pickle(file):
     '''
     Calculate the size of the object stored in a pickle file.
     '''
 
-    import pickle  
-
-    with open(file, 'rb') as f:
+    import pickle
+    
+    ifile = Path(file).expanduser()
+    with open(ifile, 'rb') as f:
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
-def read_mitim_nml(json_file):
-    with open(json_file, 'r') as file:
-        data = json.load(file)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MITIM optimization namelist
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    optimization_options = data["optimization"]
-    optimization_options["StrategyOptions"] =  data["StrategyOptions"]
-    optimization_options["surrogateOptions"] = data["surrogateOptions"]
+def read_mitim_nml(json_file):
+    jpath = Path(json_file).expanduser()
+    with open(jpath, 'r') as file:
+        optimization_options = json.load(file)
 
     return optimization_options
 
+def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
+
+    # Optimization criterion
+    if optimization_options['convergence_options']['stopping_criteria'] is None:
+        optimization_options['convergence_options']['stopping_criteria'] = stopping_criteria_default
+
+    # Add optimization print
+    if optimization_options is not None:
+        unprint_fun = copy.deepcopy(optimization_options['convergence_options']['stopping_criteria'])
+        def opt_crit(*args,**kwargs):
+            print('\n')
+            print('--------------------------------------------------')
+            print('Convergence criteria')
+            print('--------------------------------------------------')
+            v = unprint_fun(*args,**kwargs)
+            print('--------------------------------------------------\n')
+            return v
+        optimization_options['convergence_options']['stopping_criteria'] = opt_crit
+
+    # Check if the optimization options are in the namelist
+    from mitim_tools import __mitimroot__
+    Optim_potential = read_mitim_nml(__mitimroot__ / "templates" / "main.namelist.json")
+    for ikey in optimization_options:
+        if ikey not in Optim_potential:
+            print(f"\t- Option {ikey} is an unexpected variable, prone to errors", typeMsg="q")
+
+    return optimization_options
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 def getpythonversion():
-    return [
-        int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".")
-    ]
+    return [ int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".") ]
 
 def zipFiles(files, outputFolder, name="info"):
-    os.system(f"mkdir {outputFolder}/{name}")
+    odir = Path(outputFolder).expanduser()
+    opath = odir / name
+    if not opath.is_dir():
+        opath.mkdir(parents=True)
     for i in files:
-        os.system(f"cp {i} {outputFolder}/{name}/")
-
-    shutil.make_archive(f"{outputFolder}/{name}", "zip", outputFolder)
-
-    os.system(f"rm -r {outputFolder}/{name}")
+        shutil.copy2(expandPath(i), opath)
+    shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
+    shutil_rmtree(opath)
 
 
 def unzipFiles(file, destinyFolder, clear=True):
-    shutil.unpack_archive(file, destinyFolder + "/")
-
+    zpath = Path(file).expanduser()
+    odir = Path(destinyFolder).expanduser()
+    shutil.unpack_archive(zpath, odir)
     if clear:
-        os.system("rm " + file)
+        zpath.unlink(missing_ok=True)
 
 
 def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_name=0):
-    df = pandas.read_excel(file, sheet_name=sheet_name)
+
+    ifile = Path(file).expanduser()
+    df = pd.read_excel(ifile, sheet_name=sheet_name)
 
     rho = getVar_ExcelColumn(df, df.keys()[fromColumn + 0], fromRow=fromRow)
     Te = getVar_ExcelColumn(df, df.keys()[fromColumn + 1], fromRow=fromRow) * 1e-3
@@ -443,18 +449,19 @@ def getProfiles_ExcelColumns(file, fromColumn=0, fromRow=4, rhoNorm=None, sheet_
     return rho, Te, Ti, q, ne
 
 
-def getVar_ExcelColumn(pandafile, columnName, fromRow=4):
-    var0 = np.array(pandafile[columnName].values)[fromRow:]
+def getVar_ExcelColumn(df, columnName, fromRow=4):
+    var0 = np.array(df[columnName].values)[fromRow:]
     var = []
     for i in var0:
         if not np.isnan(float(i)):
             var.append(float(i))
-
     return np.array(var)
 
 
 def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, fromRow=4):
-    os.system(f"rm {file}")
+
+    ofile = Path(file).expanduser()
+    ofile.unlink(missing_ok=True)
 
     if Ti is None:
         Ti = Te
@@ -466,12 +473,13 @@ def writeProfiles_ExcelColumns(file, rho, Te, q, ne, Ti=None, fromColumn=0, from
     dictExcel["q"] = q
     dictExcel["ne"] = ne
 
-    writeExcel_fromDict(dictExcel, file, fromColumn=fromColumn, fromRow=fromRow)
+    writeExcel_fromDict(dictExcel, ofile, fromColumn=fromColumn, fromRow=fromRow)
 
 
 def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
-    df = pandas.DataFrame(dictExcel)
-    writer = pandas.ExcelWriter(file, engine="xlsxwriter")
+    ofile = Path(file).expanduser()
+    df = pd.DataFrame(dictExcel)
+    writer = pd.ExcelWriter(ofile, engine="xlsxwriter")
     df.to_excel(
         writer,
         sheet_name="Sheet1",
@@ -484,22 +492,25 @@ def writeExcel_fromDict(dictExcel, file, fromColumn=0, fromRow=4):
 
 
 def createExcelRow(dataSet_dict, row_name="row 1"):
+
     columns, data = [], []
     for i in dataSet_dict:
         columns.append(i)
         data.append([dataSet_dict[i]])
     data = np.transpose(data)
 
-    df = pandas.DataFrame(data, index=[row_name], columns=columns)
+    df = pd.DataFrame(data, index=[row_name], columns=columns)
 
     return df
 
 
 def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True):
+
+    fpath = Path(file).expanduser()
     df = createExcelRow(dataSet_dict, row_name=row_name)
 
-    if os.path.exists(file):
-        df_orig = pandas.read_excel(file, index_col=0)
+    if fpath.is_file():
+        df_orig = pd.read_excel(fpath, index_col=0)
         df_new = df_orig
         if not repeatIfIndexExist and df.index[0] in df_new.index:
             df_new = df_new.drop(df.index[0])
@@ -509,7 +520,7 @@ def addRowToExcel(file, dataSet_dict, row_name="row 1", repeatIfIndexExist=True)
     else:
         df_new = df
 
-    with pandas.ExcelWriter(file, mode="w") as writer:
+    with pd.ExcelWriter(fpath, mode="w") as writer:
         df_new.to_excel(writer, sheet_name="Sheet1")
 
 
@@ -520,7 +531,16 @@ def correctNML(BaseFile):
     simply apply the command-line "tr -d '\r' < file_in > file_out". Example:
     """
 
-    os.system("tr -d '\r' < {0} > {0}_new && mv {0}_new {0}".format(BaseFile))
+    fpath = Path(BaseFile).expanduser()
+    if fpath.is_file():
+        fpath_new = fpath.with_name(f'{fpath.name}_new')
+        with open(fpath, 'r') as ff:
+            all_lines = ff.read()
+        with open(fpath_new, 'w') as wf:
+            wf.write(all_lines.translate(str.maketrans('', '', '\r')))
+        if fpath_new.exists():
+            fpath_new.replace(fpath)
+        #os.system(f"tr -d '\r' < {fpath} > {fpath}_new && mv {fpath}_new {fpath}")
 
 
 def getTimeDifference(previousTime, newTime=None, niceText=True, factor=1):
@@ -557,11 +577,12 @@ def getStringFromTime(object_time=None):
 
 
 def loopFileBackUp(file):
-    if os.path.exists(file):
-        copyToFile = f"{file}_0"
-        if os.path.exists(copyToFile):
-            loopFileBackUp(copyToFile)
-        os.system(f"mv {file} {copyToFile}")
+    fpath = Path(file).expanduser()
+    if fpath.is_file():
+        copyToPath = fpath.parent / (fpath.name + "_0")
+        if copyToPath.exists():
+            loopFileBackUp(copyToPath)
+        fpath.replace(copyToPath)
 
 
 def createTimeTXT(duration_in_s, until=3):
@@ -611,23 +632,25 @@ def createTimeTXT(duration_in_s, until=3):
 
 
 def renameCommand(ini, fin, folder="~/"):
-    folder = expandPath(folder)
-
+    ipath = Path(folder).expanduser()
     if ini is not None:
         if "mfe" in socket.gethostname():
-            os.system(f'cd {folder} && rename "s/{ini}/{fin}/" *')
+            os.chdir(ipath)
+            os.system(f'rename "s/{ini}/{fin}/" *')
         else:
-            for filename in os.listdir(folder):
-                if ini in filename:
-                    newname = filename.split(ini)[0] + fin + filename.split(ini)[-1]
-                    os.system("mv {0}/{1} {0}/{2}".format(folder, filename, newname))
+            for filepath in ipath.glob(f"*{ini}*"):
+                newname = filepath.name
+                newname = newname.sub(f"{ini}", f"{fin}")
+                opath = filepath.parent / newname
+                filepath.replace(opath)
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):
+    fpath = Path(folderExecution).expanduser()
     x = []
     for i in np.arange(nums[0], nums[1] + 1, 1):
         params = generateDictionaries(
-            folderExecution + "Execution/Evaluation.{0}/params.in.{0}".format(i)
+            fpath / f"Execution" / f"Evaluation.{i}" / f"params.in.{i}"
         )
 
         dictDVs = params["dictDVs"]
@@ -642,24 +665,24 @@ def readExecutionParams(folderExecution, nums=[0, 9]):
 
 
 def askNewFolder(folderWork, force=False, move=None):
-    if os.path.exists(folderWork):
+    workpath = Path(folderWork).expanduser()
+    if workpath.exists():
         if force:
-            os.system(f"rm -r {folderWork}")
+            shutil_rmtree(workpath)
         else:
             if move is not None:
-                os.system(f"mv {folderWork[:-1]}/ {folderWork[:-1]}_{move}")
+                workpath.replace(workpath.parent / f"{workpath.name}_{move}")
             else:
-                printMsg(
-                    f"You are about to erase the content of {folderWork}", typeMsg="q"
+                print(
+                    f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
-                os.system(f"rm -r {folderWork}")
-
-    os.system(f"mkdir {folderWork}")
-
-    if os.path.exists(folderWork):
-        print(f" \t\t~ Folder ...{folderWork[np.max([-40,-len(folderWork)]):]} created")
-    else:
-        fo = reducePathLevel(folderWork, level=1, isItFile=False)[0]
+                shutil_rmtree(workpath)
+    if not workpath.exists():
+        workpath.mkdir(parents=True)
+    if workpath.is_dir():
+        print(f" \t\t~ Folder ...{clipstr(workpath)} created")
+    else:  # What is this?
+        fo = reducePathLevel(workpath, level=1, isItFile=False)[0]
         askNewFolder(fo, force=False, move=None)
         askNewFolder(folderWork, force=False, move=None)
 
@@ -688,29 +711,24 @@ def removeRepeatedPoints_2D(rs, zs, FirstEqualToLast=True):
     return r, z
 
 
-def getLocInfo(locFile, removeSpaces=True):
-    locFile = expandPath(locFile)
-
-    folderWork = "/".join(locFile.split("/")[:-1]) + "/"
-    nameRunid = locFile.split("/")[-1].split(".")[0]
-
-    # if removeSpaces:
-    #     embed()
-    #     folderWork.replace(' ','\ ')
-    return folderWork, nameRunid
+def getLocInfo(locFile, with_extension=False):
+    # First return value is a pathlib.Path object, second return value is a string
+    ipath = Path(locFile).expanduser()
+    return ipath.parent, ipath.name if with_extension else ipath.stem #f"{ipath.parent}", f"{ipath.stem}"
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, provide_full_path=False
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False
     ):
     """
     Retrieves the file without folder and extension
     """
 
-    folder = expandPath(folder, fixSpaces=fixSpaces)
+    fpath = Path(folder).expanduser()
 
-    if os.path.exists(folder):
-        allfiles = findExistingFiles(folder, extension, agnostic_to_case = agnostic_to_case)
+    retpath = None
+    if fpath.exists():
+        allfiles = findExistingFiles(fpath, extension, agnostic_to_case = agnostic_to_case)
 
         if len(allfiles) > 1:
             # print(allfiles)
@@ -720,45 +738,48 @@ def findFileByExtension(
                 allfiles = [allfiles[0]]
 
         if len(allfiles) == 1:
-            fileReturn = allfiles[0].split(extension)[0].split(prefix)[-1]
+            retpath = allfiles[0]
         else:
             print(
-                f"\t\t~ File with extension {extension} not found in {clipstr(folder)}, returning None"
+                f"\t\t~ File with extension {extension} not found in {fpath}, returning None"
             )
-            fileReturn = None
     else:
-        from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-        
-        printMsg(
-            f"\t\t\t~ Folder ...{folder[np.max([-40,-len(folder)]):]} does not exist, returning None",
-            verbose=read_verbose_level(),
+        fstr = clipstr(f"{fpath}")
+        print(
+            f"\t\t\t~ Folder ...{fstr} does not exist, returning None",
         )
-        fileReturn = None
 
-    if provide_full_path and fileReturn is not None:
-        fileReturn = folder + fileReturn + extension
+    # TODO: We really should not change return type
+    #retval = None
+    #if retpath is not None:
+    #    if not provide_full_path:
+    #        retval = f"{retpath.name}".replace(extension, "")
+    #    else:
+    #        retval = f"{retpath}"
 
-    return fileReturn
+    return retpath
+
 
 def findExistingFiles(folder, extension, agnostic_to_case=False):
+    fpath = Path(folder).expanduser()
     allfiles = []
-    for file in os.listdir(folder):
-
-        if not agnostic_to_case:
-            if file.endswith(extension):
-                allfiles.append(file)
-        else:
-            if file.lower().endswith(extension.lower()):
-                allfiles.append(file)
-
+    for filepath in fpath.glob("*"):
+        if filepath.is_file():
+            if not agnostic_to_case:
+                if f"{filepath.resolve()}".endswith(extension):
+                    allfiles.append(filepath.resolve())
+            else:
+                if f"{filepath.resolve()}".lower().endswith(extension.lower()):
+                    allfiles.append(filepath.resolve())
     return allfiles
+
 
 def writeOFs(resultsFile, dictOFs, dictErrors=None):
     """
     By PRF's convention, error here refers to the standard deviation
     """
 
+    rpath = Path(resultsFile).expanduser()
     for iOF in dictOFs:
         if "error" not in dictOFs[iOF]:
             dictOFs[iOF]["error"] = 0.0
@@ -767,15 +788,18 @@ def writeOFs(resultsFile, dictOFs, dictErrors=None):
 
     for cont, iOF in enumerate(dictOFs):
         writeresults(
-            resultsFile, dictOFs[iOF]["value"], dictOFs[iOF]["error"], iOF, typeF=typeF
+            rpath, dictOFs[iOF]["value"], dictOFs[iOF]["error"], iOF, typeF=typeF
         )
         typeF = "a"
 
 
 def generateDictionaries(InputsFile):
-    dictDVs, dictOFs = OrderedDict(), OrderedDict()
 
-    with open(InputsFile, "r") as f:
+    dictDVs = {}
+    dictOFs = {}
+
+    ipath = Path(InputsFile).expanduser()
+    with open(ipath, "r") as f:
         numvar = int(f.readline().split()[0])
 
         for i in range(numvar):
@@ -795,40 +819,6 @@ def generateDictionaries(InputsFile):
     return {"dictDVs": dictDVs, "dictOFs": dictOFs}
 
 
-# From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input
-def query_yes_no(question, extra=""):
-    valid = {"y": True, "n": False, "e": None}
-    prompt = " [y/n/e] (yes, no, exit)"
-
-    while True:
-        total = (extra,) + (question,) + (prompt,) + ("\u001b[0m",)
-        print(*total)
-        with promting_context():
-            choice = sys.stdin.read(1)
-        if choice.lower() in valid:
-            print(f"\t\t>> Answer: {choice.lower()}")
-            if valid[choice.lower()] is not None:
-                print(
-                    f'\t\t>> Proceeding sending "{valid[choice.lower()]}" flag to main program'
-                )
-                return valid[choice.lower()]
-            else:
-                raise Exception("[mitim] Exit request")
-        else:
-            print("Please respond with 'y' (yes) or 'n' (no)\n")
-
-
-class promting_context(object):
-    def __init__(self):
-        self.old_settings = termios.tcgetattr(sys.stdin)
-
-    def __enter__(self):
-        tty.setraw(sys.stdin.fileno())
-
-    def __exit__(self, *args):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-
-
 def findValue(
     FilePath,
     ParamToFind,
@@ -846,45 +836,51 @@ def findValue(
     upper, lower agnostic
     """
 
-    f = open(FilePath, "r")
+    fpath = Path(FilePath).expanduser()
 
-    for line in f:
-        # If line contain that variable name, let's grab it!
-        if ParamToFind.upper() in line.upper():
-            if avoidIfStartsWith is not None:
-                if line.strip()[0] == avoidIfStartsWith:
-                    continue
+    if not fpath.is_file():
+        if raiseException:
+            raise Exception(f"File {fpath} not found")
+        else:
+            return None
 
-            try:
-                # Assume first that it's just a float
-                val = float(line.split(SplittingChar)[1].split()[0])
-            except:
-                if not isitArray:
-                    # If not float, and no array, maybe it's just a string
-                    try:
-                        val = str(line.split(SplittingChar)[1].split()[0])
-                    # If not float, no array, and no string, keep looking, something is wrong
-                    except:
+    with open(fpath, "r") as f:
+
+        for line in f:
+            # If line contain that variable name, let's grab it!
+            if ParamToFind.upper() in line.upper():
+                if avoidIfStartsWith is not None:
+                    if line.strip()[0] == avoidIfStartsWith:
                         continue
-                else:
-                    # If it is array
-                    val = str(line.split(SplittingChar)[1])
 
-            # Have I really found it? (checking that it's not commented)
-            if line.split(SplittingChar)[0].upper().split()[0] == ParamToFind.upper():
-                val_final = val
-                if not findOnlyLast:
-                    break
+                try:
+                    # Assume first that it's just a float
+                    val = float(line.split(SplittingChar)[1].split()[0])
+                except:
+                    if not isitArray:
+                        # If not float, and no array, maybe it's just a string
+                        try:
+                            val = str(line.split(SplittingChar)[1].split()[0])
+                        # If not float, no array, and no string, keep looking, something is wrong
+                        except:
+                            continue
+                    else:
+                        # If it is array
+                        val = str(line.split(SplittingChar)[1])
 
-    f.close()
+                # Have I really found it? (checking that it's not commented)
+                if line.split(SplittingChar)[0].upper().split()[0] == ParamToFind.upper():
+                    val_final = val
+                    if not findOnlyLast:
+                        break
 
     try:
         return val
     except:
         if raiseException:
-            raise Exception(f"{ParamToFind} Value not found in namelist {FilePath}")
+            raise Exception(f"{ParamToFind} Value not found in namelist {fpath}")
         else:
-            # printMsg('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath),verbose=read_verbose_level()) #,typeMsg='w')
+            # print('{} Value not found in namelist {}, returning None'.format(ParamToFind,FilePath)) #,typeMsg='w')
             return None
 
 
@@ -927,71 +923,70 @@ def changeValue(
         AddTextToChangedParam = ""
         separator_space = ""
 
-    f1, f2 = open(FilePath, "r"), open(FilePath + "_new", "w")
+    fpath1 = Path(FilePath).expanduser()
+    fpath2 = Path(f"{fpath1}_new").expanduser()
+    #f1, f2 = open(fpath1, "r"), open(fpath2, "w")
 
     FoundAtLeastOnce = False
-    for line in f1:
-        lineSep = line.upper().split()
-        if len(lineSep) > 0:
-            # Allowing for possibility that the '=' is not separated by spaces
-            if SplittingChar in lineSep[0]:
-                lineCheck = lineSep[0].upper().split(SplittingChar)[0]
-            else:
-                lineCheck = lineSep[0].upper()
-
-            varFound = ParamToChange.upper() == lineCheck
-
-        else:
-            varFound = False
-
-        # ~~~~~~ Modification if it has been found
-        if varFound:
-            # Cases that the TRANSP namelist may be picky about (in terms of spaces and comments)
-            if ParamToChange.lower() == "nshot" or "_pserve" in ParamToChange.lower():
-                if Value is None and NoneMeansRemove:
-                    line = ""
+    with open(fpath1, "r") as f1:
+        with open(fpath2, "w") as f2:
+            for line in f1:
+                lineSep = line.upper().split()
+                if len(lineSep) > 0:
+                    # Allowing for possibility that the '=' is not separated by spaces
+                    if SplittingChar in lineSep[0]:
+                        lineCheck = lineSep[0].upper().split(SplittingChar)[0]
+                    else:
+                        lineCheck = lineSep[0].upper()
+                    varFound = ParamToChange.upper() == lineCheck
                 else:
-                    line = f"{line.split(SplittingChar)[0]}{SplittingChar}{Value}\n"
+                    varFound = False
 
-            # General cases
-            else:
-                # Do I keep original comments?
-                possibleComment = ""
-                if CommentChar is not None and MaintainComments:
-                    try:
-                        if line.split(SplittingChar)[1].split()[1] == CommentChar:
+                # ~~~~~~ Modification if it has been found
+                if varFound:
+                    # Cases that the TRANSP namelist may be picky about (in terms of spaces and comments)
+                    if ParamToChange.lower() == "nshot" or "_pserve" in ParamToChange.lower():
+                        if Value is None and NoneMeansRemove:
+                            line = ""
+                        else:
+                            line = f"{line.split(SplittingChar)[0]}{SplittingChar}{Value}\n"
+
+                    # General cases
+                    else:
+                        # Do I keep original comments?
+                        possibleComment = ""
+                        if CommentChar is not None and MaintainComments:
                             try:
-                                possibleComment = " ".join(
-                                    line.split(SplittingChar)[1].split()[1:]
-                                ).split(AddTextToChangedParam)[0]
+                                if line.split(SplittingChar)[1].split()[1] == CommentChar:
+                                    try:
+                                        possibleComment = " ".join(
+                                            line.split(SplittingChar)[1].split()[1:]
+                                        ).split(AddTextToChangedParam)[0]
+                                    except:
+                                        possibleComment = " ".join(
+                                            line.split(SplittingChar)[1].split()[1:]
+                                        )
                             except:
-                                possibleComment = " ".join(
-                                    line.split(SplittingChar)[1].split()[1:]
-                                )
-                    except:
-                        pass
-                    AddTextToChangedParam = ""
+                                pass
+                            AddTextToChangedParam = ""
 
-                if Value is None and NoneMeansRemove:
-                    line = ""
-                else:
-                    line = "{0}{5}{1}{5}{2}{5}{3}{5}{4}\n".format(
-                        line.split(SplittingChar)[0],
-                        SplittingChar,
-                        Value,
-                        possibleComment,
-                        AddTextToChangedParam,
-                        separator_space,
-                    )
+                        if Value is None and NoneMeansRemove:
+                            line = ""
+                        else:
+                            line = "{0}{5}{1}{5}{2}{5}{3}{5}{4}\n".format(
+                                line.split(SplittingChar)[0],
+                                SplittingChar,
+                                Value,
+                                possibleComment,
+                                AddTextToChangedParam,
+                                separator_space,
+                            )
 
-            FoundAtLeastOnce = True
+                    FoundAtLeastOnce = True
 
-        f2.write(line)
+                f2.write(line)
 
-    f1.close()
-    f2.close()
-
-    os.rename(FilePath + "_new", FilePath)
+    fpath2.replace(fpath1)
 
     # If not found at least once, then write it, but make sure it is after the updates flag
     if not FoundAtLeastOnce and Value is not None:
@@ -1003,7 +998,7 @@ def changeValue(
             ParamToChange, SplittingChar, Value, extt, separator_space
         )
 
-        with open(FilePath, "r") as f:
+        with open(fpath1, "r") as f:
             lines = f.readlines()
         done, lines_n = False, ""
         for i in lines:
@@ -1013,7 +1008,7 @@ def changeValue(
             lines_n += i
         if not done:
             lines_n += lines_add
-        with open(FilePath, "w") as f:
+        with open(fpath1, "w") as f:
             f.write(lines_n)
     # ------------------
 
@@ -1028,7 +1023,7 @@ def changeValue(
         except:
             if TryAgain:
                 changeValue(
-                    FilePath,
+                    fpath1,
                     ParamToChange.upper(),
                     Value,
                     None,
@@ -1052,7 +1047,7 @@ def changeValue(
         except:
             if TryAgain:
                 InfoCommand = changeValue(
-                    FilePath,
+                    fpath1,
                     ParamToChange.upper(),
                     Value,
                     InfoCommand,
@@ -1069,6 +1064,8 @@ def changeValue(
 
 
 def writeQuickParams(folder, num=1):
+    fdir = Path(folder).expanduser()
+    fpath = fdir / f"params.in.{num}"
     txt = [
         "                                          1 variables",
         "                      1.000000000000000e+00 factor_ped_degr",
@@ -1078,35 +1075,34 @@ def writeQuickParams(folder, num=1):
         "                                          0 analysis_components",
         "                                          1 eval_id",
     ]
-
-    with open(folder + f"/params.in.{num}", "w") as f:
+    with open(fpath, "w") as f:
         f.write("\n".join(txt))
 
 
-def readValueinFile(file, variable, positionReturn=0):
-    f = open(file, "r")
+def readValueinFile(filename, variable, positionReturn=0):
+    fpath = Path(filename).expanduser()
+    with open(fpath, "r") as f:
 
-    for line in f:
-        if line.split()[1] == variable:
-            varAux = line.split()[positionReturn]
-            try:
-                var = float(varAux)
-            except:
-                var = varAux
+        for line in f:
+            if line.split()[1] == variable:
+                varAux = line.split()[positionReturn]
+                try:
+                    var = float(varAux)
+                except:
+                    var = varAux
 
-        # For the case of array (e.g. fast species)
-        elif line.split()[-1] == variable:
-            var = line.split()[positionReturn]
-            for i in range(len(line.split()) - positionReturn - 2):
-                var = var + line.split()[positionReturn + i + 1]
-
-    f.close()
+            # For the case of array (e.g. fast species)
+            elif line.split()[-1] == variable:
+                var = line.split()[positionReturn]
+                for i in range(len(line.split()) - positionReturn - 2):
+                    var = var + line.split()[positionReturn + i + 1]
 
     return var
 
 
 def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
-    with open(resespec, typeF) as outfile:
+    opath = Path(resespec).expanduser()
+    with open(opath, typeF) as outfile:
         if isnum(final_results):
             outfile.write(
                 f"{vartag:15s}: {final_results:1.15e},   {final_errors:1.15e}\n"
@@ -1116,7 +1112,8 @@ def writeresults(resespec, final_results, final_errors, vartag, typeF="a"):
 
 
 def readresults(fileresults):
-    with open(fileresults, "r") as outfile:
+    ipath = Path(fileresults).expanduser()
+    with open(ipath, "r") as outfile:
         aux = outfile.readlines()
 
     y, yE = [], []
@@ -1135,7 +1132,8 @@ def readresults(fileresults):
 
 
 def writeparams(x, fileparams, inputs, outputs, numEval):
-    with open(fileparams, "w") as outfile:
+    ofile = Path(fileparams).expanduser()
+    with open(ofile, "w") as outfile:
         outfile.write(
             f"                                          {len(inputs)} variables\n"
         )
@@ -1166,7 +1164,8 @@ class CaseInsensitiveDict(OrderedDict):
 
 
 def getLinesNamelist(filename, commentCommand, separator, boolLower=None):
-    with open(filename, "r") as f:
+    fpath = Path(filename).expanduser()
+    with open(fpath, "r") as f:
         allLines = f.readlines()
     allLines_clean = []
     for i in range(len(allLines)):
@@ -1316,7 +1315,7 @@ def false(par):
 def generateMITIMNamelist(
     orig, commentCommand="#", separator="=", WriteNew=None, caseInsensitive=True
 ):
-    orig = expandPath(orig)
+    origpath = Path(orig).expanduser()
 
     # Read values from namelist
 
@@ -1326,14 +1325,15 @@ def generateMITIMNamelist(
         boolLower = false
 
     allLines_clean = getLinesNamelist(
-        orig, commentCommand, separator, boolLower=boolLower
+        origpath, commentCommand, separator, boolLower=boolLower
     )
     dictParams = getDictionaryNamelist(
         allLines_clean, separator, caseInsensitive=caseInsensitive
     )
 
     if WriteNew is not None:
-        with open(WriteNew, "w") as f:
+        opath = Path(WriteNew).expanduser()
+        with open(opath, "w") as f:
             for i in dictParams:
                 f.write(i + "=" + str(dictParams[i]) + "\n")
 
@@ -1341,22 +1341,18 @@ def generateMITIMNamelist(
 
 
 def obtainGeneralParams(inputFile, resultsFile):
-    FolderEvaluation = "/".join(os.path.realpath(inputFile).split("/")[:-1]) + "/"
-
-    if FolderEvaluation[0] != "/":
-        FolderEvaluation = "/home/" + FolderEvaluation
+    ipath = Path(inputFile).expanduser()
+    rpath = Path(resultsFile).expanduser()
+    FolderEvaluation = ipath.parent if not ipath.is_dir() else ipath
 
     # In case
-    inputFile, resultsFile = inputFile.split("/")[-1], resultsFile.split("/")[-1]
+    iname = ipath.name
+    rname = rpath.name
 
-    numDakota = inputFile.split(".")[2]
+    numDakota = iname.split(".")[2]
 
-    inputFilePath, outputFilePath = (
-        FolderEvaluation + inputFile,
-        FolderEvaluation + resultsFile,
-    )
-
-    return FolderEvaluation, numDakota, inputFilePath, outputFilePath
+    #return f"{FolderEvaluation}", numDakota, f"{ipath}", f"{rpath}"
+    return FolderEvaluation, numDakota, ipath, rpath
 
 
 def isNumber(val):
@@ -1378,61 +1374,26 @@ def ArrayToString(ll):
     return ",".join(nn)
 
 
-def expandPath(txt, fixSpaces=False, ensurePathValid=False):
-    while txt[-2:] == "//":
-        txt = txt[:-1]
-
-    if txt[0] == ".":
-        if (len(txt) == 1) or (len(txt) == 2 and txt[-1] == "/"):
-            txt = os.path.realpath(txt) + "/"
-        else:
-            txt = os.path.realpath(txt)
-
-    if ensurePathValid and (txt[0] not in ["~", "/"]):
-        txt = os.path.realpath("./" + txt + "/")
-
-    pathn = os.path.expanduser(os.path.expandvars(txt))
-
-    if fixSpaces:
-        pathn = pathn.replace(" ", r"\ ")
-        pathn = pathn.replace("(", r"\(")
-        pathn = pathn.replace(")", r"\)")
-
-    return pathn
+def expandPath(path, fixSpaces=False, ensurePathValid=False):
+    npath = Path(os.path.expandvars(path)).expanduser()
+    if ensurePathValid:
+        assert npath.exists()
+    return npath.resolve() if npath.exists() else npath # To cover cases in which the path is an environment variable that does not exist as file/dir
 
 
-def cleanPath(txt, isItFile=False):
-    txt = expandPath(txt, ensurePathValid=True).split("/")
-    aux = []
-    for i in txt:
-        if len(i) > 0:
-            aux.append(i)
-
-    txt = "/".join(aux) + "/"
-
-    if txt[0] != "/":
-        txt = "/" + txt
-
-    if not isItFile and txt[-1] != "/":
-        txt = txt + "/"
-    if isItFile and txt[-1] == "/":
-        txt = txt[:-1]
-
-    return txt
-
-
-def reducePathLevel(txt, level=1, isItFile=False):
-    txt = cleanPath(txt, isItFile=isItFile)
-    if isItFile:
-        level += -1
-
-    sep1 = "/".join(txt.split("/")[: -(level + 1)]) + "/"
-    sep2 = txt.split("/".join(txt.split("/")[: -(level + 1)]))[-1][1:]
-
-    if not isItFile and sep2[-1] == "/":
-        sep2 = sep2[:-1]
-
-    return sep1, sep2
+def reducePathLevel(path, level=1, isItFile=False):
+    npath = Path(path).expanduser()
+    npath_before = npath
+    if len(npath.parents) > level:
+        npath_before = npath.parents[level - 1]
+    #path_before = f"{npath_before}"
+    #if level > 0:
+    #    path_before += "/"
+    #path_after = f"{npath}"
+    #if path_before in path_after:
+    #    path_after = path_after.replace(path_before, "")
+    #return path_before, path_after
+    return npath_before, npath.relative_to(npath_before)
 
 
 def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
@@ -1440,7 +1401,8 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
     Method to parse p-files for pedestal modeling.
     sciortino, 2020
     """
-    with open(filepath, "r") as f:
+    fpath = Path(filepath).expanduser()
+    with open(fpath, "r") as f:
         contents = f.readlines()
 
     # find end of header
@@ -1508,98 +1470,6 @@ def read_pfile(filepath="./JWH_pedestal_profiles.p", plot=False):
 
     return psin, ne, dnedpsi, Te, dTedpsi, ni, dnidpsi, Ti, dTidpsi, fig, ax
 
-'''
-Log file utilities
---------------------------------
-chatGPT 4o as of 08/18/2024
-'''
-
-@contextlib.contextmanager
-def conditional_log_to_file(log_file=None, msg=None):
-
-    # Check if sys.stdout and sys.stderr have valid file descriptors (e.g. already inside a log!)
-    try:
-        sys.stdout.fileno()
-        sys.stderr.fileno()
-        fileno_supported = True
-    except AttributeError:
-        fileno_supported = False
-
-    if log_file is not None and fileno_supported:
-        with log_to_file(log_file, msg) as logger:
-            yield logger
-    else:
-        if msg:
-            print(msg)  # Optionally print the message even if not logging to file
-        yield None  # Simply pass through without logging
-
-def strip_ansi_codes(text):
-    if not isinstance(text, (str, bytes)):
-        text = str(text)  # Convert non-string types to string
-    # Strip ANSI escape codes
-    ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
-    return ansi_escape.sub("", text)
-
-class log_to_file:
-    def __init__(self, log_file, msg=None):
-        if msg is not None:
-            print(msg)
-        self.log_file = log_file
-        self.stdout = sys.stdout
-        self.stderr = sys.stderr
-
-    def __enter__(self):
-        self.log = open(self.log_file, 'a')
-        self.stdout_fd = sys.stdout.fileno()
-        self.stderr_fd = sys.stderr.fileno()
-
-        # Save the actual stdout (1) and stderr (2) file descriptors.
-        self.saved_stdout_fd = os.dup(self.stdout_fd)
-        self.saved_stderr_fd = os.dup(self.stderr_fd)
-
-        # Redirect stdout and stderr to the log file.
-        os.dup2(self.log.fileno(), self.stdout_fd)
-        os.dup2(self.log.fileno(), self.stderr_fd)
-
-        # Redirect Python's sys.stdout and sys.stderr to the log file.
-        sys.stdout = self
-        sys.stderr = self
-
-        # Redirect warnings to the log file
-        logging_handler = lambda message, category, filename, lineno, file=None, line=None: \
-            self.log.write(f"{category.__name__}: {strip_ansi_codes(message)}\n")
-        warnings.showwarning = logging_handler
-
-    def write(self, message):
-        # Remove ANSI codes from the message before writing to the log
-        clean_message = strip_ansi_codes(message)
-        self.log.write(clean_message)
-        self.log.flush()  # Ensure each write is immediately flushed
-
-    def flush(self):
-        # Ensure sys.stdout and sys.stderr are flushed
-        self.log.flush()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Flush and restore Python's sys.stdout and sys.stderr
-        sys.stdout.flush()
-        sys.stderr.flush()
-        sys.stdout = self.stdout
-        sys.stderr = self.stderr
-
-        # Restore the original file descriptors for stdout and stderr
-        os.dup2(self.saved_stdout_fd, self.stdout_fd)
-        os.dup2(self.saved_stderr_fd, self.stderr_fd)
-
-        # Close the duplicate file descriptors
-        os.close(self.saved_stdout_fd)
-        os.close(self.saved_stderr_fd)
-
-        # Close the log file
-        self.log.close()
-
-        # Restore the original warnings behavior
-        warnings.showwarning = warnings._showwarning_orig
 
 """
 This HDF5 tool was originally designed by A.J. Creely, but modifications 
@@ -1614,7 +1484,11 @@ Example use:
 
 class hdf5figurefile(object):
     def __init__(self, filename):
-        self.fig = h5py.File(filename + ".hdf5", "w")
+        fname = str(filename)
+        if not fname.endswith(".hdf5"):
+            fname += ".hdf5"
+        self.fpath = Path(fname).expanduser()
+        self.fig = h5py.File(self.fpath, "w")
 
     def makeHDF5group(
         self,
@@ -1758,41 +1632,245 @@ class hdf5figurefile(object):
 
 
 def axesToHDF5(axesarray_dict, filename="dataset1", check=True):
-    h5file = hdf5figurefile(filename)
+    fname = filename
+    if not fname.endswith(".hdf5"):
+        fname += ".hdf5"
+    fpath = Path(fname).expanduser()
+    h5file = hdf5figurefile(fpath)
 
     for ikey in axesarray_dict:
         name = ikey
         ax = axesarray_dict[name]
         h5file.subplotToHDF5(ax, name=name)
 
-    print(" --> Written " + filename)
+    print(f" --> Written {h5file.fpath}")
 
     if check:
         # Check
-        f = h5py.File(filename + ".hdf5", "r")
+        f = h5py.File(fpath, "r")
         for ikey in f.keys():
             print(np.array(f["a"]["Data0"]["XData"]))
 
-# chatGPT 4o (08/18/2024)
-def string_to_sequential_5_digit_number(input_string):
-    # Split the input string into the base and the numeric suffix
-    base_part = input_string[:-1]
-    try:
-        sequence_digit = int(input_string[-1])
-    except ValueError:
-        sequence_digit = 0
 
-    # Create a hash of the base part using SHA-256
-    hash_object = hashlib.sha256(base_part.encode())
+# chatGPT 4o (08/31/2024)
+def string_to_sequential_number(input_string, num_digits=5): #TODO: Create a better convertor from path to number to avoid clashes in scratch
+    # Separate the last character and base part
+    base_part = input_string[:-1]
+    last_char = input_string[-1]
+    
+    # If the last character is a digit, use it as the sequence number
+    sequence_digit = int(last_char) if last_char.isdigit() else 0
+
+    # Combine the base part and the sequence digit
+    combined_string = f"{base_part}{sequence_digit}"
+    
+    # Create a hash of the combined string using SHA-256
+    hash_object = hashlib.sha256(combined_string.encode())
     
     # Convert the hash to an integer
     hash_int = int(hash_object.hexdigest(), 16)
     
-    # Take the hash modulo 10,000 to get a 4-digit number
-    four_digit_number = hash_int % 10000
+    # Mod the hash to get a number with the desired number of digits
+    mod_value = 10**num_digits
+    final_number = hash_int % mod_value
     
-    # Combine the 4-digit hash with the sequence digit to get a 5-digit number
-    five_digit_number = (four_digit_number * 10) + sequence_digit
+    # Format the number to ensure it has exactly `num_digits` digits
+    return f'{final_number:0{num_digits}d}'
+
+def path_overlapping(nameScratch, append_folder_local, hash_length=20):
+    '''
+    (chatGPT 4o help)
+    This function is used to avoid overlapping of paths in scratch.
+    It generates a unique folder name by appending a hashed representation
+    of the input folder path to a base name.
+    '''
+
+    # Convert the append_folder_local path to a string and encode it in UTF-8,
+    # then generate a SHA-256 hash. This ensures a unique, deterministic hash
+    # value for the folder path.
+    hash_object = hashlib.sha256(str(append_folder_local).encode('utf-8'))
+
+    # Convert the hash object into a hexadecimal string and truncate it to
+    # the first 20 characters. This creates a compact, unique identifier for
+    # the folder path while reducing the risk of collision.
+    unique_hash = hash_object.hexdigest()[:hash_length]
     
-    # Ensure it's always 5 digits by adding leading zeros if necessary
-    return f'{five_digit_number:05d}'
+    # Combine the base name (nameScratch) with the unique hash to create the
+    # final folder name. This ensures the folder is identifiable and unique
+    # across different runs or processes.
+    nameScratch_full = f"{nameScratch}_{unique_hash}"
+
+    return nameScratch_full
+
+
+def print_machine_info(output_file=None):
+
+    info_lines = []
+
+    # System Information
+    info_lines.append("=== System Information ===")
+    info_lines.append(f"System: {platform.system()}")
+    info_lines.append(f"Node Name: {platform.node()}")
+    info_lines.append(f"Release: {platform.release()}")
+    info_lines.append(f"Version: {platform.version()}")
+    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"Processor: {platform.processor()}")
+
+    # CPU Information
+    info_lines.append("\n=== CPU Information ===")
+    logical_cpus = os.cpu_count()
+    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
+
+    # Attempt to get CPU frequency (limited without external packages)
+    try:
+        if platform.system() == "Windows":
+            import subprocess
+            cmd = 'wmic cpu get MaxClockSpeed'
+            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+            info_lines.append(f"Max Frequency: {max_freq} MHz")
+        elif platform.system() == "Linux":
+            with open('/proc/cpuinfo') as f:
+                cpuinfo = f.read()
+            import re
+            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
+            if matches:
+                current_freq = matches[0]
+                info_lines.append(f"Current Frequency: {current_freq} MHz")
+        else:
+            info_lines.append("CPU Frequency information not available.")
+    except Exception as e:
+        info_lines.append("Error retrieving CPU Frequency information.")
+
+    # PyTorch CPU Information
+    info_lines.append("\n=== PyTorch Information ===")
+    num_threads = torch.get_num_threads()
+    num_interop_threads = torch.get_num_interop_threads()
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled = getattr(torch.backends, 'mkl', None)
+
+    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
+    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
+    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
+    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # Output to screen or file
+    output = '\n'.join(info_lines)
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(output)
+    else:
+        print(output)
+
+
+def monitor_resources(pid, log_file="resource_log.txt", interval=1):
+
+    # Include machine info
+    print_machine_info(output_file=log_file)
+
+    process = psutil.Process(pid)
+    start_time = time.time()  # Record the start time of logging
+    
+    with open(log_file, "a") as log:
+        # Write header with proper column alignment
+        log.write(f"Monitoring resources for PID: {pid}\n")
+        log.write(
+            f"{'Timestamp':<20} {'Elapsed Time (s)':<18} {'Memory (GB)':<12} "
+            f"{'CPU (%)':<8} {'Threads':<10} {'Open Files':<12} {'IO Read (MB)':<15} {'IO Write (MB)':<15}\n"
+        )
+        log.write("=" * 100 + "\n")  # Add a separator line for clarity
+        try:
+            while True:
+                current_time = time.time()
+                elapsed_time = current_time - start_time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(current_time))
+
+                # Gather metrics
+                memory_info = process.memory_info()
+                cpu_percent = process.cpu_percent(interval=interval)
+                num_threads = process.num_threads()
+                open_files = len(process.open_files())
+                
+                # Safely handle io_counters
+                try:
+                    io_counters = process.io_counters()
+                    read_bytes = io_counters.read_bytes / 1e6  # Convert to MB
+                    write_bytes = io_counters.write_bytes / 1e6  # Convert to MB
+                except AttributeError:
+                    read_bytes = write_bytes = 0.0  # Fallback values
+                
+                # Format and write log entry
+                log_entry = (
+                    f"{timestamp:<20} {elapsed_time:<18.2f} {memory_info.rss / 1e9:<12.2f} "
+                    f"{cpu_percent:<8.2f} {num_threads:<10} {open_files:<12} {read_bytes:<15.2f} {write_bytes:<15.2f}\n"
+                )
+                log.write(log_entry)
+                log.flush()  # Ensure logs are updated in real-time
+        except (psutil.NoSuchProcess, KeyboardInterrupt):
+            log.write("Monitoring stopped.\n")
+            print("Monitoring stopped.")
+
+def plot_metrics(log_file="resource_log.txt", output_image="resource_metrics.png"):
+    
+    column_names = [
+        "Timestamp", "ElapsedTime", "MemoryGB", "CPUPercent", 
+        "Threads", "OpenFiles", "IOReadMB", "IOWriteMB"
+    ]
+
+    data = pd.read_csv(
+        log_file,
+        sep=r"\s\s+",
+        skiprows=2,  # Skip the first two header lines
+        names=column_names,
+        parse_dates=["Timestamp"],  # Automatically parse Timestamp
+        on_bad_lines="skip",  # Skip malformed lines
+    )
+
+    # Clean the data
+    # Replace non-numeric or NaN values with 0 or a suitable default
+    for col in column_names[1:]:  # Skip Timestamp
+        data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+
+    # Create a figure with subplots
+    plt.ion()
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(15, 10))
+
+    # Define metrics and labels
+    metrics = [
+        ("MemoryGB", "Memory Usage (GB)"),
+        ("CPUPercent", "CPU Usage (%)"),
+        ("Threads", "Threads"),
+        ("OpenFiles", "Open Files"),
+        ("IOReadMB", "IO Read (MB)"),
+        ("IOWriteMB", "IO Write (MB)"),
+    ]
+
+    # Plot each metric
+    for ax, (metric, label) in zip(axes.flat, metrics):
+        ax.plot(data["ElapsedTime"], data[metric], marker="o", linestyle="-",markersize=0.5)
+        ax.set_ylabel(label)
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel("Elapsed Time (s)")
+        GRAPHICStools.addDenseAxis(ax)
+
+    plt.tight_layout()
+
+def shutil_rmtree(item):
+    '''
+    Removal of folders may fail because of a "Directory not empty" error, 
+    even if the files were properly removed. This is because of potential syncronization
+    or back-up processes that may be running in the background in some file systems.
+    Temporary solution for now is to use the shutil.rmtree function with a try-except block,
+    one that waits a second and one that just renames the folder to a temporary name.
+    '''
+
+    try:
+        shutil.rmtree(item)
+    except OSError:
+        time.sleep(1)
+        try:
+            shutil.rmtree(item)
+        except OSError:
+            new_item = item.with_name(item.name + "_cannotrm")
+            shutil.move(item, new_item)
+            print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')

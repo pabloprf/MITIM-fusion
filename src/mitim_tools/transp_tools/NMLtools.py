@@ -1,8 +1,9 @@
 import os
+from pathlib import Path
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
@@ -40,11 +41,11 @@ class transp_nml:
         timings = {}
         ):
 
-        self.inputdir = inputdir
+        self.inputdir = IOtools.expandPath(inputdir) if isinstance(inputdir, (str, Path)) else None
         self.shotnum = shotnum
 
-        if self.inputdir is not None and not os.path.exists(self.inputdir):
-            os.makedirs(self.inputdir)
+        if self.inputdir is not None and not self.inputdir.exists():
+            self.inputdir.mkdir(parents=True, exist_ok=True)
 
         # Until machine is defined, these are None
         self.ICRFantennas = None
@@ -146,6 +147,7 @@ class transp_nml:
 
         self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
+        self.dtCurrentDiffusion_ms = transp_params.get("dtCurrentDiffusion_ms",2.0)
         self.dtOut_ms = transp_params.get("dtOut_ms",1)
         self.dtIn_ms = transp_params.get("dtIn_ms",1)
         self.nzones = transp_params.get("nzones",100)
@@ -258,17 +260,17 @@ class transp_nml:
             "!----- Temporal resolution",
             "",
             "! * Geometry (MHD equilibrium)",
-            f"dtming = {1.0e-5}  ! Minimum timestep",
+            f"dtming = {1.0e-5}  ! Minimum timestep (default 1.0e-5)",
             f"dtmaxg = {self.dtEquilMax_ms*1E-3}  ! Maximum timestep (default 1.0e-2)",
             "",
-            "! * Particle and energy balance (transport)",
+            "! * Transport analysis (particle and energy balance)",
             f"dtinit = {1.0e-3}  ! Initial timestep (default 1.0e-3)",
             f"dtmint = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
             f"dtmaxt = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
             "",
             "! * Poloidal field diffusion",
             f"dtminb = {1.0e-7}  ! Minimum timestep (default 1.0e-7)",
-            f"dtmaxb = {2.0e-3}  ! Maximum timestep (default 2.0e-3)",
+            f"dtmaxb = {self.dtCurrentDiffusion_ms*1E-3}  ! Maximum timestep (default 2.0e-3)",
             "",
             "! * Heating and current drive",
             f"dticrf = {self.dtHeating_ms*1E-3} ! Timestep step for ICRF/TORIC (default 5.0e-3)",
@@ -965,32 +967,32 @@ class transp_nml:
 
         if self.Pich and 'rfp' not in self.Ufiles:
             lines = [
-                'preRFP	 = "PRF"',
+                'preRFP	 = "MIT"',
                 'extRFP	 = "RFP"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         if self.Pech:
             lines = [
-                'preECP	 = "PRF"',
+                'preECP	 = "MIT"',
                 'extECP	 = "ECH"',
-                'preECA	 = "PRF"',
+                'preECA	 = "MIT"',
                 'extECA	 = "THE"',
-                'preECB	 = "PRF"',
+                'preECB	 = "MIT"',
                 'extECB	 = "PHI"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         if self.Pnbi:
             lines = [
-                'preNB2	 = "PRF"',
+                'preNB2	 = "MIT"',
                 'extNB2	 = "NB2"',
             ]
             self.contents += "\n".join(lines) + "\n"
 
         for i in self.Ufiles:
             lines = [
-                f'pre{i}	 = "PRF" ',
+                f'pre{i}	 = "MIT" ',
                 f'ext{i}	 = "{self.Ufiles[i][0]}"',
                 "",
             ]
@@ -1400,34 +1402,35 @@ class transp_nml:
     def write(self, runid = 'Z99', file = None):
 
         if file is not None:
-            self.file = file
-            self.inputdir = os.path.dirname(file)
+            self.file = IOtools.expandPath(file)
+            self.inputdir = file.parent
         else:
-            self.file = f"{self.inputdir}/{self.shotnum}{runid}TR.DAT"
+            self.file = self.inputdir / f"{self.shotnum}{runid}TR.DAT"
 
         print(f"\t- Writing main namelist to {IOtools.clipstr(self.file)}")
-        with open(self.file, "w") as file:
-            file.write(self.contents)
+        with open(self.file, "w") as f:
+            f.write(self.contents)
 
         if self.contents_ptr_ptsolver is not None:
             print(f"\t- Writing PT_SOLVER namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/ptsolver_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_ptsolver)
+            with open(self.inputdir / "ptsolver_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_ptsolver)
         if self.contents_ptr_glf23 is not None:
             print(f"\t- Writing GLF23 namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/glf23_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_glf23)
+            with open(self.inputdir / f"glf23_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_glf23)
         if self.contents_ptr_tglf is not None:
             print(f"\t- Writing TGLF namelist to {IOtools.clipstr(self.file)}")
-            with open(f"{self.inputdir}/tglf_namelist.dat", "w") as file:
-                file.write(self.contents_ptr_tglf)
+            with open(self.inputdir / f"tglf_namelist.dat", "w") as f:
+                f.write(self.contents_ptr_tglf)
 
 def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
     '''
     This ensures that the folders are adapted to the, e.g., remote execution setup
     '''
+    # FolderRun should be a string since it represents the remote server
 
-    nml_file = f"{FolderTRANSP}/{runid}TR.DAT"
+    nml_file = IOtools.expandPath(FolderTRANSP) / f"{runid}TR.DAT"
 
     # Change inputdir
     IOtools.changeValue(
@@ -1444,7 +1447,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "pt_template",
-            f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/ptsolver_namelist.dat'",
+            f"'{FolderRun}/ptsolver_namelist.dat'",
             [""],
             "=",
             CommentChar=None,
@@ -1458,7 +1462,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "tglf_template",
-            f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/tglf_namelist.dat'",
+            f"'{FolderRun}/tglf_namelist.dat'",
             [""],
             "=",
             CommentChar=None,
@@ -1472,7 +1477,8 @@ def adaptNML(FolderTRANSP, runid, shotnumber, FolderRun):
         IOtools.changeValue(
             nml_file,
             "glf23_template",
-            f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
+            #f"'{os.path.abspath(FolderRun)}/glf23_namelist.dat'",
+            f"'{FolderRun}/glf23_namelist.dat'",
             [""],
             "=",
             CommentChar=None,

@@ -9,7 +9,7 @@ from IPython import embed
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.transp_tools.utils import toric_tools_JCW as toric_tools
 from scipy.interpolate import griddata
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 def getTORICfromTRANSP(folderWork, nameRunid):
@@ -18,12 +18,13 @@ def getTORICfromTRANSP(folderWork, nameRunid):
     torics = []
     cdf_FI = None
 
-    nameICRF = f"{folderWork}/TORIC_folder/{nameRunid}_ICRF_TAR.GZ1"
+    folderWork = IOtools.expandPath(folderWork)
+    nameICRF = folderWork / "TORIC_folder" / f"{nameRunid}_ICRF_TAR.GZ1"
 
-    print(f"\t\t- Looking for TORIC_folder/{nameRunid}_ICRF_TAR.GZ1 file...")
-    if os.path.exists(nameICRF):
+    print(f"\t\t- Looking for {nameICRF.relative_to(folderWork)} file...")
+    if nameICRF.exists():
         folder = convertToReadable(
-            nameICRF, folderWork=folderWork, checkExtension="ncdf"
+            nameICRF, checkExtension="ncdf"
         )
 
         # check maximum of 10 antennas
@@ -42,44 +43,42 @@ def getTORICfromTRANSP(folderWork, nameRunid):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~~~~ FI
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    nameFI = f"{folderWork}/FI_folder/{nameRunid}_FI_TAR.GZ1"
+    nameFI = folderWork / "FI_folder" / f"{nameRunid}_FI_TAR.GZ1"
 
-    print(f"\t\t- Looking for FI_folder/{nameRunid}_FI_TAR.GZ1 file...")
-    if os.path.exists(nameFI):
+    print(f"\t\t- Looking for {nameFI.relative_to(folderWork)} file...")
+    if nameFI.exists():
         folder_FI = convertToReadable(
-            nameFI, folderWork=folderWork, checkExtension="cdf"
+            nameFI, checkExtension="cdf"
         )
 
-        fileN_FI = folder_FI.replace("\\", "") + f"{nameRunid}_fpp_curstate.cdf"
-
+        fileN_FI = folder_FI /  f"{nameRunid}_fpp_curstate.cdf"
         cdf_FI = netCDF4.Dataset(fileN_FI).variables
 
-        print(f"\t\t\t- FI file found")
+        print("\t\t\t- FI file found")
 
     else:
-        print(f"\t\t\t- FI file not found", typeMsg="w")
+        print("\t\t\t- FI file not found", typeMsg="w")
 
     return torics, cdf_FI
 
 
 class toricCDF:
     def __init__(self, folderWorkN, antenna="A1"):
+        folderWorkN = IOtools.expandPath(folderWorkN)
         numTOR = IOtools.findFileByExtension(
             folderWorkN, "_toric.ncdf", ForceFirst=True
         )
 
-        name, _, numTOR = numTOR.split("_")
+        name, _, numTOR = f'{numTOR.name}'.replace("_toric.ncdf","").split("_")
 
-        fileN = folderWorkN.replace("\\", "") + f"{name}_{antenna}_{numTOR}_toric.ncdf"
-        fileN_msg = (
-            folderWorkN.replace("\\", "") + f"{name}_{antenna}_{numTOR}_toric5.msgs"
-        )
+        fileN = folderWorkN / f"{name}_{antenna}_{numTOR}_toric.ncdf"
+        fileN_msg = folderWorkN / f"{name}_{antenna}_{numTOR}_toric5.msgs"
 
         self.simulation = None
-        if os.path.exists(fileN):
-            print(f"\t\t- Reading toric file {fileN[np.max([-40,-len(fileN)]):]}")
+        if fileN.exists():
+            print(f"\t\t- Reading toric file {IOtools.clipstr(fileN)}")
             self.simulation = toric_tools.toric_analysis(
-                fileN, mode="ICRF", layout="paper"
+                f'{fileN}', mode="ICRF", layout="paper"
             )
 
             self.cdf = netCDF4.Dataset(fileN).variables
@@ -651,12 +650,9 @@ def whatIon(Z, A, T, n, thresholdT=50, thresholdn=1e5):
         embed()
 
 
-def convertToReadable(tarfile, folderWork="~/scratch/", checkExtension="ncdf"):
-    tarfile = IOtools.expandPath(tarfile)
-    tarfileC = IOtools.expandPath(tarfile, fixSpaces=True)
+def convertToReadable(tarfile_full, checkExtension="ncdf"):
 
-    foldertar, _ = IOtools.getLocInfo(tarfile)
-    foldertarC = IOtools.expandPath(foldertar, fixSpaces=True)
+    foldertar, tarfile = IOtools.getLocInfo(tarfile_full, with_extension=True)
 
     try:
         ncdf_exists = IOtools.findFileByExtension(foldertar, checkExtension) is not None
@@ -667,17 +663,8 @@ def convertToReadable(tarfile, folderWork="~/scratch/", checkExtension="ncdf"):
         print(
             f"\t\t- There is not a TORIC ncdf in {foldertar}, I need to extract the tar file first"
         )
-
-        folderWork = IOtools.expandPath(folderWork)
-
-        IOtools.askNewFolder(folderWork + "/toricAC/", force=True)
-
-        os.system(f"cp {tarfileC} {folderWork}/toricAC/.")
-        tarfile = tarfile.split("/")[-1]
-        os.system(f"cd {folderWork}/toricAC/ && tar -xvf {tarfile}")
-
-        os.system(f"cp {folderWork}/toricAC/* {foldertarC}/.")
-
-        print(f"\t\t\t* Extracted! copy files from scratch workspace to {foldertar}")
+        os.chdir(foldertar)
+        os.system(f"tar -xvf {tarfile}")
+        print("\t\t\t* Extracted!")
 
     return foldertar

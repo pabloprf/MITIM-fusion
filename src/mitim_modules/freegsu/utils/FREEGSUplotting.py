@@ -11,14 +11,14 @@ from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools
 from mitim_tools.misc_tools import IOtools
 
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 from IPython import embed
 
 
 def writeResults(
     whereOutput,
-    prfs,
+    mitims,
     metrics,
     function_parameters,
     divPlate=None,
@@ -29,11 +29,11 @@ def writeResults(
     params=None,
     fn=None,
 ):
-    if not os.path.exists(whereOutput):
+    if not whereOutput.exists():
         IOtools.askNewFolder(whereOutput, force=False, move=None)
 
-    metrics["prfs"], metrics["params"], metrics["function_parameters"] = (
-        prfs,
+    metrics["mitims"], metrics["params"], metrics["function_parameters"] = (
+        mitims,
         params,
         function_parameters,
     )
@@ -42,7 +42,7 @@ def writeResults(
     filename = "Summary"
     writeTable(
         metrics,
-        f"{whereOutput}/{filename}.xlsx",
+        whereOutput / f"{filename}.xlsx",
         metrics["params"]["times"],
         divPlate=divPlate,
         strikes=strikes,
@@ -50,29 +50,29 @@ def writeResults(
     )
 
     # ------------- Write g-files
-    gs = write_gfiles(prfs, whereOutput)
+    gs = write_gfiles(mitims, whereOutput)
 
     if plotGs:
         axs, fn = GEQplotting.compareGeqdsk(gs, fn=fn, plotAll=True, labelsGs=None)
 
     # ------------- Pickles
-    file = f"{whereOutput}/{namePkl}.pkl"
+    file = whereOutput / f"{namePkl}.pkl"
     try:
         with open(file, "wb") as handle:
-            pickle.dump(metrics, handle, protocol=2)
+            pickle.dump(metrics, handle, protocol=4)
     except:
-        for i in range(len(prfs)):
-            del metrics["prfs"][i].sweep.eq
-            del metrics["prfs"][i].sweep.profiles.eq
+        for i in range(len(mitims)):
+            del metrics["mitims"][i].sweep.eq
+            del metrics["mitims"][i].sweep.profiles.eq
         with open(file, "wb") as handle:
-            pickle.dump(metrics["prfs"][i].sweep, handle, protocol=2)
+            pickle.dump(metrics["mitims"][i].sweep, handle, protocol=4)
 
     return gs
 
 
 def plotAllEquilibria(
     ax,
-    prf_classes,
+    mitim_classes,
     ProblemExtras,
     legYN=True,
     extralab="",
@@ -94,25 +94,25 @@ def plotAllEquilibria(
         cols = colors
     cols = cols[startcol:]
 
-    if type(prf_classes) != list:
-        prf_classes = [prf_classes]
+    if type(mitim_classes) != list:
+        mitim_classes = [mitim_classes]
 
     zorderBase = 0
 
     if plotLIM:
-        prf_classes[0].lim.plot(ax)
+        mitim_classes[0].lim.plot(ax)
     if plotDIV:
-        prf_classes[0].div.plot(ax, color=cols[0])
+        mitim_classes[0].div.plot(ax, color=cols[0])
 
     colorsChosen = []
-    for cont, prf in enumerate(prf_classes):
+    for cont, prf in enumerate(mitim_classes):
         if limitContours:
-            limitPatch = [prf.lim.limRZ, prf.sweep.Rgrid, prf.sweep.Zgrid]
+            limitPatch = [mitim = lim.limRZ, mitim = sweep.Rgrid, mitim = sweep.Zgrid]
         else:
             limitPatch = None
 
         colorsChosen.append(cols[cont])
-        prf.sweep.plot(
+        mitim = sweep.plot(
             ax,
             color=cols[cont],
             onlySeparatrix=onlySeparatrix,
@@ -149,7 +149,7 @@ def plotAllEquilibria(
 
 
 def plotResult(
-    prf_classes,
+    mitim_classes,
     metrics,
     Constraints,
     figs=None,
@@ -202,24 +202,24 @@ def plotResult(
         fig1.add_subplot(grid[1, 2]),
     ]
 
-    if prf_classes is not None:
+    if mitim_classes is not None:
         plotAllEquilibria(
             ax1,
-            prf_classes,
+            mitim_classes,
             ProblemExtras,
             limitContours=limitContours,
             onlySeparatrix=True,
             plotSOL=False,
         )
 
-    if prf_classes is not None:
-        plotCoils_organized(axs2, prf_classes, metrics, coils_orig=coils_orig, kA=True)
+    if mitim_classes is not None:
+        plotCoils_organized(axs2, mitim_classes, metrics, coils_orig=coils_orig, kA=True)
 
     grid = plt.GridSpec(nrows=1, ncols=1, hspace=0.3, wspace=0.4)
     ax1 = figMach.add_subplot(grid[0, 0])
-    if prf_classes is not None:
-        for i in range(len(prf_classes)):
-            prf_classes[i].plot(ax=ax1, colorContours=cols[i])
+    if mitim_classes is not None:
+        for i in range(len(mitim_classes)):
+            mitim_classes[i].plot(ax=ax1, colorContours=cols[i])
 
     cm_span = 0.1
     m_span = cm_span * 1e-2
@@ -245,7 +245,7 @@ def plotResult(
     ]
 
     color = cols[cont]
-    plotMetricsPRFS(
+    plotMetricsmitims(
         axs,
         metrics,
         color=color,
@@ -265,8 +265,8 @@ def plotResult(
         fig3.add_subplot(grid[1, 1]),
     ]
 
-    if prf_classes is not None:
-        plotCoils_organized(axs, prf_classes, metrics, relativeToMin=True)
+    if mitim_classes is not None:
+        plotCoils_organized(axs, mitim_classes, metrics, relativeToMin=True)
 
     try:
         ax = fig3.add_subplot(grid[0, 2])
@@ -314,14 +314,14 @@ def plotResult(
     ax12 = figP.add_subplot(grid[1, 3])
     ax13 = figP.add_subplot(grid[1, 4])
 
-    if prf_classes is not None:
-        for cont, prf in enumerate(prf_classes):
-            psinorm = prf.profiles["psinorm"]
-            q = prf.profiles["qpsi"]
+    if mitim_classes is not None:
+        for cont, prf in enumerate(mitim_classes):
+            psinorm = mitim = profiles["psinorm"]
+            q = mitim = profiles["qpsi"]
             ax00.plot(psinorm, q, lw=2, ls="-", color=cols[cont], label=f"#{cont}")
-            pres = prf.profiles["pres"]
+            pres = mitim = profiles["pres"]
             ax01.plot(psinorm, pres, lw=2, ls="-", color=cols[cont], label=f"#{cont}")
-            fpol = prf.profiles["fpol"]
+            fpol = mitim = profiles["fpol"]
             ax01l.plot(
                 psinorm,
                 fpol,
@@ -330,7 +330,7 @@ def plotResult(
                 color=cols[cont],
                 label=f"#{cont}",
             )
-            pprime = prf.profiles["pprime"]
+            pprime = mitim = profiles["pprime"]
             ax10.plot(
                 psinorm,
                 pprime,
@@ -339,7 +339,7 @@ def plotResult(
                 color=cols[cont],
                 label=f"#{cont}",
             )
-            ffprime = prf.profiles["ffprime"] / (4 * np.pi * 1e-7)
+            ffprime = mitim = profiles["ffprime"] / (4 * np.pi * 1e-7)
             ax10p.plot(
                 psinorm, ffprime, lw=2, ls="-", color=cols[cont]
             )  # ,label='#{0}'.format(cont))
@@ -398,9 +398,9 @@ def plotResult(
     ax.set_ylim([0, 10])
 
     ax = ax13
-    for i in range(len(prf_classes)):
+    for i in range(len(mitim_classes)):
         ax.plot(
-            prf_classes[i].sweep.psiEvolution_rel, "-o", c=cols[i], lw=2, markersize=3
+            mitim_classes[i].sweep.psiEvolution_rel, "-o", c=cols[i], lw=2, markersize=3
         )
 
     ax.axhline(y=1e-4, lw=0.5, ls="--", c="k")
@@ -475,10 +475,10 @@ def plotResult(
         # except: print('could not plot powers')
 
         ax = axsM[-2]
-        if prf_classes is not None:
+        if mitim_classes is not None:
             plotAllEquilibria(
                 ax,
-                prf_classes,
+                mitim_classes,
                 ProblemExtras,
                 limitContours=False,
                 onlySeparatrix=True,
@@ -503,7 +503,7 @@ def plotResult(
 
     try:
         plotShapingComparison(
-            prf_classes,
+            mitim_classes,
             metrics,
             fig=figRes,
             ParamsAll=ParamsAll,
@@ -513,7 +513,7 @@ def plotResult(
         pass
 
 
-def plotMetricsPRFS(
+def plotMetricsmitims(
     axs,
     metrics,
     color="b",
@@ -1095,7 +1095,7 @@ def plotPowers(
 
 
 def plotCoils_organized(
-    axs, prf_classes, metrics, coils_orig=None, relativeToMin=False, kA=False
+    axs, mitim_classes, metrics, coils_orig=None, relativeToMin=False, kA=False
 ):
     sets = ["cs", "pf", "dv", "vs"]
     lw = 1.0  # 0.5
@@ -1116,7 +1116,7 @@ def plotCoils_organized(
 
         for coil in metrics[which]:
             if sett in coil and (
-                "u" == coil[-1] or not prf_classes[0].sparc_coils.upDownSymmetric
+                "u" == coil[-1] or not mitim_classes[0].sparc_coils.upDownSymmetric
             ):
                 tot = metrics[which][coil] * mult
                 if relativeToMin:
@@ -1297,19 +1297,19 @@ def writeTable(metrics, file, times, divPlate=None, strikes=True, labelEq="time 
     print(f"\t~ Excel file {file} written with coil currents and strike points")
 
 
-def write_gfiles(prfs, whereOutput, check=True):
+def write_gfiles(mitims, whereOutput, check=True):
     from freegs import geqdsk
 
     gs = []
-    for i in range(len(prfs)):
+    for i in range(len(mitims)):
         filename = f"geqdsk_freegsu_run{i}.geq"
-        with open(f"{whereOutput}/{filename}", "w") as f:
-            geqdsk.write(prfs[i].sweep.eq, f)
+        with open(whereOutput / f"{filename}", "w") as f:
+            geqdsk.write(mitims[i].sweep.eq, f)
         print(f"\t~ g-file {filename} written")
 
         if check:
             try:
-                gs.append(GEQtools.MITIMgeqdsk(f"{whereOutput}/{filename}"))
+                gs.append(GEQtools.MITIMgeqdsk(whereOutput / f"{filename}"))
             except:
                 print("\t- Problem checking gfile", typeMsg="w")
 
@@ -1428,7 +1428,7 @@ def plotCoilsBars(
             ax.plot([i - 0.5, i + 0.5], [lims[1], lims[1]], c="k", lw=2)
 
 
-def plotShapingComparison(prfs, metrics, fig=None, ParamsAll=None, ProblemExtras=None):
+def plotShapingComparison(mitims, metrics, fig=None, ParamsAll=None, ProblemExtras=None):
     if fig is None:
         plt.ion()
         fig = plt.figure(figsize=(14, 7))
@@ -1467,7 +1467,7 @@ def plotShapingComparison(prfs, metrics, fig=None, ParamsAll=None, ProblemExtras
     cols = GRAPHICStools.listColors()
     plotAllEquilibria(
         ax,
-        prfs,
+        mitims,
         None,
         colors=cols,
         onlySeparatrix=True,
@@ -1484,7 +1484,7 @@ def plotShapingComparison(prfs, metrics, fig=None, ParamsAll=None, ProblemExtras
         cols = GRAPHICStools.listColors()
         plotAllEquilibria(
             ax,
-            prfs,
+            mitims,
             None,
             colors=cols,
             onlySeparatrix=True,

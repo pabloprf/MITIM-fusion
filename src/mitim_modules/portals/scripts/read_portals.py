@@ -31,7 +31,7 @@ def main():
 
     args = parser.parse_args()
 
-    folders = args.folders
+    folders = [IOtools.expandPath(folder) for folder in args.folders]
 
     portals_total = []
     for folderWork in folders:
@@ -41,6 +41,9 @@ def main():
         indeces_extra = args.indeces_extra
         plotAllFluxes = args.all
         complete = args.complete
+
+        if not folderWork.exists():
+            folderWork.mkdir(parents=True, exist_ok=True)
 
         folderRemote = (
             f"{folderRemote_reduced}/{IOtools.reducePathLevel(folderWork)[-1]}/"

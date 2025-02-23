@@ -1,6 +1,6 @@
 import os
+import shutil
 import time
-import os.path
 import datetime
 import re
 import numpy as np
@@ -10,7 +10,7 @@ from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools import CDFtools, TRANSPtools
 from mitim_tools.transp_tools.src import TRANSPglobus_ntcc
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 
@@ -130,9 +130,6 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
             # LOOP LOOK
             # ------------------------------------------------------------------------------------------------------------------------------
 
-            if self.FolderTRANSP[-1] != "/":
-                self.FolderTRANSP += "/"
-
             NBImissing_isStopped = (
                 False  # If TRANSP grid indicates missing_nbi that means stopped
             )
@@ -145,9 +142,9 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
             # Remove old .CDF file
             # ---------------------
 
-            old_file = f"{self.FolderTRANSP}/{self.runid}.CDF"
-            if os.path.exists(old_file):
-                os.system("mv {0} {0}_prev".format(old_file))
+            old_file = self.FolderTRANSP / f"{self.runid}.CDF"
+            if old_file.exists():
+                old_file.replace(old_file.parent / f"{old_file.name}_prev")
 
             # ---------------------
             # Send look request (tr_look)
@@ -189,20 +186,19 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                 # ---------------------
                 if dictInfo["info"]["status"] != "not found":
                     # ---------------------
-                    # If run is "missing_NBI", it means stopped, but TRANSP team may restart it if they realize
+                    # If run is "missing_NBI", it means stopped, but TRANSP team may cold_start it if they realize
                     # ---------------------
                     NBImissing_wait = 3600 * 2
                     if dictInfo["info"]["status"] == "missing_nbi":
                         print(
-                            '\t- Run {0} is stopped by "time out", wait 3h for TRANSP team to restart'.format(
+                            '\t- Run {0} is stopped by "time out", wait 3h for TRANSP team to cold_start'.format(
                                 self.runid
                             ),
                             typeMsg="w",
                         )
                         try:
-                            os.system(
-                                "cd " + self.FolderTRANSP + " && cp *CDF_prev saved"
-                            )
+                            for item in self.FolderTRANSP.glob('*CDF_prev'):
+                                shutil.copy2(item, self.FolderTRANSP / "saved")
                             print(
                                 f'\t- {self.runid} last CDF state backed up as "saved"'
                             )
@@ -341,7 +337,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                     file, self.folderGRID_look, self.runid, self.FolderTRANSP, self.tok
                 )
 
-                netCDFfile = self.FolderTRANSP + f"{self.runid}.CDF"
+                netCDFfile = self.FolderTRANSP / f"{self.runid}.CDF"
 
                 # Sometimes the file is corrupted, len(t) different from len(Te)
                 try:
@@ -352,7 +348,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
                     )
 
                 Reactor.writeResults_TXT(
-                    self.FolderTRANSP + "infoRun_preconvergence.dat", ensureBackUp=False
+                    self.FolderTRANSP / "infoRun_preconvergence.dat", ensureBackUp=False
                 )
 
                 # ---- Possibility of AC files
@@ -500,7 +496,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
         if statusStop == 1:
             print(f">> Run {self.runid} has STOPPED", typeMsg="w")
             HasItFailed = True
-            writeErrorInfo(self.runid, self.tok, FolderOutputs + "/ErrorInfo.txt")
+            writeErrorInfo(self.runid, self.tok, FolderOutputs / "ErrorInfo.txt")
 
         # If run has finished running
         elif statusStop == -2:
@@ -706,7 +702,7 @@ class TRANSPglobus(TRANSPtools.TRANSPgeneric):
 		"""
         if retrieveAC:
             # Determine if run has AC files requested
-            Reactor = CDFtools.transp_output(f"{self.FolderTRANSP}/{file}")
+            Reactor = CDFtools.transp_output(self.FolderTRANSP / f"{file}")
             TORIC, TORBEAM, NUBEAM = self.determineACs(Reactor)
             # Retrieve
             retrieveACfiles(
@@ -823,12 +819,13 @@ def getSERVERfile(name, FolderSimulation, nameRunTot, tok, server, nameNewFolder
     print(f" >> Retrieving {name} file")
     TRANSPglobus_ntcc.tr_get(name, server, nameRunTot, FolderSimulation, tok)
 
-    nfold = f"{FolderSimulation}/{nameNewFolder}"
+    localFolder = IOtools.expandPath(FolderSimulation)
+    localFile = localFolder / f"{name}"
+    nfold = localFolder / f"{nameNewFolder}"
 
     if nameNewFolder is not None:
-        if not os.path.exists(nfold):
-            os.system(f"mkdir {nfold}")
-        os.system(f"mv {FolderSimulation}/{name} {nfold}/.")
+        nfold.mkdir(parents=True, exist_ok=True)
+        localFile.replace(nfold / localFile.name)
 
 
 def corruptRecover(FolderSimulation, nameRunTot, tok, serverCDF):
@@ -987,13 +984,13 @@ def getGridInformation(runid, project=None, NBImissing_isStopped=True):
             try:
                 time1 = float(
                     infoGrid["info"]["Mark"]
-                    .split("Restart mark set to:")[1]
+                    .split("cold_start mark set to:")[1]
                     .split("(sec)")[0]
                     .split("/")[0]
                 )
                 time2 = float(
                     infoGrid["info"]["Mark"]
-                    .split("Restart mark set to:")[1]
+                    .split("cold_start mark set to:")[1]
                     .split("(sec)")[0]
                     .split("/")[1]
                 )
@@ -1002,7 +999,7 @@ def getGridInformation(runid, project=None, NBImissing_isStopped=True):
                 time2 = 0.0
 
             dictStatus["cputime"] = cpuTime
-            dictStatus["MarkRestart"] = np.array([time1, time2])
+            dictStatus["Markcold_start"] = np.array([time1, time2])
 
         infoGridInfo = infoGrid["info"]
 
@@ -1339,7 +1336,7 @@ def interpretError(errorinfo):
         extra = ""
 
     else:
-        status = "Run needs to be restarted, probably out of memory."
+        status = "Run needs to be cold_started, probably out of memory."
         recommendation = "Wait for TRANSP team"
         extra = "missing_nbi"
 

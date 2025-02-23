@@ -36,14 +36,15 @@ For this tutorial we will need the following modules:
 
    import torch
    import numpy as np
+   from pathlib import Path
    from mitim_tools.opt_tools     import STRATEGYtools
 
 Select the location of the MITIM namelist (see :ref:`Understanding the MITIM namelist` to understand how to construct the namelist file) and the folder to work on:
 
 .. code-block:: python
 
-   folder    = 'MITIM-fusion/tests/scratch/mitim_tut/'
-   namelist  = 'MITIM-fusion/templates/main.namelist.json'
+   folder    = Path('MITIM-fusion/tests/scratch/mitim_tut')
+   namelist  = Path('MITIM-fusion/templates/main.namelist.json')
 
 Then create your custom optimization object as a child of the parent ``STRATEGYtools.opt_evaluator`` class.
 You only need to modify what operations need to occur inside the ``run()`` (where operations/simulations happen) and ``scalarized_objective()`` (to define what is the target to maximize) methods.
@@ -58,11 +59,11 @@ In this example, we are using ``x**2`` as our function with a 2% evaluation erro
          # ----------------------------------------
 
          # Problem description (rest of problem parameters are taken from namelist)
-         self.optimization_options["dvs"] = ["x"]
-         self.optimization_options["dvs_min"] = [0.0]
-         self.optimization_options["dvs_max"] = [20.0]
+         self.optimization_options["problem_options"]["dvs"] = ["x"]
+         self.optimization_options["problem_options"]["dvs_min"] = [0.0]
+         self.optimization_options["problem_options"]["dvs_max"] = [20.0]
 
-         self.optimization_options["ofs"] = ["z", "zval"]
+         self.optimization_options["problem_options"]["ofs"] = ["z", "zval"]
          self.name_objectives = ["zval_match"]
 
       def run(self, paramsfile, resultsfile):
@@ -80,7 +81,7 @@ In this example, we are using ``x**2`` as our function with a 2% evaluation erro
          self.write(dictOFs, resultsfile)
 
       def scalarized_objective(self, Y):
-         ofs_ordered_names = np.array(self.optimization_options["ofs"])
+         ofs_ordered_names = np.array(self.optimization_options["problem_options"]["ofs"])
 
          of = Y[..., ofs_ordered_names == "z"]
          cal = Y[..., ofs_ordered_names == "zval"]
@@ -100,12 +101,12 @@ Then, create an object from the previously defined class:
 
    Note that at this point, you can pass any parameter that you want, just changing the ``__init__()`` method as appropriate.
 
-Now we can create and launch the MITIM optimization process from the beginning (i.e. ``restart = True``):
+Now we can create and launch the MITIM optimization process from the beginning (i.e. ``cold_start = True``):
 
 .. code-block:: python
 
-   PRF_BO = STRATEGYtools.PRF_BO( opt_fun1D, restartYN = True )
-   PRF_BO.run()
+   MITIM_BO = STRATEGYtools.MITIM_BO( opt_fun1D, cold_startYN = True )
+   MITIM_BO.run()
 
 Once finished, we can plot the results easily with:
 

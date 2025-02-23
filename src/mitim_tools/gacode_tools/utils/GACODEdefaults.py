@@ -2,10 +2,9 @@ import json
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools import __mitimroot__
-
 from IPython import embed
 
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
 def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
@@ -33,7 +32,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     # Define every flag
     else:
         TGLFoptions = IOtools.generateMITIMNamelist(
-            __mitimroot__ +"/templates/input.tglf.controls", caseInsensitive=False
+            __mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False
         )
         TGLFoptions["NMODES"] = NS + 2
 
@@ -44,9 +43,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    with open(
-        __mitimroot__ + "/templates/input.tglf.models.json", "r"
-    ) as f:
+    with open(__mitimroot__ / "templates" / "input.tglf.models.json", "r") as f:
         settings = json.load(f)
 
     if str(TGLFsettings) in settings:
@@ -55,10 +52,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
         for ikey in sett["controls"]:
             TGLFoptions[ikey] = sett["controls"][ikey]
     else:
-        print(
-            "\t- TGLFsettings not found in input.tglf.models.json, using defaults",
-            typeMsg="w",
-        )
+        print("\t- TGLFsettings not found in input.tglf.models.json, using defaults",typeMsg="w",)
         label = "unspecified"
 
     # --------------------------------
@@ -137,7 +131,7 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
 def addCGYROcontrol(Settings, rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
-        __mitimroot__ + "/templates/input.cgyro.controls", caseInsensitive=False
+        __mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False
     )
 
     """
@@ -148,7 +142,7 @@ def addCGYROcontrol(Settings, rmin):
 	"""
 
     with open(
-        __mitimroot__ + "/templates/input.cgyro.models.json", "r"
+        __mitimroot__ / "templates" / "input.cgyro.models.json", "r"
     ) as f:
         settings = json.load(f)
 
@@ -189,7 +183,7 @@ def addTGYROcontrol(
     Erpred=0,
     physics_options={},
     solver_options={},
-    restart=False,
+    cold_start=False,
     special_radii=None,
 ):
     """
@@ -240,7 +234,7 @@ def addTGYROcontrol(
 
     TGYROoptions["TGYRO_MODE"] = "1"  # 1: Transport code, 3: multi-job generator
     TGYROoptions["LOC_RESTART_FLAG"] = (
-        f"{int(restart)}"  # 0: Start from beginning, 1: Continue from last iteration
+        f"{int(cold_start)}"  # 0: Start from beginning, 1: Continue from last iteration
     )
     TGYROoptions["TGYRO_RELAX_ITERATIONS"] = f"{num_it}"  # Number of iterations
     TGYROoptions["TGYRO_WRITE_PROFILES_FLAG"] = (
@@ -355,7 +349,7 @@ def addTGYROspecies(Species, onlyThermal=False, limitSpecies=100):
     TGYROoptions = {}
     cont = 0
     for i in range(lenSpec):
-        if (Species[i]["S"] == "fast" and onlyThermal) or Species[i]["dens"] == 0.0:
+        if (Species[i]["S"] == "fast" and onlyThermal) or Species[i]["n0"] == 0.0:
             continue
 
         print(f'\t\t- Specie Z={Species[i]["Z"]} added')
@@ -422,9 +416,7 @@ def convolution_CECE(d_perp_dict, dRdx=1.0):
 
 def review_controls(TGLFoptions):
 
-    TGLFoptions_check = IOtools.generateMITIMNamelist(
-        __mitimroot__ + "/templates/input.tglf.controls", caseInsensitive=False
-    )
+    TGLFoptions_check = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False)
 
     # Add plasma too
     potential_flags = ['NS', 'SIGN_BT', 'SIGN_IT', 'VEXB', 'VEXB_SHEAR', 'BETAE', 'XNUE', 'ZEFF', 'DEBYE']
@@ -435,6 +427,8 @@ def review_controls(TGLFoptions):
 
         # Do not fail with e.g. RLTS_1
         isSpecie = option.split('_')[-1].isdigit()
+        # Do not fail with e.g. P_PRIME_LOC
+        isGeometry = option.split('_')[-1] in ['LOC']
         
-        if (not isSpecie) and (option not in TGLFoptions_check):
+        if (not isSpecie) and (not isGeometry) and (option not in TGLFoptions_check):
             print(f"\t- TGLF option {option} not in input.tglf.controls, prone to errors", typeMsg="q")

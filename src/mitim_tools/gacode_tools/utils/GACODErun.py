@@ -1,24 +1,21 @@
-import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools.utils import PLASMASTATEtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-
-
 
 def runTGYRO(
     folderWork,
-    outputFiles=[],
+    outputFiles=None,
     nameRunid="",
-    nameJob="tgyro_prf",
+    nameJob="tgyro_mitim",
     nparallel=8,
     minutes=30,
-    inputFiles=[],
+    inputFiles=None,
     launchSlurm=True,
 ):
     """
@@ -28,13 +25,19 @@ def runTGYRO(
     launchSlurm = False -> Launch locally as a bash script
     """
 
+    if outputFiles is None:
+        outputFiles = []
+    
+    if inputFiles is None:
+        inputFiles = []
+
     # This routine assumes that folderWork contains input.profiles and input.tgyro already
 
     tgyro_job = FARMINGtools.mitim_job(folderWork)
 
     tgyro_job.define_machine(
         "tgyro",
-        f"mitim_{nameRunid}/",
+        f"mitim_{nameRunid}",
         launchSlurm=launchSlurm,
         slurm_settings={
             "minutes": minutes,
@@ -46,9 +49,9 @@ def runTGYRO(
 
     # ------ Run TGYRO
 
-    inputFiles.append(folderWork + "input.tglf")
-    inputFiles.append(folderWork + "input.tgyro")
-    inputFiles.append(folderWork + "input.gacode")
+    inputFiles.append(folderWork / "input.tglf")
+    inputFiles.append(folderWork / "input.tgyro")
+    inputFiles.append(folderWork / "input.gacode")
 
     # ---------------
     # Execution command
@@ -113,10 +116,7 @@ def modifyInputs(
         input_class.controls = CodeOptions
 
     else:
-        print(
-            "\t- Input file was not modified by Settings, using what was there before",
-            typeMsg="w",
-        )
+        print("\t- Input file was not modified by Settings, using what was there before",typeMsg="i")
 
     # Make all upper case
     extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
@@ -219,34 +219,23 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
     # Find namelist
     # -----------------------------------------------------------
 
-    LocationCDF = os.path.abspath(LocationCDF)
-    Folder = "/".join(LocationCDF.split("/")[:-1]) + "/"
-    print(
-        f"\t- Looking for namelist in folder ...{Folder[np.max([-40,-len(Folder)]):]}"
-    )
+    LocationCDF = IOtools.expandPath(LocationCDF)
+    Folder = LocationCDF.parent
+    print(f"\t- Looking for namelist in folder ...{IOtools.clipstr(Folder)}")
 
-    NML = IOtools.findFileByExtension(Folder, "TR.DAT", ForceFirst=ForceFirst)
+    LocationNML = IOtools.findFileByExtension(Folder, "TR.DAT", ForceFirst=ForceFirst)
 
     # -----------------------------------------------------------
     # Copy to folder or create dummy if it has not been found
     # -----------------------------------------------------------
 
-    LocationNML = f"{folderWork}/{nameRunid}TR.DAT"
-
-    if NML is None:
-        print(
-            "\t\t- Creating dummy namelist because it was not found in folder",
-            typeMsg="i",
-        )
+    if LocationNML is None:
+        LocationNML = folderWork / f"{nameRunid}TR.DAT"
+        print("\t\t- Creating dummy namelist because it was not found in folder",typeMsg="i",)
         with open(LocationNML, "w") as f:
             f.write(f"nshot = {nameRunid}")
         dummy = True
     else:
-        LocationNML_orig = Folder + NML + "TR.DAT"
-        print(
-            f"\t\t- Namelist was found: {NML}TR.DAT, copying to ...{LocationNML[np.max([-40,-len(LocationNML)]):]}"
-        )
-        os.system(f"cp {LocationNML_orig} {LocationNML}")
         dummy = False
 
     return LocationNML, dummy
@@ -267,6 +256,7 @@ def prepareTGYRO(
     includeGEQ=True,
 ):
     nameWork = "10001"
+    folderWork = IOtools.expandPath(folderWork)
 
     if not StateGenerated:
         print("\t- Running TRXPL to extract g-file and plasmastate")
@@ -286,7 +276,7 @@ def prepareTGYRO(
     runPROFILES_GEN(
         folderWork,
         nameFiles=nameWork,
-        UsePRFmodification=fixPlasmaState,
+        UseMITIMmodification=fixPlasmaState,
         includeGEQ=includeGEQ,
     )
 
@@ -303,12 +293,14 @@ def CDFtoTRXPLoutput(
     sendState=True,
 ):
     nameFiles, fail_attempts = "10000", 2
+    folderWork = IOtools.expandPath(folderWork)
 
-    if not os.path.exists(folderWork):
-        os.system(f"mkdir {folderWork}")
+    folderWork.mkdir(parents=True, exist_ok=True)
     if sendState:
-        os.system(f"cp {LocationCDF} {folderWork}/{nameFiles}.CDF")
-    os.system(f"mv {LocationNML} {folderWork}/{nameFiles}TR.DAT")
+        cdffile = folderWork / f'{nameFiles}.CDF'
+        shutil.copy2(LocationCDF, cdffile)
+    trfile = folderWork / f'{nameFiles}TR.DAT'
+    LocationNML.replace(trfile)
 
     runTRXPL(
         folderWork,
@@ -325,8 +317,8 @@ def CDFtoTRXPLoutput(
     # Retry for random error
     cont = 1
     while (
-        not os.path.exists(f"{folderWork}/{nameOutputs}.cdf")
-        or (not os.path.exists(f"{folderWork}/{nameOutputs}.geq"))
+        (not (folderWork / f"{nameOutputs}.cdf").exists())
+        or (not (folderWork / f"{nameOutputs}.geq").exists())
     ) and cont < fail_attempts:
         print("\t\t- Re-running to see if it was a random error", typeMsg="i")
         cont += 1
@@ -351,14 +343,13 @@ def executeCGYRO(
     name="",
     numcores=32,
 ):
-    if not os.path.exists(FolderCGYRO):
-        os.system(f"mkdir {FolderCGYRO}")
+    FolderCGYRO.mkdir(parents=True, exist_ok=True)
 
     cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
 
     cgyro_job.define_machine(
         "cgyro",
-        f"mitim_cgyro_{name}/",
+        f"mitim_cgyro_{name}",
         slurm_settings={
             "minutes": 60,
             "ntasks": numcores,
@@ -370,7 +361,7 @@ def executeCGYRO(
     # Prepare files
     # ---------------
 
-    fileCGYRO = FolderCGYRO + "/input.cgyro"
+    fileCGYRO = FolderCGYRO / f"input.cgyro"
     with open(fileCGYRO, "w") as f:
         f.write("\n".join(linesCGYRO))
 
@@ -424,19 +415,19 @@ def runTRXPL(
     commandTRXPL = "P\n10000\nA\n{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\nY\nX\nH\nW\n10001\nQ\nQ\nQ".format(
         timeRun, avTime, grids[0], grids[1], grids[2], BtDir, IpDir
     )
-    with open(FolderTRXPL + "trxpl.in", "w") as f:
+    with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
     if sendState:
         inputFiles = [
-            FolderTRXPL + "trxpl.in",
-            FolderTRXPL + f"{nameFiles}TR.DAT",
-            FolderTRXPL + f"{nameFiles}.CDF",
+            FolderTRXPL / "trxpl.in",
+            FolderTRXPL / f"{nameFiles}TR.DAT",
+            FolderTRXPL / f"{nameFiles}.CDF",
         ]
     else:
         inputFiles = [
-            FolderTRXPL + "trxpl.in",
-            FolderTRXPL + f"{nameFiles}TR.DAT",
+            FolderTRXPL / "trxpl.in",
+            FolderTRXPL / f"{nameFiles}TR.DAT",
         ]
 
     if grids[0] > 301:
@@ -452,7 +443,7 @@ def runTRXPL(
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
         "trxpl",
-        f"mitim_trxpl_{nameOutputs}/",
+        f"mitim_trxpl_{nameOutputs}",
     )
 
     command = "trxpl < trxpl.in"
@@ -468,24 +459,24 @@ def runTRXPL(
 def runPROFILES_GEN(
     FolderTGLF,
     nameFiles="10001",
-    UsePRFmodification=False,
+    UseMITIMmodification=False,
     includeGEQ=True,
 ):
     runWithoutEqIfFail = False  # If profiles_gen fails, try without the "-g" option
 
-    if UsePRFmodification:
+    if UseMITIMmodification:
         print("\t\t- Running modifyPlasmaState")
-        os.system("cp {0} {0}_old".format(FolderTGLF + "{0}.cdf".format(nameFiles)))
-        pls = PLASMASTATEtools.Plasmastate(FolderTGLF + f"{nameFiles}.cdf_old")
-        pls.modify_default(FolderTGLF + f"{nameFiles}.cdf")
+        shutil.copy2(FolderTGLF / f"{nameFiles}.cdf", FolderTGLF / f"{nameFiles}.cdf_old")
+        pls = PLASMASTATEtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
+        pls.modify_default(FolderTGLF / f"{nameFiles}.cdf")
 
     inputFiles = [
-        FolderTGLF + "profiles_gen.sh",
-        FolderTGLF + f"{nameFiles}.cdf",
+        FolderTGLF / "profiles_gen.sh",
+        FolderTGLF / f"{nameFiles}.cdf",
     ]
 
     if includeGEQ:
-        inputFiles.append(FolderTGLF + f"{nameFiles}.geq")
+        inputFiles.append(FolderTGLF / f"{nameFiles}.geq")
 
     # **** Write command
     txt = f"profiles_gen -i {nameFiles}.cdf"
@@ -502,7 +493,7 @@ def runPROFILES_GEN(
     pgen_job = FARMINGtools.mitim_job(FolderTGLF)
     pgen_job.define_machine(
         "profiles_gen",
-        f"mitim_profiles_gen_{nameFiles}/",
+        f"mitim_profiles_gen_{nameFiles}",
     )
 
     pgen_job.prep(
@@ -514,7 +505,7 @@ def runPROFILES_GEN(
 
     if (
         runWithoutEqIfFail
-        and (not os.path.exists(FolderTGLF + "/input.gacode"))
+        and (not (FolderTGLF / "input.gacode").exists())
         and (includeGEQ)
     ):
         print(
@@ -524,7 +515,7 @@ def runPROFILES_GEN(
 
         # **** Write command
         txt = f"profiles_gen -i {nameFiles}.cdf\n"
-        with open(FolderTGLF + "profiles_gen.sh", "w") as f:
+        with open(FolderTGLF / "profiles_gen.sh", "w") as f:
             f.write(txt)
         # ******************
 
@@ -558,11 +549,12 @@ def runVGEN(
             -nth: Minimum and maximum theta resolutions (e.g. 17,39)
     """
 
+    workingFolder = IOtools.expandPath(workingFolder)
     vgen_job = FARMINGtools.mitim_job(workingFolder)
 
     vgen_job.define_machine(
         "profiles_gen",
-        f"mitim_vgen_{name_run}/",
+        f"mitim_vgen_{name_run}",
         slurm_settings={
             "minutes": minutes,
             "ntasks": numcores,
@@ -583,12 +575,12 @@ def runVGEN(
         f"\t\t- Proceeding to generate Er from NEO run using profiles_gen -vgen ({options})"
     )
 
-    inputgacode_file = f"{workingFolder}/input.gacode"
+    inputgacode_file = workingFolder / f"input.gacode"
 
     _, nameFile = IOtools.reducePathLevel(inputgacode_file, level=1, isItFile=True)
 
     command = f"cd {vgen_job.machineSettings['folderWork']} && bash profiles_vgen.sh"
-    with open(f"{workingFolder}/profiles_vgen.sh", "w") as f:
+    with open(workingFolder / f"profiles_vgen.sh", "w") as f:
         f.write(f"profiles_gen -vgen -i {nameFile} {options} -n {numcores}")
 
     # ---------------
@@ -597,13 +589,13 @@ def runVGEN(
 
     vgen_job.prep(
         command,
-        input_files=[inputgacode_file, f"{workingFolder}/profiles_vgen.sh"],
+        input_files=[inputgacode_file, workingFolder / f"profiles_vgen.sh"],
         output_files=["slurm_output.dat", "slurm_error.dat"],
     )
 
     vgen_job.run()
 
-    file_new = f"{workingFolder}/vgen/input.gacode"
+    file_new = workingFolder / "vgen" / "input.gacode"
 
     return file_new
 
@@ -926,21 +918,21 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=1e6,  # 32,
+    cores_todo_array=32,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
 
-    tmpFolder = f"{FolderGACODE}/tmp_tglf/"
+    tmpFolder = FolderGACODE / "tmp_tglf"
     IOtools.askNewFolder(tmpFolder, force=True)
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
     tglf_job.define_machine_quick(
         "tglf",
-        f"mitim_{name}/",
+        f"mitim_{name}",
     )
 
     folders, folders_red = [], []
@@ -955,14 +947,15 @@ def runTGLF(
         for i, rho in enumerate(rhos):
             print(f"\t- Preparing TGLF ({subFolderTGLF}) at rho={rho:.4f}")
 
-            folderTGLF_this = f"{tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}"
+            folderTGLF_this = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}"
             folders.append(folderTGLF_this)
-            folders_red.append(f"{subFolderTGLF}/rho_{rho:.4f}")
 
-            if not os.path.exists(folderTGLF_this):
-                os.system(f"mkdir -p {folderTGLF_this}")
+            folderTGLF_this_rel = folderTGLF_this.relative_to(tmpFolder)
+            folders_red.append(folderTGLF_this_rel.as_posix() if tglf_job.machineSettings['machine'] != 'local' else str(folderTGLF_this_rel))
 
-            fileTGLF = f"{folderTGLF_this}/input.tglf"
+            folderTGLF_this.mkdir(parents=True, exist_ok=True)
+
+            fileTGLF = folderTGLF_this / "input.tglf"
             with open(fileTGLF, "w") as f:
                 f.write(tglf_executor[subFolderTGLF][rho]["inputs"])
 
@@ -978,30 +971,41 @@ def runTGLF(
         typeRun = "bash"
 
     if typeRun in ["bash", "job"]:
+
+        # TGLF launches
         TGLFcommand = ""
         for folder in folders_red:
-            TGLFcommand += (
-                f"tglf -e {folder}/ -n {cores_tglf} -p {tglf_job.folderExecution}/ &\n"
-            )
-
-        TGLFcommand += (
-            "\nwait"  # This is needed so that the script doesn't end before each job
-        )
-        rho_array = None
-
-        ntasks = len(rhos)
+            TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+        TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+        
+        # Slurm setup
+        array_list = None
+        shellPreCommands = None
+        shellPostCommands = None
+        ntasks = total_tglf_cores
         cpuspertask = cores_tglf
 
     elif typeRun in ["array"]:
-        raise Exception("TGLF array not implemented yet")
-        print(
-            f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",
-            typeMsg="i",
-        )
+        #raise Exception("TGLF array not implemented yet")
+        print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",typeMsg="i")
 
-        rho_array = ",".join([f"{int(rho*1E4)}" for rho in rhos])
-        TGLFcommand = f'tglf -e rho_0."$SLURM_ARRAY_TASK_ID"/ -n {cores_tglf} -p {tglf_job.folderExecution}/ 1> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_output.dat 2> {tglf_job.folderExecution}/rho_0."$SLURM_ARRAY_TASK_ID"/slurm_error.dat\n'
+        # As a pre-command, organize all folders in a simpler way
+        shellPreCommands = []
+        shellPostCommands = []
+        array_list = []
+        for i, folder in enumerate(folders_red):
+            array_list.append(f"{i}")
+            folder_temp_array = f"run{i}"
+            folder_actual = folder
+            shellPreCommands.append(f"mkdir {tglf_job.folderExecution}/{folder_temp_array}; cp {tglf_job.folderExecution}/{folder_actual}/*  {tglf_job.folderExecution}/{folder_temp_array}/.")
+            shellPostCommands.append(f"cp {tglf_job.folderExecution}/{folder_temp_array}/* {tglf_job.folderExecution}/{folder_actual}/.; rm -r {tglf_job.folderExecution}/{folder_temp_array}")
 
+        # TGLF launches
+        indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
+        TGLFcommand = f'tglf -e {indexed_folder} -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {tglf_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+
+        # Slurm setup
+        array_list = ",".join(array_list)
         ntasks = 1
         cpuspertask = cores_tglf
 
@@ -1011,15 +1015,15 @@ def runTGLF(
 
     tglf_job.define_machine(
         "tglf",
-        f"mitim_{name}/",
+        f"mitim_{name}",
         launchSlurm=launchSlurm,
         slurm_settings={
             "minutes": minutes,
             "ntasks": ntasks,
             "name": name,
             "cpuspertask": cpuspertask,
-            "job_array": rho_array,
-            "nodes": 1,
+            "job_array": array_list,
+            #"nodes": 1,
         },
     )
 
@@ -1034,9 +1038,11 @@ def runTGLF(
         input_folders=folders,
         output_folders=folders_red,
         check_files_in_folder=check_files_in_folder,
+        shellPreCommands=shellPreCommands,
+        shellPostCommands=shellPostCommands,
     )
 
-    tglf_job.run(removeScratchFolders=False)
+    tglf_job.run(removeScratchFolders=True)
 
     # ---------------------------------------------
     # Organize
@@ -1050,23 +1056,19 @@ def runTGLF(
             for file in filesToRetrieve:
                 original_file = f"{file}_{rho:.4f}{extraFlag}"
                 final_destination = (
-                    f"{tglf_executor[subFolderTGLF][rho]['folder']}/{original_file}"
+                    tglf_executor[subFolderTGLF][rho]['folder'] / f"{original_file}"
                 )
+                final_destination.unlink(missing_ok=True)
 
-                if os.path.exists(final_destination):
-                    os.system(f"rm {final_destination}")
+                temp_file = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}" / f"{file}"
+                temp_file.replace(final_destination)
 
-                os.system(
-                    f"mv {tmpFolder}/{subFolderTGLF}/rho_{rho:.4f}/{file} {final_destination}"
-                )
+                fineall = fineall and final_destination.exists()
 
-                fineall = fineall and os.path.exists(final_destination)
-
-                if not os.path.exists(final_destination):
+                if not final_destination.exists():
                     print(
                         f"\t!! file {file} ({original_file}) could not be retrived",
                         typeMsg="w",
-                        verbose=read_verbose_level(),
                     )
 
     if fineall:

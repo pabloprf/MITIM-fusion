@@ -1,4 +1,5 @@
 import os
+import shutil
 import pickle
 import copy
 import datetime
@@ -26,7 +27,7 @@ from mitim_tools.transp_tools.utils import (
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gs_tools.utils import GEQplotting
 from mitim_tools.misc_tools.GUItools import FigureNotebook
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def read_cdf_transp(cdf_file):
@@ -34,15 +35,16 @@ def read_cdf_transp(cdf_file):
     With the support of chatGPT 4o (08/10/2024)
     '''
 
+    cdf_file = IOtools.expandPath(cdf_file)
+    mod_file = cdf_file.parent / f'{cdf_file.name}_mod'
     src = netCDF4.Dataset(cdf_file)
 
     if src['TIME'].shape[0] > src['TIME3'].shape[0]:
         print(f"\t* TIME had {src['TIME'].shape[0]- src['TIME3'].shape[0]} more time slices than TIME3, possibly because of a bad time to retrieve CDF file, fixing it...",typeMsg='w')
 
         # Create a dataset object to store the modified data
-        if os.path.exists(f'{cdf_file}_mod'):
-            os.remove(f'{cdf_file}_mod')
-        dst = netCDF4.Dataset(f'{cdf_file}_mod', 'w', memory=None)
+        mod_file.unlink(missing_ok=True)
+        dst = netCDF4.Dataset(mod_file, 'w', memory=None)
         
         # Copy global attributes
         dst.setncatts({attr: src.getncattr(attr) for attr in src.ncattrs()})
@@ -88,9 +90,9 @@ class transp_output:
     def __init__(
         self,
         netCDFfile,
-        ssh=None,
         ZerothTime=False,
         readFBM=False,
+        ask_if_fbm=False,
         readTGLF=False,
         readTORIC=False,
         readGFILE=False,
@@ -103,12 +105,14 @@ class transp_output:
         timeExtract=1.0,
         timeExtract_av=0.1,
         EvaluateExtraAnalysis=None,
-        folderScratch=IOtools.expandPath("~/scratch/"),
+        folderScratch="~/scratch/",
     ):
         """
         calculateAccurateLineAverage = None (=_avol), False (flux surface at one time), True (accurate at each time)
         coincideTime is used when comparing to experiment: first is experiment
         """
+
+        folderScratch = IOtools.expandPath(folderScratch)
 
         self.readGEQDSK = readGEQDSK
 
@@ -120,20 +124,13 @@ class transp_output:
 
         # ~~~~~~~~ Open CDF file ~~~~~~~~
 
-        if ssh is None:
-            print(
-                f"\n>> Analyzing netCDF file locally: ...{netCDFfile[np.max([-40,-len(netCDFfile)]):]}"
-            )
-        else:
-            print(f">> Analyzing netCDF file remotely by opening {netCDFfile} in {ssh}")
-            os.system(f"scp {ssh}:{netCDFfile} {folderScratch}state.cdf")
-            netCDFfile = f"{folderScratch}state.cdf"
+        print(f"\n>> Analyzing netCDF file {IOtools.clipstr(netCDFfile)}")
 
         self.LocationCDF = netCDFfile
 
         # Capability to provide folder and just find the CDF in there
-        if os.path.isdir(self.LocationCDF):
-            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF+'/', ".CDF", agnostic_to_case=True, provide_full_path = True)
+        if self.LocationCDF.is_dir(): 
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
                 raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
@@ -142,9 +139,7 @@ class transp_output:
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
-        self.FolderCDF = (
-            "/".join(os.path.abspath(self.LocationCDF).split("/")[:-1]) + "/"
-        )
+        self.FolderCDF = self.LocationCDF.resolve().parent
 
         self.FolderEvaluation, _ = IOtools.reducePathLevel(
             self.FolderCDF, level=1, isItFile=False
@@ -153,7 +148,7 @@ class transp_output:
         self.folderWork, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
 
         print(
-            f"\t- INFO - runid: {self.nameRunid}; folder: ...{self.folderWork[np.max([-40,-len(self.folderWork)]):]}"
+            f"\t- INFO - runid: {self.nameRunid}; folder: ...{IOtools.clipstr(netCDFfile)}"
         )
 
         self.eps00 = 1e-14
@@ -230,21 +225,24 @@ class transp_output:
             datanum = 1
 
             file_converted = (
-                f"{self.folderWork}/NUBEAM_folder/{self.nameRunid}_fi_{datanum}_GC.cdf"
+                self.folderWork / f"NUBEAM_folder" / f"{self.nameRunid}_fi_{datanum}_GC.cdf"
             )
             file_notconverted = (
-                f"{self.folderWork}/NUBEAM_folder/{self.nameRunid}.DATA{datanum}"
+                self.folderWork / f"NUBEAM_folder" / f"{self.nameRunid}.DATA{datanum}"
             )
 
-            needToConvert = os.path.exists(file_notconverted) and (
-                not os.path.exists(file_converted)
+            needToConvert = file_notconverted.exists() and (
+                not file_converted.exists()
             )
 
             if needToConvert:
-                readFBM = print(
-                    "\t- Gathering FBM data ——requires conversion of FBM files",
-                    typeMsg="q",
-                )
+                if ask_if_fbm:
+                    readFBM = print(
+                        "\t- Gathering FBM data ——requires conversion of FBM files",
+                        typeMsg="q",
+                    )
+                else:
+                    print("\t- Gathering FBM data ——requires conversion of FBM files", typeMsg="w")
             else:
                 print("\t- Gathering FBM data")
 
@@ -401,17 +399,17 @@ class transp_output:
 
         # ~~~~~~~~ Special Variables  (for convergence) ~~~~~~~~
         self.SpecialVariables = {
-            "VarPRF_Q": self.Q,
-            "VarPRF_PRESS": self.p_avol,
-            "VarPRF_TE": self.Te_avol,
-            "VarPRF_TI": self.Ti_avol,
-            "VarPRF_NE": self.ne_avol,
-            "VarPRF_HE4": self.nHe4_avol,
-            "VarPRF_PRESS_0": self.p[:, 0],
-            "VarPRF_TI_0": self.Ti0,
-            "VarPRF_TE_0": self.Te0,
-            "VarPRF_NE_0": self.ne0,
-            "VarPRF_HE4_0": self.nHe4[:, 0],
+            "VarMITIM_Q": self.Q,
+            "VarMITIM_PRESS": self.p_avol,
+            "VarMITIM_TE": self.Te_avol,
+            "VarMITIM_TI": self.Ti_avol,
+            "VarMITIM_NE": self.ne_avol,
+            "VarMITIM_HE4": self.nHe4_avol,
+            "VarMITIM_PRESS_0": self.p[:, 0],
+            "VarMITIM_TI_0": self.Ti0,
+            "VarMITIM_TE_0": self.Te0,
+            "VarMITIM_NE_0": self.ne0,
+            "VarMITIM_HE4_0": self.nHe4[:, 0],
         }
 
     def analyze_initial(self, duration=1.0, fig=None):
@@ -505,13 +503,13 @@ class transp_output:
         """
 		 Extra transport analysis variables. Posibilities:
 
-		 	- VarPRF_CHIPERT_QE_0.60 for dQe/daLTe at rho=0.6
+		 	- VarMITIM_CHIPERT_QE_0.60 for dQe/daLTe at rho=0.6
 
-		 	- VarPRF_D_W_0.60 for D particle coefficient W at rho=0.6
-		 	- VarPRF_V_W_0.60 for V particle coefficient W at rho=0.6
-		 	- VarPRF_VoD_W_0.60
+		 	- VarMITIM_D_W_0.60 for D particle coefficient W at rho=0.6
+		 	- VarMITIM_V_W_0.60 for V particle coefficient W at rho=0.6
+		 	- VarMITIM_VoD_W_0.60
 
-			- VarPRF_FLUCTE_LOWK_0.6 for integrated Te fluctuation levels at low-k at rho=0.6
+			- VarMITIM_FLUCTE_LOWK_0.6 for integrated Te fluctuation levels at low-k at rho=0.6
 
 		"""
 
@@ -529,10 +527,10 @@ class transp_output:
                 success = True
                 for var in EvaluateExtraAnalysis:
                     if (
-                        "VarPRF_CHIPERT" in var
-                        or "VarPRF_D" in var
-                        or "VarPRF_V" in var
-                        or "VarPRF_FLUCTE" in var
+                        "VarMITIM_CHIPERT" in var
+                        or "VarMITIM_D" in var
+                        or "VarMITIM_V" in var
+                        or "VarMITIM_FLUCTE" in var
                     ):
                         typeA = var.split("_")[-3]  # CHIPERT, D, V, FLUCTE, VoD
                         quantity = var.split("_")[-2]  # QE, W, LOWK
@@ -1277,9 +1275,9 @@ class transp_output:
         # Time evolution of Umag_pol according to TRANSP
         u_transp = self.UmagT_pol_dt
         # Actual time evolution of Umag_pol
-        u_prf = np.append([0], np.diff(self.UmagT_pol) / np.diff(self.t))
+        u_mitim = np.append([0], np.diff(self.UmagT_pol) / np.diff(self.t))
         # Extra power not accounted by UmagT_pol_dt at each time
-        u_diff = u_prf - u_transp
+        u_diff = u_mitim - u_transp
 
         DeltaUpol = []
         for it in range(len(self.t)):
@@ -3703,9 +3701,9 @@ class transp_output:
             self.mu0 * self.Ip_cum * 1e6 / self.Lpol
         )  # This is like a longitudinal average
 
-        # self.Li_PRF_1 	= self.Bpol2_avol/self.Bpol_avol**2
-        # self.Li_PRF_2x 	= self.Bpol2/self.Bpol**2
-        # self.Li_PRF_2 	= volumeAverage_var(self.f,self.Li_PRF_2x)
+        # self.Li_MITIM_1 	= self.Bpol2_avol/self.Bpol_avol**2
+        # self.Li_MITIM_2x 	= self.Bpol2/self.Bpol**2
+        # self.Li_MITIM_2 	= volumeAverage_var(self.f,self.Li_MITIM_2x)
 
         self.LiVDIFF = self.f["LI_VDIFF"][:]  # it is equal to 2*LIO2
         self.Bpol2_extrap = np.zeros(len(self.t))
@@ -4213,17 +4211,17 @@ class transp_output:
             negradTe[it] = np.interp(self.xb[it], self.x[it], negradTe[it])
             nigradTi[it] = np.interp(self.xb[it], self.x[it], nigradTi[it])
 
-        self.qe_PRF = -self.Chi_e * negradTe * 1e-6  # MW/m^2
-        self.qi_PRF = -self.Chi_i * nigradTi * 1e-6  # MW/m^2
-        self.Ge_PRF = (
+        self.qe_MITIM = -self.Chi_e * negradTe * 1e-6  # MW/m^2
+        self.qi_MITIM = -self.Chi_i * nigradTi * 1e-6  # MW/m^2
+        self.Ge_MITIM = (
             -self.Deff_e
             * derivativeVar(self, self.ne * 1e20, specialDerivative=self.x)
             * self.ave_grad_rho
             * 1e-20
         )
 
-        self.Chi_e_PRF = self.qe_obs / (-negradTe) * 1e6
-        self.Chi_i_PRF = self.qi_obs / (-nigradTi) * 1e6
+        self.Chi_e_MITIM = self.qe_obs / (-negradTe) * 1e6
+        self.Chi_i_MITIM = self.qi_obs / (-nigradTi) * 1e6
 
         self.Chi_eff_check = -(self.qe_obs * 1e6 + self.qi_obs * 1e6) / (
             negradTe + nigradTi
@@ -6628,8 +6626,8 @@ class transp_output:
 
         # Magn
         ax = ax5
-        # ax.plot(self.t,self.Li_PRF_1,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA}\\rangle_v / \\langle \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
-        # ax.plot(self.t,self.Li_PRF_2,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA} / \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
+        # ax.plot(self.t,self.Li_MITIM_1,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA}\\rangle_v / \\langle \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
+        # ax.plot(self.t,self.Li_MITIM_2,lw=4,label='$l_{i}=\\langle \\langle B_{\\theta}^2\\rangle_{FSA} / \\langle B_{\\theta}\\rangle_{FSA}^2\\rangle_v$')
         ax.plot(self.t, self.Li1, lw=3, ls="-", label="$l_{i,1}$")
         ax.plot(
             self.t,
@@ -9540,7 +9538,7 @@ class transp_output:
             c="y",
             label="$\\chi_{eff}$ check",
         )
-        ax.plot(self.x_lw, self.Chi_e_PRF[i1, :], lw=1, c="c", label="$\\chi_e$ check")
+        ax.plot(self.x_lw, self.Chi_e_MITIM[i1, :], lw=1, c="c", label="$\\chi_e$ check")
         ax.set_ylabel("$\\chi$ ($m^2/s$)")
         ax.set_xlabel("$\\rho_N$")
         ax.legend(loc="best", prop={"size": self.mainLegendSize})
@@ -9571,7 +9569,7 @@ class transp_output:
         ax.plot(self.x_lw, self.qe_obs[i1, :], lw=2, c="r", ls="-", label="$q_e$ PB")
         ax.plot(
             self.x_lw,
-            self.qe_PRF[i1, :],
+            self.qe_MITIM[i1, :],
             lw=1,
             c="r",
             ls="--",
@@ -9581,7 +9579,7 @@ class transp_output:
         ax.plot(self.x_lw, self.qi_obs[i1, :], lw=2, c="b", ls="-", label="$q_i$ PB")
         ax.plot(
             self.x_lw,
-            self.qi_PRF[i1, :],
+            self.qi_MITIM[i1, :],
             lw=1,
             c="b",
             ls="--",
@@ -9611,7 +9609,7 @@ class transp_output:
         )
         ax.plot(
             self.x_lw,
-            self.Ge_PRF[i1, :],
+            self.Ge_MITIM[i1, :],
             lw=1,
             c="orange",
             ls="--",
@@ -9678,9 +9676,9 @@ class transp_output:
 
         ax = ax8
 
-        ax.plot(self.x_lw, self.qe_PRF[i1, :], lw=2, c="r", label="$q_e$")
+        ax.plot(self.x_lw, self.qe_MITIM[i1, :], lw=2, c="r", label="$q_e$")
         ax.plot(self.x_lw, self.qe_neo[i1, :], lw=1, c="m", label="$q_{e,nc}$")
-        ax.plot(self.x_lw, self.qi_PRF[i1, :], lw=2, c="b", label="$q_i$")
+        ax.plot(self.x_lw, self.qi_MITIM[i1, :], lw=2, c="b", label="$q_i$")
         ax.plot(self.x_lw, self.qi_neo[i1, :], lw=1, c="c", label="$q_{i,nc}$")
         ax.set_ylabel("$q_{e,i}$ ($MW/m^2$)")
         ax.set_xlabel("$\\rho_N$")
@@ -10410,76 +10408,80 @@ class transp_output:
                 transform=ax.transAxes,
             )
 
-            layer = 2
-            level += 1
-            l2 = "He4 ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusHe4_avol[it] / self.ffus_avol[it] * 100.0,
-                self.ffusHe4_avol[it],
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "He3 ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusHe3_avol[it] / self.ffus_avol[it] * 100.0,
-                self.ffusHe3_avol[it],
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "H ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusH_avol[it] / self.ffus_avol[it] * 100.0, self.ffusH_avol[it]
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
-            layer = 2
-            level += 1
-            l2 = "T ({0:.2f}%; f = {1:1.2e} of total)".format(
-                self.ffusT_avol[it] / self.ffus_avol[it] * 100.0, self.ffusT_avol[it]
-            )
-            ax.text(
-                startingPosx + layer * jumpLayer,
-                startingPosy - level * sizeLevel,
-                l2,
-                fontweight="bold",
-                color="k",
-                fontsize=startingSize - layer * sizeLayer,
-                bbox=dict(facecolor="m", alpha=0.1),
-                horizontalalignment="left",
-                verticalalignment="center",
-                transform=ax.transAxes,
-            )
+            if self.ffusHe4_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "He4 ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusHe4_avol[it] / self.ffus_avol[it] * 100.0,
+                    self.ffusHe4_avol[it],
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusHe3_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "He3 ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusHe3_avol[it] / self.ffus_avol[it] * 100.0,
+                    self.ffusHe3_avol[it],
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusH_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "H ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusH_avol[it] / self.ffus_avol[it] * 100.0, self.ffusH_avol[it]
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
+            if self.ffusT_avol[it] > minPlot:
+                layer = 2
+                level += 1
+                l2 = "T ({0:.2f}%; f = {1:1.2e} of total)".format(
+                    self.ffusT_avol[it] / self.ffus_avol[it] * 100.0, self.ffusT_avol[it]
+                )
+                ax.text(
+                    startingPosx + layer * jumpLayer,
+                    startingPosy - level * sizeLevel,
+                    l2,
+                    fontweight="bold",
+                    color="k",
+                    fontsize=startingSize - layer * sizeLayer,
+                    bbox=dict(facecolor="m", alpha=0.1),
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    transform=ax.transAxes,
+                )
 
         if self.fmini_avol[it] > minPlot:
             layer = 1
@@ -10706,6 +10708,22 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if self.PiichT[it] + self.PeichT[it] > 1.0e-5:
+
+            arrowsOut={
+                    f"$P_{{ICH,i}}$ = {self.PiichT[it]:.1f}MW": [0.41, 0.7],
+                    f"$P_{{ICH,e}}$ = {self.PeichT[it]:.1f}MW": [0.39, 0.3],
+                }
+
+            percent_plot = 0.05
+            # If minorities are not in steady-state, some portion goes to their dW/dt
+            if self.GainminT[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
+                arrowsOut[f"$dW/dt$ = {self.GainminT[it]:.1f}MW"] = [0.15,0.85]
+                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+            # Fast heating
+            if self.PfichT_dir[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
+                arrowsOut[f"$P_{{ICH,fast}}$ = {self.PfichT_dir[it]:.1f}MW"] = [0.35,0.85]
+                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+            
             GRAPHICStools.diagram_plotModule(
                 ax,
                 "ICRF",
@@ -10713,12 +10731,10 @@ class transp_output:
                 noLab=False,
                 c="g",
                 typeBox="roundtooth",
-                arrowsOut={
-                    f"$P_{{ICH,i}}$ = {self.PiichT[it]:.1f}MW": [0.41, 0.7],
-                    f"$P_{{ICH,e}}$ = {self.PeichT[it]:.1f}MW": [0.39, 0.3],
-                },
+                arrowsOut=arrowsOut,
                 arrowsIn={f"$P_{{ICH}}$ = {self.PichT[it]:.1f}MW": [0.0, 0.7]},
             )
+
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # NBI
@@ -13213,12 +13229,12 @@ class transp_output:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False)
 
-    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, counter=0):
+    def plot(self, fn=None, time=None, timesAv=None, plot_analysis=False, tab_color=0):
         if time is None:
             time = self.t[self.ind_saw]
 
         name = f"MITIM Notebook, run #{self.nameRunid}, profiles at time t={time:.3f}s"
-        fn_color = counter if counter > 0 else None
+        fn_color = tab_color if tab_color > 0 else None
 
         if fn is None:
             self.fn = FigureNotebook(name)
@@ -13445,7 +13461,8 @@ class transp_output:
         self.diagramSpecies(time=time, fn=self.fn, label="Species", fn_color=fn_color)
 
         # Flows
-        self.diagramFlows(time=time, fn=self.fn, label="Flows", fn_color=fn_color)
+        timeStr = f" (@{time:.3f}s)" if time is not None else f"(@{self.t[self.ind_saw]:.3f}s)"
+        self.diagramFlows(time=time, fn=self.fn, label=f"Flows{timeStr}", fn_color=fn_color)
 
         # CPU
         fig = self.fn.add_figure(tab_color=fn_color, label="CPU usage")
@@ -13518,8 +13535,8 @@ class transp_output:
         # 	Here I make the exception of reading it at plotting, because I may have generated it since loading the class
 
         self.gfile_out = None
-        fileG = f"{self.folderWork}/RELEASE_folder/TRANSPrun.geq"
-        if self.readGEQDSK and os.path.exists(fileG):
+        fileG = self.folderWork / f"RELEASE_folder" / f"TRANSPrun.geq"
+        if self.readGEQDSK and fileG.exists():
             try:
                 self.gfile_out = GEQtools.MITIMgeqdsk(fileG)
             except:
@@ -13639,7 +13656,7 @@ class transp_output:
             self.Species["D"] = {
                 "name": "D",
                 "type": "thermal",
-                "m": 1.0*self.u,
+                "m": self.mD,
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nD,
                 "T": self.Ti,
@@ -13657,7 +13674,7 @@ class transp_output:
             self.Species["He4_ash"] = {
                 "name": "He",
                 "type": "thermal",
-                "m": 4 * self.u,
+                "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nHe4,
                 "T": self.Ti,
@@ -13668,7 +13685,7 @@ class transp_output:
             self.Species[i+"_imp"] = {
                 "name": i,
                 "type": "thermal",
-                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u,      # TO FIX
+                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u, #TODO: FIX
                 "Z": self.fZs_avol[i]['Zave'],
                 "n": self.nZs[i]["total"],
                 "T": self.Ti,
@@ -13679,7 +13696,7 @@ class transp_output:
             self.Species["H_mini"] = {
                 "name": "H",
                 "type": "fast",
-                "m": 1.0*self.u,
+                "m": self.mH,
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nminiH,
                 "T": self.Tmini,
@@ -13688,7 +13705,7 @@ class transp_output:
             self.Species["He3_mini"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 3*self.u,       # TO FIX
+                "m": self.mHe3,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nminiHe3,
                 "T": self.Tmini,
@@ -13708,7 +13725,7 @@ class transp_output:
             self.Species["He4_fus"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 4 * self.u,
+                "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe4,
                 "T": self.Tfus,
@@ -13717,7 +13734,7 @@ class transp_output:
             self.Species["He3_fus"] = {
                 "name": "He",
                 "type": "fast",
-                "m": 3.0 * self.u,
+                "m": self.mHe3,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe3,
                 "T": self.Tfus,
@@ -13857,7 +13874,7 @@ class transp_output:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Final Convergence
         # 	Note:   Even if variables have not converged,
-        # 			but always having covered at least two sawteeth, to avoid that next restarted run starts again from the beginning!
+        # 			but always having covered at least two sawteeth, to avoid that next cold_started run starts again from the beginning!
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         ConvergedRun = (Conv_minTime and Conv_variables) and numSaw > 1
@@ -13878,7 +13895,7 @@ class transp_output:
 
         # -------- Standard TRANSP variable (only in time)
 
-        if "VarPRF" not in var:
+        if "VarMITIM" not in var:
             if radius is None:
                 val = self.f[var][:]
             else:
@@ -13991,11 +14008,11 @@ class transp_output:
         time=None,
         avTime=0.0,
         rhos=np.linspace(0.3, 0.9, 11),
-        restartPreparation=False,
+        cold_startPreparation=False,
         plotCompare=True,
         extraflag="",
         onlyThermal_TGYRO=False,
-        forceIfRestart=True,
+        forceIfcold_start=True,
         **kwargs_TGLFrun,
     ):
         """
@@ -14020,7 +14037,7 @@ class transp_output:
         # --------------------------------------------
 
         folderGACODE = (
-            f'{self.FolderCDF}/FolderGACODE_{f"{nameF:.0f}".zfill(5)}ms{extraflag}/'
+            self.FolderCDF / f'FolderGACODE_{f"{nameF:.0f}".zfill(5)}ms{extraflag}'
         )
 
         if int(time * 1000) not in self.TGLFstd:
@@ -14030,17 +14047,17 @@ class transp_output:
 
         cdf = self.TGLFstd[nameF].prep(
             folderGACODE,
-            restart=restartPreparation,
+            cold_start=cold_startPreparation,
             onlyThermal_TGYRO=onlyThermal_TGYRO,
             cdf_open=self,
-            forceIfRestart=forceIfRestart,
+            forceIfcold_start=forceIfcold_start,
         )
 
         labelTGLF = kwargs_TGLFrun.get("label", "tglf1")
 
         self.TGLFstd[nameF].run(
-            subFolderTGLF=labelTGLF + "/",
-            forceIfRestart=forceIfRestart,
+            subFolderTGLF=labelTGLF,
+            forceIfcold_start=forceIfcold_start,
             **kwargs_TGLFrun,
         )
 
@@ -14090,14 +14107,14 @@ class transp_output:
         )
 
         self.TGLFstd[int(time * 1000)].prep(
-            self.FolderCDF + f"FolderGACODE_{'{0:.0f}'.format(time * 1000).zfill(5)}ms/"
+            self.FolderCDF / f"FolderGACODE_{'{0:.0f}'.format(time * 1000).zfill(5)}ms"
         )
 
         # ~~~~~~~ Perturbative diffusivity
 
         if typeAnalysis == "CHIPERT":
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="chi_per/",
+                subFolderTGLF="chi_per",
                 label="chi_pert",
                 analysisType="e",
                 TGLFsettings=TGLFsettings,
@@ -14110,7 +14127,7 @@ class transp_output:
                 addTrace = [40, 173]
 
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="impurity/",
+                subFolderTGLF="impurity",
                 label="impurity",
                 analysisType="Z",
                 TGLFsettings=TGLFsettings,
@@ -14126,9 +14143,9 @@ class transp_output:
 
         if "FLUC" in typeAnalysis:
             self.TGLFstd[int(time * 1000)].run(
-                subFolderTGLF="fluctuations/",
+                subFolderTGLF="fluctuations",
                 TGLFsettings=TGLFsettings,
-                forceIfRestart=True,
+                forceIfcold_start=True,
             )
 
             self.TGLFstd[int(time * 1000)].read(
@@ -14630,7 +14647,7 @@ class transp_output:
         rhoRange=[0.4, 0.8],
         timeRange=0.5,
         TGLFsettings=1,
-        restart=False,
+        cold_start=False,
         plotYN=True,
     ):
         if time is None:
@@ -14648,13 +14665,13 @@ class transp_output:
         rhos = np.linspace(rhoRange[0], rhoRange[1], num)
 
         self.ChiPert_tglf = TGLFtools.TGLF(cdf=self.LocationCDF, time=time, rhos=rhos)
-        self.ChiPert_tglf.prep(self.FolderCDF + "chi_per_calc/", restart=restart)
+        self.ChiPert_tglf.prep(self.FolderCDF / "chi_per_calc", cold_start=cold_start)
         self.ChiPert_tglf.runAnalysis(
-            subFolderTGLF="chi_per/",
+            subFolderTGLF="chi_per",
             label="chi_pert",
             analysisType="e",
             TGLFsettings=TGLFsettings,
-            restart=restart,
+            cold_start=cold_start,
             cdf_open=self,
         )
 
@@ -14752,23 +14769,18 @@ class transp_output:
 
         print("\t- Looking for equilibrium file in CDF folder...")
         for extension in ["geqdsk", "geq", "gfile", "eqdsk"]:
-            for folder in ["EQ_folder/", ""]:
-                gf = IOtools.findFileByExtension(self.FolderCDF + folder, extension)
+            for folder in ["EQ_folder", ""]:
+                gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
-                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF + folder+ gf + extension)
+                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
                     break
         if gf is None:
-            print(
-                "\t\t- Reference g-file associated to this run could not be found",
-                typeMsg="w",
-            )
+            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="w")
 
         # Try to read boundary too
-        if os.path.exists(self.FolderCDF + "/PRF12345.RFS"):
-            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(
-                self.FolderCDF + "/PRF12345.RFS", self.FolderCDF + "/PRF12345.ZFS"
-            )
+        if (self.FolderCDF / "MIT12345.RFS").exists():
+            self.bound_R, self.bound_Z = TRANSPhelpers.readBoundary(self.FolderCDF / "MIT12345.RFS", self.FolderCDF / "MIT12345.ZFS")
 
     def getICRFantennas(self, namelist):
         nicha = int(IOtools.findValue(namelist, "nicha", "="))
@@ -14912,7 +14924,7 @@ class transp_output:
             NML = IOtools.findFileByExtension(self.FolderCDF, "TR.DAT", ForceFirst=True)
 
         if NML is not None:
-            namelist = self.FolderCDF + NML + "TR.DAT"
+            namelist = NML
 
             if np.sum(self.PichT) > 0.0 + self.eps00 * (1 + len(self.t)):
                 self.getICRFantennas(namelist)
@@ -15123,9 +15135,9 @@ class transp_output:
 
         print(f" ~~~~~~ Writing output pickle file with plasma at t={time:.3f}s")
         folderWork = IOtools.expandPath(folderWork)
-        file = f"{folderWork}/{name}.pkl"
+        file = folderWork / f"{name}.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
 
 
     # ---------------------------------------------------------------------------------------------------------
@@ -15156,7 +15168,7 @@ class transp_output:
 
         self.tgyro = TGYROtools.TGYRO(self.LocationCDF, time=time, avTime=avTime)
         self.tgyro.prep(
-            folderWork, restart=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
+            folderWork, cold_start=True, BtIp_dirs=[0, 0], gridsTRXPL=gridsTRXPL
         )
 
     def writeOutput(self, folderWork=None, time=-0.06, avTime=0.05):
@@ -15166,31 +15178,27 @@ class transp_output:
         call: c.writeOutput()
         """
 
-        IOtools.askNewFolder(f"{self.FolderCDF}/RELEASE_folder", force=True)
+        IOtools.askNewFolder(self.FolderCDF / f"RELEASE_folder", force=True)
 
         # ---- Perform TGYRO operations fully in folderWork (scratch) and then move
 
         # IOtools.askNewFolder('{0}/TGYROprep_folder/'.format(self.FolderCDF),force=True)
         if folderWork is None:
-            folderWork = f"{self.FolderCDF}/TGYROprep_folder/scratch"
+            folderWork = self.FolderCDF / "TGYROprep_folder" / "scratch"
 
         self.produceTGYROfiles(folderWork=folderWork, time=time, avTime=avTime)
 
-        os.system(f"cp {folderWork}/* {self.FolderCDF}/TGYROprep_folder/.")
+        for item in folderWork.glob("*"):
+            if item.is_file():
+                shutil.copy2(item, self.FolderCDF / "TGYROprep_folder")
+            elif item.is_dir():
+                shutil.copytree(item, self.FolderCDF / "TGYROprep_folder" / item.name)
 
         # ---- Organize relevant things from TGYRO folder
 
-        os.system(
-            f"cp {folderWork}/10001.geq {self.FolderCDF}/RELEASE_folder/TRANSPrun.geq"
-        )
-        os.system(
-            f"cp {folderWork}/10001.cdf {self.FolderCDF}/RELEASE_folder/TRANSPrun.cdf"
-        )
-        os.system(
-            "cp {0}/input.gacode {1}/RELEASE_folder/TRANSPrun.input.gacode".format(
-                folderWork, self.FolderCDF
-            )
-        )
+        shutil.copy2(folderWork / '10001.geq', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.geq')
+        shutil.copy2(folderWork / '10001.cdf', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.cdf')
+        shutil.copy2(folderWork / 'input.gacode', self.FolderCDF / 'RELEASE_folder' / 'TRANSPrun.input.gacode')
 
         print(
             "\n~~~~~~ Simulation results ready at t={0:.3f}s +- {3:0.3f}s (last sawtooth={2:.3f}s) in folder {1}/RELEASE_folder/\n".format(
@@ -15201,7 +15209,7 @@ class transp_output:
         # ---- Pickle file
 
         self.writePickle(
-            f"{self.FolderCDF}/RELEASE_folder/",
+            self.FolderCDF / "RELEASE_folder",
             time=time,
             avTime=avTime,
             name="TRANSPrun",
@@ -15209,15 +15217,16 @@ class transp_output:
 
         # ---- Zip at this stage
 
-        os.system(f"cd {self.FolderCDF} && tar -czvf TRANSPrun.tar RELEASE_folder")
-        os.system("mv {0}/TRANSPrun.tar {0}/RELEASE_folder/.".format(self.FolderCDF))
+        os.chdir(self.FolderCDF)
+        os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
+        IOtools.shutil_rmtree(self.FolderCDF / 'RELEASE_folder')
+        (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        folder.mkdir(parents=True, exist_ok=True)
 
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
@@ -15241,7 +15250,7 @@ class transp_output:
         print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
         print("\t\t* Warning: not time averaging yet",typeMsg='w')
 
-        # TO FIX: I should be looking at the extrapolated quantities in TRANSP?
+        #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
 
         # -------------------------------------------------------------------------------------------------------
@@ -16010,29 +16019,29 @@ class transp_output:
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def writeAuxiliarFiles(
-        self, loc=IOtools.expandPath("~/mitim_runs/data/SPARC/features/"), name=None
+        self, loc="~/mitim_runs/data/SPARC/features", name=None
     ):
+        loc = IOtools.expandPath(loc)
         if name is None:
-            name = f"Ev_{self.LocationCDF.split('.')[-2].split('/')[-1][5:]}"
+            name = f"Ev_{self.LocationCDF.name.split('.')[-2][5:]}"
 
-        folder = f"{loc}/{name}/"
+        folder = loc / f"{name}"
 
-        if not os.path.exists(folder):
-            os.system(f"mkdir {folder}")
+        folder.mkdir(parents=True, exist_ok=True)
 
         # Impurities
         for cont, key in enumerate(self.nZs):
             dictPKL = {"rho": self.x_lw, "nimp": self.nZs[key]["total"][self.ind_saw]}
-            file = f"{folder}/nimp{cont + 1}.pkl"
+            file = folder / f"nimp{cont + 1}.pkl"
             with open(file, "wb") as handle:
-                pickle.dump(dictPKL, handle, protocol=2)
+                pickle.dump(dictPKL, handle, protocol=4)
             print(f" --> Written {file}")
 
         # Minorities
         dictPKL = {"rho": self.x_lw, "n": self.nmini[self.ind_saw]}
-        file = f"{folder}/nmini.pkl"
+        file = folder / f"nmini.pkl"
         with open(file, "wb") as handle:
-            pickle.dump(dictPKL, handle, protocol=2)
+            pickle.dump(dictPKL, handle, protocol=4)
         print(f" --> Written {file}")
 
 # ---------------------------------------------------------------------------------------------------------

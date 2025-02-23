@@ -1,5 +1,4 @@
 import numpy as np
-from scipy import integrate
 from mitim_tools.misc_tools import MATHtools
 from IPython import embed
 
@@ -63,6 +62,8 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_volume_prime,
         geo_surf,
         geo_fluxsurfave_grad_r,
+        geo_fluxsurfave_bp2,
+        geo_fluxsurfave_bt2,
         geo_bt0,
     ) = volp_surf_Miller_vectorized(
         R,
@@ -91,7 +92,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     volp = geo_volume_prime * profiles.profiles["rmin(m)"][-1] ** 2
     surf = geo_surf * profiles.profiles["rmin(m)"][-1] ** 2
 
-    return volp, surf, geo_fluxsurfave_grad_r, geo_bt0
+    return volp, surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, geo_bt0
 
 def volp_surf_Miller_vectorized(
     geo_rmaj_in,
@@ -116,6 +117,9 @@ def volp_surf_Miller_vectorized(
     geo_rmin_in = geo_rmin_in.clip(
         1e-10
     )  # To avoid problems at 0 (Implemented by PRF, not sure how TGYRO deals with this)
+
+    geo_q_in = geo_q_in.clip(1e-2) # To avoid problems at 0 with some geqdsk files that are corrupted...
+
 
     [
         geo_shape_cos0_in,
@@ -365,7 +369,21 @@ def volp_surf_Miller_vectorized(
             + geov_grad_r[i] * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_bt0
+    geo_fluxsurfave__bp2 = 0
+    for i in range(n_theta - 1):
+        geo_fluxsurfave__bp2 = (
+            geo_fluxsurfave__bp2
+            + geov_bt[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
+        )
+
+    geo_fluxsurfave_bt2 = 0
+    for i in range(n_theta - 1):
+        geo_fluxsurfave_bt2 = (
+            geo_fluxsurfave_bt2
+            + geov_bp ** 2 * geov_g_theta[i] / geov_b[i] / denom
+        )
+
+    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave__bp2, geo_fluxsurfave_bt2, geo_bt0
 
 def xsec_area_RZ(
         R,

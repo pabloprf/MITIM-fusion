@@ -1,14 +1,10 @@
-import os
 import torch
 import numpy as np
 from collections import OrderedDict
 import pandas as pd
 from mitim_tools.misc_tools import IOtools, FARMINGtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # FUNCTIONS THAT HANDLE PARELELIZATION AND MITIM-SPECIFIC FEATURES (ALLOWING GENERALIZATION TO ANY FUNCTION)
@@ -24,7 +20,7 @@ def parallel_main(Params, cont):
     bounds = Params["bounds"]
     outputs = Params["outputs"]
     optimization_data = Params["optimization_data"]
-    restartYN = Params["restartYN"]
+    cold_start = Params["cold_start"]
     optimization_object = Params["optimization_object"]
 
     lock = Params["lock"]
@@ -37,7 +33,7 @@ def parallel_main(Params, cont):
         bounds,
         outputs,
         optimization_data,
-        restartYN=restartYN,
+        cold_start=cold_start,
         lock=lock,
     )
 
@@ -50,7 +46,7 @@ def fun(
     outputs,
     optimization_data,
     parallel=1,
-    restartYN=True,
+    cold_start=True,
     numEval=0,
 ):
     """
@@ -60,12 +56,11 @@ def fun(
 
     optimization_object is a class with the method .run(paramsfile,resultsfile)
 
-    restartYN: False if trying to find values first
+    cold_start: False if trying to find values first
 
     """
 
-    if not os.path.exists(folderExecution + "/Execution/"):
-        os.mkdir(folderExecution + "/Execution/")
+    (folderExecution / "Execution").mkdir(parents=True, exist_ok=True)
 
     try:
         x = np.atleast_2d(x)
@@ -83,7 +78,7 @@ def fun(
     Params["bounds"] = bounds
     Params["outputs"] = outputs
     Params["optimization_data"] = optimization_data
-    Params["restartYN"] = restartYN
+    Params["cold_start"] = cold_start
     Params["optimization_object"] = optimization_object
     Params["lock"] = None
 
@@ -120,18 +115,18 @@ def mitimRun(
     bounds,
     outputs,
     optimization_data,
-    restartYN=True,
+    cold_start=True,
     lock=None,
 ):
-    folderEvaluation = folderExecution + f"/Execution/Evaluation.{numEval}/"
-    paramsfile = f"{folderEvaluation}/params.in.{numEval}"
-    resultsfile = f"{folderEvaluation}/results.out.{numEval}"
+    folderEvaluation = folderExecution / "Execution" / f"Evaluation.{numEval}"
+    paramsfile = folderEvaluation / f"params.in.{numEval}"
+    resultsfile = folderEvaluation / f"results.out.{numEval}"
 
     optimization_object.lock = lock
 
-    if (not restartYN) and optimization_data is not None:
+    if (not cold_start) and optimization_data is not None:
         # Read result in Tabular Data
-        print("--> Reading Table files...", verbose=read_verbose_level())
+        print("--> Reading Table files...")
         y, yE, _ = optimization_data.grab_data_point(x)
 
         if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
@@ -139,17 +134,15 @@ def mitimRun(
                 f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",
                 typeMsg="w",
             )
-            restartYN = True
+            cold_start = True
         else:
             print(
                 f"--> Reading Tabular file successful for element {numEval}",
-                verbose=read_verbose_level(),
             )
 
-    if restartYN:
+    if cold_start:
         # Create folder
-        if not os.path.exists(folderEvaluation):
-            os.mkdir(folderEvaluation)
+        folderEvaluation.mkdir(parents=True, exist_ok=True)
 
         # Write params.in.X
         IOtools.writeparams(x, paramsfile, bounds, outputs, numEval)
@@ -186,7 +179,7 @@ def mitimRun(
         if lock is not None:
             lock.acquire()
         _,_,objective = optimization_object.scalarized_objective(torch.from_numpy(y))
-        optimization_data.update_data_point(x,y,yE,objective=objective.numpy())
+        optimization_data.update_data_point(x,y,yE,objective=objective.cpu().numpy())
         if lock is not None:
             lock.release()
 

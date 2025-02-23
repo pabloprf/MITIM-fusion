@@ -1,11 +1,11 @@
 """
 Notebook tabs, originally from F. Sciortino (MIT, 2019) but modified
-extensively by PRF.
+extensively by PRF
 """
 
 import sys
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 try:
     # ----------- PyQt -----------
@@ -18,10 +18,7 @@ try:
 
     # -----------------------------
 except ImportError:
-    print(
-        " > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",
-        typeMsg="w",
-    )
+    print(" > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",typeMsg="w",)
 
     class QTabWidget:
         pass
@@ -40,7 +37,10 @@ class FigureNotebook:
     def __init__(self, windowtitle, parent=None, geometry="1800x900", vertical=True):
         plt.ioff()
 
-        self.app = QtWidgets.QApplication.instance()
+        try:
+            self.app = QtWidgets.QApplication.instance()
+        except NameError:
+            raise Exception("[MITIM] MITIM was installed without [pyqt] option, no GUI available")
         if self.app is None:
             self.app = QtWidgets.QApplication(sys.argv)
         self.app.setStyle("Fusion")

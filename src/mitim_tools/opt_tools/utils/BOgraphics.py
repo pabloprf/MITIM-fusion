@@ -1,27 +1,19 @@
-import os
 import copy
 import torch
-import datetime
 import sys
 import pandas as pd
 import dill as pickle_dill
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
-from scipy.interpolate import griddata
 from collections import OrderedDict
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, MATHtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, MATHtools, LOGtools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
-
 from IPython import embed
-
-
-
 
 # ----------------------------------------------------------------------------------------------------
 # Tools not to clutter SURROGATEtools.py
@@ -87,9 +79,12 @@ def plot_surrogate_model(
 
     newLabels = self.variables if plotFundamental else [ikey for ikey in self.bounds]
     if newLabels is None or self.gpmodel.ard_num_dims > len(newLabels):
-        newLabels = [
-            ikey for ikey in self.bounds
-        ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        if self.bounds is not None:
+            newLabels = [
+                ikey for ikey in self.bounds
+            ]  # For cases where I actually did not transform even if surrogate_transformation_variables exitsts (constant)
+        else:
+            newLabels = [f"Variable {i}" for i in range(self.gpmodel.ard_num_dims)]
 
     """
 	------------------------------------------------------------------------------------------------------------
@@ -237,7 +232,7 @@ def plot_surrogate_model(
 
         GRAPHICStools.addDenseAxis(ax)
 
-    elif dimX == 2:  # TO FIX
+    elif dimX == 2:  #TODO: FIX
         # Plot training data
         ax.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)
         ax2.plot(trainXtr[:, 0], trainXtr[:, 1], "ks", markersize=markersize)
@@ -658,18 +653,21 @@ def plotTraining_surrogate_model(
         yerr=stds * trainYvar_tr[:, 0] ** 0.5,
         capsize=5.0,
         fmt="none",
+        label=f'$\\pm{stds}\\sigma$',
     )  # 2*std, confidence bounds
 
     mean, upper, lower, _ = self.predict(train_X, produceFundamental=True)
     mean = mean[:, 0].detach().cpu().numpy()
+    lower = lower[:, 0].detach().cpu().numpy()
+    upper = upper[:, 0].detach().cpu().numpy()
     ax2.plot(x, mean, "-s", color="r", lw=0.5, markersize=3, label="model")
     ax2.errorbar(
         x,
         mean,
         c="r",
         yerr=[
-            mean - lower[:, 0].detach().cpu().numpy() * stds / 2.0,
-            upper[:, 0].detach().cpu().numpy() * stds / 2.0 - mean,
+            ( mean - lower )/2.0 * stds,
+            ( upper - mean )/2.0 * stds,
         ],
         capsize=3.0,
         fmt="none",
@@ -697,7 +695,7 @@ def plotTraining_surrogate_model(
     ax2.set_xlim(left=0)
 
     if legYN:
-        ax2.legend(loc="best", prop={"size": 4})
+        ax2.legend(loc="best", prop={"size": 5})
 
 
 def localBehavior_surrogate_model(
@@ -824,49 +822,43 @@ def retrieveResults(
     doNotShow=False,
     plotFN=None,
     pointsEvaluateEachGPdimension=50,
+    rangePlot = None
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Grab remote results optimization
     # ----------------------------------------------------------------------------------------------------------------
 
+    folderWork = IOtools.expandPath(folderWork)
+
     if folderRemote is not None:
         [machine, folderRemote0] = folderRemote.split(":")
-        if "-" in machine:
-            [machine, port] = machine.split("-")
-            port = "-P " + port
-        else:
-            port = ""
 
-        username = IOtools.expandPath("$USER")
+        folderRemote0 = f"{IOtools.expandPath(folderRemote0)}"
 
         print(" - Grabbing remote")
-        if not os.path.exists(folderWork):
-            os.system(f"mkdir {folderWork}")
-
-        os.system(
-            f"scp -TO -r {port} {username}@{machine}:{folderRemote0}/Outputs {folderWork}"
-        )
+        folderWork.mkdir(parents=True, exist_ok=True)
+        FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow
     # ----------------------------------------------------------------------------------------------------------------
 
     print("\t\t--> Opening optimization_object.pkl")
-    prfs_model = STRATEGYtools.read_from_scratch(f"{folderWork}/Outputs/optimization_object.pkl")
+    mitim_model = STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
 
-    if "timeStamp" in prfs_model.__dict__:
-        print(f"\t\t\t- Time stamp of optimization_object.pkl: {prfs_model.timeStamp}")
+    if "timeStamp" in mitim_model.__dict__:
+        print(f"\t\t\t- Time stamp of optimization_object.pkl: {mitim_model.timeStamp}")
     else:
         print("\t\t\t- Time stamp of optimization_object.pkl not found")
 
     # ---------------- Read optimization_results
-    fileOutputs = folderWork + "/Outputs/optimization_results.out"
+    fileOutputs = folderWork / "Outputs" / "optimization_results.out"
     res = optimization_results(file=fileOutputs)
-    res.readClass(prfs_model)
+    res.readClass(mitim_model)
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork + "/Outputs/optimization_log.txt")
+    log = LogFile(folderWork / "Outputs" / "optimization_log.txt")
     try:
         log.interpret()
     except:
@@ -875,7 +867,7 @@ def retrieveResults(
 
     # ---------------- Read Tabular
     if analysis_level >= 0:
-        data_df = pd.read_csv(folderWork + "/Outputs/optimization_data.csv")
+        data_df = pd.read_csv(folderWork / "Outputs" / "optimization_data.csv")
     else:
         data_df = None
 
@@ -884,60 +876,32 @@ def retrieveResults(
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork}/Outputs/optimization_extra.pkl", "rb") as handle:
-                prfs_model.dictStore = pickle_dill.load(handle)
-        except:
-            print("Could not load optimization_extra", typeMsg="w")
-            prfs_model.dictStore = None
+            with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
+                mitim_model.dictStore = pickle_dill.load(handle)
+        except Exception as e:
+            print("Could not load optimization_extra because:", typeMsg="w")
+            print(e)
+            mitim_model.dictStore = None
         # -------------------
 
-        prfs_model.optimization_results = res
-        prfs_model.logFile = log
+        mitim_model.optimization_results = res
+        mitim_model.logFile = log
         if plotFN is not None:
-            fn = prfs_model.plot(
+            fn = mitim_model.plot(
                 doNotShow=doNotShow,
                 fn = plotFN,
                 pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
+                rangePlot_force=rangePlot,
             )
 
     # If no pickle, plot only the contents of optimization_results
     else:
         if plotFN:
             fn = res.plot(doNotShow=doNotShow, log=log, fn = plotFN)
-        prfs_model = None
+        mitim_model = None
 
-    return fn, res, prfs_model, log, data_df
+    return fn, res, mitim_model, log, data_df
 
-
-class Logger(object):
-    def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
-        self.logFile = logFile
-        self.writeAlsoTerminal = writeAlsoTerminal
-
-        currentime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        print(f"- Creating log file: {logFile}")
-
-        if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
-        else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run restarted ({currentime})~~~~~ \n\n\n\n\n"
-                )
-
-    def write(self, message):
-        if self.writeAlsoTerminal:
-            self.terminal.write(message)
-
-        with open(self.logFile, "a") as self.log:
-            self.log.write(IOtools.strip_ansi_codes(message))
-
-    # For python 3 compatibility:
-    def flush(self):
-        pass
 
 
 class LogFile:
@@ -945,7 +909,7 @@ class LogFile:
         self.file = file
 
     def activate(self, writeAlsoTerminal=True):
-        sys.stdout = Logger(
+        sys.stdout = LOGtools.Logger(
             logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
         )
 
@@ -1083,7 +1047,7 @@ class LogFile:
         lab="",
         marker="o",
         color="b",
-    ):
+        ):
         if axs is None:
             plt.ion()
             fig, axs = plt.subplots(ncols=2)
@@ -1177,12 +1141,12 @@ class optimization_data:
         self,
         inputs,
         outputs,
-        file="Outputs/optimization_data.dat",
+        file,
         forceNew=False,
     ):
         # If start from scratch, overwrite the tabular, otherwise there's risk of error if not all OFs coincide, that's why forceNew
 
-        self.file = file
+        self.file = IOtools.expandPath(file)
         self.inputs = inputs
         self.outputs = outputs
 
@@ -1195,7 +1159,7 @@ class optimization_data:
             self.data_point_dictionary[i + "_std"] = np.nan
         self.data_point_dictionary['maximization_objective'] = np.nan
 
-        if forceNew or not os.path.exists(self.file):
+        if forceNew or not self.file.exists():
             # Create empty csv
             self.data = pd.DataFrame(columns = self.data_point_dictionary.keys())
             self.data.to_csv(self.file, index=False)
@@ -1235,7 +1199,6 @@ class optimization_data:
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
         print(
             f"\t* Reading points from file ({self.file})",
-            verbose=read_verbose_level(),
         )
 
         self.data = pd.read_csv(self.file)
@@ -1301,7 +1264,12 @@ class optimization_data:
                 else:
                     data_point['maximization_objective'] = np.nan
 
-                data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
+                # Check if both data_point and data_new have any non-NA values
+                if not pd.DataFrame([data_point]).isna().all().all():
+                    if not data_new.isna().all().all():  # Ensure data_new is not all-NA
+                        data_new = pd.concat([data_new, pd.DataFrame([data_point])], ignore_index=True)
+                    else:
+                        data_new = pd.DataFrame([data_point])  # Initialize if data_new is all-NA
 
         self.data = data_new
         self.data.to_csv(self.file, index=False)
@@ -1318,22 +1286,22 @@ class optimization_data:
 
 
 class optimization_results:
-    def __init__(self, file="Outputs/optimization_results.out"):
+    def __init__(self, file):
         self.file = file
         self.predictedSofar = 0
 
-    def readClass(self, PRF_BOclass):
-        self.PRF_BO = PRF_BOclass
+    def readClass(self, MITIM_BOclass):
+        self.MITIM_BO = MITIM_BOclass
 
-    def initialize(self, PRF_BOclass):
-        self.readClass(PRF_BOclass)
+    def initialize(self, MITIM_BOclass):
+        self.readClass(MITIM_BOclass)
         self.createHeaders()
         self.save()
 
     def save(self):
         with open(self.file, "w") as f:
             f.write(self.lines)
-        print("\t* optimization_results updated", verbose=read_verbose_level())
+        print("\t* optimization_results updated")
 
     def read(self):
         print(f"\t\t--> Opening {IOtools.clipstr(self.file)}")
@@ -1355,16 +1323,10 @@ class optimization_results:
 
         # Grab best case based on mean
         try:
-            (
-                self.best_absolute,
-                self.best_absolute_index,
-                self.best_absolute_full,
-            ) = self.getBest()
+            self.best_absolute,self.best_absolute_index,self.best_absolute_full = self.getBest()
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
-            self.best_absolute = self.best_absolute_index = self.best_absolute_full = (
-                None
-            )
+            self.best_absolute = self.best_absolute_index = self.best_absolute_full = None
 
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines
@@ -1441,8 +1403,8 @@ class optimization_results:
             positionShow = position
 
         xb = ""
-        for cont, j in enumerate(self.PRF_BO.bounds):
-            xb += f"\t\t\t{j} = {self.PRF_BO.train_X[position,cont]:.6e}\n"
+        for cont, j in enumerate(self.MITIM_BO.bounds):
+            xb += f"\t\t\t{j} = {self.MITIM_BO.train_X[position,cont]:.6e}\n"
         xb = xb[:-1]
 
         return f"\n\n {strn} {positionShow}\n\t x :\n{xb}"
@@ -1454,34 +1416,34 @@ class optimization_results:
             if not zero:
                 y = yl = yu = ydifference
             else:
-                y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
             stry = " (rel diff, %)"
             position = 0
         else:
             if predicted:
                 if not zero:
-                    y = np.atleast_2d(self.PRF_BO.y_next_pred.cpu())
-                    yl = np.atleast_2d(self.PRF_BO.y_next_pred_l.cpu())
-                    yu = np.atleast_2d(self.PRF_BO.y_next_pred_u.cpu())
+                    y = np.atleast_2d(self.MITIM_BO.y_next_pred.cpu())
+                    yl = np.atleast_2d(self.MITIM_BO.y_next_pred_l.cpu())
+                    yu = np.atleast_2d(self.MITIM_BO.y_next_pred_u.cpu())
                 else:
-                    y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                    y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
                 stry = " (model)"
             else:
                 if not zero:
-                    y = self.PRF_BO.train_Y
+                    y = self.MITIM_BO.train_Y
                     yl = (
-                        self.PRF_BO.train_Y - 2 * self.PRF_BO.train_Ystd
+                        self.MITIM_BO.train_Y - 2 * self.MITIM_BO.train_Ystd
                     )  # -2*sigma, to imitate the predicted one
                     yu = (
-                        self.PRF_BO.train_Y + 2 * self.PRF_BO.train_Ystd
+                        self.MITIM_BO.train_Y + 2 * self.MITIM_BO.train_Ystd
                     )  # +2*sigma, to imitate the predicted one
                 else:
-                    y = yl = yu = np.ones((maxNum, len(self.PRF_BO.outputs))) * np.nan
+                    y = yl = yu = np.ones((maxNum, len(self.MITIM_BO.outputs))) * np.nan
                 stry = ""
 
         xb = ""
         allY = []
-        for cont, j in enumerate(self.PRF_BO.outputs):
+        for cont, j in enumerate(self.MITIM_BO.outputs):
             xb += f"\t\t\t{j} = {y[position,cont]:.6e}"
             allY.append(y[position, cont])
 
@@ -1496,18 +1458,18 @@ class optimization_results:
         return f"\n\t y{stry} :\n{xb}", l2, np.array(allY)
 
     def createHeaders(self):
-        if self.PRF_BO.restartYN:
-            txtR = "\n* Restarting capability requested, looking into previous optimization_data.dat"
+        if self.MITIM_BO.cold_start:
+            txtR = "\n* cold_starting capability requested, looking into previous optimization_data.dat"
         else:
             txtR = ""
 
         txtIn = ""
-        for i in self.PRF_BO.bounds:
+        for i in self.MITIM_BO.bounds:
             txtIn += "\t{0} from {1:.5f} to {2:.5f}\n".format(
-                i, self.PRF_BO.bounds[i][0], self.PRF_BO.bounds[i][1]
+                i, self.MITIM_BO.bounds[i][0], self.MITIM_BO.bounds[i][1]
             )
         txtOut = ""
-        for cont, i in enumerate(self.PRF_BO.outputs):
+        for cont, i in enumerate(self.MITIM_BO.outputs):
             txtOut += f"\t{i}"
 
         STR_header = f"""
@@ -1515,12 +1477,12 @@ MITIM version 0.2 (P. Rodriguez-Fernandez, 2020)
 Workflow start time: {IOtools.getStringFromTime()} 
 \t"""
 
-        if self.PRF_BO.optimization_options["dvs_base"] is None:
+        if self.MITIM_BO.optimization_options["problem_options"]["dvs_base"] is None:
             STR_base = ""
         else:
             txtBase = ""
-            for cont, i in enumerate(self.PRF_BO.bounds):
-                txtBase += f"\t{i} = {self.PRF_BO.optimization_options['dvs_base'][cont]:.5f}\n"
+            for cont, i in enumerate(self.MITIM_BO.bounds):
+                txtBase += f"\t{i} = {self.MITIM_BO.optimization_options['problem_options']['dvs_base'][cont]:.5f}\n"
             STR_base = f"""
 * Baseline point (added as Evaluation.0 to initial batch)
 {txtBase}
@@ -1540,9 +1502,9 @@ Workflow start time: {IOtools.getStringFromTime()}
 	""".format(
             txtIn,
             txtOut,
-            self.PRF_BO.optimization_results.file,
-            len(self.PRF_BO.bounds),
-            len(self.PRF_BO.outputs),
+            self.MITIM_BO.optimization_results.file,
+            len(self.MITIM_BO.bounds),
+            len(self.MITIM_BO.outputs),
             STR_base,
             txtR,
         )
@@ -1555,31 +1517,15 @@ Workflow start time: {IOtools.getStringFromTime()}
         self.lines = STR_header + STR_inputs + STR_exec
 
     def getBest(self, rangeT=None):
-        if rangeT is None:
-            evaluations = self.evaluations
-        else:
-            evaluations = self.evaluations[rangeT[0] : rangeT[1]]
 
-        xe, ofcaldif, ofcalMdif, res = plotAndGrab(
-            None,
-            None,
-            None,
-            None,
-            evaluations,
-            self.OF_labels,
-            None,
-            self.PRF_BO.lambdaSingleObjective,
-            alpha=0.0,
-            alphaM=0.0,
-            lab=False,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
-        )
+        converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
-        best_absolute_index = np.nanargmax(res)
+        best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]
 
         if rangeT is not None:
             best_absolute_index += rangeT[0]
+        
         best_absolute_full = self.evaluations[best_absolute_index]
 
         return best_absolute, best_absolute_index, best_absolute_full
@@ -1611,7 +1557,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         self.gatherOptima()
 
-        # Gather base (may not be evaluation #0 if I have restarted from Tabular !!!!)
+        # Gather base (may not be evaluation #0 if I have cold_started from Tabular !!!!)
         self.DVbase = {}
         cont_bug = 0
         for i in range(len(lines)):
@@ -1645,7 +1591,6 @@ Workflow start time: {IOtools.getStringFromTime()}
                 Best in each optimization loop. So, if each optimization provides 5 points, this will search
                 within that range. Not TURBO
         """
-
         self.iterationPositions = np.cumsum(self.numEvals)
 
         # -----------------------------------------------------------------
@@ -1859,8 +1804,8 @@ Workflow start time: {IOtools.getStringFromTime()}
         leg=True,
         colorsS=None,
     ):
-        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * 100
-        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * 100
+        colors = GRAPHICStools.listColors() if colorsS is None else [colorsS[0]] * np.max([100,len(self.OF_labels)])
+        colorsM = GRAPHICStools.listColors() if colorsS is None else [colorsS[1]] * np.max([100,len(self.OF_labels)])
 
         if axs is None:
             plt.ion()
@@ -2269,8 +2214,8 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.optima,
             self.OF_labels,
             colors,
-            self.PRF_BO.lambdaSingleObjective,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
+            self.MITIM_BO.scalarized_objective,
+            OF_labels_complete=self.MITIM_BO.stepSettings["name_objectives"],
         )
         xe, yTe, yTMe, _ = plotAndGrab(
             ax,
@@ -2280,11 +2225,11 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             colors,
-            self.PRF_BO.lambdaSingleObjective,
+            self.MITIM_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
-            OF_labels_complete=self.PRF_BO.stepSettings["name_objectives"],
+            OF_labels_complete=self.MITIM_BO.stepSettings["name_objectives"],
         )
 
         # Compress evaluations to optima grid (assuming)
@@ -2433,7 +2378,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.optima,
                 self.OF_labels,
                 None,
-                self.PRF_BO.lambdaSingleObjective,
+                self.MITIM_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2448,7 +2393,7 @@ Workflow start time: {IOtools.getStringFromTime()}
                 self.evaluations,
                 self.OF_labels,
                 None,
-                self.PRF_BO.lambdaSingleObjective,
+                self.MITIM_BO.scalarized_objective,
                 alpha=0.0,
                 alphaM=0.0,
                 lab=False,
@@ -2485,8 +2430,8 @@ Workflow start time: {IOtools.getStringFromTime()}
                     markersize=2,
                 )
 
-            if self.PRF_BO.stepSettings["name_objectives"] is not None:
-                ax.set_ylabel(self.PRF_BO.stepSettings["name_objectives"][i])
+            if self.MITIM_BO.stepSettings["name_objectives"] is not None:
+                ax.set_ylabel(self.MITIM_BO.stepSettings["name_objectives"][i])
             else:
                 ax.set_ylabel(f"Objective Function #{i+1}")
 
@@ -2534,7 +2479,7 @@ Workflow start time: {IOtools.getStringFromTime()}
             self.evaluations,
             self.OF_labels,
             None,
-            self.PRF_BO.lambdaSingleObjective,
+            self.MITIM_BO.scalarized_objective,
             alpha=0.0,
             alphaM=0.0,
             lab=False,
@@ -2912,456 +2857,6 @@ def plotContour(ax, x, y, z, maxYplot, cmap="jet", flevels=200, cb_fs=8, fig=Non
     return contour
 
 
-def plotBO_Pareto(
-    resultsSet,
-    bounds,
-    outputs,
-    axs=None,
-    fig=None,
-    marker="*",
-    label="",
-    markersize=25,
-    plotDVs=True,
-    plotBest=True,
-    plotLine=True,
-    color=None,
-    axExtras=None,
-):
-    if axs is None:
-        fig, axs = plt.subplots(ncols=2, figsize=(10, 5))
-
-    positionsOptimize, positionsNonOptimize = (
-        resultsSet["GlobalPositions"]["positionsOptimize"],
-        resultsSet["GlobalPositions"]["positionsNonOptimize"],
-    )
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Plotting Pareto front (in OFs space)
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    if plotDVs:
-        ax = axs[0]
-    else:
-        ax = axs
-
-    howmany = resultsSet["x_best"].shape[0]
-    if color is not None:
-        colors, _ = GRAPHICStools.colorTableFade(
-            howmany, startcolor=color[0], endcolor=color[1]
-        )
-    else:
-        colors, _ = GRAPHICStools.colorTableFade(
-            howmany, startcolor="b", endcolor="r"
-        )  # np.random.RandomState(0).rand(howmany)
-
-    # If 2 OFs
-    if len(positionsOptimize) == 2:
-        y = resultsSet["y_best"]
-
-        yOrder = np.array([a for _, a in sorted(zip(y[:, positionsOptimize[0]], y))])
-
-        ax.scatter(
-            yOrder[:, positionsOptimize[0]],
-            yOrder[:, positionsOptimize[1]],
-            c=colors,
-            marker=marker,
-            label=label,
-            s=markersize,
-        )
-        if plotBest:
-            ax.scatter(
-                [y[0, positionsOptimize[0]]],
-                [y[0, positionsOptimize[1]]],
-                c="r",
-                marker=marker,
-                s=50,
-            )
-
-        if plotLine:
-            ax.plot(
-                yOrder[:, positionsOptimize[0]],
-                yOrder[:, positionsOptimize[1]],
-                c=color,
-            )
-        ax.set_xlabel(outputs[positionsOptimize[0]])
-        ax.set_ylabel(outputs[positionsOptimize[1]])
-        ax.set_title("Pareto Front")
-
-        if axExtras is not None and len(positionsNonOptimize) > 0:
-            for cont, i in enumerate(positionsNonOptimize):
-                axExtras[cont].scatter(
-                    yOrder[:, positionsOptimize[0]],
-                    yOrder[:, i],
-                    c=colors,
-                    marker=marker,
-                    label=label,
-                    s=markersize,
-                )
-                axExtras[cont].set_xlabel(outputs[positionsOptimize[0]])
-                axExtras[cont].set_ylabel(outputs[i])
-
-    # If 3 OFs
-    if len(positionsOptimize) == 3:
-        plotx, ploty, plotz = 1, 2, 0
-        x, y, z = (
-            resultsSet["y_best"][:, plotx],
-            resultsSet["y_best"][:, ploty],
-            resultsSet["y_best"][:, plotz],
-        )
-
-        [X, Y] = np.meshgrid(np.unique(x), np.unique(y))
-        Z = griddata((x, y), z, (X, Y))
-
-        _, vmaxvmin = plot2D(
-            ax,
-            fig,
-            X,
-            Y,
-            Z,
-            bounds=[outputs[plotx], outputs[ploty]],
-            cax=None,
-            levels=[],
-        )
-        ax.scatter(
-            resultsSet["y_best"][:, plotx],
-            resultsSet["y_best"][:, ploty],
-            c=colors,
-            marker=marker,
-            label=label,
-        )
-
-    if not plotDVs:
-        ax.legend().set_draggable(True)
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Plotting Pareto front (in DVs space)
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if plotDVs:
-        dOrder = np.array(
-            [
-                a
-                for _, a in sorted(
-                    zip(y[:, positionsOptimize[0]], resultsSet["x_best"])
-                )
-            ]
-        )
-
-        axs[1].scatter(
-            dOrder[:, 0],
-            dOrder[:, 1],
-            c=colors,
-            marker=marker,
-            label=label,
-            s=markersize,
-        )
-        if plotBest:
-            axs[1].scatter(
-                [resultsSet["x_best"][0, 0]],
-                [resultsSet["x_best"][0, 1]],
-                c="r",
-                marker=marker,
-                s=markersize,
-            )
-        axs[1].set_title("Corresponding DVs")
-        if bounds is not None:
-            xb = []
-            for i in bounds:
-                xb.append(i)
-            axs[1].set_xlabel(xb[0])
-            axs[1].set_ylabel(xb[1])
-        axs[1].legend().set_draggable(True)
-
-
-# --------------- FoR GA
-
-
-def plotGA_fronts(
-    fronts, toolbox, NumGenerations=5, fig=None, selected=None, trained=None
-):
-    # ___________________________
-
-    # if len(fronts) == 1: fronts = fronts[0]
-
-    if NumGenerations == -1:
-        generations = [-1]
-    else:
-        sep = int(len(fronts) / NumGenerations)
-        try:
-            generations = np.arange(0, len(fronts), sep).tolist()
-        except:
-            generations = [0]
-        if generations[-1] < len(fronts) - 1:
-            generations.append(len(fronts) - 1)
-
-    plot_colors = GRAPHICStools.listColors()
-
-    numDVs = len(fronts[0][0])
-    numOFs = len(toolbox.evaluate(fronts[0][0]))
-
-    reqDVs = int(np.ceil(numDVs / 2))
-    reqOFs = int(np.ceil(numOFs / 2))
-
-    if fig is None:
-        fig, ax = plt.figure()
-
-    grid = plt.GridSpec(nrows=2, ncols=np.max([reqDVs, reqOFs]), hspace=0.2, wspace=0.2)
-    if len(fronts) == 1:
-        generations = [0]
-
-    axDVs = []
-    for j in range(reqDVs):
-        ax = fig.add_subplot(grid[0, j])
-        axDVs.append(ax)
-
-    axOFs = []
-    for j in range(reqOFs):
-        ax = fig.add_subplot(grid[1, j])
-        axOFs.append(ax)
-
-    parLasts = []
-    for cont, i in enumerate(generations):
-        inds = fronts[i]
-        par = []
-        for contg, ind in enumerate(inds):
-            parr = toolbox.evaluate(ind)
-            par.append(parr)
-            print(
-                "Evaluated {0} ({1} out of {2} in generation {3}({5}) out of {4}({6}))".format(
-                    ind,
-                    contg,
-                    len(inds),
-                    cont + 1,
-                    len(generations),
-                    i,
-                    generations[-1],
-                )
-            )
-        par = np.array(par)
-
-        if numDVs > 1:
-            for j in range(reqDVs):
-                axDVs[j].scatter(
-                    inds[:, 2 * j],
-                    inds[:, 2 * j + 1],
-                    color=plot_colors[cont],
-                    label="Front " + str(i),
-                )
-        else:
-            for j in range(reqDVs):
-                axDVs[j].scatter(
-                    inds[:, 2 * j],
-                    inds[:, 2 * j],
-                    color=plot_colors[cont],
-                    label="Front " + str(i),
-                )
-
-        if numOFs > 1:
-            for j in range(reqOFs):
-                axOFs[j].scatter(
-                    par[:, 2 * j],
-                    par[:, 2 * j + 1],
-                    color=plot_colors[cont],
-                    label="Front " + str(i),
-                )
-        else:
-            if len(par.shape) > 1:
-                for j in range(reqOFs):
-                    axOFs[j].scatter(
-                        par[:, 2 * j],
-                        par[:, 2 * j],
-                        color=plot_colors[cont],
-                        label="Front " + str(i),
-                    )
-            else:
-                for j in range(reqOFs):
-                    axOFs[j].scatter(
-                        par[2 * j],
-                        par[2 * j],
-                        color=plot_colors[cont],
-                        label="Front " + str(i),
-                    )
-
-        indLast = inds
-        parLasts.append(par)
-
-    for j in range(reqDVs):
-        ax = axDVs[j]
-        GRAPHICStools.addLegendApart(ax, ratio=0.8)
-        ax.set_xlabel(f"$x_{2 * j + 1}$")
-        ax.set_ylabel(f"$x_{2 * j + 2}$")
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
-
-    for j in range(reqOFs):
-        ax = axOFs[j]
-        GRAPHICStools.addLegendApart(ax, ratio=0.8)
-        ax.set_xlabel(f"$y_{2 * j + 1}$")
-        ax.set_ylabel(f"$y_{2 * j + 2}$")
-
-    if selected is not None:
-        allparsel = plotSet(
-            selected, toolbox, reqDVs, reqOFs, axDVs, axOFs, numOFs=numOFs
-        )
-    if trained is not None:
-        _ = plotSet(
-            trained, toolbox, reqDVs, reqOFs, axDVs, axOFs, numOFs=numOFs, color="k"
-        )
-
-    return parLasts, allparsel
-
-
-def plotSet(
-    selected, toolbox, reqDVs, reqOFs, axDVs, axOFs, numOFs=1, marker="*", color="g"
-):
-    allparsel = []
-    for k in range(selected.shape[0]):
-        ind = selected[k]
-        parr = toolbox.evaluate(ind)
-        allparsel.append(parr)
-        for j in range(reqDVs):
-            ax = axDVs[j]
-            ax.scatter(ind[2 * j], ind[2 * j + 1], marker=marker, color=color)
-
-        if numOFs > 1:
-            for j in range(reqOFs):
-                ax = axOFs[j]
-                ax.scatter(parr[2 * j], parr[2 * j + 1], marker=marker, color=color)
-        else:
-            for j in range(reqOFs):
-                ax = axOFs[j]
-                ax.scatter(parr[2 * j], parr[2 * j], marker=marker, color=color)
-
-    allparsel = np.array(allparsel)
-
-    return allparsel
-
-
-def plotGA_fitness(info, ax=None):
-    if ax is None:
-        fig, ax = plt.subplots(1, figsize=(4, 4))
-
-    avg0 = info["avg"]
-    min0 = info["min"]
-    max0 = info["max"]
-
-    ax.plot(info["gen"], np.abs((info["avg"] - avg0) / avg0) * 100, label="avg")
-    ax.plot(info["gen"], np.abs((info["min"] - min0) / min0) * 100, label="min")
-    ax.plot(info["gen"], np.abs((info["max"] - max0) / max0) * 100, label="max")
-
-    ax.set_ylabel("Fitness (relative to start, %)")
-    ax.set_xlabel("Generation")
-    ax.legend()
-
-
-def plotGA_results(
-    fronts,
-    info,
-    toolbox,
-    fn=None,
-    NumGenerations=5,
-    color="r",
-    members=None,
-    subname="",
-    selected=None,
-    trained=None,
-):
-    plot_colors = GRAPHICStools.listColors()
-
-    if fn is None:
-        fn = GUItools.FigureNotebook("MITIM GA Notebook", geometry="1500x1000")
-
-    fig = fn.add_figure(label="Pareto Front" + subname)
-
-    selected = np.array(selected)
-    fronts = np.array(fronts)
-
-    parLasts, allparsel = plotGA_fronts(
-        fronts,
-        toolbox,
-        NumGenerations=NumGenerations,
-        fig=fig,
-        selected=selected,
-        trained=trained,
-    )
-
-    if members is not None:
-        members = np.array(members)
-        fig = fn.add_figure(label="Population Members" + subname)
-        parLastMs, _ = plotGA_fronts(
-            members,
-            toolbox,
-            NumGenerations=NumGenerations,
-            fig=fig,
-            selected=selected,
-            trained=trained,
-        )
-
-    # ------------
-    figAnalysis = fn.add_figure(label="Analysis" + subname)
-    grid = plt.GridSpec(nrows=2, ncols=2, hspace=0.2, wspace=0.2)
-    ax = figAnalysis.add_subplot(grid[0, 0])
-
-    if members is not None:
-        for cont, parLastM in enumerate(parLastMs):
-            try:
-                norms = np.linalg.norm(parLastM, axis=1)
-            except:
-                norms = np.array([np.linalg.norm(parLastM)])
-            x = np.linspace(0, len(norms) - 1, len(norms))
-            ax.plot(x, norms, "-s", c="b", label=f"Members Norm {cont + 1}")
-
-    for cont, parLast in enumerate(parLasts):
-        try:
-            norms = np.linalg.norm(parLast, axis=1)
-        except:
-            norms = np.array([np.linalg.norm(parLast)])
-        x = np.linspace(0, len(norms) - 1, len(norms))
-        ax.plot(
-            x,
-            norms,
-            "-*",
-            c=plot_colors[cont],
-            label=f"Pareto Norm {cont + 1}",
-        )
-
-    try:
-        norms = np.linalg.norm(allparsel, axis=1)
-        for j in norms:
-            ax.axhline(y=j, c="g", label="Selected")
-    except:
-        pass
-
-    ax.legend()
-
-    ax = figAnalysis.add_subplot(grid[1, 0])
-    plotGA_fitness(info, ax=ax)
-
-    return fn
-
-
-def plotGA_essential(GAOF, fn=None, NumGenerations=5, plotAllmembers=False, subname=""):
-    if fn is None:
-        fn = GUItools.FigureNotebook("MITIM GA Notebook", geometry="1500x1000")
-
-    if plotAllmembers:
-        members = GAOF["All_x"]
-    else:
-        members = None
-    fn = plotGA_results(
-        GAOF["Paretos_x"],
-        GAOF["fitness"],
-        GAOF["toolbox"],
-        NumGenerations=NumGenerations,
-        members=members,
-        fn=fn,
-        subname=subname,
-        selected=GAOF["selected"],
-        trained=GAOF["trained"],
-    )
-
-    return fn
-
-
 def printConstraint(constraint_name, constraint, extralab=""):
     print(f"{extralab} * {constraint_name:55} = {constraint}")
 
@@ -3399,14 +2894,14 @@ def plotAndGrab(
     resu,
     OF_labels,
     colors,
-    lambdaSingleObjective,
+    scalarized_objective,
     alpha=1.0,
     alphaM=1.0,
     lw=1.0,
     lab=True,
     retrievecomplete=False,
     OF_labels_complete=None,
-):
+    ):
     x, yT, yTM = [], [], []
 
     for i in range(len(resu)):
@@ -3420,8 +2915,8 @@ def plotAndGrab(
 
     yT, yTM, x = np.array(yT), np.array(yTM), np.array(x)
 
-    of, cal, y = lambdaSingleObjective(torch.from_numpy(yT))
-    ofM, calM, yM = lambdaSingleObjective(torch.from_numpy(yTM))
+    of, cal, y = scalarized_objective(torch.from_numpy(yT))
+    ofM, calM, yM = scalarized_objective(torch.from_numpy(yTM))
 
     of, cal, y = of.cpu().numpy(), cal.cpu().numpy(), y.cpu().numpy()
     ofM, calM, yM = ofM.cpu().numpy(), calM.cpu().numpy(), yM.cpu().numpy()

@@ -12,45 +12,35 @@ from deap import base, benchmarks, tools, algorithms, creator, cma
 import deap.benchmarks.tools as bt
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools.OPTtools import summarizeSituation
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
-
-
-def findOptima(fun, writeTrajectory=False):
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     print("- GA optimization techniques used to maximize acquisition")
 
     random.seed(fun.seed)
 
     # Parameters Optimization
 
-    numCases = 1  # Different GAs to launch (random selection of GA params)
-    parallel_evaluations_inner = (
-        -1
-    )  # Refers to inside each optimization (-1: Use all CPUs available)
+    numCases = optimization_params.get("num_restarts",1)  # Different GAs to launch (random selection of GA params)
+    parallel_evaluations_inner = -1 # Refers to inside each optimization (-1: Use all CPUs available)
 
     # Prepare run
 
     txtConstr = "unconstrained "  #'constrained '
-    print(
-        f"\t- Initialization of {txtConstr}GA to solve problem with {fun.dimDVs} DVs, {fun.dimOFs} OFs"
-    )
+    print(f"\t- Initialization of {txtConstr}GA to solve problem with {fun.dimDVs} DVs, {fun.dimOFs} OFs")
 
     if parallel_evaluations_inner == -1:
         parallel_evaluations_inner = multiprocessing.cpu_count()
         print(f"\t- Running with {parallel_evaluations_inner} inner processors")
 
-    pop_sizes, max_gens, mut_probs, co_probs = randomizeTrials(
-        num=numCases, numOFs=fun.dimOFs, numDVs=fun.dimDVs
-    )
+    pop_sizes, max_gens, mut_probs, co_probs = randomizeTrials(num=numCases, numOFs=fun.dimOFs, numDVs=fun.dimDVs)
 
     xGuesses = fun.xGuesses.cpu().numpy()
     bounds = fun.bounds_mod.cpu().numpy()
 
     # Peform workflow
-    GA = PRF_GA(
+    GA = MITIM_GA(
         evaluators=fun.evaluators,
         numOFs=fun.dimOFs,
         dim=fun.dimDVs,
@@ -83,45 +73,37 @@ def findOptima(fun, writeTrajectory=False):
 
     # Pareto Front
     frontsOfInterest = GA.frontsEvolution[GA.besttrial]
-    frontsOfInterest_Pareto = np.atleast_2d(
-        frontsOfInterest[0]
-    )  # True pareto front is first one after sortDOminated
+    frontsOfInterest_Pareto = np.atleast_2d(frontsOfInterest[0])  # True pareto front is first one after sortDOminated
 
     # If the pareto front contains fewer points than requested, grab from last population
     membersOfInterest = copy.deepcopy(frontsOfInterest_Pareto)
     members = np.atleast_2d(GA.membersEvolution[GA.besttrial])
     cont = 0
-    while membersOfInterest.shape[0] < fun.number_optimized_points:
+    while membersOfInterest.shape[0] < optimization_params.get("keep_best",32):
         membersOfInterest = np.append(
             membersOfInterest, np.atleast_2d(members[cont]), axis=0
         )
         cont += 1
 
     yObjective = GA.toolboxes[GA.besttrial].evaluate(membersOfInterest)
-    HallOfFame = GA.hof[GA.toolboxes[GA.besttrial].experiment_name][
-        0
-    ]  # Hall of fame contains the best individual ever
+    HallOfFame = GA.hof[GA.toolboxes[GA.besttrial].experiment_name][0]  # Hall of fame contains the best individual ever
 
     # Pass required values
 
-    x, y, GAOF, HoF = membersOfInterest, yObjective, GA, np.array(HallOfFame)
+    x, y, _, _ = membersOfInterest, yObjective, GA, np.array(HallOfFame)
 
     # Order results
 
     order = "highest"
 
-    print(
-        f"\t\t- Current population to be passed to optimizer has {x.shape[0]} members"
-    )
+    print(f"\t\t- Current population to be passed to optimizer has {x.shape[0]} members")
 
     if y.shape[0] > 1:
         print(f"\t\t- Ordering Pareto front with first one having the {order} norm")
         x, y = sortGApareto(x, y, order=order)
 
     # Convert to tensors
-    x_opt, y_opt = torch.from_numpy(x).to(fun.stepSettings["dfT"]), torch.from_numpy(
-        y
-    ).to(fun.stepSettings["dfT"])
+    x_opt, y_opt = torch.from_numpy(x).to(fun.stepSettings["dfT"]), torch.from_numpy(y).to(fun.stepSettings["dfT"])
 
     y_opt_residual = summarizeSituation(fun.xGuesses, fun, x_opt)
 
@@ -143,7 +125,7 @@ def findOptima(fun, writeTrajectory=False):
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-class PRF_GA:
+class MITIM_GA:
     def __init__(
         self,
         evaluators,
@@ -155,20 +137,23 @@ class PRF_GA:
         max_gens=[1000],
         mut_probs=[0.2],
         co_probs=[0.7],
-        xGuesses=[],
+        xGuesses=None,
         parallel_evaluations_inner=1,
         seed=0,
         stepSettings={},
         writeTrajectory=False,
     ):
         """
-        If residual_function gives y to be maximized (should be in MITIM), then weights must be positive
+        If function gives y to be maximized (should be in MITIM), then weights must be positive
         """
+
+        if xGuesses is None:
+            xGuesses = []
 
         if weights is None:
             weights = tuple(
                 np.ones(numOFs)
-            )  # If residual_function gives y to be maximized, then weights must be positive
+            )  # If function gives y to be maximized, then weights must be positive
 
         self.parallel_evaluations_inner = parallel_evaluations_inner
 
@@ -296,10 +281,14 @@ class PRF_GA:
         max_gen,
         mut_prob,
         co_prob,
-        xGuesses=[],
+        xGuesses=None,
         experiment_name="Trial",
         eta=10.0,
     ):
+
+        if xGuesses is None:
+            xGuesses = []
+
         toolbox.register("attr_float", EAuniform, self.lower, self.upper, self.dim)
         toolbox.register(
             "individual", deap.tools.initIterate, creator.Individual, toolbox.attr_float
@@ -389,8 +378,8 @@ class PRF_GA:
 
     def save(self, stateFile):
         with open(stateFile, "wb") as handle:
-            pickle.dump(self, handle)
-        print(f" --> GA state file {stateFile} generated, containing the PRF_GA class")
+            pickle.dump(self, handle, protocol=4)
+        print(f" --> GA state file {stateFile} generated, containing the MITIM_GA class")
 
     def readGA(self, stateFile):
         with open(stateFile, "rb") as f:
@@ -688,7 +677,6 @@ def print_summary(i, ngen, fitness_best, individuals, each=50):
     if i % each == 0:
         print(
             f'\t\t\t\t* Generation {str(i).rjust(3)}/{ngen} ({str(individuals).rjust(4)} individuals), best acquisition = {f"{fitness_best:.2e}".rjust(9)}',
-            verbose=read_verbose_level(),
         )
 
 

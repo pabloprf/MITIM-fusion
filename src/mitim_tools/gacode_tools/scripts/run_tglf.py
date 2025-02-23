@@ -1,7 +1,7 @@
 """
 This example runs TGLF from an already existing file (no normalizations if no input_gacode file provided)
 
-	run_tglf.py run0/ input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives] [--restart]
+	run_tglf.py run0/ input.tglf [--gacode input.gacode] [--scan RLTS_2] [--drives] [--cold_start]
 
 Sequence:
 	- If drives: do drives analysis
@@ -29,7 +29,7 @@ def main():
     parser.add_argument("--scan", required=False, type=str, default=None)
     parser.add_argument("--drives", required=False, default=False, action="store_true")
     parser.add_argument(
-        "--restart", "-r", required=False, default=False, action="store_true"
+        "--cold_start", "-r", required=False, default=False, action="store_true"
     )
 
 
@@ -40,7 +40,7 @@ def main():
     input_gacode = IOtools.expandPath(args.gacode) if args.gacode is not None else None
     scan = args.scan
     drives = args.drives
-    restart = args.restart
+    cold_start = args.cold_start
 
 # ------------------------------------------------------------------------------
 #  Preparation
@@ -54,22 +54,22 @@ def main():
 # ------------------------------------------------------------------------------
 
     if drives:
-        tglf.runScanTurbulenceDrives(subFolderTGLF="scan_turb/", TGLFsettings=None)
+        tglf.runScanTurbulenceDrives(subFolderTGLF="scan_turb", TGLFsettings=None)
         tglf.plotScanTurbulenceDrives(label="scan_turb")
 
     elif scan is not None:
         tglf.runScan(
-            subFolderTGLF="scan1/",
+            subFolderTGLF="scan1",
             variable=scan,
             varUpDown=np.linspace(0.2, 2.0, 5),
             TGLFsettings=None,
-            restart=restart,
+            cold_start=cold_start,
         )
         tglf.readScan(label="scan1", variable=scan)
         tglf.plotScan(labels=["scan1"], variableLabel=scan)
 
     else:
-        tglf.run(subFolderTGLF="run1/", TGLFsettings=None, restart=restart)
+        tglf.run(subFolderTGLF="run1", TGLFsettings=None, cold_start=cold_start)
         tglf.read(label="run1")
         tglf.plot(labels=["run1"])
 

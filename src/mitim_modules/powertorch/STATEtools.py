@@ -1,17 +1,16 @@
 import copy
 import torch
 import datetime
-import os
+import shutil
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot, ITtools
+from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
+from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-
-UseCUDAifAvailable = True
 
 # ------------------------------------------------------------------
 # POWERSTATE Class
@@ -21,6 +20,7 @@ class powerstate:
     def __init__(
         self,
         profiles,
+        increase_profile_resol=True,
         EvolutionOptions={},
         TransportOptions={
             "transport_evaluator": None,
@@ -33,6 +33,10 @@ class powerstate:
                 "TargetCalc": "powerstate"
                 },
         },
+        tensor_opts = {
+            "dtype": torch.double,
+            "device": torch.device("cpu"),
+        }
     ):
         '''
         Inputs:
@@ -47,6 +51,8 @@ class powerstate:
             - TargetOptions: dictionary with targets_evaluator and ModelOptions
         '''
 
+        print('>> Creating powerstate object...')
+
         self.TransportOptions = TransportOptions
         self.TargetOptions = TargetOptions
 
@@ -54,9 +60,13 @@ class powerstate:
         self.ProfilesPredicted = EvolutionOptions.get("ProfilePredicted", ["te", "ti", "ne"])
         self.useConvectiveFluxes = EvolutionOptions.get("useConvectiveFluxes", True)
         self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
+        self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
         self.scaleIonDensities = EvolutionOptions.get("scaleIonDensities", True)
         rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
+
+        if rho_vec[0] == 0:
+            raise ValueError("[MITIM] The radial grid must not contain the initial zero")
 
         # Ensure that nZ is always after ne, because of how the scaling of ni rules are imposed
         def _ensure_ne_before_nz(lst):
@@ -70,15 +80,7 @@ class powerstate:
         self.ProfilesPredicted = _ensure_ne_before_nz(self.ProfilesPredicted)
 
         # Default type and device tensor
-        self.dfT = torch.randn(
-            (2, 2),
-            dtype=torch.double,
-            device=torch.device(
-                "cpu"
-                if ((not UseCUDAifAvailable) or (not torch.cuda.is_available()))
-                else "cuda"
-            ),
-        )
+        self.dfT = torch.randn((2, 2), **tensor_opts)
 
         '''
         Potential profiles to evolve (aLX) and their corresponding flux matching
@@ -135,6 +137,11 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
+        # Resolution of input.gacode
+        if increase_profile_resol:
+            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
+
+        # Convert to powerstate
         TRANSFORMtools.gacode_to_powerstate(self, self.profiles, self.plasma["rho"])
 
         # Convert into a batch so that always the quantities are (batch,dimX)
@@ -192,11 +199,9 @@ class powerstate:
         postprocess_input_gacode={},
         insert_highres_powers=False,
         rederive_profiles=True,
-        profiles_base=None,
     ):
         '''
         Notes:
-            - profiles_base is a PROFILES_GACODE object to use as basecase. If None, it will use the one stored in the class (original), so no interpolation required
             - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
         '''
         print(">> Inserting powerstate into input.gacode")
@@ -207,14 +212,12 @@ class powerstate:
             postprocess_input_gacode=postprocess_input_gacode,
             insert_highres_powers=insert_highres_powers,
             rederive=rederive_profiles,
-            profiles_base=profiles_base,
         )
 
         # Write input.gacode
         if write_input_gacode is not None:
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
-            if not os.path.exists(os.path.dirname(write_input_gacode)):
-                os.makedirs(os.path.dirname(write_input_gacode))
+            write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
 
         # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
@@ -234,7 +237,7 @@ class powerstate:
     def save(self, file):
         print(f"\t- Writing power state file: {IOtools.clipstr(file)}")
         with open(file, "wb") as handle:
-            pickle.dump(self, handle)
+            pickle.dump(self, handle, protocol=4)
 
     def combine_states(self, states, includeTransport=True):
         self.TransportOptions_set = [self.TransportOptions]
@@ -266,16 +269,27 @@ class powerstate:
             del state_shallow_copy.fn
         if hasattr(state_shallow_copy, 'model_results') and hasattr(state_shallow_copy.model_results, 'fn'):
             del state_shallow_copy.model_results.fn
+        
+        # Plasma dictionary may have gradients that I cannot copy, I need to detach them
+        state_shallow_copy.plasma = {}
+        for key in self.plasma:
+            state_shallow_copy.plasma[key] = self.plasma[key].detach()
+        state_shallow_copy.Xcurrent = self.Xcurrent.detach() if self.Xcurrent is not None else None
+
         state_temp = copy.deepcopy(state_shallow_copy)
 
         return state_temp
+
+    def to_cpu_tensors(self):
+        self._cpu_tensors()
+        return self
 
     # ------------------------------------------------------------------
     # Flux-matching and iteration tools
     # ------------------------------------------------------------------
 
     def calculate(
-        self, X, nameRun="test", folder="~/scratch/", evaluation_number=0
+        self, X=None, nameRun="test", folder="~/scratch/", evaluation_number=0
     ):
         """
         Inputs:
@@ -284,6 +298,7 @@ class powerstate:
             - folder: folder to save the results, if used by calculation methods (e.g. to write profiles and/or run black-box simulations)
             - evaluation_number
         """
+        folder = IOtools.expandPath(folder)
 
         # 1. Modify gradients (X -> aL.. -> te,ti,ne,nZ,w0)
         self.modify(X)
@@ -318,69 +333,137 @@ class powerstate:
 
         for c, i in enumerate(self.ProfilesPredicted):
             if X is not None:
-                self.plasma[f"aL{i}"][:, 1:] = self.Xcurrent[
-                    :, numeach * c : numeach * (c + 1)
-                ]
+
+                aLx_before = self.plasma[f"aL{i}"][:, 1:].clone()
+
+                self.plasma[f"aL{i}"][:, 1:] = self.Xcurrent[:, numeach * c : numeach * (c + 1)]
+
+                # For now, scale also the ion gradients by same ammount (for p_prime) #TODO: improve this treatment
+                if i == "ne":
+                    for j in range(self.plasma["ni"].shape[-1]):
+                        f = aLx_before / self.plasma[f"aLni{j}"][:, 1:].clone()
+                        self.plasma[f"aLni{j}"][:, 1:] *= f
+
             self.update_var(i)
 
-    def findFluxMatchProfiles(
-        self, algorithm="root", algorithmOptions={}, bounds=None,
-    ):
+    def flux_match(self, algorithm="root", solver_options=None, bounds=None):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
+        self.bounds_current = bounds
 
-        print(
-            f'\n- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...'
-        )
-        print(
-            "**********************************************************************************************"
-        )
+        print(f'\t- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
+        print("**********************************************************************************************")
         timeBeginning = datetime.datetime.now()
 
         if algorithm == "root":
-            self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchRoot(
-                self,
-                algorithmOptions=algorithmOptions)
-        if algorithm == "simple_relax":
-            self.FluxMatch_Xopt, self.FluxMatch_Yopt = ITtools.fluxMatchSimpleRelax(
-                self,
-                algorithmOptions=algorithmOptions,
-                bounds=bounds)
-        if algorithm == "picard":
-            ITtools.fluxMatchPicard(self)
+            solver_fun = optim.scipy_root
+        elif algorithm == "simple_relax":
+            solver_fun = optim.simple_relaxation
+        else:
+            raise ValueError(f"[MITIM] Algorithm {algorithm} not recognized")
+    
+        if solver_options is None:
+            solver_options = {}
 
-        print(
-            "**********************************************************************************************"
-        )
-        print(
-            f"- Flux matching of powerstate file has been found, and took {IOtools.getTimeDifference(timeBeginning)}\n"
-        )
+        folder_main = solver_options.get("folder", None)
+        namingConvention = solver_options.get("namingConvention", "powerstate_sr_ev")
+
+        cont = 0
+        def evaluator(X, y_history=None, x_history=None, metric_history=None):
+
+            nonlocal cont
+
+            nameRun = f"{namingConvention}_{cont}"
+
+            if folder_main is not None:
+                folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
+                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                    (folder / "model_complete").mkdir(parents=True, exist_ok=True)
+
+            # ***************************************************************************************************************
+            # Calculate
+            # ***************************************************************************************************************
+
+            folder_run = folder / "model_complete" if folder_main is not None else IOtools.expandPath('~/scratch/')
+            QTransport, QTarget, _, _ = self.calculate(X, nameRun=nameRun, folder=folder_run, evaluation_number=cont)
+
+            cont += 1
+
+            # Save state so that I can check initializations
+            if folder_main is not None:
+                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                    self.save(folder / "powerstate.pkl")
+                    shutil.copy2(folder_run / "input.gacode", folder)
+
+            # ***************************************************************************************************************
+            # Postprocess
+            # ***************************************************************************************************************
+
+            # Residual is the difference between the target and the transport
+            yRes = (QTarget - QTransport).abs()
+            # Metric is the mean of the absolute value of the residual
+            yMetric = -yRes.mean(axis=-1)
+            # Best in batch
+            best_candidate = yMetric.argmax().item()
+            # Only pass the best candidate
+            yRes = yRes[best_candidate, :].detach()
+            yMetric = yMetric[best_candidate].detach()
+            Xpass = X[best_candidate, :].detach()
+
+            # Store values
+            if y_history is not None:       y_history.append(yRes)
+            if x_history is not None:       x_history.append(Xpass)
+            if metric_history is not None:  metric_history.append(yMetric)
+
+            return QTransport, QTarget, yMetric
+
+        # Concatenate the input gradients
+        x0 = torch.Tensor().to(self.plasma["aLte"])
+        for c, i in enumerate(self.ProfilesPredicted):
+            x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
+
+        # Make sure is properly batched
+        x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
+
+        # Optimize
+        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
+
+        # For simplicity, return the trajectory of only the best candidate
+        self.FluxMatch_Yopt = Yopt
+        self.FluxMatch_Xopt = Xopt
+
+        print("**********************************************************************************************")
+        print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")
 
     # ------------------------------------------------------------------
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="", batch_num=0, compare_to_orig=None, c_orig = 'b'):
+    def plot(self, axs=None, axsRes=None, axsMetrics=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
         if axs is None:
-            axsNotGiven = True
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook("PowerState", geometry="1800x900")
+            if fn is None:
+                axsNotGiven = True
+                from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+                fn = FigureNotebook("PowerState", geometry="1800x900")
+            else:
+                axsNotGiven = False
 
             # Powerstate
             figMain = fn.add_figure(label="PowerState", tab_color='r')
             # Optimization
             figOpt = fn.add_figure(label="Optimization", tab_color='r')
-            grid = plt.GridSpec(3, 1+len(self.ProfilesPredicted), hspace=0.5, wspace=0.5)
+            grid = plt.GridSpec(2, 1+len(self.ProfilesPredicted), hspace=0.3, wspace=0.3)
 
             axsRes = [figOpt.add_subplot(grid[:, 0])]
             for i in range(len(self.ProfilesPredicted)):
-                for j in range(3):
+                for j in range(2):
                     axsRes.append(figOpt.add_subplot(grid[j, i+1]))
 
             # Profiles
             figs = PROFILEStools.add_figures(fn, tab_color='b')
 
-            axs = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -388,10 +471,15 @@ class powerstate:
 
         # Make sure tensors are detached
         self._detach_tensors()
-        if compare_to_orig is not None:
-            compare_to_orig._detach_tensors()
+        powers = [self]
+        if compare_to_state is not None:
+            compare_to_state._detach_tensors()
+            powers.append(compare_to_state)
 
-        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_orig=compare_to_orig, c_orig = c_orig)
+        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig = c_orig)
+
+        if axsMetrics is not None:
+            POWERplot.plot_metrics_powerstates(axsMetrics,powers[::-1])
 
         if axsNotGiven:
             fn.show()
@@ -459,6 +547,18 @@ class powerstate:
         # New batch size
         self.batch_size = batch_size
 
+    def _cpu_tensors(self):
+        self._detach_tensors()
+        self.plasma = {key: tensor.cpu() for key, tensor in self.plasma.items() if isinstance(tensor, torch.Tensor)}
+        if self.plasma_fine is not None:
+            self.plasma_fine = {key: tensor.cpu() for key, tensor in self.plasma_fine.items() if isinstance(tensor, torch.Tensor)}
+        if hasattr(self, 'Xcurrent') and self.Xcurrent is not None and isinstance(self.Xcurrent, torch.Tensor):
+            self.Xcurrent = self.Xcurrent.cpu()
+        if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and isinstance(self.FluxMatch_Yopt, torch.Tensor):
+            self.FluxMatch_Yopt = self.FluxMatch_Yopt.cpu()
+        if hasattr(self, 'profiles'):
+            self.profiles.toNumpyArrays()
+
     def update_var(self, name, var=None, specific_deparametrizer=None):
         """
         This inserts gradients and updates coarse profiles
@@ -519,18 +619,18 @@ class powerstate:
             If ne is updated, then ni must be updated as well, but keeping the thermal ion concentrations constant
             '''
             if self.scaleIonDensities:
+
+                # Keep the thermal ion concentrations constant, scale their densities
                 self.plasma["ni"] = ni_0orig.clone()
                 for i in range(self.plasma["ni"].shape[-1]):
-                    self.plasma["ni"][..., i] = self.plasma["ne"] * (
-                        ni_0orig[..., i] / ne_0orig
-                    )
+                    self.plasma["ni"][..., i] = self.plasma["ne"] * (ni_0orig[..., i] / ne_0orig)
 
         if name == "nZ":
 
             '''
             If nZ is updated, change its position in the ions set
             '''
-            self.plasma["ni"][..., self.impurityPosition - 1] = self.plasma["nZ"]
+            self.plasma["ni"][..., self.impurityPosition] = self.plasma["nZ"]
 
         return aLT_withZero
 
@@ -561,22 +661,23 @@ class powerstate:
         )
 
         # Collisionality
-        self.plasma["nuei"] = PLASMAtools.xnue(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref
-        )
+        self.plasma["nuei"] = PLASMAtools.xnue(self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["a"].unsqueeze(-1), mref)
 
         # Gyro-radius
-        self.plasma["rho_s"] = PLASMAtools.rho_s(
-            self.plasma["te"], mref, self.plasma["B_unit"]
-        )
+        self.plasma["rho_s"] = PLASMAtools.rho_s(self.plasma["te"], mref, self.plasma["B_unit"])
         self.plasma["c_s"] = PLASMAtools.c_s(self.plasma["te"], mref)
 
         # Other
         self.plasma["tite"] = self.plasma["ti"] / self.plasma["te"]
         self.plasma["fZ"] = self.plasma["nZ"] / self.plasma["ne"]
-        self.plasma["beta_e"] = PLASMAtools.betae(
-            self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["B_unit"]
-        )
+        self.plasma["beta_e"] = PLASMAtools.betae(self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["B_unit"])
+        
+        aLni = [self.plasma[f"aLni{i}"] for i in range(self.plasma["ni"].shape[-1])]
+        
+        self.plasma["p_prime"] = PLASMAtools.p_prime(
+                                    self.plasma["te"], self.plasma["ne"] * 1e-1, self.plasma["aLte"], self.plasma["aLne"],
+                                    self.plasma["ti"], self.plasma["ni"] * 1e-1, self.plasma["aLti"], aLni,
+                                    self.plasma["a"].unsqueeze(-1), self.plasma["B_unit"], self.plasma["q"], self.plasma["roa"]*self.plasma["a"].unsqueeze(-1))
 
         """
 		Rotation stuff
@@ -587,9 +688,7 @@ class powerstate:
 		"""
         if calculateRotationQuantities:
             self.plasma["w0_n"] = self.plasma["w0"] / self.plasma["c_s"]
-            self.plasma["aLw0_n"] = (
-                self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"]
-            )  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
+            self.plasma["aLw0_n"] = (self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"])  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
 
     def calculateTargets(self, assumedPercentError=1.0):
         """
@@ -627,6 +726,7 @@ class powerstate:
         """
         Update the transport of the current state.
         """
+        folder = IOtools.expandPath(folder)
 
         # Select transport evaluator
         if self.TransportOptions["transport_evaluator"] is None:
@@ -678,14 +778,29 @@ class powerstate:
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 
-    grid = plt.GridSpec(4, num_kp, hspace=0.5, wspace=0.5)
+    numbers = [str(i) for i in range(4 * num_kp)]
+    mosaic = []
+    for row in range(4):
+        first_cell = "A" if row < 2 else "B"        
+        row_list = [first_cell]
+        for col in range(num_kp):
+            index = col * 4 + row
+            row_list.append(numbers[index])
+        
+        mosaic.append(row_list)
+
+    axsM = figMain.subplot_mosaic(mosaic)
 
     axs = []
-    for i in range(num_kp):
-        for j in range(4):
-            axs.append(figMain.add_subplot(grid[j, i]))
+    cont = 0
+    for j in range(4):
+        for i in range(num_kp):
+            axs.append(axsM[f"{cont}"])
+            cont += 1
 
-    return axs
+    axsB = [axsM["A"], axsM["B"]]
+
+    return axs, axsB
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")

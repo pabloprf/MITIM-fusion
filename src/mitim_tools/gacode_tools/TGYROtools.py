@@ -1,7 +1,8 @@
-import os
+import shutil
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mitim_tools.misc_tools import (
     IOtools,
     GRAPHICStools,
@@ -9,8 +10,9 @@ from mitim_tools.misc_tools import (
 )
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+import time
 
 try:
     from mitim_tools.gacode_tools.utils import PORTALSinteraction
@@ -19,10 +21,6 @@ except:
         "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
         typeMsg="w",
     )
-
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
-
-
 
 """
 Same philosophy as the TGLFtools
@@ -90,8 +88,8 @@ class TGYRO:
         self,
         FolderGACODE,
         profilesclass_custom=None,
-        restart=False,
-        forceIfRestart=False,
+        cold_start=False,
+        forceIfcold_start=False,
         subfolder="prep_tgyro",
         BtIp_dirs=[0, 0],
         gridsTRXPL=[151, 101, 101],
@@ -100,7 +98,7 @@ class TGYRO:
         correctPROFILES=False,
     ):
         """
-        Run workflow to prepare TGYRO, but pass the restart flag. Checks will happen inside.
+        Run workflow to prepare TGYRO, but pass the cold_start flag. Checks will happen inside.
         Include all species, including fast,
 
         Goal of this step is to get a input.gacode class stored in self.profiles
@@ -116,24 +114,24 @@ class TGYRO:
 
         """
 
-        self.FolderGACODE = IOtools.expandPath(FolderGACODE) + "/"
-        self.FolderGACODE_tmp = self.FolderGACODE + subfolder + "/"
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+        self.FolderGACODE_tmp = self.FolderGACODE / subfolder
 
         # Define name
         _, self.nameRuns_default = IOtools.reducePathLevel(self.FolderGACODE, level=1)
         # -----------
 
-        if (not os.path.exists(self.FolderGACODE)) or restart:
+        if (not self.FolderGACODE.exists()) or cold_start:
             print(
-                f"\t- Folder {FolderGACODE} does not exist, or restart has been requested... creating folder to store"
+                f"\t- Folder {FolderGACODE} does not exist, or cold_start has been requested... creating folder to store"
             )
             IOtools.askNewFolder(
-                self.FolderGACODE, force=forceIfRestart or (not restart)
+                self.FolderGACODE, force=forceIfcold_start or (not cold_start)
             )
 
-        if (not os.path.exists(self.FolderGACODE_tmp)) or restart:
+        if (not self.FolderGACODE_tmp.exists()) or cold_start:
             IOtools.askNewFolder(
-                self.FolderGACODE_tmp, force=forceIfRestart or (not restart)
+                self.FolderGACODE_tmp, force=forceIfcold_start or (not cold_start)
             )
 
         if profilesclass_custom is None:
@@ -144,13 +142,13 @@ class TGYRO:
                 self.FolderGACODE_tmp,
                 self.LocationCDF,
                 avTime=self.avTime,
-                forceEntireWorkflow=restart,
+                forceEntireWorkflow=cold_start,
                 BtIp_dirs=BtIp_dirs,
                 gridsTRXPL=gridsTRXPL,
                 includeGEQ=includeGEQ,
             )
 
-            self.file_input_profiles = f"{self.FolderGACODE}/input.gacode"
+            self.file_input_profiles = self.FolderGACODE / "input.gacode"
             self.profiles = PROFILEStools.PROFILES_GACODE(self.file_input_profiles)
 
             if correctPROFILES:
@@ -166,25 +164,25 @@ class TGYRO:
                 "\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",
                 typeMsg="i",
             )
-            os.system(f"rm -r {self.FolderGACODE_tmp}")
+            IOtools.shutil_rmtree(self.FolderGACODE_tmp)
 
     def run(
         self,
-        subFolderTGYRO="tgyro1/",
-        restart=False,
+        subFolderTGYRO="tgyro1",
+        cold_start=False,
         vectorRange=[0.2, 0.8, 10],
         special_radii=None,
         iterations=0,
         PredictionSet=[1, 1, 0],
         TGLFsettings=0,
         extraOptionsTGLF={},
-        forceIfRestart=False,
+        forceIfcold_start=False,
         minutesJob=30,
         launchSlurm=True,
         TGYRO_physics_options={},
         TGYRO_solver_options={},
         TGYROcontinue=None,
-        rhosCopy=[],
+        rhosCopy=None,
         forcedName=None,
         modify_inputgacodenew=True,
     ):
@@ -196,6 +194,9 @@ class TGYRO:
 
         Instead of vectorRange, I can provide special_radii
         """
+
+        if rhosCopy is None:
+            rhosCopy = []
 
         # ------------------------------------------------------------------------
         # Defaults
@@ -256,9 +257,9 @@ class TGYRO:
 
         Tepred, Tipred, nepred = PredictionSet
 
-        self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE + subFolderTGYRO + "/")
+        self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE / subFolderTGYRO)
         self.FolderTGYRO_tmp = (
-            self.FolderTGYRO + "/tmp_tgyro_run/"
+            self.FolderTGYRO / "tmp_tgyro_run"
         )  # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
 
         inputclass_TGYRO = TGYROinput(
@@ -329,13 +330,13 @@ class TGYRO:
         inputFiles_TGYRO = []
 
         # Do the required files exist?
-        exists = not restart
+        exists = not cold_start
 
         txt_nonexist = ""
         if exists:
             for j in self.outputFiles:
-                file = f"{self.FolderTGYRO}{j}"
-                existThis = os.path.exists(file)
+                file = self.FolderTGYRO / f"{j}"
+                existThis = file.exists()
                 if not existThis:
                     txt_nonexist += f"\t\t- {IOtools.clipstr(file)}\n"
                 exists = exists and existThis
@@ -351,22 +352,20 @@ class TGYRO:
         # ----------------------------------------------------------------
 
         if not exists:
-            IOtools.askNewFolder(self.FolderTGYRO, force=forceIfRestart)
+            IOtools.askNewFolder(self.FolderTGYRO, force=forceIfcold_start)
 
             # ----------------------------------------------------------------
-            # Restarted
+            # cold_started
             # ----------------------------------------------------------------
             if TGYROcontinue is not None:
                 print(
-                    "\n\n~~ Option to restart from previous TGYRO iteration selected\n\n"
+                    "\n\n~~ Option to cold_start from previous TGYRO iteration selected\n\n"
                 )
 
-                self.FolderTGYRO_restarted = IOtools.expandPath(
-                    self.FolderGACODE + TGYROcontinue + "/"
-                )
+                self.FolderTGYRO_cold_started = self.FolderGACODE / TGYROcontinue
 
                 for i in self.outputFiles:
-                    inputFiles_TGYRO.append(self.FolderTGYRO_restarted + i)
+                    inputFiles_TGYRO.append(self.FolderTGYRO_cold_started / f"{i}")
 
         """ -----------------------------------
 		 	Create TGLF file (only control info, no species)
@@ -375,11 +374,11 @@ class TGYRO:
 		 	-----------------------------------
 		"""
 
-        if not os.path.exists(self.FolderTGYRO_tmp):
+        if not self.FolderTGYRO_tmp.exists():
             IOtools.askNewFolder(self.FolderTGYRO_tmp)
 
         print(
-            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(self.FolderTGYRO_tmp)}input.tglf"
+            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = GACODErun.modifyInputs(
@@ -389,7 +388,7 @@ class TGYRO:
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
         )
-        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp + "input.tglf")
+        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tglf")
 
         # -----------------------------------
         # ------ Write input profiles
@@ -404,7 +403,7 @@ class TGYRO:
             )
             self.profiles.profiles['rho(-)'][0] = 0.0
 
-        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp + fil)
+        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / f"{fil}")
 
         # -----------------------------------
         # ------ Create TGYRO file
@@ -423,7 +422,7 @@ class TGYRO:
             special_radii=special_radii_mod,
         )
 
-        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp + "input.tgyro")
+        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tgyro")
 
         # -----------------------------------
         # ------ Check density for problems
@@ -439,7 +438,7 @@ class TGYRO:
         minn_true = []
         for i in minn:
             if (self.profiles.Species[i]["S"] != "fast") or (
-                not TGYRO_physics_options["onlyThermal"]
+                not TGYRO_physics_options.get("onlyThermal", False)
             ):
                 minn_true.append(i)
 
@@ -482,7 +481,7 @@ class TGYRO:
                 )
 
                 inputgacode_new = PROFILEStools.PROFILES_GACODE(
-                    self.FolderTGYRO_tmp + "input.gacode.new"
+                    self.FolderTGYRO_tmp / "input.gacode.new"
                 )
 
                 if TGYRO_physics_options["TypeTarget"] < 3:
@@ -524,35 +523,34 @@ class TGYRO:
 
             # Copy those files that I'm interested in, plus the extra file, into the main folder
             for file in self.outputFiles + ["input.tgyro"]:
-                os.system(f"cp {self.FolderTGYRO_tmp}/{file} {self.FolderTGYRO}/{file}")
+                shutil.copy2(self.FolderTGYRO_tmp / f"{file}", self.FolderTGYRO / f"{file}")
 
             # Rename the input.tglf.news to the actual rho they where at
             for cont, i in enumerate(self.rhosToSimulate):
-                os.system(
-                    f"cp {self.FolderTGYRO}/input.tglf.new{cont + 1} {self.FolderTGYRO}/input.tglf_{i:.4f}"
-                )
+                shutil.copy2(self.FolderTGYRO / f"input.tglf.new{cont + 1}", self.FolderTGYRO / f"input.tglf_{i:.4f}")
 
             # If I have run TGYRO with the goal of generating inputs, move them to the GACODE folder
             for rho in rhosCopy:
-                os.system(
-                    f"cp {self.FolderTGYRO}/input.tglf_{rho:.4f} {self.FolderGACODE}/."
-                )
+                shutil.copy2(self.FolderTGYRO / f"input.tglf_{rho:.4f}", self.FolderGACODE)
 
             # Remove temporary folder
-            os.system(f"rm -r {self.FolderTGYRO_tmp}")
+            try: 
+                IOtools.shutil_rmtree(self.FolderTGYRO_tmp)
+            except OSError:
+                print(f"\t- Could not remove {self.FolderTGYRO_tmp}. Trying again.", typeMsg="w")
+                IOtools.shutil_rmtree(self.FolderTGYRO_tmp)
 
         else:
-            print(" ~~~ Not running TGYRO", typeMsg="f")
+            print(" ~~~ Not running TGYRO", typeMsg="i")
 
     def read(self, label="tgyro1", folder=None, file_input_profiles=None):
         # If no specified folder, check the last one
-        if folder is None:
+        if not isinstance(folder, (str, Path)):
             folder = self.FolderTGYRO
+        else:
+            folder = IOtools.expandPath(folder)
 
-        if folder[-1] != "/":
-            folder += "/"
-
-        if file_input_profiles is None:
+        if not isinstance(file_input_profiles, (str, Path)):
             if "profiles" not in self.__dict__:
                 prof = None
             else:
@@ -565,13 +563,13 @@ class TGYRO:
     def converge(
         self,
         factor_reduction=1e-2,
-        restart=False,
+        cold_start=False,
         vectorRange=[0.2, 0.8, 10],
         special_radii=None,
         PredictionSet=[1, 1, 0],
         TGLFsettings=0,
         extraOptionsTGLF={},
-        forceIfRestart=False,
+        forceIfcold_start=False,
         launchSlurm=True,
         TGYRO_physics_options={},
         TGYRO_solver_options={},
@@ -591,10 +589,10 @@ class TGYRO:
         solver = {"tgyro_method": 6, "step_max": 0.2, "relax_param": 0.2}
         self.run(
             TGYROcontinue=None,
-            subFolderTGYRO=f"{self.nameRuns_default}_1/",
+            subFolderTGYRO=f"{self.nameRuns_default}_1",
             iterations=iterations,
-            restart=restart,
-            forceIfRestart=forceIfRestart,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
             special_radii=special_radii,
             vectorRange=vectorRange,
             PredictionSet=PredictionSet,
@@ -611,7 +609,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           =  { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # self.run(TGYROcontinue = None,
-        # 	subFolderTGYRO=f'{self.nameRuns_default}_1/',iterations=iterations,restart=restart,forceIfRestart=forceIfRestart,
+        # 	subFolderTGYRO=f'{self.nameRuns_default}_1',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=special_radii,vectorRange=vectorRange,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -628,7 +626,7 @@ class TGYRO:
         # minutesJob 		 = 60
         # solver           = { 'tgyro_method': 1, 'step_max':1.0,  'relax_param': 2.0, 'step_jac':  0.1}
         # tgyro.run(TGYROcontinue = 'run1',
-        # 	subFolderTGYRO='run2/',iterations=iterations,restart=restart,forceIfRestart=forceIfRestart,
+        # 	subFolderTGYRO='run2',iterations=iterations,cold_start=cold_start,forceIfcold_start=forceIfcold_start,
         # 	special_radii=rhos,PredictionSet=PredictionSet,
         # 	minutesJob=minutesJob,launchSlurm = launchSlurm,
         # 	TGLFsettings = TGLFsettings, extraOptionsTGLF = extraOptionsTGLF,
@@ -642,12 +640,7 @@ class TGYRO:
 		"""
         self.read(label="conv")
 
-    def runTGLF(self, fromlabel="tgyro1", rhos=None, restart=False):
-        """
-        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization)
-
-        Doesn't work with specific inputs now
-        """
+    def grab_tglf_objects(self, subfolder="tglf_runs", fromlabel="tgyro1", rhos=None):
 
         if rhos is None:
             rhos = self.rhosToSimulate
@@ -655,9 +648,29 @@ class TGYRO:
         # Create class of inputs to TGLF
         inputsTGLF = {}
         for cont, rho in enumerate(rhos):
-            fileN = f"{self.FolderTGYRO}/input.tglf_{rho:.4f}"
+            fileN = self.FolderTGYRO / f"input.tglf_{rho:.4f}"
             inputclass = TGLFtools.TGLFinput(file=fileN)
             inputsTGLF[rho] = inputclass
+
+        tglf = TGLFtools.TGLF(rhos=rhos)
+        tglf.prep(
+            self.FolderGACODE / subfolder,
+            specificInputs=inputsTGLF,
+            inputgacode=self.FolderTGYRO / "input.gacode",
+            tgyro_results=self.results[fromlabel],
+        )
+
+        return tglf
+
+
+    def runTGLF(self, fromlabel="tgyro1", rhos=None, cold_start=False):
+        """
+        This runs TGLF at the final point: Using the out.local.dumps for running TGLF, and using input.gacode.new for normalization
+
+        Doesn't work with specific inputs now
+        """
+
+        self.tglf[fromlabel] = self.grab_tglf_objects(fromlabel=fromlabel, rhos=rhos)
 
         """
 		Run TGLF the same way as TGYRO did:		No TGLFsettings and no corrections for species, but what is in the file
@@ -665,22 +678,15 @@ class TGYRO:
 
         label = f"{self.nameRuns_default}_tglf1"
 
-        self.tglf[fromlabel] = TGLFtools.TGLF(rhos=rhos)
-        self.tglf[fromlabel].prep(
-            self.FolderGACODE + "tglf_runs/",
-            specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode.new",
-            tgyro_results=self.results[fromlabel],
-        )
         self.tglf[fromlabel].run(
-            subFolderTGLF=f"{label}/",
+            subFolderTGLF=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
-            restart=restart,
+            cold_start=cold_start,
         )
         self.tglf[fromlabel].read(label=label)
 
-    def runTGLFsensitivities(self, fromlabel="tgyro1", rho=0.5, restart=False):
+    def runTGLFsensitivities(self, fromlabel="tgyro1", rho=0.5, cold_start=False):
         """
         This runs TGLF scans at the final point
 
@@ -690,22 +696,22 @@ class TGYRO:
 
         # Create class of inputs to TGLF
         inputsTGLF = {
-            rho: TGLFtools.TGLFinput(file=f"{self.FolderTGYRO}/input.tglf_{rho:.4f}")
+            rho: TGLFtools.TGLFinput(file=(self.FolderTGYRO / f"input.tglf_{rho:.4f}"))
         }
 
         self.tglf[fromlabel] = TGLFtools.TGLF(rhos=[rho])
         self.tglf[fromlabel].prep(
-            "tglf_runs/",
+            "tglf_runs",
             specificInputs=inputsTGLF,
-            inputgacode=self.FolderTGYRO + "/input.gacode.new",
+            inputgacode=self.FolderTGYRO / "input.gacode.new",
             tgyro_results=self.results[fromlabel],
         )
 
         self.tglf[fromlabel].runScanTurbulenceDrives(
-            subFolderTGLF=f"{self.nameRuns_default}_tglf/",
+            subFolderTGLF=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
-            restart=restart,
+            cold_start=cold_start,
             specificInputs=inputsTGLF,
         )
 
@@ -715,9 +721,9 @@ class TGYRO:
         self,
         rhos=[0.4, 0.6],
         onlyThermal=False,
-        quasineutrality=[],
-        subFolderTGYRO="tmp_tgyro_scans/",
-        restart=False,
+        quasineutrality=None,
+        subFolderTGYRO="tmp_tgyro_scans",
+        cold_start=False,
         label="tgyro1",
         donotrun=False,
         recalculatePTOT=True,
@@ -728,6 +734,9 @@ class TGYRO:
         quasineutrality will adjust the ions densities so that it fulfills quasineutrality. If quasineutrality=[], then
                         don't do anything, so if onlyThermal=True, then the plasma won't be quasineutral in the input.tglf
         """
+
+        if quasineutrality is None:
+            quasineutrality = []
 
         print(
             "\t- Entering in TGLF scans module (running a dummy zero-iteration TGYRO)..."
@@ -759,19 +768,19 @@ class TGYRO:
                 TGLFsettings=TGLFsettings,
                 TGYRO_physics_options=TGYRO_physics_options,
                 iterations=0,
-                restart=restart,
-                forceIfRestart=True,
+                cold_start=cold_start,
+                forceIfcold_start=True,
                 minutesJob=minutesJob,
                 rhosCopy=rhos,
                 special_radii=rhos,
             )
         else:  # special_radii=rhos
-            print("\t\t- No need to run dummy iteration of TGYRO", typeMsg="f")
+            print("\t\t- No need to run dummy iteration of TGYRO", typeMsg="i")
 
         try:
             self.read(
                 label=label,
-                folder=IOtools.expandPath(self.FolderGACODE + subFolderTGYRO + "/"),
+                folder=IOtools.expandPath(self.FolderGACODE / subFolderTGYRO),
             )
             res = self.results[label]
         except:
@@ -1210,9 +1219,9 @@ class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
         self.FolderTGYRO = FolderTGYRO
 
-        if (profiles is None) and os.path.exists(FolderTGYRO + "input.gacode"):
+        if (profiles is None) and (FolderTGYRO / f"input.gacode").exists():
             profiles = PROFILEStools.PROFILES_GACODE(
-                FolderTGYRO + "input.gacode", calculateDerived=False
+                FolderTGYRO / f"input.gacode", calculateDerived=False
             )
 
         self.profiles = profiles
@@ -1228,7 +1237,7 @@ class TGYROoutput:
         calculateDerived = True
         try:
             self.profiles_final = PROFILEStools.PROFILES_GACODE(
-                f"{self.FolderTGYRO}/input.gacode.new",
+                self.FolderTGYRO / f"input.gacode.new",
                 calculateDerived=calculateDerived,
             )
         except:
@@ -1243,7 +1252,7 @@ class TGYROoutput:
         return var[self.norepeats, :]
 
     def readResidual(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.residual"
+        file = self.FolderTGYRO / f"out.tgyro.residual"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -1258,7 +1267,7 @@ class TGYROoutput:
         self.residual = np.array(self.residual)
         self.calls_solver = np.array(self.calls_solver)
 
-        # calls_solvers for restarting cases is not straight=forward
+        # calls_solvers for cold_starting cases is not straight=forward
         calls_solver_corrected = copy.deepcopy(self.calls_solver)
         for i in range(len(calls_solver_corrected) - 1):
             if (calls_solver_corrected[i + 1] - calls_solver_corrected[i]) < 0:
@@ -1286,7 +1295,7 @@ class TGYROoutput:
         self.residual = self.maskp(np.transpose(np.atleast_2d(self.residual)))[:, -1]
 
     def readFluxes(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.run"
+        file = self.FolderTGYRO / f"out.tgyro.run"
         with open(file, "r") as f:
             aux = f.readlines()
         for i in aux:
@@ -1299,32 +1308,32 @@ class TGYROoutput:
             if "TGYRO_DEN_METHOD0" in i:
                 self.ne_predicted = i.split()[-1] != "fixed"
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_te"
-        if os.path.exists(file):
+        file = self.FolderTGYRO / f"out.tgyro.evo_te"
+        if file.exists():
             self.roa, self.QeGB_sim, self.QeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
         else:
             self.QeGB_sim, self.QeGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_ti"
-        if os.path.exists(file):
+        file = self.FolderTGYRO / f"out.tgyro.evo_ti"
+        if file.exists():
             self.roa, self.QiGB_sim, self.QiGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
         else:
             self.QiGB_sim, self.QiGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_ne"
-        if os.path.exists(file):
+        file = self.FolderTGYRO / f"out.tgyro.evo_ne"
+        if file.exists():
             self.roa, self.GeGB_sim, self.GeGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
         else:
             self.GeGB_sim, self.GeGB_tar = None, None
 
-        file = f"{self.FolderTGYRO}/out.tgyro.evo_er"
-        if os.path.exists(file):
+        file = self.FolderTGYRO / f"out.tgyro.evo_er"
+        if file.exists():
             self.roa, self.MtGB_sim, self.MtGB_tar = GACODEinterpret.readGeneral(
                 file, numcols=3, maskfun=self.maskp
             )
@@ -1334,8 +1343,8 @@ class TGYROoutput:
         self.GiGB_sim, self.GiGB_tar = [], []
 
         for i in range(10):
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_n{i + 1}"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}"
+            if file.exists():
                 _, GiGB_sim, GiGB_tar = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1372,7 +1381,7 @@ class TGYROoutput:
         # Fluxes
         # ***************************************************************
 
-        file = f"{self.FolderTGYRO}/out.tgyro.flux_e"
+        file = self.FolderTGYRO / f"out.tgyro.flux_e"
         (
             _,
             self.GeGB_sim_neo,
@@ -1399,8 +1408,8 @@ class TGYROoutput:
         self.EXiGB_sim = self.EXiGB_sim_turb
 
         for i in range(10):
-            file = f"{self.FolderTGYRO}/out.tgyro.flux_i{i + 1}"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}"
+            if file.exists():
                 (
                     _,
                     GiGB_sim_neo,
@@ -1439,14 +1448,14 @@ class TGYROoutput:
         # Errors - Constructed outside of TGYRO call (e.g. powerstate)
         # ***************************************************************
 
-        if not os.path.exists(f"{self.FolderTGYRO}/out.tgyro.flux_e_stds"):
+        if not (self.FolderTGYRO / f"out.tgyro.flux_e_stds").exists():
             self.tgyro_stds = False
 
         else:
             print("\t- Errors in TGYRO fluxes and targets found, adding to class")
             self.tgyro_stds = True
 
-            file = f"{self.FolderTGYRO}/out.tgyro.flux_e_stds"
+            file = self.FolderTGYRO / f"out.tgyro.flux_e_stds"
             (
                 _,
                 self.GeGB_sim_neo_stds,
@@ -1473,8 +1482,8 @@ class TGYROoutput:
             self.EXiGB_sim_stds = self.EXiGB_sim_turb_stds
 
             for i in range(10):
-                file = f"{self.FolderTGYRO}/out.tgyro.flux_i{i + 1}_stds"
-                if os.path.exists(file):
+                file = self.FolderTGYRO / f"out.tgyro.flux_i{i + 1}_stds"
+                if file.exists():
                     (
                         _,
                         GiGB_sim_neo,
@@ -1514,32 +1523,32 @@ class TGYROoutput:
             )
 
             # Targets
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_te_stds"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.evo_te_stds"
+            if file.exists():
                 _, _, self.QeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
             else:
                 self.QeGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_ti_stds"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.evo_ti_stds"
+            if file.exists():
                 _, _, self.QiGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
             else:
                 self.QiGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_ne_stds"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.evo_ne_stds"
+            if file.exists():
                 _, _, self.GeGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
             else:
                 self.GeGB_tar_stds = None
 
-            file = f"{self.FolderTGYRO}/out.tgyro.evo_er_stds"
-            if os.path.exists(file):
+            file = self.FolderTGYRO / f"out.tgyro.evo_er_stds"
+            if file.exists():
                 _, _, self.MtGB_tar_stds = GACODEinterpret.readGeneral(
                     file, numcols=3, maskfun=self.maskp
                 )
@@ -1548,8 +1557,8 @@ class TGYROoutput:
 
             self.GiGB_tar_stds = []
             for i in range(10):
-                file = f"{self.FolderTGYRO}/out.tgyro.evo_n{i + 1}_stds"
-                if os.path.exists(file):
+                file = self.FolderTGYRO / f"out.tgyro.evo_n{i + 1}_stds"
+                if file.exists():
                     _, _, GiGB_tar = GACODEinterpret.readGeneral(
                         file, numcols=3, maskfun=self.maskp
                     )
@@ -1562,7 +1571,7 @@ class TGYROoutput:
         # Powers
         # ***************************************************************
 
-        file = f"{self.FolderTGYRO}/out.tgyro.power_e"
+        file = self.FolderTGYRO / f"out.tgyro.power_e"
         try:
             (
                 _,
@@ -1600,7 +1609,7 @@ class TGYROoutput:
 
         self.Qe_tarMW_rad = self.Qe_tarMW_brem + self.Qe_tarMW_sync + self.Qe_tarMW_line
 
-        file = f"{self.FolderTGYRO}/out.tgyro.power_i"
+        file = self.FolderTGYRO / f"out.tgyro.power_i"
         (
             _,
             self.Qi_tarMW_fus,
@@ -1611,7 +1620,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file, numcols=6, maskfun=self.maskp)
 
     def readNormalization(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.gyrobohm"
+        file = self.FolderTGYRO / f"out.tgyro.gyrobohm"
 
         (
             roa,
@@ -1625,6 +1634,7 @@ class TGYROoutput:
 
         # Q is MW/m^2
         # Pi in J/m^2
+        # S in MW/m^3
 
         # Convert Gamma to 1E20
         self.Gamma_GB = self.Gamma_GB * 1e-1
@@ -1692,7 +1702,7 @@ class TGYROoutput:
         )
 
     def readProfiles(self):
-        file = f"{self.FolderTGYRO}/out.tgyro.profile_e"
+        file = self.FolderTGYRO / f"out.tgyro.profile_e"
         (
             roa,
             self.ne,
@@ -1706,13 +1716,13 @@ class TGYROoutput:
         self.ni, self.aLni, self.Ti, self.aLti, self.betai_unit = [], [], [], [], []
 
         cont = 1
-        file = f"{self.FolderTGYRO}/out.tgyro.profile_i{cont}"
-        while os.path.exists(file):
+        file = self.FolderTGYRO / f"out.tgyro.profile_i{cont}"
+        while file.exists():
             _, ni, aLni, Ti, aLti, betai_unit = GACODEinterpret.readGeneral(
                 file, numcols=6, maskfun=self.maskp
             )
             cont += 1
-            file = f"{self.FolderTGYRO}/out.tgyro.profile_i{cont}"
+            file = self.FolderTGYRO / f"out.tgyro.profile_i{cont}"
 
             self.ni.append(ni)
             self.aLni.append(aLni)
@@ -1730,8 +1740,8 @@ class TGYROoutput:
         self.betai_unit = np.transpose(np.array(self.betai_unit), axes=(1, 0, 2))
 
     def readGeo(self):
-        file1 = f"{self.FolderTGYRO}/out.tgyro.geometry.1"
-        file2 = f"{self.FolderTGYRO}/out.tgyro.geometry.2"
+        file1 = self.FolderTGYRO / f"out.tgyro.geometry.1"
+        file2 = self.FolderTGYRO / f"out.tgyro.geometry.2"
 
         (
             _,
@@ -1759,7 +1769,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file2, numcols=9, maskfun=self.maskp)
 
     def readNu(self):
-        file1 = f"{self.FolderTGYRO}/out.tgyro.nu_rho"
+        file1 = self.FolderTGYRO / f"out.tgyro.nu_rho"
         (
             roa,
             self.nui,
@@ -1772,7 +1782,7 @@ class TGYROoutput:
         ) = GACODEinterpret.readGeneral(file1, numcols=8, maskfun=self.maskp)
 
     def readprocess(self):
-        file = f"{self.FolderTGYRO}/input.tgyro.gen"
+        file = self.FolderTGYRO / f"input.tgyro.gen"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -1783,7 +1793,7 @@ class TGYROoutput:
             else:
                 break
 
-        file = f"{self.FolderTGYRO}/out.tgyro.iterate"
+        file = self.FolderTGYRO / f"out.tgyro.iterate"
         with open(file, "r") as f:
             aux = f.readlines()
 
@@ -3567,7 +3577,7 @@ class TGYROoutput:
         ax.set_xlabel("$r/a$")
         ax.set_xlim([0, 1])
         ax.axhline(y=0, lw=0.5, c="k", ls="--")
-        ax.set_ylabel("Exchange: $S$ ($MJ/m^3$)")
+        ax.set_ylabel("Exchange: $S$ ($MW/m^3$)")
 
         GRAPHICStools.addDenseAxis(ax)
 
@@ -4321,7 +4331,7 @@ class TGYROoutput:
 
         ax.set_xlabel("Iterations")
         ax.set_xlim(left=0)
-        # ax.set_ylabel('Greenwald Fraction'); ax.set_ylim([0,1.2])
+        # ax.set_ylabel(r'Greenwald Fraction'); ax.set_ylim([0,1.2])
         ax.set_title("Volume average density")
         ax.set_ylabel("$<n_e>$ ($10^{20}m^{-3}$)")
         # ax.set_ylim(bottom=0)
@@ -4584,9 +4594,9 @@ def plotAll(TGYROoutputs, labels=None, fn=None):
 
 class TGYROinput:
     def __init__(self, input_profiles, file=None, onlyThermal=False, limitSpecies=100):
-        self.file = file
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
 
-        if self.file is not None and os.path.exists(self.file):
+        if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
                 lines = f.readlines()
             self.file_txt = "".join(lines)
@@ -4634,7 +4644,7 @@ class TGYROinput:
             for ikey in spec:
                 f.write(f"{ikey} = {spec[ikey]}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written", verbose=read_verbose_level())
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
 
 def print_options(physics_options, solver_options):
@@ -4675,7 +4685,7 @@ def modifyInputToTGYRO(
         nepred=nepred,
         physics_options=TGYRO_physics_options,
         solver_options=solver_options,
-        restart=TGYROcontinue,
+        cold_start=TGYROcontinue,
         special_radii=special_radii,
     )
 
@@ -4701,9 +4711,9 @@ def produceInputs_TGYROworkflow(
     BtIp_dirs=[0, 0],
     gridsTRXPL=[151, 101, 101],
 ):
-    folderWork = IOtools.expandPath(tmpFolder) + "/"
+    folderWork = IOtools.expandPath(tmpFolder)
     try:
-        nameRunid = LocationCDF.split("/")[-1].split(".")[0]
+        nameRunid = LocationCDF.stem
     except:
         # This is in case I have given a None to the location of the cdf because I just want
         # to prep() from .cdf and .geq directly
@@ -4711,7 +4721,7 @@ def produceInputs_TGYROworkflow(
         nameRunid = "10001"
 
     # ---------------------------------------------------------------------------------------------------------------
-    # Restarting options
+    # cold_starting options
     # ---------------------------------------------------------------------------------------------------------------
 
     files_to_look = ["input.gacode"]
@@ -4720,27 +4730,28 @@ def produceInputs_TGYROworkflow(
 
     file_to_look = files_to_look[0]
     print("\t- Testing... do TGYRO files already exist?")
-    if os.path.exists(f"{finalFolder}/{file_to_look}"):
+    lookfile = finalFolder / f"{file_to_look}"
+    if lookfile.exists():
         ProfilesGenerated, StateGenerated = True, True
-        print(f"\t\t+++++++ {IOtools.clipstr(file_to_look)} already generated")
+        print(f"\t\t+++++++ {IOtools.clipstr(lookfile)} already generated")
     else:
         print(
-            f"\t\t+++++++ {IOtools.clipstr(f'{finalFolder}/{file_to_look}')} file not found"
+            f"\t\t+++++++ {IOtools.clipstr(lookfile)} file not found"
         )
         ProfilesGenerated = False
-        if os.path.exists(finalFolder + "/10001.cdf"):
+        if (finalFolder / "10001.cdf").exists():
             StateGenerated = True
             print(
                 "\t\t+++++++ .cdf plasma-state file already generated, I need to run profiles_gen"
             )
-            # Copying them to tmp folder in case there are not there and restarting from .cdf and .geq in final folder
-            os.system(f"cp {finalFolder}/10001.cdf {folderWork}/")
-            os.system(f"cp {finalFolder}/10001.geq {folderWork}/")
+            # Copying them to tmp folder in case there are not there and cold_starting from .cdf and .geq in final folder
+            shutil.copy2(finalFolder / "10001.cdf", folderWork)
+            shutil.copy2(finalFolder / "10001.geq", folderWork)
         else:
-            print(f"\t\t+++++++ {finalFolder + '/10001.cdf'} file not found")
+            print(f"\t\t+++++++ {finalFolder / '10001.cdf'} file not found")
             StateGenerated = False
             print(
-                "\t\t+++++++ Workflow needs to be restarted completely, no files found"
+                "\t\t+++++++ Workflow needs to be cold_started completely, no files found"
             )
 
     if not ProfilesGenerated or forceEntireWorkflow:
@@ -4782,13 +4793,14 @@ def produceInputs_TGYROworkflow(
         # Pass files
         # ---------------------------------------------------------------------------------------------------------------
 
-        os.system(f"cp {tmpFolder}/10001.cdf {finalFolder}")
-        os.system(f"cp {tmpFolder}/10001.geq {finalFolder}")
+        shutil.copy2(tmpFolder / "10001.cdf", finalFolder)
+        shutil.copy2(tmpFolder / "10001.geq", finalFolder)
         for file_to_look in files_to_look:
-            os.system(f"cp {tmpFolder}/{file_to_look}* {finalFolder}")
+            for item in tmpFolder.glob(f"{file_to_look}*"):
+                shutil.copy2(item, finalFolder)
 
     else:
         print(
             "\t\t- TGYRO run already prepared, not entering in preparation (TRXPL+PROFILES_GEN) routines",
-            typeMsg="f",
+            typeMsg="i",
         )

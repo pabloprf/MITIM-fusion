@@ -27,7 +27,7 @@ parser.add_argument("--seeds", required=False, type=int, default=1)
 parser.add_argument("--var", required=False, type=int, default=9)
 args = parser.parse_args()
 
-folder = IOtools.expandPath(args.folder) + "/"
+folder = IOtools.expandPath(args.folder)
 test = args.test
 save = args.save
 numSeeds = args.seeds
@@ -39,10 +39,10 @@ numVariations = args.var
 
 opt_fun = STRATEGYtools.opt_evaluator(folder)
 opt_fun.read_optimization_results(analysis_level=4)
-step = opt_fun.prfs_model.steps[-1]
+step = opt_fun.mitim_model.steps[-1]
 
 fun = OPTtools.fun_optimization(
-    step.stepSettings, step.evaluators, step.StrategyOptions_use
+    step.stepSettings, step.evaluators, step.strategy_options_use
 )
 fun.prep()
 
@@ -80,7 +80,7 @@ elif test == 2:
 
     num_restarts_cases = 2 ** np.linspace(
         3, rws_exponent, numVariations
-    )  # max number of restarts has to be the raw_samples
+    )  # max number of cold_starts has to be the raw_samples
     iterations_cases = np.array([its] * numVariations)
     raw_samples_cases = np.ones(numVariations) * rws
 
@@ -196,7 +196,7 @@ cols, _ = GRAPHICStools.colorTableFade(
 
 ax = axs[0, 0]
 if test in [1, 2]:
-    x, tit = num_restarts_cases, "Number of restarts"
+    x, tit = num_restarts_cases, "Number of cold_starts"
 else:
     x, tit = raw_samples_cases, "Raw Samples"
 
@@ -223,7 +223,7 @@ ax.set_title(title)
 
 ax = axs[1, 0]
 if test in [1, 2]:
-    x, tit = num_restarts_cases, "Number of restarts"
+    x, tit = num_restarts_cases, "Number of cold_starts"
 else:
     x, tit = raw_samples_cases, "Raw Samples"
 
@@ -280,6 +280,6 @@ GRAPHICStools.addLegendApart(ax, ratio=0.7, withleg=False, size=7)
 
 
 if save:
-    name = f"{folder}/test{test}_seeds{numSeeds}_variations{numVariations}.pkl"
+    name = folder / f"test{test}_seeds{numSeeds}_variations{numVariations}.pkl"
     with open(name, "wb") as handle:
-        pickle_dill.dump({"traj": traj, "ybest": ybest, "timeTotal": timeTotal}, handle)
+        pickle_dill.dump({"traj": traj, "ybest": ybest, "timeTotal": timeTotal}, handle, protocol=4)

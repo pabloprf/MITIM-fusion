@@ -1,7 +1,7 @@
 {
     "preferences": {
-        "verbose_level":    "1",
-        "dpi_notebook":     "100",
+        "verbose_level":    "5",
+        "dpi_notebook":     "80",
         "trxpl":            "mfews",
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",
@@ -31,6 +31,7 @@
             "partition":    "debug",
             "constraint":   "gpu",
             "mem":          "4GB",
+            "exclusive":    false,
             "email":      "optional@email"
         }
     },
@@ -39,9 +40,8 @@
         "username":         "exampleusername",
         "slurm": {
             "partition":    "sched_mit_psfc",
-            "exclude":      "node584"
+            "exclusive":    true
         },
-        "identity":         "~/.ssh/id_rsa",
         "scratch":          "/nobackup1/exampleusername/",
         "modules":    ""
     },
@@ -52,24 +52,24 @@
         "scratch":    "/home/exampleusername/scratch/",
         "modules":    ""
     },
-    "mfews_tunneled": {
-        "machine":          "mfews02.psfc.mit.edu", 
-        "username":         "exampleusername",
-        "tunnel":           "mferws01.psfc.mit.edu",
-        "port":             9224,
-        "scratch":          "/home/exampleusername/scratch/",
-        "modules":    ""
-    },
-    "iris": {
-        "machine":    "irisa.gat.com", 
-        "username":   "exampleusername",
-        "tunnel":     "cybele.gat.com",
-        "port":            2039,
-        "scratch":    "/cluster-scratch/exampleusername/",
-        "modules":    ""
-    },
     "globus": {
         "username":   "exampleusername",
         "email":      "exampleusername@examplehost"
+    },
+    "example_machine": {
+        "machine":          "address.here", 
+        "username":         "exampleusername",
+        "tunnel":           "tunnel.address.here",
+        "port":             2039,
+        "scratch":          "/home/exampleusername/scratch/",
+        "identity":         "$HOME/.ssh/id_rsa_example",
+        "slurm": {
+            "account":      "m3195_g",
+            "partition":    "debug",
+            "constraint":   "gpu",
+            "mem":          "4GB",
+            "email":      "optional@email",
+            "exclude":      "node584"
+        }
     }
 }

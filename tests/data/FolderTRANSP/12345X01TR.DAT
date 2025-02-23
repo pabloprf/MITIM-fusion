@@ -6,7 +6,7 @@
 
 NSHOT=12345
 
-mrstrt	= -120     ! Frequency of restart records (-, means x wall clock min)
+mrstrt	= -120     ! Frequency of cold_start records (-, means x wall clock min)
 
 !----- Time and Spatial ranges
 
@@ -404,41 +404,41 @@ VVZmom(5) = 0
 levtrk	 = 2   ! Limiter locations from lim ufile
 lfixup   = 2   ! Correct U-Files units and axis (=2 according to labels)
 
-preRFP	 = "PRF"
+preRFP	 = "MIT"
 extRFP	 = "RFP"
-prelim	 = "PRF" 
+prelim	 = "MIT" 
 extlim	 = "LIM"
 nsyqpr	 = 0
 
-precur	 = "PRF" 
+precur	 = "MIT" 
 extcur	 = "CUR"
-prevsf	 = "PRF" 
+prevsf	 = "MIT" 
 extvsf	 = "VSF"
-prerbz	 = "PRF" 
+prerbz	 = "MIT" 
 extrbz	 = "RBZ"
-preter	 = "PRF" 
+preter	 = "MIT" 
 extter	 = "TEL"
 nriter	   =  -4     ! Changed by PORTALS
 nsyter	 = 0
 
-preti2	 = "PRF" 
+preti2	 = "MIT" 
 extti2	 = "TI2"
 nriti2	   =  -4     ! Changed by PORTALS
 nsyti2	 = 0
 
-prener	 = "PRF" 
+prener	 = "MIT" 
 extner	 = "NEL"
 nriner	   =  -4     ! Changed by PORTALS
 nsyner	 = 0
 
-prezf2	 = "PRF" 
+prezf2	 = "MIT" 
 extzf2	 = "ZF2"
 nrizf2	 = -5
 nsyzf2	 = 0
 
-pregfd	 = "PRF" 
+pregfd	 = "MIT" 
 extgfd	 = "GFD"
-premry	 = "PRF" 
+premry	 = "MIT" 
 extmry	 = "MRY"
 
 !===============================================================
@@ -516,22 +516,22 @@ phicha(1,1) = 0,180   		 ! Phasing of antenna elements (deg)
 phicha(1,2) = 0,180
 
 !==================================================================
-xzimps(2)  =  18.0  ! Added by PORTALS
-aimps(2)  =  40.0  ! Added by PORTALS
-densim(2)  =  0.0023  ! Added by PORTALS
-nadvsim(2)  =  0  ! Added by PORTALS
-xzimps(3)  =  31.0  ! Added by PORTALS
-aimps(3)  =  96.0  ! Added by PORTALS
-densim(3)  =  0.0001  ! Added by PORTALS
-nadvsim(3)  =  0  ! Added by PORTALS
-extbol  =  'BOL'  ! Added by PORTALS
-prebol  =  'PRF'  ! Added by PORTALS
-extvp2  =  'VP2'  ! Added by PORTALS
-prevp2  =  'PRF'  ! Added by PORTALS
-nribol  =  -4  ! Added by PORTALS
-nrivp2  =  -4  ! Added by PORTALS
-extsaw  =  'SAW'  ! Added by PORTALS
-presaw  =  'PRF'  ! Added by PORTALS
+xzimps(2)  =  18.0  ! Added by MITIM
+aimps(2)  =  40.0  ! Added by MITIM
+densim(2)  =  0.0023  ! Added by MITIM
+nadvsim(2)  =  0  ! Added by MITIM
+xzimps(3)  =  31.0  ! Added by MITIM
+aimps(3)  =  96.0  ! Added by MITIM
+densim(3)  =  0.0001  ! Added by MITIM
+nadvsim(3)  =  0  ! Added by MITIM
+extbol  =  'BOL'  ! Added by MITIM
+prebol  =  'MIT'  ! Added by MITIM
+extvp2  =  'VP2'  ! Added by MITIM
+prevp2  =  'MIT'  ! Added by MITIM
+nribol  =  -4  ! Added by MITIM
+nrivp2  =  -4  ! Added by MITIM
+extsaw  =  'SAW'  ! Added by MITIM
+presaw  =  'MIT'  ! Added by MITIM
 inputdir='/home/pablorf/scratch//mitim_12345X01//FolderTRANSP/'
 MTHDAVG  =  2  ! Added by MITIM
 AVGTIM  =  0.001  ! Added by MITIM

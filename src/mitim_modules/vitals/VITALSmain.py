@@ -1,40 +1,36 @@
-import copy, os, pickle, torch
+import copy
+import pickle
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.gacode_tools import TGLFtools
-from mitim_tools.opt_tools.utils import BOgraphics, EVplot
 from mitim_tools.opt_tools import STRATEGYtools
-
 from IPython import embed
-
 
 def default_namelist(optimization_options):
     """
     This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
     """
 
-    optimization_options["initial_training"] = 8
-    optimization_options["BO_iterations"] = 20
-    optimization_options["newPoints"] = 4
-    optimization_options["parallel_evaluations"] = (
-        4  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
+    optimization_options["initialization_options"]["initial_training"] = 8
+    optimization_options["convergence_options"]["maximum_iterations"] = 20
+    optimization_options["acquisition_options"]["points_per_step"] = 4
+    optimization_options["evaluation_options"]["parallel_evaluations"] = (
+        1  # each TGLF is run with 4 cores, so 16 total cores consumed with this default
     )
-    optimization_options["surrogateOptions"]["TypeMean"] = 2
-    optimization_options["StrategyOptions"]["AllowedExcursions"] = [0.1, 0.1]
-    optimization_options["StrategyOptions"]["HitBoundsIncrease"] = [1.1, 1.1]
-    optimization_options["StrategyOptions"]["TURBO"] = True
-    optimization_options["StrategyOptions"]["TURBO_addPoints"] = 16
+    optimization_options["surrogate_options"]["TypeMean"] = 2
+    optimization_options["strategy_options"]["AllowedExcursions"] = [0.1, 0.1]
+    optimization_options["strategy_options"]["HitBoundsIncrease"] = [1.1, 1.1]
+    optimization_options["strategy_options"]["TURBO_options"]["apply"] = True
+    optimization_options["strategy_options"]["TURBO_options"]["points"] = 16
 
     # Acquisition
-    optimization_options["optimizers"] = "root_5-botorch-ga"
-    optimization_options["acquisition_type"] = "posterior_mean"
+    optimization_options["acquisition_options"]["type"] = "posterior_mean"
+    optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
 
     return optimization_options
 
-
 class vitals(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None):
+    def __init__(self, folder, namelist=None, **kwargs):
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -48,6 +44,7 @@ class vitals(STRATEGYtools.opt_evaluator):
             folder,
             namelist=namelist,
             default_namelist_function=default_namelist if (namelist is None) else None,
+            **kwargs
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -138,22 +135,22 @@ class vitals(STRATEGYtools.opt_evaluator):
         # Calofs depend on the definition of the metric (top of the file)
         # ----------------------------------------------------------------------------
 
-        self.optimization_options["ofs"] = ofs
-        o1 = copy.deepcopy(self.optimization_options["ofs"])
+        self.optimization_options["problem_options"]["ofs"] = ofs
+        o1 = copy.deepcopy(self.optimization_options["problem_options"]["ofs"])
 
         self.name_objectives = []
         for iof in o1:
             self.name_objectives.append(iof + "_devstd")
-            self.optimization_options["ofs"].append(iof + "_exp")
+            self.optimization_options["problem_options"]["ofs"].append(iof + "_exp")
 
-        self.optimization_options["dvs"] = dvs
-        self.optimization_options["dvs_min"] = dvs_min
-        self.optimization_options["dvs_max"] = dvs_max
+        self.optimization_options["problem_options"]["dvs"] = dvs
+        self.optimization_options["problem_options"]["dvs_min"] = dvs_min
+        self.optimization_options["problem_options"]["dvs_max"] = dvs_max
 
         if dvs_base is None:
-            self.optimization_options["dvs_base"] = [1.0 for i in dvs]
+            self.optimization_options["problem_options"]["dvs_base"] = [1.0 for i in dvs]
         else:
-            self.optimization_options["dvs_base"] = dvs_base
+            self.optimization_options["problem_options"]["dvs_base"] = dvs_base
 
         # ----------------------------------------------------------------------------
         #
@@ -194,7 +191,7 @@ class vitals(STRATEGYtools.opt_evaluator):
             variation,
             label="tglf1",
             launchSlurm=launchSlurm,
-            evNum=paramsfile.split(".")[-1],
+            evNum=f'{paramsfile}'.split(".")[-1],
         )
 
         # Evaluate
@@ -232,13 +229,13 @@ class vitals(STRATEGYtools.opt_evaluator):
         self.write(dictOFs, resultsfile)
 
     def analyze_results(
-        self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2
+        self, plotYN=True, fn=None, cold_start=False, storeResults=True, analysis_level=2
     ):
         analyze_results(
             self,
             plotYN=plotYN,
             fn=fn,
-            restart=restart,
+            cold_start=cold_start,
             storeResults=storeResults,
             analysis_level=analysis_level,
         )
@@ -251,7 +248,7 @@ class vitals(STRATEGYtools.opt_evaluator):
                   about number of dimensions
         """
 
-        ofs_ordered_names = np.array(self.optimization_options["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["problem_options"]["ofs"])
 
         of, cal, res = torch.Tensor().to(Y), torch.Tensor().to(Y), torch.Tensor().to(Y)
         for iquant in ofs_ordered_names:
@@ -282,15 +279,13 @@ def runTGLF(
     folder_label=None,
     launchSlurm=True,
     evNum=1,
-    restart=True,
+    cold_start=True,
 ):
     # Change folder
     initializationFolder = copy.deepcopy(tglf.FolderGACODE)
     tglf.FolderGACODE = FolderEvaluation
 
-    numSim = self.folder.split("/")[-1]
-    if len(numSim) < 1:
-        numSim = self.folder.split("/")[-2]
+    numSim = self.folder.name
 
     variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
 
@@ -307,10 +302,10 @@ def runTGLF(
         folder_label = label
 
     tglf.run(
-        subFolderTGLF=f"{folder_label}/",
-        restart=restart,
+        subFolderTGLF=f"{folder_label}",
+        cold_start=cold_start,
         TGLFsettings=self.TGLFparameters["TGLFsettings"],
-        forceIfRestart=True,
+        forceIfcold_start=True,
         extraOptions=extraOptions,
         multipliers=multipliers,
         extra_name=f"{numSim}_{evNum}",
@@ -320,7 +315,7 @@ def runTGLF(
 
 
 def analyze_results(
-    self, plotYN=True, fn=None, restart=False, storeResults=True, analysis_level=2
+    self, plotYN=True, fn=None, cold_start=False, storeResults=True, analysis_level=2, **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff
@@ -338,9 +333,8 @@ def analyze_results(
         # ----------------------------------------------------------------------------------------------------------------
 
         self.tglf_final = self_complete.tglf
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
-        if not os.path.exists(FolderEvaluation):
-            os.system(f"mkdir {FolderEvaluation}")
+        FolderEvaluation = self.folder / "Outputs" / "final_analysis"
+        FolderEvaluation.mkdir(parents=True, exist_ok=True)
 
         launchSlurm = True
         print("\t- Running original case")
@@ -352,7 +346,7 @@ def analyze_results(
             label="Original",
             launchSlurm=launchSlurm,
             evNum=0,
-            restart=restart,
+            cold_start=cold_start,
         )
         print(f"\t- Running best case #{self.res.best_absolute_index}")
         runTGLF(
@@ -364,7 +358,7 @@ def analyze_results(
             folder_label=f"VITALS_{self.res.best_absolute_index}",
             launchSlurm=launchSlurm,
             evNum=self.res.best_absolute_index,
-            restart=restart,
+            cold_start=cold_start,
         )
 
         # ----------------------------------------------------------------------------------------------------------------
@@ -379,7 +373,7 @@ def analyze_results(
 
         if storeResults:
             # Save tglf file
-            file = file = f"{self.folder}/Outputs/final_analysis/tglf.pkl"
+            file = file = self.folder / "Outputs" / "final_analysis" / "tglf.pkl"
             self.tglf_final.save_pkl(file)
 
             # Store dictionary of results (unfortunately so far the dictionary is created at plotting... I have to improve this)

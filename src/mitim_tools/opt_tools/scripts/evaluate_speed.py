@@ -14,13 +14,13 @@ parser.add_argument("--num", type=int, required=False, default=10000)
 parser.add_argument("--name", type=str, required=False, default="")
 args = parser.parse_args()
 
-folder = IOtools.expandPath(args.folder) + "/"
+folder = IOtools.expandPath(args.folder)
 cases = args.num
 name = args.name
 
 opt_fun = STRATEGYtools.opt_evaluator(folder)
 opt_fun.read_optimization_results(analysis_level=4)
-step = opt_fun.prfs_model.steps[-1]
+step = opt_fun.mitim_model.steps[-1]
 
 x = torch.rand(cases, step.train_X.shape[-1])
 

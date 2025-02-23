@@ -7,8 +7,8 @@ from mitim_modules.freegsu import FREEGSUtools
 from mitim_modules.freegsu.utils import FREEGSUplotting
 from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.opt_tools.utils import EVplot
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.opt_tools.utils import BOgraphics
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -17,23 +17,23 @@ def default_namelist(optimization_options):
     This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
     """
 
-    optimization_options["initial_training"] = 32
-    optimization_options["BO_iterations"] = 100
-    optimization_options["parallel_evaluations"] = 16
-    optimization_options["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
-    optimization_options["newPoints"] = 16  # I found this better
-    optimization_options["surrogateOptions"]["FixedNoise"] = False
-    optimization_options["StrategyOptions"]["TURBO"] = True
+    optimization_options["initialization_options"]["initial_training"] = 32
+    optimization_options["convergence"]["convergence_options"]["maximum_iterations"] = 100
+    optimization_options["evaluation_options"]["parallel_evaluations"] = 16
+    optimization_options['convergence_options']['stopping_criteria_parameters']["maximum_value"] = -1e-2  # This is 0.1mm, enough accuracy
+    optimization_options["acquisition_options"]["points_per_step"] = 16  # I found this better
+    optimization_options["surrogate_options"]["FixedNoise"] = False
+    optimization_options["strategy_options"]["TURBO_options"]["apply"] = True
 
     # Acquisition
-    optimization_options["optimizers"] = "root_5-botorch-ga"
-    optimization_options["acquisition_type"] = "posterior_mean"
+    optimization_options["acquisition_options"]["type"] = "posterior_mean"
+    optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
 
     return optimization_options
 
 
 class freegsu(STRATEGYtools.opt_evaluator):
-    def __init__(self, folder, namelist=None, function_parameters={}):
+    def __init__(self, folder, namelist=None, function_parameters={}, **kwargs):
         print(
             "\n-----------------------------------------------------------------------------------------"
         )
@@ -49,6 +49,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
             folder,
             namelist=namelist,
             default_namelist_function=default_namelist if (namelist is None) else None,
+            **kwargs
         )
 
     def prep(
@@ -137,36 +138,36 @@ class freegsu(STRATEGYtools.opt_evaluator):
         # ------------------------------------------------------------------------------------------------------------------
 
         (
-            self.optimization_options["dvs"],
-            self.optimization_options["dvs_base"],
-            self.optimization_options["dvs_min"],
-            self.optimization_options["dvs_max"],
+            self.optimization_options["problem_options"]["dvs"],
+            self.optimization_options["problem_options"]["dvs_base"],
+            self.optimization_options["problem_options"]["dvs_min"],
+            self.optimization_options["problem_options"]["dvs_max"],
         ) = ([], [], [], [])
         for i in setCoils:
-            self.optimization_options["dvs"].append(i)
-            self.optimization_options["dvs_base"].append(self.function_parameters["CoilCurrents"][i])
-            self.optimization_options["dvs_min"].append(coilLimits[i][0])
-            self.optimization_options["dvs_max"].append(coilLimits[i][1])
+            self.optimization_options["problem_options"]["dvs"].append(i)
+            self.optimization_options["problem_options"]["dvs_base"].append(self.function_parameters["CoilCurrents"][i])
+            self.optimization_options["problem_options"]["dvs_min"].append(coilLimits[i][0])
+            self.optimization_options["problem_options"]["dvs_max"].append(coilLimits[i][1])
 
         if self.function_parameters["CoilCurrents_lower"] is not None:
             if setCoils_lower is None:
                 setCoils_lower = setCoils
             for i in setCoils_lower:
-                self.optimization_options["dvs"].append(i + "_l")
-                self.optimization_options["dvs_base"].append(
+                self.optimization_options["problem_options"]["dvs"].append(i + "_l")
+                self.optimization_options["problem_options"]["dvs_base"].append(
                     self.function_parameters["CoilCurrents_lower"][i]
                 )
-                self.optimization_options["dvs_min"].append(coilLimits[i][0])
-                self.optimization_options["dvs_max"].append(coilLimits[i][1])
+                self.optimization_options["problem_options"]["dvs_min"].append(coilLimits[i][0])
+                self.optimization_options["problem_options"]["dvs_max"].append(coilLimits[i][1])
 
         if dvs_base is not None:
-            self.optimization_options["dvs_base"] = dvs_base
+            self.optimization_options["problem_options"]["dvs_base"] = dvs_base
 
-        self.optimization_options["ofs"] = []
+        self.optimization_options["problem_options"]["ofs"] = []
         self.name_objectives = []
         for i in self.ofs_dict:
-            self.optimization_options["ofs"].append(i)
-            self.optimization_options["ofs"].append(i + "_goal")
+            self.optimization_options["problem_options"]["ofs"].append(i)
+            self.optimization_options["problem_options"]["ofs"].append(i + "_goal")
 
             self.name_objectives.append(i + "_dev")
 
@@ -202,7 +203,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
         Metric is the max deviation in standard deviations
         """
 
-        ofs_ordered_names = np.array(self.optimization_options["ofs"])
+        ofs_ordered_names = np.array(self.optimization_options["problem_options"]["ofs"])
 
         of, cal, res = torch.Tensor().to(Y), torch.Tensor().to(Y), torch.Tensor().to(Y)
         for iquant in ofs_ordered_names:
@@ -255,7 +256,7 @@ def runFreeGS(self, dictDVs, plot=False, figs=None, onlyPrepare=False, debug=Fal
         onlyPrepare=onlyPrepare,
     )
 
-    return out  # prfs,metrics,metrics_opt
+    return out  # mitims,metrics,metrics_opt
 
 
 def analyze_results(
@@ -266,6 +267,7 @@ def analyze_results(
     onlyBest=False,
     analysis_level=2,
     onlyPrepare=False,
+    **kwargs
 ):
     # ----------------------------------------------------------------------------------------------------------------
     # Interpret stuff
@@ -319,13 +321,13 @@ def analyze_results(
     if onlyPrepare:
         return dictDVs
     else:
-        prfs, metrics, metrics_opt = runFreeGS(self, dictDVs, plot=True, figs=figs)
+        mitims, metrics, metrics_opt = runFreeGS(self, dictDVs, plot=True, figs=figs)
 
-        FolderEvaluation = f"{self.folder}/Outputs/final_analysis/"
+        FolderEvaluation = self.folder / "Outputs" / "final_analysis/"
         if storeResults:
             gs = FREEGSUplotting.writeResults(
                 FolderEvaluation,
-                prfs,
+                mitims,
                 metrics,
                 self.function_parameters,
                 namePkl="results",
@@ -407,17 +409,17 @@ def combined_analysis(
 
     figs = [fig1, fig2, fig3, figP, figa, figb, figMach, figRes]
 
-    prfs, metrics, metrics_opt = runFreeGS(p, {}, plot=True, figs=figs)
+    mitims, metrics, metrics_opt = runFreeGS(p, {}, plot=True, figs=figs)
 
     if folderToStore is not None:
         IOtools.askNewFolder(folderToStore, force=True)
-        folderEvaluation_out = f"{folderToStore}/Outputs/"
+        folderEvaluation_out = folderToStore / "Outputs"
         IOtools.askNewFolder(folderEvaluation_out, force=True)
-        folderEvaluation = f"{folderEvaluation_out}final_analysis/"
+        folderEvaluation = folderEvaluation_out / "final_analysis"
         IOtools.askNewFolder(folderEvaluation, force=True)
         gs = FREEGSUplotting.writeResults(
             folderEvaluation,
-            prfs,
+            mitims,
             metrics,
             p.function_parameters,
             namePkl="results",
@@ -479,11 +481,13 @@ def apply_rangeVar(
 def initializeGSgrab(subfolders, evaluations, superfolder="./"):
     if type(subfolders) == str:
         subfolders = [subfolders]
+    subfolders = [IOtools.expandPath(subfolder) for subfolder in subfolders]
+    superfolder = IOtools.expandPath(superfolder)
 
     # Initialize the currents (in case they have different DVs)
     coils = []
     for ff, ev in zip(subfolders, evaluations):
-        pklf = f"{superfolder}/{ff}/Outputs/optimization_object.pkl"
+        pklf = superfolder / f"{ff}" / "Outputs" / "optimization_object.pkl"
 
         mitim = pickle.load(open(pklf, "rb"))
 
@@ -504,7 +508,7 @@ def initializeGSgrab(subfolders, evaluations, superfolder="./"):
             CoilCurrents[ikey].append(coils[i + 1][ikey][0])
 
     # --
-    CoilCurrents, _ = EVplot.grabBestSpecificParams(
+    CoilCurrents, _ = grabBestSpecificParams(
         subfolders,
         evaluations,
         CoilCurrents,
@@ -513,6 +517,90 @@ def initializeGSgrab(subfolders, evaluations, superfolder="./"):
     )
 
     return CoilCurrents
+
+def grabBestSpecificParams(
+    subfolders,
+    evaluations,
+    SpecificParams,
+    superfolder="./",
+    avoidExtraOFs=True,
+    alreadyAssigned=False,
+    ):
+    if type(subfolders) == str:
+        subfolders = [subfolders]
+    subfolders = [IOtools.expandPath(subfolder) for subfolder in subfolders]
+    superfolder = IOtools.expandPath(superfolder)
+
+    # None evaluation to find best
+
+    useDict = "evaluations"  #'optima'
+
+    cont = 0
+    for ff, ev in zip(subfolders, evaluations):
+        res = BOgraphics.optimization_results(
+            superfolder / f"{ff}" / "Outputs" / "optimization_results.out"
+        )
+        res.read()
+        useDict_class = res.__dict__[useDict]
+
+        x, yT, _ = BOgraphics.plotAndGrab(
+            None,
+            None,
+            None,
+            None,
+            res.evaluations,
+            res.calibrations,
+            res.summations,
+            res.OF_labels,
+            None,
+        )
+
+        yMax = yT.max(axis=1)
+        yMean = yT.mean(axis=1)
+
+        if ev is None:
+            if len(yMax) == 0:
+                ev, yev, yev2, maxev = 0, 1e6, 1e6, 0
+            else:
+                ev, yev, yev2, maxev = (
+                    x[np.nanargmin(yMean)],
+                    yMax[np.nanargmin(yMax)],
+                    yMean[np.nanargmin(yMax)],
+                    x[-1],
+                )
+            print(
+                '\t- For {0}, read "{5}", and best evaluation found at {1} (/{2}) with a residual of {3:.3f} (max) and {4:.3f} (mean)'.format(
+                    ff, ev, maxev, yev, yev2, useDict
+                )
+            )
+        else:
+            print(f"\t- For {ff}, using user-specified evaluation {ev}")
+
+        # First equilibrium
+        for i in res.DV_labels:
+            if "_delta" not in i:
+                if i not in SpecificParams or (type(SpecificParams[i]) == float):
+                    SpecificParams[i] = []
+
+                if not alreadyAssigned:
+                    SpecificParams[i].append(useDict_class[ev]["x"][i])
+                else:
+                    try:
+                        SpecificParams[i][cont] = useDict_class[ev]["x"][i]
+                    except:
+                        SpecificParams[i].append(useDict_class[ev]["x"][i])
+
+        # Second equilibrium, when double optimization is enabled
+        for i in res.DV_labels:
+            if "_delta" in i:
+                j = i[:-6]
+                SpecificParams[j].append(
+                    useDict_class[ev]["x"][i] + useDict_class[ev]["x"][j]
+                )
+
+        cont += 1
+
+    return SpecificParams, ev
 
 
 def getBestCoils(folderWork, startFrom):

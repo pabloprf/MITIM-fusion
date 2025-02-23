@@ -10,7 +10,7 @@ from IPython import embed
 from mitim_tools.misc_tools import MATHtools
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.popcon_tools import FunctionalForms
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 """
 Acknowledgement:
@@ -32,6 +32,7 @@ pi = 3.141592653589793
 e_J = 1.60218e-19  # C
 u = 1.66054e-27  # kg
 eps0 = 8.85419e-12  # F/m
+mu0 = 4.0 * np.pi * 1.0e-7
 
 # cgs (for TGYRO-inspired calculations)
 me_g = 9.1094e-28  # g
@@ -95,11 +96,11 @@ def RicciMetric(y1, y2, y1_std, y2_std, h=None, d0=2.0, l=1.0):
 
     for i in range(d.shape[1]):
         d[:, i] = (
-            (y1[:, i] - y2[:, i]) ** 2 / (y1_std[:, i] ** 2 + y2_std[:, i] ** 2)
+            (y1.cpu()[:, i] - y2.cpu()[:, i]) ** 2 / (y1_std.cpu()[:, i] ** 2 + y2_std.cpu()[:, i] ** 2)
         ) ** 0.5
         R[:, i] = 0.5 * (np.tanh((d[:, i] - d0) / l) + 1)
         S[:, i] = np.exp(
-            -(y1_std[:, i] + y2_std[:, i]) / (abs(y1[:, i]) + abs(y2[:, i]))
+            -(y1_std.cpu()[:, i] + y2_std.cpu()[:, i]) / (abs(y1.cpu()[:, i]) + abs(y2.cpu()[:, i]))
         )  # Quantification of measurement precision (0-1)
 
     QR = (H * S).sum(axis=1)  # Quality of comparison
@@ -247,6 +248,23 @@ def betae(Te_keV, ne_20, B_T):
     beta_e = precomputed_factor * ne_20 * Te_keV / B_T**2
 
     return beta_e
+
+def p_prime(te, ne, aLte, aLne, ti, ni, aLti, aLni, a, B_unit, q, r):
+    
+    # pressure gradient
+    dpdr = ne*te*(aLte + aLne)
+    for i in range(ni.shape[-1]):
+        dpdr += ni[...,i]*ti*(aLti + aLni[i][:])
+
+    dpdr = -1/a * 1e3 * e_J * 1e20 * dpdr
+
+    # p_prime is q*a^2/r/B^2 * dpdr
+    p_prime = 1E-7 * q * a**2 / r / B_unit**2 * dpdr
+
+    # First one would be nan because of the division by r, correct that
+    p_prime = torch.where(r == 0, torch.tensor(0.0, dtype=torch.float64), p_prime)
+
+    return p_prime
 
 
 def calculatePressure(Te, Ti, ne, ni):
@@ -453,7 +471,7 @@ def energy_exchange(Te_keV, Ti_keV, ne_20, ni_20, mi_u, Zi):
 
 def calculateCollisionalities(
     ne, Te, Zeff, R, q, epsilon, ne_avol, Te_avol, R0, Zeff_avol, mi_u=1.0
-):  # TO FIX
+):  #TODO: Needs fixing
     """
     Notes:
             ne in m^-3
@@ -502,7 +520,7 @@ def coll_Angioni07(ne19, TekeV, Rgeo, Zeff=2.0):
     return 0.1 * Zeff * ne19 * Rgeo * TekeV ** (-2)
 
 
-def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  # TO FIX Gstar
+def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  #TODO: FIX Gstar
     """
     p is total pressure in MPa (e.g. p.derived['pthr_manual_vol'])
     nu is nu_effective (e.g. p.derived['nu_eff'] * 2/p.derived['Zeff_vol'])
@@ -539,7 +557,7 @@ def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  # TO FIX Gstar
     return ne_peak_empirical_l, ne_peak_empirical, ne_peak_empirical_u
 
 
-def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  # TO FIX
+def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
     """
     Notes:
             Te in keV
@@ -835,21 +853,22 @@ def FrequencyOnAxis(Bt):
     return Bt * 10.0
 
 
-def getLowZimpurity(Fmain, Zeff, Zmini, Fmini, ZimpH, FimpH=0, Zother=1, Fother=0):
-    Delta_Zeff = Zeff - Fmini * Zmini**2 - FimpH * ZimpH**2 - Fother * Zother**2
-    Delta_quas = 1 - Fmini * Zmini - FimpH * ZimpH - Fother * Zother
+def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
-    ZimpL = (Delta_Zeff - Fmain) / (Delta_quas - Fmain)
-    ZimpL_mod = int(round(ZimpL))
+    factor1 = 1 - (fDT + Zmini * fmini + Zhigh * fhigh)
+    factor2 = Zeff - (fDT + Zmini**2 * fmini + Zhigh**2 * fhigh)
 
-    FimpL = (Delta_quas - Fmain) / ZimpL_mod
-    Rimp = FimpH / FimpL
+    Z = factor2 / factor1
 
-    print(
-        f"\t- Low-Z impurity must have Z_low = {ZimpL:.2f}~{ZimpL_mod}, with f_low = {FimpL:.2e} --> f_high/f_low = {Rimp:.2e}"
-    )
+    if force_integer:
+        print(f"\t- Low-Z impurity must have Z_low = {Z:.2f}~{int(round(Z))}")
+        Z = int(round(Z))
+    
+    r = 1/ (1/(Z*fhigh) * factor1)
 
-    return ZimpL_mod, Rimp
+    print(f'\t- f_high/f_lower = {r:.2e}  -> f_low = {fhigh*r:.2e}')
+
+    return Z, r
 
 
 def getICHefficiency(dictParams):
@@ -1183,26 +1202,6 @@ def evaluateTE_u(ne, Te, Aqpar, L, P_LCFS, PowerFractionToElectrons=0.5):
     Te_u = (7.0 / 2.0 * (Psol / Aqpar * L) / k0e) ** (2.0 / 7.0)
 
     return Te_u
-
-
-def evaluateLCFS_Lmode(
-    n20, pressure_atm=5.0, Psol_MW=10.0, R=1.85, Bp=1.0, Bt=12.2, q95=3.2
-):
-    """
-    Assume that n20 is the volume average in E20
-    """
-
-    # ~~~~~~~~ Evaluation of the temperature
-
-    Lambda_q = calculateHeatFluxWidth_Brunner(pressure_atm)
-    Te, _ = calculateUpstreamTemperature(Lambda_q, q95, n20, Psol_MW, R, Bp, Bt)
-    Te_LCFS = Te * 1e3
-
-    # ~~~~~~~~ Evaluation of the density
-
-    ne_LCFS = n20 * 1e20 * 0.6
-
-    return ne_LCFS, Te_LCFS, Lambda_q
 
 
 def calculatePowerDrawn(t, I, M):

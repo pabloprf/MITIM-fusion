@@ -1,4 +1,4 @@
-import os
+import shutil
 import torch
 import copy
 import numpy as np
@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
 
@@ -22,33 +22,37 @@ def initializeProblem(
     RelVar_y_min,
     limitsAreRelative=True,
     hardGradientLimits=None,
-    restartYN=False,
+    cold_start=False,
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
-    dfT=torch.randn((2, 2), dtype=torch.double),
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
+    tensor_opts = {
+        "dtype": torch.double,
+        "device": torch.device("cpu"),
+    }
     ):
     """
     Notes:
         - Specification of points occur in rho coordinate, although internally the work is r/a
-            restartYN = True if restart from beginning
+            cold_start = True if cold_start from beginning
         - I can give ModelOptions directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
 
+    dfT = torch.randn((2, 2), **tensor_opts)
+
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
 
-    FolderInitialization = folderWork + "Initialization"
+    FolderInitialization = folderWork / "Initialization"
 
-    if (restartYN) or (not os.path.exists(folderWork)):
-        IOtools.askNewFolder(folderWork, force=restartYN)
+    if (cold_start) or (not folderWork.exists()):
+        IOtools.askNewFolder(folderWork, force=cold_start)
 
-    if not os.path.exists(FolderInitialization):
-        os.system(f"mkdir {FolderInitialization}")
+    FolderInitialization.mkdir(parents=True, exist_ok=True)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
@@ -56,17 +60,15 @@ def initializeProblem(
 
     # ---- Copy the file of interest to initialization folder
 
-    os.system(f"cp {fileStart} {FolderInitialization}/input.gacode")
+    shutil.copy2(fileStart, FolderInitialization / "input.gacode")
 
     # ---- Make another copy to preserve the original state
 
-    os.system(
-        f"cp {FolderInitialization}/input.gacode {FolderInitialization}/input.gacode_original"
-    )
+    shutil.copy2(FolderInitialization / "input.gacode", FolderInitialization / "input.gacode_original")
 
     # ---- Initialize file to modify and increase resolution
 
-    initialization_file = f"{FolderInitialization}/input.gacode"
+    initialization_file = FolderInitialization / "input.gacode"
     profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
 
     # About radial locations
@@ -87,47 +89,45 @@ def initializeProblem(
     ):
         profiles.correct(options=INITparameters)
 
-    # Resolution of input.gacode
-    defineNewPORTALSGrid(profiles, np.array(portals_fun.MODELparameters["RhoLocations"]))
+    if portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
+        position_of_impurity = PROFILEStools.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
+    else:
+        position_of_impurity = 1
 
-    # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=f"{FolderInitialization}/input.gacode_modified")
-
-    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]:
-        portals_fun.PORTALSparameters["fImp_orig"] = profiles.Species[
-            portals_fun.PORTALSparameters["ImpurityOfInterest"] - 1
-        ]["dens"]
-        print(
-            f"\t- Using original concentration of {portals_fun.PORTALSparameters['fImp_orig']:.2e} for ion {portals_fun.PORTALSparameters['ImpurityOfInterest']} as scaling factor of GZ",
-            typeMsg="i",
-        )
+    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None and portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
+        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
+        portals_fun.PORTALSparameters["fImp_orig"] = f0/portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]
+        print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]}',typeMsg="i")
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
-    if checkForSpecies and (
-        portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3
-    ):
-        speciesNotFound = []
-        for i in range(len(profiles.Species)):
-            data_df = pd.read_csv(__mitimroot__ + "/src/mitim_modules/powertorch/physics/radiation_chebyshev.csv")
-            if not (data_df['Ion']==profiles.Species[i]["N"]).any():
-                speciesNotFound.append(profiles.Species[i]["N"])
-        if len(speciesNotFound) > 0:
-            a = print(
-                f"\t- Species {speciesNotFound} not found, radiation will be zero in PORTALS. Make sure this is ok with your predictions",
-                typeMsg="q",
-            )
-            if not a:
+    speciesNotFound = []
+    for i in range(len(profiles.Species)):
+        data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+        if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+            speciesNotFound.append(profiles.Species[i]["N"])
+
+    # Print warning or question to be careful!
+    if len(speciesNotFound) > 0:
+
+        if portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3:
+        
+            answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
+            if checkForSpecies and (not answerYN):
                 raise ValueError("Species not found")
-    
+            
+        else:
+
+            print(f'\t- Species {speciesNotFound} not found in radiation database, but this PORTALS prediction is not calculating radiation anyway',typeMsg="w")
+
     # Prepare and defaults
 
     xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
 
     if ModelOptions is None:
         ModelOptions = {
-            "restart": False,
+            "cold_start": False,
             "launchMODELviaSlurm": portals_fun.PORTALSparameters[
                 "launchEvaluationsAsSlurmJobs"
             ],
@@ -137,7 +137,7 @@ def initializeProblem(
             "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
                 "profiles_postprocessing_fun"
             ],
-            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "impurityPosition": position_of_impurity,
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
@@ -145,6 +145,7 @@ def initializeProblem(
                 "forceZeroParticleFlux"
             ],
             "percentError": portals_fun.PORTALSparameters["percentError"],
+            "use_tglf_scan_trick": portals_fun.PORTALSparameters["use_tglf_scan_trick"],
         }
 
     if "extra_params" not in ModelOptions:
@@ -166,7 +167,7 @@ def initializeProblem(
             "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
             "rhoPredicted": xCPs,
             "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-            "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+            "impurityPosition": position_of_impurity,
             "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
         },
         TransportOptions={
@@ -179,7 +180,11 @@ def initializeProblem(
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                 "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
         },
+        tensor_opts = tensor_opts
     )
+
+    # After resolution and corrections, store.
+    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
 
     # ***************************************************************************************************
     # ***************************************************************************************************
@@ -199,7 +204,7 @@ def initializeProblem(
 
     # Write this updated profiles class (with parameterized profiles)
     _ = portals_fun.powerstate.to_gacode(
-        write_input_gacode=f"{FolderInitialization}/input.gacode",
+        write_input_gacode=FolderInitialization / "input.gacode",
         postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
     )
 
@@ -211,16 +216,14 @@ def initializeProblem(
     # Define input dictionaries (Define ranges of variation)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    if (
-        define_ranges_from_profiles is not None
-    ):  # If I want to define ranges from a different profile
+    if define_ranges_from_profiles is not None:  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
             define_ranges_from_profiles,
             EvolutionOptions={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
                 "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
-                "impurityPosition": portals_fun.PORTALSparameters["ImpurityOfInterest"],
+                "impurityPosition": position_of_impurity,
                 "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
             TargetOptions={
@@ -229,6 +232,7 @@ def initializeProblem(
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                     "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
             },
+            tensor_opts = tensor_opts
         )
 
         dictCPs_base_extra = {}
@@ -240,20 +244,20 @@ def initializeProblem(
     thr = 1E-5
 
     dictDVs = OrderedDict()
-    for cont, var in enumerate(dictCPs_base):
+    for var in dictCPs_base:
         for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
             if limitsAreRelative:
-                y1 = dictCPs_base[var][i] * (1 - RelVar_y_min[cont][conti])
-                y2 = dictCPs_base[var][i] * (1 + RelVar_y_max[cont][conti])
+                y1 = dictCPs_base[var][i] - abs(dictCPs_base[var][i])*RelVar_y_min[var][conti]
+                y2 = dictCPs_base[var][i] + abs(dictCPs_base[var][i])*RelVar_y_max[var][conti]
             else:
-                # y1 = dictCPs_base[var][i] - RelVar_y_min[cont][conti]
-                # y2 = dictCPs_base[var][i] + RelVar_y_max[cont][conti]
-                y1 = torch.tensor(RelVar_y_min[cont][conti]).to(dfT)
-                y2 = torch.tensor(RelVar_y_max[cont][conti]).to(dfT)
+                y1 = torch.tensor(RelVar_y_min[var][conti]).to(dfT)
+                y2 = torch.tensor(RelVar_y_max[var][conti]).to(dfT)
 
             if hardGradientLimits is not None:
-                y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
-                y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
+                if hardGradientLimits[0] is not None:
+                    y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
+                if hardGradientLimits[1] is not None:
+                    y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
 
             # Check that makes sense
             if y2-y1 < thr:
@@ -310,21 +314,21 @@ def initializeProblem(
 
     portals_fun.name_objectives = name_objectives
     portals_fun.name_transformed_ofs = name_transformed_ofs
-    portals_fun.optimization_options["ofs"] = ofs
-    portals_fun.optimization_options["dvs"] = [*dictDVs]
-    portals_fun.optimization_options["dvs_min"] = []
+    portals_fun.optimization_options["problem_options"]["ofs"] = ofs
+    portals_fun.optimization_options["problem_options"]["dvs"] = [*dictDVs]
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_min"].append(dictDVs[i][0].cpu().numpy())
-    portals_fun.optimization_options["dvs_base"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_min"].append(dictDVs[i][0].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_base"].append(dictDVs[i][1].cpu().numpy())
-    portals_fun.optimization_options["dvs_max"] = []
+        portals_fun.optimization_options["problem_options"]["dvs_base"].append(dictDVs[i][1].cpu().numpy())
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = []
     for i in dictDVs:
-        portals_fun.optimization_options["dvs_max"].append(dictDVs[i][2].cpu().numpy())
+        portals_fun.optimization_options["problem_options"]["dvs_max"].append(dictDVs[i][2].cpu().numpy())
 
-    portals_fun.optimization_options["dvs_min"] = np.array(portals_fun.optimization_options["dvs_min"])
-    portals_fun.optimization_options["dvs_max"] = np.array(portals_fun.optimization_options["dvs_max"])
-    portals_fun.optimization_options["dvs_base"] = np.array(portals_fun.optimization_options["dvs_base"])
+    portals_fun.optimization_options["problem_options"]["dvs_min"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_min"])
+    portals_fun.optimization_options["problem_options"]["dvs_max"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_max"])
+    portals_fun.optimization_options["problem_options"]["dvs_base"] = np.array(portals_fun.optimization_options["problem_options"]["dvs_base"])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # For surrogate
@@ -338,71 +342,16 @@ def initializeProblem(
         "transformationInputs": PORTALStools.produceNewInputs,
         "transformationOutputs": PORTALStools.transformPORTALS,
         "powerstate": portals_fun.powerstate,
-        "applyImpurityGammaTrick": portals_fun.PORTALSparameters[
-            "applyImpurityGammaTrick"
-        ],
+        "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
         "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
         "useDiffusivities": portals_fun.PORTALSparameters["useDiffusivities"],
         "surrogate_transformation_variables_alltimes": Variables,
-        "surrogate_transformation_variables_lasttime": copy.deepcopy(
-            Variables[list(Variables.keys())[-1]]
-        ),
+        "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
     }
 
-def defineNewPORTALSGrid(profiles, rhoMODEL):
-    """
-    Resolution of input.gacode
-    **************************
-    - Change resolution to a fine grid in which doing the flattening around coarse points has a small effect on the profile.
-    - It is recommended that it goes through the points, with more points around the trailing edge transition.
-    - Also, avoid adding too points near axis. (NOT NOW?)
-    """
-
-    # ----------------------------------------
-    # Parameters
-    # ----------------------------------------
-
-    total_points = 100
-    d_spacing_coarse = 1e-3  # 1/200 #1E-3
-    points_updown = 2
-
-    # ----------------------------------------------------------------------------------
-    # 1. Fill up spaces in between the points until the total is total_points
-    # ----------------------------------------------------------------------------------
-
-    num_points_rest = int(np.max([3, total_points / (len(rhoMODEL) + 1)]))
-
-    # Correction: If I do a very fine grid, but with a first point away from 0.0, it'll	have a piecewise behavior from 0 to the first points, so ensure a few more
-    num_points_0 = int(np.max([num_points_rest, 10]))
-    # *******
-
-    rho_new0 = np.append(np.append([0], rhoMODEL), [1])
-    rho_new = np.array([])
-    for i in range(rho_new0.shape[0] - 1):
-        num_points = num_points_rest if i > 0 else num_points_0
-        rho_new = np.append(
-            rho_new, np.linspace(rho_new0[i], rho_new0[i + 1], num_points)
-        )
-
-    # ----------------------------------------------------------------------------------
-    # 2. Add extra resolution around the modelled (e.g. TGYRO) points
-    # ----------------------------------------------------------------------------------
-
-    for i in range(points_updown):
-        rho_new = np.append(
-            np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
-            rhoMODEL - d_spacing_coarse * (i + 1),
-        )
-
-    # ----------------------------------------------------------------------------------
-    # Change resolution
-    # ----------------------------------------------------------------------------------
-    profiles.changeResolution(rho_new=rho_new)
-
-
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
-    allOuts = portals_fun.optimization_options["ofs"]
+    allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
     portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
     portals_transformation_variables_trace = portals_fun.PORTALSparameters[
         "portals_transformation_variables_trace"
@@ -529,14 +478,14 @@ def grabPrevious(foldermitim, dictCPs_base):
 
     opt_fun = opt_evaluator(foldermitim)
     opt_fun.read_optimization_results(analysis_level=1)
-    x = opt_fun.prfs_model.BOmetrics["overall"]["xBest"].cpu().numpy()
-    dvs = opt_fun.prfs_model.optimization_options["dvs"]
+    x = opt_fun.mitim_model.BOmetrics["overall"]["xBest"].cpu().numpy()
+    dvs = opt_fun.mitim_model.optimization_options["problem_options"]["dvs"]
     dvs_dict = {}
     for j in range(len(dvs)):
         dvs_dict[dvs[j]] = x[j]
 
     print(
-        f"- Grabbing best #{opt_fun.prfs_model.BOmetrics['overall']['indBest']} from previous workflow",
+        f"- Grabbing best #{opt_fun.mitim_model.BOmetrics['overall']['indBest']} from previous workflow",
         typeMsg="i",
     )
 
@@ -549,3 +498,4 @@ def grabPrevious(foldermitim, dictCPs_base):
                 pass
 
     return dictCPs_base
+

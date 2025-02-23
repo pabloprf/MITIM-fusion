@@ -2,29 +2,25 @@ import torch
 import datetime
 import copy
 import botorch
+from functools import partial
 import numpy as np
 from mitim_tools.opt_tools.utils import SBOcorrections, TESTtools, SAMPLINGtools
 from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
-
 class fun_optimization:
-    def __init__(self, stepSettings, evaluators, StrategyOptions):
+    def __init__(self, stepSettings, evaluators, strategy_options):
         self.stepSettings = stepSettings
         self.evaluators = evaluators
-        self.StrategyOptions = StrategyOptions
+        self.strategy_options = strategy_options
 
         self.dimOFs = 1  # len(self.stepSettings['name_objectives'])
         self.dimDVs = self.evaluators["GP"].train_X.shape[-1]
 
         # Pass the original bounds of the problem already to the fun class (they may be modified by boundsRefine)
 
-        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(
-            self.evaluators["GP"].train_X
-        )
+        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(self.evaluators["GP"].train_X)
         for i, ikey in enumerate(self.evaluators["GP"].bounds):
             self.bounds[0, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][0])
             self.bounds[1, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][1])
@@ -34,13 +30,22 @@ class fun_optimization:
         self.bounds_mod = self.bounds.clone()
         for i in range(self.bounds_mod.shape[-1]):
             tot = abs(self.bounds_mod[1, i] - self.bounds_mod[0, i])
-            self.bounds_mod[0, i] -= self.StrategyOptions["AllowedExcursions"][0] * tot
-            self.bounds_mod[1, i] += self.StrategyOptions["AllowedExcursions"][1] * tot
+            self.bounds_mod[0, i] -= self.strategy_options["AllowedExcursions"][0] * tot
+            self.bounds_mod[1, i] += self.strategy_options["AllowedExcursions"][1] * tot
 
-    def prep(self, number_optimized_points=1, xGuesses=None, seed=0):
-        self.number_optimized_points = number_optimized_points
+    def prep(self, xGuesses=None, seed=0, adjust_bounds = True):
         self.xGuesses = xGuesses
         self.seed = seed
+
+        # Modify bounds_mod to include the guesses
+        if adjust_bounds and (xGuesses is not None):
+            
+            for i in range(self.bounds_mod.shape[-1]):
+                delta = (self.bounds_mod[1, i] - self.bounds_mod[0, i]) * 1E-6 # This avoids problems with the case in which the guess is exactly at bounds
+            
+                self.bounds_mod[0, i] = torch.min(self.bounds_mod[0, i], xGuesses[:, i].min() - delta)
+                self.bounds_mod[1, i] = torch.max(self.bounds_mod[1, i], xGuesses[:, i].max() + delta)
+                
 
     def changeBounds(
         self, it_number, position_best_so_far, forceAllPointsInBounds=False
@@ -66,19 +71,16 @@ class fun_optimization:
 
             self.bounds = bounds
 
-        if (self.StrategyOptions["boundsRefine"] is not None) and (
-            it_number >= self.StrategyOptions["boundsRefine"][0]
+        if (self.strategy_options["boundsRefine"] is not None) and (
+            it_number >= self.strategy_options["boundsRefine"][0]
         ):
-            relativeVariation = self.StrategyOptions["boundsRefine"][1]
-            basePoint = self.StrategyOptions["boundsRefine"][2]
+            relativeVariation = self.strategy_options["boundsRefine"][1]
+            basePoint = self.strategy_options["boundsRefine"][2]
 
             if basePoint is None:
                 basePoint = position_best_so_far
 
-            print(
-                f"\t- Optimization will be performed around {relativeVariation*100.0:.1f}% of the training point in position {basePoint}\n",
-                typeMsg="i",
-            )
+            print(f"\t- Optimization will be performed around {relativeVariation*100.0:.1f}% of the training point in position {basePoint}\n",typeMsg="i")
 
             x_best = self.evaluators["GP"].train_X[basePoint]
 
@@ -99,14 +101,16 @@ class fun_optimization:
         self.bounds_mod = self.bounds.clone()
         for i in range(self.bounds_mod.shape[-1]):
             tot = abs(self.bounds_mod[1, i] - self.bounds_mod[0, i])
-            self.bounds_mod[0, i] -= self.StrategyOptions["AllowedExcursions"][0] * tot
-            self.bounds_mod[1, i] += self.StrategyOptions["AllowedExcursions"][1] * tot
+            self.bounds_mod[0, i] -= self.strategy_options["AllowedExcursions"][0] * tot
+            self.bounds_mod[1, i] += self.strategy_options["AllowedExcursions"][1] * tot
 
     def optimize(
         self,
         method_for_optimization,
         previous_solutions=None,
         best_performance_previous_iteration=None,
+        method_parameters={},
+        enoughPerformance_relative=None,
     ):
         """
         Possible Methods
@@ -120,9 +124,7 @@ class fun_optimization:
         """
 
         # ** OPTIMIZE **
-        x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(
-            self, writeTrajectory=True
-        )
+        x_opt2, y_opt_residual2, z_opt2, acq_evaluated = method_for_optimization(self, optimization_params = method_parameters, writeTrajectory=True)
         # **********************************************************************
 
         info = storeInfo(x_opt2, acq_evaluated, self)
@@ -134,7 +136,7 @@ class fun_optimization:
         if previous_solutions is not None:
             x_opt, y_opt_residual, z_opt = previous_solutions
 
-            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = pointSelection(
+            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = select_points(
                 x_opt2,
                 y_opt_residual2,
                 z_opt2,
@@ -142,28 +144,27 @@ class fun_optimization:
                 x_opt,
                 y_opt_residual,
                 z_opt,
-                maxExtrapolation=self.StrategyOptions["AllowedExcursions"],
-                ToleranceNiche=self.StrategyOptions["ToleranceNiche"],
-                enoughPerformance=self.stepSettings["optimization_options"]["maximum_value"],
+                maxExtrapolation=self.strategy_options["AllowedExcursions"],
+                ToleranceNiche=self.strategy_options["ToleranceNiche"],
+                enoughPerformance_relative=enoughPerformance_relative
             )
 
         else:
-            x_opt, y_opt_residual, z_opt, hard_finish_surrogate = (
+            x_opt, y_opt_residual, z_opt = (
                 x_opt2,
                 y_opt_residual2,
                 z_opt2,
-                False,
             )
 
         return x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate
 
 
-def optAcq(
+def acquire_next_points(
     stepSettings={},
     evaluators={},
-    StrategyOptions={},
+    strategy_options={},
     best_points=5,
-    optimization_sequence=["ga"],
+    optimizers={},
     it_number=1,
     seed=0,
     position_best_so_far=-1,
@@ -186,34 +187,24 @@ def optAcq(
     """
 
     time1 = datetime.datetime.now()
-    print(
-        "\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    )
-    print(
-        f" Posterior Optimization (GPs trained with {evaluators['GP'].train_X.shape[0]}/{evaluators['GP'].train_X.shape[0]+len(evaluators['GP'].avoidPoints)} points), {time1.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-    print(
-        "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    )
+    print("\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    print(f" Posterior Optimization (GPs trained with {evaluators['GP'].train_X.shape[0]}/{evaluators['GP'].train_X.shape[0]+len(evaluators['GP'].avoidPoints)} points), {time1.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Instance fun
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    fun = fun_optimization(stepSettings, evaluators, StrategyOptions)
+    fun = fun_optimization(stepSettings, evaluators, strategy_options)
 
-    fun.changeBounds(
-        it_number, position_best_so_far, forceAllPointsInBounds=forceAllPointsInBounds
-    )
+    fun.changeBounds(it_number, position_best_so_far, forceAllPointsInBounds=forceAllPointsInBounds)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Find some initial conditions
     #   Complete initial guess with training and remove if outside bounds of this iteration
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    x_opt, y_opt_residual, z_opt = prepFirstStage(
-        fun, checkBounds=True, seed=it_number + seed
-    )
+    x_opt, y_opt_residual, z_opt = prepFirstStage(fun, checkBounds=True, seed=it_number + seed)
     best_performance_previous_iteration = y_opt_residual[0].item()
     x_initial = x_opt.clone()
 
@@ -223,44 +214,40 @@ def optAcq(
 
     infoOptimization = []
 
-    for i, optimizers in enumerate(optimization_sequence):
+    for i, optimizer in enumerate(optimizers):
         time2 = datetime.datetime.now()
-        print(
-            f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimization_sequence[i]} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n'
-        )
+        print(f'\n\n~~~~~~~~~~~ Optimization stage {i+1}: {optimizer} ({time2.strftime("%Y-%m-%d %H:%M:%S")}) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n')
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizers == "ga":
-            from mitim_tools.opt_tools.optimizers.GAtools import findOptima
+        if optimizer == "ga":           
+            from mitim_tools.opt_tools.optimizers.GAtools import optimize_function
+        elif optimizer == "botorch":    
+            from mitim_tools.opt_tools.optimizers.BOTORCHoptim import optimize_function
+        elif optimizer == "root" or optimizer == "sr":      
+            from mitim_tools.opt_tools.optimizers.ROOTtools import optimize_function
+            if optimizer == "root":
+                optimize_function = partial(optimize_function, method="scipy_root")
+            elif optimizer == "sr" : 
+                optimize_function = partial(optimize_function, method="sr")
+        else:
+            raise ValueError(f"[MITIM] Unknown optimizer {optimizer}")
 
-            number_optimized_points = np.max([best_points, 32])
-        elif optimizers == "botorch":
-            from mitim_tools.opt_tools.optimizers.BOTORCHoptim import findOptima
-
-            number_optimized_points = np.max([best_points, 32])
-        elif "root" in optimizers:
-            from mitim_tools.opt_tools.optimizers.ROOTtools import findOptima
-
-            number_optimized_points = int(optimizers.split("_")[1])
-
-        fun.prep(
-            number_optimized_points=number_optimized_points,
-            xGuesses=x_opt,
-            seed=it_number + seed,
-        )
+        fun.prep(xGuesses=x_opt,seed=it_number + seed)
 
         # *********** Optimize
         x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(
-            findOptima,
+            optimize_function,
             previous_solutions=[x_opt, y_opt_residual, z_opt],
             best_performance_previous_iteration=best_performance_previous_iteration,
+            method_parameters=optimizers[optimizer],
+            enoughPerformance_relative=stepSettings['optimization_options']['acquisition_options']['relative_improvement_for_stopping']
         )
         # ****************************************************************************************
 
         infoOptimization.append(
             {
-                "method": optimization_sequence[i],
+                "method": optimizer,
                 "info": info,
                 "elapsed_seconds": IOtools.getTimeDifference(time2, niceText=False),
                 "bounds": fun.bounds,
@@ -271,19 +258,10 @@ def optAcq(
         if hard_finish_surrogate:
             x_opt_test, _, _ = pointsOperation_common(x_opt, y_opt_residual, z_opt, fun)
 
-            if (x_opt_test.shape[1] == 0) or (
-                stepSettings["optimization_options"]["ensure_new_points"]
-                and (x_opt_test.shape[0] < best_points)
-            ):
-                print(
-                    "- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",
-                    typeMsg="i",
-                )
+            if (x_opt_test.shape[1] == 0) or (stepSettings['optimization_options']['acquisition_options']['ensure_new_points']and (x_opt_test.shape[0] < best_points)):
+                print("- Surrogate optimization achieved a sufficient level of optimized value, but not enough new values",typeMsg="i")
             else:
-                print(
-                    "- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",
-                    typeMsg="i",
-                )
+                print("- Surrogate optimization achieved a sufficient level of optimized value, do not continue further optimizing",typeMsg="i",)
                 break
 
     # ~~~~ Clean-up set and complete with actual OFs
@@ -295,15 +273,13 @@ def optAcq(
         fun,
         x_initial,
         best_points=best_points,
-        ToleranceNiche=StrategyOptions["ToleranceNiche"],
-        RandomRangeBounds=StrategyOptions["RandomRangeBounds"],
+        ToleranceNiche=strategy_options["ToleranceNiche"],
+        RandomRangeBounds=strategy_options["RandomRangeBounds"],
         it_number=it_number,
         seed=seed,
     )
 
-    infoOptimization.append(
-        {"method": "cleanup", "info": storeInfo(x_opt, torch.Tensor([]), fun)}
-    )
+    infoOptimization.append({"method": "cleanup", "info": storeInfo(x_opt, torch.Tensor([]), fun)})
 
     print(
         f"\t~~~~~~~ Optimization workflow took {IOtools.getTimeDifference(time1)}, and it passes {x_opt.shape[0]} optima to next MITIM iteration"
@@ -312,7 +288,7 @@ def optAcq(
     return x_opt, infoOptimization
 
 
-def pointSelection(
+def select_points(
     x_opt,
     y_res,
     z_opt,
@@ -322,7 +298,7 @@ def pointSelection(
     z_opt_previous,
     maxExtrapolation=[0.0, 0.0],
     ToleranceNiche=None,
-    enoughPerformance=None,
+    enoughPerformance_relative=None,
 ):
     # Remove points if they are outside of bounds by more than margin
     x_opt, y_res, z_opt = pointsOperation_bounds(
@@ -338,29 +314,24 @@ def pointSelection(
     x_opt, y_res, z_opt, _ = pointsOperation_order(x_opt, y_res, z_opt, fun)
 
     # Apply niche
-    x_opt, y_res, z_opt = pointsOperation_niche(
-        x_opt, y_res, z_opt, fun, ToleranceNiche=ToleranceNiche
-    )
+    x_opt, y_res, z_opt = pointsOperation_niche(x_opt, y_res, z_opt, fun, ToleranceNiche=ToleranceNiche)
 
     # Summarize
     method = TESTtools.identifyType(z_opt[0].item())
-    print(
-        f"\t- New candidate set has an acquisition spanning from {-y_res[0]:.5f} to {-y_res[-1]:.5f}. Best found by method = {method}"
-    )
+    print(f"\t- New candidate set has an acquisition spanning from {-y_res[0]:.5e} (best, method = {method}) to {-y_res[-1]:.5e}")
     print("\t- " + TESTtools.summaryTypes(z_opt))
 
     # Check if this is enough and I send a hard_finish
     hard_finish_surrogate = False
-    if enoughPerformance is not None:
-        print(
-            f"\t- Checking if enough optimization was achieved already ({enoughPerformance:.3e})... "
-        )
+    if enoughPerformance_relative is not None:
+        enoughPerformance = y_res_previous[0].item() * enoughPerformance_relative
+        print(f"\t- Checking if enough optimization was achieved already ({enoughPerformance_relative:.3e} relative -> {enoughPerformance:.3e} absolute)")
         best_now = y_res[0].item()
-        if best_now > enoughPerformance:
-            print(
-                f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer..."
-            )
+        if best_now >= enoughPerformance:
+            print(f"\t\t* Optimization at this stage ({best_now:.3e}) already reached enough performance ({enoughPerformance:.3e}), sending a hard_finish request to the optimizer...", typeMsg="i")
             hard_finish_surrogate = True
+        else:
+            print(f"\t\t* Optimization at this stage ({best_now:.3e}) did not reach enough performance ({enoughPerformance:.3e})")
 
     return x_opt, y_res, z_opt, hard_finish_surrogate
 
@@ -372,9 +343,7 @@ def pointsOperation_concat(
     y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2)).to(x_opt2)
     z_opt = torch.cat((z_opt_previous, z_opt2)).to(x_opt2)
 
-    print(
-        f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima"
-    )
+    print(f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima")
 
     return x_opt, y_opt_residual, z_opt
 
@@ -401,9 +370,7 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
     )
 
     # Normalizations now occur inside model, extract such function ************************
-    normalizeVar = botorch.models.transforms.input.Normalize(
-        x_opt.shape[-1], bounds=None
-    )
+    normalizeVar = botorch.models.transforms.input.Normalize(x_opt.shape[-1], bounds=None)
     denormalizeVar = normalizeVar._untransform
     # *************************************************************************************
 
@@ -411,12 +378,8 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
         x_opt_Norm = normalizeVar(x_opt)
 
         # Niches
-        _, z_opt = MATHtools.applyNiche(
-            x_opt_Norm.cpu(), z_opt.unsqueeze(1).cpu(), tol=ToleranceNiche
-        )
-        x_opt_Norm, y_opt_residual = MATHtools.applyNiche(
-            x_opt_Norm.cpu(), y_opt_residual.cpu(), tol=ToleranceNiche
-        )
+        _, z_opt = MATHtools.applyNiche(x_opt_Norm.cpu(), z_opt.unsqueeze(1).cpu(), tol=ToleranceNiche)
+        x_opt_Norm, y_opt_residual = MATHtools.applyNiche(x_opt_Norm.cpu(), y_opt_residual.cpu(), tol=ToleranceNiche)
         # ------
         x_opt_Norm, y_opt_residual, z_opt = (
             x_opt_Norm.to(fun.stepSettings["dfT"]),
@@ -429,9 +392,7 @@ def pointsOperation_niche(x_opt1, y_opt_residual1, z_opt1, fun, ToleranceNiche=N
         x_opt = denormalizeVar(x_opt_Norm)
 
         if removedNum > 0:
-            print(
-                f"\t- Removed {removedNum} points because I applied a niching tolerance in relative [0,1] bounds of {ToleranceNiche*100:.1f}%"
-            )
+            print(f"\t- Removed {removedNum} points because I applied a niching tolerance in relative [0,1] bounds of {ToleranceNiche*100:.1f}%")
 
     return x_opt, y_opt_residual, z_opt
 
@@ -458,17 +419,11 @@ def pointsOperation_bounds(
     x_removeds = torch.Tensor().to(fun.stepSettings["dfT"])
     for i in range(x_opt.shape[0]):
         if maxExtrapolation is not None:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=maxExtrapolation
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=maxExtrapolation)
         else:
-            insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                x_opt[i], bounds, maxExtrapolation=[0.0, 0.0]
-            )
+            insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=[0.0, 0.0])
             if not insideBounds:
-                print(
-                    f"\t- Point #{i} is not inside bounds, but I am allowing it to exists"
-                )
+                print(f"\t- Point #{i} is not inside bounds, but I am allowing it to exists")
             insideBounds = True
 
         if insideBounds:
@@ -494,15 +449,10 @@ def pointsOperation_bounds(
 
     numRemoved = x_removeds.shape[0]
     if numRemoved > 0:
-        print(
-            f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}"
-        )
-        if read_verbose_level() in [4, 5]:
-            IOtools.printPoints(x_removeds, numtabs=2)
-    else:
-        print(
-            f"\t- No points removed b/c they are inside bounds or they were allowed{txt}"
-        )
+        print(f"\t- Postprocessing removed {numRemoved}/{x_opt.shape[0]} points b/c they went outside bounds{txt}")
+        IOtools.printPoints(x_removeds)
+        print('\t- Bounds:')
+        IOtools.printPoints(bounds)
 
     return x_opt_inbounds, y_opt_inbounds, z_opt_inbounds
 
@@ -596,9 +546,7 @@ def pointsOperation_random(
     randomSeed = seed + it_number
 
     if x_opt.nelement() == 0:
-        print(
-            f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none"
-        )
+        print(f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none")
         draw_bounds = fun.bounds
         x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed)
         y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach()
@@ -612,12 +560,8 @@ def pointsOperation_random(
         )
         ib = 0  # Around the best, which is the first one since I have ordered them
 
-        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"][
-            "ensure_new_points"
-        ]:
-            print(
-                f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point"
-            )
+        if (x_optRandom.shape[0] < best_points) and stepSettings["optimization_options"]["acquisition_options"]["ensure_new_points"]:
+            print(f"\n\t ~~~~ Completing set with {best_points-x_optRandom.shape[0]} extra points around ({RandomRangeBounds*100}%) the best predicted point")
             draw_bounds, _, _ = SBOcorrections.factorBounds(
                 center=x_optRandom[ib],
                 bounds=fun.bounds,
@@ -626,9 +570,7 @@ def pointsOperation_random(
                 bounds_lim=stepSettings["bounds_orig"],
             )
 
-            new_opt = SAMPLINGtools.LHS(
-                best_points - x_optRandom.shape[0], draw_bounds, seed=randomSeed
-            )
+            new_opt = SAMPLINGtools.LHS(best_points - x_optRandom.shape[0], draw_bounds, seed=randomSeed)
             new_y = evaluators["acq_function"](new_opt.unsqueeze(1)).detach()
             x_optRandom = torch.cat((x_optRandom, new_opt)).to(stepSettings["dfT"])
             y_optRandom = torch.cat((y_optRandom, new_y)).to(stepSettings["dfT"])
@@ -775,8 +717,12 @@ def plotInfo(
     axOFs_r=None,
     boundsThis=None,
     it_start=0,
-    xypair=[],
+    xypair=None,
 ):
+
+    if xypair is None:
+        xypair = []
+
     # Ranges ----------
     if plotStart:
         if bounds is not None:
@@ -859,13 +805,13 @@ def plotInfo(
         )
         # ---------- Plot Residue
         GRAPHICStools.plotMultiVariate(
-            np.transpose(np.atleast_2d(infoOPT["y_res_start"])),
+            -np.transpose(np.atleast_2d(infoOPT["y_res_start"])),
             axs=axR,
             marker="s",
             markersize=ms,
             color=color,
             label=label,
-            axislabels=["acquisition"],
+            axislabels=["acquisition_options"],
             alpha=alpha,
         )
         # ---------- Plot Calibration errors
@@ -894,13 +840,13 @@ def plotInfo(
         )
         # ---------- Plot Residue
         GRAPHICStools.plotMultiVariate(
-            np.transpose(np.atleast_2d(infoOPT["y_res"])),
+            -np.transpose(np.atleast_2d(infoOPT["y_res"])),
             axs=axR,
             marker="s",
             markersize=ms,
             color=color,
             label=label,
-            axislabels=["acquisition"],
+            axislabels=["acquisition_options"],
             alpha=alpha,
         )
         # ---------- Plot Calibration errors
@@ -919,17 +865,17 @@ def plotInfo(
 
     if not plotStart:
         y = (
-            -infoOPT["acq_evaluated"]
+            infoOPT["acq_evaluated"]
             if "acq_evaluated" in infoOPT
-            else -infoOPT["y_res"]
+            else infoOPT["y_res"]
         )
     else:
-        y = -infoOPT["y_res_start"]
+        y = infoOPT["y_res_start"]
 
     if not plotStart:
-        yo = -infoOPT["y_res"][0]
+        yo = infoOPT["y_res"][0]
     else:
-        yo = -infoOPT["y_res_start"][0]
+        yo = infoOPT["y_res_start"][0]
 
     x_origin = 0 + it_start
     x_last = len(y) - 1 + it_start
@@ -945,7 +891,7 @@ def plotInfo(
     return it_start, xypair
 
 
-def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0):
+def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
     """
     x_opt is unnormalized
     Output is unnormalized
@@ -958,13 +904,6 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
             2 - Random
     """
 
-    # ~~~~~~~~~ Guessed Population (from previous GA) ~~~~~~~~~
-
-    if previousGA is not None and "Paretos_x_unnormalized" in previousGA:
-        x_opt = previousGA["Paretos_x_unnormalized"]
-    else:
-        x_opt = []
-
     # --------------------------------------------------
     # Add to the previous optimum, all the trained points
     # --------------------------------------------------
@@ -974,12 +913,9 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     z_train = torch.ones(x_train.shape[0]).to(x_train)
 
     # Concatenate together
-    if len(x_opt) == 0:
-        x_opt = torch.Tensor([]).to(x_train)
-        z_opt = torch.Tensor([]).to(x_train)
-    if type(x_opt) == np.ndarray:
-        x_opt = torch.from_numpy(x_opt).to(fun.stepSettings["dfT"])
-        z_opt = torch.zeros(x_opt.shape[0]).to(fun.stepSettings["dfT"])
+    x_opt = torch.Tensor([]).to(x_train)
+    z_opt = torch.Tensor([]).to(x_train)
+
     xGuesses = torch.cat((x_opt, x_train), axis=0).to(fun.stepSettings["dfT"])
     z_opt = torch.cat((z_opt, z_train), axis=0).to(fun.stepSettings["dfT"])
 
@@ -989,9 +925,8 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     else:
         howmany = 0
         txt = ""
-    print(
-        f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}"
-    )
+
+    print(f"\t- {xGuesses.shape[0]} guesses already ({x_train.shape[0]} trained, {x_opt.shape[0]} predicted by previous MITIM iteration){txt}")
 
     # --------------------------------------------------
     # Make sure that they are in between bounds (because in this step, the bounds may have changed if I processed it
@@ -1009,9 +944,7 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
                     fun.stepSettings["dfT"]
                 )
 
-        print(
-            f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}"
-        )
+        print(f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}")
 
         xGuesses = xGuesses_new
         z_opt = z_opt_new
@@ -1032,18 +965,16 @@ def prepFirstStage(fun, previousGA=None, numMax=None, checkBounds=False, seed=0)
     if len(xGuesses) == 0:
         print("* Initial points equal to zero, will likely fail", typeMsg="q")
 
-    print(
-        "********************** Status update after prep phase **********************************"
-    )
+    print("********************** Status update after prep phase **********************************")
     y_opt_residual = summarizeSituation(xGuesses, fun)
-    print(
-        "****************************************************************************************"
-    )
+    print("****************************************************************************************")
 
     # Order by best
-    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(
-        xGuesses, y_opt_residual, z_opt, fun
-    )
+    xGuesses, y_opt_residual, z_opt, _ = pointsOperation_order(xGuesses, y_opt_residual, z_opt, fun)
+
+    # Apply niche such that the initial points are not so close to each other
+    if niche_tol is not None:
+        xGuesses, y_opt_residual, z_opt = pointsOperation_niche(xGuesses, y_opt_residual, z_opt, fun, ToleranceNiche=niche_tol)
 
     return xGuesses, y_opt_residual, z_opt
 
@@ -1066,12 +997,8 @@ def summarizeSituation(previous_x, fun, new_x=None, printYN=True):
     # Print Info
 
     if printYN:
-        print(
-            f"\t- Previous iteration had a best minimization-based objective (residue) of {best_y:.4e} (note that real trained value is {best_yReal:.4e})"
-        )
-        print(
-            f"\t- Previous iteration had a best maximization-based acquisition of {best_y_acq:.4e} (remember it may be MC, some randomness)"
-        )
+        print(f"\t- Previous iteration had a best minimization-based objective (residue) of {best_y:.4e} (note that real trained value is {best_yReal:.4e})")
+        print(f"\t- Previous iteration had a best maximization-based acquisition of {best_y_acq:.4e} (remember it may be MC, some randomness)")
 
     # ------------------------------------------------------------------------
     # New iteration
@@ -1119,13 +1046,13 @@ def untransformation_loop(X_transformed, input_transform, x0):
         loss = (input_transform(X) - X_transformed).square().mean()
         V = torch.autograd.grad(loss, X)[0]
 
-        return loss.detach().numpy(), V.detach().numpy()
+        return loss.detach().cpu().numpy(), V.detach().cpu().numpy()
 
     from scipy.optimize import minimize
 
     sol = minimize(
         evaluator_losses,
-        x0.numpy()[0, :],
+        x0.cpu().numpy()[0, :],
         method="L-BFGS-B",
         jac=True,
         options={"disp": 1, "gtol": 1e-15, "ftol": 1e-15},

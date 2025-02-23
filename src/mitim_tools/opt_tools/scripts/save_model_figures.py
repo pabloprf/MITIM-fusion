@@ -1,5 +1,5 @@
-import sys, copy, torch, datetime, cProfile, argparse, os
-import numpy as np
+import argparse
+from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
@@ -17,26 +17,24 @@ parser.add_argument("--save", type=str, required=True)
 parser.add_argument("--step", type=int, required=False, default=-1)
 args = parser.parse_args()
 
-folderWork = args.folder
+folderWork = IOtools.expandPath(args.folder)
 step_num = args.step
-save = args.save
+save = Path(args.save)
 
 # ***************** Read
 
 opt_fun = STRATEGYtools.opt_evaluator(folderWork)
 opt_fun.read_optimization_results(analysis_level=4)
-strat = opt_fun.prfs_model
+strat = opt_fun.mitim_model
 step = strat.steps[step_num]
 gps = step.GP["individual_models"]
 
 # ***************** Plot and Save
 
-if not os.path.exists(save):
-    os.system(f"mkdir {save}")
-
+save.mkdir(parents=True, exist_ok=True)
 
 for i in range(len(gps)):
-    name_save = f"{save}/model{i+1}"
+    name_save = save / f"model{i+1}"
 
     print(f"- Plotting and saving {name_save}")
 

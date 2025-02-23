@@ -1,10 +1,10 @@
 import os
+import shutil
 import copy
-import numpy as np
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
 
@@ -15,34 +15,42 @@ class transp_beat(beat):
 
     def prepare(
         self,
-        letter = None,
-        shot = None, 
-        flattop_window      = 0.20,  # To allow for steady-state in heating and current diffusion
-        transition_window   = 0.10,  # To prevent equilibrium crashes
-        freq_ICH            = None,  # Frequency of ICRF heating (if None, find optimal)
+        letter              = None,
+        shot                = None, 
+        flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
+        extractAC           = False,                # To extract AC quantities
+        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
         **transp_namelist
         ):
         '''
-        Using some smart defaults to avoid repeating TRANSP runid
-            shot will be 5 digits that depend on the last subfolder
-                e.g. run_cmod1 -> '94351', run_cmod2 -> '94352', run_d3d1 -> '72821', etc
-            letter will depend on username in this machine, if it can be found
-                e.g. pablorf -> 'P"
+        - For letter and shot:
+            Using some smart defaults to avoid repeating TRANSP runid
+                shot will be 5 digits that depend on the last subfolder
+                    e.g. run_cmod1 -> '94351', run_cmod2 -> '94352', run_d3d1 -> '72821', etc
+                letter will depend on username in this machine, if it can be found
+                    e.g. pablorf -> 'P"
+        - transp_namelist is a dictionary with the keys that I want to be different from the defaults
+            (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
 
         # Define timings
+        transition_window     = 0.1     # To prevent equilibrium crashes
         currentheating_window = 0.001
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
+        self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
+
+        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
 
         if shot is None:
-            folder_last = os.path.basename(os.path.normpath(self.maestro_instance.folder))
-            shot = IOtools.string_to_sequential_5_digit_number(folder_last)
+            folder_last = self.maestro_instance.folder.resolve().name
+            shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
 
         if letter is None:
-            username = IOtools.expandPath('$USER')
+            username = os.environ['USER']
             letter = username[0].upper()
             if letter == '$':
                 letter = 'A'
@@ -66,18 +74,19 @@ class transp_beat(beat):
         transp_namelist_mod = copy.deepcopy(transp_namelist)
 
         if 'timings' in transp_namelist_mod:
-            raise ValueError('Cannot define timings in MAESTRO transp_namelist')
+            raise ValueError('[MITIM] You cannot define timings in a MAESTRO transp_namelist!')
         else:
             transp_namelist_mod['timings'] = {
                 "time_start": self.time_init,
                 "time_current_diffusion": self.time_diffusion,
-                "time_end": self.time_end
+                "time_end": self.time_end,
+                "time_extraction": self.timeAC,
             }
 
         if 'Ufiles' in transp_namelist_mod:
-            raise ValueError('Cannot define UFILES in MAESTRO transp_namelist')
+            raise ValueError('[MITIM] You cannot define UFILES in a MAESTRO transp_namelist')
         else:
-            transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]#,"mry"]
+            transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
@@ -122,22 +131,41 @@ class transp_beat(beat):
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
-            checkMin = kwargs.get("checkMin",3)
+            checkMin = kwargs.get("checkMin",3),
+            retrieveAC = self.timeAC is not None,
             )
 
-        self.transp.c = CDFtools.transp_output(f"{self.folder}/{self.shot}{self.runid}.CDF")
+        self.transp.c = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
 
-    def finalize(self):
+    def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
         # Copy to outputs
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}TR.DAT {self.folder_output}/.')
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}.CDF {self.folder_output}/.')
-        os.system(f'cp {self.folder}/{self.shot}{self.runid}tr.log {self.folder_output}/.')
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
+        shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        time_extraction = self.transp.c.t[self.transp.c.ind_saw -1] # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
+        it_extract = self.transp.c.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
+        time_extraction = self.transp.c.t[it_extract] 
         self.profiles_output = self.transp.c.to_profiles(time_extraction=time_extraction)
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+
+        # Potentially force auxiliary
+        self._add_heating_profiles(force_auxiliary_heating_at_output)
+
+        # Write profiles
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / "input.gacode")
+
+    def _add_heating_profiles(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}):
+        '''
+        force_auxiliary_heating_at_output['Pe'] has the shaping function (takes rho) and the integrated value
+        '''
+
+        for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MWmiller', 'qRFi_MWmiller']):
+
+            if force_auxiliary_heating_at_output[key] is not None:
+                self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
+                self.profiles_output.deriveQuantities()
+                self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
 
     def merge_parameters(self):
         '''
@@ -155,34 +183,40 @@ class transp_beat(beat):
             - Scales power deposition profiles to match the frozen power deposition which I treat as an engineering parameter (Pin)
         '''
 
+        # Write the pre-merge input.gacode before modifying it
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        profiles_output_pre_merge.writeCurrentStatus(file=f"{self.folder_output}/input.gacode_pre_merge")
-
-        p = self.maestro_instance.profiles_with_engineering_parameters
+        profiles_output_pre_merge.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
-        self.profiles_output.changeResolution(rho_new = p.profiles['rho(-)'])
+        p_frozen = self.maestro_instance.profiles_with_engineering_parameters
+        self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
+
+        # --------------------------------------------------------------------------------------------
+        # Insert relevant quantities
+        # --------------------------------------------------------------------------------------------
 
         # Insert kinetic profiles from frozen
-        self.profiles_output.profiles['ne(10^19/m^3)'] = p.profiles['ne(10^19/m^3)']
-        self.profiles_output.profiles['te(keV)'] = p.profiles['te(keV)']
-        self.profiles_output.profiles['ti(keV)'][:,0] = p.profiles['ti(keV)'][:,0]
+        self.profiles_output.profiles['ne(10^19/m^3)'] = p_frozen.profiles['ne(10^19/m^3)']
+        self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
+        self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
 
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
-        profiles_output_pre_merge.changeResolution(rho_new = p.profiles['rho(-)'])
+        profiles_output_pre_merge.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
         self.profiles_output.scaleAllThermalDensities(scaleFactor = self.profiles_output.profiles['ne(10^19/m^3)']/profiles_output_pre_merge.profiles['ne(10^19/m^3)'])
 
         # Insert engineering parameters (except shape)
         for key in ['current(MA)', 'bcentr(T)']:
-            self.profiles_output.profiles[key] = p.profiles[key]
+            self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
-        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
-        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+
+        # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
         self.profiles_output.deriveQuantities()
-        self.profiles_output.writeCurrentStatus(file=f"{self.folder_output}/input.gacode")
+        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def grab_output(self):
 
@@ -190,7 +224,7 @@ class transp_beat(beat):
 
         if isitfinished:
             c = CDFtools.transp_output(self.folder_output)
-            profiles = PROFILEStools.PROFILES_GACODE(f'{self.folder_output}/input.gacode')
+            profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode')
         else:
             # Trying to see if there's an intermediate CDF in folder
             print('\t\t- Searching for intermediate CDF in folder')
@@ -209,16 +243,16 @@ class transp_beat(beat):
         if c is None:
             return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
         
-        c.plot(fn = fn, counter = counter) 
+        c.plot(fn = fn, tab_color = counter) 
 
         return '\t\t- Plotting of TRANSP beat done'
 
     def finalize_maestro(self):
 
-        cdf = CDFtools.transp_output(f"{self.folder}/{self.transp.shot}{self.transp.runid}.CDF")
+        cdf = CDFtools.transp_output(self.folder_output / f"{self.transp.shot}{self.transp.runid}.CDF")
         self.maestro_instance.final_p = cdf.to_profiles()
         
-        final_file = f'{self.maestro_instance.folder_output}/input.gacode_final'
+        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
         self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
         print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
@@ -241,3 +275,49 @@ class transp_beat(beat):
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4, 1.0
         
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Defaults to help MAESTRO
+# -----------------------------------------------------------------------------------------------------------------------
+
+def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current_diffusion = False):
+
+    duration_s   = 1.0
+    time_step_s = duration_s * 1E-2
+
+    transp_namelist = {
+        'flattop_window': 1.0,       
+        'extractAC': False,      
+        'dtOut_ms' : time_step_s*1E3,
+        'dtIn_ms' : time_step_s*1E3,
+        'nzones' : 60,
+        'nzones_energetic' : 20, 
+        'nzones_distfun' : 10,     
+        'MCparticles' : 1e4,
+        'toric_ntheta' : 64,   
+        'toric_nrho' : 128, 
+        'Pich': parameters_engineering['PichT_MW']>0.0,
+        'DTplasma': parameters_mix['DTplasma'],
+        'useNUBEAMforAlphas': True,
+        'Minorities': parameters_mix['minority'],
+        "zlump" :[  [74.0, 184.0, 0.1*parameters_mix['impurity_ratio_WtoZ']],
+                    [parameters_mix['lowZ_impurity'], parameters_mix['lowZ_impurity']*2, 0.1] ],
+        }
+
+    if only_current_diffusion:
+
+        duration_s   = 15.0
+        time_step_s  = 0.1
+
+        transp_namelist['flattop_window'] = duration_s
+        transp_namelist['dtEquilMax_ms'] = time_step_s*1E3
+        transp_namelist['dtHeating_ms'] = time_step_s*1E3
+        transp_namelist['dtCurrentDiffusion_ms'] = time_step_s*1E3
+        transp_namelist['dtOut_ms'] = time_step_s*1E3
+        transp_namelist['dtIn_ms'] = time_step_s*1E3
+        
+        transp_namelist['useNUBEAMforAlphas'] = False
+        transp_namelist['Pich'] = False
+
+    return transp_namelist
+

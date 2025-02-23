@@ -8,8 +8,7 @@ from collections import OrderedDict
 from scipy.interpolate import interp1d
 from mitim_modules.freegsu.utils import FREEGSUplotting, FREEGSUparams
 from mitim_tools.misc_tools import IOtools, PLASMAtools, FARMINGtools, MATHtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
-from mitim_tools.misc_tools.CONFIGread import read_verbose_level
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def evaluator(
@@ -61,7 +60,7 @@ def evaluator(
     separatrixPoint is just used as evaluation of that R value
     """
 
-    folderData = IOtools.expandPath("$MFEIM_PATH/private_code_mitim/FREEGS_SPARC/")
+    folderData = IOtools.expandPath("$MFEIM_PATH") / "private_code_mitim" / "FREEGS_SPARC"
 
     # --------------------------------------------------------
     # Join dictionaries with internal and external options
@@ -145,7 +144,7 @@ def evaluator(
             for i in paramsMods[cont]:
                 ParamsThis[i] = paramsMods[cont][i]
 
-        prfBase = GSsparc.GS_PRF(
+        prfBase = GSsparc.GS_MITIM(
             folderData=IOtools.expandPath(folderData),
             n=ParamsThis["n"],
             printYN=printYN,
@@ -164,12 +163,12 @@ def evaluator(
 
     if not onlyPrepare:
         if not internalParallel:
-            prfs = []
+            mitims = []
             for cont in range(num_cases):
                 prf1 = runSingleFreeGS(ParamsAll, cont)
-                prfs.append(prf1)
+                mitims.append(prf1)
         else:
-            prfs = FARMINGtools.ParallelProcedure(
+            mitims = FARMINGtools.ParallelProcedure(
                 runSingleFreeGS, ParamsAll, parallel=num_cases, howmany=num_cases
             )
 
@@ -178,16 +177,16 @@ def evaluator(
         # --------------------------------------------------------
 
         metrics, opts = calculateMetrics(
-            prfs, separatrixPoint=Params["separatrixPoint"]
+            mitims, separatrixPoint=Params["separatrixPoint"]
         )
 
         # --------------------------------------------------------
         # Plotting options here
         # --------------------------------------------------------
 
-        if plot and prfs is not None:
+        if plot and mitims is not None:
             FREEGSUplotting.plotResult(
-                prfs,
+                mitims,
                 metrics,
                 Constraints,
                 coils_orig=CoilCurrents_orig,
@@ -196,7 +195,7 @@ def evaluator(
                 figs=figs,
             )
 
-        return prfs, metrics, opts
+        return mitims, metrics, opts
 
     else:
         return ParamsAll
@@ -378,14 +377,14 @@ def makePeriodic(coils_orig, t_orig, n=10, nEach=100):
     return coils_new, t_new
 
 
-def calculateMetrics(prfs, separatrixPoint=None):
+def calculateMetrics(mitims, separatrixPoint=None):
     # -----
     # CALCULATE METRICS
     # Note that the PFs MA-turns sum both Upper and Lower
     # -----
 
     coils, coils_terminal = {}, {}
-    for label in prfs[0].sparc_coils.coils_final_summary:
+    for label in mitims[0].sparc_coils.coils_final_summary:
         coils[label] = []
         coils_terminal[label] = []
 
@@ -413,114 +412,114 @@ def calculateMetrics(prfs, separatrixPoint=None):
 
     separatrixPoints = []
 
-    for cont, prf in enumerate(prfs):
-        for label in prf.sparc_coils.coils_final_summary:
-            coils[label].append(prf.sparc_coils.coils_final_summary[label])
+    for cont, prf in enumerate(mitims):
+        for label in mitim = sparc_coils.coils_final_summary:
+            coils[label].append(mitim = sparc_coils.coils_final_summary[label])
             coils_terminal[label].append(
-                prf.sparc_coils.coils_final_summary_terminal[label]
+                mitim = sparc_coils.coils_final_summary_terminal[label]
             )
 
         """
         What of the x-points is which? See GSsparc order x-points
         """
-        upNum, lowNum = prf.sweep.xPoint_up, prf.sweep.xPoint_low
-        if len(prf.sweep.xPointOut) > 2:
-            sndary = prf.sweep.xPointOut[2]
+        upNum, lowNum = mitim = sweep.xPoint_up, mitim = sweep.xPoint_low
+        if len(mitim = sweep.xPointOut) > 2:
+            sndary = mitim = sweep.xPointOut[2]
         else:
             sndary = [np.inf] * 3
 
-        opoint = prf.sweep.oPointOut[0]
+        opoint = mitim = sweep.oPointOut[0]
 
         opoints.append(opoint)
         xpoints_up.append(upNum)
         xpoints_low.append(lowNum)
         xpoints_xpt.append(sndary)
-        midplane_sepin.append(prf.sweep.sepRmin)
-        midplane_sepout.append(prf.sweep.sepRmax)
+        midplane_sepin.append(mitim = sweep.sepRmin)
+        midplane_sepout.append(mitim = sweep.sepRmax)
 
-        Zmag.append(prf.sweep.Zmag)
+        Zmag.append(mitim = sweep.Zmag)
 
-        if prf.sweep.RstrikeInner is not None:
-            strike_inR.append(prf.sweep.RstrikeInner)
+        if mitim = sweep.RstrikeInner is not None:
+            strike_inR.append(mitim = sweep.RstrikeInner)
         else:
             strike_inR.append(np.inf)
-        if prf.sweep.RstrikeOuter is not None:
-            strike_outR.append(prf.sweep.RstrikeOuter)
+        if mitim = sweep.RstrikeOuter is not None:
+            strike_outR.append(mitim = sweep.RstrikeOuter)
         else:
             strike_outR.append(np.inf)
-        if prf.sweep.ZstrikeInner is not None:
-            strike_inZ.append(prf.sweep.ZstrikeInner)
+        if mitim = sweep.ZstrikeInner is not None:
+            strike_inZ.append(mitim = sweep.ZstrikeInner)
         else:
             strike_inZ.append(np.inf)
-        if prf.sweep.ZstrikeOuter is not None:
-            strike_outZ.append(prf.sweep.ZstrikeOuter)
+        if mitim = sweep.ZstrikeOuter is not None:
+            strike_outZ.append(mitim = sweep.ZstrikeOuter)
         else:
             strike_outZ.append(np.inf)
-        if prf.sweep.AstrikeOuter is not None:
-            strike_outAngle.append(prf.sweep.AstrikeOuter)
+        if mitim = sweep.AstrikeOuter is not None:
+            strike_outAngle.append(mitim = sweep.AstrikeOuter)
         else:
             strike_outAngle.append(np.inf)
-        if prf.sweep.AstrikeInner is not None:
-            strike_inAngle.append(prf.sweep.AstrikeInner)
+        if mitim = sweep.AstrikeInner is not None:
+            strike_inAngle.append(mitim = sweep.AstrikeInner)
         else:
             strike_inAngle.append(np.inf)
 
-        Rmajors.append(prf.sweep.Rgeo)
-        aminors.append(prf.sweep.aMinor)
-        elongs.append(prf.sweep.elongationX)
-        elongsA.append(prf.sweep.elongationA)
-        triangs.append(prf.sweep.triangularityX)
+        Rmajors.append(mitim = sweep.Rgeo)
+        aminors.append(mitim = sweep.aMinor)
+        elongs.append(mitim = sweep.elongationX)
+        elongsA.append(mitim = sweep.elongationA)
+        triangs.append(mitim = sweep.triangularityX)
 
-        kappaU.append(prf.sweep.elongationUp)
-        kappaL.append(prf.sweep.elongationLow)
-        kappaM.append(prf.sweep.elongation)
+        kappaU.append(mitim = sweep.elongationUp)
+        kappaL.append(mitim = sweep.elongationLow)
+        kappaM.append(mitim = sweep.elongation)
 
-        deltaU.append(prf.sweep.triangularityUp)
-        deltaL.append(prf.sweep.triangularityLow)
-        deltaM.append(prf.sweep.triangularity)
+        deltaU.append(mitim = sweep.triangularityUp)
+        deltaL.append(mitim = sweep.triangularityLow)
+        deltaM.append(mitim = sweep.triangularity)
 
-        q0.append(np.interp(0, prf.profiles["psinorm"], prf.profiles["qpsi"]))
-        q95.append(np.interp(0.95, prf.profiles["psinorm"], prf.profiles["qpsi"]))
+        q0.append(np.interp(0, mitim = profiles["psinorm"], mitim = profiles["qpsi"]))
+        q95.append(np.interp(0.95, mitim = profiles["psinorm"], mitim = profiles["qpsi"]))
         qstar.append(
             PLASMAtools.evaluate_qstar(
-                prf.sweep.Ip * 1e-6,
-                prf.sweep.Rgeo,
-                prf.sweep.elongation,
-                prf.sweep.BR / prf.sweep.Rgeo,
-                prf.sweep.aMinor / prf.sweep.Rgeo,
-                prf.sweep.triangularity,
+                mitim = sweep.Ip * 1e-6,
+                mitim = sweep.Rgeo,
+                mitim = sweep.elongation,
+                mitim = sweep.BR / mitim = sweep.Rgeo,
+                mitim = sweep.aMinor / mitim = sweep.Rgeo,
+                mitim = sweep.triangularity,
                 isInputIp=True,
             )
         )
 
-        squareness.append(prf.sweep.squarenessM)
-        squarenessU.append(prf.sweep.squarenessU)
-        squarenessL.append(prf.sweep.squarenessL)
+        squareness.append(mitim = sweep.squarenessM)
+        squarenessU.append(mitim = sweep.squarenessU)
+        squarenessL.append(mitim = sweep.squarenessL)
 
-        # Ip.append(prf.IpIn*1E-6)
-        Ip.append(prf.profiles["Ip"] * 1e-6)
+        # Ip.append(mitim = IpIn*1E-6)
+        Ip.append(mitim = profiles["Ip"] * 1e-6)
 
         # VS magnitude total (MA-t)
-        VS1U = prf.sparc_coils.coils_final_summary_terminal["vs1u"] * 1e-3  # kA
-        VS1L = prf.sparc_coils.coils_final_summary_terminal["vs1l"] * 1e-3  # kA
+        VS1U = mitim = sparc_coils.coils_final_summary_terminal["vs1u"] * 1e-3  # kA
+        VS1L = mitim = sparc_coils.coils_final_summary_terminal["vs1l"] * 1e-3  # kA
         VS1 = np.abs(VS1U) + np.abs(VS1L)
         vs_mag.append(VS1)
 
         # Inductances
-        li1.append(prf.sweep.li1)
-        li2.append(prf.sweep.li2)
-        li3.append(prf.sweep.li3)
-        betaN.append(prf.sweep.betaN)
+        li1.append(mitim = sweep.li1)
+        li2.append(mitim = sweep.li2)
+        li3.append(mitim = sweep.li3)
+        betaN.append(mitim = sweep.betaN)
 
-        ShafShift.append(prf.sweep.ShafShift)
-        ShafParam.append(prf.sweep.ShafParam)
+        ShafShift.append(mitim = sweep.ShafShift)
+        ShafParam.append(mitim = sweep.ShafParam)
 
         if separatrixPoint is not None:
             """
             Looks for separatrix value in the lower outer midplane
             """
-            R, Z = prf.sweep.sepR, prf.sweep.sepZ
-            R0, Z0 = R[R > prf.sweep.Rmag], Z[R > prf.sweep.Rmag]
+            R, Z = mitim = sweep.sepR, mitim = sweep.sepZ
+            R0, Z0 = R[R > mitim = sweep.Rmag], Z[R > mitim = sweep.Rmag]
             R1, Z1 = R0[Z0 < 0], Z0[Z0 < 0]
 
             if Z1[0] > Z1[-1]:
@@ -799,7 +798,7 @@ def curateGSoptions(Params, ProblemExtras):
 def makePeriodic_metrics(metrics):
     torig = copy.deepcopy(metrics["params"]["times"])
     for i in metrics:
-        if i not in ["prfs", "params"]:
+        if i not in ["mitims", "params"]:
             if i in ["xpoints_up", "xpoints_low", "opoints", "xpoints_xpt"]:
                 mn = []
                 for j in range(metrics[i].shape[1]):
@@ -1052,7 +1051,6 @@ class Machine(freegs.machine.Machine):
                 "Current in {0} changed from {1:.2f}MA-t to {2:.2f}MA-t".format(
                     name, coil.current * 1e-6, coil.current * 1e-6 + dI.item() * 1e-6
                 ),
-                verbose=read_verbose_level(),
             )
             coil.current += dI.item()
 

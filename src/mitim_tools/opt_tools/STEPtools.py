@@ -1,5 +1,4 @@
 import copy
-import os
 import datetime
 import torch
 import botorch
@@ -7,7 +6,7 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools, MATHtools
 from mitim_tools.opt_tools import SURROGATEtools, OPTtools, BOTORCHtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
@@ -28,7 +27,7 @@ class OPTstep:
         bounds,
         stepSettings={},
         surrogate_parameters={},
-        StrategyOptions={},
+        strategy_options={},
         BOmetrics=None,
         currentIteration=1,
     ):
@@ -90,13 +89,16 @@ class OPTstep:
         self.stepSettings = stepSettings
         self.BOmetrics = BOmetrics
         self.currentIteration = currentIteration
-        self.StrategyOptions = StrategyOptions
+        self.strategy_options = strategy_options
 
         # **** Step settings
-        self.surrogateOptions = self.stepSettings["optimization_options"]["surrogateOptions"]
-        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_type"]
-        self.favor_proximity_type = self.stepSettings["optimization_options"]["favor_proximity_type"]
-        self.optimizers = self.stepSettings["optimization_options"]["optimizers"]
+        self.surrogate_options = self.stepSettings["optimization_options"]["surrogate_options"]
+        self.acquisition_type = self.stepSettings["optimization_options"]["acquisition_options"]["type"]
+        self.acquisition_params = self.stepSettings["optimization_options"]["acquisition_options"]["parameters"]
+        self.favor_proximity_type = self.stepSettings["optimization_options"]["acquisition_options"]["favor_proximity_type"]
+        self.optimizers = {}
+        for optimizer in self.stepSettings["optimization_options"]["acquisition_options"]["optimizers"]:
+            self.optimizers[optimizer] = self.stepSettings["optimization_options"]["acquisition_options"]["optimizer_options"][optimizer]     
         self.outputs = self.stepSettings["outputs"]
         self.dfT = self.stepSettings["dfT"]
         self.best_points_sequence = self.stepSettings["best_points_sequence"]
@@ -106,7 +108,7 @@ class OPTstep:
         # **** From standard deviation to variance
         self.train_Yvar = self.train_Ystd**2
 
-    def fit_step(self, avoidPoints=[], fitWithTrainingDataIfContains=None):
+    def fit_step(self, avoidPoints=None, fitWithTrainingDataIfContains=None):
         """
         Notes:
             - Note that fitWithTrainingDataIfContains = 'Tar' would only use the train_X,Y,Yvar tensors
@@ -114,6 +116,9 @@ class OPTstep:
                     PORTALS I want to simply use the training in a file and not directly from train_X,Y,Yvar for
                     the fluxes but I do want *new* target calculation
         """
+
+        if avoidPoints is None:
+            avoidPoints = []
 
         """
 		*********************************************************************************************************************
@@ -147,9 +152,10 @@ class OPTstep:
 		"""
 
         self.GP = {"individual_models": [None] * self.y.shape[-1]}
-        fileTraining = f"{self.stepSettings['folderOutputs']}/surrogate_data.csv"
-        if os.path.exists(fileTraining):
-            os.system(f'mv {fileTraining} {fileTraining}.bak')
+        fileTraining = IOtools.expandPath(self.stepSettings['folderOutputs']) / "surrogate_data.csv"
+        fileBackup = fileTraining.parent / "surrogate_data.csv.bak"
+        if fileTraining.exists():
+            fileTraining.replace(fileBackup)
 
         print("--> Fitting multiple single-output models and creating composite model")
         time1 = datetime.datetime.now()
@@ -175,15 +181,15 @@ class OPTstep:
             # Define model-specific functions for this output
             # ---------------------------------------------------------------------------------------------------
 
-            surrogateOptions = copy.deepcopy(self.surrogateOptions)
+            surrogate_options = copy.deepcopy(self.surrogate_options)
 
             # Then, depending on application (e.g. targets in mitim are fitted differently)
             if (
-                "selectSurrogate" in surrogateOptions
-                and surrogateOptions["selectSurrogate"] is not None
+                "selectSurrogate" in surrogate_options
+                and surrogate_options["selectSurrogate"] is not None
             ):
-                surrogateOptions = surrogateOptions["selectSurrogate"](
-                    outi, surrogateOptions
+                surrogate_options = surrogate_options["selectSurrogate"](
+                    outi, surrogate_options
                 )
 
             # ---------------------------------------------------------------------------------------------------
@@ -207,8 +213,8 @@ class OPTstep:
                     typeMsg="w",
                 )
                 FixedValue = True
-                surrogateOptions["TypeMean"] = 0
-                surrogateOptions["TypeKernel"] = 6  # Constant kernel
+                surrogate_options["TypeMean"] = 0
+                surrogate_options["TypeKernel"] = 6  # Constant kernel
 
             else:
                 FixedValue = False
@@ -243,7 +249,7 @@ class OPTstep:
                 output_transformed=outi_transformed,
                 avoidPoints=self.avoidPoints,
                 dfT=self.dfT,
-                surrogateOptions=surrogateOptions,
+                surrogate_options=surrogate_options,
                 FixedValue=FixedValue,
                 fileTraining=fileTraining,
             )
@@ -253,8 +259,7 @@ class OPTstep:
 
             self.GP["individual_models"][i] = GP
 
-        if os.path.exists(fileTraining+".bak"):
-            os.remove(fileTraining+".bak")
+        fileBackup.unlink(missing_ok=True)
 
         # ------------------------------------------------------------------------------------------------------
         # Combine them in a ModelListGP (create one single with MV but do not fit)
@@ -270,7 +275,7 @@ class OPTstep:
             avoidPoints=self.avoidPoints,
             bounds=self.bounds,
             dfT=self.dfT,
-            surrogateOptions=self.surrogateOptions,
+            surrogate_options=self.surrogate_options,
         )
 
         models = ()
@@ -281,13 +286,13 @@ class OPTstep:
         # ------------------------------------------------------------------------------------------------------
         # Make sure each model has the right surrogate_transformation_variables inside the combined model
         # ------------------------------------------------------------------------------------------------------
-        if self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'] is not None:
+        if self.GP["combined_model"].surrogate_transformation_variables is not None:
             for i in range(self.y.shape[-1]):
 
                 outi = self.outputs[i] if (self.outputs is not None) else None
 
                 if outi is not None:
-                    self.GP["combined_model"].surrogate_parameters['surrogate_transformation_variables'][outi] = self.GP["individual_models"][i].surrogate_parameters['surrogate_transformation_variables'][outi]
+                    self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
 
         print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
 
@@ -317,7 +322,7 @@ class OPTstep:
             with open(self.fileOutputs, "a") as f:
                 f.write(f" (took total of {txt_time})")
 
-    def defineFunctions(self, lambdaSingleObjective):
+    def defineFunctions(self, scalarized_objective):
         """
         I create this so that, upon reading a pickle, I re-call it. Otherwise, it is very heavy to store lambdas
         """
@@ -325,28 +330,64 @@ class OPTstep:
         self.evaluators = {"GP": self.GP["combined_model"]}
 
         # **************************************************************************************************
-        # Objective (Multi-objective model -> single objective residual)
+        # Objective (multi-objective model -> single objective residual)
         # **************************************************************************************************
 
         # Build function to pass to acquisition
-        def residual(Y):
-            return lambdaSingleObjective(Y)[2]
+        def residual(Y, X = None):
+            return scalarized_objective(Y)[2]
 
-        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(
-            residual
-        )
+        self.evaluators["objective"] = botorch.acquisition.objective.GenericMCObjective(residual)
 
         # **************************************************************************************************
-        # Acquisition functions (Maximization problem in MITIM)
+        # Quick function to return components (I need this for ROOT too, since I need the components)
         # **************************************************************************************************
 
-        best_f = self.evaluators["objective"](
-            self.evaluators["GP"].train_Y.unsqueeze(1)
-        ).max()
+        def residual_function(x, outputComponents=False):
+            mean, _, _, _ = self.evaluators["GP"].predict(x) #TODO: make the predict method simply the callable of my GP
+            yOut_fun, yOut_cal, yOut = scalarized_objective(mean)
+
+            return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut
+
+        self.evaluators["residual_function"] = residual_function
+
+        # **************************************************************************************************
+        # Acquisition functions (following BoTorch assumption of maximization)
+        # **************************************************************************************************
+
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Analytic acquisition functions
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         if self.acquisition_type == "posterior_mean":
+            print('\t* Chosen analytic posterior_mean, careful with objective nonlinearity', typeMsg="w")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
-                self.evaluators["GP"].gpmodel, objective=self.evaluators["objective"]
+                self.evaluators["GP"].gpmodel,
+                objective=self.evaluators["objective"]
+            )
+
+        elif self.acquisition_type == "logei":
+            print("\t* Chosen analytic logei, igoring objective", typeMsg="w")
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.analytic.LogExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max()
+                )
+            )
+
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Monte Carlo acquisition functions
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        
+        sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([self.acquisition_params["mc_samples"]]))
+
+        if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
+            self.evaluators["acq_function"] = (
+                botorch.acquisition.monte_carlo.qSimpleRegret(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    sampler=sampler
+                )
             )
 
         elif self.acquisition_type == "ei_mc":
@@ -354,7 +395,8 @@ class OPTstep:
                 botorch.acquisition.monte_carlo.qExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
                     objective=self.evaluators["objective"],
-                    best_f=best_f,
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max(),
+                    sampler=sampler
                 )
             )
 
@@ -363,29 +405,24 @@ class OPTstep:
                 botorch.acquisition.logei.qLogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
                     objective=self.evaluators["objective"],
-                    best_f=best_f,
+                    best_f=self.evaluators["objective"](self.evaluators["GP"].train_Y.unsqueeze(1)).max(),
+                    sampler=sampler
                 )
             )
 
-        elif self.acquisition_type == "logei":
-            print("* Chosen an analytic acquisition, igoring objective", typeMsg="w")
+        elif self.acquisition_type == "noisy_logei_mc":
             self.evaluators["acq_function"] = (
-                botorch.acquisition.analytic.LogExpectedImprovement(
-                    self.evaluators["GP"].gpmodel, best_f=best_f
+                botorch.acquisition.logei.qLogNoisyExpectedImprovement(
+                    self.evaluators["GP"].gpmodel,
+                    objective=self.evaluators["objective"],
+                    X_baseline=self.evaluators["GP"].train_X,
+                    sampler=sampler
                 )
             )
 
-        # **************************************************************************************************
-        # Quick function to return components (I need this for ROOT too, since I need the components)
-        # **************************************************************************************************
-
-        def residual_function(x, outputComponents=False):
-            mean, _, _, _ = self.evaluators["GP"].predict(x)
-            yOut_fun, yOut_cal, yOut = lambdaSingleObjective(mean)
-
-            return (yOut, yOut_fun, yOut_cal, mean) if outputComponents else yOut
-
-        self.evaluators["residual_function"] = residual_function
+        # Add this because of the way train_X is defined within the gpmodel, which is fundamental, but the acquisition for sample
+        # around best, needs the raw one! (for noisy it is automatic)
+        self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
 
         # **************************************************************************************************
         # Selector (Takes x and residuals of optimized points, and provides the indices for organization)
@@ -404,17 +441,10 @@ class OPTstep:
 
     def optimize(
         self,
-        lambdaSingleObjective,
         position_best_so_far=-1,
         seed=0,
         forceAllPointsInBounds=False,
     ):
-        """
-        ***********************************************
-        Update functions to be used during optimization
-        ***********************************************
-        """
-        self.defineFunctions(lambdaSingleObjective)
 
         """
 		***********************************************
@@ -434,32 +464,28 @@ class OPTstep:
         print("~~~~ Running optimization methods")
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-        print(
-            f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers}" methods to find {self.best_points_sequence} points\n'
-        )
+        print(f'\n~~ Maximization of "{self.acquisition_type}" acquisition using "{self.optimizers.keys()}" methods to find {self.best_points_sequence} points\n')
 
-        self.x_next, self.InfoOptimization = OPTtools.optAcq(
+        self.x_next, self.InfoOptimization = OPTtools.acquire_next_points(
             stepSettings=self.stepSettings,
             evaluators=self.evaluators,
-            StrategyOptions=self.StrategyOptions,
+            strategy_options=self.strategy_options,
             best_points=int(self.best_points_sequence),
-            optimization_sequence=self.optimizers.split("-"),
+            optimizers=self.optimizers,
             it_number=self.currentIteration,
             position_best_so_far=position_best_so_far,
             seed=seed,
             forceAllPointsInBounds=forceAllPointsInBounds,
         )
 
-        print(
-            f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points"
-        )
+        print(f"\n~~ Complete acquisition workflows found {self.x_next.shape[0]} points")
 
     def curate_outliers(self):
         # Remove outliers
         self.outliers = removeOutliers(
             self.y,
-            stds_outside=self.surrogateOptions["stds_outside"],
-            stds_outside_checker=self.surrogateOptions["stds_outside_checker"],
+            stds_outside=self.surrogate_options["stds_outside"],
+            stds_outside_checker=self.surrogate_options["stds_outside_checker"],
             alreadyAvoided=self.avoidPoints,
         )
 

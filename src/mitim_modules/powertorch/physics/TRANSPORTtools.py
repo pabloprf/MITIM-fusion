@@ -1,12 +1,12 @@
 import copy
-import os
+import shutil
 import torch
+import numpy as np
 from mitim_tools.misc_tools import PLASMAtools, IOtools
-from mitim_tools.gacode_tools import TGYROtools
+from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_modules.portals.utils import PORTALScgyro
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-
 
 class power_transport:
     '''
@@ -69,30 +69,79 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
+    def produce_profiles(self):
+        # Only add self._produce_profiles() if it's needed (e.g. full TGLF), otherwise this is somewhat expensive (e.g. for flux matching)
+        pass
+
     def _produce_profiles(self,deriveQuantities=True):
 
-        self.applyCorrections = (
-            self.powerstate.TransportOptions["ModelOptions"]
-            .get("MODELparameters", {})
-            .get("applyCorrections", {})
-        )
+        self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters", {}).get("applyCorrections", {})
 
         # Write this updated profiles class (with parameterized profiles and target powers)
-        self.file_profs = f"{IOtools.expandPath(self.folder)}/input.gacode"
-        self.powerstate.profiles = self.powerstate.to_gacode(
+        self.file_profs = self.folder / "input.gacode"
+
+        powerstate_detached = self.powerstate.copy_state()
+
+        self.powerstate.profiles = powerstate_detached.to_gacode(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
             rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
             insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
-    def produce_profiles(self):
-        pass
+        self.profiles_transport = copy.deepcopy(self.powerstate.profiles)
+
+        self._modify_profiles()
+
+    def _modify_profiles(self):
+        '''
+        Modify the profiles (e.g. lumping) before running the transport model 
+        '''
+
+        # After producing the profiles, copy for future modifications
+        self.file_profs_unmod = self.file_profs.parent / f"{self.file_profs.name}_unmodified"
+        shutil.copy2(self.file_profs, self.file_profs_unmod)
+
+        profiles_postprocessing_fun = self.powerstate.TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
+
+        if profiles_postprocessing_fun is not None:
+            print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")
+            self.profiles_transport = profiles_postprocessing_fun(self.file_profs)
+
+        # Position of impurity ion may have changed
+        p_old = PROFILEStools.PROFILES_GACODE(self.file_profs_unmod)
+        p_new = PROFILEStools.PROFILES_GACODE(self.file_profs)
+
+        impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
+
+        try:
+            impurityPosition_new = p_new.Species.index(impurity_of_interest)
+
+        except ValueError:
+            print(f"\t- Impurity {impurity_of_interest} not found in new profiles, keeping position {self.powerstate.impurityPosition}",typeMsg="w")
+            impurityPosition_new = self.powerstate.impurityPosition
+
+        if impurityPosition_new != self.powerstate.impurityPosition:
+            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="w")
+            self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
+        '''
+        This needs to populate the following in self.powerstate.plasma
+            - Pe, Pe_tr, Pe_tr_turb, Pe_tr_neo -> MW/m^2
+            - Pi, Pi_tr, Pi_tr_turb, Pi_tr_neo -> MW/m^2
+            - Ce, Ce_tr, Ce_tr_turb, Ce_tr_neo -> MW/m^2
+                * Ce_raw, Ce_raw_tr, Ce_raw_tr_turb, Ce_raw_tr_neo -> 10^20/s/m^2
+            - CZ, CZ_tr, CZ_tr_turb, CZ_tr_neo -> MW/m^2 (but modified as needed, for example dividing by fZ0)
+                * CZ_raw, CZ_raw_tr, CZ_raw_tr_turb, CZ_raw_tr_neo -> 10^20/s/m^2  (NOT modified)
+            - Mt, Mt_tr, Mt_tr_turb, Mt_tr_neo -> J/m^2
+            - PexchTurb -> MW/m^3
+        and their respective standard deviations
+        '''
+
         print(">> No transport fluxes to evaluate", typeMsg="w")
         pass
 
@@ -109,38 +158,36 @@ class tgyro_model(power_transport):
 
     def evaluate(self):
 
-        # After producing the profiles, copy for future modifications
-        self.file_profs_mod = f"{self.file_profs}_modified"
-        os.system(f"cp {self.file_profs} {self.file_profs_mod}")
-
         # ------------------------------------------------------------------------------------------------------------------------
         # Model Options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        MODELparameters = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters",None)
-        includeFast = self.powerstate.TransportOptions["ModelOptions"].get("includeFastInQi",False)
-        impurityPosition = self.powerstate.TransportOptions["ModelOptions"].get("impurityPosition", 1)
-        useConvectiveFluxes = self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
-        UseFineGridTargets = self.powerstate.TransportOptions["ModelOptions"].get("UseFineGridTargets", False)
-        launchMODELviaSlurm = self.powerstate.TransportOptions["ModelOptions"].get("launchMODELviaSlurm", False)
-        restart = self.powerstate.TransportOptions["ModelOptions"].get("restart", False)
-        provideTurbulentExchange = self.powerstate.TransportOptions["ModelOptions"].get("TurbulentExchange", False)
-        profiles_postprocessing_fun = self.powerstate.TransportOptions["ModelOptions"].get("profiles_postprocessing_fun", None)
-        OriginalFimp = self.powerstate.TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = self.powerstate.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False)
-        percentError = self.powerstate.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])
+        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+
+        MODELparameters = ModelOptions.get("MODELparameters",None)
+        includeFast = ModelOptions.get("includeFastInQi",False)
+        useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
+        UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
+        launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
+        cold_start = ModelOptions.get("cold_start", False)
+        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
+        OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
+        forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
+        percentError = ModelOptions.get("percentError", [5, 1, 0.5])
+        use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
+        cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
+
+        # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
+        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 1. tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
         # ------------------------------------------------------------------------------------------------------------------------
 
-        RadiisToRun = [
-            self.powerstate.plasma["rho"][0, 1:][i].item()
-            for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
-        ]
+        RadiisToRun = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
-        tgyro.prep(self.folder, profilesclass_custom=self.powerstate.profiles)
+        tgyro.prep(self.folder, profilesclass_custom=self.profiles_transport)
 
         if launchMODELviaSlurm:
             print("\t- Launching TGYRO evaluation as a batch job")
@@ -148,9 +195,9 @@ class tgyro_model(power_transport):
             print("\t- Launching TGYRO evaluation as a terminal job")
 
         tgyro.run(
-            subFolderTGYRO="tglf_neo_original/",
-            restart=restart,
-            forceIfRestart=True,
+            subFolderTGYRO="tglf_neo_original",
+            cold_start=cold_start,
+            forceIfcold_start=True,
             special_radii=RadiisToRun,
             iterations=0,
             PredictionSet=[
@@ -169,30 +216,36 @@ class tgyro_model(power_transport):
         tgyro.read(label="tglf_neo_original")
 
         # Copy one with evaluated targets
-        self.file_profs_targets = f"{tgyro.FolderTGYRO}/input.gacode.new"
+        self.file_profs_targets = tgyro.FolderTGYRO / "input.gacode.new"
 
         # ------------------------------------------------------------------------------------------------------------------------
         # 2. tglf_neo: Write TGLF, NEO and TARGET errors in tgyro files as well
         # ------------------------------------------------------------------------------------------------------------------------
 
         # Copy original TGYRO folder
-        if os.path.exists(f"{self.folder}/tglf_neo/"):
-            os.system(f"rm -r {self.folder}/tglf_neo/")
-        os.system(
-            f"cp -r {self.folder}/tglf_neo_original {self.folder}/tglf_neo"
-        )
+        if (self.folder / "tglf_neo").exists():
+            IOtools.shutil_rmtree(self.folder / "tglf_neo")
+        shutil.copytree(self.folder / "tglf_neo_original", self.folder / "tglf_neo")
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
         curateTGYROfiles(
-            tgyro.results["tglf_neo_original"],
-            f"{self.folder}/tglf_neo/",
+            tgyro,
+            "tglf_neo_original",
+            RadiisToRun,
+            self.powerstate.ProfilesPredicted,
+            self.folder / "tglf_neo",
             percentError,
             impurityPosition=impurityPosition,
             includeFast=includeFast,
+            provideTurbulentExchange=provideTurbulentExchange,
+            use_tglf_scan_trick = use_tglf_scan_trick,
+            cold_start=cold_start,
+            extra_name = self.name,
+            cores_per_tglf_instance=cores_per_tglf_instance
         )
 
         # Read again to capture errors
-        tgyro.read(label="tglf_neo", folder=f"{self.folder}/tglf_neo/")
+        tgyro.read(label="tglf_neo", folder=self.folder / "tglf_neo")
 
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         # Run TGLF standalone --> In preparation for the transition
@@ -201,16 +254,16 @@ class tgyro_model(power_transport):
         # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=RadiisToRun)
         # _ = tglf.prep(
-        #     self.folder+'/stds/',
+        #     self.folder / 'stds',
         #     inputgacode=self.file_profs,
         #     recalculatePTOT=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-        #     restart=restart)
+        #     cold_start=cold_start)
 
         # tglf.run(
-        #     subFolderTGLF="tglf_neo_original/",
+        #     subFolderTGLF="tglf_neo_original",
         #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-        #     restart=restart,
-        #     forceIfRestart=True,
+        #     cold_start=cold_start,
+        #     forceIfcold_start=True,
         #     extraOptions=MODELparameters["transport_model"]["extraOptionsTGLF"],
         #     launchSlurm=launchMODELviaSlurm,
         #     slurm_setup={"cores": 4, "minutes": 1},
@@ -248,10 +301,10 @@ class tgyro_model(power_transport):
                 "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
             )
 
-            correctly_run = os.path.exists(f"{self.folder}/cgyro_neo")
+            correctly_run = (self.folder / "cgyro_neo").exists()
             if correctly_run:
                 print("\t\t- Folder exists, but was cgyro_trick run?")
-                with open(f"{self.folder}/cgyro_neo/mitim_flag", "r") as f:
+                with open(self.folder / "cgyro_neo" / "mitim_flag", "r") as f:
                     correctly_run = bool(float(f.readline()))
 
             if correctly_run:
@@ -259,22 +312,19 @@ class tgyro_model(power_transport):
             else:
                 print("\t\t\t* No, it was not, repating process", typeMsg="i")
 
+                # Remove cgyro_neo folder
+                if (self.folder / "cgyro_neo").exists():
+                    IOtools.shutil_rmtree(self.folder / "cgyro_neo")
+
                 # Copy tglf_neo results
-                os.system(
-                    f"cp -r {self.folder}/tglf_neo {self.folder}/cgyro_neo"
-                )
+                shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
-                cgyro_trick(
-                    self,
-                    f"{self.folder}/cgyro_neo",
-                    profiles_postprocessing_fun=profiles_postprocessing_fun,
-                    name=self.name,
-                )
+                cgyro_trick(self,self.folder / "cgyro_neo",name=self.name)
 
             # Read TGYRO files and construct portals variables
 
-            tgyro.read(label="cgyro_neo", folder=f"{self.folder}/cgyro_neo") 
+            tgyro.read(label="cgyro_neo", folder=self.folder / "cgyro_neo") 
 
             powerstate_orig = copy.deepcopy(self.powerstate)
 
@@ -291,13 +341,9 @@ class tgyro_model(power_transport):
             )
 
             print("\t- Checking model modifications:")
-            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TO FIX
-                print(
-                    f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}"
-                )
-                print(
-                    f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}"
-                )
+            for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
+                print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
+                print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 
             # **
             tgyro.results["use"] = tgyro.results["cgyro_neo"]
@@ -320,8 +366,149 @@ class tgyro_model(power_transport):
             if ikey != "use":
                 self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
 
+def tglf_scan_trick(
+    fluxesTGYRO, 
+    tgyro, 
+    label, 
+    RadiisToRun, 
+    profiles, 
+    impurityPosition=1, includeFast=False,  
+    delta=0.02, 
+    cold_start=False, 
+    check_coincidence_thr=1E-2, 
+    extra_name="", 
+    remove_folders_out = False,
+    cores_per_tglf_instance = 4 # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    ):
+
+    print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
+
+    # Grab fluxes from TGYRO
+    Qe_tgyro, Qi_tgyro, Ge_tgyro, GZ_tgyro, Mt_tgyro, Pexch_tgyro = fluxesTGYRO
+
+    # ------------------------------------------------------------------------------------------------------------------------
+    # TGLF scans
+    # ------------------------------------------------------------------------------------------------------------------------
+
+    # Prepare scan 
+
+    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
+
+    variables_to_scan = []
+    for i in profiles:
+        if i == 'te': variables_to_scan.append('RLTS_1')
+        if i == 'ti': variables_to_scan.append('RLTS_2')
+        if i == 'ne': variables_to_scan.append('RLNS_1')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
+
+    #TODO: Only if that parameter is changing at that location
+    if 'te' in profiles or 'ti' in profiles:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('XNUE')
+    if 'te' in profiles or 'ne' in profiles:
+        variables_to_scan.append('BETAE')
+    
+    relative_scan = [1-delta, 1+delta]
+
+    name = 'turb_drives'
+
+    tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
+
+    # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
+    num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
+    if cores_per_tglf_instance == 1:
+        minutes = 5 * (num_cases / 60) # Ad-hoc formula
+    else:
+        minutes = 1 * (num_cases / 60) # Ad-hoc formula
+
+    tglf.runScanTurbulenceDrives(	
+                    subFolderTGLF = name,
+                    variablesDrives = variables_to_scan,
+                    varUpDown     = relative_scan,
+                    TGLFsettings = None,
+                    ApplyCorrections = False,
+                    add_baseline_to = 'first',
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
+                    slurm_setup={
+                        "cores": cores_per_tglf_instance,      
+                        "minutes": minutes,
+                                 },
+                    extra_name = f'{extra_name}_{name}',
+                    positionIon=impurityPosition+1
+                    )
+
+    # Remove folders because they are heavy to carry many throughout
+    if remove_folders_out:
+        IOtools.shutil_rmtree(tglf.FolderGACODE)
+
+    Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+
+    cont = 0
+    for vari in variables_to_scan:
+        jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
+
+        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
+        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
+        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
+        cont += jump
+
+    # ----------------------------------------------------
+    # Do a check that TGLF scans are consistent with TGYRO
+    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro )
+    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro )
+    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro )
+    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro )
+
+    F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
+    if F_err.max() > check_coincidence_thr:
+        print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+        print('\t\t* Qe:',Qe_err)
+        print('\t\t* Qi:',Qi_err)
+        print('\t\t* Ge:',Ge_err)
+        print('\t\t* GZ:',GZ_err)
+    else:
+        print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
+    # ----------------------------------------------------
+
+    # Calculate the standard deviation of the scans, that's going to be the reported stds
+
+    def calculate_mean_std(Q):
+        # Assumes Q is [radii, points], with [radii, 0] being the baseline
+
+        Qm = np.mean(Q, axis=1)
+        Qstd = np.std(Q, axis=1)
+
+        # Qm = Q[:,0]
+        # Qstd = np.std(Q, axis=1)
+
+        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+
+        return  Qm, Qstd
+
+    Qe_point, Qe_std = calculate_mean_std(Qe)
+    Qi_point, Qi_std = calculate_mean_std(Qi)
+    Ge_point, Ge_std = calculate_mean_std(Ge)
+    GZ_point, GZ_std = calculate_mean_std(GZ)
+
+    #TODO: Implement Mt and Pexch
+    Mt_point, Pexch_point = Mt_tgyro, Pexch_tgyro
+    Mt_std, Pexch_std = abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
+
+    #TODO: Careful with fast particles
+
+    return Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, Pexch_point, Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, Pexch_std
+
+
 # ------------------------------------------------------------------
-# SIMPLE Diffusion
+# SIMPLE Diffusion (#TODO: implement with particle flux and the raw)
 # ------------------------------------------------------------------
 
 class diffusion_model(power_transport):
@@ -385,9 +572,11 @@ class surrogate_model(power_transport):
         flux_fun as given in ModelOptions must produce Q and Qtargets in order of te,ti,ne
         """
 
-        X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
+        X = torch.Tensor()
+        for prof in self.powerstate.ProfilesPredicted:
+            X = torch.cat((X,self.powerstate.plasma['aL'+prof][:,1:]),axis=1)
 
-        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X) #self.Xcurrent[0])
+        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X)
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 
@@ -406,32 +595,91 @@ class surrogate_model(power_transport):
 # Functions
 # **************************************************************************************************
 
-def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFast=False):
-    # TGLF ---------------------------------------------------------------------------------------------------------
+def curateTGYROfiles(
+    tgyroObject,
+    label,
+    RadiisToRun,
+    ProfilesPredicted,
+    folder,
+    percentError,
+    provideTurbulentExchange=False,
+    impurityPosition=1,
+    includeFast=False,
+    use_tglf_scan_trick=None,
+    cold_start=False,
+    extra_name="",
+    cores_per_tglf_instance = 4
+    ):
 
+    tgyro = tgyroObject.results[label]
+    
+    # Determine NEO and Target errors
+    relativeErrorNEO = percentError[1] / 100.0
+    relativeErrorTAR = percentError[2] / 100.0
+
+    # **************************************************************************************************************************
+    # TGLF
+    # **************************************************************************************************************************
+    
+    # Grab fluxes
     Qe = tgyro.Qe_sim_turb[0, 1:]
-    if includeFast:
-        Qi = tgyro.QiIons_sim_turb[0, 1:]
-    else:
-        Qi = tgyro.QiIons_sim_turb_thr[0, 1:]
+    Qi = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
     Ge = tgyro.Ge_sim_turb[0, 1:]
-    GZ = tgyro.Gi_sim_turb[impurityPosition - 1, 0, 1:]
+    GZ = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
     Mt = tgyro.Mt_sim_turb[0, 1:]
     Pexch = tgyro.EXe_sim_turb[0, 1:]
+    
+    # Determine TGLF standard deviations
+    if use_tglf_scan_trick is not None:
 
-    percentErrorTGLF = percentError[0] / 100.0
+        if provideTurbulentExchange:
+            print("> Turbulent exchange not implemented yet in TGLF scans", typeMsg="w") #TODO
 
-    QeE = abs(tgyro.Qe_sim_turb[0, 1:]) * percentErrorTGLF
-    if includeFast:
-        QiE = abs(tgyro.QiIons_sim_turb[0, 1:]) * percentErrorTGLF
+        # --------------------------------------------------------------
+        # If using the scan trick
+        # --------------------------------------------------------------
+
+        Qe, Qi, Ge, GZ, Mt, Pexch, QeE, QiE, GeE, GZE, MtE, PexchE = tglf_scan_trick(
+            [Qe, Qi, Ge, GZ, Mt, Pexch],
+            tgyroObject,
+            label, 
+            RadiisToRun, 
+            ProfilesPredicted, 
+            impurityPosition=impurityPosition, 
+            includeFast=includeFast, 
+            delta = use_tglf_scan_trick,
+            cold_start=cold_start,
+            extra_name=extra_name,
+            cores_per_tglf_instance=cores_per_tglf_instance
+            )
+
+        min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum
+
+        QeE = QeE.clip(abs(Qe)*min_relative_error)
+        QiE = QiE.clip(abs(Qi)*min_relative_error)
+        GeE = GeE.clip(abs(Ge)*min_relative_error)
+        GZE = GZE.clip(abs(GZ)*min_relative_error)
+        MtE = MtE.clip(abs(Mt)*min_relative_error)
+        PexchE = PexchE.clip(abs(Pexch)*min_relative_error)
+
     else:
-        QiE = abs(tgyro.QiIons_sim_turb_thr[0, 1:]) * percentErrorTGLF
-    GeE = abs(tgyro.Ge_sim_turb[0, 1:]) * percentErrorTGLF
-    GZE = abs(tgyro.Gi_sim_turb[impurityPosition - 1, 0, 1:]) * percentErrorTGLF
-    MtE = abs(tgyro.Mt_sim_turb[0, 1:]) * percentErrorTGLF
-    PexchE = abs(tgyro.EXe_sim_turb[0, 1:]) * percentErrorTGLF
 
-    # Neo ----------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------
+        # If simply a percentage error provided
+        # --------------------------------------------------------------
+
+        relativeErrorTGLF = [percentError[0] / 100.0]*len(RadiisToRun)
+    
+        QeE = abs(Qe) * relativeErrorTGLF
+        QiE = abs(Qi) * relativeErrorTGLF
+        GeE = abs(Ge) * relativeErrorTGLF
+        GZE = abs(GZ) * relativeErrorTGLF
+        MtE = abs(Mt) * relativeErrorTGLF
+        PexchE = abs(Pexch) * relativeErrorTGLF
+
+    # **************************************************************************************************************************
+    # Neo
+    # **************************************************************************************************************************
 
     QeNeo = tgyro.Qe_sim_neo[0, 1:]
     if includeFast:
@@ -439,19 +687,17 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
     else:
         QiNeo = tgyro.QiIons_sim_neo_thr[0, 1:]
     GeNeo = tgyro.Ge_sim_neo[0, 1:]
-    GZNeo = tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]
+    GZNeo = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
     MtNeo = tgyro.Mt_sim_neo[0, 1:]
 
-    percentErrorNeo = percentError[1] / 100.0
-
-    QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * percentErrorNeo
+    QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
     if includeFast:
-        QiNeoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * percentErrorNeo
+        QiNeoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
     else:
-        QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * percentErrorNeo
-    GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * percentErrorNeo
-    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition - 1, 0, 1:]) * percentErrorNeo
-    MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * percentErrorNeo
+        QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
+    GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
+    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
+    MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
 
     # Merge
 
@@ -490,15 +736,15 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
         special_label="_stds",
     )
 
-    # Targets -------------------------------------------------------------------------------------------------------
+    # **************************************************************************************************************************
+    # Targets
+    # **************************************************************************************************************************
 
-    percentErrorTarget = percentError[2] / 100.0
-
-    QeTargetE = abs(tgyro.Qe_tar[0, 1:]) * percentErrorTarget
-    QiTargetE = abs(tgyro.Qi_tar[0, 1:]) * percentErrorTarget
-    GeTargetE = abs(tgyro.Ge_tar[0, 1:]) * percentErrorTarget
+    QeTargetE = abs(tgyro.Qe_tar[0, 1:]) * relativeErrorTAR
+    QiTargetE = abs(tgyro.Qi_tar[0, 1:]) * relativeErrorTAR
+    GeTargetE = abs(tgyro.Ge_tar[0, 1:]) * relativeErrorTAR
     GZTargetE = GeTargetE * 0.0
-    MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * percentErrorTarget
+    MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * relativeErrorTAR
 
     PORTALScgyro.modifyEVO(
         tgyro,
@@ -529,15 +775,15 @@ def curateTGYROfiles(tgyro, folder, percentError, impurityPosition=1, includeFas
 def profilesToShare(self):
     if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
         whereFolder = IOtools.expandPath(
-            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] + "/Outputs/portals_profiles/"
+            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles"
         )
-        if not os.path.exists(whereFolder):
+        if not whereFolder.exists():
             IOtools.askNewFolder(whereFolder)
 
-        fil = f"{whereFolder}/input.gacode.{self.evaluation_number}"
-        os.system(f"cp {self.file_profs_mod} {fil}")
-        os.system(f"cp {self.file_profs} {fil}_unmodified")
-        os.system(f"cp {self.file_profs_targets} {fil}_unmodified.new")
+        fil = whereFolder / f"input.gacode.{self.evaluation_number}"
+        shutil.copy2(self.file_profs, fil)
+        shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
+        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new")
         print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")
@@ -546,11 +792,10 @@ def profilesToShare(self):
 def cgyro_trick(
     self,
     FolderEvaluation_TGYRO,
-    profiles_postprocessing_fun=None,
     name="",
 ):
 
-    with open(f"{FolderEvaluation_TGYRO}/mitim_flag", "w") as f:
+    with open(FolderEvaluation_TGYRO / "mitim_flag", "w") as f:
         f.write("0")
 
     # **************************************************************************************************************************
@@ -576,17 +821,6 @@ def cgyro_trick(
             txt += f"{self.powerstate.plasma[varn][0,j+1]-self.powerstate.plasma[f'{varn}_tr_neo'][0,j+1]:.4e}   "
 
     print(txt)
-
-    # **************************************************************************************************************************
-    # Modification to input.gacode (e.g. lump impurities)
-    # **************************************************************************************************************************
-
-    if profiles_postprocessing_fun is not None:
-        print(
-            f"\t- Modifying input.gacode.modified to run transport calculations based on {profiles_postprocessing_fun}",
-            typeMsg="i",
-        )
-        profiles = profiles_postprocessing_fun(self.file_profs_mod)
 
     # Copy profiles so that later it is easy to grab all the input.gacodes that were evaluated
     profilesToShare(self)
@@ -616,7 +850,7 @@ def cgyro_trick(
             pass
 
     # Write a flag indicating this was performed, to avoid an issue that... the script crashes when it has copied tglf_neo, without cgyro_trick modification
-    with open(f"{FolderEvaluation_TGYRO}/mitim_flag", "w") as f:
+    with open(FolderEvaluation_TGYRO / "mitim_flag", "w") as f:
         f.write("1")
 
 def dummyCDF(GeneralFolder, FolderEvaluation):
@@ -624,19 +858,22 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
     This routine creates path to a dummy CDF file in FolderEvaluation, with the name "simulation_evaluation.CDF"
 
     GeneralFolder, e.g.    ~/runs_portals/run10/
-    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0//model_complete/
+    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0/model_complete/
     """
 
     # ------- Name construction for scratch folders in parallel ----------------
 
     GeneralFolder = IOtools.expandPath(GeneralFolder, ensurePathValid=True)
 
-    subname = GeneralFolder.split("/")[-1]  # run10 (simulation)
-    if len(subname) == 0:
-        subname = GeneralFolder.split("/")[-2]
+    a, subname = IOtools.reducePathLevel(GeneralFolder, level=1, isItFile=False)
 
-    name = FolderEvaluation.split(".")[-1].split("/")[0]  # 0 	(evaluation #)
+    FolderEvaluation = IOtools.expandPath(FolderEvaluation)
 
-    cdf = f"{FolderEvaluation}/{subname}_ev{name}.CDF"
+    name = FolderEvaluation.name.split(".")[-1]  # 0   (evaluation #)
+
+    if name == "":
+        name = "0"
+
+    cdf = FolderEvaluation / f"{subname}_ev{name}.CDF"
 
     return cdf

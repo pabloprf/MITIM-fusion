@@ -99,7 +99,7 @@ PRINT_STEP=100
 #Max simulation time (units a/c_s)
 MAX_TIME=100 #900
 
-#Number of data outputs before saving a restart (DELTA_T*PRINT_STEP is one data output)
+#Number of data outputs before saving a cold_start (DELTA_T*PRINT_STEP is one data output)
 RESTART_STEP=10
 
 #===============================

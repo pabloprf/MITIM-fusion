@@ -1,28 +1,33 @@
 import torch
+import gpytorch
 import copy
 import numpy as np
+from mitim_tools.opt_tools import STRATEGYtools
+from mitim_tools.misc_tools import PLASMAtools
 from collections import OrderedDict
-from mitim_tools.misc_tools.IOtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def selectSurrogate(output, surrogateOptions, CGYROrun=False):
+def selectSurrogate(output, surrogate_options, CGYROrun=False):
 
-    print(
-        f'\t- Selecting surrogate options for "{output}" to be run'
-    )
+    print(f'\t- Selecting surrogate options for "{output}" to be run')
 
     if output is not None:
         # If it's a target, just linear
         if output[2:5] == "Tar":
-            surrogateOptions["TypeMean"] = 1
-            surrogateOptions["TypeKernel"] = 2  # Constant kernel
+            surrogate_options["TypeMean"] = 1
+            surrogate_options["TypeKernel"] = 2  # Constant kernel
         # If it's not, stndard
         else:
-            surrogateOptions["TypeMean"] = 2  # Linear in gradients, constant in rest
-            surrogateOptions["TypeKernel"] = 1  # RBF
-            # surrogateOptions['ExtraNoise']  = True
+            surrogate_options["TypeMean"] = 2  # Linear in gradients, constant in rest
+            surrogate_options["TypeKernel"] = 1  # RBF
+            # surrogate_options['ExtraNoise']  = True
 
-    return surrogateOptions
+    surrogate_options["additional_constraints"] = {
+        'lenghtscale_constraint': gpytorch.constraints.constraints.GreaterThan(0.01) # inputs normalized to [0,1], this is  1% lengthscale
+    }
+
+    return surrogate_options
 
 def default_portals_transformation_variables(additional_params = []):
     """
@@ -110,6 +115,7 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	2. Calculate kinetic profiles to use during transformations and update powerstate with them
 	-------------------------------------------------------------------------------------------
 	"""
+
     powerstate = constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets = True) # This is the only place where I recalculate targets, so that I have the target transformation
 
     """
@@ -120,14 +126,12 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 	"""
 
     _, num = output.split("_")
-    index = powerstate.indexes_simulation[
-        int(num)
-    ]  # num=1 -> pos=1, so that it takes the second value in vectors
+    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
         xx = powerstate.plasma[ikey][: X.shape[0], index]
-        xFit = torch.cat((xFit, xx.unsqueeze(1)), dim=1).to(X)
+        xFit = torch.cat((xFit, xx.unsqueeze(-1)), dim=-1).to(X)
 
     parameters_combined = {"powerstate": powerstate}
 
@@ -207,9 +211,7 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 	"""
 
     # Add zeros at zero
-    qExch = torch.cat(
-        (torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1
-    )
+    qExch = torch.cat((torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1)
 
     PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
@@ -221,45 +223,6 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
     PexchTurb_integrated = PexchTurb_integrated.view(tuple(shape_orig))
 
     return PexchTurb_integrated
-
-
-# def transformPORTALS(X,Y,Yvar,surrogate_parameters,output):
-# 	'''
-# 	Transform direct evaluation output to something that the model understands better.
-
-# 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
-# 		- Transforms and produces Y and Yvar (batch1,...,1)
-
-# 	Output of this function is what the surrogate model will be fitting, so make sure it has a physics-based
-# 	meaning behind it (e.g. GB fluxes), that makes sense to fit to variables
-# 	'''
-
-# 	factor = factorProducer(X,surrogate_parameters,output)
-
-# 	Ytr     = Y    / factor
-# 	Ytr_var = Yvar / factor**2
-
-# 	return Ytr,Ytr_var
-
-
-# def untransformPORTALS(X, mean, upper, lower, surrogate_parameters, output):
-# 	'''
-# 	Transform direct model output to the actual evaluation output (must be the opposite to transformPORTALS)
-
-# 		- Receives unnormalized X (batch1,...,dim) to construct QGB (batch1,...,1) corresponding to what output I'm looking at
-# 		- Transforms and produces Y and confidence bounds (batch1,...,)
-
-# 	This untransforms whatever has happened in the transformPORTALS function
-# 	'''
-
-# 	factor = factorProducer(X,surrogate_parameters,output).squeeze(-1)
-
-# 	mean    = mean  * factor
-# 	upper   = upper * factor
-# 	lower   = lower * factor
-
-# 	return mean, upper, lower
-
 
 def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
@@ -280,9 +243,7 @@ def GBfromXnorm(x, output, powerstate):
     elif varFull[:5] == "Pexch":
         quantity = "Sgb"
 
-    T = powerstate.plasma[quantity][
-        : x.shape[0], powerstate.indexes_simulation[pos]
-    ].unsqueeze(-1)
+    T = powerstate.plasma[quantity][: x.shape[0], powerstate.indexes_simulation[pos]].unsqueeze(-1)
 
     return T
 
@@ -295,11 +256,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
     pos = int(output.split("_")[1])
 
     if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
-        factor = powerstate.plasma["ni"][
-            : x.shape[0],
-            powerstate.indexes_simulation[pos],
-            powerstate.impurityPosition - 1,
-        ].unsqueeze(-1)
+        factor = powerstate.plasma["ni"][: x.shape[0],powerstate.indexes_simulation[pos],powerstate.impurityPosition].unsqueeze(-1)
 
     else:
         factor = torch.ones(tuple(x.shape[:-1]) + (1,)).to(x)
@@ -369,9 +326,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
     """
 
-    if ("parameters_combined" in surrogate_parameters) and (
-        "powerstate" in surrogate_parameters["parameters_combined"]
-    ):
+    if ("parameters_combined" in surrogate_parameters) and ("powerstate" in surrogate_parameters["parameters_combined"]):
         powerstate = surrogate_parameters["parameters_combined"]["powerstate"]
 
     else:
@@ -409,3 +364,45 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
                 powerstate.calculateTargets()
 
     return powerstate
+
+
+def stopping_criteria_portals(mitim_bo, parameters = {}):
+
+    # Standard stopping criteria
+    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(mitim_bo, parameters)
+
+    # Ricci metric
+    ricci_value = parameters["ricci_value"]
+    d0 = parameters.get("ricci_d0", 2.0)
+    la = parameters.get("ricci_lambda", 1.0)
+
+    print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
+
+    Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
+    of, cal, _ = mitim_bo.scalarized_objective(Y)
+    
+    Ystd = torch.from_numpy(mitim_bo.train_Ystd).to(mitim_bo.dfT)
+    of_u, cal_u, _ = mitim_bo.scalarized_objective(Y+Ystd)
+    of_l, cal_l, _ = mitim_bo.scalarized_objective(Y-Ystd)
+
+    # If the transformation is linear, they should be the same
+    of_stdu, cal_stdu = (of_u-of), (cal_u-cal)
+    of_stdl, cal_stdl = (of-of_l), (cal-cal_l)
+
+    of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
+
+    _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
+
+    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f})")
+
+    converged_by_ricci = chiR.min() < ricci_value
+
+    if converged_by_default:
+        print("\t- Default stopping criteria converged, providing as iteration values the scalarized objective")
+        return True, yvals
+    elif converged_by_ricci:
+        print("\t- Ricci metric converged, providing as iteration values the Ricci metric")
+        return True, chiR
+    else:
+        print("\t- No convergence yet, providing as iteration values the scalarized objective")
+        return False, yvals
