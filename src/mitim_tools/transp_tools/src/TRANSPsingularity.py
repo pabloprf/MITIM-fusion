@@ -291,6 +291,10 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.folderExecution, str):
+        transp_job.folderExecution = str(transp_job.folderExecution)
+
     start_folder = transp_job.folderExecution.split("/")[1]  # e.g. pool001, nobackup1
 
     if start_folder not in ["home", "Users"]:
@@ -520,13 +524,15 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name):
         slurm_settings={"name": job_name+"_finish", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.machineSettings["folderWork"], str):
+        transp_job.machineSettings["folderWork"] = str(transp_job.machineSettings["folderWork"])
+
     # ---------------
     # Execution command
     # ---------------
 
-    start_folder = transp_job.machineSettings["folderWork"].split("/")[
-        1
-    ]  # e.g. pool001, nobackup1
+    start_folder = transp_job.machineSettings["folderWork"].split("/")[1]  # e.g. pool001, nobackup1
 
     if start_folder not in ["home", "Users"]:
         txt_bind = f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
