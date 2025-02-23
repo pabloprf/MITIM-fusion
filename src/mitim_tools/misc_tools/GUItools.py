@@ -18,10 +18,7 @@ try:
 
     # -----------------------------
 except ImportError:
-    print(
-        " > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",
-        typeMsg="w",
-    )
+    print(" > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",typeMsg="w",)
 
     class QTabWidget:
         pass
@@ -40,7 +37,10 @@ class FigureNotebook:
     def __init__(self, windowtitle, parent=None, geometry="1800x900", vertical=True):
         plt.ioff()
 
-        self.app = QtWidgets.QApplication.instance()
+        try:
+            self.app = QtWidgets.QApplication.instance()
+        except NameError:
+            raise Exception("[MITIM] MITIM was installed without [pyqt] option, no GUI available")
         if self.app is None:
             self.app = QtWidgets.QApplication(sys.argv)
         self.app.setStyle("Fusion")
