@@ -42,7 +42,8 @@ dependencies = [
   "botorch",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   "psutil",
-  "onnx2pytorch"    # Stricly not for MITIM, but good to use ONNX models
+  "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
+  "tensorflow"
 ]
 
 [project.optional-dependencies]
@@ -71,9 +72,6 @@ omfit = [
 test = [
   "pytest",
   "coverage",
-]
-nn = [
-  "tensorflow",
 ]
 
 [project.urls]
