@@ -3,6 +3,7 @@
 import os
 import sys
 import sphinx_rtd_theme
+import sphinxcontrib.images
 
 # Add your project directory to the sys.path
 sys.path.insert(0, os.path.abspath("."))
@@ -99,3 +100,12 @@ html_context = {
         'download_text': 'Download',
     },
 }
+
+
+# Monkey-patch status_iterator to accept extra positional arguments.
+def status_iterator(iterable, *args, **kwargs):
+    # Simply iterate over the items without additional processing.
+    for item in iterable:
+        yield item
+
+sphinxcontrib.images.status_iterator = status_iterator
