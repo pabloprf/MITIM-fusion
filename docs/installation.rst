@@ -6,10 +6,6 @@ Installation
 	:local:
 	:depth: 1
 
-.. attention::
-   MITIM requires python>=3.9, a requirement driven by the optimization capabilities in PyTorch.
-   If you do not have python>=3.9 but still want to use MITIM's non-optimization features, you may try to install each python package individually (see ``setup.py`` file) and skip ``botorch``. However, this option is not supported and there is no assurance the code will work.
-
 Instructions
 ------------
 
