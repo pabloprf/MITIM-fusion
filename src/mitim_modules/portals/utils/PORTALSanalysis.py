@@ -122,8 +122,17 @@ class PORTALSanalyzer:
     # PREPARATION
     # ****************************************************************************
 
-    def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}, ilast=None):
+    def prep_metrics(self, ilast=None):
         print("- Interpreting PORTALS results")
+
+        try:
+            calculateRicci = {
+                "d0": self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_d0'],
+                "l":  self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_lambda']
+            }
+        except:
+            calculateRicci={"d0": 2.0, "l": 0.5}
+
 
         # What's the last iteration?
         if ilast is None:
