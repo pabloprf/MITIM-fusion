@@ -222,6 +222,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     relax = torch.ones_like(x) * relax
 
     its_since_last_dyn_relax = 0
+    i = 0
     for i in range(int(maxiter) - 1):
         # --------------------------------------------------------------------------------------------------------
         # Iterative Strategy
