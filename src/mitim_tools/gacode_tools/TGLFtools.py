@@ -528,6 +528,7 @@ class TGLF:
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+        attempts_execution=1,
     ):
 
         if runWaveForms is None: runWaveForms = []
@@ -553,6 +554,7 @@ class TGLF:
             extra_name=extra_name,
             slurm_setup=slurm_setup,
             anticipate_problems=anticipate_problems,
+            attempts_execution=attempts_execution
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -576,7 +578,12 @@ class TGLF:
 
         self.FolderTGLFlast = folderlast
 
-    def _run(self, tglf_executor, tglf_executor_full={}, **kwargs_TGLFrun):
+    def _run(
+            self,
+            tglf_executor,
+            tglf_executor_full={},
+            **kwargs_TGLFrun
+            ):
         """
         extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor for WF
         """
@@ -610,12 +617,10 @@ class TGLF:
                     if "launchSlurm" in kwargs_TGLFrun
                     else True
                 ),
+                attempts_execution=kwargs_TGLFrun["attempts_execution"],
             )
         else:
-            print(
-                "\t- TGLF not run because all results files found (please ensure consistency!)",
-                typeMsg="i",
-            )
+            print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Waveform if requested

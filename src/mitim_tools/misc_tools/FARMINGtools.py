@@ -150,7 +150,15 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
-    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
+    def run(
+            self,
+            waitYN=True,
+            timeoutSecs=1e6,
+            removeScratchFolders=True,
+            check_if_files_received=True,
+            attempts_execution=1,
+            ):
+
         if not waitYN:
             removeScratchFolders = False
 
@@ -201,6 +209,7 @@ class mitim_job:
             timeoutSecs=timeoutSecs,
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
+            attempts_execution=attempts_execution,
         )
 
         # Get jobid
@@ -227,6 +236,7 @@ class mitim_job:
         removeScratchFolders=True,
         check_if_files_received=True,
         check_files_in_folder={},
+        attempts_execution = 1,
     ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
@@ -236,9 +246,7 @@ class mitim_job:
         wait_for_all_commands = True
 
         time_init = datetime.datetime.now()
-        print(
-            f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------"
-        )
+        print(f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------")
 
         # ~~~~~~ Connect
         self.connect(log_file=self.folder_local / "paramiko.log")
@@ -252,18 +260,28 @@ class mitim_job:
         self.send()
 
         # ~~~~~~ Execute
-        output, error = self.execute(
-            comm,
-            wait_for_all_commands=wait_for_all_commands,
-            printYN=True,
-            timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-        )
+        execution_counter = 0
 
-        # ~~~~~~ Retrieve
-        received = self.retrieve(
-            check_if_files_received=check_if_files_received,
-            check_files_in_folder=check_files_in_folder,
-        )
+        while execution_counter < attempts_execution:
+            output, error = self.execute(
+                comm,
+                wait_for_all_commands=wait_for_all_commands,
+                printYN=True,
+                timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+            )
+
+            # ~~~~~~ Retrieve
+            received = self.retrieve(
+                check_if_files_received=check_if_files_received,
+                check_files_in_folder=check_files_in_folder,
+            )
+
+            execution_counter += 1
+
+            if received:
+                break
+            else:
+                print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating {execution_counter}/{attempts_execution}")
 
         # ~~~~~~ Remove scratch folder
         if received:
@@ -274,23 +292,15 @@ class mitim_job:
             # If not received, write output and error to files
             self._write_debugging_files(output, error)
 
-            cont = print(
-                "\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",
-                typeMsg="q",
-            )
+            cont = print("\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",typeMsg="q")
             if not cont:
-                print(
-                    "[mitim] Stopped with embed(), you can look at output and error",
-                    typeMsg="w",
-                )
+                print("[mitim] Stopped with embed(), you can look at output and error",typeMsg="w",)
                 embed()
 
         # ~~~~~~ Close
         self.close()
 
-        print(
-            f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n"
-        )
+        print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
     def _write_debugging_files(self, output, error, extra_name=""):
             with open(self.folder_local / f"mitim_farming{extra_name}.out", "w") as f:

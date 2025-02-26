@@ -419,7 +419,7 @@ def tglf_scan_trick(
     # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
     num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
     if cores_per_tglf_instance == 1:
-        minutes = 5 * (num_cases / 60) # Ad-hoc formula
+        minutes = 10 * (num_cases / 60) # Ad-hoc formula
     else:
         minutes = 1 * (num_cases / 60) # Ad-hoc formula
 
@@ -437,7 +437,8 @@ def tglf_scan_trick(
                         "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
-                    positionIon=impurityPosition+1
+                    positionIon=impurityPosition+1,
+                    attempts_execution=2, 
                     )
 
     # Remove folders because they are heavy to carry many throughout

@@ -919,6 +919,7 @@ def runTGLF(
     name="",
     launchSlurm=True,
     cores_todo_array=32,
+    attempts_execution=1,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
@@ -1042,7 +1043,10 @@ def runTGLF(
         shellPostCommands=shellPostCommands,
     )
 
-    tglf_job.run(removeScratchFolders=True)
+    tglf_job.run(
+        removeScratchFolders=True,
+        attempts_execution=attempts_execution
+        )
 
     # ---------------------------------------------
     # Organize
