@@ -1962,7 +1962,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
-        ls="-o" if self.opt_fun.mitim_model.avoidPoints is None else "--o",
+        ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -1978,7 +1978,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
-            ls="-o" if self.opt_fun.mitim_model.avoidPoints else "-.o",
+            ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
