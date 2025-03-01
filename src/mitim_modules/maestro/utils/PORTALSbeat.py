@@ -71,7 +71,7 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
-        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point and self.folder_starting_point is not None:
 
             # PORTALS just with one point
             portals_fun.optimization_options['initialization_options']['initial_training'] = 1
@@ -258,6 +258,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
         reusing_surrogate_data = False
+        self.folder_starting_point = None
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             if 'surrogate_options' not in self.optimization_options:
                 self.optimization_options['surrogate_options'] = {}
@@ -268,6 +269,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
 
             reusing_surrogate_data = True
+            
 
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
