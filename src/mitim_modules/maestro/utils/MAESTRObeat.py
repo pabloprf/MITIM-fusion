@@ -267,6 +267,8 @@ class creator:
         def __call__(self):
 
             if 'roa' in self.profiles_insert:
+                if 'rho' in self.profiles_insert:
+                    print('\t- Both r/a and rho provided to insert profiles, using roa',typeMsg = 'w')
                 self.profiles_insert['rho'] = np.interp(self.profiles_insert['roa'], self.initialize_instance.profiles_current.derived['roa'], self.initialize_instance.profiles_current.profiles['rho(-)'])
 
             rho, Te, Ti, ne = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne']
