@@ -294,7 +294,7 @@ class mitim_job:
 
             cont = print("\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",typeMsg="q")
             if not cont:
-                print("[mitim] Stopped with embed(), you can look at output and error",typeMsg="w",)
+                print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                 embed()
 
         # ~~~~~~ Close
@@ -367,7 +367,7 @@ class mitim_job:
                 allow_agent=True,
             )
         except paramiko.NoValidConnectionsError:
-            print("\t> Connection failed!, trying again in 5 seconds", typeMsg="w")
+            print("\t> Paramiko's connection failed! trying again in 5 seconds to avoid random drops", typeMsg="w")
             time.sleep(5)
             self.ssh.connect(
                 self.target_host,
@@ -382,9 +382,7 @@ class mitim_job:
         try:
             self.sftp = self.ssh.open_sftp()
         except paramiko.sftp.SFTPError:
-            raise Exception(
-                "[mitim] SFTPError: Your bashrc on the server likely contains print statements"
-            )
+            raise Exception("[MITIM] SFTPError: Your bashrc on the server likely contains print statements")
 
     def define_jump(self):
         if self.jump_host is not None:

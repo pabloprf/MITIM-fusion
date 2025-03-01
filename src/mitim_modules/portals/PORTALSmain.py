@@ -53,7 +53,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["convergence_options"]["maximum_iterations"] = 50
     optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
     optimization_options['convergence_options']['stopping_criteria_parameters'] =  {
-                "maximum_value": 5e-3,  # Reducing residual by 1000x is enough
+                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
                 "ricci_value": 0.1,

@@ -132,7 +132,7 @@ class transp_output:
         if self.LocationCDF.is_dir(): 
             self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
-                raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
+                raise ValueError(f"[MITIM] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
 
         self.f = read_cdf_transp(self.LocationCDF) 

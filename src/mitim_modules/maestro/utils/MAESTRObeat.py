@@ -418,7 +418,7 @@ class creator_from_eped(creator_from_parameterization):
         self.aLn_guess = aLn
         self.parameters = kwargs_eped
         if self.BetaN is None:
-            raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
+            raise ValueError('[MITIM] BetaN must be provided in the current implementation of EPED creator')
 
     def __call__(self):
 
