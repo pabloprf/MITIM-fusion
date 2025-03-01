@@ -356,15 +356,28 @@ class mitim_job:
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         # Connect to the host
-        self.ssh.connect(
-            self.target_host,
-            username=self.target_user,
-            disabled_algorithms=disabled_algorithms,
-            key_filename=self.key_filename,
-            port=self.port,
-            sock=self.sock,
-            allow_agent=True,
-        )
+        try:
+            self.ssh.connect(
+                self.target_host,
+                username=self.target_user,
+                disabled_algorithms=disabled_algorithms,
+                key_filename=self.key_filename,
+                port=self.port,
+                sock=self.sock,
+                allow_agent=True,
+            )
+        except paramiko.NoValidConnectionsError:
+            print("\t> Connection failed!, trying again in 5 seconds", typeMsg="w")
+            time.sleep(5)
+            self.ssh.connect(
+                self.target_host,
+                username=self.target_user,
+                disabled_algorithms=disabled_algorithms,
+                key_filename=self.key_filename,
+                port=self.port,
+                sock=self.sock,
+                allow_agent=True,
+            )
 
         try:
             self.sftp = self.ssh.open_sftp()
