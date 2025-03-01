@@ -288,6 +288,9 @@ class creator:
             # Update derived
             self.initialize_instance.profiles_current.deriveQuantities()
 
+        def _inform_save(self, **kwargs):
+            pass
+
 # --------------------------------------------------------------------------------------------
 # Profile creator from parameterization: Create profiles from a parameterization
 # --------------------------------------------------------------------------------------------
@@ -432,7 +435,7 @@ class creator_from_eped(creator_from_parameterization):
 
         # Potentially save variables
         np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)
-        self.beat_eped._inform_save(eped_results)
+        self._inform_save(eped_results)
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
@@ -445,3 +448,13 @@ class creator_from_eped(creator_from_parameterization):
 
         # Save
         np.save(self.folder / 'eped_results.npy', eped_results)
+
+    def _inform_save(self, eped_results = None):
+
+        from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+        beat_eped_for_save = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
+
+        if eped_results is None:
+            eped_results =  np.load(beat_eped_for_save.folder_output / 'eped_results.npy', allow_pickle=True).item()
+
+        beat_eped_for_save._inform_save(eped_results)

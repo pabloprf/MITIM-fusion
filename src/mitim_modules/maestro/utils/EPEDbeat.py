@@ -241,16 +241,16 @@ class eped_beat(beat):
                 "delta995": 0.05,
                 "neped_20": 0.75,
                 "BetaN": 0.1,
-                "zeff": 0.25,
-                "Tesep_keV": 0.5,
-                "nesep_ratio": 0.5
+                "zeff": 0.3,
+                "Tesep_keV": 0.75,
+                "nesep_ratio": 0.75
             }
 
             scan_results = {}
             for k,key in enumerate(scan_relative):
                 inputs_scan = list(copy.deepcopy(inputs_to_nn))
                 scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
-                for m in np.linspace(1-scan_relative[key],1+scan_relative[key],10):
+                for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
                     inputs_scan[k] = inputs_to_nn[k]*m
                     ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
                     scan_results[key]['ptop_kPa'].append(ptop_kPa0)

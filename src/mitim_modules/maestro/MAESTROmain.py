@@ -186,6 +186,10 @@ class maestro:
             # Initializer can also save important parameters
             self.beat.initialize._inform_save()
 
+            # Creator can also save important parameters
+            if self.beat.initialize.profile_creator is not None:
+                self.beat.initialize.profile_creator._inform_save()
+
             if self.profiles_with_engineering_parameters is None:
                 # First initialization, freeze engineering parameters
                 self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
