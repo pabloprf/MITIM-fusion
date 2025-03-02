@@ -215,7 +215,7 @@ class portals_beat(beat):
                 fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
                 opt_fun.plotMetrics(fig=fig)
             else:
-                print('\t\t- PORTALS has not run enough to plot anything')
+                print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
 
         msg = '\t\t- Plotting of PORTALS beat done'
 

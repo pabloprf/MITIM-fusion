@@ -74,10 +74,7 @@ class PORTALSanalyzer:
 
                 return opt_fun_ini
         else:
-            print(
-                "\t- Folder does not exist, are you sure you are on the right path?",
-                typeMsg="w",
-            )
+            print("\t- Folder does not exist, are you sure you are on the right path?",typeMsg="w")
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):

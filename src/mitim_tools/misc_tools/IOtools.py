@@ -1878,7 +1878,7 @@ def shutil_rmtree(item):
 
 def unpickle_mitim(file):
 
-    with open(file, "rb") as handle:
+    with open(str(file), "rb") as handle:
         try:
             state = pickle_dill.load(handle)
         except:

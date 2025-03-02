@@ -804,6 +804,6 @@ def add_axes_powerstate_plot(figMain, num_kp=3):
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")
-    state = IOtools.unpickle_mitim(pickle)
+    state = IOtools.unpickle_mitim(file)
 
     return state
