@@ -366,7 +366,7 @@ class mitim_job:
                 sock=self.sock,
                 allow_agent=True,
             )
-        except paramiko.NoValidConnectionsError:
+        except paramiko.ssh_exception.NoValidConnectionsError:
             print("\t> Paramiko's connection failed! trying again in 5 seconds to avoid random drops", typeMsg="w")
             time.sleep(5)
             self.ssh.connect(
