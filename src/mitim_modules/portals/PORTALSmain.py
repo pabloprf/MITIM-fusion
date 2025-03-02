@@ -61,7 +61,7 @@ def default_namelist(optimization_options, CGYROrun=False):
                 "ricci_lambda": 0.5,
             }
 
-    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-3
+    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-2
 
     # Surrogate
     optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
