@@ -346,14 +346,14 @@ class eped_beat(beat):
                 fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
                 axs = fig.subplot_mosaic(
                     """
-                    ABC
-                    DEF
-                    GHI
-                    JKL
-                    """, sharey=True
+                    ABCD
+                    EFGH
+                    IJKL
+                    """,
                 )
                 axs = [ ax for ax in axs.values() ]
 
+                max_val = 0
                 for i,key in enumerate(loaded_results['scan_results']):
 
                     axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color='b', markersize=3)
@@ -364,9 +364,14 @@ class eped_beat(beat):
                     axs[i].axvline(loaded_results['inputs_to_nn'][i], color='g', ls='--')
                     axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color='g', ls='--')
 
+                    max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
+                
+                for i,key in enumerate(loaded_results['scan_results']):
+                    axs[i].set_ylim([0,1.2*max_val])
                     axs[i].set_xlabel(key)
                     axs[i].set_ylabel(ikey)
                     GRAPHICStools.addDenseAxis(axs[i])
+
 
                 GRAPHICStools.adjust_figure_layout(fig)
 

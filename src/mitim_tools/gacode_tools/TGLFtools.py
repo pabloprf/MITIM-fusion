@@ -617,7 +617,7 @@ class TGLF:
                     if "launchSlurm" in kwargs_TGLFrun
                     else True
                 ),
-                attempts_execution=kwargs_TGLFrun["attempts_execution"],
+                attempts_execution=kwargs_TGLFrun.get("attempts_execution",1),
             )
         else:
             print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
