@@ -1,6 +1,7 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
+from mitim_tools.opt_tools import STRATEGYtools
 
 """
 Quick way to plot several input.gacode files together (assumes unix in remote)
@@ -26,11 +27,13 @@ def main():
     parser.add_argument(
         "--full", required=False, default=False, action="store_true"
     )  
+    parser.add_argument('--fix', required=False, default=False, action='store_true')
 
     args = parser.parse_args()
 
     remote = args.remote
     folders = args.folders
+    fix = args.fix
 
     # Retrieve remote
     if remote is not None:
@@ -40,6 +43,25 @@ def main():
             folders_remote = folders
         FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
         folders = [IOtools.expandPath('./') / IOtools.reducePathLevel(folder)[-1] for folder in folders]
+    
+        # Fix pkl optimization portals in remote
+        if fix:
+            for folder in folders:
+                folderB = folder / 'Beats'
+                for beats_folder in folderB.iterdir():
+                    subdirs = [subdir for subdir in beats_folder.iterdir() if subdir.is_dir()]
+                    if 'run_portals' in [subdir.name for subdir in subdirs]:
+                        folder_portals = [subdir for subdir in subdirs if subdir.name == 'run_portals'][0]
+                        STRATEGYtools.clean_state(folder_portals) 
+
+                        results = [subdir for subdir in subdirs if subdir.name == 'beat_results']
+                        if len(results) > 0:
+                            folder_output = results[0]
+                            try:
+                                STRATEGYtools.clean_state(folder_output) 
+                            except:
+                                pass
+
     # -----
 
     folders = [IOtools.expandPath(folder) for folder in folders]

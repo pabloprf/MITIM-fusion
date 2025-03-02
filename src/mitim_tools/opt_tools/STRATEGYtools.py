@@ -1958,3 +1958,5 @@ def clean_state(folder):
     aux.folderOutputs = folder / "Outputs"
 
     aux.save()
+
+    print(">><<>><< Cleaning state of the class... Done", typeMsg="i")

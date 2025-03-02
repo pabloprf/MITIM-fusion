@@ -1881,9 +1881,8 @@ def unpickle_mitim(file):
     with open(file, "rb") as handle:
         try:
             state = pickle_dill.load(handle)
-        except Exception as e:
-            print(e)
-            print("Pickled file could not be opened, going with custom unpickler...")
+        except:
+            print("\t- Pickled file could not be opened, going with custom unpickler...",typeMsg='w')
             handle.seek(0)
             state = CPU_Unpickler(handle).load()
 
@@ -1905,6 +1904,6 @@ class CPU_Unpickler(pickle_dill.Unpickler):
             try:
                 return super().find_class(module, name)
             except ModuleNotFoundError:
-                print(f"\t* Module not found when unpickling: {module} {name}; returning dummy", "w")
+                print(f"\t\tModule not found: {module} {name}; returning dummy", typeMsg="i")
                 return super().find_class("torch._utils", name)
 
