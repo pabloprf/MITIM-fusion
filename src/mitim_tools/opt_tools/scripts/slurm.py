@@ -4,9 +4,10 @@ from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 """
 This script is used to launch a slurm job of a MITIM optimization.
-The optimization script should receive both "folder" and "--seed", i.e.:
+The optimization script should receive both "--folder" and "--seed", i.e.:
 
         import argparse
+        from pathlib import Path
         parser = argparse.ArgumentParser()
         parser.add_argument("folder", type=str)
         parser.add_argument("--seed", type=int, required=False, default=0)
