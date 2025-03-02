@@ -2,7 +2,6 @@ import shutil
 import copy
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
@@ -376,10 +375,14 @@ def portals_beat_soft_criteria(portals_namelist):
 
     portals_namelist_soft = copy.deepcopy(portals_namelist)
 
+    # Relaxation of stopping criteria
     if 'optimization_options' not in portals_namelist_soft:
         portals_namelist_soft['optimization_options'] = {}
+    if 'convergence_options' not in portals_namelist_soft['optimization_options']:
+        portals_namelist_soft['optimization_options']['convergence_options'] = {}
+    if 'stopping_criteria_parameters' not in portals_namelist_soft['optimization_options']['convergence_options']:
+        portals_namelist_soft['optimization_options']['convergence_options']['stopping_criteria_parameters'] = {}
 
-    # Relaxation of stopping criteria
     portals_namelist_soft['optimization_options']['convergence_options']["maximum_iterations"] = 15
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["maximum_value"] = 10e-3
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
