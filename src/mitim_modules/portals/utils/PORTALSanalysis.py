@@ -2,7 +2,6 @@ import copy
 import torch
 import numpy as np
 import pandas as pd
-import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
@@ -44,8 +43,7 @@ class PORTALSanalyzer:
         self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters["powerstate"]
 
         # Read dictionaries
-        with open(self.opt_fun.mitim_model.optimization_object.optimization_extra, "rb") as f:
-            self.mitim_runs = pickle_dill.load(f)
+        self.mitim_runs = IOtools.unpickle_mitim(self.opt_fun.mitim_model.optimization_object.optimization_extra)
 
         self.prep_metrics()
 

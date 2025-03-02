@@ -397,8 +397,7 @@ class MITIM_BO:
             exists = False
             if self.optimization_extra.exists():
                 try:
-                    with open(self.optimization_extra, "rb") as handle:
-                        dictStore = pickle_dill.load(handle)
+                    dictStore = IOtools.unpickle_mitim(self.optimization_extra)
                     exists = True
                 except (ModuleNotFoundError,EOFError):
                     exists = False
@@ -880,13 +879,7 @@ class MITIM_BO:
             except:
                 pass
 
-            with open(stateFile, "rb") as f:
-                try:
-                    aux = pickle_dill.load(f)
-                except:
-                    print("Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler...")
-                    f.seek(0)
-                    aux = CPU_Unpickler(f).load()
+            aux = IOtools.unpickle_mitim(stateFile)
 
             aux = self.prepare_for_read_MITIMBO(aux)
 
@@ -1931,15 +1924,11 @@ def read_from_scratch(file):
 
     return mitim
 
-
 def avoidClassInitialization(folderWork):
     print("It was requested that I try read the class before I initialize and select parameters...",typeMsg="i")
 
     try:
-        with open(
-            IOtools.expandPath(folderWork) / "Outputs" / "optimization_object.pkl", "rb"
-        ) as handle:
-            aux = pickle_dill.load(handle)
+        aux = IOtools.unpickle_mitim(folderWork / "Outputs" / "optimization_object.pkl")
         opt_fun = aux.optimization_object
         cold_start = False
         print("\t- cold_start was successful", typeMsg="i")
@@ -1952,19 +1941,20 @@ def avoidClassInitialization(folderWork):
 
     return opt_fun, cold_start
 
+def clean_state(folder):
+    '''
+    This function cleans the a read pickle file to avoid problems with reading cases run in a different machine
+    '''        
 
-"""
-To load pickled GPU-cuda classes on a CPU machine
-From:
-	https://github.com/pytorch/pytorch/issues/16797
-	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
-"""
+    print(">><<>><< Cleaning state of the class...", typeMsg="i")
 
-class CPU_Unpickler(pickle_dill.Unpickler):
-    def find_class(self, module, name):
-        import io
+    aux = read_from_scratch(folder / "Outputs" / "optimization_object.pkl")
 
-        if module == "torch.storage" and name == "_load_from_bytes":
-            return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
-        else:
-            return super().find_class(module, name)
+    from mitim_modules.portals import PORTALStools, PORTALSmain
+
+    if isinstance(aux.optimization_object, PORTALSmain.portals):
+        aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+
+    aux.folderOutputs = folder / "Outputs"
+
+    aux.save()

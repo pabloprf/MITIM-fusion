@@ -391,8 +391,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # Extra operations: Store data that will be useful to store and interpret in a machine were this was not run
 
         if self.optimization_extra is not None:
-            with open(self.optimization_extra, "rb") as handle:
-                dictStore = pickle_dill.load(handle)                            #TODO: This will fail in future versions of torch
+            dictStore = IOtools.unpickle_mitim(self.optimization_extra)                           #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
                 self.folder / "Initialization" / "input.gacode_modified"
