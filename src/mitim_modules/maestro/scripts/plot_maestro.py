@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--remote",type=str, required=False, default=None)
+    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None)
     parser.add_argument(
         "--beats", type=int, required=False, default=2
     )  # Last beats to plot
@@ -33,7 +34,11 @@ def main():
 
     # Retrieve remote
     if remote is not None:
-        FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders, purge_tmp_files = True)
+        if args.remote_folders is not None:
+            folders_remote = args.remote_folders
+        else:
+            folders_remote = folders
+        FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
         folders = [IOtools.expandPath('./') / IOtools.reducePathLevel(folder)[-1] for folder in folders]
     # -----
 
