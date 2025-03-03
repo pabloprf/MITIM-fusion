@@ -1230,6 +1230,9 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
 
     '''
 
+    # Ensure Paths
+    folder_local = Path(folder_local)
+
     job_name = 'file_retrieval'
 
     # ------------------------------------------------
@@ -1252,14 +1255,14 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
     # Run
     # ------------------------------------------------
 
-    perform_quick_remote_execution(
-        folder_local,
-        machine,
-        command,
-        output_files = output_files,
-        output_folders = output_folders,
-        job_name = job_name
-    )
+    # perform_quick_remote_execution(
+    #     folder_local,
+    #     machine,
+    #     command,
+    #     output_files = output_files,
+    #     output_folders = output_folders,
+    #     job_name = job_name
+    # )
 
     if purge_tmp_files:
         # Remote files created in this process
