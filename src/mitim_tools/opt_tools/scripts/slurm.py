@@ -42,7 +42,8 @@ def run_slurm(
     n=32,
     seed_specific=0,
     extra=None,
-    machine="local"
+    machine="local",
+    exclude=None,
 ):
     script = IOtools.expandPath(script)
     folder = IOtools.expandPath(folder)
@@ -73,7 +74,7 @@ def run_slurm(
             folder_remote=folder,
             folder_local=folder,
             nameJob=nameJob,
-            slurm={"partition": partition},
+            slurm={"partition": partition, 'exclude': exclude},
             minutes=int(60 * hours),
             ntasks=1,
             cpuspertask=n,
@@ -99,6 +100,7 @@ def main():
     parser.add_argument("--machine", type=str, required=False, default="local")
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=16)
+    parser.add_argument("--exclude", type=str, required=False, default=None)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)
     parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
     parser.add_argument("--seeds", type=int, required=False, default=1)
@@ -125,6 +127,7 @@ def main():
         extra=args.extra,
         seed_specific=args.seed_specific,
         machine=args.machine,
+        exclude=None,
     )
 
 if __name__ == "__main__":
