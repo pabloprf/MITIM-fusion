@@ -1267,6 +1267,12 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
             (folder_local / file).unlink(missing_ok=True)
     
 
+    # Return local addresses
+    folders = [folder_local / IOtools.reducePathLevel(folder)[-1] for folder in folders_remote]
+    files = [folder_local / IOtools.reducePathLevel(file)[-1] for file in files_remote]
+
+    return files, folders
+
 
 if __name__ == "__main__":
     printEfficiencySLURM(sys.argv[1])

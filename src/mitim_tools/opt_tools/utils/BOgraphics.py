@@ -837,7 +837,7 @@ def retrieveResults(
 
         print(" - Grabbing remote")
         folderWork.mkdir(parents=True, exist_ok=True)
-        FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
+        _,_ = FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow

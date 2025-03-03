@@ -12,21 +12,32 @@ Notes:
     - remote option will copy it locally in the current directory
 """
 
+def fix_maestro(folders):
+    for folder in folders:
+        folderB = folder / 'Beats'
+        for beats_folder in folderB.iterdir():
+            subdirs = [subdir for subdir in beats_folder.iterdir() if subdir.is_dir()]
+            if 'run_portals' in [subdir.name for subdir in subdirs]:
+                folder_portals = [subdir for subdir in subdirs if subdir.name == 'run_portals'][0]
+                STRATEGYtools.clean_state(folder_portals) 
+
+                results = [subdir for subdir in subdirs if subdir.name == 'beat_results']
+                if len(results) > 0:
+                    folder_output = results[0]
+                    try:
+                        STRATEGYtools.clean_state(folder_output) 
+                    except:
+                        pass
+
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--remote",type=str, required=False, default=None)
     parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None)
-    parser.add_argument(
-        "--beats", type=int, required=False, default=2
-    )  # Last beats to plot
-    parser.add_argument(
-        "--only", type=str, required=False, default=None
-    )
-    parser.add_argument(
-        "--full", required=False, default=False, action="store_true"
-    )  
+    parser.add_argument("--beats", type=int, required=False, default=2)  # Last beats to plot
+    parser.add_argument("--only", type=str, required=False, default=None)
+    parser.add_argument("--full", required=False, default=False, action="store_true")  
     parser.add_argument('--fix', required=False, default=False, action='store_true')
 
     args = parser.parse_args()
@@ -41,26 +52,11 @@ def main():
             folders_remote = args.remote_folders
         else:
             folders_remote = folders
-        FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
-        folders = [IOtools.expandPath('./') / IOtools.reducePathLevel(folder)[-1] for folder in folders]
+        _, folders = FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
     
         # Fix pkl optimization portals in remote
         if fix:
-            for folder in folders:
-                folderB = folder / 'Beats'
-                for beats_folder in folderB.iterdir():
-                    subdirs = [subdir for subdir in beats_folder.iterdir() if subdir.is_dir()]
-                    if 'run_portals' in [subdir.name for subdir in subdirs]:
-                        folder_portals = [subdir for subdir in subdirs if subdir.name == 'run_portals'][0]
-                        STRATEGYtools.clean_state(folder_portals) 
-
-                        results = [subdir for subdir in subdirs if subdir.name == 'beat_results']
-                        if len(results) > 0:
-                            folder_output = results[0]
-                            try:
-                                STRATEGYtools.clean_state(folder_output) 
-                            except:
-                                pass
+            fix_maestro(folders)
 
     # -----
 
