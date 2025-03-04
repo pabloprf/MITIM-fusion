@@ -31,7 +31,10 @@ class PORTALSanalyzer:
             else self.opt_fun.folder / "Analysis"
         )
 
-        self.folder.mkdir(parents=True, exist_ok=True)
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            print(f"\t- Could not create folder {IOtools.clipstr(self.folder)} because of permissions", typeMsg="w")
 
         self.fn = None
 
