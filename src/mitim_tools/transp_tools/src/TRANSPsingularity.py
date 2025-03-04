@@ -579,6 +579,10 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
         slurm_settings={"name": job_name+"_look", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.machineSettings["folderWork"], str):
+        transp_job.machineSettings["folderWork"] = str(transp_job.machineSettings["folderWork"])
+
     # ---------------
     # Execution command
     # ---------------
