@@ -3,6 +3,7 @@ from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import LOGtools, GRAPHICStools
 from mitim_tools.gs_tools import GEQtools
+from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -13,10 +14,10 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 MARKERSIZE = 1
 LW = 1.0
 
-def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
+def grabMAESTRO(folder):
 
     # Find beat results from folders
-    folder_beats = folder / 'Beats'
+    folder_beats = Path(folder) / 'Beats'
     beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
@@ -42,6 +43,12 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
     m = maestro(folder, terminal_outputs = True, overall_log_file = False)
     for i,beat in enumerate(beat_types):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
+
+    return m
+
+def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
+
+    m = grabMAESTRO(folder)
 
     # Plot
     m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)

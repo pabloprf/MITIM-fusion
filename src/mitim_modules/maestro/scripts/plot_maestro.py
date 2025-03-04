@@ -67,8 +67,10 @@ def main():
 
     fn = GUItools.FigureNotebook("MAESTRO")
 
+    ms = []
     for folder in folders:
         m = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
+        ms.append(m)
 
     fn.show()
 

@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -311,6 +311,9 @@ class eped_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
+        if fn is None:
+            fn = GUItools.FigureNotebook("EPED")
+
         fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
@@ -341,9 +344,9 @@ class eped_beat(beat):
         GRAPHICStools.adjust_figure_layout(fig)
 
         if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
-            
             for ikey in ['ptop_kPa', 'wtop_psipol']:
                 fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
+
                 axs = fig.subplot_mosaic(
                     """
                     ABCD
@@ -353,31 +356,49 @@ class eped_beat(beat):
                 )
                 axs = [ ax for ax in axs.values() ]
 
-                max_val = 0
-                for i,key in enumerate(loaded_results['scan_results']):
-
-                    axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color='b', markersize=3)
-
-                    axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results[ikey]], 'o', color='r')
-                    axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color='g')
-
-                    axs[i].axvline(loaded_results['inputs_to_nn'][i], color='g', ls='--')
-                    axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color='g', ls='--')
-
-                    max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
-                
-                for i,key in enumerate(loaded_results['scan_results']):
-                    axs[i].set_ylim([0,1.2*max_val])
-                    axs[i].set_xlabel(key)
-                    axs[i].set_ylabel(ikey)
-                    GRAPHICStools.addDenseAxis(axs[i])
-
+                self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
 
                 GRAPHICStools.adjust_figure_layout(fig)
 
         msg = '\t\t- Plotting of EPED beat done'
 
         return msg
+            
+    def _plot_scan(self, ikey, loaded_results = None, axs = None, color = 'b'):
+
+        if loaded_results is None:
+            loaded_results, _ = self.grab_output()
+
+        if axs is None:
+            fig = plt.figure()
+
+            axs = fig.subplot_mosaic(
+                """
+                ABCD
+                EFGH
+                IJKL
+                """,
+            )
+            axs = [ ax for ax in axs.values() ]
+
+        max_val = 0
+        for i,key in enumerate(loaded_results['scan_results']):
+
+            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
+
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results[ikey]], '^', color=color)
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+
+            axs[i].axvline(loaded_results['inputs_to_nn'][i], color=color, ls='--')
+            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
+
+            max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
+        
+        for i,key in enumerate(loaded_results['scan_results']):
+            axs[i].set_ylim([0,1.2*max_val])
+            axs[i].set_xlabel(key)
+            axs[i].set_ylabel(ikey)
+            GRAPHICStools.addDenseAxis(axs[i])
 
     def finalize_maestro(self):
 
