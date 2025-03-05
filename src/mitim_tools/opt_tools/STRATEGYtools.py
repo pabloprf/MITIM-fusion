@@ -714,7 +714,7 @@ class MITIM_BO:
                 # When cold_starting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
                 self.strategy_options_use = current_step.strategy_options_use
 
-                print("\t* Step successfully cold_started from pkl file", typeMsg="i")
+                print("\t* Step successfully restarted from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
             if self.cold_start:
