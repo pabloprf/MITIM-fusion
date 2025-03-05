@@ -125,9 +125,13 @@ class transp_beat(beat):
 
     def run(self, **kwargs):
 
+        mpi_settings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1})
+
+        print(f'\t\t- Running TRANSP beat with MPI settings: ',mpi_settings)
+
         self.transp.run(
             self.machine_run,
-            mpisettings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}),
+            mpisettings = mpi_settings,
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
