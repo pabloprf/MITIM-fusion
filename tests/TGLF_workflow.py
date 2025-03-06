@@ -38,3 +38,6 @@ tglf.run(
 tglf.read(label="EM")
 
 tglf.plot(labels=["EM","ES"])
+
+# Required if running in non-interactive mode
+tglf.fn.show()
