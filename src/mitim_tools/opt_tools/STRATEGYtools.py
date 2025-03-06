@@ -660,10 +660,10 @@ class MITIM_BO:
             pointsExpected = len(self.train_X) + self.best_points
             if not self.cold_start:
                 if not pointsTabular >= pointsExpected:
-                    print(f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
+                    print(f"--> CSV file does not contain information for all points ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
                     self.cold_start = True
                 else:
-                    print(f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
+                    print(f"--> CSV file contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
 
             # In the case of starting from previous, do not run BO process.
             if not self.cold_start:

@@ -10718,11 +10718,11 @@ class transp_output:
             # If minorities are not in steady-state, some portion goes to their dW/dt
             if self.GainminT[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$dW/dt$ = {self.GainminT[it]:.1f}MW"] = [0.15,0.85]
-                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk, {self.GainminT[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %)', typeMsg='w')
             # Fast heating
             if self.PfichT_dir[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$P_{{ICH,fast}}$ = {self.PfichT_dir[it]:.1f}MW"] = [0.35,0.85]
-                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk, {self.PfichT_dir[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %))', typeMsg='w')
             
             GRAPHICStools.diagram_plotModule(
                 ax,
