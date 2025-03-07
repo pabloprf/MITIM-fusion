@@ -2283,31 +2283,23 @@ class TGLF:
 
                 ax = ax02
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
-                ax.set_title(
-                    "Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
-                )
+                ax.set_title("Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax12
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
-                ax.set_title(
-                    "Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
-                )
+                ax.set_title("Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax03
 
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
-                ax.set_title(
-                    "Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
-                )
+                ax.set_title("Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax13
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
-                ax.set_title(
-                    "Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
-                )
+                ax.set_title("Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------
@@ -2471,49 +2463,17 @@ class TGLF:
         self.positionIon_scan = positionIon
 
         # ----
-        x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[],[],[],[],[],[]
         Qe_gb, Qi_gb, Ge_gb, Gi_gb = [], [], [], []
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-            isThisTheRightReadResults = (subFolderTGLF in ikey) and (
-                variable
-                == "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1]
-            )
+            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1])
 
             if isThisTheRightReadResults:
 
                 self.scans[label]["results_tags"].append(ikey)
-
-                x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                )
+                x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[],[],[],[],[],[]
                 Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0 = [], [], [], []
                 etalow_g0, etalow_f0, etalow_k0 = [], [], []
                 for irho_cont in range(len(self.rhos)):
@@ -2528,40 +2488,14 @@ class TGLF:
                     ky0.append(self.results[ikey]["TGLFout"][irho].ky)
                     g0.append(self.results[ikey]["TGLFout"][irho].g)
                     f0.append(self.results[ikey]["TGLFout"][irho].f)
-                    eta10.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "eta_ITGTEM"
-                        ]
-                    )
-                    eta20.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "eta_ITGETG"
-                        ]
-                    )
-                    etalow_g0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "g_lowk_max"
-                        ]
-                    )
-                    etalow_k0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "k_lowk_max"
-                        ]
-                    )
-                    etalow_f0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "f_lowk_max"
-                        ]
-                    )
-                    itg0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"]
-                    )
-                    tem0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"]
-                    )
-                    etg0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"]
-                    )
+                    eta10.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGTEM"])
+                    eta20.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGETG"])
+                    etalow_g0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["g_lowk_max"])
+                    etalow_k0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["k_lowk_max"])
+                    etalow_f0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["f_lowk_max"])
+                    itg0.append(self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"])
+                    tem0.append(self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"])
+                    etg0.append(self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"])
 
                     if self.results[ikey]["TGLFout"][irho].unnormalization_successful:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
@@ -2618,25 +2552,13 @@ class TGLF:
         self.scans[label]["g"] = np.array(g)
         self.scans[label]["f"] = np.array(f)
         if len(self.scans[label]["ky"].shape) == 2:
-            self.scans[label]["ky"] = self.scans[label]["ky"].reshape(
-                (1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1])
-            )
-            self.scans[label]["g"] = self.scans[label]["g"].reshape(
-                (1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1])
-            )
-            self.scans[label]["f"] = self.scans[label]["f"].reshape(
-                (1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1])
-            )
+            self.scans[label]["ky"] = self.scans[label]["ky"].reshape((1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1]))
+            self.scans[label]["g"] = self.scans[label]["g"].reshape((1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1]))
+            self.scans[label]["f"] = self.scans[label]["f"].reshape((1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1]))
         else:
-            self.scans[label]["ky"] = np.transpose(
-                self.scans[label]["ky"], axes=[1, 0, 2]
-            )
-            self.scans[label]["g"] = np.transpose(
-                self.scans[label]["g"], axes=[1, 0, 2, 3]
-            )
-            self.scans[label]["f"] = np.transpose(
-                self.scans[label]["f"], axes=[1, 0, 2, 3]
-            )
+            self.scans[label]["ky"] = np.transpose(self.scans[label]["ky"], axes=[1, 0, 2])
+            self.scans[label]["g"] = np.transpose(self.scans[label]["g"], axes=[1, 0, 2, 3])
+            self.scans[label]["f"] = np.transpose(self.scans[label]["f"], axes=[1, 0, 2, 3])
 
     def plotScan(
         self,
