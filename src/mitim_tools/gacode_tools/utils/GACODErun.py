@@ -918,7 +918,7 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=32,
+    max_cores_in_machine=16,
     attempts_execution=1,
 ):
     """
@@ -931,10 +931,7 @@ def runTGLF(
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
-    tglf_job.define_machine_quick(
-        "tglf",
-        f"mitim_{name}",
-    )
+    tglf_job.define_machine_quick("tglf",f"mitim_{name}")
 
     folders, folders_red = [], []
     for subFolderTGLF in tglf_executor:
@@ -967,18 +964,34 @@ def runTGLF(
     total_tglf_cores = int(cores_tglf * len(rhos) * len(tglf_executor))
 
     if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
-        typeRun = "job" if total_tglf_cores <= cores_todo_array else "array"
+        typeRun = "job" if total_tglf_cores <= max_cores_in_machine else "array"
     else:
         typeRun = "bash"
 
     if typeRun in ["bash", "job"]:
 
-        # TGLF launches
-        TGLFcommand = ""
+        max_jobs = max_cores_in_machine // cores_tglf
+
+        print(f"\t- TGLF will be executed as {typeRun} mode (total cores: {total_tglf_cores},  cores per TGLF: {cores_tglf}), max cores in parallel: {max_jobs}",typeMsg="i")
+
+        # Build the bash script with job control enabled and a loop to limit parallel jobs
+        TGLFcommand = "#!/usr/bin/env bash\n"
+        TGLFcommand += "set -m\n"  # Enable job control even in non-interactive mode
+        TGLFcommand += f"max_jobs={max_jobs}\n\n"  # Set the maximum number of parallel processes
+
+        # Create a bash array of folders
+        TGLFcommand += "folders=(\n"
         for folder in folders_red:
-            TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
-        TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
-        
+            TGLFcommand += f'    "{folder}"\n'
+        TGLFcommand += ")\n\n"
+
+        # Loop over each folder and launch tglf, waiting if we've reached max_jobs
+        TGLFcommand += "for folder in \"${folders[@]}\"; do\n"
+        TGLFcommand += f"    tglf -e \"$folder\" -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+        TGLFcommand += "    while (( $(jobs -r | wc -l) >= max_jobs )); do sleep 1; done\n"
+        TGLFcommand += "done\n\n"
+        TGLFcommand += "wait\n"
+
         # Slurm setup
         array_list = None
         shellPreCommands = None
