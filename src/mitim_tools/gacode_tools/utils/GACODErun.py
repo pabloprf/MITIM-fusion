@@ -1075,3 +1075,171 @@ def runTGLF(
         print("\t\t- All files were successfully retrieved")
     else:
         print("\t\t- Some files were not retrieved", typeMsg="w")
+
+# Function to handle remote submit of NEO jobs
+def runNEO(
+    FolderGACODE,
+    neo_executor,
+    minutes=5,
+    cores_neo=4,
+    extraFlag="",
+    filesToRetrieve=["out.neo.run"],
+    name="",
+    launchSlurm=True,
+    cores_todo_array=32,
+):
+    """
+    launchSlurm = True -> Launch as a batch job in the machine chosen
+    launchSlurm = False -> Launch locally as a bash script
+    """
+
+    tmpFolder = FolderGACODE / "tmp_neo"
+    IOtools.askNewFolder(tmpFolder, force=True)
+
+    neo_job = FARMINGtools.mitim_job(tmpFolder)
+
+    neo_job.define_machine_quick(
+        "neo",
+        f"mitim_{name}",
+    )
+
+    folders, folders_red = [], []
+    for subFolderNEO in neo_executor:
+
+        rhos = list(neo_executor[subFolderNEO].keys())
+
+        # ---------------------------------------------
+        # Prepare files and folders
+        # ---------------------------------------------
+
+        for i, rho in enumerate(rhos):
+            print(f"\t- Preparing NEO ({subFolderNEO}) at rho={rho:.4f}")
+
+            folderNEO_this = tmpFolder / subFolderNEO / f"rho_{rho:.4f}"
+            folders.append(folderNEO_this)
+
+            folderNEO_this_rel = folderNEO_this.relative_to(tmpFolder)
+            folders_red.append(folderNEO_this_rel.as_posix() if neo_job.machineSettings['machine'] != 'local' else str(folderNEO_this_rel))
+
+            folderNEO_this.mkdir(parents=True, exist_ok=True)
+
+            fileNEO = folderNEO_this / "input.neo"
+            with open(fileNEO, "w") as ff:
+                ff.write(neo_executor[subFolderNEO][rho]["inputs"])
+
+    # ---------------------------------------------
+    # Prepare command
+    # ---------------------------------------------
+
+    total_neo_cores = int(cores_neo * len(rhos) * len(neo_executor))
+
+    if launchSlurm and ("partition" in neo_job.machineSettings["slurm"]):
+        typeRun = "job" if total_neo_cores <= cores_todo_array else "array"
+    else:
+        typeRun = "bash"
+
+    if typeRun in ["bash", "job"]:
+
+        # NEO launches
+        NEOcommand = ""
+        for folder in folders_red:
+            NEOcommand += f"neo -e {folder} -n {cores_neo} -p {neo_job.folderExecution} &\n"
+        NEOcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+        
+        # Slurm setup
+        array_list = None
+        shellPreCommands = None
+        shellPostCommands = None
+        ntasks = total_neo_cores
+        cpuspertask = cores_neo
+
+    elif typeRun in ["array"]:
+        #raise Exception("TGLF array not implemented yet")
+        print(f"\t- NEO will be executed in SLURM as job array due to its size (cpus: {total_neo_cores})",typeMsg="i")
+
+        # As a pre-command, organize all folders in a simpler way
+        shellPreCommands = []
+        shellPostCommands = []
+        array_list = []
+        for i, folder in enumerate(folders_red):
+            array_list.append(f"{i}")
+            folder_temp_array = f"run{i}"
+            folder_actual = folder
+            shellPreCommands.append(f"mkdir {neo_job.folderExecution}/{folder_temp_array}; cp {neo_job.folderExecution}/{folder_actual}/*  {neo_job.folderExecution}/{folder_temp_array}/.")
+            shellPostCommands.append(f"cp {neo_job.folderExecution}/{folder_temp_array}/* {neo_job.folderExecution}/{folder_actual}/.; rm -r {neo_job.folderExecution}/{folder_temp_array}")
+
+        # TGLF launches
+        indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
+        NEOcommand = f'neo -e {indexed_folder} -n {cores_neo} -p {neo_job.folderExecution} 1> {neo_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {neo_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+
+        # Slurm setup
+        array_list = ",".join(array_list)
+        ntasks = 1
+        cpuspertask = cores_neo
+
+    # ---------------------------------------------
+    # Execute
+    # ---------------------------------------------
+
+    neo_job.define_machine(
+        "neo",
+        f"mitim_{name}",
+        launchSlurm=launchSlurm,
+        slurm_settings={
+            "minutes": minutes,
+            "ntasks": ntasks,
+            "name": name,
+            "cpuspertask": cpuspertask,
+            "job_array": array_list,
+            #"nodes": 1,
+        },
+    )
+
+    # I would like the mitim_job to check if the retrieved folders were complete
+    check_files_in_folder = {}
+    for folder in folders_red:
+        check_files_in_folder[folder] = filesToRetrieve
+    # ---------------------------------------------
+
+    neo_job.prep(
+        NEOcommand,
+        input_folders=folders,
+        output_folders=folders_red,
+        check_files_in_folder=check_files_in_folder,
+        shellPreCommands=shellPreCommands,
+        shellPostCommands=shellPostCommands,
+    )
+
+    neo_job.run(removeScratchFolders=False)
+
+    # ---------------------------------------------
+    # Organize
+    # ---------------------------------------------
+
+    print("\t- Retrieving files and changing names for storing")
+    fineall = True
+    for subFolderNEO in neo_executor:
+
+        for i, rho in enumerate(neo_executor[subFolderNEO].keys()):
+            for file in filesToRetrieve:
+                original_file = f"{file}_{rho:.4f}{extraFlag}"
+                final_destination = (
+                    neo_executor[subFolderNEO][rho]['folder'] / f"{original_file}"
+                )
+                final_destination.unlink(missing_ok=True)
+
+                temp_file = tmpFolder / subFolderNEO / f"rho_{rho:.4f}" / f"{file}"
+                temp_file.replace(final_destination)
+
+                fineall = fineall and final_destination.exists()
+
+                if not final_destination.exists():
+                    print(
+                        f"\t!! file {file} ({original_file}) could not be retrived",
+                        typeMsg="w",
+                    )
+
+    if fineall:
+        print("\t\t- All files were successfully retrieved")
+    else:
+        print("\t\t- Some files were not retrieved", typeMsg="w")

@@ -12,6 +12,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 from pathlib import Path
 import numpy as np
+import copy
 
 # Useful constants
 mi_D = 2.01355
@@ -188,8 +189,7 @@ class NEO:
         subFolderNEO,
         NEOsettings = None,     # ????, Move to .prep? 
         extraOptions = None,    # ????, Move to .prep?
-        # Slurm controls
-        launchSlurm=True,
+        launchSlurm = True,
         cold_start = False,
         forceIfcold_start=False,
         extra_name="exe",
@@ -203,11 +203,18 @@ class NEO:
         # Prepares inputs
         neo_executor, neo_executor_full, folderlast = self._prepare_run_radii(
             subFolderNEO,
-            #tglf_executor={},
-            #tglf_executor_full={},
-            #NEOsettings=NEOsettings,
-            #extraOptions=extraOptions,
-            #multipliers=multipliers,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup,
+            )
+
+        # Runs NEO
+        self._run(
+            neo_executor,
+            neo_executor_full=neo_executor_full,
+            #TGLFsettings=TGLFsettings,
             #runWaveForms=runWaveForms,
             #forceClosestUnstableWF=forceClosestUnstableWF,
             #ApplyCorrections=ApplyCorrections,
@@ -217,13 +224,18 @@ class NEO:
             forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
-            #anticipate_problems=anticipate_problems,
-        )
+            )
+
+        self.FolderNEOlast = folderlast
 
     # Prepares executables for run
     def _prepare_run_radii(
+        self,
         subFolderNEO,
-        launchSlurm = None,
+        rhos = None,
+        neo_executor={},
+        neo_executor_full={},
+        launchSlurm = True,
         cold_start = None,
         extra_name = None,
         slurm_setup = None,
@@ -235,8 +247,10 @@ class NEO:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # Init
+        if rhos is None:
+            rhos = self.rhos
         inputs = copy.deepcopy(self.inputsNEO)
-        FolderNEO = self.fodler / subFolderNEO
+        FolderNEO = self.folder / subFolderNEO
 
         # Error check???
         ResultsFiles_new = []
@@ -251,13 +265,17 @@ class NEO:
             self.ResultsFiles,
             FolderNEO,
             cold_start=cold_start,
-        )
+            )
 
         if len(rhosEvaluate) == len(rhos):
             # All radii need to be evaluated
             IOtools.askNewFolder(FolderNEO, force=forceIfcold_start)
 
         # Convert back to a string because that's how runTGLFproduction operates
+        tmp = copy.deepcopy(self.inputsNEO)
+        for rho in tmp:
+            tmp[rho].file = FolderNEO / f'input.neo_{rho:.4f}'
+            tmp[rho].writeCurrentStatus()
         inputFileNEO = inputToVariable(FolderNEO, rhos)
 
         # Organizes execution data
@@ -278,6 +296,46 @@ class NEO:
 
         # Output
         return neo_executor, neo_executor_full, FolderNEO
+
+    # Manages submitting the run
+    def _run(
+        self, neo_executor, neo_executor_full={}, **kwargs_NEOrun
+        ):
+        print("\n> Run NEO")
+
+        c = 0
+        for subFolderNEO in neo_executor:
+            c += len(neo_executor[subFolderNEO])
+
+        if c > 0:
+            GACODErun.runNEO(
+                self.folder,
+                neo_executor,
+                filesToRetrieve=self.ResultsFiles,
+                minutes=(
+                    kwargs_NEOrun["slurm_setup"]["minutes"]
+                    if "slurm_setup" in kwargs_NEOrun
+                    and "minutes" in kwargs_NEOrun["slurm_setup"]
+                    else 5
+                ),
+                cores_neo=(
+                    kwargs_NEOrun["slurm_setup"]["cores"]
+                    if "slurm_setup" in kwargs_NEOrun
+                    and "cores" in kwargs_NEOrun["slurm_setup"]
+                    else 4
+                ),
+                name=f"neo_{self.nameRunid}{kwargs_NEOrun['extra_name'] if 'extra_name' in kwargs_NEOrun else ''}",
+                launchSlurm=(
+                    kwargs_NEOrun["launchSlurm"]
+                    if "launchSlurm" in kwargs_NEOrun
+                    else True
+                ),
+            )
+        else:
+            print(
+                "\t- NEO not run because all results files found (please ensure consistency!)",
+                typeMsg="i",
+            )
 
     #######################################################################
     #
@@ -474,7 +532,7 @@ class NEOinput:
             if kk not in input_dict.keys():
                 print('Using default value for parameter: %s'%(kk))
             else:
-                if kk in ['EQUILIBRIUM_MODEL']:
+                if kk in ['EQUILIBRIUM_MODEL', 'IPCCW', 'BTCCW']:
                     self.geom[kk] = '%i'%(input_dict[kk])
                 else:
                     self.geom[kk] = '%0.5E'%(input_dict[kk])
