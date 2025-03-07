@@ -6,6 +6,50 @@ from IPython import embed
 
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
+# Defines default params for NEO
+def addNEOcontrol(NEOsettings,minimal=True):
+    # Minimum working set for model flags
+    if minimal:
+        NEOoptions = {
+            'EQUILIBRIUM_MODEL': 2,     # Use Miller geometry
+            'SILENT_FLAG':0,            # Print outputs
+            'SIM_MODEL':2,              # Run just NEO
+            'SPITZER_MODEL':0,          # Don't do Spitzer problem
+            'COLLISION_MODEL':4,        # Choose collision operator
+            'ROTATION_MODEL':2,         # Include rotation
+            }
+    # Define every model flag, still defaults
+    else:
+        NEOoptions = IOtools.generateMITIMNamelist(
+            __mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False
+            )
+
+    # Standard set of NEO resolution parameters
+    with open(__mitimroot__ / "templates" / "input.neo.models.json", "r") as f:
+        settings = json.load(f)
+
+    if str(NEOsettings) in settings:
+        sett = settings[str(NEOsettings)]
+        label = sett["label"]
+        for ikey in sett["controls"]:
+            NEOoptions[ikey] = sett["controls"][ikey]
+    else:
+        print("\t- NEOsettings not found in input.neo.models.json, using defaults",typeMsg="w",)
+        label = "unspecified"
+
+    # --------------------------------
+    # From dictionary to text
+    # --------------------------------
+
+    NEOinput = [""]
+    for ikey in NEOoptions:
+        NEOinput.append(f"{ikey} = {NEOoptions[ikey]}")
+    NEOinput.append("")
+    NEOinput.append("# -- Begin overlay")
+    NEOinput.append("")
+
+    # Output
+    return NEOinput, NEOoptions, label
 
 def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     """

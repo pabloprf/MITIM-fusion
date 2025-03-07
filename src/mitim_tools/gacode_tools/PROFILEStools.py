@@ -3834,6 +3834,159 @@ class PROFILES_GACODE:
     # Code conversions
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
+    # Writes all the wanted inputs for NEO per given by input.gacode file
+    def to_neo(self, rhos=[0.5], NEOsettings=0):
+        # <> Function to interpolate a curve <> 
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Init
+        inputsNEO = {}
+
+        # Loop over rhos
+        for rho in rhos:
+            # Define interpolator at this rho
+            def interpolator(y):
+                return interpolation_function(rho, self.profiles['rho(-)'],y).item()
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Controls come from options
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            
+            # Grabs rebuilt controls
+            NEOinput, NEOoptions, label = GACODEdefaults.addNEOcontrol(NEOsettings, minimal=True)
+
+            # Define controls
+            controls = NEOoptions
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Species come from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            # Useful constants
+            # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
+            mass_ref = 2.0
+            mass_e = 0.000272445 * mass_ref
+
+            # Density/temperature normalization
+            n_norm = interpolator(self.profiles['ne(10^19/m^3)'])
+            T_norm = interpolator(self.profiles['te(keV)'])
+
+            # First species is electrons
+            species = {
+                1: {
+                    'NU': interpolator(self.derived['xnue']),            # Normalized collision frequency, only need for first
+                    'Z': -1.0,
+                    'MASS': mass_e/mass_ref,
+                    'DENS': interpolator(self.profiles['ne(10^19/m^3)'])/n_norm,
+                    'TEMP': interpolator(self.profiles['te(keV)'])/T_norm,
+                    'DLNNDR': interpolator(self.derived['aLne']),
+                    'DLNTDR': interpolator(self.derived['aLTe']),
+                    'ANISO_MODEL':1,      # Default assumes isotropic para/perp Temp
+                    }
+                }
+
+            # Loop over species
+            for ii in range(len(self.Species)):
+                species[ii+2] = {
+                    'Z': self.Species[ii]['Z'],
+                    'MASS': self.Species[ii]['A']/mass_ref,
+                    'DENS': interpolator(self.profiles['ne(10^19/m^3)'])/n_norm,
+                    'TEMP': interpolator(self.profiles['te(keV)'])/T_norm,
+                    'DLNNDR': interpolator(self.derived['aLni'][:,ii]),
+                    'DLNTDR': interpolator(self.derived['aLTi'][:,0] if self.Species[ii]['S'] == 'therm' else self.derived["aLTi"][:,ii]),
+                    'ANISO_MODEL':1,      # Default assumes isotropic para/perp Temp
+                    }
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Plasma comes from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            plasma = {
+                'N_SPECIES': len(species),
+                'OMEGA_ROT':(
+                    interpolator(self.profiles['w0(rad/s)'])
+                    /(interpolator(self.derived['c_s'])/self.derived['a'])
+                    ),
+                'OMEGA_ROT_DERIV':(
+                    interpolator(self.derived['dw0dr'])
+                    *(self.derived['a']**2/interpolator(self.derived['c_s']))
+                    )
+                }
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Geometry comes from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            
+            parameters = {
+                'RMIN_OVER_A': interpolator(self.derived['roa']),
+                'RMAJ_OVER_A':interpolator(self.derived['Rmajoa']),
+                'KAPPA': interpolator(self.profiles['kappa(-)']),
+                'S_KAPPA': interpolator(self.derived['s_kappa']),
+                'DELTA': interpolator(self.profiles['delta(-)']),
+                'S_DELTA': interpolator(self.derived['s_delta']),
+                'ZETA': interpolator(self.profiles['zeta(-)']),
+                'S_ZETA': interpolator(self.derived['s_zeta']),
+                'SHIFT': interpolator(self.derived['dRmaj/dr']),
+                'ZMAG_OVER_A': interpolator(self.derived['Zmagoa']),
+                'S_ZMAG': interpolator(self.derived['dZmaj/dr']),
+                'Q': interpolator(self.profiles['q(-)']),
+                'SHEAR': interpolator(self.derived['s_q']),
+                'BETA_STAR': 0.0, # Dummy value !!!!!!!
+                'IPCCW': 0.0, # Dummy value !!!!!
+                'BTCCW': 0.0, # Dummy value !!!!!
+                'RHO_STAR': 0.0, # Dummy value !!!!!
+                'DPHI0DR': 0.0,         # Default value, for radial electric field
+                'EPAR0': 0.0,           # Default value, for inductive toroidal field ~V_loop/R0
+                'EPAR0_SPITZER': 1.0,   # Default value, only used in SPITZER_MODEL=1 (not defulat)
+                'SHAPE_SIN3': interpolator(self.profiles['shape_sin3(-)']),
+                'SHAPE_S_SIN3': 0.0,
+                'SHAPE_SIN4': interpolator(self.profiles['shape_sin4(-)']),
+                'SHAPE_S_SIN4': 0.0,
+                'SHAPE_SIN5': interpolator(self.profiles['shape_sin5(-)']),
+                'SHAPE_S_SIN5': 0.0,
+                'SHAPE_SIN6': interpolator(self.profiles['shape_sin6(-)']),
+                'SHAPE_S_SIN6': 0.0,
+                'SHAPE_COS0': interpolator(self.profiles['shape_cos0(-)']),
+                'SHAPE_S_COS0': 0.0,
+                'SHAPE_COS1': interpolator(self.profiles['shape_cos1(-)']),
+                'SHAPE_S_COS1': 0.0,
+                'SHAPE_COS2': interpolator(self.profiles['shape_cos2(-)']),
+                'SHAPE_S_COS2': 0.0,
+                'SHAPE_COS3': interpolator(self.profiles['shape_cos3(-)']),
+                'SHAPE_S_COS3': 0.0,
+                'SHAPE_COS4': interpolator(self.profiles['shape_cos4(-)']),
+                'SHAPE_S_COS4': 0.0,
+                'SHAPE_COS5': interpolator(self.profiles['shape_cos5(-)']),
+                'SHAPE_S_COS5': 0.0,
+                'SHAPE_COS6': interpolator(self.profiles['shape_cos6(-)']),
+                'SHAPE_S_COS6': 0.0,
+                }
+
+            # Error check
+            geom = {}
+            for kk in parameters:
+                #geom[kk] = torch.nan_to_num(
+                #    torch.from_numpy(parameters[kk]) 
+                #    if type(parameters[kk]) is np.ndarray else parameters[kk], 
+                #    nan=0.0, posinf=1E10, neginf=-1E10
+                #    )
+                geom[kk] = parameters[kk]
+            
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Merging
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            input_dict = {**controls, **plasma, **geom}
+
+            for ii in range(len(species)):
+                for kk in species[ii+1]:
+                    input_dict[f'{kk}_{ii+1}'] = species[ii+1][kk]
+
+            inputsNEO[rho] = input_dict
+
+        return inputsNEO
+
+
     def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
         # <> Function to interpolate a curve <> 
