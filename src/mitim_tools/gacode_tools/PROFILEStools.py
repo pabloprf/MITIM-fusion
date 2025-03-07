@@ -1151,6 +1151,14 @@ class PROFILES_GACODE:
         self.derived['pprime'] = 1E-7 * self.profiles["q(-)"]*self.derived['a']**2/self.profiles["rmin(m)"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
         self.derived['pprime'][0] = 0.0
 
+        # Normalized pressure gradient
+        self.derived['beta_star'] = (
+            -1*deriv_gacode(self.profiles["ptot(Pa)"])
+            * self.derived['a']
+            *2 * 4*np.pi*1e-7
+            / self.derived["B_unit"]**2
+            )
+
         self.derived['drmin/dr'] = deriv_gacode(self.profiles["rmin(m)"])
         self.derived['dRmaj/dr'] = deriv_gacode(self.profiles["rmaj(m)"])
         self.derived['dZmaj/dr'] = deriv_gacode(self.profiles["zmag(m)"])
@@ -1158,8 +1166,18 @@ class PROFILES_GACODE:
         self.derived['s_kappa']  = self.profiles["rmin(m)"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
         self.derived['s_delta']  = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["delta(-)"])
         self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
+
+        # Gets shear of higher shaping moments
+        keys = [
+            kk for kk in self.profiles.keys() 
+            if kk.startswith('shape_sin') or kk.startswith('shape_cos')
+            ]
+        for kk in keys:
+            lab = kk.split('_')[-1].split('(')[0]
+            self.derived['shape_s_%s'%(lab)] = self.profiles["rmin(m)"] * deriv_gacode(self.profiles[kk])
         
         s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
+        self.derived['shear'] = s
         self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
 
         '''
@@ -3869,12 +3887,18 @@ class PROFILES_GACODE:
 
             # Density/temperature normalization
             n_norm = interpolator(self.profiles['ne(10^19/m^3)'])
-            T_norm = interpolator(self.profiles['te(keV)'])
+            T_norm = interpolator(self.profiles['ti(keV)'][:,0])
+
+            import scipy.constants as cnt
+            v_norm = np.sqrt(
+                T_norm*1e3*cnt.e
+                /(mass_ref*cnt.m_u)
+                ) # [m/s]
 
             # First species is electrons
             species = {
                 1: {
-                    'NU': interpolator(self.derived['xnue']),            # Normalized collision frequency, only need for first
+                    'NU': interpolator(self.derived['xnue']*self.derived['c_s'])/v_norm,  # Normalized collision frequency, only need for first
                     'Z': -1.0,
                     'MASS': mass_e/mass_ref,
                     'DENS': interpolator(self.profiles['ne(10^19/m^3)'])/n_norm,
@@ -3890,8 +3914,8 @@ class PROFILES_GACODE:
                 species[ii+2] = {
                     'Z': self.Species[ii]['Z'],
                     'MASS': self.Species[ii]['A']/mass_ref,
-                    'DENS': interpolator(self.profiles['ne(10^19/m^3)'])/n_norm,
-                    'TEMP': interpolator(self.profiles['te(keV)'])/T_norm,
+                    'DENS': interpolator(self.profiles['ni(10^19/m^3)'][:,ii])/n_norm,
+                    'TEMP': interpolator(self.profiles['ti(keV)'][:,ii])/T_norm,
                     'DLNNDR': interpolator(self.derived['aLni'][:,ii]),
                     'DLNTDR': interpolator(self.derived['aLTi'][:,0] if self.Species[ii]['S'] == 'therm' else self.derived["aLTi"][:,ii]),
                     'ANISO_MODEL':1,      # Default assumes isotropic para/perp Temp
@@ -3905,11 +3929,11 @@ class PROFILES_GACODE:
                 'N_SPECIES': len(species),
                 'OMEGA_ROT':(
                     interpolator(self.profiles['w0(rad/s)'])
-                    /(interpolator(self.derived['c_s'])/self.derived['a'])
+                    /(v_norm/self.derived['a'])
                     ),
-                'OMEGA_ROT_DERIV':(
+                'OMEGA_ROT_DERIV':abs(
                     interpolator(self.derived['dw0dr'])
-                    *(self.derived['a']**2/interpolator(self.derived['c_s']))
+                    *(self.derived['a']**2/v_norm)
                     )
                 }
 
@@ -3930,36 +3954,42 @@ class PROFILES_GACODE:
                 'ZMAG_OVER_A': interpolator(self.derived['Zmagoa']),
                 'S_ZMAG': interpolator(self.derived['dZmaj/dr']),
                 'Q': interpolator(self.profiles['q(-)']),
-                'SHEAR': interpolator(self.derived['s_q']),
-                'BETA_STAR': 0.0, # Dummy value !!!!!!!
-                'IPCCW': 0.0, # Dummy value !!!!!
-                'BTCCW': 0.0, # Dummy value !!!!!
-                'RHO_STAR': 0.0, # Dummy value !!!!!
+                'SHEAR': interpolator(self.derived['shear']),
+                'BETA_STAR': interpolator(self.derived['beta_star']),
+                'IPCCW': -1,          # Hardcoded to CCW !!!!!!!
+                'BTCCW': -1,          # Hardcoded to CCW !!!!!!!
+                'RHO_STAR': (
+                    np.sqrt(
+                        mass_ref*cnt.m_u *T_norm*1e3*cnt.e
+                        )
+                    /abs(cnt.e * interpolator(self.derived['B_unit']))
+                    / self.derived['a']
+                    ),
                 'DPHI0DR': 0.0,         # Default value, for radial electric field
                 'EPAR0': 0.0,           # Default value, for inductive toroidal field ~V_loop/R0
                 'EPAR0_SPITZER': 1.0,   # Default value, only used in SPITZER_MODEL=1 (not defulat)
                 'SHAPE_SIN3': interpolator(self.profiles['shape_sin3(-)']),
-                'SHAPE_S_SIN3': 0.0,
+                'SHAPE_S_SIN3': interpolator(self.derived['shape_s_sin3']),
                 'SHAPE_SIN4': interpolator(self.profiles['shape_sin4(-)']),
-                'SHAPE_S_SIN4': 0.0,
+                'SHAPE_S_SIN4': interpolator(self.derived['shape_s_sin4']),
                 'SHAPE_SIN5': interpolator(self.profiles['shape_sin5(-)']),
-                'SHAPE_S_SIN5': 0.0,
+                'SHAPE_S_SIN5': interpolator(self.derived['shape_s_sin5']),
                 'SHAPE_SIN6': interpolator(self.profiles['shape_sin6(-)']),
-                'SHAPE_S_SIN6': 0.0,
+                'SHAPE_S_SIN6': interpolator(self.derived['shape_s_sin6']),
                 'SHAPE_COS0': interpolator(self.profiles['shape_cos0(-)']),
-                'SHAPE_S_COS0': 0.0,
+                'SHAPE_S_COS0': interpolator(self.derived['shape_s_cos0']),
                 'SHAPE_COS1': interpolator(self.profiles['shape_cos1(-)']),
-                'SHAPE_S_COS1': 0.0,
+                'SHAPE_S_COS1': interpolator(self.derived['shape_s_cos1']),
                 'SHAPE_COS2': interpolator(self.profiles['shape_cos2(-)']),
-                'SHAPE_S_COS2': 0.0,
+                'SHAPE_S_COS2': interpolator(self.derived['shape_s_cos2']),
                 'SHAPE_COS3': interpolator(self.profiles['shape_cos3(-)']),
-                'SHAPE_S_COS3': 0.0,
+                'SHAPE_S_COS3': interpolator(self.derived['shape_s_cos3']),
                 'SHAPE_COS4': interpolator(self.profiles['shape_cos4(-)']),
-                'SHAPE_S_COS4': 0.0,
+                'SHAPE_S_COS4': interpolator(self.derived['shape_s_cos4']),
                 'SHAPE_COS5': interpolator(self.profiles['shape_cos5(-)']),
-                'SHAPE_S_COS5': 0.0,
+                'SHAPE_S_COS5': interpolator(self.derived['shape_s_cos5']),
                 'SHAPE_COS6': interpolator(self.profiles['shape_cos6(-)']),
-                'SHAPE_S_COS6': 0.0,
+                'SHAPE_S_COS6': interpolator(self.derived['shape_s_cos6']),
                 }
 
             # Error check
