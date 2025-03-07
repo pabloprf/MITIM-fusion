@@ -555,6 +555,16 @@ class MITIM_BO:
                 forceNew=forceNewTabulars,
             )
 
+            # If the file turned out to be empty, I will force it to be new
+            if forceNewTabulars and (len(self.optimization_data.data) == 0):
+                print("\t* Tabular file is empty, forcing new, to avoid radii/channel specifications from dummy sims",typeMsg="w")
+                self.optimization_data = BOgraphics.optimization_data(
+                    inputs,
+                    self.outputs,
+                    file=self.folderOutputs / "optimization_data.csv",
+                    forceNew=True,
+                )
+
             res_file = self.folderOutputs / "optimization_results.out"
 
             """
