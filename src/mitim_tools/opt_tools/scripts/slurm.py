@@ -44,6 +44,7 @@ def run_slurm(
     extra=None,
     machine="local",
     exclude=None,
+    mem=None
 ):
     script = IOtools.expandPath(script)
     folder = IOtools.expandPath(folder)
@@ -78,6 +79,7 @@ def run_slurm(
             minutes=int(60 * hours),
             ntasks=1,
             cpuspertask=n,
+            memory_req_by_job=mem,
         )
 
         command_execution = f"sbatch {fileSBATCH}"
