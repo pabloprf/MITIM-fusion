@@ -1025,7 +1025,11 @@ def create_slurm_execution_files(
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
+    elif memory_req_by_job is not None:
+        print(f"\t\t- Memory requested by job ({memory_req_by_job}), overwriting memory requested by config file", typeMsg="i")
+        memory_req = memory_req_by_job
     else:
+        print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
 
     """
