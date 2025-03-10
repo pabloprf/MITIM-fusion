@@ -116,6 +116,10 @@ class mitim_job:
         # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
 
+    @staticmethod
+    def grab_machine_settings(code):
+        return CONFIGread.machineSettings(code=code)
+
     def prep(
         self,
         command,

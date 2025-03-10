@@ -19,7 +19,8 @@
         "machine":    "local",
         "username":   "exampleusername",
         "scratch":    "/Users/exampleusername/scratch/",
-        "modules":    ""
+        "modules":    "",
+        "cores_per_node":  8
     },
     "perlmutter": {
         "machine":          "perlmutter.nersc.gov", 
@@ -33,7 +34,8 @@
             "mem":          "4GB",
             "exclusive":    false,
             "email":      "optional@email"
-        }
+        },
+        "cores_per_node":  32
     },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
@@ -43,14 +45,16 @@
             "exclusive":    true
         },
         "scratch":          "/nobackup1/exampleusername/",
-        "modules":    ""
+        "modules":    "",
+        "cores_per_node":  32
     },
     "mfews": {
         "machine":    "mfews02.psfc.mit.edu", 
         "username":   "exampleusername",
         "port":            9224,
         "scratch":    "/home/exampleusername/scratch/",
-        "modules":    ""
+        "modules":    "",
+        "cores_per_node":  8
     },
     "globus": {
         "username":   "exampleusername",
@@ -70,6 +74,7 @@
             "mem":          "4GB",
             "email":      "optional@email",
             "exclude":      "node584"
-        }
+        },
+        "cores_per_node":  8
     }
 }
