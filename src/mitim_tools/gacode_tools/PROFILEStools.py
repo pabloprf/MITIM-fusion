@@ -3917,7 +3917,9 @@ class PROFILES_GACODE:
                     'DENS': interpolator(self.profiles['ni(10^19/m^3)'][:,ii])/n_norm,
                     'TEMP': interpolator(self.profiles['ti(keV)'][:,ii])/T_norm,
                     'DLNNDR': interpolator(self.derived['aLni'][:,ii]),
-                    'DLNTDR': interpolator(self.derived['aLTi'][:,0] if self.Species[ii]['S'] == 'therm' else self.derived["aLTi"][:,ii]),
+                    'DLNTDR': interpolator(
+                        self.derived['aLTi'][:,0] if self.Species[ii]['S'] == 'therm' else self.derived["aLTi"][:,ii]
+                        ),
                     'ANISO_MODEL':1,      # Default assumes isotropic para/perp Temp
                     }
 
@@ -3956,8 +3958,8 @@ class PROFILES_GACODE:
                 'Q': interpolator(self.profiles['q(-)']),
                 'SHEAR': interpolator(self.derived['shear']),
                 'BETA_STAR': interpolator(self.derived['beta_star']),
-                'IPCCW': -1,          # Hardcoded to CCW !!!!!!!
-                'BTCCW': -1,          # Hardcoded to CCW !!!!!!!
+                'IPCCW': 1,          # Hardcoded to CCW !!!!!!!
+                'BTCCW': 1,          # Hardcoded to CCW !!!!!!!
                 'RHO_STAR': (
                     np.sqrt(
                         mass_ref*cnt.m_u *T_norm*1e3*cnt.e
