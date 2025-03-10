@@ -2,7 +2,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import (
     NORMtools,
-    #GACODEinterpret,
+    GACODEinterpret,
     #GACODEdefaults,
     #GACODEplotting,
     GACODErun,
@@ -13,6 +13,7 @@ from IPython import embed
 from pathlib import Path
 import numpy as np
 import copy
+import scipy.constants as cnt
 
 # Useful constants
 mi_D = 2.01355
@@ -337,6 +338,35 @@ class NEO:
                 typeMsg="i",
             )
 
+    ### --- Reads NEO results --- ###
+    def read(
+        self,
+        label="neo1",
+        folder=None,  # If None, search in the previously run folder
+        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this NEO class
+        ):
+        print("> Reading NEO results")
+
+        # If no specified folder, check the last one
+        if folder is None:
+            folder = self.FolderNEOlast
+
+        # Reads NEO data
+        self.results[label] = readNEOresults(
+            folder,
+            self.NormalizationSets,
+            self.rhos,
+            suffix=suffix,
+            inputs=self.inputsNEO
+            )
+
+        # Store the input.gacode used
+        self.results[label]["profiles"] = (
+            self.NormalizationSets["input_gacode"]
+            if (self.NormalizationSets["input_gacode"] is not None)
+            else None
+            )
+
     #######################################################################
     #
     #           Extra
@@ -401,7 +431,7 @@ class NEO:
 
 #######################################################################
 #
-#           Utilities
+#           Input Utilities
 #
 #######################################################################
 
@@ -652,4 +682,205 @@ class NEOinput:
                 f.write(f"{ikey}={var}\n")
 
         print(f"\t\t~ File {IOtools.clipstr(file)} written")
+
+#######################################################################
+#
+#           Output Utilities
+#
+#######################################################################
+
+# Handles reading results v. rho
+def readNEOresults(
+    FolderGACODE_tmp,
+    NormalizationSets,
+    rhos,
+    suffix=None,
+    inputs=None,
+    ):
+    # Init
+    NEOstd_NEOout, inputclasses, parsed = [], [], []
+
+    # Loop over radii
+    for rho in rhos:
+        # Read full folder
+        NEOout = NEOoutput(
+            FolderGACODE_tmp, 
+            suffix=f"_{rho:.4f}" if suffix is None else suffix,
+            dcontrols=inputs[rho].controls,
+            dplasma=inputs[rho].plasma
+            )
+
+        # Unnormalize
+        NEOout.unnormalize(
+            NormalizationSets["SELECTED"],
+            rho=rho,
+            )
+
+        NEOstd_NEOout.append(NEOout)
+        inputclasses.append(NEOout.inputclass)
+
+        parse = GACODErun.buildDictFromInput(NEOout.inputFileNEO)
+        parsed.append(parse)
+
+    results = {
+        "inputclasses": inputclasses,
+        "parsed": parsed,
+        "NEOout": NEOstd_NEOout,
+        "x": np.array(rhos),
+        }
+
+    # Output
+    return results
+
+class NEOoutput:
+    def __init__(self, FolderGACODE, suffix="", dcontrols=None, dplasma=None):
+        # Numerical resolution controls
+        self.n_radial = int(dcontrols['N_RADIAL'])
+        self.n_theta = int(dcontrols['N_THETA'])
+        self.n_xi = int(dcontrols['N_XI'])
+        self.n_energy = int(dcontrols['N_ENERGY'])
+
+        # Plasma parameters
+        self.n_species = int(dplasma['N_SPECIES'])
+        self.dens_FSA = np.zeros(self.n_species) # [1e20/m^3/n_norm], dim(n_species,)
+        for ii in np.arange(self.n_species):
+            self.dens_FSA[ii] = float(dplasma['DENS_%i'%(ii+1)])
+
+        # File management
+        self.FolderGACODE, self.suffix = FolderGACODE, suffix
+
+        if suffix == "":
+            print(
+                f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix"
+            )
+        else:
+            print(
+                f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
+            )
+        self.inputclass = NEOinput(file=self.FolderGACODE / f"input.neo{self.suffix}")
+        self.roa = self.inputclass.geom["RMIN_OVER_A"]
+
+        # Reads the files
+        self.read()
+
+        # Post-processes the files
+        #self.postprocess()
+
+        print(
+            f"\t- NEO was run with {self.n_species} species, {self.n_theta} poloidal mesh points",
+            )
+
+    ### --- Function to read NEO file --- ###
+    def read(self):
+
+        # Gets outputted transport fluxes in gyroBohm units, [GB]
+        data_flux = GACODEinterpret.TGLFreader(
+            self.FolderGACODE / ("out.neo.transport_flux" + self.suffix),
+            blocks = 3,
+            columns = 4,
+            numky = None
+            )
+
+        # Init
+        self.Z = np.zeros(self.n_species)       # [charge], dim(n_species,)
+        self.pflux = np.zeros(self.n_species)   # [GB], dim(n_species,)
+        self.eflux = np.zeros(self.n_species)   # [GB], dim(n_species,)
+        self.mflux = np.zeros(self.n_species)   # [GB], dim(n_species,)
+
+        # Loop over species
+        for ii in np.arange(self.n_species):
+            # Saves species charge to keep it straight
+            self.Z[ii] = data_flux[0][ii][0]
+
+            # Loop over flux contributions (drift-kinetic and gyroviscosity)
+            for kk in np.arange(2):
+                self.pflux[ii] += data_flux[kk][ii][1]
+                self.eflux[ii] += data_flux[kk][ii][2]
+                self.mflux[ii] += data_flux[kk][ii][3]
+
+        # Gets numerical mesh data
+        data_grid = GACODEinterpret.TGLFreader(
+            self.FolderGACODE / ("out.neo.grid" + self.suffix),
+            blocks = 1,
+            columns = 1,
+            numky = None
+            )
+
+        # Saves (rho, theta) grid
+        self.rho = data_grid[0][-1][0]      # [], dim(1,)
+        self.theta = data_grid[0][:-1][:,0] # [rad], dim(n_theta,)
+
+        # Gets parallel flow data
+        data_vel = GACODEinterpret.TGLFreader(
+            self.FolderGACODE / ("out.neo.vel" + self.suffix),
+            blocks = 1,
+            columns = 1,
+            numky = None
+            )
+
+        # Poloidal variation of field-aligned flow
+        self.u_para = data_vel[0][:,0].reshape(self.n_theta, self.n_species).T # [m/s/vnorm], dim(n_species, n_theta)
+
+        # Gets poloidal asymmetry data
+        data_rot = GACODEinterpret.TGLFreader(
+            self.FolderGACODE / ("out.neo.rotation" + self.suffix),
+            blocks = 1,
+            columns = 1,
+            numky = None
+            )
+
+        # Init
+        self.pol_dens_overMid = np.zeros((self.n_species, self.n_theta)) # dim(n_species, n_theta)
+        strt = 2 + 2*self.n_species # starting idex
+
+        # Ratio between the outboard midplane density to flux-surface-averaged values (assume latter is profile data)
+        self.mid_dens_overFSA = data_rot[0][2:2*5+2:2,0] # dim(n_species)
+
+        # Difference btw potential and outboard midplane value
+        self.pol_pot = data_rot[0][strt:strt+self.n_theta,0] # [keV/Tnorm], dim(n_species, n_theta)
+
+        # Loop over species
+        for ii in np.arange(self.n_species):
+            # Local density per the outboard midplane value, 
+            self.pol_dens_overMid[ii,:] = data_rot[0][strt+(ii+1)*self.n_theta:strt+(ii+2)*self.n_theta, 0]
+
+        # NEO input file
+        with open(self.FolderGACODE / ("input.neo" + self.suffix), "r") as fi:
+            lines = fi.readlines()
+        self.inputFileNEO = "".join(lines)
+
+    # Function to unnormalize quantities
+    def unnormalize(self, normalization, rho=None):
+        # Init interpolation
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Define interpolator at this rho
+        def interpolator(y):
+            return interpolation_function(rho, normalization['rho'],y).item()
+
+        # Init normalization values
+        Qgb = interpolator(normalization['q_gb'])
+        Ggb = interpolator(normalization['g_gb'])
+        n_norm = interpolator(normalization['ne_20'])
+        T_norm = interpolator(normalization['Ti_keV']) # [keV]
+
+        v_norm = np.sqrt(
+            T_norm*1e3*cnt.e
+            /(normalization['mi_ref']*cnt.m_u)
+            ) # [m/s]
+
+        # Calc unnormalized values
+        self.pflux_unn = self.pflux*Ggb # [1e20/m^2/s], dim(n_species,)
+        self.eflux_unn = self.eflux*Qgb # [MW/m^2], dim(n_species,)
+
+        self.u_para_unn = self.u_para*v_norm # [m/s], dim(n_species,n_theta)
+
+        self.pol_pot_unn = self.pol_pot*T_norm*1e3 # [eV], dim(n_theta,)
+
+        self.pol_dens_unn = (
+            self.pol_dens_overMid
+            * self.mid_dens_overFSA[:,None]
+            * self.dens_FSA[:,None]
+            * n_norm
+            ) # [1e20/m^3], dim(n_species, n_theta)
 
