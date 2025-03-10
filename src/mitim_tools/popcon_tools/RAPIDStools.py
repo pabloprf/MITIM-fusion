@@ -255,7 +255,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
     for varrel,c,leg in zip(
             [1.0-r,1.0,1.0+r],
             ['r','b','g'],
-            [f'$-{r*100:.1f}\\%$'+extr,f"{paramlabel} = {nominal_parameters[param]:.3f}",f'$+{r*100:.1f}%$'+extr]
+            [f'$-{r*100:.1f}\\%$'+extr,f"{paramlabel} = {nominal_parameters[param]:.3f}",f'$+{r*100:.1f}\\%$'+extr]
             ):
         parameters = copy.deepcopy(nominal_parameters)
         parameters[param] *= varrel
