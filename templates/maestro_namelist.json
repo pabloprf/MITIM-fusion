@@ -43,8 +43,8 @@
           "beats":    ["transp_soft", "transp", "eped", "portals", "eped", "portals"],
           "eped_beat": {
             "eped_namelist":{
-                "nn_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC",
-                "norm_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-NORMALIZATION-ARC.txt",
+                "nn_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.keras",
+                "norm_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION-ARC.txt",
                 "corrections_set": {},
                 "ptop_multiplier": 1.0
             }

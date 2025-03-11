@@ -1,4 +1,5 @@
 import argparse
+import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -79,9 +80,75 @@ def parse_maestro_nml(file_path):
     
         beat_namelists[beat_type] = beat_namelist
 
-    maestro_beats = maestro_namelist["maestro"]["beats"]
+    maestro_beats = maestro_namelist["maestro"]
 
     return parameters_engineering, parameters_mix, parameters_initialize, geometry, beat_namelists, maestro_beats
+
+def build_maestro_run_local(
+        parameters_engineering, 
+        parameters_mix, 
+        parameters_initialize, 
+        geometry, 
+        beat_namelists, 
+        maestro_beats,
+        folder=None,
+        terminal_outputs = False
+        ):
+
+    if folder is None:
+        folder = os.getcwd()
+
+    m = maestro(folder, terminal_outputs = terminal_outputs)
+
+    return m
+
+@mitim_timer('\t\t* MAESTRO')
+def run_maestro_local(    
+        parameters_engineering, 
+        parameters_mix, 
+        parameters_initialize, 
+        geometry, 
+        beat_namelists, 
+        maestro_beats,
+        folder=None,
+        terminal_outputs = False
+        ):
+    
+    m = build_maestro_run_local(folder=folder,terminal_outputs = terminal_outputs)
+    
+    while maestro_beats["beats"]: # iterates through list of beats fron the json file until it's empty
+        if maestro_beats["beats"][0] == "transp":
+            m.define_beat('transp')
+            m.prepare(**beat_namelists['transp'])
+            m.run()
+        elif maestro_beats["beats"][0] == "transp_soft":
+            m.define_beat('transp', initializer=parameters_initialize["initializer"])
+            m.define_creator(
+                'eped', 
+                BetaN = parameters_initialize["BetaN_initialization"], 
+                nu_ne = parameters_initialize["peaking_initialization"], 
+                **beat_namelists["eped"],
+                **parameters_engineering
+                )
+            m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
+            m.prepare(**beat_namelists['transp_soft'])
+        elif maestro_beats["beats"][0] == "eped":
+            m.define_beat('eped')
+            m.prepare(**beat_namelists['eped'])
+            m.run()
+        elif maestro_beats["beats"][0] == "portals":
+            m.define_beat('portals')
+            m.prepare(**beat_namelists['portals'], 
+                      change_last_radial_call = maestro_beats["beats"]["portals_beat"]["change_last_radial_call"], 
+                      use_previous_surrogate_data=maestro_beats["beats"]["portals_beat"]["use_previous_surrogate_data"], 
+                      try_flux_match_only_for_first_point=maestro_beats["beats"]["portals_beat"]["try_flux_match_only_for_first_point"])
+            m.run()
+
+        maestro_beats["beats"].pop(0)
+
+    m.finalize()
+
+    return m
 
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
@@ -90,3 +157,5 @@ def main():
     file_path = args.file_path
     parse_maestro_nml(file_path)
     print("success")
+    m = build_maestro_run_local(**parse_maestro_nml(file_path))
+    run_maestro_local(m, *parse_maestro_nml(file_path))
