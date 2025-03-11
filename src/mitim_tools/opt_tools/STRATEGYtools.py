@@ -1960,13 +1960,15 @@ def clean_state(folder):
 
     aux = read_from_scratch(folder / "Outputs" / "optimization_object.pkl")
 
-    from mitim_modules.portals import PORTALStools, PORTALSmain
+    if aux is not None:
+        
+        from mitim_modules.portals import PORTALStools, PORTALSmain
 
-    if isinstance(aux.optimization_object, PORTALSmain.portals):
-        aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+        if isinstance(aux.optimization_object, PORTALSmain.portals):
+            aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
 
-    aux.folderOutputs = folder / "Outputs"
+        aux.folderOutputs = folder / "Outputs"
 
-    aux.save()
+        aux.save()
 
     print(">><<>><< Cleaning state of the class... Done", typeMsg="i")
