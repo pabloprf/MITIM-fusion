@@ -1,0 +1,36 @@
+{
+   "flag": "ARC V2E",
+    "machine": {
+        "Bt": 12.16,
+        "Ip": 8.7,
+        "separatrix": {
+           "type": "mxh",
+           "parameters": {
+               "R":     1.85,
+               "a":     0.57,
+               "delta_sep":  0.6,
+               "kappa_sep": 1.8
+               }
+        },
+        "Pin": 10.0
+    },
+    "assumptions": {
+        "Zeff":    1.5,
+        "mix":{
+            "fmain": 0.85,
+            "fmin": 0.0,
+            "fW": 0.0
+        },
+        "Initialization": {
+            "BetaN":2.0,
+            "temperature_peaking":1.5
+        }
+    },
+    "maestro": {
+        "beats":    ["transp_soft", "transp", "eped", "portals", "eped", "portals"],
+        "eped": {
+           "nn_file": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC",
+           "nn_normalization_file": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-NORMALIZATION-ARC.txt"
+        }
+    }
+}
