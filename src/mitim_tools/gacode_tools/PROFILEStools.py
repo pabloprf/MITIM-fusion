@@ -3853,7 +3853,7 @@ class PROFILES_GACODE:
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
     # Writes all the wanted inputs for NEO per given by input.gacode file
-    def to_neo(self, rhos=[0.5], NEOsettings=0):
+    def to_neo(self, rhos=[0.5], NEOsettings=0, mass_ref = 2.0):
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
@@ -3882,8 +3882,8 @@ class PROFILES_GACODE:
 
             # Useful constants
             # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
-            mass_ref = 2.0
-            mass_e = 0.000272445 * mass_ref
+            #mass_ref = 2.0
+            mass_e = 0.000272445 * 2.0
 
             # Density/temperature normalization
             n_norm = interpolator(self.profiles['ne(10^19/m^3)'])

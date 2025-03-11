@@ -14,9 +14,11 @@ from pathlib import Path
 import numpy as np
 import copy
 import scipy.constants as cnt
+import sys
 
 # Useful constants
-mi_D = 2.01355
+#mi_D = 2.01355
+mass_ref = 2.0  # NOTE: Assumed reference mass, see (https://github.com/gafusion/gacode/issues/398)
 
 class NEO:
     '''
@@ -109,9 +111,7 @@ class NEO:
             (
                 self.results,
                 self.scans,
-                self.tgyro,
-                self.ky_single,
-            ) = ({}, {}, None, None)
+            ) = ({}, {})
 
             # Init normalizations
             self.NormalizationSets = {
@@ -136,7 +136,7 @@ class NEO:
 
         # Loads profiles from input.gacode file
         self.profiles = (
-            PROFILEStools.PROFILES_GACODE(inputgacode)
+            PROFILEStools.PROFILES_GACODE(inputgacode, mi_ref=mass_ref)
             if inputgacode is not None
             else None
         )
@@ -168,7 +168,7 @@ class NEO:
             "\t- Using mass of deuterium to normalize things (not necesarily the first ion)",
             typeMsg="w",
         )
-        self.profiles.deriveQuantities(mi_ref=mi_D)
+        self.profiles.deriveQuantities(mi_ref=mass_ref)
 
         # Sets normalization data
         self.tgyro_results = None
@@ -236,6 +236,7 @@ class NEO:
         rhos = None,
         neo_executor={},
         neo_executor_full={},
+        multipliers={},
         launchSlurm = True,
         cold_start = None,
         extra_name = None,
@@ -272,12 +273,16 @@ class NEO:
             # All radii need to be evaluated
             IOtools.askNewFolder(FolderNEO, force=forceIfcold_start)
 
-        # Convert back to a string because that's how runTGLFproduction operates
-        tmp = copy.deepcopy(self.inputsNEO)
-        for rho in tmp:
-            tmp[rho].file = FolderNEO / f'input.neo_{rho:.4f}'
-            tmp[rho].writeCurrentStatus()
-        inputFileNEO = inputToVariable(FolderNEO, rhos)
+        # Applies any changes to the profile inputs and write inputs
+        (
+            latest_inputsFileNEO,
+            latest_inputsFileNEODict,
+            ) = changeANDwrite_NEO(
+                rhos,
+                inputs,
+                FolderNEO,
+                multipliers=multipliers
+                )
 
         # Organizes execution data
         neo_executor_full[subFolderNEO] = {}
@@ -285,10 +290,10 @@ class NEO:
         for irho in self.rhos:
             neo_executor_full[subFolderNEO][irho] = {
                 "folder": FolderNEO,
-                "dictionary": self.inputsNEO[irho],
-                "inputs": inputFileNEO[irho],
+                "dictionary": latest_inputsFileNEODict[irho],
+                "inputs": latest_inputsFileNEO[irho],
                 #"extraOptions": extraOptions,
-                #"multipliers": multipliers,
+                "multipliers": multipliers,
             }
             if irho in rhosEvaluate:
                 neo_executor[subFolderNEO][irho] = neo_executor_full[subFolderNEO][
@@ -369,6 +374,211 @@ class NEO:
 
     #######################################################################
     #
+    #           Scanning Utilities
+    #
+    #######################################################################
+
+    # Manager for certain types of scans
+    def runAnalysis(
+        self,
+        subFolderNEO="analysis1",
+        label="analysis1",
+        analysisType="Z",
+        trace=[16.0, 40.0],
+        **kwargs_NEOrun,
+        ):
+
+        # ------------------------------------------
+        # Impurity D and V
+        # ------------------------------------------
+        if analysisType == "Z":
+            #if ("ApplyCorrections" not in kwargs_NEOrun) or (
+            #    kwargs_NEOrun["ApplyCorrections"]
+            #    ):
+            #    print(
+            #        "\t- Forcing ApplyCorrections=False because otherwise the species ordering in NEO file might be messed up",
+            #        typeMsg="w",
+            #    )
+            #    kwargs_NEOrun["ApplyCorrections"] = False
+
+            # Amount to vary trace impurity gradient
+            varUpDown = np.linspace(0.5, 1.5, 3)
+
+            # Defines trace impurity to add
+            fimp, Z, A = 1e-6, trace[0], trace[1]
+            print(
+                f"*** Running D and V analysis for trace ({fimp:.1e}) specie with Z={trace[0]:.1f}, A={trace[1]:.1f}"
+                )
+
+            self.inputsNEO_orig = copy.deepcopy(self.inputsNEO)
+
+            # Adds trace impurity to NEO input files
+            for irho in self.inputsNEO:
+                position = self.inputsNEO[irho].addTraceSpecie(Z, A, AS=fimp)
+
+            # Runs gradient scan for this specie
+            self.variable = f"DLNNDR_{position}"
+
+            self.runScan(
+                subFolderNEO,
+                varUpDown=varUpDown,
+                variable=self.variable,
+                **kwargs_NEOrun,
+                )
+            '''
+            # Reads scan data
+            self.readScan(label=label, variable=self.variable, positionIon=position)
+
+            # Init
+            x = self.scans[label]["xV"]
+            yV = self.scans[label]["pflux"]
+            self.variable_y = "pflux"
+
+            self.scans[label]["DZ"] = []
+            self.scans[label]["VZ"] = []
+            self.scans[label]["VoD"] = []
+            self.scans[label]["x_grid"] = []
+            self.scans[label]["y_grid"] = []
+
+            # Calculates D, V profiles from flux-gradient relationship
+            for irho_cont in range(len(self.rhos)):
+                irho = np.where(self.scans[label]["x"] == self.rhos[irho_cont])[0][0]
+
+                rho = self.NormalizationSets["SELECTED"]["rho"]
+                a_m = self.NormalizationSets["SELECTED"]["rmin"][-1]
+                ni_prof = self.NormalizationSets["SELECTED"]["ne_20"] * fimp
+
+                ni_20 = ni_prof[np.argmin(np.abs(rho - self.rhos[irho_cont]))]
+
+                D, V, x_grid, y_grid = PLASMAtools.DVanalysis(
+                    x[irho], yV[irho], a_m, ni_20
+                )
+                self.scans[label]["DZ"].append(D)
+                self.scans[label]["VZ"].append(V)
+
+                self.scans[label]["var_x"] = self.variable
+                self.scans[label]["var_y"] = self.variable_y
+                self.scans[label]["x_grid"].append(x_grid)
+                self.scans[label]["y_grid"].append(y_grid)
+
+                self.scans[label]["VoD"].append(V / D)
+            '''
+            # Back to original (not trace)
+            self.inputsNEO = self.inputsNEO_orig
+            
+        # Error check
+        else:
+            print('Analysis Type requested not implemented yet!')
+
+    # Runs NEO scanning over a variable
+    def runScan(
+        self,
+        subFolderNEO,  # 'scan1',
+        multipliers={},
+        variable="DLNNDR_1",
+        varUpDown=[0.5, 1.0, 1.5],
+        relativeChanges=True,
+        **kwargs_NEOrun,
+        ):
+
+        # Error check; add baseline if needed
+        if (1.0 not in varUpDown) and relativeChanges:
+            print(
+                "\n* Since variations vector did not include base case, I am adding it",
+                typeMsg="i",
+            )
+            varUpDown_new = []
+            added = False
+            for i in varUpDown:
+                if i > 1.0 and not added:
+                    varUpDown_new.append(1.0)
+                    added = True
+                varUpDown_new.append(i)
+        else:
+            varUpDown_new = varUpDown
+
+        # Prepares input files for scan
+        neo_executor, neo_executor_full, folders, varUpDown_new = self._prepare_scan(
+            subFolderNEO,
+            multipliers=multipliers,
+            variable=variable,
+            varUpDown=varUpDown_new,
+            relativeChanges=relativeChanges,
+            **kwargs_NEOrun,
+        )
+
+        # Run them all
+        self._run(
+            neo_executor,
+            tglf_executor_full=neo_executor_full,
+            **kwargs_NEOrun,
+        )
+
+        # Read results
+        for cont_mult, mult in enumerate(varUpDown_new):
+            name = f"{variable}_{mult}"
+            self.read(
+                label=f"{self.subFolderNEO_scan}_{name}", 
+                folder=folders[cont_mult], 
+                )
+
+    # Prepares exectuables for scans
+    def _prepare_scan(
+        self,
+        subFolderNEO,  # 'scan1',
+        multipliers={},
+        variable="DLNNDR_1",
+        varUpDown=[0.5, 1.0, 1.5],
+        relativeChanges=True,
+        **kwargs_NEOrun,
+    ):
+        """
+        Multipliers will be modified by adding the scaning variables, but I don't want to modify the original
+        multipliers, as they may be passed to the next scan
+
+        Set relativeChanges=False if varUpDown contains the exact values to change, not multipleiers
+        """
+        multipliers_mod = copy.deepcopy(multipliers)
+
+        self.subFolderNEO_scan = subFolderNEO
+
+        if relativeChanges:
+            for i in range(len(varUpDown)):
+                varUpDown[i] = round(varUpDown[i], 6)
+
+        print(f"\n- Proceeding to scan {variable}:")
+        neo_executor = {}
+        neo_executor_full = {}
+        folders = []
+        for cont_mult, mult in enumerate(varUpDown):
+            mult = round(mult, 6)
+
+            if relativeChanges:
+                print(
+                    f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------"
+                )
+            else:
+                print(
+                    f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------"
+                )
+
+            multipliers_mod[variable] = mult
+            name = f"{variable}_{mult}"
+
+            neo_executor, neo_executor_full, folderlast = self._prepare_run_radii(
+                f"{self.subFolderNEO_scan}_{name}",
+                neo_executor=neo_executor,
+                neo_executor_full=neo_executor_full,
+                multipliers=multipliers_mod,
+                **kwargs_NEOrun,
+            )
+
+            folders.append(copy.deepcopy(folderlast))
+
+        return neo_executor, neo_executor_full, folders, varUpDown
+
+    #######################################################################
+    #
     #           Extra
     #
     #######################################################################
@@ -434,6 +644,38 @@ class NEO:
 #           Input Utilities
 #
 #######################################################################
+
+# Function to prepare NEO input dictionary and allow changes over scans
+def changeANDwrite_NEO(
+    rhos,
+    inputs0,
+    FolderNEO,
+    multipliers={},
+    ):
+    # Init
+    inputs = copy.deepcopy(inputs0)
+    modInputNEO = {}
+
+    # Loop over rhos
+    for ii, rho in enumerate(rhos):
+        # Init
+        inputNEO_rho = inputs[rho]
+
+        # Loop over modifier key
+        for kk in multipliers:
+            tmp = float(inputNEO_rho.plasma[kk])*multipliers[kk]
+            inputNEO_rho.plasma[kk] = '%0.5E'%(tmp)
+
+        # Writes new input
+        inputNEO_rho.file = FolderNEO / f'input.neo_{rho:.4f}'
+        inputNEO_rho.writeCurrentStatus()
+        modInputNEO[rho] = inputNEO_rho
+
+    # Convert back to a string because that's how ruTGLFproduction operates
+    inputFileNEO = inputToVariable(FolderNEO, rhos)
+
+    # Output
+    return inputFileNEO, modInputNEO
 
 def check_if_files_exist(folder, list_files):
     folder = IOtools.expandPath(folder)
@@ -623,7 +865,7 @@ class NEOinput:
     def writeCurrentStatus(self, file=None):
         print("\t- Writting NEO input file")
 
-        maxSpeciesNEO = 11  # NEO cannot handle more than 11 species
+        self.maxSpeciesNEO = 11  # NEO cannot handle more than 11 species
 
         if file is None:
             file = self.file
@@ -667,10 +909,10 @@ class NEOinput:
             f.write("# ------------------\n")
             for ikey in self.plasma:
                 if ikey == "N_SPECIES":
-                    var = '%i'%(np.min([int(self.plasma[ikey]), maxSpeciesNEO]))
+                    var = '%i'%(np.min([int(self.plasma[ikey]), self.maxSpeciesNEO]))
                 else:
                     # Error check
-                    if int(ikey.split('_')[-1]) > maxSpeciesNEO:
+                    if int(ikey.split('_')[-1]) > self.maxSpeciesNEO:
                         print(
                             "\t- Maximum number of species in NEO reached, not considering after {0} species".format(
                                 maxSpeciesNEO
@@ -682,6 +924,41 @@ class NEOinput:
                 f.write(f"{ikey}={var}\n")
 
         print(f"\t\t~ File {IOtools.clipstr(file)} written")
+
+    # Adds trace species for impurity D, V scan
+    def addTraceSpecie(self, ZS, MASS, AS=1e-6, pos_elec = 1, pos_main_ion = 2):
+        # Adds species index
+        position = int(self.plasma['N_SPECIES']) + 1
+
+        # Error check
+        if position > self.maxSpeciesNEO:
+            print(
+                "\t- Maximum number of species, {0}, in NEO reached. Exiting".format(
+                    maxSpeciesNEO
+                    ),
+                typeMsg="w",
+                )
+            sys.exit(1)
+
+        # Adds species
+        ### NOTE: Here, we assume user intends the first species index to be electrons
+        ### and the second species index the main ion (i.e. D) like used in NEOtools.prep
+        self.plasma['N_SPECIES'] = '%i'%(position)
+        self.plasma['Z_%i'%(position)] = '%0.5E'%(ZS)
+        self.plasma['MASS_%i'%(position)] = '%0.5E'%(MASS/mass_ref)
+
+        self.plasma['DENS_%i'%(position)] = '%0.5E'%(
+            AS * float(self.plasma['DENS_%i'%(pos_elec)])
+            )
+
+        kpl = ['TEMP', 'DLNNDR', 'DLNTDR']
+        for kk in kpl:
+            self.plasma['%s_%i'%(kk, position)] = self.plasma['%s_%i'%(kk, pos_main_ion)]
+
+        self.plasma['ANISO_MODEL_%i'%(position)] = '1'
+
+        # Output
+        return position 
 
 #######################################################################
 #
@@ -834,7 +1111,7 @@ class NEOoutput:
         strt = 2 + 2*self.n_species # starting idex
 
         # Ratio between the outboard midplane density to flux-surface-averaged values (assume latter is profile data)
-        self.mid_dens_overFSA = data_rot[0][2:2*5+2:2,0] # dim(n_species)
+        self.mid_dens_overFSA = data_rot[0][2:2*self.n_species+2:2,0] # dim(n_species)
 
         # Difference btw potential and outboard midplane value
         self.pol_pot = data_rot[0][strt:strt+self.n_theta,0] # [keV/Tnorm], dim(n_species, n_theta)
@@ -866,7 +1143,7 @@ class NEOoutput:
 
         v_norm = np.sqrt(
             T_norm*1e3*cnt.e
-            /(normalization['mi_ref']*cnt.m_u)
+            /(mass_ref*cnt.m_u)
             ) # [m/s]
 
         # Calc unnormalized values
