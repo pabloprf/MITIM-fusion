@@ -11,7 +11,7 @@ from IPython import embed
         RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0, thr_beta=0.02):
+def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0, BetaN_multiplier=1.0,thr_beta=0.02):
 
     p = copy.deepcopy(p_base)
 
@@ -27,10 +27,22 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
 
     # Change elongation
-    p.profiles['kappa(-)'] *= kappa_sep/p_base.profiles['kappa(-)'][-1]
+    if kappa995 is not None:
+        # If 995 available, use that
+        mutilier_kappa = kappa995/p_base.derived['kappa995']
+    else:
+        # Otherwise, use the separatrix value
+        mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
+    p.profiles['kappa(-)'] *= mutilier_kappa
 
     # Change triangularity
-    p.profiles['delta(-)'] *= delta_sep/p_base.profiles['delta(-)'][-1]
+    if delta995 is not None:
+        # If 995 available, use that
+        mutilier_delta = delta995/p_base.derived['delta995']
+    else:
+        # Otherwise, use the separatrix value
+        mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
+    p.profiles['delta(-)'] *= mutilier_delta
 
     # Change magnetic field
     p.profiles['bcentr(T)'][0] = Bt
@@ -41,6 +53,9 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     # -------------------------------------------------------
     # Derived quantities
     # -------------------------------------------------------
+
+    kappa_sep = p.profiles['kappa(-)'][-1]
+    delta_sep = p.profiles['delta(-)'][-1]
 
     # Approximate XS area
     area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
@@ -89,6 +104,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         # Calculate new pedestal
         eped_evaluation = p.to_eped()
 
+        eped_evaluation["betan"] *= BetaN_multiplier
         eped_evaluation["neped"] = neped*10
         eped_evaluation["nesep_ratio"] = nesep_ratio
         eped_evaluation["tesep"] = tesep_eV
@@ -102,8 +118,10 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         # Derive quantities
         p.deriveQuantities(rederiveGeometry=False)
 
-        error_betaN = np.abs(p.derived['BetaN_engineering'] - eped_evaluation["betan"])/p.derived['BetaN_engineering']
-        print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {p.derived['BetaN_engineering']} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+        BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
+
+        error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
+        print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
 
         return p, ptop_kPa, error_betaN, eped_evaluation
 
@@ -171,7 +189,7 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     GRAPHICStools.addDenseAxis(ax)
     ax.set_xlabel(xlabel)
     ax.set_ylabel('$H_{98y2}$')
-    ax.set_ylim(0, 2.0)
+    ax.set_ylim(0.5, 1.5)
     ax.axhline(y=1.0,ls='-.',lw=1.0,c='k')
 
     ax = axs[1,3]
@@ -194,7 +212,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         }
     for x in results1['x']:
         values[xparam] = x
-        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, Paux=Paux, **values)
+        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, BetaN_multiplier=core['BetaN_multiplier'],Paux=Paux, **values)
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['eped_inputs'].append(eped_evaluation)
@@ -205,7 +223,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['vol'].append(profiles_new.derived['volume'])
         results1['qstar_ITER'].append(profiles_new.derived['qstar_ITER'])
         results1['H98'].append(profiles_new.derived['H98'])
-        results1['betaN'].append(profiles_new.derived['BetaN_engineering'])
+        results1['betaN'].append(profiles_new.derived['BetaN_engineering']*core['BetaN_multiplier'])
 
     plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
     if vertical_at_nominal:
@@ -215,8 +233,8 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     axs[0,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
     axs[1,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
 
-    axs[0,1].set_xlim(0.0, 1.5)
-    axs[1,1].set_xlim(0.0, 1.5)
+    axs[0,1].set_xlim(0.5, 1.2)
+    axs[1,1].set_xlim(0.5, 1.2)
 
     # axs[0,0].set_ylim(bottom=0)
     # axs[0,1].set_ylim(bottom=0)
@@ -255,7 +273,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
     for varrel,c,leg in zip(
             [1.0-r,1.0,1.0+r],
             ['r','b','g'],
-            [f'$-{r*100:.1f}\\%$'+extr,f"{paramlabel} = {nominal_parameters[param]:.3f}",f'$+{r*100:.1f}\\%$'+extr]
+            [f'$-{r*100:.1f}\\%$'+extr,f"{paramlabel} = {nominal_parameters[param]:.3f}",f'$+{r*100:.1f}%$'+extr]
             ):
         parameters = copy.deepcopy(nominal_parameters)
         parameters[param] *= varrel
