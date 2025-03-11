@@ -1205,12 +1205,21 @@ def perform_quick_remote_execution(
     folder_local,
     machine,
     command,
-    input_files=[],
-    input_folders=[],
-    output_files=[],
-    output_folders=[],
+    input_files=None,
+    input_folders=None,
+    output_files=None,
+    output_folders=None,
     job_name = "test",
     ):
+
+    if input_files is None:
+        input_files = []
+    if input_folders is None:
+        input_folders = []
+    if output_files is None:
+        output_files = []
+    if output_folders is None:
+        output_folders = []
 
     job = mitim_job(folder_local)
 
