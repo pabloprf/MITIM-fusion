@@ -1,4 +1,7 @@
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import (
+    IOtools,
+    PLASMAtools,
+    )
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import (
     NORMtools,
@@ -425,10 +428,10 @@ class NEO:
                 variable=self.variable,
                 **kwargs_NEOrun,
                 )
-            '''
+            
             # Reads scan data
             self.readScan(label=label, variable=self.variable, positionIon=position)
-
+            
             # Init
             x = self.scans[label]["xV"]
             yV = self.scans[label]["pflux"]
@@ -462,7 +465,7 @@ class NEO:
                 self.scans[label]["y_grid"].append(y_grid)
 
                 self.scans[label]["VoD"].append(V / D)
-            '''
+            
             # Back to original (not trace)
             self.inputsNEO = self.inputsNEO_orig
             
@@ -576,6 +579,66 @@ class NEO:
             folders.append(copy.deepcopy(folderlast))
 
         return neo_executor, neo_executor_full, folders, varUpDown
+
+    # Organizes output from scan
+    def readScan(
+        self, label="scan1", subFolderNEO=None, variable="DLNNDR_1", positionIon=2
+        ):
+
+        # Error check
+        if subFolderNEO is None:
+            subFolderNEO = self.subFolderNEO_scan
+
+        # Init dictionary
+        self.scans[label] = {}
+        self.scans[label]["variable"] = variable
+        self.scans[label]["positionBase"] = None
+        self.scans[label]["unnormalization_successful"] = True
+        self.scans[label]["results_tags"] = []
+
+        self.positionIon_scan = positionIon
+
+        # Init parameters of interest
+        x, pflux = (
+            [],
+            [],
+            )
+
+        # Loop over scan results
+        for ikey in self.results:
+            # Makes sure this is the results dictionary you want
+            isThisTheRightReadResults = (subFolderNEO in ikey) and (
+                variable
+                == "_".join(ikey.split("_")[:-1]).split(subFolderNEO + "_")[-1]
+                )
+
+            # Reads data for this scan case
+            if isThisTheRightReadResults:
+                self.scans[label]["results_tags"].append(ikey)
+
+                x0, pflux0 = (
+                    [],
+                    [],
+                    )
+
+                # Loop over rho
+                for irho_cont in range(len(self.rhos)):
+                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
+
+                    # Unnormalized data
+                    x0.append(self.results[ikey]["parsed"][irho][variable])
+                    pflux0.append(
+                        self.results[ikey]["NEOout"][irho].pflux_unn[self.positionIon_scan - 1]
+                        )
+
+                # Stores data
+                x.append(x0)
+                pflux.append(pflux0)
+        
+        # Stores output
+        self.scans[label]["x"] = np.array(self.rhos)
+        self.scans[label]["xV"] = np.atleast_2d(np.transpose(x))
+        self.scans[label]["pflux"] = np.atleast_2d(np.transpose(pflux)) 
 
     #######################################################################
     #
