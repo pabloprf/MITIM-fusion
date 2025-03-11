@@ -85,12 +85,6 @@ def parse_maestro_nml(file_path):
     return parameters_engineering, parameters_mix, parameters_initialize, geometry, beat_namelists, maestro_beats
 
 def build_maestro_run_local(
-        parameters_engineering, 
-        parameters_mix, 
-        parameters_initialize, 
-        geometry, 
-        beat_namelists, 
-        maestro_beats,
         folder=None,
         terminal_outputs = False
         ):
@@ -139,9 +133,9 @@ def run_maestro_local(
         elif maestro_beats["beats"][0] == "portals":
             m.define_beat('portals')
             m.prepare(**beat_namelists['portals'], 
-                      change_last_radial_call = maestro_beats["beats"]["portals_beat"]["change_last_radial_call"], 
-                      use_previous_surrogate_data=maestro_beats["beats"]["portals_beat"]["use_previous_surrogate_data"], 
-                      try_flux_match_only_for_first_point=maestro_beats["beats"]["portals_beat"]["try_flux_match_only_for_first_point"])
+                      change_last_radial_call = maestro_beats["portals_beat"]["change_last_radial_call"], 
+                      use_previous_surrogate_data=maestro_beats["portals_beat"]["use_previous_surrogate_data"], 
+                      try_flux_match_only_for_first_point=maestro_beats["portals_beat"]["try_flux_match_only_for_first_point"])
             m.run()
 
         maestro_beats["beats"].pop(0)
@@ -156,6 +150,5 @@ def main():
     args = parser.parse_args()
     file_path = args.file_path
     parse_maestro_nml(file_path)
-    print("success")
-    m = build_maestro_run_local(**parse_maestro_nml(file_path))
-    run_maestro_local(m, *parse_maestro_nml(file_path))
+
+    run_maestro_local(*parse_maestro_nml(file_path))
