@@ -969,7 +969,7 @@ def runTGLF(
     # If the run is local and not slurm, let's check the number of cores
     if (FARMINGtools.mitim_job.grab_machine_settings("tglf")["machine"] == "local") and not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
         cores_in_machine = int(os.cpu_count())
-        cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK'))
+        cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
 
         if cores_allocated is not None:
             if cores_allocated < max_cores_per_node:
