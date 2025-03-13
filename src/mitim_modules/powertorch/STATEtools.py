@@ -2,6 +2,7 @@ import copy
 import torch
 import datetime
 import shutil
+from pathlib import Path
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -216,6 +217,7 @@ class powerstate:
 
         # Write input.gacode
         if write_input_gacode is not None:
+            write_input_gacode = Path(write_input_gacode)
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
             write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
