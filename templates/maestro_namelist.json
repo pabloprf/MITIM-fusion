@@ -4,13 +4,14 @@
           "Bt": 12.16,
           "Ip": 8.7,
           "separatrix": {
-              "type": "mxh",
+              "type": "freegs",
               "parameters": {
                     "R":     1.85,
                     "a":     0.57,
                     "delta_sep":  0.6,
                     "kappa_sep": 1.8,
-                    "n_mxh": 5
+                    "n_mxh": 5,
+                    "geqdsk_file": ""
                     }
           },
           "heating": {

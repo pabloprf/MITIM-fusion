@@ -46,20 +46,28 @@ def parse_maestro_nml(file_path):
 
     # ----------------- Initializations  -----------------
 
-    parameters_initialize = {'BetaN_initialization': 2.0, 'peaking_initialization': 1.5, "initializer":"freegs"}
+    separatrix_type = maestro_namelist["machine"]["separatrix"]["type"]
+    parameters_initialize = {'BetaN_initialization': 2.0, 'peaking_initialization': 1.5, "initializer":separatrix_type}
 
     # ----------------- Geometry  -----------------
 
-    if maestro_namelist["machine"]["separatrix"]["type"] == "mxh":
+    if separatrix_type == "freegs":
+        # Initialize geometry from first 4 MXH moments
         R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
         a = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
         kappa_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
         delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
         n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    elif separatrix_type == "geqdsk":
+        # Initialize geometry from geqdsk file
+        geqdsk_file = maestro_namelist["machine"]["separatrix"]["parameters"]["geqdsk_file"]
+        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
     else:
-        raise ValueError("Only mxh separatrix is supported for now, use a separate script for geqdsk")
+        raise ValueError("Only \"freegs\" (mxh) or \"geqdsk\" are supported")
 
-    geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    
 
     # ----------------- Read user settings and default namelists for individual Beats  -----------------
 
