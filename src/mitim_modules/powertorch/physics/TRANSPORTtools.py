@@ -297,9 +297,7 @@ class tgyro_model(power_transport):
 
         if MODELparameters['transport_model']['turbulence'] == 'CGYRO':
 
-            print(
-                "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
-            )
+            print("\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick...")
 
             correctly_run = (self.folder / "cgyro_neo").exists()
             if correctly_run:

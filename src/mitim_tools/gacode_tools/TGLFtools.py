@@ -23,6 +23,7 @@ from IPython import embed
 
 mi_D = 2.01355
 
+MAX_TGLF_SPECIES = 6
 
 class TGLF:
     def __init__(
@@ -2484,7 +2485,7 @@ class TGLF:
                     Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
                     Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
                     Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
-                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 1])
+                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
                     ky0.append(self.results[ikey]["TGLFout"][irho].ky)
                     g0.append(self.results[ikey]["TGLFout"][irho].g)
                     f0.append(self.results[ikey]["TGLFout"][irho].f)
@@ -2501,7 +2502,7 @@ class TGLF:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 1]) 
+                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
                     else:
                         self.scans[label]["unnormalization_successful"] = False
 
@@ -3244,18 +3245,13 @@ class TGLF:
         **kwargs_TGLFrun,
     ):
         if self.NormalizationSets["SELECTED"] is None:
-            raise Exception(
-                "MITIM Exception: No normalizations provided, but runAnalysis will require it!"
-            )
+            raise Exception("MITIM Exception: No normalizations provided, but runAnalysis will require it!")
 
         # ------------------------------------------
         # Electron thermal incremental diffusivity
         # ------------------------------------------
-        if (
-            analysisType == "chi_e"
-            or analysisType == "chi_i"
-            or analysisType == "chi_ei"
-        ):
+        if ( analysisType == "chi_e" or analysisType == "chi_i" or analysisType == "chi_ei"):
+
             if analysisType == "chi_e":
                 print(
                     "*** Running analysis of electron thermal incremental diffusivity"
@@ -3338,29 +3334,22 @@ class TGLF:
         # Impurity D and V
         # ------------------------------------------
         elif analysisType == "Z":
-            if ("ApplyCorrections" not in kwargs_TGLFrun) or (
-                kwargs_TGLFrun["ApplyCorrections"]
-            ):
-                print(
-                    "\t- Forcing ApplyCorrections=False because otherwise the species orderingin TGLF file might be messed up",
-                    typeMsg="w",
-                )
+            if ("ApplyCorrections" not in kwargs_TGLFrun) or (kwargs_TGLFrun["ApplyCorrections"]):
+                print("\t- Forcing ApplyCorrections=False because otherwise the species ordering TGLF file might be messed up",typeMsg="w",)
                 kwargs_TGLFrun["ApplyCorrections"] = False
 
             varUpDown = np.linspace(0.5, 1.5, 3)
 
             fimp, Z, A = 1e-6, trace[0], trace[1]
 
-            print(
-                f"*** Running D and V analysis for trace ({fimp:.1e}) specie with Z={trace[0]:.1f}, A={trace[1]:.1f}"
-            )
+            print(f"*** Running D and V analysis for trace ({fimp:.1e}) species with Z={trace[0]:.1f}, A={trace[1]:.1f}")
 
             self.inputsTGLF_orig = copy.deepcopy(self.inputsTGLF)
 
             # ------------------------
             # Add trace impurity
             # ------------------------
-
+            
             for irho in self.inputsTGLF:
                 position = self.inputsTGLF[irho].addTraceSpecie(Z, A, AS=fimp)
 
@@ -4035,9 +4024,7 @@ class TGLFinput:
             self.plasma["NS"] -= 1
             if "NMODES" in self.controls:
                 self.controls["NMODES"] -= 1
-            print(
-                f"\t\t\t* Total species to run TGLF with reduced to {self.plasma['NS']}"
-            )
+            print(f"\t\t\t* Total species to run TGLF with reduced to {self.plasma['NS']}")
 
         self.num_recorded -= 1
 
@@ -4072,9 +4059,7 @@ class TGLFinput:
 
         return fiZi
 
-    def addTraceSpecie(
-        self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2
-        ):
+    def addTraceSpecie(self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2):
         """
         Here provide ZS and MASS already normalized
         """
@@ -4082,12 +4067,9 @@ class TGLFinput:
         if position is None:
             position = self.num_recorded + 1
 
-        if position > 6:
-            print(
-                " ***** Exceeded maximum (6) ions in TGLF call, removing last ion",
-                typeMsg="w",
-            )
-            position = 6
+        if position > MAX_TGLF_SPECIES:
+            print(f" ***** Exceeded maximum ({MAX_TGLF_SPECIES}) ions in TGLF call, removing last ion",typeMsg="w",)
+            position = MAX_TGLF_SPECIES
 
         specie = {"ZS": ZS, "MASS": MASS, "AS": AS}
 
