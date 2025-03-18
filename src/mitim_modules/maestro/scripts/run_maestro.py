@@ -10,9 +10,9 @@ from mitim_tools.misc_tools import PLASMAtools
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
     maestro_namelist = IOtools.read_mitim_nml(file_path)
-    print(maestro_namelist)
 
-    
+    # ----------------- Engineering parameters  -----------------
+
     Ip = maestro_namelist["machine"]["Ip"]
     Bt = maestro_namelist["machine"]["Bt"]
     
@@ -34,6 +34,8 @@ def parse_maestro_nml(file_path):
 
     parameters_engineering = {'Ip_MA': Ip, 'B_T': Bt, 'Zeff': Zeff, 'PichT_MW': Pich, 'neped_20' : neped , 'Tesep_keV': 0.075, 'nesep_20': neped*0.3}
     
+    # ----------------- Plasma mix and impurity parameters  -----------------
+
     fmain = maestro_namelist["assumptions"]["mix"]["fmain"]
     fW = maestro_namelist["assumptions"]["mix"]["fW"]
     ZW = maestro_namelist["assumptions"]["mix"]["ZW"]
@@ -42,7 +44,11 @@ def parse_maestro_nml(file_path):
 
     parameters_mix = {'DTplasma': True, 'lowZ_impurity': LowZ, 'impurity_ratio_WtoZ': Wratio, 'minority': [Zmini,1,fmini]}
 
+    # ----------------- Initializations  -----------------
+
     parameters_initialize = {'BetaN_initialization': 2.0, 'peaking_initialization': 1.5, "initializer":"freegs"}
+
+    # ----------------- Geometry  -----------------
 
     if maestro_namelist["machine"]["separatrix"]["type"] == "mxh":
         R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
@@ -54,6 +60,8 @@ def parse_maestro_nml(file_path):
         raise ValueError("Only mxh separatrix is supported for now, use a separate script for geqdsk")
 
     geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+
+    # ----------------- Read user settings and default namelists for individual Beats  -----------------
 
     beat_namelists = {}
 
@@ -72,11 +80,11 @@ def parse_maestro_nml(file_path):
                         p.enforce_same_density_gradients()
                         p.writeCurrentStatus(file=file_profs)
                     beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
-        else:
-            if beat_type == "transp":
-                beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix)
-            elif beat_type == "transp_soft":
-                beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix,only_current_diffusion=True)
+            else:
+                if beat_type == "transp":
+                    beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix)
+                elif beat_type == "transp_soft":
+                    beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix,only_current_diffusion=True)
     
         beat_namelists[beat_type] = beat_namelist
 
@@ -110,11 +118,14 @@ def run_maestro_local(
     
     m = build_maestro_run_local(folder=folder,terminal_outputs = terminal_outputs)
     
+    # loop through beats
+
     while maestro_beats["beats"]: # iterates through list of beats fron the json file until it's empty
         if maestro_beats["beats"][0] == "transp":
             m.define_beat('transp')
             m.prepare(**beat_namelists['transp'])
             m.run()
+
         elif maestro_beats["beats"][0] == "transp_soft":
             m.define_beat('transp', initializer=parameters_initialize["initializer"])
             m.define_creator(
@@ -126,10 +137,12 @@ def run_maestro_local(
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
             m.prepare(**beat_namelists['transp_soft'])
+            m.run()
         elif maestro_beats["beats"][0] == "eped":
             m.define_beat('eped')
             m.prepare(**beat_namelists['eped'])
             m.run()
+
         elif maestro_beats["beats"][0] == "portals":
             m.define_beat('portals')
             m.prepare(**beat_namelists['portals'], 
@@ -149,6 +162,4 @@ def main():
     parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
     args = parser.parse_args()
     file_path = args.file_path
-    parse_maestro_nml(file_path)
-
     run_maestro_local(*parse_maestro_nml(file_path))
