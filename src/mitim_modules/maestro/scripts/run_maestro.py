@@ -94,13 +94,14 @@ def parse_maestro_nml(file_path):
 
 def build_maestro_run_local(
         folder=None,
-        terminal_outputs = False
+        terminal_outputs = False,
+        force_cold_start = False
         ):
 
     if folder is None:
         folder = os.getcwd()
 
-    m = maestro(folder, terminal_outputs = terminal_outputs)
+    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start)
 
     return m
 
@@ -113,10 +114,11 @@ def run_maestro_local(
         beat_namelists, 
         maestro_beats,
         folder=None,
-        terminal_outputs = False
+        terminal_outputs = False,
+        force_cold_start = False
         ):
     
-    m = build_maestro_run_local(folder=folder,terminal_outputs = terminal_outputs)
+    m = build_maestro_run_local(folder=folder,terminal_outputs = terminal_outputs, force_cold_start = force_cold_start)
     
     # loop through beats
 
