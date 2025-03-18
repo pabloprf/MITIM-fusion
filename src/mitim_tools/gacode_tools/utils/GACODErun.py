@@ -963,22 +963,29 @@ def runTGLF(
 
     # Grab machine local limits -------------------------------------------------
     max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings("tglf")["cores_per_node"]
-    if max_cores_per_node is None: 
-        max_cores_per_node = 16
 
     # If the run is local and not slurm, let's check the number of cores
     if (FARMINGtools.mitim_job.grab_machine_settings("tglf")["machine"] == "local") and not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
+        
         cores_in_machine = int(os.cpu_count())
         cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
 
         if cores_allocated is not None:
-            if cores_allocated < max_cores_per_node:
+            if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
                 print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
                 max_cores_per_node = cores_allocated
         elif cores_in_machine is not None:
-            if cores_in_machine < max_cores_per_node:
+            if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
                 print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
                 max_cores_per_node = cores_in_machine
+        else:
+            # Default to just 16 just in case
+            if max_cores_per_node is None: 
+                max_cores_per_node = 16
+    else:
+        # For remote execution, default to just 16 just in case
+        if max_cores_per_node is None: 
+            max_cores_per_node = 16
     # ---------------------------------------------------------------------------
 
     # Grab the total number of cores of this job --------------------------------
