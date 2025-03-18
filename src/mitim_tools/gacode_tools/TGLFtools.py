@@ -2330,6 +2330,7 @@ class TGLF:
         multipliers={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
@@ -2338,10 +2339,7 @@ class TGLF:
         # Add baseline
         # -------------------------------------
         if (1.0 not in varUpDown) and relativeChanges:
-            print(
-                "\n* Since variations vector did not include base case, I am adding it",
-                typeMsg="i",
-            )
+            print("\n* Since variations vector did not include base case, I am adding it",typeMsg="i",)
             varUpDown_new = []
             added = False
             for i in varUpDown:
@@ -2358,6 +2356,7 @@ class TGLF:
             multipliers=multipliers,
             variable=variable,
             varUpDown=varUpDown_new,
+            variables_scanTogether=variables_scanTogether,
             relativeChanges=relativeChanges,
             **kwargs_TGLFrun,
         )
@@ -2382,6 +2381,7 @@ class TGLF:
         multipliers={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
@@ -2399,7 +2399,8 @@ class TGLF:
             for i in range(len(varUpDown)):
                 varUpDown[i] = round(varUpDown[i], 6)
 
-        print(f"\n- Proceeding to scan {variable}:")
+        print(f"\n- Proceeding to scan {variable}{' together with '+', '.join(variables_scanTogether) if len(variables_scanTogether)>0 else ''}:")
+
         tglf_executor = {}
         tglf_executor_full = {}
         folders = []
@@ -2407,15 +2408,15 @@ class TGLF:
             mult = round(mult, 6)
 
             if relativeChanges:
-                print(
-                    f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------"
-                )
+                print(f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------")
             else:
-                print(
-                    f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------"
-                )
+                print(f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------")
 
             multipliers_mod[variable] = mult
+
+            for variable_scanTogether in variables_scanTogether:
+                multipliers_mod[variable_scanTogether] = mult
+
             name = f"{variable}_{mult}"
 
             species = self.inputsTGLF[self.rhos[0]]  # Any rho will do
