@@ -176,9 +176,12 @@ class portals_beat(beat):
                 if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
                     self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
                     if sp1["S"] == "fast" and sp["S"] == "therm": 
+                        # make all fast ions fast again
                         self.profiles_output.Species[j]["S"] = "fast"
-                        self.profiles_output.profiles['ti(keV)'][:,j] = self.profiles_output.profiles['ti(keV)'][:,i]
+                        # leave FI profile unchanged
+                        self.profiles_output.profiles['ti(keV)'][:,j] = self.profiles_output.profiles['ti(keV)'][:,i] 
                     else:
+                        # update thermal ion profiles from PORTALS
                         self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Enforce quasineutrality because now I have all the ions
