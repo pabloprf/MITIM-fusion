@@ -358,9 +358,7 @@ class TGYRO:
             # cold_started
             # ----------------------------------------------------------------
             if TGYROcontinue is not None:
-                print(
-                    "\n\n~~ Option to cold_start from previous TGYRO iteration selected\n\n"
-                )
+                print("\n\n~~ Option to cold_start from previous TGYRO iteration selected\n\n")
 
                 self.FolderTGYRO_cold_started = self.FolderGACODE / TGYROcontinue
 
@@ -398,10 +396,12 @@ class TGYRO:
         fil = "input.gacode"
 
         if self.profiles.profiles['rho(-)'][0] > 0.0:
-            print(
-                "\t\t- input.gacode had a finite first rho, which is not allowed. Setting it to 0.0", typeMsg="i"
-            )
+            print("\t\t- input.gacode had a finite first rho, which is not allowed. Setting it to 0.0", typeMsg="i")
             self.profiles.profiles['rho(-)'][0] = 0.0
+
+        # Make sure it has a Zeff column
+        if "z_eff(-)" not in self.profiles.profiles:
+            self.profiles.profiles["z_eff(-)"] = self.profiles.derived["Zeff"]
 
         self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / f"{fil}")
 
@@ -443,10 +443,7 @@ class TGYRO:
                 minn_true.append(i)
 
         if len(minn_true) > 0:
-            print(
-                f"* Ions in positions {minn_true} have a relative density lower than {threshold}, which can cause problems. Continue (c)?",
-                typeMsg="q",
-            )
+            print(f"* Ions in positions {minn_true} have a relative density lower than {threshold}, which can cause problems. Continue (c)?",typeMsg="q",)
 
         # -----------------------------------
         # ------ Run
