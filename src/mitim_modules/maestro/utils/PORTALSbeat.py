@@ -134,10 +134,13 @@ class portals_beat(beat):
         The goal of the PORTALS beat is to produce:
             - Kinetic profiles
             - Dynamics targets that gave rise to the kinetic profiles
+        However, the PORTALS run makes the existing fast ion profiles thermal,
+        so this merge needs to bring back the fast ion species from the last TRANSP beat
         So, this merge:
             - Frozen profiles are converted to PORTALS output resolution (opposite to usual, but keeps gradients)
             - Inserts kinetic profiles
             - Inserts dynamic targets (only those that were evolved)
+            - Restore fast ion profiles
         '''
 
         # Write the pre-merge input.gacode before modifying it
@@ -172,7 +175,14 @@ class portals_beat(beat):
             for j,sp1 in enumerate(self.profiles_output.Species):
                 if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
                     self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
-                    self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
+                    if sp1["S"] == "fast" and sp["S"] == "therm": 
+                        # make all fast ions fast again
+                        self.profiles_output.Species[j]["S"] = "fast"
+                        # leave FI profile unchanged
+                        self.profiles_output.profiles['ti(keV)'][:,j] = self.profiles_output.profiles['ti(keV)'][:,i] 
+                    else:
+                        # update thermal ion profiles from PORTALS
+                        self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Enforce quasineutrality because now I have all the ions
         self.profiles_output.enforceQuasineutrality()
