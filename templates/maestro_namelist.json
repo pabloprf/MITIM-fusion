@@ -56,7 +56,7 @@
                      "PORTALSparameters": {
                           "forceZeroParticleFlux": true,
                           "keep_full_model_folder": false,
-                          "cores_per_tglf_instance": 4
+                          "cores_per_tglf_instance": 1
                      },
                      "MODELparameters": {
                           "RoaLocations": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
