@@ -1,17 +1,21 @@
+# Script created by ChatGPT 4.5
+
 from pathlib import Path
 import argparse
 import re
 import subprocess
 from datetime import datetime
 import fnmatch
+import os
 
 colors = {
     "PORTALS": "\033[31m",        # red
     "EPED": "\033[35m",           # magenta
     "TRANSP": "\033[33m",         # yellow
     "UNKNOWN": "\033[34m",        # blue
-    "FINISHED": "\033[32m",       # green
+    "FINISHED": "\033[91m",       # bright red
     "POTENTIAL FAIL": "\033[91m", # bright red
+    "FAILED": "\033[91m",         # bright red
 }
 RESET = "\033[0m"
 
@@ -29,13 +33,18 @@ for pattern in args.folders:
 
 folders = folders_clean
 
-rows = [("Folder", "Last Beat", "Type", "Details", "Job Status")]
+rows_running = []
+rows_finished = []
+rows_failed = []
+
+header = ("Folder", "Last Beat", "Type", "Details", "Job Status")
 
 for folder in folders:
     beats_folder = folder / 'Beats'
 
     if not beats_folder.exists():
-        rows.append((str(folder), "NO BEATS", "", "", ""))
+        mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        rows_failed.append((str(folder), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
         continue
 
     pattern = re.compile(r'Beat_(\d+)')
@@ -48,7 +57,6 @@ for folder in folders:
 
     txt = ''
     job_status = ''
-    state = ''
 
     slurm_output = folder / 'slurm_output.dat'
     job_id = None
@@ -69,23 +77,25 @@ for folder in folders:
                     job_status = f"{state.strip()} for {hours}h {minutes}m ({cores} cores on {partition})"
 
     if (outputs_folder / 'beat_final').exists():
+        mod_time = datetime.fromtimestamp((outputs_folder / 'beat_final').stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
         with open(slurm_output, 'r') as f:
             lines = f.readlines()
         for line in lines:
             if '* MAESTRO took' in line:
                 txt = line.split('* MAESTRO took')[-1].strip()
-        rows.append((str(folder), "FINISHED", last_beat.name, txt, job_status))
+        rows_finished.append((str(folder), "FINISHED", last_beat.name, txt, f"completed on {mod_time}"))
         continue
 
     if not job_status and not (outputs_folder / 'beat_final').exists():
-        state = "POTENTIAL FAIL"
-        job_status = "POTENTIAL FAIL"
+        mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        rows_failed.append((str(folder), last_beat.name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
+        continue
 
     if 'run_portals' in run_folder:
         beat = 'PORTALS'
         exe_folder = last_beat / 'run_portals' / 'Execution'
         if not exe_folder.exists():
-            txt = 'no execution folder'
+            txt = 'no execution folder yet'
         else:
             pattern_eval = re.compile(r'Evaluation.(\d+)')
             subfolders_eval = [d for d in exe_folder.iterdir() if d.is_dir() and pattern_eval.match(d.name)]
@@ -99,17 +109,28 @@ for folder in folders:
     else:
         beat = 'UNKNOWN'
 
-    rows.append((str(folder), last_beat.name, beat, txt, job_status))
+    rows_running.append((str(folder), last_beat.name, beat, txt, job_status))
 
-col_widths = [max(len(row[i]) for row in rows) for i in range(5)]
+# Recalculate col_widths after adding labels to ensure proper alignment
+all_rows = rows_running + rows_finished + rows_failed
+col_widths = [max(len(row[i]) for row in all_rows + [header]) for i in range(5)]
 
-for i, row in enumerate(rows):
-    beat_type = row[2] if row[2] else ("FINISHED" if row[1] == "FINISHED" else "UNKNOWN")
-    if row[4] == "POTENTIAL FAIL":
-        beat_type = "POTENTIAL FAIL"
-    color = colors.get(beat_type, "")
-    line = f"{row[0]:<{col_widths[0]}} - {row[1]:<{col_widths[1]}} - {row[2]:<{col_widths[2]}} - {row[3]:<{col_widths[3]}} - {row[4]:<{col_widths[4]}}"
-    print(f"{color}{line}{RESET}")
-    if i == 0:
-        print("-" * (sum(col_widths) + 12))
+header_line = f"{header[0]:<{col_widths[0]}} - {header[1]:<{col_widths[1]}} - {header[2]:<{col_widths[2]}} - {header[3]:<{col_widths[3]}} - {header[4]:<{col_widths[4]}}"
+print(header_line)
+print("-" * len(header_line))
+
+def print_block(rows, title):
+    if rows:
+        print(f"\n===== {title} =====")
+        for row in rows:
+            beat_type = row[2] if row[2] else title
+            if title in ["FINISHED", "FAILED"]:
+                beat_type = title
+            color = colors.get(beat_type, "")
+            line = f"{row[0]:<{col_widths[0]}} - {row[1]:<{col_widths[1]}} - {row[2]:<{col_widths[2]}} - {row[3]:<{col_widths[3]}} - {row[4]:<{col_widths[4]}}"
+            print(f"{color}{line}{RESET}")
+
+print_block(rows_running, "RUNNING")
+print_block(rows_finished, "FINISHED")
+print_block(rows_failed, "FAILED")
 print('')
