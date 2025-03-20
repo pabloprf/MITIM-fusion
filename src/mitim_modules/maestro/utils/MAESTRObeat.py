@@ -161,7 +161,7 @@ class initializer_from_geqdsk(beat_initializer):
         PichT_MW = 1.0,
         Zeff = 1.5,
         netop_20 = 1.0,
-        coeffs_MXH = 7,
+        coeffs_MXH = 5,
         **kwargs_profiles
         ):
         '''
