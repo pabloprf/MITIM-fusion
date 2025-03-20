@@ -3,13 +3,15 @@ import argparse
 import re
 import subprocess
 from datetime import datetime
+import fnmatch
 
 colors = {
-    "PORTALS": "\033[31m",   # red
-    "EPED": "\033[35m",      # magenta
-    "TRANSP": "\033[33m",    # yellow
-    "UNKNOWN": "\033[34m",   # blue
-    "FINISHED": "\033[32m",  # green
+    "PORTALS": "\033[31m",        # red
+    "EPED": "\033[35m",           # magenta
+    "TRANSP": "\033[33m",         # yellow
+    "UNKNOWN": "\033[34m",        # blue
+    "FINISHED": "\033[32m",       # green
+    "POTENTIAL FAIL": "\033[91m", # bright red
 }
 RESET = "\033[0m"
 
@@ -17,17 +19,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument("folders", type=str, nargs="*")
 
 args = parser.parse_args()
-folders = [Path(f) for f in args.folders]
 
 folders_clean = []
-for folder in folders:
-    if '*' in folder.name:
-        folders_all = list(folder.parent.iterdir())
-        for f in folders_all:
-            if folder.name[:-1] in f.name:
-                folders_clean.append(f)
-    else:
-        folders_clean.append(folder)
+for pattern in args.folders:
+    parent = Path(pattern).parent
+    parent = parent if parent != Path('.') else Path.cwd()
+    matched_folders = [f for f in parent.iterdir() if fnmatch.fnmatch(f.name, Path(pattern).name)]
+    folders_clean.extend(matched_folders)
+
 folders = folders_clean
 
 rows = [("Folder", "Last Beat", "Type", "Details", "Job Status")]
@@ -49,6 +48,7 @@ for folder in folders:
 
     txt = ''
     job_status = ''
+    state = ''
 
     slurm_output = folder / 'slurm_output.dat'
     job_id = None
@@ -77,6 +77,10 @@ for folder in folders:
         rows.append((str(folder), "FINISHED", last_beat.name, txt, job_status))
         continue
 
+    if not job_status and not (outputs_folder / 'beat_final').exists():
+        state = "POTENTIAL FAIL"
+        job_status = "POTENTIAL FAIL"
+
     if 'run_portals' in run_folder:
         beat = 'PORTALS'
         exe_folder = last_beat / 'run_portals' / 'Execution'
@@ -101,6 +105,8 @@ col_widths = [max(len(row[i]) for row in rows) for i in range(5)]
 
 for i, row in enumerate(rows):
     beat_type = row[2] if row[2] else ("FINISHED" if row[1] == "FINISHED" else "UNKNOWN")
+    if row[4] == "POTENTIAL FAIL":
+        beat_type = "POTENTIAL FAIL"
     color = colors.get(beat_type, "")
     line = f"{row[0]:<{col_widths[0]}} - {row[1]:<{col_widths[1]}} - {row[2]:<{col_widths[2]}} - {row[3]:<{col_widths[3]}} - {row[4]:<{col_widths[4]}}"
     print(f"{color}{line}{RESET}")
