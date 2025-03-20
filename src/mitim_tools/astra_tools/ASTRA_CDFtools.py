@@ -46,6 +46,13 @@ class transp_output:
         self.Ti = self.f["TI"][:]
         self.ne = self.f["NE"][:]
         self.ni = self.f["NI"][:]
+        self.NI = self.f["NI"][:]
+        self.NMAIN = self.f["NMAIN"][:]
+        self.NDEUT = self.f["NDEUT"][:]
+        self.NTRIT = self.f["NTRIT"][:]
+        self.NIZ1 = self.f["NIZ1"][:]
+        self.NIZ2 = self.f["NIZ2"][:]
+        self.NIZ3 = self.f["NIZ3"][:]
         self.FP = self.f["FP"][:]
         self.TF = self.rho[:,-1] * self.rho[:,-1] * self.BTOR[-1] / 2 # Wb/rad
         self.ER = self.f["ER"][:]
@@ -133,6 +140,16 @@ class transp_output:
         self.CAR52 = self.f["CAR52"][:]
         self.CAR53 = self.f["CAR53"][:]
         self.CAR54 = self.f["CAR54"][:]
+        self.CAR55 = self.f["CAR55"][:]
+        self.CAR56 = self.f["CAR56"][:]
+        self.CAR57 = self.f["CAR57"][:]
+        self.CAR58 = self.f["CAR58"][:]
+        self.CAR59 = self.f["CAR59"][:]
+        self.CAR60 = self.f["CAR60"][:]
+        self.CAR61 = self.f["CAR61"][:]
+        self.CAR62 = self.f["CAR62"][:]
+        self.CAR63 = self.f["CAR63"][:]
+        self.CAR64 = self.f["CAR64"][:]
         self.CRAD1   = self.f['CRAD1'][:]
         self.CRAD2   = self.f['CRAD2'][:]
         self.CRAD3   = self.f['CRAD3'][:]
@@ -321,54 +338,58 @@ class transp_output:
         self.PIDT = self.f["CAR4"][:]
         self.PEICL = self.f["CAR5"][:]
         self.POH = self.f["CAR6"][:]
-        self.beta = np.zeros(len(self.PEDT[:,-1]))
-        self.betaN = np.zeros(len(self.PEDT[:,-1]))
-        for kk in range(0,len(self.PEDT[:,-1])):
-            self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)
-            self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
-        
-        self.QIDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        self.QEDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        self.QDT   = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        self.QEICRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QIICRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QICRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QNBI = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QECRH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QEICL = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.Cu_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.Cubs_tot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QE = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QI = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QRAD = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.QOH = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.Wtot = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.ne_avg = np.zeros([len(self.PEICR[:,-1])])
-        self.ne_lineavg = np.zeros([len(self.PEICR[:,-1])])
-        self.Te_avg = np.zeros([len(self.PEICR[:,-1])])
-        self.Ti_avg = np.zeros([len(self.PEICR[:,-1])])
-        self.n_Gr = self.IPL/(np.pi*self.ABC**2)
-        self.tau98 = np.zeros([len(self.PEICR[:,-1])])
-        self.tau89 = np.zeros([len(self.PEICR[:,-1])])
-        self.tau98_lineavg = np.zeros([len(self.PEICR[:,-1])])
+
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
-        self.area = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.FP_norm = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
-        self.q95position = [0]*len(self.PEICR[:,-1])
-        self.q95 = np.zeros(len(self.PEICR[:,-1]))
-        self.delta95 = np.zeros(len(self.PEICR[:,-1]))
-        self.kappa95 = np.zeros(len(self.PEICR[:,-1]))
-        self.n_Angioni = np.zeros(len(self.PEICR[:,-1]))
-        self.SNEBM_tot = np.zeros(len(self.PEICR[:,-1]))
-        self.shear = np.zeros([len(self.PEICR[:,-1]),len(self.PEICR[-1,:])])
+
+        self.beta = np.zeros(len(self.t))
+        self.betaN = np.zeros(len(self.t))
+        self.QIDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        self.QEDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        self.QDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        self.QEICRH = np.zeros([len(self.t),len(self.xrho)])
+        self.QIICRH = np.zeros([len(self.t),len(self.xrho)])
+        self.QICRH = np.zeros([len(self.t),len(self.xrho)])
+        self.QNBI = np.zeros([len(self.t),len(self.xrho)])
+        self.QECRH = np.zeros([len(self.t),len(self.xrho)])
+        self.QEICL = np.zeros([len(self.t),len(self.xrho)])
+        self.Cu_tot = np.zeros([len(self.t),len(self.xrho)])
+        self.Cubs_tot = np.zeros([len(self.t),len(self.xrho)])
+        self.QE = np.zeros([len(self.t),len(self.xrho)])
+        self.QI = np.zeros([len(self.t),len(self.xrho)])
+        self.QRAD = np.zeros([len(self.t),len(self.xrho)])
+        self.QOH = np.zeros([len(self.t),len(self.xrho)])
+        self.Wtot = np.zeros([len(self.t),len(self.xrho)])
+        self.ne_avg = np.zeros([len(self.t)])
+        self.NIZ1_avg = np.zeros([len(self.t)])
+        self.NIZ2_avg = np.zeros([len(self.t)])
+        self.NIZ3_avg = np.zeros([len(self.t)])
+        self.NI_avg = np.zeros([len(self.t)])
+        self.ne_lineavg = np.zeros([len(self.t)])
+        self.Te_avg = np.zeros([len(self.t)])
+        self.Ti_avg = np.zeros([len(self.t)])
+        self.n_Gr = self.IPL/(np.pi*self.ABC**2)
+        self.tau98 = np.zeros([len(self.t)])
+        self.tau89 = np.zeros([len(self.t)])
+        self.tau98_lineavg = np.zeros([len(self.t)])
+        self.area = np.zeros([len(self.t),len(self.xrho)])
+        self.FP_norm = np.zeros([len(self.t),len(self.xrho)])
+        self.q95position = [0]*len(self.t)
+        self.q95 = np.zeros(len(self.t))
+        self.delta95 = np.zeros(len(self.t))
+        self.kappa95 = np.zeros(len(self.t))
+        self.n_Angioni = np.zeros(len(self.t))
+        self.SNEBM_tot = np.zeros(len(self.t))
+        self.shear = np.zeros([len(self.t),len(self.xrho)])
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
              else:
                   self.area[:,ii] = self.AREAT[:,ii]
         
-        for kk in range(0,len(self.PEDT[:,-1])):
+        for kk in range(0,len(self.t)):
+             self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)
+             self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
              self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
              self.QIDT[kk,:] = np.cumsum(self.PIDT[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QEICL[kk,:] = np.cumsum(self.PEICL[kk,:]*self.HRO[kk]*self.VR[kk,:])
@@ -387,6 +408,9 @@ class transp_output:
              self.QOH[kk,:] = np.cumsum(self.POH[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.Wtot[kk,:] = np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
+             self.NIZ1_avg[kk] = np.cumsum(self.NIZ1[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
+             self.NIZ2_avg[kk] = np.cumsum(self.NIZ2[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
+             self.NI_avg[kk] = np.cumsum(self.NI[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.ne_lineavg[kk] = np.cumsum(self.ne[kk,:])[-1]/len(self.ne[kk,:])
              self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
@@ -411,13 +435,6 @@ class transp_output:
         self.H98 = self.tauE[:,-1]/self.tau98
         self.H89 = self.tauE[:,-1]/self.tau89
         self.H98_lineavg = self.tauE[:,-1]/self.tau98_lineavg
-        self.NDEUT = self.f["NDEUT"][:]
-        self.NTRIT = self.f["NTRIT"][:]
-        self.NIZ1 = self.f["NIZ1"][:]
-        self.NIZ2 = self.f["NIZ2"][:]
-        self.NIZ3 = self.f["NIZ3"][:]
-        self.CAR1 = self.f["CAR1"][:]
-        self.NMAIN = self.f["NMAIN"][:]
         self.ZIM1 = self.f["ZIM1"][:]
         self.ZIM2 = self.f["ZIM2"][:]
         self.ZIM3 = self.f["ZIM3"][:]
@@ -428,11 +445,11 @@ class transp_output:
         self.CAR7 = self.f["CAR7"][:]
         self.ZMAIN = self.f["ZMAIN"][:]
         self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  #in MPa
-        self.rlte  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        self.rlti  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        self.rlne  = np.zeros([len(self.PEDT[:,-1]),len(self.PEDT[-1,:])])
-        for kk in range(0,len(self.Te[:,-1])):
-             for jj in range(0,len(self.Te[-1,:])-1):
+        self.rlte  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        self.rlti  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        self.rlne  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
+        for kk in range(0,len(self.t)):
+             for jj in range(0,len(self.xrho)-1):
                   self.rlte[kk,jj]=-self.RTOR[-1]/(0.5*(self.Te[kk,jj]+self.Te[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Te[kk,jj+1]-self.Te[kk,jj]))
                   self.rlti[kk,jj]=-self.RTOR[-1]/(0.5*(self.Ti[kk,jj]+self.Ti[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Ti[kk,jj+1]-self.Ti[kk,jj]))
                   self.rlne[kk,jj]=-self.RTOR[-1]/(0.5*(self.ne[kk,jj]+self.ne[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.ne[kk,jj+1]-self.ne[kk,jj]))
