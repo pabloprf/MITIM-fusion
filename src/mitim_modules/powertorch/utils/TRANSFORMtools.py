@@ -76,6 +76,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     # Quantities that do not necessarily need to be used in this powerstate call
     additional_quantities_for_potential_use = [
         ["B_unit", "B_unit", None, True, True],
+        ["B_ref", "B_ref", None, True, True],
         ["q", "q(-)", None, True, False],
         ["s_q", "s_q", None, True, True],
         ["aLTe", "aLTe", None, True, True],
