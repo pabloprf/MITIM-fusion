@@ -258,15 +258,6 @@ class transp_beat(beat):
 
         return '\t\t- Plotting of TRANSP beat done'
 
-    def finalize_maestro(self):
-
-        cdf = CDFtools.transp_output(self.folder_output / f"{self.transp.shot}{self.transp.runid}.CDF")
-        self.maestro_instance.final_p = cdf.to_profiles()
-        
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
-
     # --------------------------------------------------------------------------------------------
     # Additional TRANSP utilities
     # --------------------------------------------------------------------------------------------

@@ -295,7 +295,7 @@ class eped_beat(beat):
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine
         pass
-    
+
     def grab_output(self):
 
         isitfinished = self.maestro_instance.check(beat_check=self)
@@ -403,14 +403,6 @@ class eped_beat(beat):
             axs[i].set_xlabel(key)
             axs[i].set_ylabel(ikey)
             GRAPHICStools.addDenseAxis(axs[i])
-
-    def finalize_maestro(self):
-
-        self.maestro_instance.final_p = self.profiles_output
-        
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
     # --------------------------------------------------------------------------------------------
     # Additional EPED utilities

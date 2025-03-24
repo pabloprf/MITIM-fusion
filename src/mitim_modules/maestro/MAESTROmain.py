@@ -263,11 +263,16 @@ class maestro:
     @mitim_timer('\t\t* Finalizing', name_timer=None)
     def finalize(self):
 
-        print('\t- Finalizing MAESTRO run...')
+        print('- MAESTRO finalizing')
         
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
-            self.beat.finalize_maestro()
+
+            final_file= (self.folder_output / 'input.gacode_final')
+
+            self.beat.profiles_output.writeCurrentStatus(file= final_file)
+
+            print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
     # --------------------------------------------------------------------------------------------
     # Plotting operations

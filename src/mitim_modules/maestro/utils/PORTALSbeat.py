@@ -232,22 +232,6 @@ class portals_beat(beat):
 
         return msg
 
-    def finalize_maestro(self):
-
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
-
-        # Standard PORTALS output
-        try:
-            self.maestro_instance.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
-        # Converged in training case
-        except AttributeError as e:
-            print('\t\t- PORTALS probably converged in training, so analyzing a bit differently, error:', e)
-            self.maestro_instance.final_p = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
-        
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
-
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
