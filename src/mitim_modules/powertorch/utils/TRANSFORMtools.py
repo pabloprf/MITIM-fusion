@@ -63,7 +63,6 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     quantities_to_interpolate = [
         ["rho", "rho(-)", None, True, False],
         ["roa", "roa", None, True, True],
-        #["eps", "eps", None, True, True],
         ["Rmajoa", "Rmajoa", None, True, True],
         ["volp", "volp_miller", None, True, True],
         ["rmin", "rmin(m)", None, True, False],
@@ -72,6 +71,10 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["ne", "ne(10^19/m^3)", None, True, False],
         ["nZ", "ni(10^19/m^3)", self.impurityPosition, True, False],
         ["w0", "w0(rad/s)", None, True, False],
+    ]
+
+    # Quantities that do not necessarily need to be used in this powerstate call
+    additional_quantities_for_potential_use = [
         ["B_unit", "B_unit", None, True, True],
         ["B_ref", "B_ref", None, True, True],
         ["q", "q(-)", None, True, False],
@@ -83,11 +86,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["Zeff", "Zeff", None, True, True],
         ["kappa", "kappa(-)", None, True, False],
         ["delta", "delta(-)", None, True, False],
-    ]
-
-    # Quantities that do not necessarily need to be used in this powerstate call
-    additional_quantities_for_potential_use = [
-        ["q", "q(-)", None, True, False]
+        ["betae", "betae", None, True, True],
     ]
     # ---------------------------------------------------------------------------
 
