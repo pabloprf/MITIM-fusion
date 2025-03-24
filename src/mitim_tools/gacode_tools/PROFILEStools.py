@@ -930,6 +930,14 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )  # MPa
 
+        self.derived['pfast_manual'] = self.derived['ptot_manual'] - self.derived['pthr_manual']
+        self.derived["pfast_manual_vol"] = (
+            CALCtools.integrateFS(self.derived["pfast_manual"], r, volp)[-1]
+            / self.derived["volume"]
+        )  # MPa
+
+        self.derived['pfast_fraction'] = self.derived['pfast_manual_vol'] / self.derived['ptot_manual_vol']
+
         # Quasineutrality
         self.derived["QN_Error"] = np.abs(
             1 - np.sum(self.derived["fi_vol"] * self.profiles["z"])
@@ -1255,6 +1263,9 @@ class PROFILES_GACODE:
         return We, Wi, Ne, Ni
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
+
+        if 'pfast_fraction' not in self.derived:    self.derived['pfast_fraction'] = np.nan   #TODO: remove this line
+
         try:
             ImpurityText = ""
             for i in range(len(self.Species)):
@@ -1294,6 +1305,7 @@ class PROFILES_GACODE:
                 )
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
+            print(f"\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(
                 f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})"
             )
@@ -2298,6 +2310,17 @@ class PROFILES_GACODE:
                 label=extralab + "check",
             )
             # ax.plot(rho,np.abs(var-self.derived['ptot_manual']),lw=lw,ls='-.',c=color,label=extralab+'diff')
+
+            ax.plot(
+                rho,
+                self.derived["pthr_manual"],
+                lw=lw,
+                ls="-.",
+                c=color,
+                label=extralab + "check, thrm",
+            )
+
+
         varL = "$p$ (MPa)"
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
