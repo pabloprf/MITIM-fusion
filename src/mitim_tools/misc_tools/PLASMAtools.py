@@ -125,7 +125,7 @@ def LHthreshold_Martin1(n, Bt, S, nmin=0):
 
 
 def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=0):
-    return 2.15 * n**0.782 * Bt**0.772 * a**0.975 * nminfactor(nmin, n) * Rmajor**0.999
+    return 2.15 * n**0.782 * Bt**0.772 * a**0.975  * Rmajor**0.999 * nminfactor(nmin, n)
 
 
 def LHthreshold_Schmid1(n, Bt, S, nmin=0):

@@ -214,7 +214,7 @@ class maestro:
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
 
-    @mitim_timer('\t\t* Run', name_timer=None)
+    @mitim_timer('\t\t* Run + finalization', name_timer=None)
     def run(self, **kwargs):
 
         # Run 
@@ -223,19 +223,23 @@ class maestro:
             log_file = self.folder_logs / f'beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
             with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
-
-                # Finalize
-                self.beat.finalize(**kwargs)
-
-                # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
-                print('\t\t- Merging engineering parameters from MAESTRO')
-                self.beat.merge_parameters()
-
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
 
-        # Produce a new self.profiles_with_engineering_parameters from this merged object
-        self._freeze_parameters()
+        # Finalize, merging and freezing should occur even if the run has not been performed because the results are already there
+        print('\t- Finalizing beat...')
+        log_file = self.folder_logs / f'beat_{self.counter_current}_finalize.log' if (not self.terminal_outputs) else None
+        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+
+            # Finalize
+            self.beat.finalize(**kwargs)
+
+            # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
+            print('\t\t- Merging engineering parameters from MAESTRO')
+            self.beat.merge_parameters()
+
+            # Produce a new self.profiles_with_engineering_parameters from this merged object
+            self._freeze_parameters()
 
         # Inform next beats
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None

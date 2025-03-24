@@ -282,10 +282,14 @@ class eped_beat(beat):
         for key in eped_results:
             print(f'\t\t- {key}: {eped_results[key]}')
 
+        self.profiles_output.writeCurrentStatus(file=self.folder / 'input.gacode.eped')
+
         return eped_results
 
     def finalize(self, **kwargs):
         
+        self.profiles_output = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode.eped')
+
         self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):

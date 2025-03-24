@@ -188,10 +188,11 @@ class portals_beat(beat):
         self.profiles_output.enforceQuasineutrality()
 
         # Insert powers
-        if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
+        opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+        if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 1:
             # Insert exchange
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
-            if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
+            if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 2:
                 # Insert radiation and fusion
                 for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
                     self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
