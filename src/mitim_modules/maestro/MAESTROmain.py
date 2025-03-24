@@ -263,7 +263,7 @@ class maestro:
     @mitim_timer('\t\t* Finalizing', name_timer=None)
     def finalize(self):
 
-        print('- MAESTRO finalizing')
+        print(f'- MAESTRO finalizing ******************************* {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):

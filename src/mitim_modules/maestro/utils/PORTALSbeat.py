@@ -187,6 +187,9 @@ class portals_beat(beat):
         # Enforce quasineutrality because now I have all the ions
         self.profiles_output.enforceQuasineutrality()
 
+        # Make sure the pressure is consistent with the new profiles
+        self.profiles_output.selfconsistentPTOT()
+
         # Insert powers
         opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
         if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 1:
