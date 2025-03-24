@@ -2,7 +2,6 @@ import shutil
 import copy
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
@@ -71,7 +70,7 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
-        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point and self.folder_starting_point is not None:
 
             # PORTALS just with one point
             portals_fun.optimization_options['initialization_options']['initial_training'] = 1
@@ -96,7 +95,7 @@ class portals_beat(beat):
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
-        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv', plot_results = False)
+        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv')
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
@@ -109,7 +108,7 @@ class portals_beat(beat):
             if item.is_file():
                 item.unlink(missing_ok=True)
             elif item.is_dir():
-                shutil.rmtree(item)
+                IOtools.shutil_rmtree(item)
 
         # Copy to outputs
         shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
@@ -135,10 +134,13 @@ class portals_beat(beat):
         The goal of the PORTALS beat is to produce:
             - Kinetic profiles
             - Dynamics targets that gave rise to the kinetic profiles
+        However, the PORTALS run makes the existing fast ion profiles thermal,
+        so this merge needs to bring back the fast ion species from the last TRANSP beat
         So, this merge:
             - Frozen profiles are converted to PORTALS output resolution (opposite to usual, but keeps gradients)
             - Inserts kinetic profiles
             - Inserts dynamic targets (only those that were evolved)
+            - Restore fast ion profiles
         '''
 
         # Write the pre-merge input.gacode before modifying it
@@ -173,7 +175,14 @@ class portals_beat(beat):
             for j,sp1 in enumerate(self.profiles_output.Species):
                 if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
                     self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
-                    self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
+                    if sp1["S"] == "fast" and sp["S"] == "therm": 
+                        # make all fast ions fast again
+                        self.profiles_output.Species[j]["S"] = "fast"
+                        # leave FI profile unchanged
+                        self.profiles_output.profiles['ti(keV)'][:,j] = self.profiles_output.profiles['ti(keV)'][:,i] 
+                    else:
+                        # update thermal ion profiles from PORTALS
+                        self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Enforce quasineutrality because now I have all the ions
         self.profiles_output.enforceQuasineutrality()
@@ -216,7 +225,7 @@ class portals_beat(beat):
                 fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
                 opt_fun.plotMetrics(fig=fig)
             else:
-                print('\t\t- PORTALS has not run enough to plot anything')
+                print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
 
         msg = '\t\t- Plotting of PORTALS beat done'
 
@@ -258,6 +267,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
         reusing_surrogate_data = False
+        self.folder_starting_point = None
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             if 'surrogate_options' not in self.optimization_options:
                 self.optimization_options['surrogate_options'] = {}
@@ -268,6 +278,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
 
             reusing_surrogate_data = True
+            
 
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
@@ -374,19 +385,18 @@ def portals_beat_soft_criteria(portals_namelist):
 
     portals_namelist_soft = copy.deepcopy(portals_namelist)
 
+    # Relaxation of stopping criteria
     if 'optimization_options' not in portals_namelist_soft:
         portals_namelist_soft['optimization_options'] = {}
+    if 'convergence_options' not in portals_namelist_soft['optimization_options']:
+        portals_namelist_soft['optimization_options']['convergence_options'] = {}
+    if 'stopping_criteria_parameters' not in portals_namelist_soft['optimization_options']['convergence_options']:
+        portals_namelist_soft['optimization_options']['convergence_options']['stopping_criteria_parameters'] = {}
 
-    portals_namelist_soft['optimization_options']['convergence_options'] = {
-            "maximum_iterations": 15,
-            "stopping_criteria": PORTALStools.stopping_criteria_portals,
-            'stopping_criteria_parameters': {
-                "maximum_value": 10e-3,  # Reducing residual by 100x is enough
-                "maximum_value_is_rel": True,
-                "minimum_dvs_variation": [10, 3, 1.0],  # After iteration 10, Check if 3 consecutive DVs are varying less than 1.0% from the rest that has been evaluated
-                "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 1.0,
-            }
-        }
+    portals_namelist_soft['optimization_options']['convergence_options']["maximum_iterations"] = 15
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["maximum_value"] = 10e-3
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
 
     if 'MODELparameters' not in portals_namelist_soft:
         portals_namelist_soft['MODELparameters'] = {}

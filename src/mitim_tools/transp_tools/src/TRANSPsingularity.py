@@ -291,6 +291,10 @@ def runSINGULARITY(
 
     inputFolders, inputFiles, shellPreCommands = [], [], []
 
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.folderExecution, str):
+        transp_job.folderExecution = str(transp_job.folderExecution)
+
     start_folder = transp_job.folderExecution.split("/")[1]  # e.g. pool001, nobackup1
 
     if start_folder not in ["home", "Users"]:
@@ -314,7 +318,7 @@ def runSINGULARITY(
         # ------------------------------------------------------------
         folder_inputs = folderWork / "tmp_inputs"
         if folder_inputs.exists():
-            shutil.rmtree(folder_inputs)
+            IOtools.shutil_rmtree(folder_inputs)
         
         IOtools.askNewFolder(folder_inputs, force=True)
         for item in folderWork.glob('*'):
@@ -443,7 +447,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
 
     transp_job.run(waitYN=False)
 
-    shutil.rmtree(folderWork / 'tmp_inputs')
+    IOtools.shutil_rmtree(folderWork / 'tmp_inputs')
 
 
 def interpretRun(infoSLURM, log_file):
@@ -478,7 +482,9 @@ def interpretRun(infoSLURM, log_file):
             ) or (
             "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
             ) or (
-                "Segmentation fault - invalid memory reference" in "\n".join(log_file)
+            "Segmentation fault - invalid memory reference" in "\n".join(log_file)
+            ) or (
+            "*** End of error message ***" in "\n".join(log_file)
             ):
             status = -1
             info["info"]["status"] = "stopped"
@@ -520,13 +526,15 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name):
         slurm_settings={"name": job_name+"_finish", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
 
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.machineSettings["folderWork"], str):
+        transp_job.machineSettings["folderWork"] = str(transp_job.machineSettings["folderWork"])
+
     # ---------------
     # Execution command
     # ---------------
 
-    start_folder = transp_job.machineSettings["folderWork"].split("/")[
-        1
-    ]  # e.g. pool001, nobackup1
+    start_folder = transp_job.machineSettings["folderWork"].split("/")[1]  # e.g. pool001, nobackup1
 
     if start_folder not in ["home", "Users"]:
         txt_bind = f"--bind /{start_folder} "  # As Jai suggestion to solve problem with nobackup1
@@ -572,6 +580,10 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
         launchSlurm=True,
         slurm_settings={"name": job_name+"_look", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
+
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.machineSettings["folderWork"], str):
+        transp_job.machineSettings["folderWork"] = str(transp_job.machineSettings["folderWork"])
 
     # ---------------
     # Execution command

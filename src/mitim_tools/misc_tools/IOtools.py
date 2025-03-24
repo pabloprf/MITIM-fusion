@@ -2,6 +2,7 @@ import os
 import shutil
 import psutil
 import copy
+import dill as pickle_dill
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
 import numpy as np
@@ -33,7 +34,7 @@ import urllib.error as urlERR  # urllibE
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 class speeder(object):
-    def __init__(self, file):
+    def __init__(self, file='./profiler.prof'):
         self.file = Path(file).expanduser()
 
     def __enter__(self):
@@ -418,7 +419,7 @@ def zipFiles(files, outputFolder, name="info"):
     for i in files:
         shutil.copy2(expandPath(i), opath)
     shutil.make_archive(f"{opath}", "zip", odir)  # Apparently better to keep string as first argument
-    shutil.rmtree(opath)
+    shutil_rmtree(opath)
 
 
 def unzipFiles(file, destinyFolder, clear=True):
@@ -668,7 +669,7 @@ def askNewFolder(folderWork, force=False, move=None):
     workpath = Path(folderWork).expanduser()
     if workpath.exists():
         if force:
-            shutil.rmtree(workpath)
+            shutil_rmtree(workpath)
         else:
             if move is not None:
                 workpath.replace(workpath.parent / f"{workpath.name}_{move}")
@@ -676,7 +677,7 @@ def askNewFolder(folderWork, force=False, move=None):
                 print(
                     f"You are about to erase the content of {workpath.resolve()}", typeMsg="q"
                 )
-                shutil.rmtree(workpath)
+                shutil_rmtree(workpath)
     if not workpath.exists():
         workpath.mkdir(parents=True)
     if workpath.is_dir():
@@ -1854,3 +1855,55 @@ def plot_metrics(log_file="resource_log.txt", output_image="resource_metrics.png
         GRAPHICStools.addDenseAxis(ax)
 
     plt.tight_layout()
+
+def shutil_rmtree(item):
+    '''
+    Removal of folders may fail because of a "Directory not empty" error, 
+    even if the files were properly removed. This is because of potential syncronization
+    or back-up processes that may be running in the background in some file systems.
+    Temporary solution for now is to use the shutil.rmtree function with a try-except block,
+    one that waits a second and one that just renames the folder to a temporary name.
+    '''
+
+    try:
+        shutil.rmtree(item)
+    except OSError:
+        time.sleep(1)
+        try:
+            shutil.rmtree(item)
+        except OSError:
+            new_item = item.with_name(item.name + "_cannotrm")
+            shutil.move(item, new_item)
+            print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')
+
+def unpickle_mitim(file):
+
+    with open(str(file), "rb") as handle:
+        try:
+            state = pickle_dill.load(handle)
+        except:
+            print("\t- Pickled file could not be opened, going with custom unpickler...",typeMsg='w')
+            handle.seek(0)
+            state = CPU_Unpickler(handle).load()
+
+    return state
+
+"""
+To load pickled GPU-cuda classes on a CPU machine
+From:
+	https://github.com/pytorch/pytorch/issues/16797
+	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
+"""
+class CPU_Unpickler(pickle_dill.Unpickler):
+    def find_class(self, module, name):
+        import io
+
+        if module == "torch.storage" and name == "_load_from_bytes":
+            return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
+        else:
+            try:
+                return super().find_class(module, name)
+            except ModuleNotFoundError:
+                print(f"\t\tModule not found: {module} {name}; returning dummy", typeMsg="i")
+                return super().find_class("torch._utils", name)
+

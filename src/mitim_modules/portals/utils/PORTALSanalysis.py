@@ -2,7 +2,6 @@ import copy
 import torch
 import numpy as np
 import pandas as pd
-import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
@@ -10,6 +9,7 @@ from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals.utils import PORTALSplot
 from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -31,7 +31,10 @@ class PORTALSanalyzer:
             else self.opt_fun.folder / "Analysis"
         )
 
-        self.folder.mkdir(parents=True, exist_ok=True)
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            print(f"\t- Could not create folder {IOtools.clipstr(self.folder)} because of lack of permissions, you will only be able to read, not perform further analysis", typeMsg="w")
 
         self.fn = None
 
@@ -43,14 +46,15 @@ class PORTALSanalyzer:
         self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters["powerstate"]
 
         # Read dictionaries
-        with open(self.opt_fun.mitim_model.optimization_object.optimization_extra, "rb") as f:
-            self.mitim_runs = pickle_dill.load(f)
+        self.mitim_runs = IOtools.unpickle_mitim(self.opt_fun.mitim_model.optimization_object.optimization_extra)
 
         self.prep_metrics()
 
     @classmethod
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
+
+        folder = IOtools.expandPath(folder)
 
         if folder.exists() or folderRemote is not None:
 
@@ -75,10 +79,7 @@ class PORTALSanalyzer:
 
                 return opt_fun_ini
         else:
-            print(
-                "\t- Folder does not exist, are you sure you are on the right path?",
-                typeMsg="w",
-            )
+            print("\t- Folder does not exist, are you sure you are on the right path?",typeMsg="w")
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):
@@ -121,8 +122,17 @@ class PORTALSanalyzer:
     # PREPARATION
     # ****************************************************************************
 
-    def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}, ilast=None):
+    def prep_metrics(self, ilast=None):
         print("- Interpreting PORTALS results")
+
+        try:
+            calculateRicci = {
+                "d0": self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_d0'],
+                "l":  self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_lambda']
+            }
+        except:
+            calculateRicci={"d0": 2.0, "l": 0.5}
+
 
         # What's the last iteration?
         if ilast is None:
@@ -208,6 +218,12 @@ class PORTALSanalyzer:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = [], [], []
         else:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
+
+        # Try grab thresholds
+        try:
+            self.chiR_Ricci_thr = self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_value']
+        except:
+            self.chiR_Ricci_thr = None
 
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
@@ -980,7 +996,7 @@ class PORTALSinitializer:
             print("- No powerstates available to plot metrics", typeMsg="w")
             return
 
-        # Prepare figure -------------
+        # Prepare figure --------------------------------------------------
         if 'fig' in kwargs and kwargs['fig'] is not None:
             print('Using provided figure, assuming I only want a summary')
             figMain = kwargs['fig']
@@ -989,12 +1005,11 @@ class PORTALSinitializer:
             if self.fn is None:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
                 self.fn = FigureNotebook("PowerState", geometry="1800x900")
-
             figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
-        # ----------------------------
+        # -----------------------------------------------------------------
 
-        axs = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
+        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
@@ -1010,9 +1025,7 @@ class PORTALSinitializer:
 
         if len(self.powerstates) > 0:
             for i in range(len(self.powerstates)):
-                self.powerstates[i].plot(
-                    axs=axs, c=colors[i], label=f"#{i}"
-                )
+                self.powerstates[i].plot(axs=axs, c=colors[i], label=f"#{i}")
 
                 # Add profiles too
                 self.powerstates[i].profiles.plotGradients(
@@ -1038,8 +1051,16 @@ class PORTALSinitializer:
                 ls='-',
                 lw=1.0,
                 lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                label='next',
+                label=f"next ({len(self.profiles)-len(self.powerstates)})",
             )
+
+        # Metrics
+        POWERplot.plot_metrics_powerstates(
+            axsM,
+            self.powerstates,
+            profiles = self.profiles[-1] if len(self.profiles) > len(self.powerstates) else None,
+            profiles_color=colors[i+1],
+        )
 
         # GRADIENTS
         if figG is not None:

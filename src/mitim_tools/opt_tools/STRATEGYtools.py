@@ -397,8 +397,7 @@ class MITIM_BO:
             exists = False
             if self.optimization_extra.exists():
                 try:
-                    with open(self.optimization_extra, "rb") as handle:
-                        dictStore = pickle_dill.load(handle)
+                    dictStore = IOtools.unpickle_mitim(self.optimization_extra)
                     exists = True
                 except (ModuleNotFoundError,EOFError):
                     exists = False
@@ -430,13 +429,9 @@ class MITIM_BO:
         # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
-            print(
-                "\n-----------------------------------------------------------------------------------------"
-            )
+            print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")
-            print(
-                "-----------------------------------------------------------------------------------------\n"
-            )
+            print("-----------------------------------------------------------------------------------------\n")
 
             """
 			------------------------------------------------------------------------------
@@ -560,6 +555,16 @@ class MITIM_BO:
                 forceNew=forceNewTabulars,
             )
 
+            # If the file turned out to be empty, I will force it to be new
+            if forceNewTabulars and (len(self.optimization_data.data) == 0):
+                print("\t* Tabular file is empty, forcing new, to avoid radii/channel specifications from dummy sims",typeMsg="w")
+                self.optimization_data = BOgraphics.optimization_data(
+                    inputs,
+                    self.outputs,
+                    file=self.folderOutputs / "optimization_data.csv",
+                    forceNew=True,
+                )
+
             res_file = self.folderOutputs / "optimization_results.out"
 
             """
@@ -665,10 +670,10 @@ class MITIM_BO:
             pointsExpected = len(self.train_X) + self.best_points
             if not self.cold_start:
                 if not pointsTabular >= pointsExpected:
-                    print(f"--> Because points are not all in Tabular ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
+                    print(f"--> CSV file does not contain information for all points ({pointsTabular}/{pointsExpected}), disabling cold_starting-from-previous from this point on",typeMsg="w", )
                     self.cold_start = True
                 else:
-                    print(f"--> Tabular contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
+                    print(f"--> CSV file contains at least as many points as expected at this stage ({pointsTabular}/{pointsExpected})",typeMsg="i",)
 
             # In the case of starting from previous, do not run BO process.
             if not self.cold_start:
@@ -719,7 +724,7 @@ class MITIM_BO:
                 # When cold_starting, make sure that the strategy options are preserved (like correction, bounds and TURBO)
                 self.strategy_options_use = current_step.strategy_options_use
 
-                print("\t* Step successfully cold_started from pkl file", typeMsg="i")
+                print("\t* Step successfully restarted from pkl file", typeMsg="i")
 
             # Standard (i.e. start from beginning, not read values)
             if self.cold_start:
@@ -762,14 +767,16 @@ class MITIM_BO:
                 # ***** Fit
                 self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
 
-                # Store class with the model fitted
+                # ***** Define evaluators
+                self.steps[-1].defineFunctions(self.scalarized_objective)
+
+                # Store class with the model fitted and evaluators defined
                 if self.storeClass:
                     self.save()
 
                 # ***** Optimize
                 if not self.hard_finish:
                     self.steps[-1].optimize(
-                        self.scalarized_objective,
                         position_best_so_far=self.BOmetrics["overall"]["indBest"],
                         seed=self.seed,
                     )
@@ -882,13 +889,7 @@ class MITIM_BO:
             except:
                 pass
 
-            with open(stateFile, "rb") as f:
-                try:
-                    aux = pickle_dill.load(f)
-                except:
-                    print("Pickled file could not be opened, likely because of GPU-based tensors, going with custom unpickler...")
-                    f.seek(0)
-                    aux = CPU_Unpickler(f).load()
+            aux = IOtools.unpickle_mitim(stateFile)
 
             aux = self.prepare_for_read_MITIMBO(aux)
 
@@ -1795,8 +1796,8 @@ class MITIM_BO:
                     alpha=0.5,
                     it_start=it_start,
                 )
-            except KeyError:
-                print(f"\t- Problem plotting {info[ipost]['method']}", typeMsg="w")
+            except KeyError as e:
+                print(f"\t- Problem plotting {info[ipost]['method']}: ",e, typeMsg="w")
 
         xypair = np.array(xypair)
 
@@ -1933,15 +1934,11 @@ def read_from_scratch(file):
 
     return mitim
 
-
 def avoidClassInitialization(folderWork):
     print("It was requested that I try read the class before I initialize and select parameters...",typeMsg="i")
 
     try:
-        with open(
-            IOtools.expandPath(folderWork) / "Outputs" / "optimization_object.pkl", "rb"
-        ) as handle:
-            aux = pickle_dill.load(handle)
+        aux = IOtools.unpickle_mitim(folderWork / "Outputs" / "optimization_object.pkl")
         opt_fun = aux.optimization_object
         cold_start = False
         print("\t- cold_start was successful", typeMsg="i")
@@ -1954,19 +1951,24 @@ def avoidClassInitialization(folderWork):
 
     return opt_fun, cold_start
 
+def clean_state(folder):
+    '''
+    This function cleans the a read pickle file to avoid problems with reading cases run in a different machine
+    '''        
 
-"""
-To load pickled GPU-cuda classes on a CPU machine
-From:
-	https://github.com/pytorch/pytorch/issues/16797
-	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
-"""
+    print(">><<>><< Cleaning state of the class...", typeMsg="i")
 
-class CPU_Unpickler(pickle_dill.Unpickler):
-    def find_class(self, module, name):
-        import io
+    aux = read_from_scratch(folder / "Outputs" / "optimization_object.pkl")
 
-        if module == "torch.storage" and name == "_load_from_bytes":
-            return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
-        else:
-            return super().find_class(module, name)
+    if aux is not None:
+        
+        from mitim_modules.portals import PORTALStools, PORTALSmain
+
+        if isinstance(aux.optimization_object, PORTALSmain.portals):
+            aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
+
+        aux.folderOutputs = folder / "Outputs"
+
+        aux.save()
+
+    print(">><<>><< Cleaning state of the class... Done", typeMsg="i")

@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -61,7 +61,7 @@ class eped_beat(beat):
         # Run the NN
         # -------------------------------------------------------
 
-        eped_results = self._run(loopBetaN = 1)
+        eped_results = self._run(loopBetaN = 1, store_scan=True)
 
         # -------------------------------------------------------
         # Save stuff
@@ -71,11 +71,10 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005):
+    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
         '''
-
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -225,6 +224,45 @@ class eped_beat(beat):
             print(f'\t\t* wtop_psipol: {wtop_psipols}')
 
         # ---------------------------------
+        # Run scans for postprocessing
+        # ---------------------------------
+
+        scan_results = None
+        if store_scan:
+
+            print('\t- Running scans of EPED inputs for postprocessing')
+                
+            scan_relative = {
+                "Ip": 0.05,
+                "Bt": 0.05,
+                "R": 0.05,
+                "a": 0.05,
+                "kappa995": 0.05,
+                "delta995": 0.05,
+                "neped_20": 0.75,
+                "BetaN": 0.5,
+                "zeff": 0.3,
+                "Tesep_keV": 0.75,
+                "nesep_ratio": 0.75
+            }
+
+            scan_results = {}
+            for k,key in enumerate(scan_relative):
+                inputs_scan = list(copy.deepcopy(inputs_to_nn))
+                scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
+                for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
+                    inputs_scan[k] = inputs_to_nn[k]*m
+                    ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
+                    scan_results[key]['ptop_kPa'].append(ptop_kPa0)
+                    scan_results[key]['wtop_psipol'].append(wtop_psipol0)
+                    scan_results[key]['value'].append(inputs_scan[k])
+                scan_results[key]['ptop_kPa'] = np.array(scan_results[key]['ptop_kPa'])
+                scan_results[key]['wtop_psipol'] = np.array(scan_results[key]['wtop_psipol'])
+                scan_results[key]['value'] = np.array(scan_results[key]['value'])
+
+                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_nn)
+
+        # ---------------------------------
         # Store
         # ---------------------------------
 
@@ -238,6 +276,7 @@ class eped_beat(beat):
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
             'inputs_to_nn': inputs_to_nn,
+            'scan_results': scan_results
         }
 
         for key in eped_results:
@@ -272,6 +311,9 @@ class eped_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
+        if fn is None:
+            fn = GUItools.FigureNotebook("EPED")
+
         fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
@@ -301,9 +343,62 @@ class eped_beat(beat):
 
         GRAPHICStools.adjust_figure_layout(fig)
 
+        if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
+            for ikey in ['ptop_kPa', 'wtop_psipol']:
+                fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
+
+                axs = fig.subplot_mosaic(
+                    """
+                    ABCD
+                    EFGH
+                    IJKL
+                    """,
+                )
+                axs = [ ax for ax in axs.values() ]
+
+                self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+
+                GRAPHICStools.adjust_figure_layout(fig)
+
         msg = '\t\t- Plotting of EPED beat done'
 
         return msg
+            
+    def _plot_scan(self, ikey, loaded_results = None, axs = None, color = 'b'):
+
+        if loaded_results is None:
+            loaded_results, _ = self.grab_output()
+
+        if axs is None:
+            fig = plt.figure()
+
+            axs = fig.subplot_mosaic(
+                """
+                ABCD
+                EFGH
+                IJKL
+                """,
+            )
+            axs = [ ax for ax in axs.values() ]
+
+        max_val = 0
+        for i,key in enumerate(loaded_results['scan_results']):
+
+            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
+
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results[ikey]], '^', color=color)
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+
+            axs[i].axvline(loaded_results['inputs_to_nn'][i], color=color, ls='--')
+            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
+
+            max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
+        
+        for i,key in enumerate(loaded_results['scan_results']):
+            axs[i].set_ylim([0,1.2*max_val])
+            axs[i].set_xlabel(key)
+            axs[i].set_ylabel(ikey)
+            GRAPHICStools.addDenseAxis(axs[i])
 
     def finalize_maestro(self):
 

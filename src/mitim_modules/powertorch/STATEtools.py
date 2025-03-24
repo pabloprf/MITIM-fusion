@@ -2,6 +2,7 @@ import copy
 import torch
 import datetime
 import shutil
+from pathlib import Path
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -216,6 +217,7 @@ class powerstate:
 
         # Write input.gacode
         if write_input_gacode is not None:
+            write_input_gacode = Path(write_input_gacode)
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
             write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
@@ -348,6 +350,7 @@ class powerstate:
 
     def flux_match(self, algorithm="root", solver_options=None, bounds=None):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
+        self.bounds_current = bounds
 
         print(f'\t- Flux matching of powerstate file ({self.plasma["rho"].shape[0]} parallel batches of {self.plasma["rho"].shape[1]-1} radii) has been requested...')
         print("**********************************************************************************************")
@@ -424,7 +427,7 @@ class powerstate:
         x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
 
         # Optimize
-        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=bounds,solver_options=solver_options)
+        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
 
         # For simplicity, return the trajectory of only the best candidate
         self.FluxMatch_Yopt = Yopt
@@ -437,12 +440,16 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, figs=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
+    def plot(self, axs=None, axsRes=None, axsMetrics=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
         if axs is None:
-            axsNotGiven = True
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            fn = FigureNotebook("PowerState", geometry="1800x900")
+            if fn is None:
+                axsNotGiven = True
+                from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+                fn = FigureNotebook("PowerState", geometry="1800x900")
+            else:
+                axsNotGiven = False
 
             # Powerstate
             figMain = fn.add_figure(label="PowerState", tab_color='r')
@@ -458,7 +465,7 @@ class powerstate:
             # Profiles
             figs = PROFILEStools.add_figures(fn, tab_color='b')
 
-            axs = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         
         else:
             axsNotGiven = False
@@ -466,10 +473,15 @@ class powerstate:
 
         # Make sure tensors are detached
         self._detach_tensors()
+        powers = [self]
         if compare_to_state is not None:
             compare_to_state._detach_tensors()
+            powers.append(compare_to_state)
 
         POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig = c_orig)
+
+        if axsMetrics is not None:
+            POWERplot.plot_metrics_powerstates(axsMetrics,powers[::-1])
 
         if axsNotGiven:
             fn.show()
@@ -768,17 +780,32 @@ class powerstate:
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 
-    grid = plt.GridSpec(4, num_kp, hspace=0.5, wspace=0.5)
+    numbers = [str(i) for i in range(4 * num_kp)]
+    mosaic = []
+    for row in range(4):
+        first_cell = "A" if row < 2 else "B"        
+        row_list = [first_cell]
+        for col in range(num_kp):
+            index = col * 4 + row
+            row_list.append(numbers[index])
+        
+        mosaic.append(row_list)
+
+    axsM = figMain.subplot_mosaic(mosaic)
 
     axs = []
-    for i in range(num_kp):
-        for j in range(4):
-            axs.append(figMain.add_subplot(grid[j, i]))
+    cont = 0
+    for j in range(4):
+        for i in range(num_kp):
+            axs.append(axsM[f"{cont}"])
+            cont += 1
 
-    return axs
+    axsB = [axsM["A"], axsM["B"]]
+
+    return axs, axsB
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")
-    with open(file, "rb") as handle:
-        state = pickle.load(handle)
+    state = IOtools.unpickle_mitim(file)
+
     return state

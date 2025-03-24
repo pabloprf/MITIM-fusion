@@ -15,4 +15,4 @@ def main():
     files_remote = args.files
     folders_remote = args.folders
 
-    FARMINGtools.retrieve_files_from_remote(folder_local, machine, files_remote = files_remote, folders_remote = folders_remote, purge_tmp_files = True)
+    _,_ = FARMINGtools.retrieve_files_from_remote(folder_local, machine, files_remote = files_remote, folders_remote = folders_remote, purge_tmp_files = True)

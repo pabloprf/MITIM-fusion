@@ -104,7 +104,7 @@ class freegsu(STRATEGYtools.opt_evaluator):
             from FREEGS_SPARC import GSsparc_coils
         except ImportError as e:
             raise Exception(
-                "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+                "[MITIM] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
             )
 
 

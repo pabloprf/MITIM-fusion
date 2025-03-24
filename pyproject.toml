@@ -7,7 +7,7 @@ name = "MITIM"
 version = "3.0.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest BOTORCH, 3.13 has issues with tensorflow (nn) and omfit_classesv (omfit_new)
 license = {file = "LICENSE"}
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
@@ -42,14 +42,15 @@ dependencies = [
   "botorch",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   "psutil",
-  "onnx2pytorch"    # Stricly not for MITIM, but good to use ONNX models
+  "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
+  "tensorflow"
 ]
 
 [project.optional-dependencies]
 pyqt = [
   "PyQt6",
 ]
-omfit_new = [
+omfit = [
   "omfit_classes>3.2024.19.2", # Otherwise, it will need an old version of matplotlib, matplotlib<3.6
   "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
   "numpy<2.0.0",      # For the xarray requirement below to work
@@ -58,22 +59,9 @@ omfit_new = [
   "fortranformat",
   "openpyxl",
 ]
-omfit = [
-  "omfit_classes==3.2024.19.2", 
-  "scipy<1.14.0",     # As of 08/08/2024, because of https://github.com/gafusion/OMFIT-source/issues/7104
-  "numpy<2.0.0",      # For the xarray requirement below to work
-  "xarray==2022.6.0", # As of 08/08/2024, because https://github.com/gafusion/OMFIT-source/issues/7104. Froze this version because of the PLASMAstate xr reader (importlib_metadata issues)
-  "matplotlib<3.6",
-  "omas",
-  "fortranformat",
-  "openpyxl",
-]
 test = [
   "pytest",
   "coverage",
-]
-nn = [
-  "tensorflow",
 ]
 
 [project.urls]

@@ -6,6 +6,7 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -75,7 +76,7 @@ def PORTALSanalyzer_plotMetrics(
 
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
         axnZ = fig.add_subplot(grid[:4, cont])
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[4:6, cont])
@@ -236,11 +237,11 @@ def PORTALSanalyzer_plotMetrics(
 
             
             if axne_f is not None:
-                # By default, use particle fluxes
+                # By default, use particle fluxes (_raw)
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ce_tr_turb_raw'].cpu().numpy()+power.plasma['Ce_tr_neo_raw'].cpu().numpy(),
+                    power.plasma['Ce_raw_tr_turb'].cpu().numpy()+power.plasma['Ce_raw_tr_neo'].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
@@ -253,7 +254,7 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['CZ_tr_turb_raw'].cpu().numpy()+power.plasma['CZ_tr_neo_raw'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neo'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
                 axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
@@ -725,16 +726,6 @@ def PORTALSanalyzer_plotMetrics(
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
         v = self.chiR_Ricci
-        # try:
-        #     axt.plot(
-        #         [self.evaluations[indexUse]],
-        #         [self.DVdistMetric_y[indexUse]],
-        #         "o",
-        #         color=col,
-        #         markersize=4,
-        #     )
-        # except:
-        #     pass
 
     if separator is not None:
         GRAPHICStools.drawLineWithTxt(
@@ -780,9 +771,10 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label="$\\chi_R$",
         )
-        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(
-            self
-        )
+        if self.chiR_Ricci_thr is not None:
+            axt.axhline(self.chiR_Ricci_thr, color="rebeccapurple", lw=0.5, ls="-.")
+
+        indeces_plot, colors_plot, labels_plot, markers_plot = define_extra_iterators(self)
 
         for cont, (indexUse, col, lab, mars) in enumerate(
             zip(
@@ -1174,7 +1166,7 @@ def PORTALSanalyzer_plotExpected(
         axne = axne_g = axne_f = axne_r = None
     if self.runWithImpurity:
         p = self.powerstates[0].profiles
-        labIon = f"Ion #{self.runWithImpurity} ({p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])})"
+        labIon = f"{p.Species[self.runWithImpurity]['N']}{int(p.Species[self.runWithImpurity]['Z'])},{int(p.Species[self.runWithImpurity]['A'])}"
         axnZ = fig.add_subplot(grid[0, cont], sharex=axTe)
         axnZ.set_title(f"{labIon} Density")
         axnZ_g = fig.add_subplot(grid[1, cont], sharex=axTe)
@@ -1915,11 +1907,15 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs, axsM = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
             self.powerstates[indeces].plot(axs, label=f"({indeces})", c=c)
+
+    powers = [self.powerstates[indecesPlot[1]], self.powerstates[indecesPlot[0]]]
+
+    POWERplot.plot_metrics_powerstates(axsM,powers)
 
     axs[0].legend(loc="best")
 
@@ -1966,7 +1962,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
-        ls="-o" if self.opt_fun.mitim_model.avoidPoints else "--o",
+        ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -1982,7 +1978,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
-            ls="-o" if self.opt_fun.mitim_model.avoidPoints else "-.o",
+            ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
@@ -2935,7 +2931,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        Ge = power.plasma['Ce_tr_turb_raw'].cpu().numpy() + power.plasma['Ce_tr_neo_raw'].cpu().numpy()
+        Ge = power.plasma['Ce_raw_tr_turb'].cpu().numpy() + power.plasma['Ce_raw_tr_neo'].cpu().numpy()
 
         axne_f.plot(
             r[0][ixF:],
@@ -2948,7 +2944,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ce_tr_turb_raw_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_tr_neo_raw_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['Ce_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -2959,7 +2955,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        GZ = power.plasma['CZ_tr_turb_raw'].cpu().numpy() + power.plasma['CZ_tr_neo_raw'].cpu().numpy()
+        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neo'].cpu().numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2972,7 +2968,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['CZ_tr_turb_raw_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_tr_neo_raw_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,

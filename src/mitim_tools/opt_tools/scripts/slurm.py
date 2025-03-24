@@ -4,9 +4,10 @@ from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 """
 This script is used to launch a slurm job of a MITIM optimization.
-The optimization script should receive both "folder" and "--seed", i.e.:
+The optimization script should receive both "--folder" and "--seed", i.e.:
 
         import argparse
+        from pathlib import Path
         parser = argparse.ArgumentParser()
         parser.add_argument("folder", type=str)
         parser.add_argument("--seed", type=int, required=False, default=0)
@@ -41,7 +42,9 @@ def run_slurm(
     n=32,
     seed_specific=0,
     extra=None,
-    machine="local"
+    machine="local",
+    exclude=None,
+    mem=None
 ):
     script = IOtools.expandPath(script)
     folder = IOtools.expandPath(folder)
@@ -72,10 +75,11 @@ def run_slurm(
             folder_remote=folder,
             folder_local=folder,
             nameJob=nameJob,
-            slurm={"partition": partition},
+            slurm={"partition": partition, 'exclude': exclude},
             minutes=int(60 * hours),
             ntasks=1,
             cpuspertask=n,
+            memory_req_by_job=mem,
         )
 
         command_execution = f"sbatch {fileSBATCH}"
@@ -98,6 +102,7 @@ def main():
     parser.add_argument("--machine", type=str, required=False, default="local")
     parser.add_argument("--hours", type=int, required=False, default=8)
     parser.add_argument("--n", type=int, required=False, default=16)
+    parser.add_argument("--exclude", type=str, required=False, default=None)
     parser.add_argument("--seed_specific", type=int, required=False, default=0)
     parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
     parser.add_argument("--seeds", type=int, required=False, default=1)
@@ -124,6 +129,7 @@ def main():
         extra=args.extra,
         seed_specific=args.seed_specific,
         machine=args.machine,
+        exclude=None,
     )
 
 if __name__ == "__main__":

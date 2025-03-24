@@ -21,7 +21,7 @@ tglf.runScan(	subFolderTGLF = 'scan1',
                 cold_start       = cold_start,
                 runWaveForms  = [0.67, 10.0],
                 variable      = 'RLTS_1',
-                varUpDown 	  = np.linspace(0.5,1.5,3))
+                varUpDown 	  = np.linspace(0.5,1.5,16))
 tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 tglf.plotScan(labels=['scan1'])

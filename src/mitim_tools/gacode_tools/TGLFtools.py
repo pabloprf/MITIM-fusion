@@ -23,6 +23,7 @@ from IPython import embed
 
 mi_D = 2.01355
 
+MAX_TGLF_SPECIES = 6
 
 class TGLF:
     def __init__(
@@ -528,6 +529,7 @@ class TGLF:
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+        attempts_execution=1,
     ):
 
         if runWaveForms is None: runWaveForms = []
@@ -553,6 +555,7 @@ class TGLF:
             extra_name=extra_name,
             slurm_setup=slurm_setup,
             anticipate_problems=anticipate_problems,
+            attempts_execution=attempts_execution
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -576,7 +579,12 @@ class TGLF:
 
         self.FolderTGLFlast = folderlast
 
-    def _run(self, tglf_executor, tglf_executor_full={}, **kwargs_TGLFrun):
+    def _run(
+            self,
+            tglf_executor,
+            tglf_executor_full={},
+            **kwargs_TGLFrun
+            ):
         """
         extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor for WF
         """
@@ -610,12 +618,10 @@ class TGLF:
                     if "launchSlurm" in kwargs_TGLFrun
                     else True
                 ),
+                attempts_execution=kwargs_TGLFrun.get("attempts_execution",1),
             )
         else:
-            print(
-                "\t- TGLF not run because all results files found (please ensure consistency!)",
-                typeMsg="i",
-            )
+            print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Waveform if requested
@@ -2278,31 +2284,23 @@ class TGLF:
 
                 ax = ax02
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
-                ax.set_title(
-                    "Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
-                )
+                ax.set_title("Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax12
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
-                ax.set_title(
-                    "Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)"
-                )
+                ax.set_title("Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax03
 
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
-                ax.set_title(
-                    "Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
-                )
+                ax.set_title("Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax13
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
-                ax.set_title(
-                    "Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)"
-                )
+                ax.set_title("Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
                 GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------
@@ -2332,6 +2330,7 @@ class TGLF:
         multipliers={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
@@ -2340,10 +2339,7 @@ class TGLF:
         # Add baseline
         # -------------------------------------
         if (1.0 not in varUpDown) and relativeChanges:
-            print(
-                "\n* Since variations vector did not include base case, I am adding it",
-                typeMsg="i",
-            )
+            print("\n* Since variations vector did not include base case, I am adding it",typeMsg="i",)
             varUpDown_new = []
             added = False
             for i in varUpDown:
@@ -2360,6 +2356,7 @@ class TGLF:
             multipliers=multipliers,
             variable=variable,
             varUpDown=varUpDown_new,
+            variables_scanTogether=variables_scanTogether,
             relativeChanges=relativeChanges,
             **kwargs_TGLFrun,
         )
@@ -2384,6 +2381,7 @@ class TGLF:
         multipliers={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
         relativeChanges=True,
         **kwargs_TGLFrun,
     ):
@@ -2401,7 +2399,8 @@ class TGLF:
             for i in range(len(varUpDown)):
                 varUpDown[i] = round(varUpDown[i], 6)
 
-        print(f"\n- Proceeding to scan {variable}:")
+        print(f"\n- Proceeding to scan {variable}{' together with '+', '.join(variables_scanTogether) if len(variables_scanTogether)>0 else ''}:")
+
         tglf_executor = {}
         tglf_executor_full = {}
         folders = []
@@ -2409,15 +2408,15 @@ class TGLF:
             mult = round(mult, 6)
 
             if relativeChanges:
-                print(
-                    f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------"
-                )
+                print(f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------")
             else:
-                print(
-                    f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------"
-                )
+                print(f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------")
 
             multipliers_mod[variable] = mult
+
+            for variable_scanTogether in variables_scanTogether:
+                multipliers_mod[variable_scanTogether] = mult
+
             name = f"{variable}_{mult}"
 
             species = self.inputsTGLF[self.rhos[0]]  # Any rho will do
@@ -2466,49 +2465,17 @@ class TGLF:
         self.positionIon_scan = positionIon
 
         # ----
-        x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[],[],[],[],[],[]
         Qe_gb, Qi_gb, Ge_gb, Gi_gb = [], [], [], []
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
-            isThisTheRightReadResults = (subFolderTGLF in ikey) and (
-                variable
-                == "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1]
-            )
+            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1])
 
             if isThisTheRightReadResults:
 
                 self.scans[label]["results_tags"].append(ikey)
-
-                x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = (
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                    [],
-                )
+                x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[],[],[],[],[],[]
                 Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0 = [], [], [], []
                 etalow_g0, etalow_f0, etalow_k0 = [], [], []
                 for irho_cont in range(len(self.rhos)):
@@ -2519,50 +2486,24 @@ class TGLF:
                     Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
                     Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
                     Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
-                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 1])
+                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
                     ky0.append(self.results[ikey]["TGLFout"][irho].ky)
                     g0.append(self.results[ikey]["TGLFout"][irho].g)
                     f0.append(self.results[ikey]["TGLFout"][irho].f)
-                    eta10.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "eta_ITGTEM"
-                        ]
-                    )
-                    eta20.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "eta_ITGETG"
-                        ]
-                    )
-                    etalow_g0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "g_lowk_max"
-                        ]
-                    )
-                    etalow_k0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "k_lowk_max"
-                        ]
-                    )
-                    etalow_f0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["metrics"][
-                            "f_lowk_max"
-                        ]
-                    )
-                    itg0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"]
-                    )
-                    tem0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"]
-                    )
-                    etg0.append(
-                        self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"]
-                    )
+                    eta10.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGTEM"])
+                    eta20.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGETG"])
+                    etalow_g0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["g_lowk_max"])
+                    etalow_k0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["k_lowk_max"])
+                    etalow_f0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["f_lowk_max"])
+                    itg0.append(self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"])
+                    tem0.append(self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"])
+                    etg0.append(self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"])
 
                     if self.results[ikey]["TGLFout"][irho].unnormalization_successful:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 1]) 
+                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
                     else:
                         self.scans[label]["unnormalization_successful"] = False
 
@@ -2613,25 +2554,13 @@ class TGLF:
         self.scans[label]["g"] = np.array(g)
         self.scans[label]["f"] = np.array(f)
         if len(self.scans[label]["ky"].shape) == 2:
-            self.scans[label]["ky"] = self.scans[label]["ky"].reshape(
-                (1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1])
-            )
-            self.scans[label]["g"] = self.scans[label]["g"].reshape(
-                (1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1])
-            )
-            self.scans[label]["f"] = self.scans[label]["f"].reshape(
-                (1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1])
-            )
+            self.scans[label]["ky"] = self.scans[label]["ky"].reshape((1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1]))
+            self.scans[label]["g"] = self.scans[label]["g"].reshape((1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1]))
+            self.scans[label]["f"] = self.scans[label]["f"].reshape((1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1]))
         else:
-            self.scans[label]["ky"] = np.transpose(
-                self.scans[label]["ky"], axes=[1, 0, 2]
-            )
-            self.scans[label]["g"] = np.transpose(
-                self.scans[label]["g"], axes=[1, 0, 2, 3]
-            )
-            self.scans[label]["f"] = np.transpose(
-                self.scans[label]["f"], axes=[1, 0, 2, 3]
-            )
+            self.scans[label]["ky"] = np.transpose(self.scans[label]["ky"], axes=[1, 0, 2])
+            self.scans[label]["g"] = np.transpose(self.scans[label]["g"], axes=[1, 0, 2, 3])
+            self.scans[label]["f"] = np.transpose(self.scans[label]["f"], axes=[1, 0, 2, 3])
 
     def plotScan(
         self,
@@ -3317,18 +3246,13 @@ class TGLF:
         **kwargs_TGLFrun,
     ):
         if self.NormalizationSets["SELECTED"] is None:
-            raise Exception(
-                "MITIM Exception: No normalizations provided, but runAnalysis will require it!"
-            )
+            raise Exception("MITIM Exception: No normalizations provided, but runAnalysis will require it!")
 
         # ------------------------------------------
         # Electron thermal incremental diffusivity
         # ------------------------------------------
-        if (
-            analysisType == "chi_e"
-            or analysisType == "chi_i"
-            or analysisType == "chi_ei"
-        ):
+        if ( analysisType == "chi_e" or analysisType == "chi_i" or analysisType == "chi_ei"):
+
             if analysisType == "chi_e":
                 print(
                     "*** Running analysis of electron thermal incremental diffusivity"
@@ -3411,29 +3335,22 @@ class TGLF:
         # Impurity D and V
         # ------------------------------------------
         elif analysisType == "Z":
-            if ("ApplyCorrections" not in kwargs_TGLFrun) or (
-                kwargs_TGLFrun["ApplyCorrections"]
-            ):
-                print(
-                    "\t- Forcing ApplyCorrections=False because otherwise the species orderingin TGLF file might be messed up",
-                    typeMsg="w",
-                )
+            if ("ApplyCorrections" not in kwargs_TGLFrun) or (kwargs_TGLFrun["ApplyCorrections"]):
+                print("\t- Forcing ApplyCorrections=False because otherwise the species ordering TGLF file might be messed up",typeMsg="w",)
                 kwargs_TGLFrun["ApplyCorrections"] = False
 
             varUpDown = np.linspace(0.5, 1.5, 3)
 
             fimp, Z, A = 1e-6, trace[0], trace[1]
 
-            print(
-                f"*** Running D and V analysis for trace ({fimp:.1e}) specie with Z={trace[0]:.1f}, A={trace[1]:.1f}"
-            )
+            print(f"*** Running D and V analysis for trace ({fimp:.1e}) species with Z={trace[0]:.1f}, A={trace[1]:.1f}")
 
             self.inputsTGLF_orig = copy.deepcopy(self.inputsTGLF)
 
             # ------------------------
             # Add trace impurity
             # ------------------------
-
+            
             for irho in self.inputsTGLF:
                 position = self.inputsTGLF[irho].addTraceSpecie(Z, A, AS=fimp)
 
@@ -4108,9 +4025,7 @@ class TGLFinput:
             self.plasma["NS"] -= 1
             if "NMODES" in self.controls:
                 self.controls["NMODES"] -= 1
-            print(
-                f"\t\t\t* Total species to run TGLF with reduced to {self.plasma['NS']}"
-            )
+            print(f"\t\t\t* Total species to run TGLF with reduced to {self.plasma['NS']}")
 
         self.num_recorded -= 1
 
@@ -4145,9 +4060,7 @@ class TGLFinput:
 
         return fiZi
 
-    def addTraceSpecie(
-        self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2
-        ):
+    def addTraceSpecie(self, ZS, MASS, AS=1e-6, position=None, increaseNS=True, positionCopy=2):
         """
         Here provide ZS and MASS already normalized
         """
@@ -4155,12 +4068,9 @@ class TGLFinput:
         if position is None:
             position = self.num_recorded + 1
 
-        if position > 6:
-            print(
-                " ***** Exceeded maximum (6) ions in TGLF call, removing last ion",
-                typeMsg="w",
-            )
-            position = 6
+        if position > MAX_TGLF_SPECIES:
+            print(f" ***** Exceeded maximum ({MAX_TGLF_SPECIES}) ions in TGLF call, removing last ion",typeMsg="w",)
+            position = MAX_TGLF_SPECIES
 
         specie = {"ZS": ZS, "MASS": MASS, "AS": AS}
 

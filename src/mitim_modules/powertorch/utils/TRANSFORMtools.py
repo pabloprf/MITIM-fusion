@@ -59,9 +59,12 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     self.plasma["a"] = torch.tensor(input_gacode.derived["a"]).to(rho_vec)
     self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"]).to(rho_vec)
 
+    # Add more stuff: name, original name, index, unit conversion, is derived
     quantities_to_interpolate = [
         ["rho", "rho(-)", None, True, False],
         ["roa", "roa", None, True, True],
+        #["eps", "eps", None, True, True],
+        ["Rmajoa", "Rmajoa", None, True, True],
         ["volp", "volp_miller", None, True, True],
         ["rmin", "rmin(m)", None, True, False],
         ["te", "te(keV)", None, True, False],
@@ -72,6 +75,14 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["B_unit", "B_unit", None, True, True],
         ["B_ref", "B_ref", None, True, True],
         ["q", "q(-)", None, True, False],
+        ["s_q", "s_q", None, True, True],
+        ["aLTe", "aLTe", None, True, True],
+        ["aLTi", "aLTi", 0, True, True],
+        ["aLne", "aLne", None, True, True],
+        ["aLni", "aLni", 0, True, True],
+        ["Zeff", "Zeff", None, True, True],
+        ["kappa", "kappa(-)", None, True, False],
+        ["delta", "delta(-)", None, True, False],
     ]
 
     # Quantities that do not necessarily need to be used in this powerstate call

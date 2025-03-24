@@ -18,7 +18,7 @@ In a nutshell:
      git clone git@github.com:pabloprf/MITIM-fusion.git
     ```
 
-2. Install MITIM (``python3.9`` required):
+2. Install MITIM:
     ```bash
     pip install -e MITIM-fusion[pyqt]
     ```

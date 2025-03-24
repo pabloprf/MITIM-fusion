@@ -284,7 +284,7 @@ class TRANSPgeneric:
 
             if status == "stopped":
                 self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
-                raise Exception("[mitim] TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
+                raise Exception("[MITIM] TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
 
             # ------------------------------------------------------------------------------------------------------------------
             # Do something
@@ -322,8 +322,8 @@ class TRANSPgeneric:
 
         TORIC = (
             (nlicrf is not None)
-            and (bool(nlicrf))
-            and (bool(nlicrf) and fi_outtim is not None)
+            and (bool(int(nlicrf) if isinstance(nlicrf, float) else nlicrf))
+            and (bool(int(nlicrf) if isinstance(nlicrf, float) else nlicrf) and fi_outtim is not None)
         )
 
         # Has it run enough to get files?
@@ -349,7 +349,7 @@ class TRANSPgeneric:
         if isinstance(fe_outtim, str):  fe_outtim = float(fe_outtim.split(',')[0])
 
         TORBEAM = (nltorbeam == "'TORBEAM'") and (
-            bool(nltorbeam) and fe_outtim is not None
+            bool(int(nltorbeam) if isinstance(nltorbeam, float) else nltorbeam) and fe_outtim is not None
         )
 
         # Has it run enough to get files?
@@ -377,7 +377,7 @@ class TRANSPgeneric:
 
         if isinstance(outtim, str):  outtim = float(outtim.split(',')[0])
 
-        if (nlbeam is not None) and bool(nlbeam):
+        if (nlbeam is not None) and bool(int(nlbeam) if isinstance(nlbeam, float) else nlbeam):
             BEAMS = True
         else:
             BEAMS = False
@@ -454,73 +454,45 @@ def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
     val = IOtools.findValue(nml_file, "nlicrf", "=", raiseException=False)
     if (val is None) or IOtools.isFalse(val):
         mpisettings["toricmpi"] = 1
-        _ = IOtools.changeValue(
-            nml_file, "ntoric_pserve", 0, [], "=", MaintainComments=True
-        )
+        _ = IOtools.changeValue(nml_file, "ntoric_pserve", 0, [], "=", MaintainComments=True)
 
     # If no TGLF, no MPI
-    val = IOtools.findValue(
-        nml_file, "lpredictive_mode", "=", raiseException=False, findOnlyLast=True
-    )
+    val = IOtools.findValue(nml_file, "lpredictive_mode", "=", raiseException=False, findOnlyLast=True)
     if nml_file_ptsolver.exists():
-        val1 = IOtools.findValue(
-            nml_file_ptsolver,
-            "pt_confinement%tglf%active",
-            "=",
-            raiseException=False,
-            findOnlyLast=True,
-        )
+        val1 = IOtools.findValue(nml_file_ptsolver,"pt_confinement%tglf%active","=",raiseException=False,findOnlyLast=True)
     else:
         val1 = False
-    if (val is None) or (int(val) < 3) or (not bool(val1)):
+    if (val is None) or (int(val) < 3) or (not bool(int(val1) if isinstance(val1, float) else val1)):
         mpisettings["ptrmpi"] = 1
-        _ = IOtools.changeValue(
-            nml_file, "nptr_pserve", 0, [], "=", MaintainComments=True
-        )
+        _ = IOtools.changeValue(nml_file, "nptr_pserve", 0, [], "=", MaintainComments=True)
 
     # If no NUBEAM, no MPI
     val = IOtools.findValue(nml_file, "nalpha", "=", raiseException=False)
     if (val is None) or (int(val) > 0):
         mpisettings["trmpi"] = 1
-        _ = IOtools.changeValue(
-            nml_file, "nbi_pserve", 0, [], "=", MaintainComments=True
-        )
+        _ = IOtools.changeValue(nml_file, "nbi_pserve", 0, [], "=", MaintainComments=True)
 
     # -------- Further checkers
     toric_mpi = IOtools.findValue(nml_file, "ntoric_pserve", "=", raiseException=False)
-    if (toric_mpi is not None) and bool(toric_mpi) and (mpisettings["toricmpi"] < 2):
-        print(
-            "\t- TORIC mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",
-            typeMsg="w",
-        )
-    if (mpisettings["toricmpi"] > 1) and ((toric_mpi is None) or not bool(toric_mpi)):
-        print(
-            "\t- TORIC mpi specified in defineRunParameters() but not in namelist, high risk of TRANSP failure!",
-            typeMsg="w",
-        )
-
     nbi_mpi = IOtools.findValue(nml_file, "nbi_pserve", "=", raiseException=False)
-    if (nbi_mpi is not None) and bool(nbi_mpi) and (mpisettings["trmpi"] < 2):
-        print(
-            "\t- NUBEAM mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",
-            typeMsg="w",
-        )
-    if (mpisettings["trmpi"] > 1) and ((nbi_mpi is None) or not bool(nbi_mpi)):
-        print(
-            "\t- NUBEAM mpi specified in defineRunParameters() but not in namelist, high risk of TRANSP failure!",
-            typeMsg="w",
-        )
-
     tglf_mpi = IOtools.findValue(nml_file, "nptr_pserve", "=", raiseException=False)
-    if (tglf_mpi is not None) and bool(tglf_mpi) and (mpisettings["ptrmpi"] < 2):
-        print(
-            "\t- TGLF mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",
-            typeMsg="w",
-        )
-    if (mpisettings["ptrmpi"] > 1) and ((tglf_mpi is None) or not bool(tglf_mpi)):
-        print(
-            "\t- TGLF mpi specified in defineRunParameters() but not in namelist, high risk of TRANSP failure!",
-            typeMsg="w",
-        )
+
+    # Check situation in which namelist says MPI but defineRunParameters says not allocation
+
+    if (toric_mpi is not None) and bool(int(toric_mpi) if isinstance(toric_mpi, float) else toric_mpi) and (mpisettings["toricmpi"] < 2):
+        print("\t- TORIC mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",typeMsg="w")
+    if (nbi_mpi is not None) and bool(int(nbi_mpi) if isinstance(nbi_mpi, float) else nbi_mpi) and (mpisettings["trmpi"] < 2):
+        print("\t- NUBEAM mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",typeMsg="w")
+    if (tglf_mpi is not None) and bool(int(tglf_mpi) if isinstance(tglf_mpi, float) else tglf_mpi) and (mpisettings["ptrmpi"] < 2):
+        print("\t- TGLF mpi specified in namelist but not in defineRunParameters(), high risk of TRANSP failure!",typeMsg="w")
+    
+    # Check situation in which defineRunParameters says allocate MPI but namelist says no MPI run
+    
+    if (mpisettings["toricmpi"] > 1) and ((toric_mpi is None) or not bool(int(toric_mpi) if isinstance(toric_mpi, float) else toric_mpi)):
+        print("\t- TORIC mpi specified in defineRunParameters() but not in namelist, you are probably allocating resources you may not need",typeMsg="i")
+    if (mpisettings["trmpi"] > 1) and ((nbi_mpi is None) or not bool(int(nbi_mpi) if isinstance(nbi_mpi, float) else nbi_mpi)):
+        print("\t- NUBEAM mpi specified in defineRunParameters() but not in namelist, you are probably allocating resources you may not need",typeMsg="i")
+    if (mpisettings["ptrmpi"] > 1) and ((tglf_mpi is None) or not bool(int(tglf_mpi) if isinstance(tglf_mpi, float) else tglf_mpi)):
+        print("\t- TGLF mpi specified in defineRunParameters() but not in namelist, you are probably allocating resources you may not need",typeMsg="i")
 
     return mpisettings

@@ -138,7 +138,7 @@ def query_yes_no(question, extra=""):
                 )
                 return valid[choice]
             else:
-                raise Exception("[mitim] Exit request")
+                raise Exception("[MITIM] Exit request")
         else:
             printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
 

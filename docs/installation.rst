@@ -6,10 +6,6 @@ Installation
 	:local:
 	:depth: 1
 
-.. attention::
-   MITIM requires python>=3.9, a requirement driven by the optimization capabilities in PyTorch.
-   If you do not have python>=3.9 but still want to use MITIM's non-optimization features, you may try to install each python package individually (see ``setup.py`` file) and skip ``botorch``. However, this option is not supported and there is no assurance the code will work.
-
 Instructions
 ------------
 
@@ -25,11 +21,11 @@ Clone the `GitHub repository  <https://github.com/pabloprf/MITIM-fusion>`_ (do n
 
    .. code-block:: console
 
-      python3.9 -m venv mitim-env
+      python3.12 -m venv mitim-env
       source mitim-env/bin/activate
-      pip3 install pip --upgrade
+      pip install pip --upgrade
 
-Use ``pip3`` to install all the required MITIM requirements:
+Use ``pip`` to install all the required MITIM requirements:
 
 .. code-block:: console
 
@@ -41,11 +37,11 @@ Use ``pip3`` to install all the required MITIM requirements:
    If running in a computing cluster, remove that flag.
    The ``pyqt`` package is used to create condensed figures into a single notebook when interpreting and plotting simulation results.
    
-   If you wish to install all capabilities (including compatibility with `OMFIT <https://omfit.io/>`_  or TensorFlow), it is recommended that ``pip3`` is run as follows:
+   If you wish to install all capabilities (including compatibility with `OMFIT <https://omfit.io/>`_), it is recommended that ``pip`` is run as follows:
 
    .. code-block:: console
 
-      pip3 install -e MITIM-fusion[pyqt,omfit,nn]
+      pip3 install -e MITIM-fusion[pyqt,omfit]
 
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.

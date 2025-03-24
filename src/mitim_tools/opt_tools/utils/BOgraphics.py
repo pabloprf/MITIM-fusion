@@ -837,7 +837,7 @@ def retrieveResults(
 
         print(" - Grabbing remote")
         folderWork.mkdir(parents=True, exist_ok=True)
-        FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
+        _,_ = FARMINGtools.retrieve_files_from_remote(folderWork, machine, folders_remote = [f"{folderRemote0}/Outputs"])
 
     # ----------------------------------------------------------------------------------------------------------------
     # Viewing workflow
@@ -876,8 +876,7 @@ def retrieveResults(
     if analysis_level > 0:
         # Store here the store
         try:
-            with open(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}", "rb") as handle:
-                mitim_model.dictStore = pickle_dill.load(handle)
+            mitim_model.dictStore = IOtools.unpickle_mitim(f"{folderWork / 'Outputs' / 'optimization_extra.pkl'}")
         except Exception as e:
             print("Could not load optimization_extra because:", typeMsg="w")
             print(e)

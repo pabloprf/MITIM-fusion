@@ -360,14 +360,14 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         if self.acquisition_type == "posterior_mean":
-            print('\t* Chosen analytic posterior_mean, careful with objective nonlinearity', typeMsg="w")
+            print('\t* Chosen analytic posterior_mean acquisition, objective nonlinearity not considered', typeMsg="i")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel,
                 objective=self.evaluators["objective"]
             )
 
         elif self.acquisition_type == "logei":
-            print("\t* Chosen analytic logei, igoring objective", typeMsg="w")
+            print("\t* Chosen analytic logei acquisition, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -441,17 +441,10 @@ class OPTstep:
 
     def optimize(
         self,
-        scalarized_objective,
         position_best_so_far=-1,
         seed=0,
         forceAllPointsInBounds=False,
     ):
-        """
-        ***********************************************
-        Update functions to be used during optimization
-        ***********************************************
-        """
-        self.defineFunctions(scalarized_objective)
 
         """
 		***********************************************

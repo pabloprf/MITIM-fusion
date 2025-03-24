@@ -114,16 +114,34 @@ class power_transport:
 
         impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
 
-        impurityPosition_new = p_new.Species.index(impurity_of_interest)
+        try:
+            impurityPosition_new = p_new.Species.index(impurity_of_interest)
+
+        except ValueError:
+            print(f"\t- Impurity {impurity_of_interest} not found in new profiles, keeping position {self.powerstate.impurityPosition}",typeMsg="w")
+            impurityPosition_new = self.powerstate.impurityPosition
 
         if impurityPosition_new != self.powerstate.impurityPosition:
-            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
+            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="w")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     def evaluate(self):
+        '''
+        This needs to populate the following in self.powerstate.plasma
+            - Pe, Pe_tr, Pe_tr_turb, Pe_tr_neo -> MW/m^2
+            - Pi, Pi_tr, Pi_tr_turb, Pi_tr_neo -> MW/m^2
+            - Ce, Ce_tr, Ce_tr_turb, Ce_tr_neo -> MW/m^2
+                * Ce_raw, Ce_raw_tr, Ce_raw_tr_turb, Ce_raw_tr_neo -> 10^20/s/m^2
+            - CZ, CZ_tr, CZ_tr_turb, CZ_tr_neo -> MW/m^2 (but modified as needed, for example dividing by fZ0)
+                * CZ_raw, CZ_raw_tr, CZ_raw_tr_turb, CZ_raw_tr_neo -> 10^20/s/m^2  (NOT modified)
+            - Mt, Mt_tr, Mt_tr_turb, Mt_tr_neo -> J/m^2
+            - PexchTurb -> MW/m^3
+        and their respective standard deviations
+        '''
+
         print(">> No transport fluxes to evaluate", typeMsg="w")
         pass
 
@@ -206,7 +224,7 @@ class tgyro_model(power_transport):
 
         # Copy original TGYRO folder
         if (self.folder / "tglf_neo").exists():
-            shutil.rmtree(self.folder / "tglf_neo")
+            IOtools.shutil_rmtree(self.folder / "tglf_neo")
         shutil.copytree(self.folder / "tglf_neo_original", self.folder / "tglf_neo")
 
         # Add errors and merge fluxes as we would do if this was a CGYRO run
@@ -279,9 +297,7 @@ class tgyro_model(power_transport):
 
         if MODELparameters['transport_model']['turbulence'] == 'CGYRO':
 
-            print(
-                "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
-            )
+            print("\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick...")
 
             correctly_run = (self.folder / "cgyro_neo").exists()
             if correctly_run:
@@ -296,7 +312,7 @@ class tgyro_model(power_transport):
 
                 # Remove cgyro_neo folder
                 if (self.folder / "cgyro_neo").exists():
-                    shutil.rmtree(self.folder / "cgyro_neo")
+                    IOtools.shutil_rmtree(self.folder / "cgyro_neo")
 
                 # Copy tglf_neo results
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
@@ -382,8 +398,7 @@ def tglf_scan_trick(
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
         if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
-        if i == 'w0': 
-            raise ValueError("[mitim] Mt not implemented yet in TGLF scans")
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
     if 'te' in profiles or 'ti' in profiles:
@@ -399,6 +414,13 @@ def tglf_scan_trick(
 
     tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
 
+    # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
+    num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
+    if cores_per_tglf_instance == 1:
+        minutes = 10 * (num_cases / 60) # Ad-hoc formula
+    else:
+        minutes = 1 * (num_cases / 60) # Ad-hoc formula
+
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
@@ -410,15 +432,16 @@ def tglf_scan_trick(
                     forceIfcold_start=True,
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
-                        "minutes": 1,
+                        "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
-                    positionIon=impurityPosition+1
+                    positionIon=impurityPosition+1,
+                    attempts_execution=2, 
                     )
 
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:
-        shutil.rmtree(tglf.FolderGACODE)
+        IOtools.shutil_rmtree(tglf.FolderGACODE)
 
     Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
@@ -484,7 +507,7 @@ def tglf_scan_trick(
 
 
 # ------------------------------------------------------------------
-# SIMPLE Diffusion
+# SIMPLE Diffusion (#TODO: implement with particle flux and the raw)
 # ------------------------------------------------------------------
 
 class diffusion_model(power_transport):
@@ -548,9 +571,11 @@ class surrogate_model(power_transport):
         flux_fun as given in ModelOptions must produce Q and Qtargets in order of te,ti,ne
         """
 
-        X = torch.cat((self.powerstate.plasma['aLte'][:,1:],self.powerstate.plasma['aLti'][:,1:],self.powerstate.plasma['aLne'][:,1:]),axis=1)
+        X = torch.Tensor()
+        for prof in self.powerstate.ProfilesPredicted:
+            X = torch.cat((X,self.powerstate.plasma['aL'+prof][:,1:]),axis=1)
 
-        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X) #self.Xcurrent[0])
+        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X)
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 
@@ -607,7 +632,7 @@ def curateTGYROfiles(
     if use_tglf_scan_trick is not None:
 
         if provideTurbulentExchange:
-            raise ValueError("[mitim] Turbulent exchange not implemented yet in TGLF scans")
+            print("> Turbulent exchange not implemented yet in TGLF scans", typeMsg="w") #TODO
 
         # --------------------------------------------------------------
         # If using the scan trick

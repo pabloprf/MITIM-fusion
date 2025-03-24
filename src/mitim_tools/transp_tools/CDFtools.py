@@ -132,7 +132,7 @@ class transp_output:
         if self.LocationCDF.is_dir(): 
             self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
-                raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
+                raise ValueError(f"[MITIM] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
 
         self.f = read_cdf_transp(self.LocationCDF) 
@@ -10718,11 +10718,11 @@ class transp_output:
             # If minorities are not in steady-state, some portion goes to their dW/dt
             if self.GainminT[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$dW/dt$ = {self.GainminT[it]:.1f}MW"] = [0.15,0.85]
-                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk, {self.GainminT[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %)', typeMsg='w')
             # Fast heating
             if self.PfichT_dir[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$P_{{ICH,fast}}$ = {self.PfichT_dir[it]:.1f}MW"] = [0.35,0.85]
-                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk, {self.PfichT_dir[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %))', typeMsg='w')
             
             GRAPHICStools.diagram_plotModule(
                 ax,
@@ -15219,7 +15219,7 @@ class transp_output:
 
         os.chdir(self.FolderCDF)
         os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
-        shutil.rmtree(self.FolderCDF / 'RELEASE_folder')
+        IOtools.shutil_rmtree(self.FolderCDF / 'RELEASE_folder')
         (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):

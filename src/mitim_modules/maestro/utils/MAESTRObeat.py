@@ -161,7 +161,7 @@ class initializer_from_geqdsk(beat_initializer):
         PichT_MW = 1.0,
         Zeff = 1.5,
         netop_20 = 1.0,
-        coeffs_MXH = 7,
+        coeffs_MXH = 5,
         **kwargs_profiles
         ):
         '''
@@ -266,6 +266,15 @@ class creator:
 
         def __call__(self):
 
+            if 'roa' in self.profiles_insert:
+                if 'rho' in self.profiles_insert:
+                    print('\t- Both r/a and rho provided to insert profiles, using roa',typeMsg = 'w')
+                self.profiles_insert['rho'] = np.interp(self.profiles_insert['roa'], self.initialize_instance.profiles_current.derived['roa'], self.initialize_instance.profiles_current.profiles['rho(-)'])
+            if 'psin' in self.profiles_insert:
+                if 'rho' in self.profiles_insert:
+                    print('\t- Both psin and rho provided to insert profiles, using psin',typeMsg = 'w')
+                self.profiles_insert['rho'] = np.interp(self.profiles_insert['psin'], self.initialize_instance.profiles_current.derived['psi_pol_n'], self.initialize_instance.profiles_current.profiles['rho(-)'])
+
             rho, Te, Ti, ne = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne']
             
             # Update profiles
@@ -282,6 +291,9 @@ class creator:
 
             # Update derived
             self.initialize_instance.profiles_current.deriveQuantities()
+
+        def _inform_save(self, **kwargs):
+            pass
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from parameterization: Create profiles from a parameterization
@@ -373,7 +385,7 @@ class creator_from_parameterization(creator):
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
                 print(f'\n\t - Gradient: aLT = {aLT:.2f}')
-                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived['BetaN_engineering']:.5f} (target: {self.BetaN:.5f})')
+                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
 
@@ -410,7 +422,7 @@ class creator_from_eped(creator_from_parameterization):
         self.aLn_guess = aLn
         self.parameters = kwargs_eped
         if self.BetaN is None:
-            raise ValueError('[mitim] BetaN must be provided in the current implementation of EPED creator')
+            raise ValueError('[MITIM] BetaN must be provided in the current implementation of EPED creator')
 
     def __call__(self):
 
@@ -427,7 +439,7 @@ class creator_from_eped(creator_from_parameterization):
 
         # Potentially save variables
         np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)
-        self.beat_eped._inform_save(eped_results)
+        self._inform_save(eped_results)
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
@@ -440,3 +452,13 @@ class creator_from_eped(creator_from_parameterization):
 
         # Save
         np.save(self.folder / 'eped_results.npy', eped_results)
+
+    def _inform_save(self, eped_results = None):
+
+        from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+        beat_eped_for_save = eped_beat(self.initialize_instance.beat_instance.maestro_instance, folder_name = self.folder)
+
+        if eped_results is None:
+            eped_results =  np.load(beat_eped_for_save.folder_output / 'eped_results.npy', allow_pickle=True).item()
+
+        beat_eped_for_save._inform_save(eped_results)

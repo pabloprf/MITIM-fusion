@@ -693,11 +693,12 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
                     'Qi': 'aLti',
                     'Ge': 'aLne',
                     'GZ': 'aLnZ',
-                    'Mt': 'dw0dr'
+                    'Mt': 'dw0dr',
+                    'Pe': None  # Referring to energy exchange
                 }
 
                 for i, variable in enumerate(variables):
-                    if (mapping[output[:2]] == variable):
+                    if (mapping[output[:2]] is not None) and (mapping[output[:2]] == variable):
                         grad_vector.append(i)
 
         self.indeces_grad = tuple(grad_vector)
