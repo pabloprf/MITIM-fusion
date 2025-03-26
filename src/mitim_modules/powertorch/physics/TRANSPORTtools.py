@@ -421,6 +421,9 @@ def tglf_scan_trick(
     else:
         minutes = 1 * (num_cases / 60) # Ad-hoc formula
 
+    # Enforce minimum minutes
+    minutes = max(2, minutes)
+
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
