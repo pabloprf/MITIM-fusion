@@ -17,9 +17,7 @@ class fbmCDF:
     def __init__(
         self, file, particle="He4_FUSN", guidingCenter=True, ACalreadyConverted=False
     ):
-        print(
-            f"\t\t- Gathering FBM data for {particle}. Guiding Center: {guidingCenter}"
-        )
+        print(f"\t\t- Gathering FBM data for {particle}. Guiding Center: {guidingCenter}")
 
         file = IOtools.expandPath(file)
         self.guidingCenter = guidingCenter
@@ -297,9 +295,7 @@ def convertACtoCDF(file, guidingCenter=True, copyWhereOriginal=True, extralab="_
     _, fileonly = IOtools.reducePathLevel(file, level=1)
     commandOrder = f"trfbm_order {fileonly}"  # This alias is defined in .bashrc of e.g. mfews: alias trfbm_order='python3 ~/TRANSPhub/05_Utilities/acsort.py'
 
-    runGetFBM(
-        folderOrig, commandMain, file, finFile, name=runid, commandOrder=commandOrder
-    )
+    runGetFBM(folderOrig, commandMain, file, finFile, name=runid, commandOrder=commandOrder)
 
     (folderOrig / f"{finFile}").replace(folderOrig / f"{finFile2}")
 
@@ -336,12 +332,16 @@ def runGetFBM(
             output_files=[f"{fileonly}_converted"],
             input_files=[file],
         )
-        fbm_job.run(timeoutSecs=MaxSeconds)
 
-        origfile = file.with_name(f"{file.name}_original")
-        convfile = file.with_name(f"{file.name}_converted")
-        file.replace(origfile)
-        convfile.replace(file)
+        fbm_job.run(timeoutSecs=MaxSeconds,check_if_files_received=False)
+
+        if not (folderOrig / f"{fileonly}_converted").exists():
+            print(f"\t\t- File {fileonly}_converted not found, continuing without it", typeMsg="w")
+        else:
+            origfile = file.with_name(f"{file.name}_original")
+            convfile = file.with_name(f"{file.name}_converted")
+            file.replace(origfile)
+            convfile.replace(file)
 
     fbm_job.prep(
         commandMain,
@@ -416,9 +416,10 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
                 particle=FBMparticle,
                 guidingCenter=True,
             )
-        except:
+        except Exception as e:
             noHe4 = True
-            print("\t\t- He4 from Fusion could not be found in FBM", typeMsg="w")
+            print(f"\t\t- There was a problem working with FBM file to extract {FBMparticle}:", typeMsg="w")
+            print(e)
 
     # Particle position
     nameTry = folderWork / "NUBEAM_folder" / f"{nameRunid}_fi_{datanum}_PO.cdf"

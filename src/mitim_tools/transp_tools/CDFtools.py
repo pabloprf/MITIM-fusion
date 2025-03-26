@@ -237,12 +237,9 @@ class transp_output:
 
             if needToConvert:
                 if ask_if_fbm:
-                    readFBM = print(
-                        "\t- Gathering FBM data ——requires conversion of FBM files",
-                        typeMsg="q",
-                    )
+                    readFBM = print("\t- Gathering FBM data ——requires conversion of FBM files",typeMsg="q",)
                 else:
-                    print("\t- Gathering FBM data ——requires conversion of FBM files", typeMsg="w")
+                    print("\t- Gathering FBM data ——requires conversion of FBM files", typeMsg="i")
             else:
                 print("\t- Gathering FBM data")
 
