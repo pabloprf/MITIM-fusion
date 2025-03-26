@@ -1177,6 +1177,14 @@ class PROFILES_GACODE:
         self.derived['shear'] = s
         self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
 
+        # Shear in toroidal flux
+        self.derived['d_torfluxov2pi_d_rmin'] = deriv_gacode(
+            self.derived['torflux']/(2*np.pi)
+            )
+        self.derived['d_polfluxov2pi_d_rmin'] = deriv_gacode(
+            self.profiles['polflux(Wb/radian)']
+            )
+
         '''
         Rotations
         --------------------------------------------------------
