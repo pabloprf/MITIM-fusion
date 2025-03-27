@@ -1,0 +1,20 @@
+{
+    "0": {
+        "label": "Standard resolution",
+        "controls": {
+            "N_RADIAL":1,
+            "N_THETA":11,
+            "N_XI":11,
+            "N_ENERGY":5
+        }
+    },
+    "1": {
+        "label": "Higher resolution",
+        "controls": {
+            "N_RADIAL":1,
+            "N_THETA":21,
+            "N_XI":19,
+            "N_ENERGY":10
+        }
+    }
+}

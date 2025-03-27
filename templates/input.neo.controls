@@ -1,0 +1,33 @@
+#-------------------------------------------------------------------------
+# Template input.neo file (controls-only)
+# https://gafusion.github.io/doc/neo/neo_table.html
+# cjperks, Feb 20th, 2025
+#-------------------------------------------------------------------------
+
+# ~~~ Numerical resolution:
+N_RADIAL=1
+N_THETA=11
+N_XI=11
+N_ENERGY=5
+
+# ~~~ Plasma equilibrium/geometry:
+EQUILIBRIUM_MODEL=2
+
+# ~~~ General models:
+SILENT_FLAG=0
+SIM_MODEL=2
+SPITZER_MODEL=0
+COLLISION_MODEL=4
+
+# ~~~ Profile models:
+PROFILE_MODEL=1 
+PROFILE_EQUILIBRIUM_MODEL=1 
+PROFILE_ERAD0_MODEL=1 
+
+# ~~~ Rotation physics:
+ROTATION_MODEL=2
+
+# ~~~ Nonaxisymmetric effects:
+TREED_MODEL=0
+THREED_EXB_MODEL=0
+TREED_EXB_DPHI0DR=0
