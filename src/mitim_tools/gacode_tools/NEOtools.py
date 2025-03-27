@@ -134,6 +134,7 @@ class NEO:
         cdf_open = None,
         cold_start = False, 
         specificInputs = None,
+        NEOsettings = 0,
         ):
         print("> Preparation of NEO run")
 
@@ -151,7 +152,7 @@ class NEO:
         # Loads in NEO controls
         if specificInputs is None:
             # Loads settings as dictionary per rho
-            self.inputsNEO = self.profiles.to_neo(rhos=self.rhos)
+            self.inputsNEO = self.profiles.to_neo(rhos=self.rhos, NEOsettings=NEOsettings)
         
         # If user curated their own input dictionary already
         else:
