@@ -494,13 +494,9 @@ class PROFILES_GACODE:
 		Surf_GACODE = V'
 		"""
 
-        self.derived["surfGACODE_miller"] = (
-            self.derived["surf_miller"] / self.derived["gradr_miller"]
-        )
+        self.derived["surfGACODE_miller"] = (self.derived["surf_miller"] / self.derived["gradr_miller"])
 
-        self.derived["surfGACODE_miller"][
-            np.isnan(self.derived["surfGACODE_miller"])
-        ] = 0
+        self.derived["surfGACODE_miller"][np.isnan(self.derived["surfGACODE_miller"])] = 0
 
         self.derived["c_s"] = PLASMAtools.c_s(
             self.profiles["te(keV)"], self.derived["mi_ref"]
@@ -1047,6 +1043,7 @@ class PROFILES_GACODE:
             float(self.profiles["rmin(m)"][-1]),
         )
         self.derived["fG"] = self.derived["ne_vol20"] / nG
+        self.derived["fG_x"] = self.profiles["ne(10^19/m^3)"]* 0.1 / nG
 
         self.derived["tite"] = self.profiles["ti(keV)"][:, 0] / self.profiles["te(keV)"]
         self.derived["tite_vol"] = self.derived["Ti_vol"] / self.derived["Te_vol"]
