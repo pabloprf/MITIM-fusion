@@ -149,6 +149,8 @@ class powerstate:
         self.batch_size = 0
         self._repeat_tensors(batch_size=1)
 
+        self.Xcurrent = None
+
     def _high_res_rho(self):
 
         rho_new = torch.linspace(

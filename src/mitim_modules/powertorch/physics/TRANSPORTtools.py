@@ -776,9 +776,7 @@ def curateTGYROfiles(
 
 def profilesToShare(self):
     if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
-        whereFolder = IOtools.expandPath(
-            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles"
-        )
+        whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
         if not whereFolder.exists():
             IOtools.askNewFolder(whereFolder)
 
