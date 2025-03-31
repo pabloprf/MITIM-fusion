@@ -5,6 +5,7 @@ import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools import LOGtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
@@ -322,33 +323,42 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
     extra_points = 2  # If I don't allow this, it will fail
     rhoy = profiles.profiles["rho(-)"][1:-extra_points]
     with LOGtools.HiddenPrints():
-        state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy}, increase_profile_resol = False)
+        state_temp.__init__(
+            profiles,
+            EvolutionOptions={"rhoPredicted": rhoy},
+            TargetOptions={
+                "targets_evaluator": TARGETStools.analytical_model,
+                "ModelOptions": {
+                    "TypeTarget": self.TargetOptions["ModelOptions"]["TypeTarget"], # Important to keep the same as in the original
+                    "TargetCalc": "powerstate",
+                    }
+                },
+            increase_profile_resol = False
+            )
     state_temp.calculateProfileFunctions()
     state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
     state_temp.calculateTargets()
     # ------------------------------------------------------------------------------------------
 
-    conversions = {
-        "qie": "qei(MW/m^3)",
-        "qrad_bremms": "qbrem(MW/m^3)",
-        "qrad_sync": "qsync(MW/m^3)",
-        "qrad_line": "qline(MW/m^3)",
-        "qfuse": "qfuse(MW/m^3)",
-        "qfusi": "qfusi(MW/m^3)",
-    }
+    conversions = {}
+
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] > 1:
+        conversions['qie'] = "qei(MW/m^3)"
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] > 2:
+        conversions['qrad_bremms'] = "qbrem(MW/m^3)"
+        conversions['qrad_sync'] = "qsync(MW/m^3)"
+        conversions['qrad_line'] = "qline(MW/m^3)"
+        conversions['qfuse'] = "qfuse(MW/m^3)"
+        conversions['qfusi'] = "qfusi(MW/m^3)"
+
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-            )
+            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
         else:
-            profiles.profiles[conversions[ikey]] = np.zeros(
-                len(profiles.profiles["qei(MW/m^3)"])
-            )
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-            )
+            profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
+            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
 
+    
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
     Store as part of powerstate the thermal ions densities (ni) and the information about how to interpret them (ions_set)
