@@ -440,6 +440,7 @@ def tglf_scan_trick(
                     extra_name = f'{extra_name}_{name}',
                     positionIon=impurityPosition+1,
                     attempts_execution=2, 
+                    only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
                     )
 
     # Remove folders because they are heavy to carry many throughout
