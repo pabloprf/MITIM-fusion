@@ -2372,7 +2372,7 @@ class TGLF:
                 label=f"{self.subFolderTGLF_scan}_{name}",
                 folder=folders[cont_mult],
                 cold_startWF = False,
-                require_all_files=not kwargs_TGLFrun["only_minimal_files"],
+                require_all_files=not kwargs_TGLFrun.get("only_minimal_files",False),
             )
 
     def _prepare_scan(

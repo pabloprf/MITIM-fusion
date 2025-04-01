@@ -925,7 +925,7 @@ def runTGLF(
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
-
+    
     tmpFolder = FolderGACODE / "tmp_tglf"
     IOtools.askNewFolder(tmpFolder, force=True)
 
@@ -1137,5 +1137,9 @@ def runTGLF(
 
     if fineall:
         print("\t\t- All files were successfully retrieved")
+
+        # Remove temporary folder
+        shutil.rmtree(tmpFolder)
+
     else:
         print("\t\t- Some files were not retrieved", typeMsg="w")

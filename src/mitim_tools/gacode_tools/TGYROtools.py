@@ -719,7 +719,7 @@ class TGYRO:
         rhos=[0.4, 0.6],
         onlyThermal=False,
         quasineutrality=None,
-        subFolderTGYRO="tmp_tgyro_scans",
+        subFolderTGYRO="tgyro_dummy",
         cold_start=False,
         label="tgyro1",
         donotrun=False,
