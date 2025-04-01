@@ -530,6 +530,7 @@ class TGLF:
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
         attempts_execution=1,
+        only_minimal_files=False,
     ):
 
         if runWaveForms is None: runWaveForms = []
@@ -575,6 +576,7 @@ class TGLF:
             forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
+            only_minimal_files=only_minimal_files,
         )
 
         self.FolderTGLFlast = folderlast
@@ -591,6 +593,11 @@ class TGLF:
 
         print("\n> Run TGLF")
 
+        if kwargs_TGLFrun.get("only_minimal_files", False):
+            filesToRetrieve = ["out.tglf.gbflux"]
+        else:
+            filesToRetrieve = self.ResultsFiles
+
         c = 0
         for subFolderTGLF in tglf_executor:
             c += len(tglf_executor[subFolderTGLF])
@@ -599,26 +606,12 @@ class TGLF:
             GACODErun.runTGLF(
                 self.FolderGACODE,
                 tglf_executor,
-                filesToRetrieve=self.ResultsFiles,
-                minutes=(
-                    kwargs_TGLFrun["slurm_setup"]["minutes"]
-                    if "slurm_setup" in kwargs_TGLFrun
-                    and "minutes" in kwargs_TGLFrun["slurm_setup"]
-                    else 5
-                ),
-                cores_tglf=(
-                    kwargs_TGLFrun["slurm_setup"]["cores"]
-                    if "slurm_setup" in kwargs_TGLFrun
-                    and "cores" in kwargs_TGLFrun["slurm_setup"]
-                    else 4
-                ),
-                name=f"tglf_{self.nameRunid}{kwargs_TGLFrun['extra_name'] if 'extra_name' in kwargs_TGLFrun else ''}",
-                launchSlurm=(
-                    kwargs_TGLFrun["launchSlurm"]
-                    if "launchSlurm" in kwargs_TGLFrun
-                    else True
-                ),
-                attempts_execution=kwargs_TGLFrun.get("attempts_execution",1),
+                filesToRetrieve=filesToRetrieve,
+                minutes=kwargs_TGLFrun.get("slurm_setup", {}).get("minutes", 5),
+                cores_tglf=kwargs_TGLFrun.get("slurm_setup", {}).get("cores", 4),
+                name=f"tglf_{self.nameRunid}{kwargs_TGLFrun.get('extra_name', '')}",
+                launchSlurm=kwargs_TGLFrun.get("launchSlurm", True),
+                attempts_execution=kwargs_TGLFrun.get("attempts_execution", 1),
             )
         else:
             print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
@@ -629,9 +622,7 @@ class TGLF:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if "runWaveForms" in kwargs_TGLFrun and kwargs_TGLFrun["runWaveForms"] is not None and len(kwargs_TGLFrun["runWaveForms"]) > 0:
-            self._run_wf(
-                kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun
-            )
+            self._run_wf(kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun)
 
     def _prepare_run_radii(
         self,
@@ -732,6 +723,9 @@ class TGLF:
         extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor
         """
 
+        if kwargs_TGLFrun.get("only_minimal_files", False):
+            raise Exception('[MITIM] Option to run WF with only minimal files is not available yet')
+
         if "runWaveForms" in kwargs_TGLFrun:
             del kwargs_TGLFrun["runWaveForms"]
 
@@ -762,7 +756,8 @@ class TGLF:
                     ]["folder"]
 
                     self.ky_single = None
-                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
+                    self.read(
+                        label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
                     self.ky_single = kys
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
@@ -859,6 +854,7 @@ class TGLF:
         suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
         cold_startWF = True, # If this is a "complete" read, I will assign a None
+        require_all_files = True,   # If False, I only need the fluxes
     ):
         print("> Reading TGLF results")
 
@@ -907,6 +903,7 @@ class TGLF:
             convolution_fun_fluct=self.convolution_fun_fluct,
             factorTot_to_Perp=self.factorTot_to_Perp,
             suffix=suffix,
+            require_all_files=require_all_files,
         )
 
         self.results[label]["convolution_fun_fluct"] = self.convolution_fun_fluct
@@ -2372,7 +2369,10 @@ class TGLF:
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
             self.read(
-                label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont_mult], cold_startWF = False
+                label=f"{self.subFolderTGLF_scan}_{name}",
+                folder=folders[cont_mult],
+                cold_startWF = False,
+                require_all_files=not kwargs_TGLFrun["only_minimal_files"],
             )
 
     def _prepare_scan(
@@ -3186,7 +3186,10 @@ class TGLF:
             for mult in varUpDown_dict[variable]:
                 name = f"{variable}_{mult}"
                 self.read(
-                    label=f"{self.subFolderTGLF_scan}_{name}", folder=folders[cont], cold_startWF = False
+                    label=f"{self.subFolderTGLF_scan}_{name}",
+                    folder=folders[cont],
+                    cold_startWF = False,
+                    require_all_files=not kwargs_TGLFrun.get("only_minimal_files", False),
                 )
                 cont += 1
 
@@ -4449,13 +4452,16 @@ def readTGLFresults(
     convolution_fun_fluct=None,
     factorTot_to_Perp=1.0,
     suffix=None,
+    require_all_files=True,
 ):
     TGLFstd_TGLFout, inputclasses, parsed = [], [], []
 
     for rho in rhos:
         # Read full folder
         TGLFout = TGLFoutput(
-            FolderGACODE_tmp, suffix=f"_{rho:.4f}" if suffix is None else suffix
+            FolderGACODE_tmp,
+            suffix=f"_{rho:.4f}" if suffix is None else suffix,
+            require_all_files=require_all_files,
         )
 
         # Unnormalize
@@ -4483,7 +4489,7 @@ def readTGLFresults(
 
 
 class TGLFoutput:
-    def __init__(self, FolderGACODE, suffix=""):
+    def __init__(self, FolderGACODE, suffix="",require_all_files=True):
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
         if suffix == "":
@@ -4498,12 +4504,10 @@ class TGLFoutput:
         self.inputclass = TGLFinput(file=self.FolderGACODE / f"input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
 
-        self.read()
+        self.read(require_all_files=require_all_files)
         self.postprocess()
 
-        print(
-            f"\t- TGLF was run with {self.num_species} species, {self.num_nmodes} modes, {self.num_fields} field(s) ({', '.join(self.fields)}), {self.num_ky} wavenumbers",
-        )
+        print(f"\t- TGLF was run with {self.num_species} species, {self.num_nmodes} modes, {self.num_fields} field(s) ({', '.join(self.fields)}), {self.num_ky} wavenumbers",)
 
     def postprocess(self):
         coeff, klow = 0.0, 0.8
@@ -4524,7 +4528,7 @@ class TGLFoutput:
         self.GeES = np.sum(self.SumFlux_Ge_phi)
         self.GeEM = np.sum(self.SumFlux_Ge_a)
 
-    def read(self):
+    def read(self,require_all_files=True):
         # --------------------------------------------------------------------------------
         # Ions to include? e.g. IncludeExtraIonsInQi = [2,3,4] -> This will sum to ion 1
         # --------------------------------------------------------------------------------
@@ -4561,345 +4565,443 @@ class TGLFoutput:
         self.Gi = data[0, self.ions_included].sum()
         self.Qi = data[1, self.ions_included].sum()
 
-        # ------------------------------------------------------------------------
-        # Growth rates
-        # ------------------------------------------------------------------------
+        if require_all_files:
 
-        # Wavenumber grid
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.ky_spectrum" + self.suffix),
-            blocks=1,
-            columns=1,
-            numky=None,
-        )
-        self.ky = data[0, :, 0]
+            # ------------------------------------------------------------------------
+            # Growth rates
+            # ------------------------------------------------------------------------
 
-        self.num_ky = self.ky.shape[0]
+            # Wavenumber grid
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.ky_spectrum" + self.suffix),
+                blocks=1,
+                columns=1,
+                numky=None,
+            )
+            self.ky = data[0, :, 0]
 
-        # Linear stability
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.eigenvalue_spectrum" + self.suffix),
-            blocks=1,
-            columns=None,
-            numky=self.num_ky,
-        )
+            self.num_ky = self.ky.shape[0]
 
-        self.num_nmodes = int(data.shape[-1] / 2)
+            # Linear stability
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.eigenvalue_spectrum" + self.suffix),
+                blocks=1,
+                columns=None,
+                numky=self.num_ky,
+            )
 
-        # Using my convention of [quantity=g,f,nmode,ky]
-        self.Eigenvalues = (
-            data[0, :, :]
-            .reshape((self.num_ky, self.num_nmodes, 2))
-            .transpose((2, 1, 0))
-        )
+            self.num_nmodes = int(data.shape[-1] / 2)
 
-        self.g = self.Eigenvalues[0, :, :]
-        self.f = self.Eigenvalues[1, :, :]
+            # Using my convention of [quantity=g,f,nmode,ky]
+            self.Eigenvalues = (
+                data[0, :, :]
+                .reshape((self.num_ky, self.num_nmodes, 2))
+                .transpose((2, 1, 0))
+            )
 
-        # ------------------------------------------------------------------------
-        # TGLF model
-        # ------------------------------------------------------------------------
+            self.g = self.Eigenvalues[0, :, :]
+            self.f = self.Eigenvalues[1, :, :]
 
-        width = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.width_spectrum" + self.suffix),
-            blocks=1,
-            columns=1,
-            numky=None,
-        )
-        spectral_shift = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.spectral_shift_spectrum" + self.suffix),
-            blocks=1,
-            columns=1,
-            numky=None,
-        )
-        ave_p0 = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.ave_p0_spectrum" + self.suffix),
-            blocks=1,
-            columns=1,
-            numky=None,
-        )
+            # ------------------------------------------------------------------------
+            # TGLF model
+            # ------------------------------------------------------------------------
 
-        self.tglf_model = {
-            "width": width[0, :, 0],
-            "spectral_shift": spectral_shift[0, :, 0],
-            "ave_p0": ave_p0[0, :, 0],
-        }
+            width = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.width_spectrum" + self.suffix),
+                blocks=1,
+                columns=1,
+                numky=None,
+            )
+            spectral_shift = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.spectral_shift_spectrum" + self.suffix),
+                blocks=1,
+                columns=1,
+                numky=None,
+            )
+            ave_p0 = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.ave_p0_spectrum" + self.suffix),
+                blocks=1,
+                columns=1,
+                numky=None,
+            )
 
-        # ------------------------------------------------------------------------
-        # Fluctuation Spectrum
-        # ------------------------------------------------------------------------
+            self.tglf_model = {
+                "width": width[0, :, 0],
+                "spectral_shift": spectral_shift[0, :, 0],
+                "ave_p0": ave_p0[0, :, 0],
+            }
 
-        dataT = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.temperature_spectrum" + self.suffix),
-            blocks=1,
-            columns=None,
-            numky=self.num_ky,
-        )
-        datan = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.density_spectrum" + self.suffix),
-            blocks=1,
-            columns=None,
-            numky=self.num_ky,
-        )
+            # ------------------------------------------------------------------------
+            # Fluctuation Spectrum
+            # ------------------------------------------------------------------------
 
-        # Using my convention of [quantity=(T,n,nT),species,ky]
-        self.AmplitudeSpectrum = np.append(dataT, datan, axis=0).transpose((0, 2, 1))
+            dataT = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.temperature_spectrum" + self.suffix),
+                blocks=1,
+                columns=None,
+                numky=self.num_ky,
+            )
+            datan = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.density_spectrum" + self.suffix),
+                blocks=1,
+                columns=None,
+                numky=self.num_ky,
+            )
 
-        self.num_species = self.AmplitudeSpectrum.shape[1]
+            # Using my convention of [quantity=(T,n,nT),species,ky]
+            self.AmplitudeSpectrum = np.append(dataT, datan, axis=0).transpose((0, 2, 1))
 
-        self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
-        self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
+            self.num_species = self.AmplitudeSpectrum.shape[1]
 
-        self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
-        self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
+            self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
+            self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
 
-        # ------------------------------------------------------------------------
-        # Cross Phase Spectrum
-        # ------------------------------------------------------------------------
+            self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
+            self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
 
-        datanT = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.nsts_crossphase_spectrum" + self.suffix),
-            blocks=self.num_species,
-            columns=None,
-            numky=self.num_ky,
-        )
+            # ------------------------------------------------------------------------
+            # Cross Phase Spectrum
+            # ------------------------------------------------------------------------
 
-        # Using my convention of [species,nmode,ky]
-        self.nTSpectrum = datanT.transpose((0, 2, 1)) * 180 / (np.pi)
+            datanT = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.nsts_crossphase_spectrum" + self.suffix),
+                blocks=self.num_species,
+                columns=None,
+                numky=self.num_ky,
+            )
 
-        self.neTeSpectrum = self.nTSpectrum[0, :, :]
-        self.niTiSpectrum = self.nTSpectrum[1:, :, :]
+            # Using my convention of [species,nmode,ky]
+            self.nTSpectrum = datanT.transpose((0, 2, 1)) * 180 / (np.pi)
 
-        # ----------------------------------------------------------------------------------------
-        # Field Spectrum (gyro-bohm normalized field fluctuation intensity spectra per mode)
-        # ----------------------------------------------------------------------------------------
+            self.neTeSpectrum = self.nTSpectrum[0, :, :]
+            self.niTiSpectrum = self.nTSpectrum[1:, :, :]
 
-        # phi*nmodes, apar*nmods, aper*nmodes
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix),
-            blocks=1,
-            columns=None,
-            numky=self.num_ky,
-        )
+            # ----------------------------------------------------------------------------------------
+            # Field Spectrum (gyro-bohm normalized field fluctuation intensity spectra per mode)
+            # ----------------------------------------------------------------------------------------
 
-        # Using my convention of [quantity,nmode,ky]
-        self.FieldSpectrum = np.zeros((4, self.num_nmodes, self.num_ky))
-        for i in range(self.num_nmodes):
-            self.FieldSpectrum[0, i] = data[0, :, 4 * i + 0]
-            self.FieldSpectrum[1, i] = data[0, :, 4 * i + 1]
-            self.FieldSpectrum[2, i] = data[0, :, 4 * i + 2]
-            self.FieldSpectrum[3, i] = data[0, :, 4 * i + 3]
-        # *************************************************
+            # phi*nmodes, apar*nmods, aper*nmodes
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix),
+                blocks=1,
+                columns=None,
+                numky=self.num_ky,
+            )
 
-        self.v_spectrum = self.FieldSpectrum[0, :, :]
-        self.phi_spectrum = self.FieldSpectrum[1, :, :]
-        self.a_par_spectrum = self.FieldSpectrum[2, :, :]
-        self.a_per_spectrum = self.FieldSpectrum[3, :, :]
+            # Using my convention of [quantity,nmode,ky]
+            self.FieldSpectrum = np.zeros((4, self.num_nmodes, self.num_ky))
+            for i in range(self.num_nmodes):
+                self.FieldSpectrum[0, i] = data[0, :, 4 * i + 0]
+                self.FieldSpectrum[1, i] = data[0, :, 4 * i + 1]
+                self.FieldSpectrum[2, i] = data[0, :, 4 * i + 2]
+                self.FieldSpectrum[3, i] = data[0, :, 4 * i + 3]
+            # *************************************************
 
-        with open(
-            self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix), "r"
-        ) as f:
-            aux = f.readlines()
-        self.fields = ["phi"]
-        if aux[4].split()[0].split("_")[-1] == "yes":
-            self.fields.append("a_par")
-        if aux[5].split()[0].split("_")[-1] == "yes":
-            self.fields.append("a_per")
+            self.v_spectrum = self.FieldSpectrum[0, :, :]
+            self.phi_spectrum = self.FieldSpectrum[1, :, :]
+            self.a_par_spectrum = self.FieldSpectrum[2, :, :]
+            self.a_per_spectrum = self.FieldSpectrum[3, :, :]
 
-        # Because if APAR is False and APER is True, it still conserves the spot for APAR, but not the opposite
-        self.num_fields = len(self.fields)
+            with open(
+                self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix), "r"
+            ) as f:
+                aux = f.readlines()
+            self.fields = ["phi"]
+            if aux[4].split()[0].split("_")[-1] == "yes":
+                self.fields.append("a_par")
+            if aux[5].split()[0].split("_")[-1] == "yes":
+                self.fields.append("a_per")
 
-        # ------------------------------------------------------------------------
-        # Flux Spectrum  -   SumFluxSpectrum [quantity,species,field,ky]
-        # ------------------------------------------------------------------------
+            # Because if APAR is False and APER is True, it still conserves the spot for APAR, but not the opposite
+            self.num_fields = len(self.fields)
 
-        # data [specie*field, ky, quantity]
-        num_quantities = (
-            5  # particle flux,energy flux,toroidal stress,parallel stress,exchange
-        )
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.sum_flux_spectrum" + self.suffix),
-            blocks=None,
-            columns=num_quantities,
-            numky=self.num_ky,
-        )
+            # ------------------------------------------------------------------------
+            # Flux Spectrum  -   SumFluxSpectrum [quantity,species,field,ky]
+            # ------------------------------------------------------------------------
 
-        # self.num_fields = int(data.shape[0]/self.num_species)
+            # data [specie*field, ky, quantity]
+            num_quantities = (
+                5  # particle flux,energy flux,toroidal stress,parallel stress,exchange
+            )
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.sum_flux_spectrum" + self.suffix),
+                blocks=None,
+                columns=num_quantities,
+                numky=self.num_ky,
+            )
 
-        # Re-arrange to separa specie and field [species, field, ky, quantity]
-        data_re = np.reshape(
-            data, (self.num_species, self.num_fields, self.num_ky, num_quantities)
-        )
+            # self.num_fields = int(data.shape[0]/self.num_species)
 
-        # Using my convention of [quantity,species,field,ky]
-        self.SumFluxSpectrum = data_re.transpose((3, 0, 1, 2))
-        # *************************************************
+            # Re-arrange to separa specie and field [species, field, ky, quantity]
+            data_re = np.reshape(
+                data, (self.num_species, self.num_fields, self.num_ky, num_quantities)
+            )
 
-        self.SumFlux_Qe_phi = self.SumFluxSpectrum[1, 0, 0, :]
-        self.SumFlux_Ge_phi = self.SumFluxSpectrum[0, 0, 0, :]
-        self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
+            # Using my convention of [quantity,species,field,ky]
+            self.SumFluxSpectrum = data_re.transpose((3, 0, 1, 2))
+            # *************************************************
 
-        contF = 0
-        if "a_par" in self.fields:
-            self.SumFlux_Qe_a_par = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-            self.SumFlux_Ge_a_par = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-            self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-            contF += 1
-        else:
-            self.SumFlux_Qe_a_par = self.SumFlux_Qe_phi * 0.0
-            self.SumFlux_Ge_a_par = self.SumFlux_Ge_phi * 0.0
-            self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
+            self.SumFlux_Qe_phi = self.SumFluxSpectrum[1, 0, 0, :]
+            self.SumFlux_Ge_phi = self.SumFluxSpectrum[0, 0, 0, :]
+            self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
 
-        if "a_per" in self.fields:
-            self.SumFlux_Qe_a_per = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-            self.SumFlux_Ge_a_per = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-            self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-            contF += 1
-        else:
-            self.SumFlux_Qe_a_per = self.SumFlux_Qe_phi * 0.0
-            self.SumFlux_Ge_a_per = self.SumFlux_Ge_phi * 0.0
-            self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
+            contF = 0
+            if "a_par" in self.fields:
+                self.SumFlux_Qe_a_par = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+                self.SumFlux_Ge_a_par = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+                self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+                contF += 1
+            else:
+                self.SumFlux_Qe_a_par = self.SumFlux_Qe_phi * 0.0
+                self.SumFlux_Ge_a_par = self.SumFlux_Ge_phi * 0.0
+                self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
 
-        self.SumFlux_Qe_a = self.SumFlux_Qe_a_par + self.SumFlux_Qe_a_per
-        self.SumFlux_Ge_a = self.SumFlux_Ge_a_par + self.SumFlux_Ge_a_per
-        self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
+            if "a_per" in self.fields:
+                self.SumFlux_Qe_a_per = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+                self.SumFlux_Ge_a_per = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+                self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+                contF += 1
+            else:
+                self.SumFlux_Qe_a_per = self.SumFlux_Qe_phi * 0.0
+                self.SumFlux_Ge_a_per = self.SumFlux_Ge_phi * 0.0
+                self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
 
-        self.SumFlux_Qe = self.SumFlux_Qe_phi + self.SumFlux_Qe_a
-        self.SumFlux_Ge = self.SumFlux_Ge_phi + self.SumFlux_Ge_a
-        self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
+            self.SumFlux_Qe_a = self.SumFlux_Qe_a_par + self.SumFlux_Qe_a_per
+            self.SumFlux_Ge_a = self.SumFlux_Ge_a_par + self.SumFlux_Ge_a_per
+            self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
 
-        # Sum ion contributions
+            self.SumFlux_Qe = self.SumFlux_Qe_phi + self.SumFlux_Qe_a
+            self.SumFlux_Ge = self.SumFlux_Ge_phi + self.SumFlux_Ge_a
+            self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
 
-        print(
-            f"\t\t- For Qi spectrum, summing contributions from ions {self.ions_included} (#0 is e-)",
-            typeMsg="i",
-        )
-        sum_ions = tuple([i - 1 for i in self.ions_included])
+            # Sum ion contributions
 
-        self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
-        self.SumFlux_Qi_a = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
-        self.SumFlux_Qi = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
+            print(f"\t\t- For Qi spectrum, summing contributions from ions {self.ions_included} (#0 is e-)",typeMsg="i",)
+            sum_ions = tuple([i - 1 for i in self.ions_included])
 
-        # ------------------------------------------------------------------------
-        # QL Flux Spectrum (QL weights per mode)
-        # ------------------------------------------------------------------------
+            self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
+            self.SumFlux_Qi_a = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
+            self.SumFlux_Qi = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
 
-        # particle flux,energy flux,toroidal stress,parallel stress,exchange (?)
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.QL_flux_spectrum" + self.suffix),
-            blocks=self.num_species * self.num_fields * self.num_nmodes,
-            columns=None,
-            numky=self.num_ky,
-        )
+            # ------------------------------------------------------------------------
+            # QL Flux Spectrum (QL weights per mode)
+            # ------------------------------------------------------------------------
 
-        # Re-arrange to separa specie and field
+            # particle flux,energy flux,toroidal stress,parallel stress,exchange (?)
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.QL_flux_spectrum" + self.suffix),
+                blocks=self.num_species * self.num_fields * self.num_nmodes,
+                columns=None,
+                numky=self.num_ky,
+            )
 
-        data_re = np.reshape(
-            data,
-            (
-                self.num_species,
-                self.num_fields,
-                self.num_nmodes,
-                self.num_ky,
-                num_quantities,
-            ),
-            order="C",
-        )
+            # Re-arrange to separa specie and field
 
-        # Using my convention of [quantity,species,field,nmode,ky]
-        self.QLFluxSpectrum = data_re.transpose((4, 0, 1, 2, 3))
-        # *************************************************
+            data_re = np.reshape(
+                data,
+                (
+                    self.num_species,
+                    self.num_fields,
+                    self.num_nmodes,
+                    self.num_ky,
+                    num_quantities,
+                ),
+                order="C",
+            )
 
-        self.QLFluxSpectrum_Ge_phi = self.QLFluxSpectrum[0, 0, 0, :, :]
-        self.QLFluxSpectrum_Qe_phi = self.QLFluxSpectrum[1, 0, 0, :, :]
+            # Using my convention of [quantity,species,field,nmode,ky]
+            self.QLFluxSpectrum = data_re.transpose((4, 0, 1, 2, 3))
+            # *************************************************
 
-        self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
-        self.QLFluxSpectrum_Gi_phi = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(
-            axis=0
-        )  # Sum over ions
-        self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
-        self.QLFluxSpectrum_Qi_phi = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(
-            axis=0
-        )  # Sum over ions
+            self.QLFluxSpectrum_Ge_phi = self.QLFluxSpectrum[0, 0, 0, :, :]
+            self.QLFluxSpectrum_Qe_phi = self.QLFluxSpectrum[1, 0, 0, :, :]
 
-        contF = 1
-        if "a_par" in self.fields:
-            self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum[0, 0, 1, :, :]
-            self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum[1, 0, 1, :, :]
-
-            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
-            self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_GiAll_a_par[
-                sum_ions, :
-            ].sum(
+            self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
+            self.QLFluxSpectrum_Gi_phi = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(
                 axis=0
             )  # Sum over ions
-            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
-            self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_QiAll_a_par[
-                sum_ions, :
-            ].sum(
+            self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
+            self.QLFluxSpectrum_Qi_phi = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(
                 axis=0
             )  # Sum over ions
-            contF += 1
+
+            contF = 1
+            if "a_par" in self.fields:
+                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum[0, 0, 1, :, :]
+                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum[1, 0, 1, :, :]
+
+                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
+                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_GiAll_a_par[
+                    sum_ions, :
+                ].sum(
+                    axis=0
+                )  # Sum over ions
+                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
+                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_QiAll_a_par[
+                    sum_ions, :
+                ].sum(
+                    axis=0
+                )  # Sum over ions
+                contF += 1
+            else:
+                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum_Ge_phi * 0.0
+                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum_Qe_phi * 0.0
+
+                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
+                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
+
+            if "a_per" in self.fields:
+                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum[0, 0, 2, :, :]
+                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum[1, 0, 2, :, :]
+
+                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
+                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_GiAll_a_per[
+                    sum_ions, :
+                ].sum(
+                    axis=0
+                )  # Sum over ions
+                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
+                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_QiAll_a_per[
+                    sum_ions, :
+                ].sum(
+                    axis=0
+                )  # Sum over ions
+                contF += 1
+            else:
+                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum_Ge_phi * 0.0
+                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum_Qe_phi * 0.0
+
+                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
+                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_Gi_phi * 0.0
+                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
+                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_Qi_phi * 0.0
+
+            # ------------------------------------------------------------------------
+            # Intensity Spectrum
+            # ------------------------------------------------------------------------
+
+            data = GACODEinterpret.TGLFreader(
+                self.FolderGACODE / ("out.tglf.intensity_spectrum" + self.suffix),
+                blocks=1,
+                columns=None,
+                numky=self.num_ky,
+            )
+
+            data_re = np.reshape(
+                data[0, :, :],
+                (self.num_species, self.num_nmodes, self.num_ky, 4),
+                order="C",
+            )
+
+            # Using my convention of [quantity=(density,temperature,parallel velocity,parallel energy),species,nmode,ky]
+            self.IntensitySpectrum = data_re.transpose((3, 0, 1, 2))
+
+            self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
+            self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
+
+            self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
+            self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
+
         else:
-            self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum_Ge_phi * 0.0
-            self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum_Qe_phi * 0.0
+            self.ky = np.zeros((1,))
+            self.num_ky = 1
+            self.num_nmodes = 1
+            self.num_species = 1
+            self.num_fields = 1
+            self.fields = []
 
-            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-            self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
-            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-            self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
+            # Eigenvalues and linear stability
+            self.Eigenvalues = np.zeros((2, 1, 1))
+            self.g = np.zeros((1, 1))
+            self.f = np.zeros((1, 1))
 
-        if "a_per" in self.fields:
-            self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum[0, 0, 2, :, :]
-            self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum[1, 0, 2, :, :]
+            # TGLF model parameters
+            self.tglf_model = {
+                "width": np.zeros((1,)),
+                "spectral_shift": np.zeros((1,)),
+                "ave_p0": np.zeros((1,)),
+            }
 
-            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
-            self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_GiAll_a_per[
-                sum_ions, :
-            ].sum(
-                axis=0
-            )  # Sum over ions
-            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
-            self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_QiAll_a_per[
-                sum_ions, :
-            ].sum(
-                axis=0
-            )  # Sum over ions
-            contF += 1
-        else:
-            self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum_Ge_phi * 0.0
-            self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum_Qe_phi * 0.0
+            # Fluctuation Spectrum
+            self.AmplitudeSpectrum = np.zeros((1, 1, 1))
+            self.AmplitudeSpectrum_Te = np.zeros((1,))
+            self.AmplitudeSpectrum_Ti = np.zeros((1, 1))
+            self.AmplitudeSpectrum_ne = np.zeros((1,))
+            self.AmplitudeSpectrum_ni = np.zeros((1, 1))
 
-            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
-            self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_Gi_phi * 0.0
-            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
-            self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_Qi_phi * 0.0
+            # Cross Phase Spectrum
+            self.nTSpectrum = np.zeros((1, 1, 1))
+            self.neTeSpectrum = np.zeros((1, 1))
+            self.niTiSpectrum = np.zeros((1, 1, 1))
 
-        # ------------------------------------------------------------------------
-        # Intensity Spectrum
-        # ------------------------------------------------------------------------
+            # Field Spectrum
+            self.FieldSpectrum = np.zeros((4, 1, 1))
+            self.v_spectrum = np.zeros((1, 1))
+            self.phi_spectrum = np.zeros((1, 1))
+            self.a_par_spectrum = np.zeros((1, 1))
+            self.a_per_spectrum = np.zeros((1, 1))
 
-        data = GACODEinterpret.TGLFreader(
-            self.FolderGACODE / ("out.tglf.intensity_spectrum" + self.suffix),
-            blocks=1,
-            columns=None,
-            numky=self.num_ky,
-        )
+            # Flux Spectrum
+            self.SumFluxSpectrum = np.zeros((5, 1, 1, 1))
 
-        data_re = np.reshape(
-            data[0, :, :],
-            (self.num_species, self.num_nmodes, self.num_ky, 4),
-            order="C",
-        )
+            self.SumFlux_Qe_phi = np.zeros((1,))
+            self.SumFlux_Ge_phi = np.zeros((1,))
+            self.SumFlux_QiAll_phi = np.zeros((1, 1))
 
-        # Using my convention of [quantity=(density,temperature,parallel velocity,parallel energy),species,nmode,ky]
-        self.IntensitySpectrum = data_re.transpose((3, 0, 1, 2))
+            self.SumFlux_Qe_a_par = np.zeros((1,))
+            self.SumFlux_Ge_a_par = np.zeros((1,))
+            self.SumFlux_QiAll_a_par = np.zeros((1, 1))
 
-        self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
-        self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
+            self.SumFlux_Qe_a_per = np.zeros((1,))
+            self.SumFlux_Ge_a_per = np.zeros((1,))
+            self.SumFlux_QiAll_a_per = np.zeros((1, 1))
 
-        self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
-        self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
+            self.SumFlux_Qe_a = np.zeros((1,))
+            self.SumFlux_Ge_a = np.zeros((1,))
+            self.SumFlux_QiAll_a = np.zeros((1, 1))
+
+            self.SumFlux_Qe = np.zeros((1,))
+            self.SumFlux_Ge = np.zeros((1,))
+            self.SumFlux_QiAll = np.zeros((1, 1))
+
+            self.SumFlux_Qi_phi = np.zeros((1,))
+            self.SumFlux_Qi_a = np.zeros((1,))
+            self.SumFlux_Qi = np.zeros((1,))
+
+            # QL Flux Spectrum
+            self.QLFluxSpectrum = np.zeros((5, 1, 1, 1, 1))
+
+            self.QLFluxSpectrum_Ge_phi = np.zeros((1, 1))
+            self.QLFluxSpectrum_Qe_phi = np.zeros((1, 1))
+            self.QLFluxSpectrum_GiAll_phi = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Gi_phi = np.zeros((1, 1))
+            self.QLFluxSpectrum_QiAll_phi = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Qi_phi = np.zeros((1, 1))
+
+            self.QLFluxSpectrum_Ge_a_par = np.zeros((1, 1))
+            self.QLFluxSpectrum_Qe_a_par = np.zeros((1, 1))
+            self.QLFluxSpectrum_GiAll_a_par = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Gi_a_par = np.zeros((1, 1))
+            self.QLFluxSpectrum_QiAll_a_par = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Qi_a_par = np.zeros((1, 1))
+
+            self.QLFluxSpectrum_Ge_a_per = np.zeros((1, 1))
+            self.QLFluxSpectrum_Qe_a_per = np.zeros((1, 1))
+            self.QLFluxSpectrum_GiAll_a_per = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Gi_a_per = np.zeros((1, 1))
+            self.QLFluxSpectrum_QiAll_a_per = np.zeros((1, 1, 1))
+            self.QLFluxSpectrum_Qi_a_per = np.zeros((1, 1))
+
+            # Intensity Spectrum
+            self.IntensitySpectrum = np.zeros((4, 1, 1, 1))
+            self.IntensitySpectrum_ne = np.zeros((1, 1))
+            self.IntensitySpectrum_Te = np.zeros((1, 1))
+            self.IntensitySpectrum_ni = np.zeros((1, 1, 1))
+            self.IntensitySpectrum_Ti = np.zeros((1, 1, 1))
+
+
 
         # ------------------------------------------------------------------------
         # TGLF input file
