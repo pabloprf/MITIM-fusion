@@ -413,9 +413,7 @@ def runTRXPL(
             trxpl_path:  enter "1" for if Btoroidal is ccw:
     """
 
-    commandTRXPL = "P\n10000\nA\n{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\nY\nX\nH\nW\n10001\nQ\nQ\nQ".format(
-        timeRun, avTime, grids[0], grids[1], grids[2], BtDir, IpDir
-    )
+    commandTRXPL = f"P\n10000\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n10001\nQ\nQ\nQ"
     with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
@@ -434,12 +432,7 @@ def runTRXPL(
     if grids[0] > 301:
         raise Exception("~~~~ Max grid for TRXPL is 301")
 
-    print(
-        "\t\t- Proceeding to run TRXPL with: {0}".format(
-            (" ".join(commandTRXPL.split("\n")))
-        ),
-        typeMsg="i",
-    )
+    print(f"\t\t- Proceeding to run TRXPL with: {' '.join(commandTRXPL.split('\n'))}",typeMsg="i")
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
@@ -925,7 +918,7 @@ def runTGLF(
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
     """
-    
+
     tmpFolder = FolderGACODE / "tmp_tglf"
     IOtools.askNewFolder(tmpFolder, force=True)
 
