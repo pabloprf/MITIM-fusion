@@ -6,12 +6,15 @@ from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import TRANSPbeat, PORTALSbeat
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools import PLASMAtools
+from IPython import embed
 
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
     maestro_namelist = IOtools.read_mitim_nml(file_path)
 
-    # ----------------- Engineering parameters  -----------------
+    # ---------------------------------------------------------------------------------------
+    # Engineering parameters
+    # ---------------------------------------------------------------------------------------
 
     Ip = maestro_namelist["machine"]["Ip"]
     Bt = maestro_namelist["machine"]["Bt"]
@@ -21,20 +24,23 @@ def parse_maestro_nml(file_path):
         nesepratio = maestro_namelist["assumptions"]["initialization"]["nesep_ratio"]
         nesep = neped * nesepratio
     else:
-        raise ValueError("Only assume_neped is supported for now")
+        raise ValueError("[MITIM] Only assume_neped is supported for now")
     
     if maestro_namelist["machine"]["heating"]["type"] == "ICRH":
         Pich = maestro_namelist["machine"]["heating"]["parameters"]["P_icrh"]
         Zmini = maestro_namelist["machine"]["heating"]["parameters"]["Zmini"] 
         fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
     else:
-        raise ValueError("Only ICRH heating is supported for now")
+        raise ValueError("[MITIM] Only ICRH heating is supported for now")
     
     Zeff = maestro_namelist["assumptions"]["Zeff"]
+    Tsep = maestro_namelist["assumptions"]["Tesep_eV"]*1E-3
 
-    parameters_engineering = {'Ip_MA': Ip, 'B_T': Bt, 'Zeff': Zeff, 'PichT_MW': Pich, 'neped_20' : neped , 'Tesep_keV': 0.075, 'nesep_20': neped*0.3}
+    parameters_engineering = {'Ip_MA': Ip, 'B_T': Bt, 'Zeff': Zeff, 'PichT_MW': Pich, 'neped_20' : neped , 'Tesep_keV': Tsep, 'nesep_20': nesep}
     
-    # ----------------- Plasma mix and impurity parameters  -----------------
+    # ---------------------------------------------------------------------------------------
+    # Plasma mix and impurity parameters
+    # ---------------------------------------------------------------------------------------
 
     fmain = maestro_namelist["assumptions"]["mix"]["fmain"]
     fW = maestro_namelist["assumptions"]["mix"]["fW"]
@@ -44,12 +50,19 @@ def parse_maestro_nml(file_path):
 
     parameters_mix = {'DTplasma': True, 'lowZ_impurity': LowZ, 'impurity_ratio_WtoZ': Wratio, 'minority': [Zmini,1,fmini]}
 
-    # ----------------- Initializations  -----------------
+    # ---------------------------------------------------------------------------------------
+    # Initialization parameters
+    # ---------------------------------------------------------------------------------------
 
     separatrix_type = maestro_namelist["machine"]["separatrix"]["type"]
-    parameters_initialize = {'BetaN_initialization': 2.0, 'peaking_initialization': 1.5, "initializer":separatrix_type}
+    parameters_initialize = {
+        'BetaN_initialization': maestro_namelist["assumptions"]["initialization"]["BetaN"],
+        'peaking_initialization': maestro_namelist["assumptions"]["initialization"]["density_peaking"],
+        "initializer":separatrix_type}
 
-    # ----------------- Geometry  -----------------
+    # ---------------------------------------------------------------------------------------
+    # Geometry parameters
+    # ---------------------------------------------------------------------------------------
 
     if separatrix_type == "freegs":
         # Initialize geometry from first 4 MXH moments
@@ -65,17 +78,20 @@ def parse_maestro_nml(file_path):
         n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
         geometry = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
     else:
-        raise ValueError("Only \"freegs\" (mxh) or \"geqdsk\" are supported")
+        raise ValueError('[MITIM] Only "freegs" (mxh) or "geqdsk" are supported')
 
-    
-
-    # ----------------- Read user settings and default namelists for individual Beats  -----------------
+    # ---------------------------------------------------------------------------------------
+    # Read user settings and default namelists for individual Beats
+    # ---------------------------------------------------------------------------------------
 
     beat_namelists = {}
 
     for beat_type in ["eped", "transp", "transp_soft", "portals"]: # Add more beats as we grow maestro
+
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
+
             if f"{beat_type}_namelist" in maestro_namelist["maestro"][f"{beat_type}_beat"]:
+
                 beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
 
                 # soft portals namelist
@@ -93,7 +109,10 @@ def parse_maestro_nml(file_path):
                     beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix)
                 elif beat_type == "transp_soft":
                     beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix,only_current_diffusion=True)
-    
+
+        else:
+            raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
+
         beat_namelists[beat_type] = beat_namelist
 
     maestro_beats = maestro_namelist["maestro"]
