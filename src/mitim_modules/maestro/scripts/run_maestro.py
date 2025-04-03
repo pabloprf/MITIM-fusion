@@ -1,5 +1,4 @@
 import argparse
-import os
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -210,27 +209,8 @@ def run_maestro_local(
         # Define preparation and run
         # ****************************************************************************
 
-        if maestro_beats["beats"][0] == "transp":
-            m.prepare(**beat_namelists['transp'])
-            m.run()
-
-        elif maestro_beats["beats"][0] == "transp_soft":
-            m.define_beat('transp', initializer=parameters_initialize["initializer"])
-            m.prepare(**beat_namelists['transp_soft'])
-            m.run()
-            
-        elif maestro_beats["beats"][0] == "eped":
-            m.define_beat('eped')
-            m.prepare(**beat_namelists['eped'])
-            m.run()
-
-        elif maestro_beats["beats"][0] == "portals":
-            m.define_beat('portals')
-            m.prepare(**beat_namelists['portals'], 
-                      change_last_radial_call = maestro_beats["portals_beat"]["change_last_radial_call"], 
-                      use_previous_surrogate_data=maestro_beats["portals_beat"]["use_previous_surrogate_data"], 
-                      try_flux_match_only_for_first_point=maestro_beats["portals_beat"]["try_flux_match_only_for_first_point"])
-            m.run()
+        m.prepare(**beat_namelists[maestro_beats["beats"][0]])
+        m.run()
 
         maestro_beats["beats"].pop(0)
 
