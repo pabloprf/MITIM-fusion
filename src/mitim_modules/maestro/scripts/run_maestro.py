@@ -27,7 +27,8 @@ def parse_maestro_nml(file_path):
     
     if maestro_namelist["machine"]["heating"]["type"] == "ICRH":
         Pich = maestro_namelist["machine"]["heating"]["parameters"]["P_icrh"]
-        Zmini = maestro_namelist["machine"]["heating"]["parameters"]["Zmini"] 
+        Zmini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][0]
+        Amini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][1]
         fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
     else:
         raise ValueError("[MITIM] Only ICRH heating is supported for now")
@@ -47,7 +48,7 @@ def parse_maestro_nml(file_path):
 
     LowZ, Wratio = PLASMAtools.estimateLowZ(fmain,Zeff,Zmini,fmini,ZW,fW)
 
-    parameters_mix = {'DTplasma': True, 'lowZ_impurity': LowZ, 'impurity_ratio_WtoZ': Wratio, 'minority': [Zmini,1,fmini]}
+    parameters_mix = {'DTplasma': True, 'lowZ_impurity': LowZ, 'impurity_ratio_WtoZ': Wratio, 'minority': [Zmini,Amini,fmini]}
 
     # ---------------------------------------------------------------------------------------
     # Initialization parameters
