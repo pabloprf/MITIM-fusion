@@ -77,11 +77,11 @@
                           "ymax_rel": 1.0,
                           "ymin_rel": 1.0,
                           "hardGradientLimits": [null, 4]
-                     }
                 },
                 "change_last_radial_call" : true, 
                 "use_previous_surrogate_data" : true, 
-                "try_flux_match_only_for_first_point" : true,
+                    "try_flux_match_only_for_first_point" : true
+                },
                 "transport_preprocessing": {
                     "lumpImpurities": true,
                     "enforce_same_density_gradients": true

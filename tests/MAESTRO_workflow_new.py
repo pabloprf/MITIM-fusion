@@ -1,8 +1,5 @@
 import os
 import torch
-from mitim_modules.maestro import MAESTROmain
-from mitim_tools.misc_tools import PLASMAtools
-from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools import __mitimroot__
 from mitim_modules.maestro.scripts import run_maestro
 
