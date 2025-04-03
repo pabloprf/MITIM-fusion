@@ -148,25 +148,11 @@ def parse_maestro_nml(file_path):
 
     maestro_beats = maestro_namelist["maestro"]
 
-    return parameters_engineering, parameters_mix, parameters_initialize, geometry, beat_namelists, maestro_beats
-
-def build_maestro_run_local(
-        folder=None,
-        terminal_outputs = False,
-        force_cold_start = False
-        ):
-
-    if folder is None:
-        folder = os.getcwd()
-
-    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start)
-
-    return m
+    return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats
 
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
-        parameters_mix, 
         parameters_initialize, 
         geometry, 
         beat_namelists, 
@@ -176,11 +162,22 @@ def run_maestro_local(
         force_cold_start = False
         ):
     
-    m = build_maestro_run_local(folder=folder,terminal_outputs = terminal_outputs, force_cold_start = force_cold_start)
-    
-    # loop through beats
+    # -------------------------------------------------------------------------
+    # Initialize object
+    # -------------------------------------------------------------------------
 
-    while maestro_beats["beats"]: # iterates through list of beats fron the json file until it's empty
+    if folder is None:
+        folder = IOtools.expandPath('./')
+
+    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start)
+
+
+    # -------------------------------------------------------------------------
+    # Loop through beats
+    # -------------------------------------------------------------------------
+
+    while maestro_beats["beats"]:
+
         if maestro_beats["beats"][0] == "transp":
             m.define_beat('transp')
             m.prepare(**beat_namelists['transp'])
@@ -198,6 +195,7 @@ def run_maestro_local(
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
             m.prepare(**beat_namelists['transp_soft'])
             m.run()
+            
         elif maestro_beats["beats"][0] == "eped":
             m.define_beat('eped')
             m.prepare(**beat_namelists['eped'])
