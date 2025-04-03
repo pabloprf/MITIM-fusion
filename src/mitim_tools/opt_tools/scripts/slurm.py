@@ -1,35 +1,8 @@
 import os
-import argparse
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 
 """
-This script is used to launch a slurm job of a MITIM optimization.
-The optimization script should receive both "--folder" and "--seed", i.e.:
-
-        import argparse
-        from pathlib import Path
-        parser = argparse.ArgumentParser()
-        parser.add_argument("folder", type=str)
-        parser.add_argument("--seed", type=int, required=False, default=0)
-        args = parser.parse_args()
-        folder = Path(args.folder)
-        seed = args.seed
-
-        # REST OF SCRIPT THAT PERFORMS THE JOB
-
-To call:
-
-    mitim_slurm runPORTALS.py --folder run1/
-
-        [optional]
-            --patition sched_mit_psfc_r8                (partition to run the job)
-            --env /pool001/pablorf/env/mitim-env_311    (path to the virtual environment)
-            --seeds 1                                   (number of seeds to run)
-            --hours 8                                   (number of hours to run the job)
-            --n 32                                      (number of CPUs per task)
-            --seed_specific 0                           (specific seed to run, if seeds == 1)
-            --extra 0.1                                 (extra arguments to pass to the script)
-
+This script is used to launch a slurm job with a scpecific script like... python3 run_case.py 0 --R 6.0
 """
 
 def run_slurm(
@@ -37,36 +10,34 @@ def run_slurm(
     folder,
     partition,
     venv,
-    seeds=1,
+    seeds=None,    # If not None, assume that the script is able to receive --seeds #
     hours=8,
     n=32,
     seed_specific=0,
-    extra=None,
     machine="local",
     exclude=None,
     mem=None
 ):
-    script = IOtools.expandPath(script)
+
     folder = IOtools.expandPath(folder)
 
-    seeds_explore = [seed_specific] if seeds == 1 else list(range(seeds))
+    if seeds is not None:
+        seeds_explore = [seed_specific] if seeds == 1 else list(range(seeds))
+    else:
+        seeds_explore = [None]
 
     for seed in seeds_explore:
 
-        extra_name = "" if seeds == 1 else f"_s{seed}"
+        extra_name = "" if (seed is None or seeds == 1) else f"_s{seed}"
 
-        folder = IOtools.expandPath(folder) / extra_name
+        folder = IOtools.expandPath(folder)
+        folder = folder.with_name(folder.name + extra_name)
 
         print(f"* Launching slurm job of MITIM optimization with random seed = {seed}")
 
         folder.mkdir(parents=True, exist_ok=True)
 
-        extra_str = " ".join([str(e) for e in extra]) if extra is not None else ""
-
-        command = [
-            f"source {venv}/bin/activate",
-            f"python3 {script} {folder} {extra_str} --seed {seed}",
-        ]
+        command = [venv,script + (f" --seed {seed}" if seed is not None else "")]
 
         nameJob = f"mitim_opt_{folder.name}{extra_name}"
 
@@ -94,43 +65,3 @@ def run_slurm(
                 input_files=[fileSBATCH],
                 job_name = nameJob,
                 )
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("script", type=str)
-    parser.add_argument("--folder", type=str, required=False, default="run1/")
-    parser.add_argument("--machine", type=str, required=False, default="local")
-    parser.add_argument("--hours", type=int, required=False, default=8)
-    parser.add_argument("--n", type=int, required=False, default=16)
-    parser.add_argument("--exclude", type=str, required=False, default=None)
-    parser.add_argument("--seed_specific", type=int, required=False, default=0)
-    parser.add_argument("--extra", type=float, required=False, default=None, nargs="*")
-    parser.add_argument("--seeds", type=int, required=False, default=1)
-    parser.add_argument(
-        "--partition",
-        type=str,
-        required=False,
-        default=IOtools.expandPath("$MFEIM_PARTITION"),
-    )
-    parser.add_argument(
-        "--env", type=str, required=False, default=IOtools.expandPath("~/env/mitim-env")
-    )
-
-    args = parser.parse_args()
-
-    run_slurm(
-        args.script,
-        args.folder,
-        args.partition,
-        args.env,
-        seeds=args.seeds,
-        hours=args.hours,
-        n=args.n,
-        extra=args.extra,
-        seed_specific=args.seed_specific,
-        machine=args.machine,
-        exclude=None,
-    )
-
-if __name__ == "__main__":
-    main()
