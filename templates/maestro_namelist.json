@@ -33,12 +33,12 @@
           },
           "initialization": {
                 "BetaN":2.0,
-                "temperature_peaking":1.5,
+                "density_peaking":1.5,
                 "assume_neped": true,
                 "neped_20": 2.22,
                 "nesep_ratio": 0.3
           },
-          "Tesep_keV":  0.075
+          "Tesep_eV":  75.0
      },
      "maestro": {
           "beats":    ["transp_soft", "transp", "eped", "portals", "eped", "portals"],
