@@ -43,6 +43,7 @@
      "maestro": {
           "beats":    ["transp_soft", "transp", "eped", "portals", "eped", "portals"],
           "eped_beat": {
+            "use_default": false,
             "eped_namelist":{
                 "nn_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.keras",
                 "norm_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION-ARC.txt",
@@ -52,6 +53,7 @@
               
           },
           "portals_beat": {
+                "use_default": false,
                 "portals_namelist" : {
                      "PORTALSparameters": {
                           "forceZeroParticleFlux": true,
@@ -79,9 +81,20 @@
                 },
                 "change_last_radial_call" : true, 
                 "use_previous_surrogate_data" : true, 
-                "try_flux_match_only_for_first_point" : true
+                "try_flux_match_only_for_first_point" : true,
+                "transport_preprocessing": {
+                    "lumpImpurities": true,
+                    "enforce_same_density_gradients": true
+                }
           },
-          "transp_beat":{},
-          "transp_soft_beat":{}
+          "portals_soft_beat":{
+               "use_default": true
+          },
+          "transp_beat":{
+               "use_default": true
+          },
+          "transp_soft_beat":{
+               "use_default": true
+          }
      }
 }
