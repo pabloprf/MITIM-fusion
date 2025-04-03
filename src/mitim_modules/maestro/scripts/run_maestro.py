@@ -225,9 +225,11 @@ def run_maestro_local(
 
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
+    parser.add_argument('folder', type=str, help='Folder to run MAESTRO')
     parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
-    parser.add_argument('--cpus', type=int, default=8, help='Number of CPUs to use (default: 8)')
+    parser.add_argument('cpus', type=int, help='Number of CPUs to use')
     args = parser.parse_args()
+    folder = args.folder
     file_path = args.file_path
     cpus = args.cpus
-    run_maestro_local(*parse_maestro_nml(file_path),cpus = cpus)
+    run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus)
