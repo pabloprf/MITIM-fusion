@@ -86,29 +86,60 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped", "transp", "transp_soft", "portals"]: # Add more beats as we grow maestro
+    for beat_type in ["eped", "transp", "transp_soft", "portals", "portals_soft"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 
-            if f"{beat_type}_namelist" in maestro_namelist["maestro"][f"{beat_type}_beat"]:
+            # ***************************************************************************
+            # Do I want a default namelist?
+            # ***************************************************************************
+            if maestro_namelist["maestro"][f"{beat_type}_beat"]["use_default"]:
 
-                beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
-
-                # soft portals namelist
-                if beat_type == "portals":
-                    portals_namelist_soft = PORTALSbeat.portals_beat_soft_criteria(beat_namelist)
-                    # add postprocessing function
-                    def profiles_postprocessing_fun(file_profs):
-                        p = PROFILEStools.PROFILES_GACODE(file_profs)
-                        p.lumpImpurities()
-                        p.enforce_same_density_gradients()
-                        p.writeCurrentStatus(file=file_profs)
-                    beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
-            else:
                 if beat_type == "transp":
                     beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix)
                 elif beat_type == "transp_soft":
                     beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix,only_current_diffusion=True)
+                elif beat_type == "portals_soft":
+                    # PORTALS soft requires right now that portals namelist is defined
+                    if "portals_beat" in maestro_namelist["maestro"]:
+                        beat_namelist = PORTALSbeat.portals_beat_soft_criteria(maestro_namelist["maestro"]["portals_beat"]["portals_namelist"])
+                    else:
+                        raise ValueError("[MITIM] For PORTALS soft default I need PORTALS namelist")
+                else:
+                    raise ValueError(f"[MITIM] {beat_type} beat does not have a default namelist yet")
+
+            # ***************************************************************************
+            # Read user namelist
+            # ***************************************************************************
+            elif f"{beat_type}_namelist" in maestro_namelist["maestro"][f"{beat_type}_beat"]:
+
+                beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
+
+            # ***************************************************************************
+            # Nothin yet
+            # ***************************************************************************
+            else:
+                raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist nor you wanted default")
+
+            # ***************************************************************************
+            # Additional modifications that are required but not in JSON
+            # ***************************************************************************
+
+            # soft portals namelist
+            if beat_type in ["portals","portals_soft"]:
+
+                lumpImpurities = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["lumpImpurities"]
+                enforce_same_density_gradients = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["enforce_same_density_gradients"]
+
+                # add postprocessing function
+                def profiles_postprocessing_fun(file_profs):
+                    p = PROFILEStools.PROFILES_GACODE(file_profs)
+                    if lumpImpurities:
+                        p.lumpImpurities()
+                    if enforce_same_density_gradients:
+                        p.enforce_same_density_gradients()
+                    p.writeCurrentStatus(file=file_profs)
+                beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
 
         else:
             raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
