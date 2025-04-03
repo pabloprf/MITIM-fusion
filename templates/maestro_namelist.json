@@ -21,8 +21,7 @@
                     "Zmini": 1,
                     "fmini": 0.03
                     }
-          },
-          "Pin": 10.0
+          }
      },
      "assumptions": {
           "Zeff":    1.5,

@@ -158,7 +158,8 @@ def run_maestro_local(
         maestro_beats,
         folder=None,
         terminal_outputs = False,
-        force_cold_start = False
+        force_cold_start = False,
+        cpus = 8,
         ):
     
     # -------------------------------------------------------------------------
@@ -209,8 +210,12 @@ def run_maestro_local(
         # Define preparation and run
         # ****************************************************************************
 
+        run_namelist = {}
+        if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
+            run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])
-        m.run()
+        m.run(**run_namelist)
 
         maestro_beats["beats"].pop(0)
 
@@ -221,6 +226,8 @@ def run_maestro_local(
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
     parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
+    parser.add_argument('--cpus', type=int, default=8, help='Number of CPUs to use (default: 8)')
     args = parser.parse_args()
     file_path = args.file_path
-    run_maestro_local(*parse_maestro_nml(file_path))
+    cpus = args.cpus
+    run_maestro_local(*parse_maestro_nml(file_path),cpus = cpus)
