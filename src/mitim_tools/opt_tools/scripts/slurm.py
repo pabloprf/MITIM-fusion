@@ -64,7 +64,7 @@ def run_slurm(
         extra_str = " ".join([str(e) for e in extra]) if extra is not None else ""
 
         command = [
-            f"source {venv}/bin/activate",
+            venv,
             f"python3 {script} {folder} {extra_str} --seed {seed}",
         ]
 
