@@ -176,15 +176,26 @@ def run_maestro_local(
     # Loop through beats
     # -------------------------------------------------------------------------
 
+    creator_added = False
+
     while maestro_beats["beats"]:
 
-        if maestro_beats["beats"][0] == "transp":
-            m.define_beat('transp')
-            m.prepare(**beat_namelists['transp'])
-            m.run()
+        # ****************************************************************************
+        # Define beat
+        # ****************************************************************************
+        if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
+            label_beat = "transp"
+        elif maestro_beats["beats"][0] in ["eped"]:
+            label_beat = "eped"
+        elif maestro_beats["beats"][0] in ["portals", "portals_soft"]:
+            label_beat = "portals"
 
-        elif maestro_beats["beats"][0] == "transp_soft":
-            m.define_beat('transp', initializer=parameters_initialize["initializer"])
+        m.define_beat(label_beat, initializer=None if creator_added else parameters_initialize["initializer"])
+
+        # ****************************************************************************
+        # Define creator
+        # ****************************************************************************
+        if not creator_added:
             m.define_creator(
                 'eped', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
@@ -193,6 +204,18 @@ def run_maestro_local(
                 **parameters_engineering
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
+            creator_added = True
+
+        # ****************************************************************************
+        # Define preparation and run
+        # ****************************************************************************
+
+        if maestro_beats["beats"][0] == "transp":
+            m.prepare(**beat_namelists['transp'])
+            m.run()
+
+        elif maestro_beats["beats"][0] == "transp_soft":
+            m.define_beat('transp', initializer=parameters_initialize["initializer"])
             m.prepare(**beat_namelists['transp_soft'])
             m.run()
             
