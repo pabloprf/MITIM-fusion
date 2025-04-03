@@ -1,7 +1,7 @@
 {
-    "flag": "ARC V2E",
+    "flag": "SPARC PRD",
      "machine": {
-          "Bt": 12.16,
+          "Bt": 12.2,
           "Ip": 8.7,
           "separatrix": {
               "type": "freegs",
@@ -17,9 +17,9 @@
           "heating": {
               "type": "ICRH",
               "parameters": {
-                    "P_icrh": 10.0,
-                    "Zmini": 1,
-                    "fmini": 0.03
+                    "P_icrh": 11.0,
+                    "minority": [2,3],
+                    "fmini": 0.05
                     }
           }
      },
@@ -31,10 +31,10 @@
                 "fW": 1.5E-5
           },
           "initialization": {
-                "BetaN":2.0,
-                "density_peaking":1.5,
+                "BetaN":1.0,
+                "density_peaking":1.3,
                 "assume_neped": true,
-                "neped_20": 2.22,
+                "neped_20": 2.5,
                 "nesep_ratio": 0.3
           },
           "Tesep_eV":  75.0
@@ -44,8 +44,8 @@
           "eped_beat": {
             "use_default": false,
             "eped_namelist":{
-                "nn_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-MODEL-ARC.keras",
-                "norm_location": "/Users/hallj/MFE-IM/private_code_mitim/NN_DATA/EPED-NN-ARC/EPED-NN-NORMALIZATION-ARC.txt",
+                "nn_location": "$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras",
+                "norm_location": "$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt",
                 "corrections_set": {},
                 "ptop_multiplier": 1.0
             }
