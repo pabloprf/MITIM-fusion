@@ -288,7 +288,7 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
     time_step_s = duration_s * 1E-2
 
     transp_namelist = {
-        'flattop_window': 1.0,       
+        'flattop_window': 2.5,       
         'extractAC': False,      
         'dtOut_ms' : time_step_s*1E3,
         'dtIn_ms' : time_step_s*1E3,
@@ -308,7 +308,7 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
 
     if only_current_diffusion:
 
-        duration_s   = 15.0
+        duration_s   = 20.0
         time_step_s  = 0.1
 
         transp_namelist['flattop_window'] = duration_s
