@@ -40,6 +40,7 @@
           "Tesep_eV":  75.0
      },
      "maestro": {
+          "keep_all_files": true,
           "beats":    ["transp_soft", "transp", "eped", "portals", "eped", "portals"],
           "eped_beat": {
             "use_default": false,

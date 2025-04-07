@@ -1210,6 +1210,7 @@ def perform_quick_remote_execution(
     output_files=None,
     output_folders=None,
     job_name = "test",
+    check_if_files_received=True,
     ):
 
     if input_files is None:
@@ -1235,10 +1236,10 @@ def perform_quick_remote_execution(
         input_folders=input_folders,
         output_files=output_files,
         output_folders=output_folders)
-    job.run()
+    job.run(check_if_files_received=check_if_files_received)
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False):
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False, ensure_files = True):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 
@@ -1278,7 +1279,8 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         command,
         output_files = output_files,
         output_folders = output_folders,
-        job_name = job_name
+        job_name = job_name,
+        check_if_files_received = ensure_files,
     )
 
     if purge_tmp_files:

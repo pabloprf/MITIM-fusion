@@ -161,6 +161,7 @@ def run_maestro_local(
         terminal_outputs = False,
         force_cold_start = False,
         cpus = 8,
+        keep_all_files = True,
         ):
     
     # -------------------------------------------------------------------------
@@ -170,8 +171,7 @@ def run_maestro_local(
     if folder is None:
         folder = IOtools.expandPath('./')
 
-    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start)
-
+    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
 
     # -------------------------------------------------------------------------
     # Loop through beats
