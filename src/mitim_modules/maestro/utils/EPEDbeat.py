@@ -544,10 +544,11 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
 
     # Find factor to account that it's not a pure plasma
     n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
-    factor = 1 + interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
+    fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
 
-    # Temperature from pressure, assuming Te=Ti
-    Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+    # Temperature from pressure, assuming Te=Ti         #TODO: Relax this assumption and allow TiTe_ratio as input
+    e_J = 1.60218e-19
+    Ttop_keV = (ptop_kPa*1E3) / ( ( 1 + fi ) * netop_20 * 1e20) / e_J * 1E-3    
 
     return rhotop, netop_20, Ttop_keV, rhoped
 
