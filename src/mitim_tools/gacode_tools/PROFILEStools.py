@@ -787,6 +787,9 @@ class PROFILES_GACODE:
         self.derived["ni_thr"] = np.transpose(self.derived["ni_thr"])
         self.derived["ni_thrAll"] = self.derived["ni_thr"].sum(axis=1)
 
+        self.derived["ni_All"] = self.profiles["ni(10^19/m^3)"].sum(axis=1)
+
+
         (
             self.derived["ptot_manual"],
             self.derived["pe"],

@@ -543,7 +543,7 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
     netop_20 = n0[0]
 
     # Find factor to account that it's not a pure plasma
-    n = profiles.derived['ni_thrAll']/profiles.profiles['ne(10^19/m^3)']
+    n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
     factor = 1 + interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
 
     # Temperature from pressure, assuming Te=Ti
