@@ -556,7 +556,8 @@ class TGLF:
             extra_name=extra_name,
             slurm_setup=slurm_setup,
             anticipate_problems=anticipate_problems,
-            attempts_execution=attempts_execution
+            attempts_execution=attempts_execution,
+            only_minimal_files=only_minimal_files,
         )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -639,11 +640,11 @@ class TGLF:
         cold_start=False,
         forceIfcold_start=False,
         anticipate_problems=True,
-        extra_name="exe",
         slurm_setup={
             "cores": 4,
             "minutes": 5,
         },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+        only_minimal_files=False,
         **kwargs):
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -662,10 +663,15 @@ class TGLF:
                 ResultsFiles_new.append(i)
         self.ResultsFiles = ResultsFiles_new
 
+        if only_minimal_files:
+            filesToRetrieve = ["out.tglf.gbflux"]
+        else:
+            filesToRetrieve = self.ResultsFiles
+
         # Do I need to run all radii?
         rhosEvaluate = cold_start_checker(
             rhos,
-            self.ResultsFiles,
+            filesToRetrieve,
             FolderTGLF,
             cold_start=cold_start,
         )
