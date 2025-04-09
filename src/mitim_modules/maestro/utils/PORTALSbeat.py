@@ -1,5 +1,7 @@
 import shutil
 import copy
+import pandas as pd
+import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
@@ -8,6 +10,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
+from mitim_tools import __mitimroot__
 
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -31,10 +34,35 @@ class portals_beat(beat):
             PORTALSparameters = {},
             MODELparameters = {},
             optimization_options = {},
-            INITparameters = {}
+            INITparameters = {},
+            enforce_impurity_radiation_existence = False,
             ):
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
+
+        if enforce_impurity_radiation_existence:
+
+            profiles = self.profiles_current
+            for i in range(len(profiles.Species)):
+                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+                if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+                    print(f"\t\t- WARNING: {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
+                    # Find closest Z
+                    Z = data_df['Z'].to_numpy()
+                    iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
+
+                    if abs(Z[iZ] - profiles.Species[i]["Z"]) > 5:
+                        print(f"\t\t- WARNING: {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
+
+                    new_name = data_df['Ion'][iZ]
+
+                    print(f"\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})")
+
+                    profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
+
+            self.profiles_current = profiles
+
+
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
 
         self.PORTALSparameters = PORTALSparameters
