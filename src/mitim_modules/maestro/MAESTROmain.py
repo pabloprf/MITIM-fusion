@@ -1,7 +1,6 @@
 import copy
 import sys
 import datetime
-import shutil
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print

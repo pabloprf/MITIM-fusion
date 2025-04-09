@@ -229,8 +229,14 @@ def main():
     parser.add_argument('folder', type=str, help='Folder to run MAESTRO')
     parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
     parser.add_argument('cpus', type=int, help='Number of CPUs to use')
+    parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     args = parser.parse_args()
     folder = args.folder
     file_path = args.file_path
     cpus = args.cpus
-    run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus)
+    terminal_outputs = args.terminal
+    run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
+
+
+if __name__ == "__main__":
+    main()
