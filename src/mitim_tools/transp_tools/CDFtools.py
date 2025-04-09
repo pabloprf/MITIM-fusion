@@ -155,6 +155,20 @@ class transp_output:
 
         msAfterSawtooth, msBeforeSawtooth = 10.0, 10.0
 
+        try:
+            self.LocationNML, _ = GACODErun.findNamelist(
+                self.LocationCDF, folderWork=folderScratch
+            )
+        except:
+            try:
+                print("Taking first")
+                self.LocationNML, _ = GACODErun.findNamelist(
+                    self.LocationCDF, folderWork=folderScratch, ForceFirst=True
+                )
+            except:
+                print("cannot retrieve namelist", typeMsg="w")
+                self.LocationNML = None
+
         # ~~~~~~~~ Get reactor parameters ~~~~~~~~
 
         self.getConstants()
@@ -303,18 +317,6 @@ class transp_output:
         # --------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------
 
-        try:
-            self.LocationNML, _ = GACODErun.findNamelist(
-                self.LocationCDF, folderWork=folderScratch
-            )
-        except:
-            try:
-                print("Taking first")
-                self.LocationNML, _ = GACODErun.findNamelist(
-                    self.LocationCDF, folderWork=folderScratch, ForceFirst=True
-                )
-            except:
-                print("cannot retrieve namelist", typeMsg="w")
 
         self.getEstimatedMachineCost()
 
@@ -13678,11 +13680,18 @@ class transp_output:
             }
 
         # ~~~~~~ Impurities
-        for i in self.nZs:
+        for cont,i in enumerate(self.nZs):
+
+            if self.LocationNML is not None:
+                mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
+            else:
+                print(f"\t- Could not find mass for impurity {i} in namelist. Using default value of 2*Zave", typeMsg="w")
+                mass =self.fZs_avol[i]['Zave'][self.ind_saw]*2
+
             self.Species[i+"_imp"] = {
                 "name": i,
                 "type": "thermal",
-                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u, #TODO: FIX
+                "m": mass  * self.u,
                 "Z": self.fZs_avol[i]['Zave'],
                 "n": self.nZs[i]["total"],
                 "T": self.Ti,
