@@ -89,7 +89,7 @@ class beat_initializer:
         if len(label) > 0:
             self.folder.mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, profiles_file = None, profiles = {}, Vsurf = None,  **kwargs_beat):
+    def __call__(self, profiles_file = None, Vsurf = None,   **kwargs_beat):
 
         # Load profiles
         self.profiles_current = PROFILEStools.PROFILES_GACODE(profiles_file)
@@ -178,7 +178,7 @@ class initializer_from_geqdsk(beat_initializer):
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
         # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder / 'input.gacode.geqdsk')
+        p.writeCurrentStatus(file=self.folder / 'input.geqdsk.gacode')
 
         # Copy original geqdsk for reference use
         shutil.copy2(geqdsk_file, self.folder / "input.geqdsk")
@@ -187,7 +187,7 @@ class initializer_from_geqdsk(beat_initializer):
         self._inform_save()
 
         # Call the profiles initializer
-        super().__call__(self.folder / 'input.gacode.geqdsk', **kwargs_profiles)
+        super().__call__(self.folder / 'input.geqdsk.gacode', **kwargs_profiles)
 
     def _inform_save(self):
 
@@ -313,7 +313,8 @@ class creator_from_parameterization(creator):
             nu_ne = None,
             aLn = None,
             aLT = None,
-            label = 'parameterization'
+            label = 'parameterization',
+            nresol = 201
             ):
             super().__init__(initialize_instance, label = label)
 
@@ -330,11 +331,13 @@ class creator_from_parameterization(creator):
             self.aLn_guess = aLn
             self.aLT_guess = aLT
 
+            self.nresol = nresol
+
         def _return_profile_peaking_residual(self, aLn, x_a):
 
             # returns the residual of the betaN to match the profile to the EPED guess
 
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne}
@@ -346,9 +349,9 @@ class creator_from_parameterization(creator):
 
             # returns the residual of the betaN to match the profile to the EPED guess
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a,nx = self.nresol)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a,nx = self.nresol)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
@@ -389,9 +392,9 @@ class creator_from_parameterization(creator):
 
             # Create profiles
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a,nx = self.nresol)
 
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
@@ -412,6 +415,7 @@ class creator_from_eped(creator_from_parameterization):
         nu_ne = None,
         aLT = None,
         aLn = None,
+        nresol = 201,
         **kwargs_eped
         ):
         super().__init__(initialize_instance, label = label)
@@ -421,6 +425,7 @@ class creator_from_eped(creator_from_parameterization):
         self.aLT_guess = aLT
         self.aLn_guess = aLn
         self.parameters = kwargs_eped
+        self.nresol = nresol
         if self.BetaN is None:
             raise ValueError('[MITIM] BetaN must be provided in the current implementation of EPED creator')
 
