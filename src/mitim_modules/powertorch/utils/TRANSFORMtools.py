@@ -387,7 +387,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             # Grab chebyshev coefficients from file
             data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
             try:
-                c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,1:].astype(float)
+                c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,2:].astype(float)
             except IndexError:
                 print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',typeMsg="w")
                 c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
