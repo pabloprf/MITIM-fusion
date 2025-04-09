@@ -116,7 +116,7 @@ def initializeProblem(
             answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
             if checkForSpecies and (not answerYN):
                 raise ValueError("Species not found")
-            
+
         else:
 
             print(f'\t- Species {speciesNotFound} not found in radiation database, but this PORTALS prediction is not calculating radiation anyway',typeMsg="w")

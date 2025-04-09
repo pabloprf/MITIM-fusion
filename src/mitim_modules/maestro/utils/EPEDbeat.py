@@ -476,7 +476,6 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
     ynew[:ibc+1] = ycore_new
     ynew[ibc+1:] = yped[ibc+1:]
 
-
     # Keep old aLT
     if keep_aLx:
         print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')

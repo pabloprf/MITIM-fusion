@@ -56,7 +56,11 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     percentNeo = PORTALSparameters["percentError"][1]
     useConvectiveFluxes = PORTALSparameters["useConvectiveFluxes"]
 
-    impurityPosition = PROFILEStools.impurity_location(PROFILEStools.PROFILES_GACODE(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
+    try:
+        impurityPosition = PROFILEStools.impurity_location(PROFILEStools.PROFILES_GACODE(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
+    except:
+        print('\t- WARNING: Impurity location not found. Using default value of 0', typeMsg="w")
+        impurityPosition = 0
     OriginalFimp = PORTALSparameters["fImp_orig"]
 
     cgyroing_file = (

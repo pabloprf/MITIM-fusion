@@ -1674,17 +1674,12 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        print(
-            f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
-        )
+        print(f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
         # New specie parameters
         if force_integer:
             Z = round(Zr_vol)
-            print(
-                f"\t\t\t* Lumped Z forced to be an integer ({Zr_vol}->{Z}), so plasma may not be quasineutral or fulfill original Zeff",
-                typeMsg="w",
-            )
+            print(f"\t\t\t* Lumped Z forced to be an integer ({Zr_vol}->{Z}), so plasma may not be quasineutral or fulfill original Zeff",typeMsg="w",)
         else:
             Z = Zr_vol
 
