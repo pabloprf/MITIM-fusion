@@ -147,13 +147,23 @@ class transp_beat(beat):
 
     def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
-        # Extract output
-        cdf_results = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
-
         # Copy to outputs
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
+        try:
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
+        except FileNotFoundError:
+            print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
+            
+            # Find CDF name
+            files = [f for f in self.folder_output.iterdir() if f.is_file()]
+            cdf_prefix = next((file.stem for file in files if file.suffix.lower() == '.cdf'), None)
+            shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
+            shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
+            shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+
+        # Extract output
+        cdf_results = CDFtools.transp_output(self.folder_output / f"{self.shot}{self.runid}.CDF")
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
         it_extract = cdf_results.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
