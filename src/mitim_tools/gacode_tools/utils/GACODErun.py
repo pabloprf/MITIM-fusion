@@ -432,7 +432,8 @@ def runTRXPL(
     if grids[0] > 301:
         raise Exception("~~~~ Max grid for TRXPL is 301")
 
-    print(f"\t\t- Proceeding to run TRXPL with: {' '.join(commandTRXPL.split('\n'))}",typeMsg="i")
+    print(f"\t\t- testProceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
+
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
