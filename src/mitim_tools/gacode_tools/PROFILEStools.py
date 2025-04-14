@@ -937,6 +937,9 @@ class PROFILES_GACODE:
 
         self.derived['pfast_fraction'] = self.derived['pfast_manual_vol'] / self.derived['ptot_manual_vol']
 
+        #approximate pedestal top density
+        self.derived['ptop(Pa)'] = np.interp(0.90, self.profiles['rho(-)'], self.profiles['ptot(Pa)'])
+
         # Quasineutrality
         self.derived["QN_Error"] = np.abs(
             1 - np.sum(self.derived["fi_vol"] * self.profiles["z"])
@@ -4015,6 +4018,7 @@ class DataTable:
             self.variables = {
                 "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
                 "ageo": ["a", None, "derived", ".2f", 1, "m"],
+                "volume": ["volume", None, "derived", ".2f", 1, "m"],
                 "kappa @psi=0.95": ["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "delta @psi=0.95": ["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
@@ -4041,7 +4045,9 @@ class DataTable:
                 "Zeff": ["Zeff_vol", None, "derived", ".1f", 1, None],
                 "fDT": ["fmain", None, "derived", ".2f", 1, None],
                 "H89p": ["H89", None, "derived", ".2f", 1, None],
+                "H98y2": ["H98", None, "derived", ".2f", 1, None],
                 "ne (vol avg)": ["ne_vol20", None, "derived", ".2f", 1, "E20m-3"],
+                "Ptop": ["ptop", None, "derived", ".1f", 1, "Pa"],
                 "fG": ["fG", None, "derived", ".2f", 1, None],
                 "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
                 "Prad": ["Prad", None, "derived", ".1f", 1, "MW"],
