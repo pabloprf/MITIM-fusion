@@ -59,7 +59,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     try:
         impurityPosition = PROFILEStools.impurity_location(PROFILEStools.PROFILES_GACODE(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
     except:
-        print('\t- WARNING: Impurity location not found. Using default value of 0', typeMsg="w")
+        print('\t- Impurity location not found. Using default value of 0', typeMsg="w")
         impurityPosition = 0
     OriginalFimp = PORTALSparameters["fImp_orig"]
 

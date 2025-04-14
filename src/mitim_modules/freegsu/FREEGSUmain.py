@@ -292,7 +292,7 @@ def analyze_results(
         self.function_parameters["params"]["times"] = [0]
     else:
         print(
-            "\n*** PRF WARNING: Remember to check the timing for voltages!!\n",
+            "\n*** Remember to check the timing for voltages!!\n",
             typeMsg="w",
         )
         self.function_parameters["params"]["times"] = [0, 0.3]
@@ -385,7 +385,7 @@ def combined_analysis(
     if times is None:
         times = np.linspace(0, 1, n)
         print(
-            "\n*** PRF WARNING: Remember to check the timing for voltages!!\n",
+            "\n*** Remember to check the timing for voltages!!\n",
             typeMsg="w",
         )
     p.function_parameters["params"]["times"] = times

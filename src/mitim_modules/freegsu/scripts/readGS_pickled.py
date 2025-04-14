@@ -40,7 +40,7 @@ params = copy.deepcopy(m["params"])
 metrics, opts = FREEGSUtools.calculateMetrics(mitims, separatrixPoint=None)
 
 params["times"] = np.arange(0, 0.3 * len(mitims), 0.3)
-print("\n*** PRF WARNING: Remember to check the timing for voltages!!\n", typeMsg="w")
+print("\n*** Remember to check the timing for voltages!!\n", typeMsg="w")
 
 # ---------------------------------------------------
 # Plot

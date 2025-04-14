@@ -46,13 +46,13 @@ class portals_beat(beat):
             for i in range(len(profiles.Species)):
                 data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
                 if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
-                    print(f"\t\t- WARNING: {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
+                    print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
                     # Find closest Z
                     Z = data_df['Z'].to_numpy()
                     iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
 
                     if abs(Z[iZ] - profiles.Species[i]["Z"]) > 5:
-                        print(f"\t\t- WARNING: {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
+                        print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
 
                     new_name = data_df['Ion'][iZ]
 

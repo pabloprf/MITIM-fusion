@@ -15252,9 +15252,9 @@ class transp_output:
         it = np.argmin(np.abs(self.t - time_extraction))
         
         print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-        print("\t\t* Warning: ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
-        print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
-        print("\t\t* Warning: not time averaging yet",typeMsg='w')
+        print("\t\t* Ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
+        print("\t\t* Extrapolating using cubic spline",typeMsg='w')
+        print("\t\t* Not time averaging yet",typeMsg='w')
 
         #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
