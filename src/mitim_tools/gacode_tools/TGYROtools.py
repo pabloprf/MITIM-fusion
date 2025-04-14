@@ -342,11 +342,7 @@ class TGYRO:
                 exists = exists and existThis
 
             if not exists:
-                print(
-                    "\t- Some of the required output files did not exist, running TGYRO",
-                    typeMsg="i",
-                )
-                # print(txt_nonexist, typeMsg="w")
+                print("\t- Some of the required output files did not exist, running TGYRO")
 
         # ----------------------------------------------------------------
         # ----------------------------------------------------------------

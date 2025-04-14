@@ -76,10 +76,7 @@ class mitim_job:
 
         if self.launchSlurm and (len(self.machineSettings["slurm"]) == 0):
             self.launchSlurm = False
-            print(
-                "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
-                typeMsg="w",
-            )
+            print("\t- slurm requested but no slurm setup to this machine in config... not doing slurm",typeMsg="i",)
 
         # Print Slurm info
         if self.launchSlurm:
@@ -612,7 +609,6 @@ class mitim_job:
                 f"{self.folderExecution}/mitim_receive.tar.gz",
                 self.folder_local / "mitim_receive.tar.gz"
             )
-        print(self.folderExecution, self.folder_local)
 
         # Extract the tarball locally
         print("\t\t- Extracting tarball (local side)")
@@ -1033,7 +1029,8 @@ def create_slurm_execution_files(
         print(f"\t\t- Memory requested by job ({memory_req_by_job}), overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
     else:
-        print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
+        if memory_req_by_config is not None:
+            print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
 
     """

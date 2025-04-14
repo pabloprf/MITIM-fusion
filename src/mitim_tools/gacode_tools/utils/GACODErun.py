@@ -205,12 +205,7 @@ def modifyInputs(
                     typeMsg="w",
                 )
 
-        print(
-            "\t\t\t- Changing {0} from {1} to {2} (x{3})".format(
-                ikey, var_orig, var_new, multipliers[ikey]
-            ),
-            typeMsg="i",
-        )
+        print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{multipliers[ikey]})")
 
     return input_class
 

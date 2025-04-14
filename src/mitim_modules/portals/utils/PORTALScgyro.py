@@ -18,10 +18,10 @@ The CGYRO file must use particle flux. Convective transformation occurs later
 """
 
 
-def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii):
+def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii, ProfilesPredicted):
     print("\n ** CGYRO evaluation of fluxes has been requested before passing information to the STRATEGY module **",typeMsg="i",)
 
-    if type(numPORTALS) == int:
+    if isinstance(numPORTALS, int):
         numPORTALS = str(numPORTALS)
 
     # ------------------------------------------------------------------------------------------------
@@ -58,9 +58,13 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
 
     try:
         impurityPosition = PROFILEStools.impurity_location(PROFILEStools.PROFILES_GACODE(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
-    except:
-        print('\t- Impurity location not found. Using default value of 0', typeMsg="w")
-        impurityPosition = 0
+    except ValueError:
+        if 'nZ' in ProfilesPredicted:
+            raise ValueError(f"Impurity {PORTALSparameters['ImpurityOfInterest']} not found in the profiles and needed for CGYRO evaluation")
+        else:
+            impurityPosition = 0
+            print(f'\t- Impurity location not found. Using hardcoded value of {impurityPosition}')
+
     OriginalFimp = PORTALSparameters["fImp_orig"]
 
     cgyroing_file = (
