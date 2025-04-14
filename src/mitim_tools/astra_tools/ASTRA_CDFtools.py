@@ -32,8 +32,8 @@ class transp_output:
             self.R = self.f["r2d"][:]
             self.Z = self.f["z2d"][:]
         except:
-            self.R = self.f["R"][:]
-            self.Z = self.f["Z"][:]
+            self.R = self.f["r"][:]
+            self.Z = self.f["z"][:]
         self.rho = self.f["RHO"][:]
         self.xrho = self.f["XRHO"][:]
         self.BTOR = self.f["BTOR"][:]
@@ -46,7 +46,7 @@ class transp_output:
         self.ne = self.f["NE"][:]
         self.ni = self.f["NI"][:]
         self.FP = self.f["FP"][:]
-        self.TF = self.rho[-1,:] * self.rho[-1,:] * self.BTOR[-1] / 2 # Wb/rad
+        self.TF = self.rho[:,-1] * self.rho[:,-1] * self.BTOR[-1] / 2 # Wb/rad
         self.VPOL = self.f["VPOL"][:]
         self.VTOR = self.f["VTOR"][:]
         self.F1 = self.f["F1"][:]
