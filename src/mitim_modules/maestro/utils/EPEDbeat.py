@@ -31,6 +31,7 @@ class eped_beat(beat):
             nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
             corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
             ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
+            TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
             **kwargs
             ):
 
@@ -49,6 +50,7 @@ class eped_beat(beat):
         self.corrections_set = corrections_set
 
         self.ptop_multiplier = ptop_multiplier
+        self.TioverTe = TioverTe
 
         self._inform()
 
@@ -213,7 +215,7 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
+            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, self.TioverTe, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN_engineering']
 
@@ -545,13 +547,12 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
     n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
     fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
 
-    # Temperature from pressure, assuming Te=Ti         #TODO: Relax this assumption and allow TiTe_ratio as input
     e_J = 1.60218e-19
     Ttop_keV = (ptop_kPa*1E3) / ( ( 1 + fi ) * netop_20 * 1e20) / e_J * 1E-3    
 
     return rhotop, netop_20, Ttop_keV, rhoped
 
-def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=0.005):
+def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, TioverTe, netop_20, minimum_relative_change_in_x=0.005):
 
     profiles_output = copy.deepcopy(profiles)
 
@@ -562,9 +563,9 @@ def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative
         print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
         rhotop = xp_old
 
-    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Ttop_keV,xp_old, label = 'Te', roa = xroa)
+    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,(2-TioverTe)*Ttop_keV,xp_old, label = 'Te', roa = xroa)
 
-    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
+    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,TioverTe*Ttop_keV,xp_old, label = 'Ti', roa = xroa)
     profiles_output.makeAllThermalIonsHaveSameTemp()
 
     pos = np.argmin(np.abs(x-xp_old))

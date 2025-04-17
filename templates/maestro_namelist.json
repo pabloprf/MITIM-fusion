@@ -52,7 +52,8 @@
                     "R": 1.85,
                     "a": 0.57
                 },
-                "ptop_multiplier": 1.0
+                "ptop_multiplier": 1.0,
+                "TioverTe": 1.0
             }
               
           },
