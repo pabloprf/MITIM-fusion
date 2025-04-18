@@ -52,12 +52,12 @@ mitim_bo.run()
 portals_fun.plot_optimization_results(analysis_level=4)
 
 # For fun and to show capabilities, let's do a flux match of the current surrogates and plot in the same notebook
-PORTALSoptimization.flux_match_surrogate(
-    mitim_bo.steps[-1],PROFILEStools.PROFILES_GACODE(inputgacode),
-    fn = portals_fun.fn,
-    plot_results = True,
-    keep_within_bounds = False
-    )
+# PORTALSoptimization.flux_match_surrogate(
+#     mitim_bo.steps[-1],PROFILEStools.PROFILES_GACODE(inputgacode),
+#     fn = portals_fun.fn,
+#     plot_results = True,
+#     keep_within_bounds = False
+#     )
 
 # Required if running in non-interactive mode
 portals_fun.fn.show()

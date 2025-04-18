@@ -5,7 +5,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.vitals import VITALSmain
 from mitim_tools import __mitimroot__
 
-cold_start = False
+cold_start = True
 
 # ********************************************************************************
 # Inputs
