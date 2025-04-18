@@ -215,7 +215,7 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, self.TioverTe, minimum_relative_change_in_x=minimum_relative_change_in_x)
+            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, self.TioverTe, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN_engineering']
 
@@ -562,6 +562,9 @@ def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, TioverTe, netop_20, minimu
     if abs(rhotop-xp_old)/xp_old < minimum_relative_change_in_x:
         print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
         rhotop = xp_old
+
+    if TioverTe != 1:
+        print(f'\t\t\t* Scaling profiles Ti/Te={TioverTe}')
 
     profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,(2-TioverTe)*Ttop_keV,xp_old, label = 'Te', roa = xroa)
 
