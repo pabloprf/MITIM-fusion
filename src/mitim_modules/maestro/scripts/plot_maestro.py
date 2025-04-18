@@ -2,6 +2,7 @@ import argparse
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
+from pathlib import Path
 
 """
 Quick way to plot several input.gacode files together (assumes unix in remote)
@@ -54,9 +55,9 @@ def main():
             folders_remote = folders
         _, folders = FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
     
-        # Fix pkl optimization portals in remote
-        if fix:
-            fix_maestro(folders)
+    # Fix pkl optimization portals in remote
+    if fix:
+        fix_maestro([Path(folder) for folder in folders])
 
     # -----
 
