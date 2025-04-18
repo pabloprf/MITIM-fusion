@@ -559,6 +559,45 @@ class powerstate:
         if hasattr(self, 'profiles'):
             self.profiles.toNumpyArrays()
 
+    def to_xarray(self):
+        import xarray as xr
+        plasma = copy.deepcopy(self.plasma)
+        coord_data = {
+            'nrun': range(1),
+            'ntarget': range(len(self.ProfilesPredicted)),
+        }
+        if 'rho' in self.plasma:
+            coord_data['rho'] = self.plasma['rho'].cpu().detach().numpy().flatten()
+        if 'roa' in self.plasma:
+            coord_data['roa'] = (['rho'], self.plasma['roa'].cpu().detach().numpy().flatten()) if 'rho' in coord_data else self.plasma['roa'].cpu().detach().numpy().flatten()
+        if 'ions_set_Zi' in self.plasma:
+            coord_data['Zi'] = self.plasma['ions_set_Zi'].cpu().detach().numpy().flatten()
+        if 'ions_set_mi' in self.plasma:
+            coord_data['mi'] = (['Zi'], self.plasma['ions_set_mi'].cpu().detach().numpy().flatten()) if 'Zi' in coord_data else self.plasma['ions_set_mi'].cpu().detach().numpy().flatten()
+        var_data = {}
+        for key, var in self.plasma.items():
+            if key not in ['rho', 'roa', 'ions_set_Zi', 'ions_set_mi', 'ions_set_Dion', 'ions_set_Tion']:
+                dims = ['nrun', 'rho']
+                val = var.cpu().detach()
+                if key in ['P', 'P_tr', 'S']:
+                    val = torch.reshape(val, (1, -1, len(coord_data['ntarget'])))
+                    val = torch.cat([torch.zeros((1, 1, len(coord_data['ntarget']))).cpu().detach(), val], dim=1)
+                val = val.numpy()
+                if key in ['mi_u', 'a', 'eps', 'kradcm', 'residual']:
+                    dims = ['nrun']
+                    val = val.flatten()
+                if key in ['ni']:
+                    dims = ['nrun', 'rho', 'Zi']
+                if key in ['ions_set_c_rad']:
+                    coord_data['ncrad'] = range(self.plasma['ions_set_c_rad'].shape[-1])
+                    dims = ['nrun', 'Zi', 'ncrad']
+                    key = 'c_rad'
+                if key in ['P', 'P_tr', 'S']:
+                    dims = ['nrun', 'rho', 'ntarget']
+                var_data[key] = (dims, val)
+        ds = xr.Dataset(data_vars=var_data, coords=coord_data)
+        return ds
+
     def update_var(self, name, var=None, specific_deparametrizer=None):
         """
         This inserts gradients and updates coarse profiles
