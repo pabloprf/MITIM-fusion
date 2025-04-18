@@ -76,10 +76,7 @@ class mitim_job:
 
         if self.launchSlurm and (len(self.machineSettings["slurm"]) == 0):
             self.launchSlurm = False
-            print(
-                "\t- slurm requested but no slurm setup to this machine in config... not doing slurm",
-                typeMsg="w",
-            )
+            print("\t- slurm requested but no slurm setup to this machine in config... not doing slurm",typeMsg="i",)
 
         # Print Slurm info
         if self.launchSlurm:
@@ -116,6 +113,10 @@ class mitim_job:
         # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
 
+    @staticmethod
+    def grab_machine_settings(code):
+        return CONFIGread.machineSettings(code=code)
+
     def prep(
         self,
         command,
@@ -150,7 +151,15 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
-    def run(self, waitYN=True, timeoutSecs=1e6, removeScratchFolders=True, check_if_files_received=True):
+    def run(
+            self,
+            waitYN=True,
+            timeoutSecs=1e6,
+            removeScratchFolders=True,
+            check_if_files_received=True,
+            attempts_execution=1,
+            ):
+
         if not waitYN:
             removeScratchFolders = False
 
@@ -201,6 +210,7 @@ class mitim_job:
             timeoutSecs=timeoutSecs,
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
+            attempts_execution=attempts_execution,
         )
 
         # Get jobid
@@ -227,6 +237,7 @@ class mitim_job:
         removeScratchFolders=True,
         check_if_files_received=True,
         check_files_in_folder={},
+        attempts_execution = 1,
     ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
@@ -236,9 +247,7 @@ class mitim_job:
         wait_for_all_commands = True
 
         time_init = datetime.datetime.now()
-        print(
-            f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------"
-        )
+        print(f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------")
 
         # ~~~~~~ Connect
         self.connect(log_file=self.folder_local / "paramiko.log")
@@ -252,18 +261,28 @@ class mitim_job:
         self.send()
 
         # ~~~~~~ Execute
-        output, error = self.execute(
-            comm,
-            wait_for_all_commands=wait_for_all_commands,
-            printYN=True,
-            timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-        )
+        execution_counter = 0
 
-        # ~~~~~~ Retrieve
-        received = self.retrieve(
-            check_if_files_received=check_if_files_received,
-            check_files_in_folder=check_files_in_folder,
-        )
+        while execution_counter < attempts_execution:
+            output, error = self.execute(
+                comm,
+                wait_for_all_commands=wait_for_all_commands,
+                printYN=True,
+                timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+            )
+
+            # ~~~~~~ Retrieve
+            received = self.retrieve(
+                check_if_files_received=check_if_files_received,
+                check_files_in_folder=check_files_in_folder,
+            )
+
+            execution_counter += 1
+
+            if received:
+                break
+            else:
+                print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating {execution_counter}/{attempts_execution}")
 
         # ~~~~~~ Remove scratch folder
         if received:
@@ -274,23 +293,15 @@ class mitim_job:
             # If not received, write output and error to files
             self._write_debugging_files(output, error)
 
-            cont = print(
-                "\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",
-                typeMsg="q",
-            )
+            cont = print("\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",typeMsg="q")
             if not cont:
-                print(
-                    "[mitim] Stopped with embed(), you can look at output and error",
-                    typeMsg="w",
-                )
+                print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                 embed()
 
         # ~~~~~~ Close
         self.close()
 
-        print(
-            f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n"
-        )
+        print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
     def _write_debugging_files(self, output, error, extra_name=""):
             with open(self.folder_local / f"mitim_farming{extra_name}.out", "w") as f:
@@ -346,22 +357,33 @@ class mitim_job:
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         # Connect to the host
-        self.ssh.connect(
-            self.target_host,
-            username=self.target_user,
-            disabled_algorithms=disabled_algorithms,
-            key_filename=self.key_filename,
-            port=self.port,
-            sock=self.sock,
-            allow_agent=True,
-        )
+        try:
+            self.ssh.connect(
+                self.target_host,
+                username=self.target_user,
+                disabled_algorithms=disabled_algorithms,
+                key_filename=self.key_filename,
+                port=self.port,
+                sock=self.sock,
+                allow_agent=True,
+            )
+        except paramiko.ssh_exception.NoValidConnectionsError:
+            print("\t> Paramiko's connection failed! trying again in 5 seconds to avoid random drops", typeMsg="w")
+            time.sleep(5)
+            self.ssh.connect(
+                self.target_host,
+                username=self.target_user,
+                disabled_algorithms=disabled_algorithms,
+                key_filename=self.key_filename,
+                port=self.port,
+                sock=self.sock,
+                allow_agent=True,
+            )
 
         try:
             self.sftp = self.ssh.open_sftp()
         except paramiko.sftp.SFTPError:
-            raise Exception(
-                "[mitim] SFTPError: Your bashrc on the server likely contains print statements"
-            )
+            raise Exception("[MITIM] SFTPError: Your bashrc on the server likely contains print statements")
 
     def define_jump(self):
         if self.jump_host is not None:
@@ -587,7 +609,6 @@ class mitim_job:
                 f"{self.folderExecution}/mitim_receive.tar.gz",
                 self.folder_local / "mitim_receive.tar.gz"
             )
-        print(self.folderExecution, self.folder_local)
 
         # Extract the tarball locally
         print("\t\t- Extracting tarball (local side)")
@@ -1004,7 +1025,12 @@ def create_slurm_execution_files(
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
+    elif memory_req_by_job is not None:
+        print(f"\t\t- Memory requested by job ({memory_req_by_job}), overwriting memory requested by config file", typeMsg="i")
+        memory_req = memory_req_by_job
     else:
+        if memory_req_by_config is not None:
+            print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
 
     """
@@ -1176,12 +1202,22 @@ def perform_quick_remote_execution(
     folder_local,
     machine,
     command,
-    input_files=[],
-    input_folders=[],
-    output_files=[],
-    output_folders=[],
+    input_files=None,
+    input_folders=None,
+    output_files=None,
+    output_folders=None,
     job_name = "test",
+    check_if_files_received=True,
     ):
+
+    if input_files is None:
+        input_files = []
+    if input_folders is None:
+        input_folders = []
+    if output_files is None:
+        output_files = []
+    if output_folders is None:
+        output_folders = []
 
     job = mitim_job(folder_local)
 
@@ -1197,10 +1233,10 @@ def perform_quick_remote_execution(
         input_folders=input_folders,
         output_files=output_files,
         output_folders=output_folders)
-    job.run()
+    job.run(check_if_files_received=check_if_files_received)
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False):
+def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False, ensure_files = True):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 
@@ -1208,6 +1244,9 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
             mitim_plot_portals run2 --remote engaging:path_to_folder_remote_where_run2_is/
 
     '''
+
+    # Ensure Paths
+    folder_local = Path(folder_local)
 
     job_name = 'file_retrieval'
 
@@ -1237,7 +1276,8 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         command,
         output_files = output_files,
         output_folders = output_folders,
-        job_name = job_name
+        job_name = job_name,
+        check_if_files_received = ensure_files,
     )
 
     if purge_tmp_files:
@@ -1245,6 +1285,12 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         for file in ['mitim_bash.src', 'mitim_shell_executor.sh', 'paramiko.log', 'mitim.out']:
             (folder_local / file).unlink(missing_ok=True)
     
+
+    # Return local addresses
+    folders = [folder_local / IOtools.reducePathLevel(folder)[-1] for folder in folders_remote]
+    files = [folder_local / IOtools.reducePathLevel(file)[-1] for file in files_remote]
+
+    return files, folders
 
 
 if __name__ == "__main__":

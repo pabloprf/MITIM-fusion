@@ -5,6 +5,7 @@ import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
 from mitim_tools.misc_tools import LOGtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
@@ -59,9 +60,11 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     self.plasma["a"] = torch.tensor(input_gacode.derived["a"]).to(rho_vec)
     self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"]).to(rho_vec)
 
+    # Add more stuff: name, original name, index, unit conversion, is derived
     quantities_to_interpolate = [
         ["rho", "rho(-)", None, True, False],
         ["roa", "roa", None, True, True],
+        ["Rmajoa", "Rmajoa", None, True, True],
         ["volp", "volp_miller", None, True, True],
         ["rmin", "rmin(m)", None, True, False],
         ["te", "te(keV)", None, True, False],
@@ -69,14 +72,22 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
         ["ne", "ne(10^19/m^3)", None, True, False],
         ["nZ", "ni(10^19/m^3)", self.impurityPosition, True, False],
         ["w0", "w0(rad/s)", None, True, False],
-        ["B_unit", "B_unit", None, True, True],
-        ["B_ref", "B_ref", None, True, True],
-        ["q", "q(-)", None, True, False],
     ]
 
     # Quantities that do not necessarily need to be used in this powerstate call
     additional_quantities_for_potential_use = [
-        ["q", "q(-)", None, True, False]
+        ["B_unit", "B_unit", None, True, True],
+        ["B_ref", "B_ref", None, True, True],
+        ["q", "q(-)", None, True, False],
+        ["s_q", "s_q", None, True, True],
+        ["aLte", "aLTe", None, True, True],
+        ["aLti", "aLTi", 0, True, True],
+        ["aLne", "aLne", None, True, True],
+        ["aLni", "aLni", 0, True, True],
+        ["Zeff", "Zeff", None, True, True],
+        ["kappa", "kappa(-)", None, True, False],
+        ["delta", "delta(-)", None, True, False],
+        ["betae", "betae", None, True, True],
     ]
     # ---------------------------------------------------------------------------
 
@@ -312,33 +323,42 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
     extra_points = 2  # If I don't allow this, it will fail
     rhoy = profiles.profiles["rho(-)"][1:-extra_points]
     with LOGtools.HiddenPrints():
-        state_temp.__init__(profiles, EvolutionOptions={"rhoPredicted": rhoy}, increase_profile_resol = False)
+        state_temp.__init__(
+            profiles,
+            EvolutionOptions={"rhoPredicted": rhoy},
+            TargetOptions={
+                "targets_evaluator": TARGETStools.analytical_model,
+                "ModelOptions": {
+                    "TypeTarget": self.TargetOptions["ModelOptions"]["TypeTarget"], # Important to keep the same as in the original
+                    "TargetCalc": "powerstate",
+                    }
+                },
+            increase_profile_resol = False
+            )
     state_temp.calculateProfileFunctions()
     state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
     state_temp.calculateTargets()
     # ------------------------------------------------------------------------------------------
 
-    conversions = {
-        "qie": "qei(MW/m^3)",
-        "qrad_bremms": "qbrem(MW/m^3)",
-        "qrad_sync": "qsync(MW/m^3)",
-        "qrad_line": "qline(MW/m^3)",
-        "qfuse": "qfuse(MW/m^3)",
-        "qfusi": "qfusi(MW/m^3)",
-    }
+    conversions = {}
+
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] > 1:
+        conversions['qie'] = "qei(MW/m^3)"
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] > 2:
+        conversions['qrad_bremms'] = "qbrem(MW/m^3)"
+        conversions['qrad_sync'] = "qsync(MW/m^3)"
+        conversions['qrad_line'] = "qline(MW/m^3)"
+        conversions['qfuse'] = "qfuse(MW/m^3)"
+        conversions['qfusi'] = "qfusi(MW/m^3)"
+
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-            )
+            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
         else:
-            profiles.profiles[conversions[ikey]] = np.zeros(
-                len(profiles.profiles["qei(MW/m^3)"])
-            )
-            profiles.profiles[conversions[ikey]][:-extra_points] = (
-                state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-            )
+            profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
+            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
 
+    
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
     Store as part of powerstate the thermal ions densities (ni) and the information about how to interpret them (ions_set)
@@ -367,7 +387,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             # Grab chebyshev coefficients from file
             data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
             try:
-                c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,1:].astype(float)
+                c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,2:].astype(float)
             except IndexError:
                 print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',typeMsg="w")
                 c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

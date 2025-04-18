@@ -116,7 +116,7 @@ def initializeProblem(
             answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
             if checkForSpecies and (not answerYN):
                 raise ValueError("Species not found")
-            
+
         else:
 
             print(f'\t- Species {speciesNotFound} not found in radiation database, but this PORTALS prediction is not calculating radiation anyway',typeMsg="w")
@@ -261,7 +261,7 @@ def initializeProblem(
 
             # Check that makes sense
             if y2-y1 < thr:
-                print(f"Warning: {var} @ pos={i} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
+                print(f"{var} @ pos={i} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
 
             if (seedInitial is None) or (seedInitial == 0):
                 base_gradient = dictCPs_base[var][i]

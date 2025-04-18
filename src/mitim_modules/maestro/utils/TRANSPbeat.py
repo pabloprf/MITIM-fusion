@@ -10,17 +10,39 @@ from IPython import embed
 
 class transp_beat(beat):
 
-    def __init__(self, maestro_instance):            
+    def __init__(
+        self,
+        maestro_instance,
+        letter              = None,
+        shot                = None, 
+        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
+        ):   
+
         super().__init__(maestro_instance, beat_name = 'transp')
+
+        # Decide now the shot and runid and how to extract (need to do this now and not in prepare because of restart options, that do not run prepare)
+
+        if shot is None:
+            folder_last = self.maestro_instance.folder.resolve().name
+            shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
+
+        if letter is None:
+            username = os.environ['USER']
+            letter = username[0].upper()
+            if letter == '$':
+                letter = 'A'
+
+        self.shot = shot
+        self.runid = letter + str(self.maestro_instance.counter_current).zfill(2)
+
+        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
 
     def prepare(
         self,
-        letter              = None,
-        shot                = None, 
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
-        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
+        
         **transp_namelist
         ):
         '''
@@ -43,22 +65,6 @@ class transp_beat(beat):
         self.time_end = self.time_diffusion + flattop_window                # End
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
 
-        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
-
-        if shot is None:
-            folder_last = self.maestro_instance.folder.resolve().name
-            shot = IOtools.string_to_sequential_number(folder_last, num_digits=5)
-
-        if letter is None:
-            username = os.environ['USER']
-            letter = username[0].upper()
-            if letter == '$':
-                letter = 'A'
-        # ---------------------------------------------------------
-
-        # Define run parameters
-        self.shot = shot
-        self.runid = letter + str(self.maestro_instance.counter_current).zfill(2)
 
         # Write TRANSP from profiles
         times = [self.time_transition,self.time_end+1.0]
@@ -125,9 +131,13 @@ class transp_beat(beat):
 
     def run(self, **kwargs):
 
+        mpi_settings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1})
+
+        print('\t\t- Running TRANSP beat with MPI settings: ',mpi_settings)
+
         self.transp.run(
             self.machine_run,
-            mpisettings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}),
+            mpisettings = mpi_settings,
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
@@ -135,19 +145,30 @@ class transp_beat(beat):
             retrieveAC = self.timeAC is not None,
             )
 
-        self.transp.c = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
-
     def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
 
         # Copy to outputs
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
-        shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
+        try:
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
+            shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
+        except FileNotFoundError:
+            print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
+            
+            # Find CDF name
+            files = [f for f in self.folder_output.iterdir() if f.is_file()]
+            cdf_prefix = next((file.stem for file in files if file.suffix.lower() == '.cdf'), None)
+            shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
+            shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
+            shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+
+        # Extract output
+        cdf_results = CDFtools.transp_output(self.folder_output / f"{self.shot}{self.runid}.CDF")
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        it_extract = self.transp.c.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
-        time_extraction = self.transp.c.t[it_extract] 
-        self.profiles_output = self.transp.c.to_profiles(time_extraction=time_extraction)
+        it_extract = cdf_results.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
+        time_extraction = cdf_results.t[it_extract] 
+        self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
         self._add_heating_profiles(force_auxiliary_heating_at_output)
@@ -247,15 +268,6 @@ class transp_beat(beat):
 
         return '\t\t- Plotting of TRANSP beat done'
 
-    def finalize_maestro(self):
-
-        cdf = CDFtools.transp_output(self.folder_output / f"{self.transp.shot}{self.transp.runid}.CDF")
-        self.maestro_instance.final_p = cdf.to_profiles()
-        
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
-
     # --------------------------------------------------------------------------------------------
     # Additional TRANSP utilities
     # --------------------------------------------------------------------------------------------
@@ -286,7 +298,7 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
     time_step_s = duration_s * 1E-2
 
     transp_namelist = {
-        'flattop_window': 1.0,       
+        'flattop_window': 2.5,       
         'extractAC': False,      
         'dtOut_ms' : time_step_s*1E3,
         'dtIn_ms' : time_step_s*1E3,
@@ -306,7 +318,7 @@ def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current
 
     if only_current_diffusion:
 
-        duration_s   = 15.0
+        duration_s   = 20.0
         time_step_s  = 0.1
 
         transp_namelist['flattop_window'] = duration_s

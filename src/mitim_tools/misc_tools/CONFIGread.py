@@ -124,6 +124,7 @@ def machineSettings(
         "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
         "slurm": {},
+        "cores_per_node": s[machine].get("cores_per_node", None),
         "isTunnelSameMachine": (
             bool(s[machine]["isTunnelSameMachine"])
             if "isTunnelSameMachine" in s[machine]

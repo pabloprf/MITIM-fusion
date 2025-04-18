@@ -1962,7 +1962,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
-        ls="-o" if self.opt_fun.mitim_model.avoidPoints else "--o",
+        ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "--o",
         plotImpurity=self.runWithImpurity,
         plotRotation=self.runWithRotation,
     )
@@ -1978,7 +1978,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             lastRho=self.MODELparameters["RhoLocations"][-1],
             ms=ms,
             lw=0.3,
-            ls="-o" if self.opt_fun.mitim_model.avoidPoints else "-.o",
+            ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
         )
@@ -3112,10 +3112,9 @@ def plotFluxComparison(
                 ax.plot(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
                     y,
-                    "--",
-                    lw=0.5,
+                    ":",
+                    lw=1.0,
                     c=col,
-                    label="Flow",
                     alpha=alpha,
                 )
 
@@ -3146,19 +3145,19 @@ def plotFluxComparison(
         )
 
         setl = [l1, l3, l2]
-        setlab = ["Transport", f"$\\pm{stds}\\sigma$"] #, "Target"]
+        setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
 
         if addFlowLegend:
             (l4,) = axTe_f.plot(
                 tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
                 tBest.derived["qe_MWm2"],
-                "-.",
+                ":",
                 c="k",
-                lw=1,
+                lw=1.0,
                 markersize=0,
             )
             setl.append(l4)
-            setlab.append("Target HR")
+            setlab.append("Target high-res")
         else:
             l4 = l3
 

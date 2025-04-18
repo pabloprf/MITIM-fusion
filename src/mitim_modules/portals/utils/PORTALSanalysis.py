@@ -2,7 +2,6 @@ import copy
 import torch
 import numpy as np
 import pandas as pd
-import dill as pickle_dill
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
@@ -32,7 +31,10 @@ class PORTALSanalyzer:
             else self.opt_fun.folder / "Analysis"
         )
 
-        self.folder.mkdir(parents=True, exist_ok=True)
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            print(f"\t- Could not create folder {IOtools.clipstr(self.folder)} because of lack of permissions, you will only be able to read, not perform further analysis", typeMsg="w")
 
         self.fn = None
 
@@ -44,14 +46,15 @@ class PORTALSanalyzer:
         self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters["powerstate"]
 
         # Read dictionaries
-        with open(self.opt_fun.mitim_model.optimization_object.optimization_extra, "rb") as f:
-            self.mitim_runs = pickle_dill.load(f)
+        self.mitim_runs = IOtools.unpickle_mitim(self.opt_fun.mitim_model.optimization_object.optimization_extra)
 
         self.prep_metrics()
 
     @classmethod
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
         print(f"\n...Opening PORTALS class from folder {IOtools.clipstr(folder)}")
+
+        folder = IOtools.expandPath(folder)
 
         if folder.exists() or folderRemote is not None:
 
@@ -76,10 +79,7 @@ class PORTALSanalyzer:
 
                 return opt_fun_ini
         else:
-            print(
-                "\t- Folder does not exist, are you sure you are on the right path?",
-                typeMsg="w",
-            )
+            print("\t- Folder does not exist, are you sure you are on the right path?",typeMsg="w")
 
     @classmethod
     def merge_instances(cls, instances, folderAnalysis=None, base_index=0):
@@ -122,8 +122,17 @@ class PORTALSanalyzer:
     # PREPARATION
     # ****************************************************************************
 
-    def prep_metrics(self, calculateRicci={"d0": 2.0, "l": 1.0}, ilast=None):
+    def prep_metrics(self, ilast=None):
         print("- Interpreting PORTALS results")
+
+        try:
+            calculateRicci = {
+                "d0": self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_d0'],
+                "l":  self.opt_fun.mitim_model.optimization_object.optimization_options['convergence_options']['stopping_criteria_parameters']['ricci_lambda']
+            }
+        except:
+            calculateRicci={"d0": 2.0, "l": 0.5}
+
 
         # What's the last iteration?
         if ilast is None:

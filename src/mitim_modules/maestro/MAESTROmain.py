@@ -1,7 +1,6 @@
 import copy
 import sys
 import datetime
-import shutil
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -186,6 +185,10 @@ class maestro:
             # Initializer can also save important parameters
             self.beat.initialize._inform_save()
 
+            # Creator can also save important parameters
+            if self.beat.initialize.profile_creator is not None:
+                self.beat.initialize.profile_creator._inform_save()
+
             if self.profiles_with_engineering_parameters is None:
                 # First initialization, freeze engineering parameters
                 self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
@@ -210,7 +213,7 @@ class maestro:
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
 
-    @mitim_timer('\t\t* Run', name_timer=None)
+    @mitim_timer('\t\t* Run + finalization', name_timer=None)
     def run(self, **kwargs):
 
         # Run 
@@ -219,19 +222,23 @@ class maestro:
             log_file = self.folder_logs / f'beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
             with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
-
-                # Finalize
-                self.beat.finalize(**kwargs)
-
-                # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
-                print('\t\t- Merging engineering parameters from MAESTRO')
-                self.beat.merge_parameters()
-
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
 
-        # Produce a new self.profiles_with_engineering_parameters from this merged object
-        self._freeze_parameters()
+        # Finalize, merging and freezing should occur even if the run has not been performed because the results are already there
+        print('\t- Finalizing beat...')
+        log_file = self.folder_logs / f'beat_{self.counter_current}_finalize.log' if (not self.terminal_outputs) else None
+        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+
+            # Finalize
+            self.beat.finalize(**kwargs)
+
+            # Merge parameters, from self.profiles_current take what's needed and merge with the self.profiles_with_engineering_parameters
+            print('\t\t- Merging engineering parameters from MAESTRO')
+            self.beat.merge_parameters()
+
+            # Produce a new self.profiles_with_engineering_parameters from this merged object
+            self._freeze_parameters()
 
         # Inform next beats
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
@@ -255,11 +262,16 @@ class maestro:
     @mitim_timer('\t\t* Finalizing', name_timer=None)
     def finalize(self):
 
-        print('\t- Finalizing MAESTRO run...')
+        print(f'- MAESTRO finalizing ******************************* {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
-            self.beat.finalize_maestro()
+
+            final_file= (self.folder_output / 'input.gacode_final')
+
+            self.beat.profiles_output.writeCurrentStatus(file= final_file)
+
+            print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
     # --------------------------------------------------------------------------------------------
     # Plotting operations

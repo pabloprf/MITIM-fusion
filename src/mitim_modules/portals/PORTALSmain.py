@@ -53,7 +53,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options["convergence_options"]["maximum_iterations"] = 50
     optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
     optimization_options['convergence_options']['stopping_criteria_parameters'] =  {
-                "maximum_value": 5e-3,  # Reducing residual by 1000x is enough
+                "maximum_value": 5e-3,  # Reducing residual by 200x is enough
                 "maximum_value_is_rel": True,
                 "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
                 "ricci_value": 0.1,
@@ -61,7 +61,7 @@ def default_namelist(optimization_options, CGYROrun=False):
                 "ricci_lambda": 0.5,
             }
 
-    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-3
+    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-2
 
     # Surrogate
     optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
@@ -391,8 +391,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # Extra operations: Store data that will be useful to store and interpret in a machine were this was not run
 
         if self.optimization_extra is not None:
-            with open(self.optimization_extra, "rb") as handle:
-                dictStore = pickle_dill.load(handle)                            #TODO: This will fail in future versions of torch
+            dictStore = IOtools.unpickle_mitim(self.optimization_extra)                           #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
                 self.folder / "Initialization" / "input.gacode_modified"

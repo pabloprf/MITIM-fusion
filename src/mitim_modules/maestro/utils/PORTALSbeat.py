@@ -1,14 +1,16 @@
 import shutil
 import copy
+import pandas as pd
+import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
+from mitim_tools import __mitimroot__
 
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -32,10 +34,35 @@ class portals_beat(beat):
             PORTALSparameters = {},
             MODELparameters = {},
             optimization_options = {},
-            INITparameters = {}
+            INITparameters = {},
+            enforce_impurity_radiation_existence = False,
             ):
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
+
+        if enforce_impurity_radiation_existence:
+
+            profiles = self.profiles_current
+            for i in range(len(profiles.Species)):
+                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+                if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+                    print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
+                    # Find closest Z
+                    Z = data_df['Z'].to_numpy()
+                    iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
+
+                    if abs(Z[iZ] - profiles.Species[i]["Z"]) > 5:
+                        print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
+
+                    new_name = data_df['Ion'][iZ]
+
+                    print(f"\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})")
+
+                    profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
+
+            self.profiles_current = profiles
+
+
         self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
 
         self.PORTALSparameters = PORTALSparameters
@@ -71,7 +98,7 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start = cold_start, askQuestions = False)
 
-        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point:
+        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point and self.folder_starting_point is not None:
 
             # PORTALS just with one point
             portals_fun.optimization_options['initialization_options']['initial_training'] = 1
@@ -135,10 +162,13 @@ class portals_beat(beat):
         The goal of the PORTALS beat is to produce:
             - Kinetic profiles
             - Dynamics targets that gave rise to the kinetic profiles
+        However, the PORTALS run makes the existing fast ion profiles thermal,
+        so this merge needs to bring back the fast ion species from the last TRANSP beat
         So, this merge:
             - Frozen profiles are converted to PORTALS output resolution (opposite to usual, but keeps gradients)
             - Inserts kinetic profiles
             - Inserts dynamic targets (only those that were evolved)
+            - Restore fast ion profiles
         '''
 
         # Write the pre-merge input.gacode before modifying it
@@ -173,16 +203,27 @@ class portals_beat(beat):
             for j,sp1 in enumerate(self.profiles_output.Species):
                 if (sp['Z'] == sp1['Z']) and (sp['A'] == sp1['A']): 
                     self.profiles_output.profiles['ni(10^19/m^3)'][:,j] = profiles_portals_out.profiles['ni(10^19/m^3)'][:,i]
-                    self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
+                    if sp1["S"] == "fast" and sp["S"] == "therm": 
+                        # make all fast ions fast again
+                        self.profiles_output.Species[j]["S"] = "fast"
+                        # leave FI profile unchanged
+                        self.profiles_output.profiles['ti(keV)'][:,j] = self.profiles_output.profiles['ti(keV)'][:,i] 
+                    else:
+                        # update thermal ion profiles from PORTALS
+                        self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Enforce quasineutrality because now I have all the ions
         self.profiles_output.enforceQuasineutrality()
 
+        # Make sure the pressure is consistent with the new profiles
+        self.profiles_output.selfconsistentPTOT()
+
         # Insert powers
-        if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 1:
+        opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+        if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 1:
             # Insert exchange
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
-            if self.mitim_bo.optimization_object.MODELparameters['Physics_options']["TypeTarget"] > 2:
+            if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 2:
                 # Insert radiation and fusion
                 for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
                     self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
@@ -216,27 +257,11 @@ class portals_beat(beat):
                 fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
                 opt_fun.plotMetrics(fig=fig)
             else:
-                print('\t\t- PORTALS has not run enough to plot anything')
+                print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
 
         msg = '\t\t- Plotting of PORTALS beat done'
 
         return msg
-
-    def finalize_maestro(self):
-
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
-
-        # Standard PORTALS output
-        try:
-            self.maestro_instance.final_p = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
-        # Converged in training case
-        except AttributeError as e:
-            print('\t\t- PORTALS probably converged in training, so analyzing a bit differently, error:', e)
-            self.maestro_instance.final_p = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
-        
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
@@ -258,6 +283,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
         reusing_surrogate_data = False
+        self.folder_starting_point = None
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             if 'surrogate_options' not in self.optimization_options:
                 self.optimization_options['surrogate_options'] = {}
@@ -268,6 +294,7 @@ class portals_beat(beat):
             print(f"\t\t- Using previous surrogate data for optimization: {IOtools.clipstr(self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'])}")
 
             reusing_surrogate_data = True
+            
 
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
@@ -374,19 +401,18 @@ def portals_beat_soft_criteria(portals_namelist):
 
     portals_namelist_soft = copy.deepcopy(portals_namelist)
 
+    # Relaxation of stopping criteria
     if 'optimization_options' not in portals_namelist_soft:
         portals_namelist_soft['optimization_options'] = {}
+    if 'convergence_options' not in portals_namelist_soft['optimization_options']:
+        portals_namelist_soft['optimization_options']['convergence_options'] = {}
+    if 'stopping_criteria_parameters' not in portals_namelist_soft['optimization_options']['convergence_options']:
+        portals_namelist_soft['optimization_options']['convergence_options']['stopping_criteria_parameters'] = {}
 
-    portals_namelist_soft['optimization_options']['convergence_options'] = {
-            "maximum_iterations": 15,
-            "stopping_criteria": PORTALStools.stopping_criteria_portals,
-            'stopping_criteria_parameters': {
-                "maximum_value": 10e-3,  # Reducing residual by 100x is enough
-                "maximum_value_is_rel": True,
-                "minimum_dvs_variation": [10, 3, 1.0],  # After iteration 10, Check if 3 consecutive DVs are varying less than 1.0% from the rest that has been evaluated
-                "ricci_value": 0.15, "ricci_d0": 2.0, "ricci_lambda": 0.5,
-            }
-        }
+    portals_namelist_soft['optimization_options']['convergence_options']["maximum_iterations"] = 15
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["maximum_value"] = 10e-3
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
+    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
 
     if 'MODELparameters' not in portals_namelist_soft:
         portals_namelist_soft['MODELparameters'] = {}

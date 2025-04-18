@@ -482,7 +482,9 @@ def interpretRun(infoSLURM, log_file):
             ) or (
             "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
             ) or (
-                "Segmentation fault - invalid memory reference" in "\n".join(log_file)
+            "Segmentation fault - invalid memory reference" in "\n".join(log_file)
+            ) or (
+            "*** End of error message ***" in "\n".join(log_file)
             ):
             status = -1
             info["info"]["status"] = "stopped"
@@ -578,6 +580,10 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
         launchSlurm=True,
         slurm_settings={"name": job_name+"_look", "minutes": MINUTES_ALLOWED_JOB_GET},
     )
+
+    # Catch the situation in which I'm running TRANSP locally
+    if not isinstance(transp_job.machineSettings["folderWork"], str):
+        transp_job.machineSettings["folderWork"] = str(transp_job.machineSettings["folderWork"])
 
     # ---------------
     # Execution command

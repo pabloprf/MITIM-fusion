@@ -2,6 +2,7 @@ import os
 import shutil
 import psutil
 import copy
+import dill as pickle_dill
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
 import numpy as np
@@ -1874,3 +1875,35 @@ def shutil_rmtree(item):
             new_item = item.with_name(item.name + "_cannotrm")
             shutil.move(item, new_item)
             print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')
+
+def unpickle_mitim(file):
+
+    with open(str(file), "rb") as handle:
+        try:
+            state = pickle_dill.load(handle)
+        except:
+            print("\t- Pickled file could not be opened, going with custom unpickler...",typeMsg='w')
+            handle.seek(0)
+            state = CPU_Unpickler(handle).load()
+
+    return state
+
+"""
+To load pickled GPU-cuda classes on a CPU machine
+From:
+	https://github.com/pytorch/pytorch/issues/16797
+	https://stackoverflow.com/questions/35879096/pickle-unpicklingerror-could-not-find-mark
+"""
+class CPU_Unpickler(pickle_dill.Unpickler):
+    def find_class(self, module, name):
+        import io
+
+        if module == "torch.storage" and name == "_load_from_bytes":
+            return lambda b: torch.load(io.BytesIO(b), map_location="cpu", weights_only=True)
+        else:
+            try:
+                return super().find_class(module, name)
+            except ModuleNotFoundError:
+                print(f"\t\tModule not found: {module} {name}; returning dummy", typeMsg="i")
+                return super().find_class("torch._utils", name)
+

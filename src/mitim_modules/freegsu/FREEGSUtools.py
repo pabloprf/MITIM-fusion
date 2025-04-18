@@ -132,7 +132,7 @@ def evaluator(
         from FREEGS_SPARC import GSsparc
     except ImportError:
         raise Exception(
-            "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+            "[MITIM] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
         )
 
     # Change params per individual?
@@ -940,7 +940,7 @@ def runSingleFreeGS(ParamsAll, cont):
         from FREEGS_SPARC import GSsparc_coils
     except ImportError:
         raise Exception(
-            "[mitim] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
+            "[MITIM] The FREEGS_SPARC module is not available. Please ensure it is installed and accessible."
         )
 
     # Assign to class

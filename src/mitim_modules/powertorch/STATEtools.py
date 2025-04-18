@@ -2,6 +2,7 @@ import copy
 import torch
 import datetime
 import shutil
+from pathlib import Path
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -148,6 +149,8 @@ class powerstate:
         self.batch_size = 0
         self._repeat_tensors(batch_size=1)
 
+        self.Xcurrent = None
+
     def _high_res_rho(self):
 
         rho_new = torch.linspace(
@@ -216,6 +219,7 @@ class powerstate:
 
         # Write input.gacode
         if write_input_gacode is not None:
+            write_input_gacode = Path(write_input_gacode)
             print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
             write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
             profiles.writeCurrentStatus(file=write_input_gacode)
@@ -804,6 +808,6 @@ def add_axes_powerstate_plot(figMain, num_kp=3):
 
 def read_saved_state(file):
     print(f"\t- Reading state file {IOtools.clipstr(file)}")
-    with open(file, "rb") as handle:
-        state = pickle.load(handle)
+    state = IOtools.unpickle_mitim(file)
+
     return state

@@ -1,4 +1,5 @@
 import shutil
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -204,12 +205,7 @@ def modifyInputs(
                     typeMsg="w",
                 )
 
-        print(
-            "\t\t\t- Changing {0} from {1} to {2} (x{3})".format(
-                ikey, var_orig, var_new, multipliers[ikey]
-            ),
-            typeMsg="i",
-        )
+        print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{multipliers[ikey]})")
 
     return input_class
 
@@ -412,9 +408,7 @@ def runTRXPL(
             trxpl_path:  enter "1" for if Btoroidal is ccw:
     """
 
-    commandTRXPL = "P\n10000\nA\n{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\nY\nX\nH\nW\n10001\nQ\nQ\nQ".format(
-        timeRun, avTime, grids[0], grids[1], grids[2], BtDir, IpDir
-    )
+    commandTRXPL = f"P\n10000\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n10001\nQ\nQ\nQ"
     with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
@@ -433,12 +427,8 @@ def runTRXPL(
     if grids[0] > 301:
         raise Exception("~~~~ Max grid for TRXPL is 301")
 
-    print(
-        "\t\t- Proceeding to run TRXPL with: {0}".format(
-            (" ".join(commandTRXPL.split("\n")))
-        ),
-        typeMsg="i",
-    )
+    print(f"\t\t- testProceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
+
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
     trxpl_job.define_machine(
@@ -918,7 +908,7 @@ def runTGLF(
     filesToRetrieve=["out.tglf.gbflux"],
     name="",
     launchSlurm=True,
-    cores_todo_array=32,
+    attempts_execution=1,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
@@ -930,10 +920,7 @@ def runTGLF(
 
     tglf_job = FARMINGtools.mitim_job(tmpFolder)
 
-    tglf_job.define_machine_quick(
-        "tglf",
-        f"mitim_{name}",
-    )
+    tglf_job.define_machine_quick("tglf",f"mitim_{name}")
 
     folders, folders_red = [], []
     for subFolderTGLF in tglf_executor:
@@ -963,51 +950,114 @@ def runTGLF(
     # Prepare command
     # ---------------------------------------------
 
-    total_tglf_cores = int(cores_tglf * len(rhos) * len(tglf_executor))
+    # Grab machine local limits -------------------------------------------------
+    max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings("tglf")["cores_per_node"]
 
-    if launchSlurm and ("partition" in tglf_job.machineSettings["slurm"]):
-        typeRun = "job" if total_tglf_cores <= cores_todo_array else "array"
-    else:
-        typeRun = "bash"
-
-    if typeRun in ["bash", "job"]:
-
-        # TGLF launches
-        TGLFcommand = ""
-        for folder in folders_red:
-            TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
-        TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+    # If the run is local and not slurm, let's check the number of cores
+    if (FARMINGtools.mitim_job.grab_machine_settings("tglf")["machine"] == "local") and not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
         
+        cores_in_machine = int(os.cpu_count())
+        cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
+
+        if cores_allocated is not None:
+            if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
+                print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                max_cores_per_node = cores_allocated
+        elif cores_in_machine is not None:
+            if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
+                print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                max_cores_per_node = cores_in_machine
+        else:
+            # Default to just 16 just in case
+            if max_cores_per_node is None: 
+                max_cores_per_node = 16
+    else:
+        # For remote execution, default to just 16 just in case
+        if max_cores_per_node is None: 
+            max_cores_per_node = 16
+    # ---------------------------------------------------------------------------
+
+    # Grab the total number of cores of this job --------------------------------
+    total_tglf_executions = len(rhos) * len(tglf_executor)
+    total_cores_required = int(cores_tglf) * total_tglf_executions
+    # ---------------------------------------------------------------------------
+
+    # Simply bash, no slurm
+    if not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
+
+        max_parallel_execution = max_cores_per_node // cores_tglf # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
+
+        print(f"\t- TGLF will be executed as bash script (total cores: {total_cores_required},  cores per TGLF: {cores_tglf}). MITIM will launch {total_tglf_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
+
+        # Build the bash script with job control enabled and a loop to limit parallel jobs
+        TGLFcommand = "#!/usr/bin/env bash\n"
+        TGLFcommand += "set -m\n"  # Enable job control even in non-interactive mode
+        TGLFcommand += f"max_parallel_execution={max_parallel_execution}\n\n"  # Set the maximum number of parallel processes
+
+        # Create a bash array of folders
+        TGLFcommand += "folders=(\n"
+        for folder in folders_red:
+            TGLFcommand += f'    "{folder}"\n'
+        TGLFcommand += ")\n\n"
+
+        # Loop over each folder and launch tglf, waiting if we've reached max_parallel_execution
+        TGLFcommand += "for folder in \"${folders[@]}\"; do\n"
+        TGLFcommand += f"    tglf -e \"$folder\" -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+        TGLFcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
+        TGLFcommand += "done\n\n"
+        TGLFcommand += "wait\n"
+
         # Slurm setup
         array_list = None
         shellPreCommands = None
         shellPostCommands = None
-        ntasks = total_tglf_cores
+        ntasks = total_cores_required
         cpuspertask = cores_tglf
 
-    elif typeRun in ["array"]:
-        #raise Exception("TGLF array not implemented yet")
-        print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_tglf_cores})",typeMsg="i")
+    else:
 
-        # As a pre-command, organize all folders in a simpler way
-        shellPreCommands = []
-        shellPostCommands = []
-        array_list = []
-        for i, folder in enumerate(folders_red):
-            array_list.append(f"{i}")
-            folder_temp_array = f"run{i}"
-            folder_actual = folder
-            shellPreCommands.append(f"mkdir {tglf_job.folderExecution}/{folder_temp_array}; cp {tglf_job.folderExecution}/{folder_actual}/*  {tglf_job.folderExecution}/{folder_temp_array}/.")
-            shellPostCommands.append(f"cp {tglf_job.folderExecution}/{folder_temp_array}/* {tglf_job.folderExecution}/{folder_actual}/.; rm -r {tglf_job.folderExecution}/{folder_temp_array}")
+        # Job array 
+        if total_cores_required < max_cores_per_node:
 
-        # TGLF launches
-        indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-        TGLFcommand = f'tglf -e {indexed_folder} -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {tglf_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+            print(f"\t- TGLF will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
 
-        # Slurm setup
-        array_list = ",".join(array_list)
-        ntasks = 1
-        cpuspertask = cores_tglf
+            # TGLF launches
+            TGLFcommand = ""
+            for folder in folders_red:
+                TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
+            TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+            
+            # Slurm setup
+            array_list = None
+            shellPreCommands = None
+            shellPostCommands = None
+            ntasks = total_tglf_executions
+            cpuspertask = cores_tglf
+
+        # Standard job
+        else:
+            #raise Exception("TGLF array not implemented yet")
+            print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
+
+            # As a pre-command, organize all folders in a simpler way
+            shellPreCommands = []
+            shellPostCommands = []
+            array_list = []
+            for i, folder in enumerate(folders_red):
+                array_list.append(f"{i}")
+                folder_temp_array = f"run{i}"
+                folder_actual = folder
+                shellPreCommands.append(f"mkdir {tglf_job.folderExecution}/{folder_temp_array}; cp {tglf_job.folderExecution}/{folder_actual}/*  {tglf_job.folderExecution}/{folder_temp_array}/.")
+                shellPostCommands.append(f"cp {tglf_job.folderExecution}/{folder_temp_array}/* {tglf_job.folderExecution}/{folder_actual}/.; rm -r {tglf_job.folderExecution}/{folder_temp_array}")
+
+            # TGLF launches
+            indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
+            TGLFcommand = f'tglf -e {indexed_folder} -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {tglf_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+
+            # Slurm setup
+            array_list = ",".join(array_list)
+            ntasks = 1
+            cpuspertask = cores_tglf
 
     # ---------------------------------------------
     # Execute
@@ -1042,7 +1092,10 @@ def runTGLF(
         shellPostCommands=shellPostCommands,
     )
 
-    tglf_job.run(removeScratchFolders=True)
+    tglf_job.run(
+        removeScratchFolders=True,
+        attempts_execution=attempts_execution
+        )
 
     # ---------------------------------------------
     # Organize
@@ -1073,5 +1126,9 @@ def runTGLF(
 
     if fineall:
         print("\t\t- All files were successfully retrieved")
+
+        # Remove temporary folder
+        shutil.rmtree(tmpFolder)
+
     else:
         print("\t\t- Some files were not retrieved", typeMsg="w")

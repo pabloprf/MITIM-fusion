@@ -132,7 +132,7 @@ class transp_output:
         if self.LocationCDF.is_dir(): 
             self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
             if self.LocationCDF is None:
-                raise ValueError(f"[mitim] Could not find a CDF file in {self.LocationCDF}")
+                raise ValueError(f"[MITIM] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
 
         self.f = read_cdf_transp(self.LocationCDF) 
@@ -154,6 +154,20 @@ class transp_output:
         self.eps00 = 1e-14
 
         msAfterSawtooth, msBeforeSawtooth = 10.0, 10.0
+
+        try:
+            self.LocationNML, _ = GACODErun.findNamelist(
+                self.LocationCDF, folderWork=folderScratch
+            )
+        except:
+            try:
+                print("Taking first")
+                self.LocationNML, _ = GACODErun.findNamelist(
+                    self.LocationCDF, folderWork=folderScratch, ForceFirst=True
+                )
+            except:
+                print("cannot retrieve namelist", typeMsg="w")
+                self.LocationNML = None
 
         # ~~~~~~~~ Get reactor parameters ~~~~~~~~
 
@@ -237,12 +251,9 @@ class transp_output:
 
             if needToConvert:
                 if ask_if_fbm:
-                    readFBM = print(
-                        "\t- Gathering FBM data ——requires conversion of FBM files",
-                        typeMsg="q",
-                    )
+                    readFBM = print("\t- Gathering FBM data ——requires conversion of FBM files",typeMsg="q",)
                 else:
-                    print("\t- Gathering FBM data ——requires conversion of FBM files", typeMsg="w")
+                    print("\t- Gathering FBM data ——requires conversion of FBM files", typeMsg="i")
             else:
                 print("\t- Gathering FBM data")
 
@@ -306,18 +317,6 @@ class transp_output:
         # --------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------
 
-        try:
-            self.LocationNML, _ = GACODErun.findNamelist(
-                self.LocationCDF, folderWork=folderScratch
-            )
-        except:
-            try:
-                print("Taking first")
-                self.LocationNML, _ = GACODErun.findNamelist(
-                    self.LocationCDF, folderWork=folderScratch, ForceFirst=True
-                )
-            except:
-                print("cannot retrieve namelist", typeMsg="w")
 
         self.getEstimatedMachineCost()
 
@@ -10718,11 +10717,11 @@ class transp_output:
             # If minorities are not in steady-state, some portion goes to their dW/dt
             if self.GainminT[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$dW/dt$ = {self.GainminT[it]:.1f}MW"] = [0.15,0.85]
-                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF Minorities were not in steady state (dWdt>{percent_plot*100:.1f}% of power to bulk, {self.GainminT[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %)', typeMsg='w')
             # Fast heating
             if self.PfichT_dir[it] > percent_plot*(self.PiichT[it] + self.PeichT[it]):
                 arrowsOut[f"$P_{{ICH,fast}}$ = {self.PfichT_dir[it]:.1f}MW"] = [0.35,0.85]
-                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk)', typeMsg='w')
+                print(f'\t- ICRF heated fast particles non-negligibly (>{percent_plot*100:.1f}% of power to bulk, {self.PfichT_dir[it]/(self.PiichT[it] + self.PeichT[it])*100.0:.1f} %))', typeMsg='w')
             
             GRAPHICStools.diagram_plotModule(
                 ax,
@@ -13681,11 +13680,18 @@ class transp_output:
             }
 
         # ~~~~~~ Impurities
-        for i in self.nZs:
+        for cont,i in enumerate(self.nZs):
+
+            if self.LocationNML is not None:
+                mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
+            else:
+                print(f"\t- Could not find mass for impurity {i} in namelist. Using default value of 2*Zave", typeMsg="w")
+                mass =self.fZs_avol[i]['Zave'][self.ind_saw]*2
+
             self.Species[i+"_imp"] = {
                 "name": i,
                 "type": "thermal",
-                "m": self.fZs_avol[i]['Zave'][self.ind_saw]*2 * self.u, #TODO: FIX
+                "m": mass  * self.u,
                 "Z": self.fZs_avol[i]['Zave'],
                 "n": self.nZs[i]["total"],
                 "T": self.Ti,
@@ -15246,9 +15252,9 @@ class transp_output:
         it = np.argmin(np.abs(self.t - time_extraction))
         
         print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-        print("\t\t* Warning: ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
-        print("\t\t* Warning: extrapolating using cubic spline",typeMsg='w')
-        print("\t\t* Warning: not time averaging yet",typeMsg='w')
+        print("\t\t* Ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
+        print("\t\t* Extrapolating using cubic spline",typeMsg='w')
+        print("\t\t* Not time averaging yet",typeMsg='w')
 
         #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine

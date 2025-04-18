@@ -494,13 +494,9 @@ class PROFILES_GACODE:
 		Surf_GACODE = V'
 		"""
 
-        self.derived["surfGACODE_miller"] = (
-            self.derived["surf_miller"] / self.derived["gradr_miller"]
-        )
+        self.derived["surfGACODE_miller"] = (self.derived["surf_miller"] / self.derived["gradr_miller"])
 
-        self.derived["surfGACODE_miller"][
-            np.isnan(self.derived["surfGACODE_miller"])
-        ] = 0
+        self.derived["surfGACODE_miller"][np.isnan(self.derived["surfGACODE_miller"])] = 0
 
         self.derived["c_s"] = PLASMAtools.c_s(
             self.profiles["te(keV)"], self.derived["mi_ref"]
@@ -791,6 +787,9 @@ class PROFILES_GACODE:
         self.derived["ni_thr"] = np.transpose(self.derived["ni_thr"])
         self.derived["ni_thrAll"] = self.derived["ni_thr"].sum(axis=1)
 
+        self.derived["ni_All"] = self.profiles["ni(10^19/m^3)"].sum(axis=1)
+
+
         (
             self.derived["ptot_manual"],
             self.derived["pe"],
@@ -930,6 +929,17 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )  # MPa
 
+        self.derived['pfast_manual'] = self.derived['ptot_manual'] - self.derived['pthr_manual']
+        self.derived["pfast_manual_vol"] = (
+            CALCtools.integrateFS(self.derived["pfast_manual"], r, volp)[-1]
+            / self.derived["volume"]
+        )  # MPa
+
+        self.derived['pfast_fraction'] = self.derived['pfast_manual_vol'] / self.derived['ptot_manual_vol']
+
+        #approximate pedestal top density
+        self.derived['ptop(Pa)'] = np.interp(0.90, self.profiles['rho(-)'], self.profiles['ptot(Pa)'])
+
         # Quasineutrality
         self.derived["QN_Error"] = np.abs(
             1 - np.sum(self.derived["fi_vol"] * self.profiles["z"])
@@ -1039,6 +1049,7 @@ class PROFILES_GACODE:
             float(self.profiles["rmin(m)"][-1]),
         )
         self.derived["fG"] = self.derived["ne_vol20"] / nG
+        self.derived["fG_x"] = self.profiles["ne(10^19/m^3)"]* 0.1 / nG
 
         self.derived["tite"] = self.profiles["ti(keV)"][:, 0] / self.profiles["te(keV)"]
         self.derived["tite_vol"] = self.derived["Ti_vol"] / self.derived["Te_vol"]
@@ -1255,6 +1266,9 @@ class PROFILES_GACODE:
         return We, Wi, Ne, Ni
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
+
+        if 'pfast_fraction' not in self.derived:    self.derived['pfast_fraction'] = np.nan   #TODO: remove this line
+
         try:
             ImpurityText = ""
             for i in range(len(self.Species)):
@@ -1294,6 +1308,7 @@ class PROFILES_GACODE:
                 )
             )
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
+            print(f"\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(
                 f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})"
             )
@@ -1662,17 +1677,12 @@ class PROFILES_GACODE:
             / self.derived["volume"]
         )
 
-        print(
-            f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
-        )
+        print(f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
         # New specie parameters
         if force_integer:
             Z = round(Zr_vol)
-            print(
-                f"\t\t\t* Lumped Z forced to be an integer ({Zr_vol}->{Z}), so plasma may not be quasineutral or fulfill original Zeff",
-                typeMsg="w",
-            )
+            print(f"\t\t\t* Lumped Z forced to be an integer ({Zr_vol}->{Z}), so plasma may not be quasineutral or fulfill original Zeff",typeMsg="w",)
         else:
             Z = Zr_vol
 
@@ -2298,6 +2308,17 @@ class PROFILES_GACODE:
                 label=extralab + "check",
             )
             # ax.plot(rho,np.abs(var-self.derived['ptot_manual']),lw=lw,ls='-.',c=color,label=extralab+'diff')
+
+            ax.plot(
+                rho,
+                self.derived["pthr_manual"],
+                lw=lw,
+                ls="-.",
+                c=color,
+                label=extralab + "check, thrm",
+            )
+
+
         varL = "$p$ (MPa)"
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
@@ -3997,6 +4018,7 @@ class DataTable:
             self.variables = {
                 "Rgeo": ["rcentr(m)", "pos_0", "profiles", ".2f", 1, "m"],
                 "ageo": ["a", None, "derived", ".2f", 1, "m"],
+                "volume": ["volume", None, "derived", ".2f", 1, "m"],
                 "kappa @psi=0.95": ["kappa(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "delta @psi=0.95": ["delta(-)", "psi_0.95", "profiles", ".2f", 1, None],
                 "Bt": ["bcentr(T)", "pos_0", "profiles", ".1f", 1, "T"],
@@ -4023,7 +4045,9 @@ class DataTable:
                 "Zeff": ["Zeff_vol", None, "derived", ".1f", 1, None],
                 "fDT": ["fmain", None, "derived", ".2f", 1, None],
                 "H89p": ["H89", None, "derived", ".2f", 1, None],
+                "H98y2": ["H98", None, "derived", ".2f", 1, None],
                 "ne (vol avg)": ["ne_vol20", None, "derived", ".2f", 1, "E20m-3"],
+                "Ptop": ["ptop", None, "derived", ".1f", 1, "Pa"],
                 "fG": ["fG", None, "derived", ".2f", 1, None],
                 "Pfus": ["Pfus", None, "derived", ".1f", 1, "MW"],
                 "Prad": ["Prad", None, "derived", ".1f", 1, "MW"],

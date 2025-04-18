@@ -39,7 +39,7 @@ def printMsg(*args, typeMsg=""):
             extra = "\u001b[34m"
         # Warning (about something to be careful about, even if chosen): Red
         elif typeMsg == "w":
-            extra = "\u001b[31;1m"
+            extra = "\u001b[31;1m [*WARNING*] "
         # Question or something that is stopped
         elif typeMsg == "q":
             extra = "\u001b[44;1m\u001b[37m"
@@ -138,7 +138,7 @@ def query_yes_no(question, extra=""):
                 )
                 return valid[choice]
             else:
-                raise Exception("[mitim] Exit request")
+                raise Exception("[MITIM] Exit request")
         else:
             printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
 

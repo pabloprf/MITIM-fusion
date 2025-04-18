@@ -68,7 +68,12 @@ def initialization_simple_relax(self):
         ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
         ff.mkdir(parents=True, exist_ok=True)
         newname = f"{namingConvention}_{i}"
-        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete")
+
+        # Delte destination first
+        if (ff / "model_complete").exists():
+            IOtools.shutil_rmtree(ff / "model_complete")
+
+        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete") #### delete first
 
     return Xopt.cpu().numpy()
 

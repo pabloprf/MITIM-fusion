@@ -93,6 +93,7 @@ mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 
 
 # MAESTRO
 mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
+mitim_run_maestro = "mitim_modules.maestro.scripts.run_maestro:main" # add file argument
 
 # To run TRANSP (in folder with required files): mitim_run_transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
 mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
@@ -101,6 +102,8 @@ mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
 mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
 mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim_scp mfews15 --files /home/pablorf/file1 --folders /home/pablorf/folder1
 #eff_job="mitim_tools.misc_tools.PARALLELtools.py $1" # Give mitim.out or slurm_output.dat
+mitim_check_maestro = "mitim_modules.maestro.scripts.check_maestro:main"
+
 
 [tool.pytest.ini_options]
 markers = [

@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -31,6 +31,7 @@ class eped_beat(beat):
             nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
             corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
             ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
+            TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
             **kwargs
             ):
 
@@ -49,6 +50,7 @@ class eped_beat(beat):
         self.corrections_set = corrections_set
 
         self.ptop_multiplier = ptop_multiplier
+        self.TioverTe = TioverTe
 
         self._inform()
 
@@ -61,7 +63,7 @@ class eped_beat(beat):
         # Run the NN
         # -------------------------------------------------------
 
-        eped_results = self._run(loopBetaN = 1)
+        eped_results = self._run(loopBetaN = 1, store_scan=True)
 
         # -------------------------------------------------------
         # Save stuff
@@ -71,11 +73,10 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005):
+    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
         '''
-
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -193,12 +194,13 @@ class eped_beat(beat):
             # Produce relevant quantities
             # -------------------------------------------------------
 
-            rhotop, netop_20, Ttop_keV, rhoped = eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol, self.profiles_current)
+            rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(neped_20, nesep_20, ptop_kPa, self.TioverTe, wtop_psipol, self.profiles_current)
 
             print('\t- Post-processed quantities:')
             print(f'\t\t- rhotop: {rhotop:.3f}')
             print(f'\t\t- netop_20: {netop_20:.3f}')
-            print(f'\t\t- Ttop_keV: {Ttop_keV:.3f}')
+            print(f'\t\t- Tetop_keV: {Tetop_keV:.3f}')
+            print(f'\t\t- Titop_keV: {Titop_keV:.3f}')
             print(f'\t\t- rhoped: {rhoped:.3f}')
 
             # -------------------------------------------------------
@@ -214,7 +216,7 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
+            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN_engineering']
 
@@ -225,34 +227,78 @@ class eped_beat(beat):
             print(f'\t\t* wtop_psipol: {wtop_psipols}')
 
         # ---------------------------------
+        # Run scans for postprocessing
+        # ---------------------------------
+
+        scan_results = None
+        if store_scan:
+
+            print('\t- Running scans of EPED inputs for postprocessing')
+                
+            scan_relative = {
+                "Ip": 0.05,
+                "Bt": 0.05,
+                "R": 0.05,
+                "a": 0.05,
+                "kappa995": 0.05,
+                "delta995": 0.05,
+                "neped_20": 0.75,
+                "BetaN": 0.5,
+                "zeff": 0.3,
+                "Tesep_keV": 0.75,
+                "nesep_ratio": 0.75
+            }
+
+            scan_results = {}
+            for k,key in enumerate(scan_relative):
+                inputs_scan = list(copy.deepcopy(inputs_to_nn))
+                scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
+                for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
+                    inputs_scan[k] = inputs_to_nn[k]*m
+                    ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
+                    scan_results[key]['ptop_kPa'].append(ptop_kPa0)
+                    scan_results[key]['wtop_psipol'].append(wtop_psipol0)
+                    scan_results[key]['value'].append(inputs_scan[k])
+                scan_results[key]['ptop_kPa'] = np.array(scan_results[key]['ptop_kPa'])
+                scan_results[key]['wtop_psipol'] = np.array(scan_results[key]['wtop_psipol'])
+                scan_results[key]['value'] = np.array(scan_results[key]['value'])
+
+                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_nn)
+
+        # ---------------------------------
         # Store
         # ---------------------------------
 
         eped_results = {
             'ptop_kPa': ptop_kPa,
             'wtop_psipol': wtop_psipol,
-            'Ttop_keV': Ttop_keV,
+            'Tetop_keV': Tetop_keV,
             'netop_20': netop_20,
             'neped_20': neped_20,
             'nesep_20': nesep_20,
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
             'inputs_to_nn': inputs_to_nn,
+            'scan_results': scan_results
         }
 
         for key in eped_results:
             print(f'\t\t- {key}: {eped_results[key]}')
 
+        self.profiles_output.writeCurrentStatus(file=self.folder / 'input.gacode.eped')
+
         return eped_results
 
     def finalize(self, **kwargs):
         
+        self.profiles_output = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode.eped')
+
         self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine
         pass
-    
+
     def grab_output(self):
 
         isitfinished = self.maestro_instance.check(beat_check=self)
@@ -271,6 +317,9 @@ class eped_beat(beat):
         return loaded_results, profiles
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
+
+        if fn is None:
+            fn = GUItools.FigureNotebook("EPED")
 
         fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
@@ -291,7 +340,11 @@ class eped_beat(beat):
             profiles.plotRelevant(axs = axs, color = 'r', label = 'EPED')
 
             axs[1].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
-            axs[1].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
+            try:
+                axs[1].axhline(loaded_results['Tetop_keV'], color='k', ls='--',lw=2)
+            except:
+                axs[1].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
+                
 
             axs[2].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
             axs[2].axhline(loaded_results['netop_20'], color='k', ls='--',lw=2)
@@ -301,17 +354,62 @@ class eped_beat(beat):
 
         GRAPHICStools.adjust_figure_layout(fig)
 
+        if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
+            for ikey in ['ptop_kPa', 'wtop_psipol']:
+                fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
+
+                axs = fig.subplot_mosaic(
+                    """
+                    ABCD
+                    EFGH
+                    IJKL
+                    """,
+                )
+                axs = [ ax for ax in axs.values() ]
+
+                self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+
+                GRAPHICStools.adjust_figure_layout(fig)
+
         msg = '\t\t- Plotting of EPED beat done'
 
         return msg
+            
+    def _plot_scan(self, ikey, loaded_results = None, axs = None, color = 'b'):
 
-    def finalize_maestro(self):
+        if loaded_results is None:
+            loaded_results, _ = self.grab_output()
 
-        self.maestro_instance.final_p = self.profiles_output
+        if axs is None:
+            fig = plt.figure()
+
+            axs = fig.subplot_mosaic(
+                """
+                ABCD
+                EFGH
+                IJKL
+                """,
+            )
+            axs = [ ax for ax in axs.values() ]
+
+        max_val = 0
+        for i,key in enumerate(loaded_results['scan_results']):
+
+            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
+
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results[ikey]], '^', color=color)
+            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+
+            axs[i].axvline(loaded_results['inputs_to_nn'][i], color=color, ls='--')
+            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
+
+            max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
         
-        final_file = self.maestro_instance.folder_output / 'input.gacode_final'
-        self.maestro_instance.final_p.writeCurrentStatus(file=final_file)
-        print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
+        for i,key in enumerate(loaded_results['scan_results']):
+            axs[i].set_ylim([0,1.2*max_val])
+            axs[i].set_xlabel(key)
+            axs[i].set_ylabel(ikey)
+            GRAPHICStools.addDenseAxis(axs[i])
 
     # --------------------------------------------------------------------------------------------
     # Additional EPED utilities
@@ -385,7 +483,6 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
     ynew[:ibc+1] = ycore_new
     ynew[ibc+1:] = yped[ibc+1:]
 
-
     # Keep old aLT
     if keep_aLx:
         print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
@@ -437,7 +534,7 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
 # Additional EPED utilities
 # --------------------------------------------------------------------------------------------
 
-def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
+def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,profiles):
 
     # psi_pol to rhoN
     rhotop = interpolation_function(1-wtop_psipol,profiles.derived['psi_pol_n'],profiles.profiles['rho(-)'])
@@ -452,15 +549,24 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, wtop_psipol,profiles):
     netop_20 = n0[0]
 
     # Find factor to account that it's not a pure plasma
-    n = profiles.derived['ni_thrAll']/profiles.profiles['ne(10^19/m^3)']
-    factor = 1 + interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
+    n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
+    fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n )
 
-    # Temperature from pressure, assuming Te=Ti
-    Ttop_keV = (ptop_kPa*1E3) / (1.602176634E-19 * factor * netop_20 * 1e20) * 1E-3 #TODO: Relax this assumption and allow TiTe_ratio as input
+    e_J = 1.60218e-19
+   
+    if TioverTe != 1:
+        print(f'\t\t\t* Scaling profiles Ti/Te={TioverTe}')
+    
+    # Calculate from P = (neTe + niTi), taking into account the lower ion density
+    Tetop_keV = ptop_kPa * 1E3 / ( ( 1 + fi * TioverTe ) * netop_20 * 1e20) / e_J * 1E-3
+    Titop_keV = Tetop_keV * TioverTe
+    print(f'\t\t\t* Tetop_keV: {Tetop_keV:.3f}  Titop_keV: {Titop_keV:.3f}')
 
-    return rhotop, netop_20, Ttop_keV, rhoped
 
-def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative_change_in_x=0.005):
+
+    return rhotop, netop_20, Tetop_keV, Titop_keV, rhoped
+
+def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005):
 
     profiles_output = copy.deepcopy(profiles)
 
@@ -471,9 +577,12 @@ def eped_profiler(profiles, xp_old, rhotop, Ttop_keV, netop_20, minimum_relative
         print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
         rhotop = xp_old
 
-    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Ttop_keV,xp_old, label = 'Te', roa = xroa)
+    n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
+    fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n)
 
-    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Ttop_keV,xp_old, label = 'Ti', roa = xroa)
+    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa)
+
+    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa)
     profiles_output.makeAllThermalIonsHaveSameTemp()
 
     pos = np.argmin(np.abs(x-xp_old))

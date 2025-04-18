@@ -297,9 +297,7 @@ class tgyro_model(power_transport):
 
         if MODELparameters['transport_model']['turbulence'] == 'CGYRO':
 
-            print(
-                "\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick..."
-            )
+            print("\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick...")
 
             correctly_run = (self.folder / "cgyro_neo").exists()
             if correctly_run:
@@ -320,7 +318,7 @@ class tgyro_model(power_transport):
                 shutil.copytree(self.folder / "tglf_neo", self.folder / "cgyro_neo")
 
                 # CGYRO writter
-                cgyro_trick(self,self.folder / "cgyro_neo",name=self.name)
+                cgyro_trick(self,self.folder / "cgyro_neo")
 
             # Read TGYRO files and construct portals variables
 
@@ -371,7 +369,7 @@ def tglf_scan_trick(
     tgyro, 
     label, 
     RadiisToRun, 
-    profiles, 
+    ProfilesPredicted, 
     impurityPosition=1, includeFast=False,  
     delta=0.02, 
     cold_start=False, 
@@ -395,7 +393,7 @@ def tglf_scan_trick(
     tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
 
     variables_to_scan = []
-    for i in profiles:
+    for i in ProfilesPredicted:
         if i == 'te': variables_to_scan.append('RLTS_1')
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
@@ -403,11 +401,11 @@ def tglf_scan_trick(
         if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
-    if 'te' in profiles or 'ti' in profiles:
+    if 'te' in ProfilesPredicted or 'ti' in ProfilesPredicted:
         variables_to_scan.append('TAUS_2')
-    if 'te' in profiles or 'ne' in profiles:
+    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
         variables_to_scan.append('XNUE')
-    if 'te' in profiles or 'ne' in profiles:
+    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
         variables_to_scan.append('BETAE')
     
     relative_scan = [1-delta, 1+delta]
@@ -419,9 +417,12 @@ def tglf_scan_trick(
     # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
     num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
     if cores_per_tglf_instance == 1:
-        minutes = 5 * (num_cases / 60) # Ad-hoc formula
+        minutes = 10 * (num_cases / 60) # Ad-hoc formula
     else:
         minutes = 1 * (num_cases / 60) # Ad-hoc formula
+
+    # Enforce minimum minutes
+    minutes = max(2, minutes)
 
     tglf.runScanTurbulenceDrives(	
                     subFolderTGLF = name,
@@ -437,7 +438,9 @@ def tglf_scan_trick(
                         "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
-                    positionIon=impurityPosition+1
+                    positionIon=impurityPosition+1,
+                    attempts_execution=2, 
+                    only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
                     )
 
     # Remove folders because they are heavy to carry many throughout
@@ -461,18 +464,22 @@ def tglf_scan_trick(
 
     # ----------------------------------------------------
     # Do a check that TGLF scans are consistent with TGYRO
-    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro )
-    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro )
-    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro )
-    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro )
+    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro ) if 'te' in ProfilesPredicted else np.zeros_like(Qe[:,0])
+    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro ) if 'ti' in ProfilesPredicted else np.zeros_like(Qi[:,0])
+    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro ) if 'ne' in ProfilesPredicted else np.zeros_like(Ge[:,0])
+    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro ) if 'nZ' in ProfilesPredicted else np.zeros_like(GZ[:,0])
 
     F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
     if F_err.max() > check_coincidence_thr:
-        print(f"\t- WARNING: TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
-        print('\t\t* Qe:',Qe_err)
-        print('\t\t* Qi:',Qi_err)
-        print('\t\t* Ge:',Ge_err)
-        print('\t\t* GZ:',GZ_err)
+        print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+        if 'te' in ProfilesPredicted:
+            print('\t\t* Qe:',Qe_err)
+        if 'ti' in ProfilesPredicted:
+            print('\t\t* Qi:',Qi_err)
+        if 'ne' in ProfilesPredicted:
+            print('\t\t* Ge:',Ge_err)
+        if 'nZ' in ProfilesPredicted:
+            print('\t\t* GZ:',GZ_err)
     else:
         print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
     # ----------------------------------------------------
@@ -774,9 +781,7 @@ def curateTGYROfiles(
 
 def profilesToShare(self):
     if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
-        whereFolder = IOtools.expandPath(
-            self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles"
-        )
+        whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
         if not whereFolder.exists():
             IOtools.askNewFolder(whereFolder)
 
@@ -789,11 +794,7 @@ def profilesToShare(self):
         print("\t- Could not move files", typeMsg="w")
 
 
-def cgyro_trick(
-    self,
-    FolderEvaluation_TGYRO,
-    name="",
-):
+def cgyro_trick(self,FolderEvaluation_TGYRO):
 
     with open(FolderEvaluation_TGYRO / "mitim_flag", "w") as f:
         f.write("0")
@@ -836,6 +837,7 @@ def cgyro_trick(
         FolderEvaluation_TGYRO,
         self.file_profs,
         self.powerstate.plasma["roa"][0,1:],
+        self.powerstate.ProfilesPredicted,
     )
 
     # **************************************************************************************************************************
