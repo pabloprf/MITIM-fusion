@@ -11,7 +11,7 @@ from IPython import embed
         RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, Paux = 0.0, BetaN_multiplier=1.0,thr_beta=0.02):
+def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, TioverTe=1.0, Paux = 0.0, BetaN_multiplier=1.0,thr_beta=0.02):
 
     p = copy.deepcopy(p_base)
 
@@ -111,9 +111,9 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
 
         ptop_kPa, wtop_psipol = nn(**eped_evaluation)
 
-        rhotop, netop_20, Ttop_keV, rhoped = eped_postprocessing(eped_evaluation["neped"]*0.1, eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1, ptop_kPa, wtop_psipol, p)
+        rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(eped_evaluation["neped"]*0.1, eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1, ptop_kPa, TioverTe, wtop_psipol, p)
 
-        p = eped_profiler(p, rhotop_assume, rhotop, Ttop_keV, netop_20)
+        p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20)
         
         # Derive quantities
         p.deriveQuantities(rederiveGeometry=False)
