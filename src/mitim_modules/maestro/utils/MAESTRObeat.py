@@ -448,7 +448,7 @@ class creator_from_eped(creator_from_parameterization):
 
         # Call the profiles creator
         self.rhotop = eped_results['rhotop']
-        self.Ttop_keV = eped_results['Ttop_keV']
+        self.Ttop_keV = eped_results['Tetop_keV']
         self.netop_20 = eped_results['netop_20']        
         self.Tsep_keV = eped_results['Tesep_keV']
         self.nesep_20 = eped_results['nesep_20']
