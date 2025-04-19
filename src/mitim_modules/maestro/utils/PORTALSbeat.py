@@ -35,7 +35,7 @@ class portals_beat(beat):
             MODELparameters = {},
             optimization_options = {},
             INITparameters = {},
-            enforce_impurity_radiation_existence = False,
+            enforce_impurity_radiation_existence = True,
             ):
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
