@@ -3,10 +3,12 @@
 from pathlib import Path
 import argparse
 import re
+import os
+import time
 import subprocess
 from datetime import datetime
 import fnmatch
-import os
+from IPython import embed
 
 def check_cases(folders):
 
@@ -39,7 +41,7 @@ def check_cases(folders):
     for folder in folders:
         beats_folder = folder / 'Beats'
 
-        if not beats_folder.exists():
+        if not safe_exists(beats_folder):
             mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             rows_failed.append((str(folder), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
             continue
@@ -132,6 +134,13 @@ def check_cases(folders):
     print_block(rows_failed, "FAILED")
     print('')
 
+def safe_exists(path, retries=3, delay=0.5):
+    path = Path(path)
+    for _ in range(retries):
+        if path.exists() or os.path.exists(str(path)):
+            return True
+        time.sleep(delay)
+    return False
 
 def main():
 
