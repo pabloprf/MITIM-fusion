@@ -314,7 +314,7 @@ class creator_from_parameterization(creator):
             aLn = None,
             aLT = None,
             label = 'parameterization',
-            nresol = 201
+            nresol = 501
             ):
             super().__init__(initialize_instance, label = label)
 
@@ -415,7 +415,7 @@ class creator_from_eped(creator_from_parameterization):
         nu_ne = None,
         aLT = None,
         aLn = None,
-        nresol = 201,
+        nresol = 501,
         **kwargs_eped
         ):
         super().__init__(initialize_instance, label = label)
