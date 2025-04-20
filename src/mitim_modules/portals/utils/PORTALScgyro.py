@@ -34,17 +34,15 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
         trick_harcoded_f is the name of the file until the iteration number. E.g. 'example_run/Outputs/cgyro_results/iter_rmp_75_'
 
         e.g.:
-            includeMtAndGz_hardcoded, train_sep,start_num,last_one,trick_hardcoded_f = True, 1, 0,100, 'example_run/Outputs/cgyro_results/d3d_5chan_it_'
+            train_sep,start_num,last_one,trick_hardcoded_f = 1, 0,100, 'example_run/Outputs/cgyro_results/d3d_5chan_it_'
 
         """
 
-        includeMtAndGz_hardcoded = PORTALSparameters["hardCodedCGYRO"]["includeMtAndGz_hardcoded"]
         train_sep = PORTALSparameters["hardCodedCGYRO"]["train_sep"]
         start_num = PORTALSparameters["hardCodedCGYRO"]["start_num"]
         last_one = PORTALSparameters["hardCodedCGYRO"]["last_one"]
         trick_hardcoded_f = PORTALSparameters["hardCodedCGYRO"]["trick_hardcoded_f"]
     else:
-        includeMtAndGz_hardcoded = None
         train_sep = None
         start_num = None
         last_one = None
@@ -68,7 +66,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     OriginalFimp = PORTALSparameters["fImp_orig"]
 
     cgyroing_file = (
-        lambda file_cgyro, numPORTALS_this=0, includeMtAndGz=False: cgyroing(
+        lambda file_cgyro, numPORTALS_this=0: cgyroing(
             FolderEvaluation,
             unmodified_profiles,
             numPORTALS,
@@ -81,7 +79,6 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
             evaluationsInFile=f"{numPORTALS_this}",
             impurityPosition=impurityPosition,
             file=file_cgyro,
-            includeMtAndGz=includeMtAndGz,
         )
     )
     print(f"\t- Suggested function call for mitim evaluation {numPORTALS} (lambda for cgyroing):",typeMsg="i")
@@ -99,13 +96,11 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
             cgyroing_file(
                 f"{trick_hardcoded_f}{start_num}.txt",
                 numPORTALS_this=numPORTALS,
-                includeMtAndGz=includeMtAndGz_hardcoded,
             )
         else:
             cgyroing_file(
                 f"{trick_hardcoded_f}{int(numPORTALS)-train_sep+1+start_num}.txt",
                 numPORTALS_this=0,
-                includeMtAndGz=includeMtAndGz_hardcoded,
             )
 
 
@@ -122,7 +117,6 @@ def cgyroing(
     file=None,
     evaluationsInFile=0,
     impurityPosition=3,
-    includeMtAndGz=False,
 ):
     """
     Variables need to have dimensions of (evaluation,rho)
@@ -150,7 +144,7 @@ def cgyroing(
         PexchE,
         _,
         _,
-    ) = readCGYROresults(file, radii, includeMtAndGz=includeMtAndGz)
+    ) = readCGYROresults(file, radii)
 
     cont = 0
     for i in evaluations:
@@ -219,7 +213,7 @@ def wasThisTheCorrectRun(aLTe, aLTi, aLne, Q_gb, tgyro, ErrorRaised=0.005):
                 )
 
 
-def readlineNTH(line, full_file=False, unnormalize=True):
+def readlineNTH(line, full_file=True, unnormalize=True):
     s = line.split()
 
     i = 2
@@ -357,7 +351,7 @@ def readlineNTH(line, full_file=False, unnormalize=True):
         )
 
 
-def readCGYROresults(file, radii, includeMtAndGz=False, unnormalize=True):
+def readCGYROresults(file, radii, unnormalize=True):
     """
     Arrays are in (batch,radii)
     MW/m^2 and 1E20
@@ -428,7 +422,7 @@ def readCGYROresults(file, radii, includeMtAndGz=False, unnormalize=True):
             Pexch_std_read,
             tstart_read,
             tend_read,
-        ) = readlineNTH(lines[i], full_file=includeMtAndGz, unnormalize=unnormalize)
+        ) = readlineNTH(lines[i], unnormalize=unnormalize)
         
         # --------------------------------------------------------
         # Radial location position
