@@ -18,6 +18,7 @@ from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from tqdm import tnrange
 
 
 """
