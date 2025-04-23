@@ -621,7 +621,7 @@ def parameterize_profile(
         aLy_coarse,
         profile_constructor_fine,
         profile_constructor_coarse,
-        profile_constructor_coarse_middle,
+        profile_constructor_middle,
     )
 
 def improve_resolution_profiles(profiles, rhoMODEL):
