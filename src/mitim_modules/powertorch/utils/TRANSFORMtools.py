@@ -167,7 +167,7 @@ def gacode_to_powerstate(self, increase_profile_resol=False):
     self.plasma["kradcm"] = 1e-5 / self.plasma["a"]
 
     # *********************************************************************************************
-	# Define deparametrizer functions for the varying profiles and gradients from here
+	# Define profile_constructor functions for the varying profiles and gradients from here
     # *********************************************************************************************
 
     # [quantiy in powerstate, quantity in input.gacode, index of the ion, multiplier, parameterize_in_aLx]
