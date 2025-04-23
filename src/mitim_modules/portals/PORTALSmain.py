@@ -64,7 +64,7 @@ def default_namelist(optimization_options, CGYROrun=False):
     optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-2
 
     # Surrogate
-    optimization_options["surrogate_options"]["selectSurrogate"] = partial(PORTALStools.selectSurrogate, CGYROrun=CGYROrun)
+    optimization_options["surrogate_options"]["surrogate_selection"] = partial(PORTALStools.surrogate_selection_portals, CGYROrun=CGYROrun)
 
     if CGYROrun:
         # CGYRO runs should prioritize accuracy
