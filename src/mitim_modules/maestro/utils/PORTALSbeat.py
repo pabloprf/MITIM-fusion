@@ -44,7 +44,7 @@ class portals_beat(beat):
 
             profiles = self.profiles_current
             for i in range(len(profiles.Species)):
-                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
                 if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
                     print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
                     # Find closest Z

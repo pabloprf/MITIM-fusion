@@ -404,12 +404,3 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     else:
         print("\t- No convergence yet, providing as iteration values the scalarized objective")
         return False, yvals
-
-# TODO: Remove in the future, this is just to enable back compatibility with the old code
-def selectSurrogate(*args,**kwargs):
-    return surrogate_selection_portals(*args,**kwargs)
-def produceNewInputs(*args,**kwargs):
-    return input_transform_portals(*args,**kwargs)
-def transformPORTALS(*args,**kwargs):
-    return output_transform_portals(*args,**kwargs)
-# -----

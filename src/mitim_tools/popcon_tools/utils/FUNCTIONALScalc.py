@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from IPython import embed
-from mitim_modules.powertorch.physics import CALCtools
+from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 

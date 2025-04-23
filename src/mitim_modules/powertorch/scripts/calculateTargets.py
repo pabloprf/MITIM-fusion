@@ -7,7 +7,7 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.powertorch.physics import TRANSPORTtools,TARGETStools
+from mitim_modules.powertorch.physics_models import targets_analytic, transport_gacode
 from IPython import embed
 
 def calculator(
@@ -33,13 +33,13 @@ def calculator(
                 'fineTargetsResolution': fineTargetsResolution,
             },
             TargetOptions={
-                "targets_evaluator": TARGETStools.analytical_model,
+                "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
                     "TargetCalc":  "tgyro"},
             },
             TransportOptions={
-                "transport_evaluator": TRANSPORTtools.tgyro_model,
+                "transport_evaluator": transport_gacode.tgyro_model,
                 "ModelOptions": {
                     "cold_start": cold_start,
                     "launchSlurm": True,
@@ -75,7 +75,7 @@ def calculator(
                 'fineTargetsResolution': fineTargetsResolution,
             },
             TargetOptions={
-                "targets_evaluator": TARGETStools.analytical_model,
+                "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
                     "TargetCalc":  "powerstate"},
