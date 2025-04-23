@@ -8,7 +8,7 @@ from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def selectSurrogate(output, surrogate_options, CGYROrun=False):
+def surrogate_selection_portals(output, surrogate_options, CGYROrun=False):
 
     print(f'\t- Selecting surrogate options for "{output}" to be run')
 

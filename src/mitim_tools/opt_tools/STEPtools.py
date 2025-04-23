@@ -184,13 +184,8 @@ class OPTstep:
             surrogate_options = copy.deepcopy(self.surrogate_options)
 
             # Then, depending on application (e.g. targets in mitim are fitted differently)
-            if (
-                "selectSurrogate" in surrogate_options
-                and surrogate_options["selectSurrogate"] is not None
-            ):
-                surrogate_options = surrogate_options["selectSurrogate"](
-                    outi, surrogate_options
-                )
+            if "surrogate_selection" in surrogate_options and surrogate_options["surrogate_selection"] is not None:
+                surrogate_options = surrogate_options["surrogate_selection"](outi, surrogate_options)
 
             # ---------------------------------------------------------------------------------------------------
             # To avoid problems with fixed values (e.g. calibration terms that are fixed)
