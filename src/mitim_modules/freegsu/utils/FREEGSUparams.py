@@ -108,7 +108,7 @@ def createProblemParameters(
         dvs_min.extend(dvs_min2)
         dvs_max.extend(dvs_max2)
 
-        transformation = produceNewInputs
+        transformation = input_transform_freegs
     else:
         transformation = None
 
@@ -376,7 +376,7 @@ def extractCont(x, cont):
     return v
 
 
-def produceNewInputs(X, output, bounds, ParamProfile):
+def input_transform_freegs(X, output, bounds, ParamProfile):
     """
     X will be a tensor (with or without gradients) batch*dim,   unnormalized
     """

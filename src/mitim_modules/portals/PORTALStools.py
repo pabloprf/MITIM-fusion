@@ -94,7 +94,7 @@ def default_portals_transformation_variables(additional_params = []):
 
     return portals_transformation_variables, portals_transformation_variables_trace
 
-def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
+def input_transform_portals(Xorig, output, surrogate_parameters, surrogate_transformation_variables):
 
     """
     - Xorig will be a tensor (batch1...N,dim) unnormalized (with or without gradients).
@@ -146,13 +146,11 @@ def produceNewInputs(Xorig, output, surrogate_parameters, surrogate_transformati
 
     return xFit, parameters_combined
 
-
 # ----------------------------------------------------------------------
 # Transformation of Outputs
 # ----------------------------------------------------------------------
 
-
-def transformPORTALS(X, surrogate_parameters, output):
+def output_transform_portals(X, surrogate_parameters, output):
     """
     1. Make sure all batches are squeezed into a single dimension
     ------------------------------------------------------------------
@@ -406,3 +404,12 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     else:
         print("\t- No convergence yet, providing as iteration values the scalarized objective")
         return False, yvals
+
+# TODO: Remove in the future, this is just to enable back compatibility with the old code
+def selectSurrogate(*args,**kwargs):
+    return surrogate_selection_portals(*args,**kwargs)
+def produceNewInputs(*args,**kwargs):
+    return input_transform_portals(*args,**kwargs)
+def transformPORTALS(*args,**kwargs):
+    return output_transform_portals(*args,**kwargs)
+# -----

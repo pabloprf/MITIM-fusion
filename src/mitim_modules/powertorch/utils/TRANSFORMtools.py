@@ -416,7 +416,6 @@ def parameterize_curve(
     x_coarse_tensor,
     parameterize_in_aLx=True,
     multiplier_quantity=1.0,
-    PreventNegative=False,
     ):
     """
     Notes:
@@ -449,9 +448,6 @@ def parameterize_curve(
     # **********************************************************************************************************
 
     x_coarse = x_coarse_tensor[1:].cpu().numpy()
-
-    # Clip to zero if I want to prevent negative values
-    ygrad_coord = ygrad_coord.clip(0) if PreventNegative else ygrad_coord
 
     """
     Define region to get control points from
@@ -504,10 +500,7 @@ def parameterize_curve(
         I need to do in a finer grid so that it is consistent with TGYRO.
         x, y must be (batch, radii),	y_bc must be (1)
         """
-        return (
-            x,
-            integrator_function(x, y, y_bc_real) / multiplier,
-        )
+        return x, integrator_function(x, y, y_bc_real) / multiplier
 
     def deparametrizer_coarse_middle(x, y, multiplier=multiplier_quantity):
         """

@@ -339,8 +339,8 @@ def initializeProblem(
         Variables[ikey] = prepportals_transformation_variables(portals_fun, ikey)
 
     portals_fun.surrogate_parameters = {
-        "transformationInputs": PORTALStools.produceNewInputs,
-        "transformationOutputs": PORTALStools.transformPORTALS,
+        "transformationInputs": PORTALStools.input_transform_portals,
+        "transformationOutputs": PORTALStools.output_transform_portals,
         "powerstate": portals_fun.powerstate,
         "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
         "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
