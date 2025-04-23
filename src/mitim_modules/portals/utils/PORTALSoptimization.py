@@ -30,7 +30,7 @@ def initialization_simple_relax(self):
     MainFolder.mkdir(parents=True, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    namingConvention = f"portals_sr_{b}_ev"
+    namingConvention = "portals_sr_ev"
 
     if self.seed is not None and self.seed != 0:
         random.seed(self.seed)
