@@ -192,7 +192,7 @@ def gacode_to_powerstate(self, increase_profile_resol=False):
             self.deparametrizers_fine[key[0]],
             self.deparametrizers_coarse[key[0]],
             self.deparametrizers_coarse_middle[key[0]],
-        ) = parameterize_curve(
+        ) = parameterize_profile(
             input_gacode.derived["roa"],
             quant,
             self.plasma["roa"],
@@ -292,7 +292,7 @@ def powerstate_to_gacode(
             print(f"\t- Inserting {key[0]} into input.gacode profiles")
 
             # *********************************************************************************************
-            # From a/Lx to x via fine deparametrizer
+            # From a/Lx to x via fine profile_constructor
             # *********************************************************************************************
             x, y = self.deparametrizers_fine[key[0]](
                 self.plasma["roa"][position_in_powerstate_batch, :],
@@ -458,7 +458,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ions_set_Tion"] = Tion
     self.plasma["ions_set_c_rad"] = c_rad
 
-def parameterize_curve(
+def parameterize_profile(
     x_coord,
     y_coord_raw,
     x_coarse_tensor,
@@ -536,10 +536,10 @@ def parameterize_curve(
     y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
 
     # **********************************************************************************************************
-    # Define deparametrizer functions
+    # Define profile_constructor functions
     # **********************************************************************************************************
 
-    def deparametrizer_coarse(x, y, multiplier=multiplier_quantity):
+    def profile_constructor_coarse(x, y, multiplier=multiplier_quantity):
         """
         Construct curve in a coarse grid
         ----------------------------------------------------------------------------------------------------
@@ -550,7 +550,7 @@ def parameterize_curve(
         """
         return x, integrator_function(x, y, y_bc_real) / multiplier
 
-    def deparametrizer_coarse_middle(x, y, multiplier=multiplier_quantity):
+    def profile_constructor_middle(x, y, multiplier=multiplier_quantity):
         """
         Deparamterizes a finer profile based on the values in the coarse.
         Reason why something like this is not used for the full profile is because derivative of this will not be as original,
@@ -559,7 +559,7 @@ def parameterize_curve(
         yCPs = CALCtools.Interp1d()(aLy_coarse[:, 0][:-1].repeat((y.shape[0], 1)), y, x)
         return x, integrator_function(x, yCPs, y_bc_real) / multiplier
 
-    def deparametrizer_fine(x, y, multiplier=multiplier_quantity):
+    def profile_constructor_fine(x, y, multiplier=multiplier_quantity):
         """
         Notes:
             - x is a 1D array, but y can be a 2D array for a batch of individuals: (batch,x)
@@ -619,9 +619,9 @@ def parameterize_curve(
 
     return (
         aLy_coarse,
-        deparametrizer_fine,
-        deparametrizer_coarse,
-        deparametrizer_coarse_middle,
+        profile_constructor_fine,
+        profile_constructor_coarse,
+        profile_constructor_coarse_middle,
     )
 
 def improve_resolution_profiles(profiles, rhoMODEL):
