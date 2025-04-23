@@ -29,7 +29,7 @@ def initialization_simple_relax(self):
     MainFolder.mkdir(parents=True, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    namingConvention = f"portals_sr_{b}_ev"
+    namingConvention = "portals_sr_ev"
 
     # Solver options tuned for simple relax of beginning of PORTALS (big jumps)
     solver_options = {
