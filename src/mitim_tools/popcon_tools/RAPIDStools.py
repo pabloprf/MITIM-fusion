@@ -138,7 +138,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     power = STATEtools.powerstate(p,EvolutionOptions={"rhoPredicted": np.linspace(0.0, 0.9, 50)[1:]})
 
     power.calculate(None, folder='~/scratch/power/')
-    profiles_new = power.to_gacode(insert_highres_powers=True)
+    profiles_new = power.from_powerstate(insert_highres_powers=True)
 
     return ptop_kPa,profiles_new, eped_evaluation
 

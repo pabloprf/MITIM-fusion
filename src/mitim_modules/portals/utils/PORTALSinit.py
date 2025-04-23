@@ -203,7 +203,7 @@ def initializeProblem(
             )
 
     # Write this updated profiles class (with parameterized profiles)
-    _ = portals_fun.powerstate.to_gacode(
+    _ = portals_fun.powerstate.from_powerstate(
         write_input_gacode=FolderInitialization / "input.gacode",
         postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
     )
