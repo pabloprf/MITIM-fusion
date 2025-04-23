@@ -3654,7 +3654,7 @@ class TGLF:
                 rho_mod = np.append([0], rho)
                 aLn = np.append([0], y)
                 import torch
-                from mitim_modules.powertorch.physics import CALCtools
+                from mitim_modules.powertorch.utils import CALCtools
 
                 BC = 1.0
                 T = CALCtools.integrateGradient(

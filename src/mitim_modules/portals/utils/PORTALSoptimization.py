@@ -1,9 +1,10 @@
 import copy
+from mitim_modules.powertorch.physics_models import transport_analytic
 import torch
 import shutil
 import random
 from functools import partial
-from mitim_modules.powertorch.physics import TRANSPORTtools
+from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.powertorch import STATEtools
 from mitim_tools.opt_tools.utils import BOgraphics
@@ -128,7 +129,7 @@ def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_writ
     TransportOptions = copy.deepcopy(step.surrogate_parameters["powerstate"].TransportOptions)
 
     # Define transport calculation function as a surrogate model
-    TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
+    TransportOptions['transport_evaluator'] = transport_analytic.surrogate
     TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
 
     # Create powerstate with the same options as the original portals but with the new profiles

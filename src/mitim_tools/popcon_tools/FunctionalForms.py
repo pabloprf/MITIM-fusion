@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.popcon_tools.utils import PRFfunctionals, FUNCTIONALScalc
 from mitim_tools.misc_tools import MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.powertorch.physics import CALCtools
+from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
 

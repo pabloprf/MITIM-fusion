@@ -1,6 +1,6 @@
 import torch, datetime
 import matplotlib.pyplot as plt
-from mitim_modules.powertorch.physics import CALCtools
+from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
 
 from mitim_tools.popcon_tools.FunctionalForms import (

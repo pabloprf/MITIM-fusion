@@ -10,7 +10,7 @@ from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
-from mitim_modules.powertorch.physics import CALCtools
+from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
 # <> Function to interpolate a curve <> 
