@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
-from mitim_modules.powertorch.physics import GEOMETRYtools, CALCtools
+from mitim_modules.powertorch.utils import GEOMETRYtools, CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
@@ -1539,9 +1539,7 @@ class PROFILES_GACODE:
                     valt = f"{val:.7e}".rjust(15)
                     f.write(f"{pos}{valt}\n")
 
-    def changeResolution(
-        self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline
-        ):
+    def changeResolution(self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline):
         rho = copy.deepcopy(self.profiles["rho(-)"])
 
         if rho_new is None:

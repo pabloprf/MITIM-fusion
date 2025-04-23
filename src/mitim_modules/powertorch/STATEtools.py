@@ -2,13 +2,15 @@ import copy
 import torch
 import datetime
 import shutil
+from types import MethodType
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
 from mitim_tools.opt_tools.optimizers import optim
-from mitim_modules.powertorch.physics import TARGETStools, CALCtools, TRANSPORTtools
+from mitim_modules.powertorch.utils import TARGETStools, CALCtools, TRANSPORTtools
+from mitim_modules.powertorch.physics_models import targets_analytic
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -27,7 +29,7 @@ class powerstate:
             "ModelOptions": {}
             },
         TargetOptions={
-            "targets_evaluator": TARGETStools.analytical_model,
+            "targets_evaluator": targets_analytic.analytical_model,
             "ModelOptions": {
                 "TypeTarget": 3,
                 "TargetCalc": "powerstate"
@@ -121,7 +123,7 @@ class powerstate:
 
         if isinstance(profiles, PROFILEStools.PROFILES_GACODE):
             self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
-            self.from_powerstate = TRANSFORMtools.to_gacode
+            self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
             self.profiles = copy.deepcopy(profiles)
@@ -144,8 +146,12 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
+        # Resolution of input.gacode
+        if increase_profile_resol:
+            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
+
         # Convert to powerstate
-        self.to_powerstate(self,increase_profile_resol=increase_profile_resol)
+        self.to_powerstate(self)
 
         # Convert into a batch so that always the quantities are (batch,dimX)
         self.batch_size = 0
@@ -191,7 +197,7 @@ class powerstate:
             )
 
         # Recalculate with higher resolution
-        TRANSFORMtools.gacode_to_powerstate(self, self.profiles, rho_new)
+        TRANSFORMtools.gacode_to_powerstate(self, rho_vec = rho_new)
         self.plasma_fine = copy.deepcopy(self.plasma)
 
         # Revert plasma back
@@ -542,7 +548,7 @@ class powerstate:
         # General function to update a variable
         # -------------------------------------------------------------------------------------
 
-        profile_constructor_choice = self.deparametrizers_coarse if specific_profile_constructor is None else specific_profile_constructor
+        profile_constructor_choice = self.profile_constructors_coarse if specific_profile_constructor is None else specific_profile_constructor
 
         def _update_plasma_var(var_key, clamp_min=None, clamp_max=None):
             if var is not None:
