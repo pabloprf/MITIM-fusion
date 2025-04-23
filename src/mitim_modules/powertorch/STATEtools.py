@@ -2,7 +2,6 @@ import copy
 import torch
 import datetime
 import shutil
-from pathlib import Path
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
@@ -529,7 +528,7 @@ class powerstate:
         if hasattr(self, 'profiles'):
             self.profiles.toNumpyArrays()
 
-    def update_var(self, name, var=None, specific_deparametrizer=None):
+    def update_var(self, name, var=None, specific_profile_constructor=None):
         """
         This inserts gradients and updates coarse profiles
 
@@ -543,17 +542,13 @@ class powerstate:
         # General function to update a variable
         # -------------------------------------------------------------------------------------
 
-        deparametrizers_choice = (
-            self.deparametrizers_coarse
-            if specific_deparametrizer is None
-            else specific_deparametrizer
-        )
+        profile_constructor_choice = self.deparametrizers_coarse if specific_profile_constructor is None else specific_profile_constructor
 
         def _update_plasma_var(var_key, clamp_min=None, clamp_max=None):
             if var is not None:
                 self.plasma[f"aL{var_key}"][: var.shape[0], :] = var[:, :]
             aLT_withZero = self.plasma[f"aL{var_key}"]
-            _, varN = deparametrizers_choice[var_key](
+            _, varN = profile_constructor_choice[var_key](
                 self.plasma["roa"], aLT_withZero)
             self.plasma[var_key] = varN.clamp(min=clamp_min, max=clamp_max) if ( (clamp_min is not None) or (clamp_max is not None) ) else varN
             self.plasma[f"aL{var_key}"] = torch.cat(
