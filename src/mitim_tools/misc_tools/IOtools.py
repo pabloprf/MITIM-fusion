@@ -750,7 +750,7 @@ def findFileByExtension(
             f"\t\t\t~ Folder ...{fstr} does not exist, returning None",
         )
 
-    # TODO: We really should not change return type
+    #TODO: We really should not change return type
     #retval = None
     #if retpath is not None:
     #    if not provide_full_path:
