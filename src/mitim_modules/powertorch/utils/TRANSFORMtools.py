@@ -1,9 +1,10 @@
 import copy
 import torch
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from mitim_modules.powertorch.physics import CALCtools
-from mitim_tools.misc_tools import LOGtools
+from mitim_tools.misc_tools import LOGtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.physics import TARGETStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -13,7 +14,7 @@ from IPython import embed
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-def gacode_to_powerstate(self, input_gacode, rho_vec):
+def gacode_to_powerstate(self, increase_profile_resol=False):
     """
     This function converts from the fine input.gacode grid to a powertorch object and grid.
     Notes:
@@ -29,6 +30,13 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
     """
 
     print("\t- Producing powerstate object from input.gacode")
+
+    input_gacode    = self.profiles
+    rho_vec         = self.plasma["rho"]
+
+    # Resolution of input.gacode
+    if increase_profile_resol:
+        improve_resolution_profiles(input_gacode, rho_vec)
 
     # *********************************************************************************************
     # Radial grid
@@ -162,6 +170,7 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
 	# Define deparametrizer functions for the varying profiles and gradients from here
     # *********************************************************************************************
 
+    # [quantiy in powerstate, quantity in input.gacode, index of the ion, multiplier, parameterize_in_aLx]
     cases_to_parameterize = [
         ["te", "te(keV)", None, 1.0, True],
         ["ti", "ti(keV)", 0, 1.0, True],
@@ -199,6 +208,45 @@ def gacode_to_powerstate(self, input_gacode, rho_vec):
                 addT = 1e-15
                 print(f"\t- All values of {key[0]} detected to be zero, to avoid NaNs, inserting {addT} at the edge",typeMsg="w")
                 self.plasma[f"aL{key[0]}"][..., -1] += addT
+
+    def to_gacode(
+        self,
+        write_input_gacode=None,
+        position_in_powerstate_batch=0,
+        postprocess_input_gacode={},
+        insert_highres_powers=False,
+        rederive_profiles=True,
+    ):
+        '''
+        Notes:
+            - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
+        '''
+        print(">> Inserting powerstate into input.gacode")
+
+        profiles = powerstate_to_gacode(
+            self,
+            position_in_powerstate_batch=position_in_powerstate_batch,
+            postprocess_input_gacode=postprocess_input_gacode,
+            insert_highres_powers=insert_highres_powers,
+            rederive=rederive_profiles,
+        )
+
+        # Write input.gacode
+        if write_input_gacode is not None:
+            write_input_gacode = Path(write_input_gacode)
+            print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
+            write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
+            profiles.writeCurrentStatus(file=write_input_gacode)
+
+        # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
+        if rederive_profiles:
+            defineIons(self, profiles, self.plasma["rho"][position_in_powerstate_batch, :], self.dfT)
+            # Repeat, that's how it's done earlier
+            self._repeat_tensors(batch_size=self.plasma["rho"].shape[0],
+                specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"],
+                positionToUnrepeat=None)
+
+        return profiles
 
 def powerstate_to_gacode(
     self,
