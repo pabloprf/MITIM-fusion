@@ -41,7 +41,7 @@ class powerstate:
     ):
         '''
         Inputs:
-            - profiles: PROFILES_GACODE object
+            - profiles: Object for PROFILES_GACODE or others
             - EvolutionOptions:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
@@ -117,13 +117,20 @@ class powerstate:
             self.labelsFM.append([f'aL{profile}', list(self.profile_map[profile])[0], list(self.profile_map[profile])[1]])
 
         # -------------------------------------------------------------------------------------
-        # input.gacode
+        # Object type (e.g. input.gacode)
         # -------------------------------------------------------------------------------------
 
-        # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-        self.profiles = copy.deepcopy(profiles)
-        if "derived" not in self.profiles.__dict__:
-            self.profiles.deriveQuantities()
+        if isinstance(profiles, PROFILEStools.PROFILES_GACODE):
+            self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
+            self.from_powerstate = TRANSFORMtools.to_gacode
+
+            # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
+            self.profiles = copy.deepcopy(profiles)
+            if "derived" not in self.profiles.__dict__:
+                self.profiles.deriveQuantities()
+
+        else:
+            raise ValueError("[MITIM] The input profile object is not recognized, please use PROFILES_GACODE")
 
         # -------------------------------------------------------------------------------------
         # Fine targets (need to do it here so that it's only once per definition of powerstate)
@@ -138,12 +145,8 @@ class powerstate:
         # Standard creation of plasma dictionary
         # -------------------------------------------------------------------------------------
 
-        # Resolution of input.gacode
-        if increase_profile_resol:
-            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
-
         # Convert to powerstate
-        TRANSFORMtools.gacode_to_powerstate(self, self.profiles, self.plasma["rho"])
+        self.to_powerstate(self,increase_profile_resol=increase_profile_resol)
 
         # Convert into a batch so that always the quantities are (batch,dimX)
         self.batch_size = 0
@@ -195,44 +198,7 @@ class powerstate:
         # Revert plasma back
         self.plasma = plasma_copy
 
-    def to_gacode(
-        self,
-        write_input_gacode=None,
-        position_in_powerstate_batch=0,
-        postprocess_input_gacode={},
-        insert_highres_powers=False,
-        rederive_profiles=True,
-    ):
-        '''
-        Notes:
-            - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
-        '''
-        print(">> Inserting powerstate into input.gacode")
 
-        profiles = TRANSFORMtools.powerstate_to_gacode(
-            self,
-            position_in_powerstate_batch=position_in_powerstate_batch,
-            postprocess_input_gacode=postprocess_input_gacode,
-            insert_highres_powers=insert_highres_powers,
-            rederive=rederive_profiles,
-        )
-
-        # Write input.gacode
-        if write_input_gacode is not None:
-            write_input_gacode = Path(write_input_gacode)
-            print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
-            write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
-            profiles.writeCurrentStatus(file=write_input_gacode)
-
-        # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
-        if rederive_profiles:
-            TRANSFORMtools.defineIons(self, profiles, self.plasma["rho"][position_in_powerstate_batch, :], self.dfT)
-            # Repeat, that's how it's done earlier
-            self._repeat_tensors(batch_size=self.plasma["rho"].shape[0],
-                specific_keys=["ni","ions_set_mi","ions_set_Zi","ions_set_Dion","ions_set_Tion","ions_set_c_rad"],
-                positionToUnrepeat=None)
-
-        return profiles
 
     # ------------------------------------------------------------------
     # Storing and combining

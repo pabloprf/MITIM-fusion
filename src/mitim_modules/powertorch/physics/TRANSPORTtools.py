@@ -82,7 +82,7 @@ class power_transport:
 
         powerstate_detached = self.powerstate.copy_state()
 
-        self.powerstate.profiles = powerstate_detached.to_gacode(
+        self.powerstate.profiles = powerstate_detached.from_powerstate(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
             rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
