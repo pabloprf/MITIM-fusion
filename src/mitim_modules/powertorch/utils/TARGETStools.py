@@ -181,13 +181,8 @@ class power_targets:
 			Note: This is useful for mitim surrogate variables of targets
 		"""
 
-        gb_mapping = {
-            "QeMWm2": "Qgb",
-            "QiMWm2": "Qgb",
-            "Ce": "Qgb" if useConvectiveFluxes else "Ggb",
-            "CZ": "Qgb" if useConvectiveFluxes else "Ggb",
-            "Mt": "Pgb",
-        }
-
-        for i in gb_mapping.keys():
-            self.powerstate.plasma[f"{i}GB"] = self.powerstate.plasma[i] / self.powerstate.plasma[gb_mapping[i]]
+        self.powerstate.plasma["QeGB"] = self.powerstate.plasma["QeMWm2"] / self.powerstate.plasma["Qgb"]
+        self.powerstate.plasma["QiGB"] = self.powerstate.plasma["QiMWm2"] / self.powerstate.plasma["Qgb"]
+        self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
+        self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
+        self.powerstate.plasma["MtGB"] = self.powerstate.plasma["Mt"] / self.powerstate.plasma["Pgb"]

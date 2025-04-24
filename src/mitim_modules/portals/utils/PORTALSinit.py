@@ -460,9 +460,9 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                     Variables[output].append(ikey)
 
         elif typ in ["QeTar"]:
-            Variables[output] = ["PeGB"]
+            Variables[output] = ["QeGB"]
         elif typ in ["QiTar"]:
-            Variables[output] = ["PiGB"]
+            Variables[output] = ["QiGB"]
         elif typ in ["GeTar"]:
             Variables[output] = ["CeGB"]
         elif typ in ["GZTar"]:
