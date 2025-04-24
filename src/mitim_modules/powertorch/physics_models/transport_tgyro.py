@@ -3,7 +3,7 @@ import shutil
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGYROtools
-from mitim_modules.portals.utils import PORTALScgyro
+from mitim_modules.powertorch.physics_models import transport_cgyro
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -458,7 +458,7 @@ def curateTGYROfiles(
 
     # Merge
 
-    PORTALScgyro.modifyFLUX(
+    transport_cgyro.modifyFLUX(
         tgyro,
         folder,
         Qe,
@@ -475,7 +475,7 @@ def curateTGYROfiles(
         impurityPosition=impurityPosition,
     )
 
-    PORTALScgyro.modifyFLUX(
+    transport_cgyro.modifyFLUX(
         tgyro,
         folder,
         QeE,
@@ -503,7 +503,7 @@ def curateTGYROfiles(
     GZTargetE = GeTargetE * 0.0
     MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * relativeErrorTAR
 
-    PORTALScgyro.modifyEVO(
+    transport_cgyro.modifyEVO(
         tgyro,
         folder,
         QeTargetE * 0.0,
@@ -515,7 +515,7 @@ def curateTGYROfiles(
         positionMod=1,
         special_label="_stds",
     )
-    PORTALScgyro.modifyEVO(
+    transport_cgyro.modifyEVO(
         tgyro,
         folder,
         QeTargetE,
