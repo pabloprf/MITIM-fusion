@@ -345,7 +345,7 @@ class portals(STRATEGYtools.opt_evaluator):
         '''
         The user can define a list of strings to avoid reusing surrogates.
         e.g. 
-            'Tar' to avoid reusing targets
+            '_tar' to avoid reusing targets
             '_5' to avoid reusing position 5
         '''
 
@@ -353,7 +353,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Define avoiders
         if self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent'] is None:
-            self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent'] = ['Tar']
+            self.optimization_options['surrogate_options']['extrapointsModelsAvoidContent'] = ['_tar']
 
         # Define extrapointsModels
         for key in self.surrogate_parameters['surrogate_transformation_variables_lasttime'].keys():
@@ -425,12 +425,11 @@ class portals(STRATEGYtools.opt_evaluator):
 
         var_dict = {}
         for of in ofs_ordered_names:
-            var, _ = of.split("_")
+
+            var = '_'.join(of.split("_")[:-1])
             if var not in var_dict:
                 var_dict[var] = torch.Tensor().to(Y)
-            var_dict[var] = torch.cat(
-                (var_dict[var], Y[..., ofs_ordered_names == of]), dim=-1
-            )
+            var_dict[var] = torch.cat((var_dict[var], Y[..., ofs_ordered_names == of]), dim=-1)
 
         """
 		-------------------------------------------------------------------------
@@ -575,7 +574,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 # ------------------------------------------------------------------------------------
 
                 for i in dictOFs:
-                    if "Tar" in i:
+                    if "_tar" in i:
                         print(f"Changing {i} in file")
 
                         optimization_data.data[i].iloc[numPORTALS] = dictOFs[i]["value"].cpu().numpy().item()
@@ -682,8 +681,8 @@ def map_powerstate_to_portals(powerstate, dictOFs):
                 If that radius & profile position has target, evaluate
             """
 
-            dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][0, i+1]
-            dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[f"{var1}_stds"][0, i+1]
+            dictOFs[f"{var0}_tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][0, i+1]
+            dictOFs[f"{var0}_tar_{i+1}"]["error"] = powerstate.plasma[f"{var1}_stds"][0, i+1]
 
     """
     Turbulent Exchange

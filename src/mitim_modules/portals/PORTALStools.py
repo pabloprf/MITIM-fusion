@@ -2,9 +2,9 @@ import torch
 import gpytorch
 import copy
 import numpy as np
+from collections import OrderedDict
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import PLASMAtools
-from collections import OrderedDict
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -14,7 +14,7 @@ def surrogate_selection_portals(output, surrogate_options, CGYROrun=False):
 
     if output is not None:
         # If it's a target, just linear
-        if output[2:5] == "Tar":
+        if output[3:6] == "tar":
             surrogate_options["TypeMean"] = 1
             surrogate_options["TypeKernel"] = 2  # Constant kernel
         # If it's not, stndard
@@ -125,7 +125,7 @@ def input_transform_portals(Xorig, output, surrogate_parameters, surrogate_trans
 				initialize it with a larger batch
 	"""
 
-    _, num = output.split("_")
+    num = output.split("_")[-1]
     index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
@@ -224,8 +224,8 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 
 def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
-    varFull = output.split("_")[0]
-    pos = int(output.split("_")[1])
+    varFull = '_'.join(output.split("_")[:-1])
+    pos = int(output.split("_")[-1])
 
     # Select GB unit
     if varFull[:2] == "Qe":
@@ -251,7 +251,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
     Trick to make GZ a function of a/Lnz only (flux as GammaZ_hat = GammaZ /nZ )
     """
 
-    pos = int(output.split("_")[1])
+    pos = int(output.split("_")[-1])
 
     if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
         factor = powerstate.plasma["ni"][: x.shape[0],powerstate.indexes_simulation[pos],powerstate.impurityPosition].unsqueeze(-1)

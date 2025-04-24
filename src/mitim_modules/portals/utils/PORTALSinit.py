@@ -296,7 +296,7 @@ def initializeProblem(
             ofs.append(f"{var}_tr_turb_{i+1}")
             ofs.append(f"{var}_tr_neo_{i+1}")
 
-            ofs.append(f"{var}Tar_{i+1}")
+            ofs.append(f"{var}_tar_{i+1}")
 
             name_objectives.append(f"{var}Res_{i+1}")
 
@@ -417,9 +417,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
 
         elif typ in ["GZ", "GZ_tr_turb", "GZ_tr_neo"]:
             if doNotFitOnFixedValues:
-                isAbsValFixed = pos == (
-                    portals_fun.powerstate.plasma["rho"].shape[-1] - 1
-                )
+                isAbsValFixed = pos == portals_fun.powerstate.plasma["rho"].shape[-1] - 1
             else:
                 isAbsValFixed = False
 
@@ -455,15 +453,15 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 if useThisOne:
                     Variables[output].append(ikey)
 
-        elif typ in ["QeTar"]:
+        elif typ in ["Qe_tar"]:
             Variables[output] = ["QeGB"]
-        elif typ in ["QiTar"]:
+        elif typ in ["Qi_tar"]:
             Variables[output] = ["QiGB"]
-        elif typ in ["GeTar"]:
+        elif typ in ["Ge_tar"]:
             Variables[output] = ["CeGB"]
-        elif typ in ["GZTar"]:
+        elif typ in ["GZ_tar"]:
             Variables[output] = ["CZGB"]
-        elif typ in ["MtTar"]:
+        elif typ in ["Mt_tar"]:
             Variables[output] = ["MtGB"]
 
     return Variables
