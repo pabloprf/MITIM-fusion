@@ -17,7 +17,6 @@ The CGYRO file must contain GB units, and the gb unit is MW/m^2, 1E19m^2/s
 The CGYRO file must use particle flux. Convective transformation occurs later
 """
 
-
 def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii, ProfilesPredicted):
     print("\n ** CGYRO evaluation of fluxes has been requested before passing information to the STRATEGY module **",typeMsg="i",)
 
@@ -125,41 +124,17 @@ def cgyroing(
     evaluations = np.array([int(i) for i in evaluations.split(",")])
     evaluationsInFile = np.array([int(i) for i in evaluationsInFile.split(",")])
 
-    (
-        aLTe,
-        aLTi,
-        aLne,
-        Q_gb,
-        Qe,
-        Qi,
-        Ge,
-        GZ,
-        Mt,
-        Pexch,
-        QeE,
-        QiE,
-        GeE,
-        GZE,
-        MtE,
-        PexchE,
-        _,
-        _,
-    ) = readCGYROresults(file, radii)
+    aLTe,aLTi,aLne,Q_gb,Qe,Qi,Ge,GZ,Mt,Pexch,QeE,QiE,GeE,GZE,MtE,PexchE,_,_ = readCGYROresults(file, radii)
 
     cont = 0
-    for i in evaluations:
+    for _ in evaluations:
         k = evaluationsInFile[cont]
         cont += 1
 
-        print(
-            f"\t- Modifying {IOtools.clipstr(FolderEvaluation)} with position {k} in CGYRO results file {IOtools.clipstr(file)}"
-        )
+        print(f"\t- Modifying {IOtools.clipstr(FolderEvaluation)} with position {k} in CGYRO results file {IOtools.clipstr(file)}")
 
         # Get TGYRO
-        tgyro = TGYROtools.TGYROoutput(
-            FolderEvaluation,
-            profiles=PROFILEStools.PROFILES_GACODE(unmodified_profiles),
-        )
+        tgyro = TGYROtools.TGYROoutput(FolderEvaluation,profiles=PROFILEStools.PROFILES_GACODE(unmodified_profiles))
 
         # Quick checker of correct file
         wasThisTheCorrectRun(aLTe, aLTi, aLne, Q_gb, tgyro)
@@ -306,49 +281,9 @@ def readlineNTH(line, full_file=True, unnormalize=True):
             PexchReal = Pexch
             PexchReal_std = Pexch_std
 
-        return (
-            roa,
-            aLTe,
-            aLTi,
-            aLne,
-            Q_gb,
-            QeReal,
-            QiReal,
-            GeReal,
-            GZReal,
-            MtReal,
-            PexchReal,
-            QeReal_std,
-            QiReal_std,
-            GeReal_std,
-            GZReal_std,
-            MtReal_std,
-            PexchReal_std,
-            tstart,
-            tend,
-        )
+        return roa,aLTe,aLTi,aLne,Q_gb,QeReal,QiReal,GeReal,GZReal,MtReal,PexchReal,QeReal_std,QiReal_std,GeReal_std,GZReal_std,MtReal_std,PexchReal_std,tstart,tend
     else:
-        return (
-            roa,
-            aLTe,
-            aLTi,
-            aLne,
-            Q_gb,
-            QeReal,
-            QiReal,
-            GeReal,
-            0.0,
-            0.0,
-            0.0,
-            QeReal_std,
-            QiReal_std,
-            GeReal_std,
-            0.0,
-            0.0,
-            0.0,
-            tstart,
-            tend,
-        )
+        return roa,aLTe,aLTi,aLne,Q_gb,QeReal,QiReal,GeReal,0.0,0.0,0.0,QeReal_std,QiReal_std,GeReal_std,0.0,0.0,0.0,tstart,tend
 
 
 def readCGYROresults(file, radii, unnormalize=True):
@@ -434,47 +369,7 @@ def readCGYROresults(file, radii, unnormalize=True):
         # Assign to that radial location
         # --------------------------------------------------------
 
-        (
-            roa[p[r], r],
-            aLTe[p[r], r],
-            aLTi[p[r], r],
-            aLne[p[r], r],
-            Q_gb[p[r], r],
-            Qe[p[r], r],
-            Qi[p[r], r],
-            Ge[p[r], r],
-            GZ[p[r], r],
-            Mt[p[r], r],
-            Pexch[p[r], r],
-            Qe_std[p[r], r],
-            Qi_std[p[r], r],
-            Ge_std[p[r], r],
-            GZ_std[p[r], r],
-            Mt_std[p[r], r],
-            Pexch_std[p[r], r],
-            tstart[p[r], r],
-            tend[p[r], r],
-        ) = (
-            roa_read,
-            aLTe_read,
-            aLTi_read,
-            aLne_read,
-            Q_gb_read,
-            Qe_read,
-            Qi_read,
-            Ge_read,
-            GZ_read,
-            Mt_read,
-            Pexch_read,
-            Qe_std_read,
-            Qi_std_read,
-            Ge_std_read,
-            GZ_std_read,
-            Mt_std_read,
-            Pexch_std_read,
-            tstart_read,
-            tend_read,
-        )
+        roa[p[r], r],aLTe[p[r], r],aLTi[p[r], r],aLne[p[r], r],Q_gb[p[r], r],Qe[p[r], r],Qi[p[r], r],Ge[p[r], r],GZ[p[r], r],Mt[p[r], r],Pexch[p[r], r],Qe_std[p[r], r],Qi_std[p[r], r],Ge_std[p[r], r],GZ_std[p[r], r],Mt_std[p[r], r],Pexch_std[p[r], r],tstart[p[r], r],tend[p[r], r] = roa_read,aLTe_read,aLTi_read,aLne_read,Q_gb_read,Qe_read,Qi_read,Ge_read,GZ_read,Mt_read,Pexch_read,Qe_std_read,Qi_std_read,Ge_std_read,GZ_std_read,Mt_std_read,Pexch_std_read,tstart_read,tend_read
 
         p[r] += 1
 
@@ -671,18 +566,10 @@ def modifyEVO(
     GZTGB = GZT / tgyro.Gamma_GB[-1, 1:]
     MtTGB = MtT / tgyro.Pi_GB[-1, 1:]
 
-    modTGYROfile(
-        folder / "out.tgyro.evo_te", QeTGB, pos=positionMod, fileN_suffix=special_label
-    )
-    modTGYROfile(
-        folder / "out.tgyro.evo_ti", QiTGB, pos=positionMod, fileN_suffix=special_label
-    )
-    modTGYROfile(
-        folder / "out.tgyro.evo_ne", GeTGB, pos=positionMod, fileN_suffix=special_label
-    )
-    modTGYROfile(
-        folder / "out.tgyro.evo_er", MtTGB, pos=positionMod, fileN_suffix=special_label
-    )
+    modTGYROfile(folder / "out.tgyro.evo_te", QeTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_ti", QiTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_ne", GeTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_er", MtTGB, pos=positionMod, fileN_suffix=special_label)
 
     for i in range(tgyro.Qi_sim_turb.shape[0]):
         if i == impurityPosition:
