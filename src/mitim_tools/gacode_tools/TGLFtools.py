@@ -3126,7 +3126,6 @@ class TGLF:
         resolutionPoints=5,
         variation=0.5,
         add_baseline_to = 'none', # 'all' or 'first' or 'none'
-        add_also_baseline_to_first = True,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         positionIon=2,
         **kwargs_TGLFrun,
@@ -3151,9 +3150,7 @@ class TGLF:
         tglf_executor, tglf_executor_full, folders = {}, {}, []
         for cont, variable in enumerate(self.variablesDrives):
             # Only ask the cold_start in the first round
-            kwargs_TGLFrun["forceIfcold_start"] = cont > 0 or (
-                "forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"]
-            )
+            kwargs_TGLFrun["forceIfcold_start"] = cont > 0 or ("forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"])
 
             scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
 
