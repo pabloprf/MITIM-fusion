@@ -20,7 +20,7 @@ portals_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.8
 portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
 
 # Codes to use
-from mitim_modules.powertorch.physics_models.transport_gacode import tgyro_model
+from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
 portals_fun.PORTALSparameters["transport_evaluator"] = tgyro_model
 
 # TGLF specifications

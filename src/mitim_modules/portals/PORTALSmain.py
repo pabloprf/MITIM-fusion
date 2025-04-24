@@ -14,12 +14,11 @@ from mitim_modules.portals.utils import (
     PORTALSoptimization,
     PORTALSanalysis,
 )
-from mitim_modules.powertorch.physics_models import targets_analytic, transport_gacode
+from mitim_modules.powertorch.physics_models import targets_analytic, transport_tgyro, transport_cgyro
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-from tqdm import tnrange
 
 
 """
@@ -194,7 +193,10 @@ class portals(STRATEGYtools.opt_evaluator):
 		"""
 
         # Selection of model
-        transport_evaluator = transport_gacode.tgyro_model
+        if CGYROrun:
+            transport_evaluator = transport_cgyro.cgyro_model
+        else:
+            transport_evaluator = transport_tgyro.tgyro_model
         targets_evaluator = targets_analytic.analytical_model
 
         self.PORTALSparameters = {
@@ -469,7 +471,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 print("\t- Requested fineTargetsResolution, so running powerstate target calculations",typeMsg="w")
                 self.PORTALSparameters["TargetCalc"] = "powerstate"
 
-        if not issubclass(self.PORTALSparameters["transport_evaluator"], transport_gacode.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
+        if not issubclass(self.PORTALSparameters["transport_evaluator"], transport_tgyro.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
             print("\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",typeMsg="w")
             self.PORTALSparameters["TargetCalc"] = "powerstate"
 
@@ -556,7 +558,7 @@ class portals(STRATEGYtools.opt_evaluator):
                     self_copy.powerstate.TransportOptions["transport_evaluator"] = None
                     self_copy.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] = "powerstate"
                 else:
-                    self_copy.powerstate.TransportOptions["transport_evaluator"] = transport_gacode.tgyro_model
+                    self_copy.powerstate.TransportOptions["transport_evaluator"] = transport_tgyro.tgyro_model
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,
