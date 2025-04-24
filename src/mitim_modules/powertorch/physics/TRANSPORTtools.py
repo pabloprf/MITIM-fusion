@@ -438,7 +438,7 @@ def tglf_scan_trick(
                         "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
-                    positionIon=impurityPosition+1,
+                    positionIon=impurityPosition+2,
                     attempts_execution=2, 
                     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
                     )
