@@ -82,7 +82,7 @@ class surrogate(TRANSPORTtools.power_transport):
             "ti": "QiMWm2",
             "ne": "Ce",
             "nZ": "CZ",
-            "w0": "Mt",
+            "w0": "MtJm2",
         }
 
         for c, i in enumerate(self.powerstate.ProfilesPredicted):

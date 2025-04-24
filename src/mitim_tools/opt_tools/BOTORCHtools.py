@@ -704,15 +704,8 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
         self.indeces_grad = tuple(grad_vector)
         # ----------------------------------------------------------------
 
-        self.register_parameter(
-            name="weights_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_parameter(
-            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
-        )
+        self.register_parameter(name="weights_lin",parameter=torch.nn.Parameter(torch.randn(*batch_shape, len(self.indeces_grad), 1)),)
+        self.register_parameter(name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1)))
 
         # set the parameter constraint to be [0,1], when nothing is specified
         diffusion_constraint = gpytorch.constraints.constraints.Positive()

@@ -241,11 +241,11 @@ def PORTALSanalyzer_plotMetrics(
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ce_raw_tr_turb'].cpu().numpy()+power.plasma['Ce_raw_tr_neo'].cpu().numpy(),
+                    power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy()+power.plasma['Ge1E20sm2_tr_neo'].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
-                    power.plasma['Ce_raw'].cpu().numpy() * (1 - int(self.forceZeroParticleFlux)),
+                    power.plasma['Ge1E20sm2'].cpu().numpy() * (1 - int(self.forceZeroParticleFlux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -260,13 +260,13 @@ def PORTALSanalyzer_plotMetrics(
             if axw0_f is not None:
                 axw0_f.plot(
                     rho,
-                    power.plasma['Mt_tr_turb'].cpu().numpy() + power.plasma['Mt_tr_neo'].cpu().numpy(),
+                    power.plasma['MtJm2_tr_turb'].cpu().numpy() + power.plasma['MtJm2_tr_neo'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axw0_f.plot(rho, power.plasma['Mt'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axw0_f.plot(rho, power.plasma['MtJm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
     # ---------------------------------------------------------------------------------------------------------
 
@@ -2168,7 +2168,7 @@ def PORTALSanalyzer_plotModelComparison(
         quantityX_stds = "MtGB_sim_turb_stds"
         quantityY = "MtGB_sim_turb"
         quantityY_stds = "MtGB_sim_turb_stds"
-        metrics["Mt"] = plotModelComparison_quantity(
+        metrics["MtJm2"] = plotModelComparison_quantity(
             self,
             axs[cont],
             quantityX=quantityX,
@@ -2931,7 +2931,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        Ge = power.plasma['Ce_raw_tr_turb'].cpu().numpy() + power.plasma['Ce_raw_tr_neo'].cpu().numpy()
+        Ge = power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy() + power.plasma['Ge1E20sm2_tr_neo'].cpu().numpy()
 
         axne_f.plot(
             r[0][ixF:],
@@ -2944,7 +2944,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ce_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ce_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['Ge1E20sm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ge1E20sm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -2983,7 +2983,7 @@ def plotFluxComparison(
     if axw0_f is not None:
         axw0_f.plot(
             r[0][ixF:],
-            power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2992,10 +2992,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Mt_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
-        m_Mt, M_Mt = (power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['Mt_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Mt_tr_neo'].cpu().numpy()[0][ixF:]
+        m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
@@ -3007,9 +3007,9 @@ def plotFluxComparison(
 
     Qe_tar = power.plasma['QeMWm2'].cpu().numpy()[0][ixF:]
     Qi_tar = power.plasma['QiMWm2'].cpu().numpy()[0][ixF:]
-    Ge_tar = power.plasma['Ce_raw'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
+    Ge_tar = power.plasma['Ge1E20sm2'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
     GZ_tar = power.plasma['CZ_raw'].cpu().numpy()[0][ixF:]
-    Mt_tar = power.plasma['Mt'].cpu().numpy()[0][ixF:]
+    Mt_tar = power.plasma['MtJm2'].cpu().numpy()[0][ixF:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
