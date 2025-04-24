@@ -306,7 +306,7 @@ def TGYROmodeledVariables(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt', 'Ce_raw', 'CZ_raw']
+    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'Mt', 'Ce_raw', 'CZ_raw']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
     
