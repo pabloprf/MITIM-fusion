@@ -25,7 +25,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
 
         # Some checks
         print("\t- Checking model modifications:")
-        for r in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
+        for r in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "MtJm2_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
             print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
             print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 
@@ -102,7 +102,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
         )
 
         # Make tensors
-        for i in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]:
+        for i in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "MtJm2_tr_turb"]:
             try:
                 self.powerstate.plasma[i] = torch.from_numpy(self.powerstate.plasma[i]).to(self.powerstate.dfT).unsqueeze(0)
             except:
@@ -121,8 +121,8 @@ class cgyro_model(transport_tgyro.tgyro_model):
                 txt += f"{self.powerstate.plasma[varn][0,j+1]:.6f}   "
 
         for var, varn in zip(
-            ["Qe (MW/m^2)", "Qi (MW/m^2)", "Ce (MW/m^2)", "CZ (MW/m^2)", "Mt (J/m^2) "],
-            ["QeMWm2", "Pi", "Ce", "CZ", "Mt"],
+            ["Qe (MW/m^2)", "Qi (MW/m^2)", "Ce (MW/m^2)", "CZ (MW/m^2)", "MtJm2 (J/m^2) "],
+            ["QeMWm2", "Pi", "Ce", "CZ", "MtJm2"],
         ):
             txt += f"\n{var}  = "
             for j in range(self.powerstate.plasma["rho"].shape[1] - 1):

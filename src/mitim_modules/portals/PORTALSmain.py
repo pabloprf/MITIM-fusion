@@ -659,7 +659,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
             elif var == "nZ":
                 var0, var1 = "GZ", "CZ"
             elif var == "w0":
-                var0, var1 = "Mt", "Mt"
+                var0, var1 = "Mt", "MtJm2"
 
             """
             TRANSPORT calculation

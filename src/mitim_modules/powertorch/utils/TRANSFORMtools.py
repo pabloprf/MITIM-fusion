@@ -118,7 +118,7 @@ def gacode_to_powerstate(self, rho_vec=None):
     quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MWmiller"]
     quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20miller"]
     quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20miller"] * 0.0
-    quantitites["Mt_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
+    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
 
     if self.TargetOptions["ModelOptions"]["TypeTarget"] < 3:
         # Fusion and radiation fixed if 1,2
