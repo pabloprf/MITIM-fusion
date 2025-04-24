@@ -980,7 +980,7 @@ class PORTALSinitializer:
         for i in range(100):
             try:
                 p = STATEtools.read_saved_state(
-                    self.folder / "Initialization" / "initialization_simple_relax" / f"portals_sr_{IOtools.reducePathLevel(self.folder)[1]}_ev_{i}" / "powerstate.pkl"
+                    self.folder / "Initialization" / "initialization_simple_relax" / f"portals_sr_ev_{i}" / "powerstate.pkl"
                 )
             except FileNotFoundError:
                 break
