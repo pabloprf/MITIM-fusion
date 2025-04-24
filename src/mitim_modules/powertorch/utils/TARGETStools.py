@@ -23,23 +23,12 @@ class power_targets:
         # Fixed Targets (targets without a model)
         # ----------------------------------------------------
 
-        if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 1:
-            self.Pe_orig, self.Pi_orig = (
-                self.powerstate.plasma["QeMWm2_orig_fusradexch"],
-                self.powerstate.plasma["QiMWm2_orig_fusradexch"],
-            )  # Original integrated from input.gacode
-        elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 2:
-            self.Pe_orig, self.Pi_orig = (
-                self.powerstate.plasma["QeMWm2_orig_fusrad"],
-                self.powerstate.plasma["QiMWm2_orig_fusrad"],
-            )
-        elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
-            self.Pe_orig, self.Pi_orig = self.powerstate.plasma["te"] * 0.0, self.powerstate.plasma["te"] * 0.0
+        self.Qe_fixedtargets = self.powerstate.plasma["QeMWm2_fixedtargets"]
+        self.Qi_fixedtargets = self.powerstate.plasma["QiMWm2_fixedtargets"]
 
-        # For the moment, I don't have a model for these, so I just grab the original from input.gacode
-        self.CextraE = self.powerstate.plasma["Gaux_e"]     # 1E20/s/m^2
-        self.CextraZ = self.powerstate.plasma["Gaux_Z"]     # 1E20/s/m^2
-        self.Mextra = self.powerstate.plasma["Maux"]        # J/m^2
+        self.Ce_fixedtargets = self.powerstate.plasma["Ge_fixedtargets"]  # 1E20/s/m^2
+        self.CZ_fixedtargets = self.powerstate.plasma["GZ_fixedtargets"]  # 1E20/s/m^2
+        self.Mt_fixedtargets = self.powerstate.plasma["Mt_fixedtargets"]  # J/m^2
 
     def fine_grid(self):
 
@@ -138,25 +127,17 @@ class power_targets:
         # Plug-in Targets
         # **************************************************************************************************
 
-        self.powerstate.plasma["QeMWm2"] = (
-            self.powerstate.plasma["Paux_e"] + self.P[: self.P.shape[0]//2, :] + self.Pe_orig
-        )  # MW/m^2
-        self.powerstate.plasma["QiMWm2"] = (
-            self.powerstate.plasma["Paux_i"] + self.P[self.P.shape[0]//2 :, :] + self.Pi_orig
-        )  # MW/m^2
-        self.powerstate.plasma["Ce_raw"] = self.CextraE
-        self.powerstate.plasma["CZ_raw"] = self.CextraZ
-        self.powerstate.plasma["Mt"] = self.Mextra
+        self.powerstate.plasma["QeMWm2"] = self.Qe_fixedtargets + self.P[: self.P.shape[0]//2, :] # MW/m^2
+        self.powerstate.plasma["QiMWm2"] = self.Qi_fixedtargets + self.P[self.P.shape[0]//2 :, :] # MW/m^2
+        self.powerstate.plasma["Ce_raw"] = self.Ce_fixedtargets # 1E20/s/m^2
+        self.powerstate.plasma["CZ_raw"] = self.CZ_fixedtargets # 1E20/s/m^2
+        self.powerstate.plasma["Mt"]     = self.Mt_fixedtargets # J/m^2
 
         # Merge convective fluxes
 
         if useConvectiveFluxes:
-            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(
-                self.powerstate.plasma["te"], self.powerstate.plasma["Ce_raw"]
-            )  # MW/m^2
-            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(
-                self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"]
-            )  # MW/m^2
+            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ce_raw"])  # MW/m^2
+            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
         else:
             self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce_raw"]
             self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
