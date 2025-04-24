@@ -147,11 +147,9 @@ def TGYROmodeledVariables(TGYROresults,
     if UseFineGridTargets:
         TGYROresults.useFineGridTargets(impurityPosition=impurityPosition)
 
-
     nr = powerstate.plasma['rho'].shape[-1]
     if powerstate.plasma['rho'].shape[-1] != TGYROresults.rho.shape[-1]:
         print('\t- TGYRO was run with an extra point in the grid, treating it carefully now')
-
 
     # **********************************
     # *********** Electron Energy Fluxes
