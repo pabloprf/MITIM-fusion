@@ -25,7 +25,6 @@ portals_fun.PORTALSparameters["transport_evaluator"] = tgyro_model
 
 # TGLF specifications
 portals_fun.MODELparameters["transport_model"] = {
-	"turbulence":'TGLF',
 	"TGLFsettings": 6,							# Check out templates/input.tglf.models.json for more options
 	"extraOptionsTGLF": {"USE_BPER": False}  	# Turn off BPER
 	}

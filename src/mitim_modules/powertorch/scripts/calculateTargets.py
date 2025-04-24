@@ -59,7 +59,7 @@ def calculator(
                             "ni_thermals": True,
                             "recompute_ptot": False,
                         },
-                        "transport_model": {"turbulence": 'TGLF',"TGLFsettings": 5, "extraOptionsTGLF": {}},
+                        "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     },
                     "includeFastInQi": False,
                 },
