@@ -16,25 +16,26 @@ class cgyro_model(transport_tgyro.tgyro_model):
 
     def evaluate(self):
 
-        # ---------------------------------------------------------
         # Run original evaluator
-        # ---------------------------------------------------------
-
         tgyro = self._evaluate_tglf_neo()
 
-        # ---------------------------------------------------------
-        # Run cgyro_trick
-        # ---------------------------------------------------------
+        # Run CGYRO trick
+        powerstate_orig = self._trick_cgyro(tgyro)
 
-        powerstate_orig = self._evaluate_cgyro(tgyro)
-
-        # ---------------------------------------------------------
         # Process results
-        # ---------------------------------------------------------
+        self._postprocess_results(tgyro, "cgyro_neo")
 
-        self._postprocess_results(tgyro, "cgyro_neo", powerstate_orig)
+        # Some checks
+        print("\t- Checking model modifications:")
+        for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
+            print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
+            print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 
-    def _evaluate_cgyro(self, tgyro):
+    # ************************************************************************************
+    # Private functions for CGYRO evaluation
+    # ************************************************************************************
+
+    def _trick_cgyro(self, tgyro):
 
         print("\t- Checking whether cgyro_neo folder exists and it was written correctly via cgyro_trick...")
 
@@ -66,18 +67,6 @@ class cgyro_model(transport_tgyro.tgyro_model):
         powerstate_orig = copy.deepcopy(self.powerstate)
         
         return powerstate_orig
-
-    def _postprocess_results(self, tgyro, label, powerstate_orig):
-        super()._postprocess_results(tgyro, label)   
-
-        # ------------------------------------------------------------
-        # Some checks
-        # ------------------------------------------------------------
-
-        print("\t- Checking model modifications:")
-        for r in ["Pe_tr_turb", "Pi_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "Mt_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
-            print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
-            print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 
 def cgyro_trick(self,FolderEvaluation_TGYRO):
 
