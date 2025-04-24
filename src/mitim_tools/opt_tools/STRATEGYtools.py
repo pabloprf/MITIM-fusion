@@ -690,22 +690,14 @@ class MITIM_BO:
                 current_step = self.read()
 
                 if current_step is None:
-                    print(
-                        "\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",
-                        typeMsg="w",
-                    )
-                    print(
-                        "\t* Are you aware of the consequences of continuing?",
-                        typeMsg="q",
-                    )
+                    print("\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",typeMsg="w")
+                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q")
 
                     self.cold_start = True
 
             if not self.cold_start:
                 # Read next from Tabular
-                self.x_next, _, _ = self.optimization_data.extract_points(
-                    points=np.arange(len(self.train_X), len(self.train_X) + self.best_points)
-                )
+                self.x_next, _, _ = self.optimization_data.extract_points(points=np.arange(len(self.train_X), len(self.train_X) + self.best_points))
                 self.x_next = torch.from_numpy(self.x_next).to(self.dfT)
 
                 # Re-write x_next from the pkl... reason for this is that if optimization is heuristic, I may prefer what was in Tabular
@@ -1010,12 +1002,8 @@ class MITIM_BO:
 		"""
         print("\n~~~~~~~~~~~~~~~ Entering bounds upgrade module ~~~~~~~~~~~~~~~~~~~")
         print("(if extrapolations were allowed during optimization)")
-        self.bounds = SBOcorrections.upgradeBounds(
-            self.bounds, self.train_X, self.avoidPoints_outside
-        )
-        print(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
-        )
+        self.bounds = SBOcorrections.upgradeBounds(self.bounds, self.train_X, self.avoidPoints_outside)
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 
         # ~~~~~~~~~~~~~~~~~~
         # Possible corrections to modeled & optimization region
@@ -1110,7 +1098,7 @@ class MITIM_BO:
         if (not self.cold_start) and (self.optimization_data is not None):
             self.type_initialization = 3
             print(
-                "--> Since cold_start from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
+                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
                 typeMsg="i",
             )
 
@@ -1119,19 +1107,14 @@ class MITIM_BO:
 
             try:
                 tabExists = len(self.optimization_data.data) >= self.initial_training
-                print(
-                    f"\t- optimization_data file has {len(self.optimization_data.data)} elements, and initial_training were {self.initial_training}"
-                )
+                print(f"\t- optimization_data file has {len(self.optimization_data.data)} elements, and initial_training were {self.initial_training}")
             except:
                 tabExists = False
                 print("\n\nCould not read Tabular, because:", typeMsg="w")
                 print(traceback.format_exc())
 
             if not tabExists:
-                print(
-                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",
-                    typeMsg="i",
-                )
+                print("--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",typeMsg="i",)
                 if self.askQuestions:
                     flagger = print("Are you sure?", typeMsg="q")
                     if not flagger:
