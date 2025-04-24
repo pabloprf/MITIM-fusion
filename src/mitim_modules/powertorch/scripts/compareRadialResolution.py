@@ -151,7 +151,7 @@ ax.set_ylabel("$MW/m^3$")
 ax.legend()
 
 ax = axs[0, 1]
-varsS = ["Pe", "Pi"]
+varsS = ["QeMWm2", "QiMWm2"]
 
 s, lab = sF, "Fine "
 for var in varsS:
