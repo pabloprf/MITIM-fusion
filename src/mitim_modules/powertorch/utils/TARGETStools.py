@@ -25,13 +25,13 @@ class power_targets:
 
         if self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 1:
             self.Pe_orig, self.Pi_orig = (
-                self.powerstate.plasma["Pe_orig_fusradexch"],
-                self.powerstate.plasma["Pi_orig_fusradexch"],
+                self.powerstate.plasma["QeMWm2_orig_fusradexch"],
+                self.powerstate.plasma["QiMWm2_orig_fusradexch"],
             )  # Original integrated from input.gacode
         elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 2:
             self.Pe_orig, self.Pi_orig = (
-                self.powerstate.plasma["Pe_orig_fusrad"],
-                self.powerstate.plasma["Pi_orig_fusrad"],
+                self.powerstate.plasma["QeMWm2_orig_fusrad"],
+                self.powerstate.plasma["QiMWm2_orig_fusrad"],
             )
         elif self.powerstate.TargetOptions['ModelOptions']['TypeTarget'] == 3:
             self.Pe_orig, self.Pi_orig = self.powerstate.plasma["te"] * 0.0, self.powerstate.plasma["te"] * 0.0
@@ -138,10 +138,10 @@ class power_targets:
         # Plug-in Targets
         # **************************************************************************************************
 
-        self.powerstate.plasma["Pe"] = (
+        self.powerstate.plasma["QeMWm2"] = (
             self.powerstate.plasma["Paux_e"] + self.P[: self.P.shape[0]//2, :] + self.Pe_orig
         )  # MW/m^2
-        self.powerstate.plasma["Pi"] = (
+        self.powerstate.plasma["QiMWm2"] = (
             self.powerstate.plasma["Paux_i"] + self.P[self.P.shape[0]//2 :, :] + self.Pi_orig
         )  # MW/m^2
         self.powerstate.plasma["Ce_raw"] = self.CextraE
@@ -169,7 +169,7 @@ class power_targets:
         # Error
         # **************************************************************************************************
 
-        variables_to_error = ["Pe", "Pi", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
+        variables_to_error = ["QeMWm2", "QiMWm2", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
 
         for i in variables_to_error:
             self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * assumedPercentError / 100 
@@ -182,8 +182,8 @@ class power_targets:
 		"""
 
         gb_mapping = {
-            "Pe": "Qgb",
-            "Pi": "Qgb",
+            "QeMWm2": "Qgb",
+            "QiMWm2": "Qgb",
             "Ce": "Qgb" if useConvectiveFluxes else "Ggb",
             "CZ": "Qgb" if useConvectiveFluxes else "Ggb",
             "Mt": "Pgb",

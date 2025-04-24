@@ -104,8 +104,8 @@ class powerstate:
             tensors will be the same as in self.ProfilesPredicted
         '''
         self.profile_map = {
-            "te": ("Pe", "Pe_tr"),
-            "ti": ("Pi", "Pi_tr"),
+            "te": ("QeMWm2", "QeMWm2_tr"),
+            "ti": ("QiMWm2", "QiMWm2_tr"),
             "ne": ("Ce", "Ce_tr"),
             "nZ": ("CZ", "CZ_tr"),
             "w0": ("Mt", "Mt_tr")
@@ -738,7 +738,7 @@ class powerstate:
             plasma["P"] = torch.cat((plasma["P"], plasma[profile_key][:, 1:]), dim=1).to(plasma["P"].device)
             plasma["P_tr"] = torch.cat((plasma["P_tr"], plasma[flux_key][:, 1:]), dim=1).to(plasma["P"].device)
 
-        self.plasma["P"], self.plasma["P_tr"] = torch.Tensor().to(self.plasma["Pe"]), torch.Tensor().to(self.plasma["Pe"])
+        self.plasma["P"], self.plasma["P_tr"] = torch.Tensor().to(self.plasma["QeMWm2"]), torch.Tensor().to(self.plasma["QeMWm2"])
 
         for profile in self.ProfilesPredicted:
             _concatenate_flux(self.plasma, *self.profile_map[profile])
