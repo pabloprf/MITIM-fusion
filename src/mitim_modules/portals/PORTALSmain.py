@@ -657,9 +657,9 @@ def map_powerstate_to_portals(powerstate, dictOFs):
         # Write in OFs
         for i in range(powerstate.plasma["rho"].shape[1] - 1): # Ignore position 0, which is rho=0
             if var == "te":
-                var0, var1 = "Qe", "Pe"
+                var0, var1 = "Qe", "QeMWm2"
             elif var == "ti":
-                var0, var1 = "Qi", "Pi"
+                var0, var1 = "Qi", "QiMWm2"
             elif var == "ne":
                 var0, var1 = "Ge", "Ce"
             elif var == "nZ":

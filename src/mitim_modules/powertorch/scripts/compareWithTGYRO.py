@@ -154,13 +154,13 @@ ax.legend()
 ax = axs[0, 2]
 
 ax.plot(t.rho[0], t.Qe_tar[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
-P = s.plasma["Pe"]
+P = s.plasma["QeMWm2"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tar[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
-P = s.plasma["Pi"]
+P = s.plasma["QiMWm2"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
@@ -178,13 +178,13 @@ ax.legend()
 ax = axs[1, 2]
 
 ax.plot(t.rho[0], t.Qe_tarMW[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
-P = s.plasma["Pe"] * s.plasma["volp"]
+P = s.plasma["QeMWm2"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tarMW[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
-P = s.plasma["Pi"] * s.plasma["volp"]
+P = s.plasma["QiMWm2"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")

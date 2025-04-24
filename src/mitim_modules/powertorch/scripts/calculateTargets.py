@@ -126,7 +126,7 @@ def calculator(
         rederive_profiles=False,
     )
 
-    p.plasma["Pin"] = (
+    p.plasma["QiMWm2n"] = (
         (p.plasma["Paux_e"] + p.plasma["Paux_i"]) * p.plasma["volp"]
     )[..., -1]
     p.plasma["Q"] = p.plasma["Pfus"] / p.plasma["Pin"]

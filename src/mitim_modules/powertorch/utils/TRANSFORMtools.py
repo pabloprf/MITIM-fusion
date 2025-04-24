@@ -129,10 +129,10 @@ def gacode_to_powerstate(self, rho_vec=None):
     self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
 
     quantitites = {}
-    quantitites["Pe_orig_fusrad"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
-    quantitites["Pi_orig_fusrad"] = input_gacode.derived["qi_fus_MWmiller"]
-    quantitites["Pe_orig_fusradexch"] = quantitites["Pe_orig_fusrad"] - input_gacode.derived["qe_exc_MWmiller"]
-    quantitites["Pi_orig_fusradexch"] = quantitites["Pi_orig_fusrad"] + input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["QeMWm2_orig_fusrad"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
+    quantitites["QiMWm2_orig_fusrad"] = input_gacode.derived["qi_fus_MWmiller"]
+    quantitites["QeMWm2_orig_fusradexch"] = quantitites["QeMWm2_orig_fusrad"] - input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["QiMWm2_orig_fusradexch"] = quantitites["QiMWm2_orig_fusrad"] + input_gacode.derived["qe_exc_MWmiller"]
 
     for key in quantitites:
         
