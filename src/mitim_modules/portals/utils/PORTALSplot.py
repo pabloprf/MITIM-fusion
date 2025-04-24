@@ -217,23 +217,23 @@ def PORTALSanalyzer_plotMetrics(
             if axTe_f is not None:
                 axTe_f.plot(
                     rho,
-                    power.plasma['Pe_tr_turb'].cpu().numpy() + power.plasma['Pe_tr_neo'].cpu().numpy(),
+                    power.plasma['QeMWm2_tr_turb'].cpu().numpy() + power.plasma['QeMWm2_tr_neo'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTe_f.plot(rho, power.plasma['Pe'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTe_f.plot(rho, power.plasma['QeMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
             if axTi_f is not None:
                 axTi_f.plot(
                     rho,
-                    power.plasma['Pi_tr_turb'].cpu().numpy() + power.plasma['Pi_tr_neo'].cpu().numpy(),
+                    power.plasma['QiMWm2_tr_turb'].cpu().numpy() + power.plasma['QiMWm2_tr_neo'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTi_f.plot(rho, power.plasma['Pi'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTi_f.plot(rho, power.plasma['QiMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             
             if axne_f is not None:
@@ -2882,7 +2882,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         axTe_f.plot(
             r[0][ixF:],
-            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             c=col,
             lw=2,
@@ -2891,10 +2891,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Pe_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
 
-        m_Qe, M_Qe = (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]
+        m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
@@ -2905,7 +2905,7 @@ def plotFluxComparison(
     if axTi_f is not None:
         axTi_f.plot(
             r[0][ixF:],
-            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2915,13 +2915,13 @@ def plotFluxComparison(
         )
 
         sigma = (
-            power.plasma['Pi_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo_stds'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
         )
 
         m_Qi, M_Qi = (
-            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:]
         ) - stds * sigma, (
-            power.plasma['Pi_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pi_tr_neo'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
 
@@ -3005,8 +3005,8 @@ def plotFluxComparison(
 
     # Retrieve targets ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Qe_tar = power.plasma['Pe'].cpu().numpy()[0][ixF:]
-    Qi_tar = power.plasma['Pi'].cpu().numpy()[0][ixF:]
+    Qe_tar = power.plasma['QeMWm2'].cpu().numpy()[0][ixF:]
+    Qi_tar = power.plasma['QiMWm2'].cpu().numpy()[0][ixF:]
     Ge_tar = power.plasma['Ce_raw'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
     GZ_tar = power.plasma['CZ_raw'].cpu().numpy()[0][ixF:]
     Mt_tar = power.plasma['Mt'].cpu().numpy()[0][ixF:]
@@ -3126,7 +3126,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         (l1,) = axTe_f.plot(
             r[0][ixF:],
-            power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:],
             "-",
             c="k",
             lw=2,
@@ -3134,12 +3134,12 @@ def plotFluxComparison(
             label="Transport",
         )
         (l2,) = axTe_f.plot(
-            r[0][ixF:], power.plasma['Pe'].cpu().numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
+            r[0][ixF:], power.plasma['QeMWm2'].cpu().numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
         )
         l3 = axTe_f.fill_between(
             r[0][ixF:],
-            (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) - stds,
-            (power.plasma['Pe_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['Pe_tr_neo'].cpu().numpy()[0][ixF:]) + stds,
+            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds,
+            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) + stds,
             facecolor="k",
             alpha=0.3,
         )

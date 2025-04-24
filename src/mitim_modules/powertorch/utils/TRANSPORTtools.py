@@ -22,7 +22,7 @@ class power_transport:
         self.powerstate = powerstate
 
         # Allowed fluxes in powerstate so far
-        self.quantities = ['Pe', 'Pi', 'Ce', 'CZ', 'Mt']
+        self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'Mt']
 
         # Each flux has a turbulent and neoclassical component
         self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
