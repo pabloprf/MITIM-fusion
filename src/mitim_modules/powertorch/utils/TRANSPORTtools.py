@@ -22,7 +22,7 @@ class power_transport:
         self.powerstate = powerstate
 
         # Allowed fluxes in powerstate so far
-        self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'Mt']
+        self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2']
 
         # Each flux has a turbulent and neoclassical component
         self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
@@ -131,7 +131,7 @@ class power_transport:
             - Pe, Pe_tr, Pe_tr_turb, Pe_tr_neo -> MW/m^2
             - Pi, Pi_tr, Pi_tr_turb, Pi_tr_neo -> MW/m^2
             - Ce, Ce_tr, Ce_tr_turb, Ce_tr_neo -> MW/m^2
-                * Ce_raw, Ce_raw_tr, Ce_raw_tr_turb, Ce_raw_tr_neo -> 10^20/s/m^2
+                * Ge1E20sm2, Ge1E20sm2_tr, Ge1E20sm2_tr_turb, Ge1E20sm2_tr_neo -> 10^20/s/m^2
             - CZ, CZ_tr, CZ_tr_turb, CZ_tr_neo -> MW/m^2 (but modified as needed, for example dividing by fZ0)
                 * CZ_raw, CZ_raw_tr, CZ_raw_tr_turb, CZ_raw_tr_neo -> 10^20/s/m^2  (NOT modified)
             - Mt, Mt_tr, Mt_tr_turb, Mt_tr_neo -> J/m^2

@@ -193,42 +193,42 @@ def TGYROmodeledVariables(TGYROresults,
     # *********** Momentum Fluxes
     # **********************************
 
-    powerstate.plasma["Mt_tr_turb"] = torch.Tensor(TGYROresults.Mt_sim_turb[:, :nr]).to(powerstate.dfT) # So far, let's include fast in momentum
-    powerstate.plasma["Mt_tr_neo"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["MtJm2_tr_turb"] = torch.Tensor(TGYROresults.Mt_sim_turb[:, :nr]).to(powerstate.dfT) # So far, let's include fast in momentum
+    powerstate.plasma["MtJm2_tr_neo"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :nr]).to(powerstate.dfT)
 
-    powerstate.plasma["Mt_tr_turb_stds"] = torch.Tensor(TGYROresults.Mt_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Mt_tr_neo_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["MtJm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Mt_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["MtJm2_tr_neo_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
-        powerstate.plasma["Mt"] = torch.Tensor(TGYROresults.Mt_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Mt_stds"] = torch.Tensor(TGYROresults.Mt_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["MtJm2"] = torch.Tensor(TGYROresults.Mt_tar[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["MtJm2_stds"] = torch.Tensor(TGYROresults.Mt_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Particle Fluxes
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["Ce_raw_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ce_raw_tr_neo"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ge1E20sm2_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ge1E20sm2_tr_neo"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
 
-    powerstate.plasma["Ce_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ce_raw_tr_neo_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ge1E20sm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ge1E20sm2_tr_neo_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
-        powerstate.plasma["Ce_raw"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ce_raw_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Ge1E20sm2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["Ge1E20sm2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     if not useConvectiveFluxes:
 
-        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ce_raw_tr_turb"]
-        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ce_raw_tr_neo"]
+        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ge1E20sm2_tr_turb"]
+        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ge1E20sm2_tr_neo"]
 
-        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ce_raw_tr_turb_stds"]
-        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ce_raw_tr_neo_stds"]
+        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ge1E20sm2_tr_turb_stds"]
+        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ge1E20sm2_tr_neo_stds"]
         
         if provideTargets:
-            powerstate.plasma["Ce"] = powerstate.plasma["Ce_raw"]
-            powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_raw_stds"]    
+            powerstate.plasma["Ce"] = powerstate.plasma["Ge1E20sm2"]
+            powerstate.plasma["Ce_stds"] = powerstate.plasma["Ge1E20sm2_stds"]    
 
     else:
 
@@ -304,7 +304,7 @@ def TGYROmodeledVariables(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'Mt', 'Ce_raw', 'CZ_raw']
+    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20sm2', 'CZ_raw']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
     
@@ -331,17 +331,17 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
             "Qi_tr_turb": "QiMWm2_tr_turb",
             "Ge_tr_turb": "Ce_tr_turb",
             "GZ_tr_turb": "CZ_tr_turb",
-            "Mt_tr_turb": "Mt_tr_turb",
+            "Mt_tr_turb": "MtJm2_tr_turb",
             "Qe_tr_neo": "QeMWm2_tr_neo",
             "Qi_tr_neo": "QiMWm2_tr_neo",
             "Ge_tr_neo": "Ce_tr_neo",
             "GZ_tr_neo": "CZ_tr_neo",
-            "Mt_tr_neo": "Mt_tr_neo",
+            "Mt_tr_neo": "MtJm2_tr_neo",
             "Qe_tar": "QeMWm2",
             "Qi_tar": "QiMWm2",
             "Ge_tar": "Ce",
             "GZ_tar": "CZ",
-            "Mt_tar": "Mt",
+            "Mt_tar": "MtJm2",
             "PexchTurb": "PexchTurb"
         }
 
@@ -431,7 +431,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
                 of0 * PORTALSparameters["Pseudo_multipliers"][3],
                 cal0 * PORTALSparameters["Pseudo_multipliers"][3],
             )
-        elif var == "Mt":
+        elif var == "MtJm2":
             of0, cal0 = (
                 of0 * PORTALSparameters["Pseudo_multipliers"][4],
                 cal0 * PORTALSparameters["Pseudo_multipliers"][4],
@@ -465,17 +465,17 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         "Qi_tr_turb": "QiMWm2_tr_turb",
         "Ge_tr_turb": "Ce_tr_turb",
         "GZ_tr_turb": "CZ_tr_turb",
-        "Mt_tr_turb": "Mt_tr_turb",
+        "Mt_tr_turb": "MtJm2_tr_turb",
         "Qe_tr_neo": "QeMWm2_tr_neo",
         "Qi_tr_neo": "QiMWm2_tr_neo",
         "Ge_tr_neo": "Ce_tr_neo",
         "GZ_tr_neo": "CZ_tr_neo",
-        "Mt_tr_neo": "Mt_tr_neo",
+        "Mt_tr_neo": "MtJm2_tr_neo",
         "Qe_tar": "QeMWm2",
         "Qi_tar": "QiMWm2",
         "Ge_tar": "Ce",
         "GZ_tar": "CZ",
-        "Mt_tar": "Mt",
+        "Mt_tar": "MtJm2",
         "PexchTurb": "PexchTurb"
     }
 
@@ -520,7 +520,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         elif prof == "nZ":
             var = "GZ"
         elif prof == "w0":
-            var = "Mt"
+            var = "MtJm2"
 
         """
 		-----------------------------------------------------------------------------------
