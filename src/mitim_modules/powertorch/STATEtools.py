@@ -21,28 +21,16 @@ from IPython import embed
 class powerstate:
     def __init__(
         self,
-        profiles,
+        profiles_object,
         increase_profile_resol=True,
-        EvolutionOptions={},
-        TransportOptions={
-            "transport_evaluator": None,
-            "ModelOptions": {}
-            },
-        TargetOptions={
-            "targets_evaluator": targets_analytic.analytical_model,
-            "ModelOptions": {
-                "TypeTarget": 3,
-                "TargetCalc": "powerstate"
-                },
-        },
-        tensor_opts = {
-            "dtype": torch.double,
-            "device": torch.device("cpu"),
-        }
+        EvolutionOptions=None,
+        TransportOptions=None,
+        TargetOptions=None,
+        tensor_opts=None,
     ):
         '''
         Inputs:
-            - profiles: Object for PROFILES_GACODE or others
+            - profiles_object: Object for PROFILES_GACODE or others
             - EvolutionOptions:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
@@ -52,6 +40,31 @@ class powerstate:
             - TransportOptions: dictionary with transport_evaluator and ModelOptions
             - TargetOptions: dictionary with targets_evaluator and ModelOptions
         '''
+
+        if EvolutionOptions is None:
+            EvolutionOptions = {}
+        if TransportOptions is None:
+            TransportOptions = {
+            "transport_evaluator": None,
+            "ModelOptions": {}
+            }
+        if TargetOptions is None:
+            TargetOptions = {
+            "targets_evaluator": targets_analytic.analytical_model,
+            "ModelOptions": {
+                "TypeTarget": 3,
+                "TargetCalc": "powerstate"
+                },
+            }
+        if tensor_opts is None:
+            tensor_opts = {
+                "dtype": torch.double,
+                "device": torch.device("cpu"),
+            }
+
+        # -------------------------------------------------------------------------------------
+        # Check inputs
+        # -------------------------------------------------------------------------------------
 
         print('>> Creating powerstate object...')
 
@@ -121,12 +134,12 @@ class powerstate:
         # Object type (e.g. input.gacode)
         # -------------------------------------------------------------------------------------
 
-        if isinstance(profiles, PROFILEStools.PROFILES_GACODE):
+        if isinstance(profiles_object, PROFILEStools.PROFILES_GACODE):
             self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-            self.profiles = copy.deepcopy(profiles)
+            self.profiles = copy.deepcopy(profiles_object)
             if "derived" not in self.profiles.__dict__:
                 self.profiles.deriveQuantities()
 
@@ -202,8 +215,6 @@ class powerstate:
 
         # Revert plasma back
         self.plasma = plasma_copy
-
-
 
     # ------------------------------------------------------------------
     # Storing and combining
@@ -385,9 +396,12 @@ class powerstate:
             Xpass = X[best_candidate, :].detach()
 
             # Store values
-            if y_history is not None:       y_history.append(yRes)
-            if x_history is not None:       x_history.append(Xpass)
-            if metric_history is not None:  metric_history.append(yMetric)
+            if y_history is not None:      
+                y_history.append(yRes)
+            if x_history is not None:      
+                x_history.append(Xpass)
+            if metric_history is not None: 
+                metric_history.append(yMetric)
 
             return QTransport, QTarget, yMetric
 
@@ -403,8 +417,7 @@ class powerstate:
         _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
 
         # For simplicity, return the trajectory of only the best candidate
-        self.FluxMatch_Yopt = Yopt
-        self.FluxMatch_Xopt = Xopt
+        self.FluxMatch_Yopt, self.FluxMatch_Xopt = Yopt, Xopt
 
         print("**********************************************************************************************")
         print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")
