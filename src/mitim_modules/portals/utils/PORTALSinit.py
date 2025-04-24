@@ -293,8 +293,8 @@ def initializeProblem(
             var = "Mt"
 
         for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"{var}Turb_{i+1}")
-            ofs.append(f"{var}Neo_{i+1}")
+            ofs.append(f"{var}_tr_turb_{i+1}")
+            ofs.append(f"{var}_tr_neo_{i+1}")
 
             ofs.append(f"{var}Tar_{i+1}")
 
@@ -353,35 +353,31 @@ def initializeProblem(
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
     allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
     portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
-    portals_transformation_variables_trace = portals_fun.PORTALSparameters[
-        "portals_transformation_variables_trace"
-    ][ikey]
-    additional_params_in_surrogate = portals_fun.PORTALSparameters[
-        "additional_params_in_surrogate"
-    ]
+    portals_transformation_variables_trace = portals_fun.PORTALSparameters["portals_transformation_variables_trace"][ikey]
+    additional_params_in_surrogate = portals_fun.PORTALSparameters["additional_params_in_surrogate"]
 
     Variables = {}
     for output in allOuts:
         if IOtools.isfloat(output):
             continue
 
-        typ, num = output.split("_")
-        pos = int(num)
+        typ = '_'.join(output.split("_")[:-1])
+        pos = int(output.split("_")[-1])
 
         if typ in [
             "Qe",
-            "QeTurb",
-            "QeNeo",
+            "Qe_tr_turb",
+            "Qe_tr_neo",
             "Qi",
-            "QiTurb",
-            "QiNeo",
+            "Qi_tr_turb",
+            "Qi_tr_neo",
             "Ge",
-            "GeTurb",
-            "GeNeo",
+            "Ge_tr_turb",
+            "Ge_tr_neo",
             "PexchTurb",
             "Mt",
-            "MtTurb",
-            "MtNeo",
+            "Mt_tr_turb",
+            "Mt_tr_neo",
         ]:
             if doNotFitOnFixedValues:
                 isAbsValFixed = pos == (
@@ -419,7 +415,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 if useThisOne:
                     Variables[output].append(ikey)
 
-        elif typ in ["GZ", "GZTurb", "GZNeo"]:
+        elif typ in ["GZ", "GZ_tr_turb", "GZ_tr_neo"]:
             if doNotFitOnFixedValues:
                 isAbsValFixed = pos == (
                     portals_fun.powerstate.plasma["rho"].shape[-1] - 1

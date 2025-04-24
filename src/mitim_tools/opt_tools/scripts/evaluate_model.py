@@ -10,8 +10,8 @@ Script to grab the GP object from a full run, at a given step, for a given outpu
 This way, you can try plot, re-ft, find best parameters, etc.
 It calculates speed, and generates profile file to look at bottlenecks
 e.g.
-	evaluate_model.py --folder run1/ --output QiTurb_5 --input aLti_5 --around -3
-	evaluate_model.py --folder run1/ --step -1 --output QiTurb_5 --file figure.eps
+	evaluate_model.py --folder run1/ --output Qi_tr_turb_5 --input aLti_5 --around -3
+	evaluate_model.py --folder run1/ --step -1 --output Qi_tr_turb_5 --file figure.eps
 """
 
 # ***************** Inputs
@@ -19,7 +19,7 @@ e.g.
 parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--step", type=int, required=False, default=-1)
-parser.add_argument("--output", required=False, type=str, default="QiTurb_1")
+parser.add_argument("--output", required=False, type=str, default="Qi_tr_turb_1")
 parser.add_argument("--input", required=False, type=str, default="aLti_1")
 parser.add_argument("--around", type=int, required=False, default=-1)
 parser.add_argument("--xrange", type=float, required=False, default=0.5)
