@@ -485,26 +485,4 @@ def readCGYROresults(file, radii, unnormalize=True):
 
         p[r] += 1
 
-    return (
-        aLTe,
-        aLTi,
-        aLne,
-        Q_gb,
-        Qe,
-        Qi,
-        Ge,
-        GZ,
-        Mt,
-        Pexch,
-        Qe_std,
-        Qi_std,
-        Ge_std,
-        GZ_std,
-        Mt_std,
-        Pexch_std,
-        tstart,
-        tend,
-    )
-
-
-
+    return aLTe,aLTi,aLne,Q_gb,Qe,Qi,Ge,GZ,Mt,Pexch,Qe_std,Qi_std,Ge_std,GZ_std,Mt_std,Pexch_std,tstart,tend
