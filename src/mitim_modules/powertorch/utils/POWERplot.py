@@ -25,12 +25,12 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
     if "te" in self.ProfilesPredicted:
         set_plots.append(
-            [   'te', 'aLte', 'Pe_tr', 'Pe',
+            [   'te', 'aLte', 'QeMWm2_tr', 'QeMWm2',
                 'Electron Temperature','$T_e$ (keV)','$a/LT_e$','$Q_e$ (GB)','$Q_e$ ($MW/m^2$)',
                 1.0,"Qgb"])
     if "ti" in self.ProfilesPredicted:
         set_plots.append(
-            [   'ti', 'aLti', 'Pi_tr', 'Pi',
+            [   'ti', 'aLti', 'QiMWm2_tr', 'QiMWm2',
                 'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)',
                 1.0,"Qgb"])
     if "ne" in self.ProfilesPredicted:
