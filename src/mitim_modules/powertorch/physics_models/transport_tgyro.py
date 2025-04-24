@@ -8,10 +8,6 @@ from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-# ----------------------------------------------------------------------------------------------------
-# FULL TGYRO
-# ----------------------------------------------------------------------------------------------------
-
 class tgyro_model(TRANSPORTtools.power_transport):
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
