@@ -337,11 +337,11 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
             "Ge_tr_neo": "Ce_tr_neo",
             "GZ_tr_neo": "CZ_tr_neo",
             "Mt_tr_neo": "Mt_tr_neo",
-            "QeTar": "QeMWm2",
-            "QiTar": "QiMWm2",
-            "GeTar": "Ce",
-            "GZTar": "CZ",
-            "MtTar": "Mt",
+            "Qe_tar": "QeMWm2",
+            "Qi_tar": "QiMWm2",
+            "Ge_tar": "Ce",
+            "GZ_tar": "CZ",
+            "Mt_tar": "Mt",
             "PexchTurb": "PexchTurb"
         }
 
@@ -399,11 +399,11 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}Tar"] + PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
         elif var == "Qi":
-            cal0 = var_dict[f"{var}Tar"] - PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
         else:
-            cal0 = var_dict[f"{var}Tar"]
+            cal0 = var_dict[f"{var}_tar"]
 
         """
 		-----------------------------------------------------------------------------------
@@ -471,11 +471,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         "Ge_tr_neo": "Ce_tr_neo",
         "GZ_tr_neo": "CZ_tr_neo",
         "Mt_tr_neo": "Mt_tr_neo",
-        "QeTar": "QeMWm2",
-        "QiTar": "QiMWm2",
-        "GeTar": "Ce",
-        "GZTar": "CZ",
-        "MtTar": "Mt",
+        "Qe_tar": "QeMWm2",
+        "Qi_tar": "QiMWm2",
+        "Ge_tar": "Ce",
+        "GZ_tar": "CZ",
+        "Mt_tar": "Mt",
         "PexchTurb": "PexchTurb"
     }
 
@@ -538,18 +538,18 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}Tar"] + PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
             cal0E = (
-                var_dict[f"{var}Tar_stds"] ** 2 + PexchTurb_integrated_stds**2
+                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
             ) ** 0.5
         elif var == "Qi":
-            cal0 = var_dict[f"{var}Tar"] - PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
             cal0E = (
-                var_dict[f"{var}Tar_stds"] ** 2 + PexchTurb_integrated_stds**2
+                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
             ) ** 0.5
         else:
-            cal0 = var_dict[f"{var}Tar"]
-            cal0E = var_dict[f"{var}Tar_stds"]
+            cal0 = var_dict[f"{var}_tar"]
+            cal0E = var_dict[f"{var}_tar_stds"]
 
         of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
         ofE, calE = torch.cat((ofE, of0E), dim=-1), torch.cat((calE, cal0E), dim=-1)
