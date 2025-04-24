@@ -463,7 +463,7 @@ class PORTALSanalyzer:
     1. Look at the dictionary keys to see which models are available:
                 models.keys()
     2. Select one model and print its information (e.g. variable labels and order):
-                m = models['QeTurb_1']
+                m = models['Qe_tr_turb_1']
                 m.printInfo()
     3. Trained points are stored as m.x, m.y, m.yvar, and you can make predictions with:
                 x_test = m.x
