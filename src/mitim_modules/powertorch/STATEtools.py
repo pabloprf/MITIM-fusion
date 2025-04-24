@@ -108,7 +108,7 @@ class powerstate:
             "ti": ("QiMWm2", "QiMWm2_tr"),
             "ne": ("Ce", "Ce_tr"),
             "nZ": ("CZ", "CZ_tr"),
-            "w0": ("Mt", "Mt_tr")
+            "w0": ("MtJm2", "MtJm2_tr")
         }
 
         # -------------------------------------------------------------------------------------
@@ -293,8 +293,8 @@ class powerstate:
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks (populates components and Pe,Pi,...)
-        assumedPercentError = self.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
-        self.calculateTargets(assumedPercentError=assumedPercentError)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
+        relative_error_assumed = self.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
+        self.calculateTargets(relative_error_assumed=relative_error_assumed)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
         # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
         self.calculateTransport(
@@ -674,7 +674,7 @@ class powerstate:
             self.plasma["w0_n"] = self.plasma["w0"] / self.plasma["c_s"]
             self.plasma["aLw0_n"] = (self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"])  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
 
-    def calculateTargets(self, assumedPercentError=1.0):
+    def calculateTargets(self, relative_error_assumed=1.0):
         """
         Update the targets of the current state
         """
@@ -701,7 +701,7 @@ class powerstate:
 
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
-            assumedPercentError=assumedPercentError,
+            relative_error_assumed=relative_error_assumed,
             useConvectiveFluxes=self.useConvectiveFluxes,
             forceZeroParticleFlux=self.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False))
 

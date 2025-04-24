@@ -53,7 +53,7 @@ class power_targets:
             self.plasma_original[f'aL{variable}'] = self.powerstate.plasma[f'aL{variable}'].clone()
 
         # ----------------------------------------------------
-        # Integrate through fine de-parameterization
+        # Integrate through fine profile constructors
         # ----------------------------------------------------
         for i in self.powerstate.ProfilesPredicted:
             _ = self.powerstate.update_var(i,specific_profile_constructor=self.powerstate.profile_constructors_coarse_middle)
@@ -110,7 +110,7 @@ class power_targets:
         for i in self.plasma_original:
             self.powerstate.plasma[i] = self.plasma_original[i]
 
-    def postprocessing(self, useConvectiveFluxes=False, forceZeroParticleFlux=False, assumedPercentError=1.0):
+    def postprocessing(self, useConvectiveFluxes=False, forceZeroParticleFlux=False, relative_error_assumed=1.0):
 
         # **************************************************************************************************
         # Plug-in targets that were fixed
@@ -118,31 +118,29 @@ class power_targets:
 
         self.powerstate.plasma["QeMWm2"] = self.powerstate.plasma["QeMWm2_fixedtargets"] + self.P[: self.P.shape[0]//2, :] # MW/m^2
         self.powerstate.plasma["QiMWm2"] = self.powerstate.plasma["QiMWm2_fixedtargets"] + self.P[self.P.shape[0]//2 :, :] # MW/m^2
-        self.powerstate.plasma["Ce_raw"] = self.powerstate.plasma["Ge_fixedtargets"]    # 1E20/s/m^2
+        self.powerstate.plasma["Ge1E20sm2"] = self.powerstate.plasma["Ge_fixedtargets"]    # 1E20/s/m^2
         self.powerstate.plasma["CZ_raw"] = self.powerstate.plasma["GZ_fixedtargets"]    # 1E20/s/m^2
-        self.powerstate.plasma["Mt"]     = self.powerstate.plasma["Mt_fixedtargets"]    # J/m^2
-
-        # Merge convective fluxes
-
-        if useConvectiveFluxes:
-            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ce_raw"])  # MW/m^2
-            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
-        else:
-            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce_raw"]
-            self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
+        self.powerstate.plasma["MtJm2"]     = self.powerstate.plasma["MtJm2_fixedtargets"]    # J/m^2
 
         if forceZeroParticleFlux:
-            self.powerstate.plasma["Ce"]     = self.powerstate.plasma["Ce"] * 0
-            self.powerstate.plasma["Ce_raw"] = self.powerstate.plasma["Ce_raw"] * 0
+            self.powerstate.plasma["Ge1E20sm2"]     = self.powerstate.plasma["Ge1E20sm2"] * 0
+
+        # Convective fluxes?
+        if useConvectiveFluxes:
+            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ge1E20sm2"])  # MW/m^2
+            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
+        else:
+            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ge1E20sm2"]
+            self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
 
         # **************************************************************************************************
         # Error
         # **************************************************************************************************
 
-        variables_to_error = ["QeMWm2", "QiMWm2", "Ce", "CZ", "Mt", "Ce_raw", "CZ_raw"]
+        variables_to_error = ["QeMWm2", "QiMWm2", "Ce", "CZ", "MtJm2", "Ge1E20sm2", "CZ_raw"]
 
         for i in variables_to_error:
-            self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * assumedPercentError / 100 
+            self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * relative_error_assumed / 100 
 
 		# **************************************************************************************************
 		# GB Normalized (Note: This is useful for mitim surrogate variables of targets)
@@ -152,4 +150,4 @@ class power_targets:
         self.powerstate.plasma["QiGB"] = self.powerstate.plasma["QiMWm2"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
         self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
-        self.powerstate.plasma["MtGB"] = self.powerstate.plasma["Mt"] / self.powerstate.plasma["Pgb"]
+        self.powerstate.plasma["MtGB"] = self.powerstate.plasma["MtJm2"] / self.powerstate.plasma["Pgb"]
