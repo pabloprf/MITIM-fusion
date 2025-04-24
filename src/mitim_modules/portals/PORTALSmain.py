@@ -483,9 +483,6 @@ class portals(STRATEGYtools.opt_evaluator):
             print("\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",typeMsg="i")
             self.MODELparameters["Physics_options"]["GradientsType"] = 0
 
-        if 'TargetType' in self.MODELparameters["Physics_options"]:
-            raise Exception("\t- TargetType is not used in PORTALS anymore")
-
         if self.PORTALSparameters["TargetCalc"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
             print("\t- Requested custom modification of postprocessing function but targets from tgyro... are you sure?",typeMsg="q")
 
