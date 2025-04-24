@@ -19,17 +19,6 @@ class power_targets:
         for i in variables_to_zero:
             self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
 
-        # ----------------------------------------------------
-        # Fixed Targets (targets without a model)
-        # ----------------------------------------------------
-
-        self.Qe_fixedtargets = self.powerstate.plasma["QeMWm2_fixedtargets"]
-        self.Qi_fixedtargets = self.powerstate.plasma["QiMWm2_fixedtargets"]
-
-        self.Ce_fixedtargets = self.powerstate.plasma["Ge_fixedtargets"]  # 1E20/s/m^2
-        self.CZ_fixedtargets = self.powerstate.plasma["GZ_fixedtargets"]  # 1E20/s/m^2
-        self.Mt_fixedtargets = self.powerstate.plasma["Mt_fixedtargets"]  # J/m^2
-
     def fine_grid(self):
 
         """
@@ -124,14 +113,14 @@ class power_targets:
     def postprocessing(self, useConvectiveFluxes=False, forceZeroParticleFlux=False, assumedPercentError=1.0):
 
         # **************************************************************************************************
-        # Plug-in Targets
+        # Plug-in targets that were fixed
         # **************************************************************************************************
 
-        self.powerstate.plasma["QeMWm2"] = self.Qe_fixedtargets + self.P[: self.P.shape[0]//2, :] # MW/m^2
-        self.powerstate.plasma["QiMWm2"] = self.Qi_fixedtargets + self.P[self.P.shape[0]//2 :, :] # MW/m^2
-        self.powerstate.plasma["Ce_raw"] = self.Ce_fixedtargets # 1E20/s/m^2
-        self.powerstate.plasma["CZ_raw"] = self.CZ_fixedtargets # 1E20/s/m^2
-        self.powerstate.plasma["Mt"]     = self.Mt_fixedtargets # J/m^2
+        self.powerstate.plasma["QeMWm2"] = self.powerstate.plasma["QeMWm2_fixedtargets"] + self.P[: self.P.shape[0]//2, :] # MW/m^2
+        self.powerstate.plasma["QiMWm2"] = self.powerstate.plasma["QiMWm2_fixedtargets"] + self.P[self.P.shape[0]//2 :, :] # MW/m^2
+        self.powerstate.plasma["Ce_raw"] = self.powerstate.plasma["Ge_fixedtargets"]    # 1E20/s/m^2
+        self.powerstate.plasma["CZ_raw"] = self.powerstate.plasma["GZ_fixedtargets"]    # 1E20/s/m^2
+        self.powerstate.plasma["Mt"]     = self.powerstate.plasma["Mt_fixedtargets"]    # J/m^2
 
         # Merge convective fluxes
 
@@ -143,7 +132,7 @@ class power_targets:
             self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
 
         if forceZeroParticleFlux:
-            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce"] * 0
+            self.powerstate.plasma["Ce"]     = self.powerstate.plasma["Ce"] * 0
             self.powerstate.plasma["Ce_raw"] = self.powerstate.plasma["Ce_raw"] * 0
 
         # **************************************************************************************************
@@ -155,12 +144,9 @@ class power_targets:
         for i in variables_to_error:
             self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * assumedPercentError / 100 
 
-        """
-		**************************************************************************************************
-		GB Normalized
-		**************************************************************************************************
-			Note: This is useful for mitim surrogate variables of targets
-		"""
+		# **************************************************************************************************
+		# GB Normalized (Note: This is useful for mitim surrogate variables of targets)
+		# **************************************************************************************************
 
         self.powerstate.plasma["QeGB"] = self.powerstate.plasma["QeMWm2"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["QiGB"] = self.powerstate.plasma["QiMWm2"] / self.powerstate.plasma["Qgb"]
