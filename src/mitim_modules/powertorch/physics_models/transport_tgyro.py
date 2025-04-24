@@ -29,70 +29,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
     # Private functions for TGLF and NEO evaluations
     # ************************************************************************************
 
-    def _profiles_to_store(self):
-
-        if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
-            if not whereFolder.exists():
-                IOtools.askNewFolder(whereFolder)
-
-            fil = whereFolder / f"input.gacode.{self.evaluation_number}"
-            shutil.copy2(self.file_profs, fil)
-            shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
-            shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new")
-            print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
-        else:
-            print("\t- Could not move files", typeMsg="w")
-
-
-    def _postprocess_results(self, tgyro, label):
-
-        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
-
-        includeFast = ModelOptions.get("includeFastInQi",False)
-        useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
-        UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
-        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
-        OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
-
-        # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
-        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
-
-        # Produce right quantities (TGYRO -> powerstate.plasma)
-        self.powerstate = tgyro.results[label].TGYROmodeledVariables(
-            self.powerstate,
-            useConvectiveFluxes=useConvectiveFluxes,
-            includeFast=includeFast,
-            impurityPosition=impurityPosition,
-            UseFineGridTargets=UseFineGridTargets,
-            OriginalFimp=OriginalFimp,
-            forceZeroParticleFlux=forceZeroParticleFlux,
-            provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
-        )
-
-        tgyro.results["use"] = tgyro.results[label]
-
-        # Copy profiles to share
-        self._profiles_to_store()
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Results class that can be used for further plotting and analysis in PORTALS
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        self.model_results = copy.deepcopy(tgyro.results["use"]) # Pass the TGYRO results class that should be use for plotting and analysis
-
-        self.model_results.extra_analysis = {}
-        for ikey in tgyro.results:
-            if ikey != "use":
-                self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
-
     def _evaluate_tglf_neo(self):
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Model Options
-        # ------------------------------------------------------------------------------------------------------------------------
 
         ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
 
@@ -203,6 +140,64 @@ class tgyro_model(TRANSPORTtools.power_transport):
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
         return tgyro
+
+    def _postprocess_results(self, tgyro, label):
+
+        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+
+        includeFast = ModelOptions.get("includeFastInQi",False)
+        useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
+        UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
+        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
+        OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
+        forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
+
+        # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
+        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
+
+        # Produce right quantities (TGYRO -> powerstate.plasma)
+        self.powerstate = tgyro.results[label].TGYROmodeledVariables(
+            self.powerstate,
+            useConvectiveFluxes=useConvectiveFluxes,
+            includeFast=includeFast,
+            impurityPosition=impurityPosition,
+            UseFineGridTargets=UseFineGridTargets,
+            OriginalFimp=OriginalFimp,
+            forceZeroParticleFlux=forceZeroParticleFlux,
+            provideTurbulentExchange=provideTurbulentExchange,
+            provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
+        )
+
+        tgyro.results["use"] = tgyro.results[label]
+
+        # Copy profiles to share
+        self._profiles_to_store()
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Results class that can be used for further plotting and analysis in PORTALS
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        self.model_results = copy.deepcopy(tgyro.results["use"]) # Pass the TGYRO results class that should be use for plotting and analysis
+
+        self.model_results.extra_analysis = {}
+        for ikey in tgyro.results:
+            if ikey != "use":
+                self.model_results.extra_analysis[ikey] = tgyro.results[ikey]
+
+    def _profiles_to_store(self):
+
+        if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+            if not whereFolder.exists():
+                IOtools.askNewFolder(whereFolder)
+
+            fil = whereFolder / f"input.gacode.{self.evaluation_number}"
+            shutil.copy2(self.file_profs, fil)
+            shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
+            shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new")
+            print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
+        else:
+            print("\t- Could not move files", typeMsg="w")
 
 def tglf_scan_trick(
     fluxesTGYRO, 
