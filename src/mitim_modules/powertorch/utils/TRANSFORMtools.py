@@ -109,39 +109,33 @@ def gacode_to_powerstate(self, rho_vec=None):
             ).to(rho_vec)
         # *********************************************************************************************
 
-    quantities_to_interpolate_and_volp = [
-        ["Paux_e", "qe_aux_MWmiller"],
-        ["Paux_i", "qi_aux_MWmiller"],
-        ["Gaux_e", "ge_10E20miller"],
-        ["Maux", "mt_Jmiller"],
-    ]
-
-    for key in quantities_to_interpolate_and_volp:
-
-        # *********************************************************************************************
-        # Extract the quantity via interpolation and tensorization
-        # *********************************************************************************************
-        self.plasma[key[0]] = torch.from_numpy(
-            interpolation_function(rho_vec.cpu(), rho_use, input_gacode.derived[key[1]])
-        ).to(rho_vec) / self.plasma["volp"]
-        # *********************************************************************************************
-
-    self.plasma["Gaux_Z"] = self.plasma["Gaux_e"] * 0.0
+    # *********************************************************************************************
+    # Fixed targets
+    # *********************************************************************************************
 
     quantitites = {}
-    quantitites["QeMWm2_orig_fusrad"] = input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
-    quantitites["QiMWm2_orig_fusrad"] = input_gacode.derived["qi_fus_MWmiller"]
-    quantitites["QeMWm2_orig_fusradexch"] = quantitites["QeMWm2_orig_fusrad"] - input_gacode.derived["qe_exc_MWmiller"]
-    quantitites["QiMWm2_orig_fusradexch"] = quantitites["QiMWm2_orig_fusrad"] + input_gacode.derived["qe_exc_MWmiller"]
+    quantitites["QeMWm2_fixedtargets"] = input_gacode.derived["qe_aux_MWmiller"]
+    quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MWmiller"]
+    quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20miller"]
+    quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20miller"] * 0.0
+    quantitites["Mt_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
+
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] < 3:
+        # Fusion and radiation fixed if 1,2
+        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qi_fus_MWmiller"]
+    
+    if self.TargetOptions["ModelOptions"]["TypeTarget"] < 2:
+        # Exchange fixed if 1
+        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qe_exc_MWmiller"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qe_exc_MWmiller"]
 
     for key in quantitites:
         
         # *********************************************************************************************
         # Extract the quantity via interpolation and tensorization
         # *********************************************************************************************
-        self.plasma[key] = torch.from_numpy(
-            interpolation_function(rho_vec.cpu(), rho_use, quantitites[key])
-        ).to(rho_vec) / self.plasma["volp"]
+        self.plasma[key] = torch.from_numpy(interpolation_function(rho_vec.cpu(), rho_use, quantitites[key])).to(rho_vec) / self.plasma["volp"]
         # *********************************************************************************************
 
     # *********************************************************************************************
