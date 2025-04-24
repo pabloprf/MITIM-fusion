@@ -43,14 +43,14 @@ class diffusion_model(TRANSPORTtools.power_transport):
             self.powerstate.plasma["a"].unsqueeze(-1),
         )
 
-        self.powerstate.plasma["Pe_tr_turb"] = Pe_tr * 2 / 3
-        self.powerstate.plasma["Pi_tr_turb"] = Pi_tr * 2 / 3
+        self.powerstate.plasma["QeMWm2_tr_turb"] = Pe_tr * 2 / 3
+        self.powerstate.plasma["QiMWm2_tr_turb"] = Pi_tr * 2 / 3
 
-        self.powerstate.plasma["Pe_tr_neo"] = Pe_tr * 1 / 3
-        self.powerstate.plasma["Pi_tr_neo"] = Pi_tr * 1 / 3
+        self.powerstate.plasma["QeMWm2_tr_neo"] = Pe_tr * 1 / 3
+        self.powerstate.plasma["QiMWm2_tr_neo"] = Pi_tr * 1 / 3
 
-        self.powerstate.plasma["Pe_tr"] = self.powerstate.plasma["Pe_tr_turb"] + self.powerstate.plasma["Pe_tr_neo"]
-        self.powerstate.plasma["Pi_tr"] = self.powerstate.plasma["Pi_tr_turb"] + self.powerstate.plasma["Pi_tr_neo"]
+        self.powerstate.plasma["QeMWm2_tr"] = self.powerstate.plasma["QeMWm2_tr_turb"] + self.powerstate.plasma["QeMWm2_tr_neo"]
+        self.powerstate.plasma["QiMWm2_tr"] = self.powerstate.plasma["QiMWm2_tr_turb"] + self.powerstate.plasma["QiMWm2_tr_neo"]
 
 # ------------------------------------------------------------------
 # SURROGATE
@@ -78,8 +78,8 @@ class surrogate(TRANSPORTtools.power_transport):
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 
         quantities = {
-            "te": "Pe",
-            "ti": "Pi",
+            "te": "QeMWm2",
+            "ti": "QiMWm2",
             "ne": "Ce",
             "nZ": "CZ",
             "w0": "Mt",

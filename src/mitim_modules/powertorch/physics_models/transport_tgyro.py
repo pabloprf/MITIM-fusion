@@ -1,9 +1,8 @@
 import copy
 import shutil
 import numpy as np
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.gacode_tools import TGYROtools
-from mitim_modules.powertorch.physics_models import transport_cgyro
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -454,7 +453,7 @@ def curateTGYROfiles(
 
     # Merge
 
-    transport_cgyro.modifyFLUX(
+    modifyFLUX(
         tgyro,
         folder,
         Qe,
@@ -471,7 +470,7 @@ def curateTGYROfiles(
         impurityPosition=impurityPosition,
     )
 
-    transport_cgyro.modifyFLUX(
+    modifyFLUX(
         tgyro,
         folder,
         QeE,
@@ -499,7 +498,7 @@ def curateTGYROfiles(
     GZTargetE = GeTargetE * 0.0
     MtTargetE = abs(tgyro.Mt_tar[0, 1:]) * relativeErrorTAR
 
-    transport_cgyro.modifyEVO(
+    modifyEVO(
         tgyro,
         folder,
         QeTargetE * 0.0,
@@ -511,7 +510,7 @@ def curateTGYROfiles(
         positionMod=1,
         special_label="_stds",
     )
-    transport_cgyro.modifyEVO(
+    modifyEVO(
         tgyro,
         folder,
         QeTargetE,
@@ -548,3 +547,327 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
     cdf = FolderEvaluation / f"{subname}_ev{name}.CDF"
 
     return cdf
+
+def modifyResults(
+    Qe,
+    Qi,
+    Ge,
+    GZ,
+    Mt,
+    Pexch,
+    QeE,
+    QiE,
+    GeE,
+    GZE,
+    MtE,
+    PexchE,
+    tgyro,
+    folder_tgyro,
+    minErrorPercent=5.0,
+    percentNeo=2.0,
+    useConvectiveFluxes=False,
+    Qi_criterion_stable=0.0025,
+    impurityPosition=3,
+    OriginalFimp=1.0,
+):
+    """
+    All in real units, with dimensions of (rho) from axis to edge
+    """
+
+    # If a plasma is very close to stable... do something about error
+    if minErrorPercent is not None:
+        (
+            Qe_target,
+            Qi_target,
+            Ge_target_special,
+            GZ_target_special,
+            Mt_target,
+        ) = defineReferenceFluxes(
+            tgyro,
+            useConvectiveFluxes=useConvectiveFluxes,
+            impurityPosition=impurityPosition,
+        )
+
+        Qe_min = Qe_target * (minErrorPercent / 100.0)
+        Qi_min = Qi_target * (minErrorPercent / 100.0)
+        Ge_min = Ge_target_special * (minErrorPercent / 100.0)
+        GZ_min = GZ_target_special * (minErrorPercent / 100.0)
+        Mt_min = Mt_target * (minErrorPercent / 100.0)
+
+        for i in range(Qe.shape[0]):
+            if Qi[i] < Qi_criterion_stable:
+                print(
+                    f"\t- Based on 'Qi_criterion_stable', plasma considered stable (Qi = {Qi[i]:.2e} < {Qi_criterion_stable:.2e} MW/m2) at position #{i}, using minimum errors of {minErrorPercent}% of targets",
+                    typeMsg="w",
+                )
+                QeE[i] = Qe_min[i]
+                print(f"\t\t* QeE = {QeE[i]}")
+                QiE[i] = Qi_min[i]
+                print(f"\t\t* QiE = {QiE[i]}")
+                GeE[i] = Ge_min[i]
+                print(f"\t\t* GeE = {GeE[i]}")
+                GZE[i] = GZ_min[i]
+                print(f"\t\t* GZE = {GZE[i]}")
+                MtE[i] = Mt_min[i]
+                print(f"\t\t* MtE = {MtE[i]}")
+
+    # Heat fluxes
+    QeTot = Qe + tgyro.Qe_sim_neo[0, 1:]
+    QiTot = Qi + tgyro.QiIons_sim_neo_thr[0, 1:]
+
+    # Particle fluxes
+    PeTot = Ge + tgyro.Ge_sim_neo[0, 1:]
+    PZTot = GZ + tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
+
+    # Momentum fluxes
+    MtTot = Mt + tgyro.Mt_sim_neo[0, 1:]
+
+    # ************************************************************************************
+    # **** Modify complete folder (Division of ion fluxes will be wrong, since I put everything in first ion)
+    # ************************************************************************************
+
+    # 1. Modify out.tgyro.evo files (which contain turb+neo summed together)
+
+    print(f"\t- Modifying TGYRO out.tgyro.evo files in {IOtools.clipstr(folder_tgyro)}")
+    modifyEVO(
+        tgyro,
+        folder_tgyro,
+        QeTot,
+        QiTot,
+        PeTot,
+        PZTot,
+        MtTot,
+        impurityPosition=impurityPosition,
+    )
+
+    # 2. Modify out.tgyro.flux files (which contain turb and neo separated)
+
+    print(f"\t- Modifying TGYRO out.tgyro.flux files in {folder_tgyro}")
+    modifyFLUX(
+        tgyro,
+        folder_tgyro,
+        Qe,
+        Qi,
+        Ge,
+        GZ,
+        Mt,
+        Pexch,
+        impurityPosition=impurityPosition,
+    )
+
+    # 3. Modify files for errors
+
+    print(f"\t- Modifying TGYRO out.tgyro.flux_stds in {folder_tgyro}")
+    modifyFLUX(
+        tgyro,
+        folder_tgyro,
+        QeE,
+        QiE,
+        GeE,
+        GZE,
+        MtE,
+        PexchE,
+        impurityPosition=impurityPosition,
+        special_label="_stds",
+    )
+
+
+def modifyEVO(
+    tgyro,
+    folder,
+    QeT,
+    QiT,
+    GeT,
+    GZT,
+    MtT,
+    impurityPosition=3,
+    positionMod=1,
+    special_label=None,
+):
+    QeTGB = QeT / tgyro.Q_GB[-1, 1:]
+    QiTGB = QiT / tgyro.Q_GB[-1, 1:]
+    GeTGB = GeT / tgyro.Gamma_GB[-1, 1:]
+    GZTGB = GZT / tgyro.Gamma_GB[-1, 1:]
+    MtTGB = MtT / tgyro.Pi_GB[-1, 1:]
+
+    modTGYROfile(folder / "out.tgyro.evo_te", QeTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_ti", QiTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_ne", GeTGB, pos=positionMod, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.evo_er", MtTGB, pos=positionMod, fileN_suffix=special_label)
+
+    for i in range(tgyro.Qi_sim_turb.shape[0]):
+        if i == impurityPosition:
+            var = GZTGB
+        else:
+            var = GZTGB * 0.0
+        modTGYROfile(
+            folder / f"out.tgyro.evo_n{i+1}",
+            var,
+            pos=positionMod,
+            fileN_suffix=special_label,
+        )
+
+
+def modifyFLUX(
+    tgyro,
+    folder,
+    Qe,
+    Qi,
+    Ge,
+    GZ,
+    Mt,
+    S,
+    QeNeo=None,
+    QiNeo=None,
+    GeNeo=None,
+    GZNeo=None,
+    MtNeo=None,
+    impurityPosition=3,
+    special_label=None,
+):
+    folder = IOtools.expandPath(folder)
+
+    QeGB = Qe / tgyro.Q_GB[-1, 1:]
+    QiGB = Qi / tgyro.Q_GB[-1, 1:]
+    GeGB = Ge / tgyro.Gamma_GB[-1, 1:]
+    GZGB = GZ / tgyro.Gamma_GB[-1, 1:]
+    MtGB = Mt / tgyro.Pi_GB[-1, 1:]
+    SGB = S / tgyro.S_GB[-1, 1:]
+
+    # ******************************************************************************************
+    # Electrons
+    # ******************************************************************************************
+
+    # Particle flux: Update
+
+    modTGYROfile(folder / "out.tgyro.flux_e", GeGB, pos=2, fileN_suffix=special_label)
+    if GeNeo is not None:
+        GeGB_neo = GeNeo / tgyro.Gamma_GB[-1, 1:]
+        modTGYROfile(folder / "out.tgyro.flux_e", GeGB_neo, pos=1, fileN_suffix=special_label)
+
+    # Energy flux: Update
+
+    modTGYROfile(folder / "out.tgyro.flux_e", QeGB, pos=4, fileN_suffix=special_label)
+    if QeNeo is not None:
+        QeGB_neo = QeNeo / tgyro.Q_GB[-1, 1:]
+        modTGYROfile(folder / "out.tgyro.flux_e", QeGB_neo, pos=3, fileN_suffix=special_label)
+
+    # Rotation: Remove (it will be sum to the first ion)
+
+    modTGYROfile(folder / "out.tgyro.flux_e", GeGB * 0.0, pos=6, fileN_suffix=special_label)
+    modTGYROfile(folder / "out.tgyro.flux_e", GeGB * 0.0, pos=5, fileN_suffix=special_label)
+
+    # Energy exchange
+
+    modTGYROfile(folder / "out.tgyro.flux_e", SGB, pos=7, fileN_suffix=special_label)
+
+    # SMW  = S  # S is MW/m^3
+    # modTGYROfile(f'{folder}/out.tgyro.power_e',SMW,pos=8,fileN_suffix=special_label)
+    # print('\t\t- Modified turbulent energy exchange in out.tgyro.power_e')
+
+    # ******************************************************************************************
+    # Ions
+    # ******************************************************************************************
+
+    # Energy flux: Update
+
+    modTGYROfile(folder / "out.tgyro.flux_i1", QiGB, pos=4, fileN_suffix=special_label)
+
+    if QiNeo is not None:
+        QiGB_neo = QiNeo / tgyro.Q_GB[-1, 1:]
+        modTGYROfile(folder / "out.tgyro.flux_i1", QiGB_neo, pos=3, fileN_suffix=special_label)
+
+    # Particle flux: Make ion particle fluxes zero, because I don't want to mistake TGLF with CGYRO when looking at tgyro results
+
+    for i in range(tgyro.Qi_sim_turb.shape[0]):
+        if tgyro.profiles.Species[i]["S"] == "therm":
+            var = QiGB * 0.0
+            modTGYROfile(folder / f"out.tgyro.flux_i{i+1}",var,pos=2,fileN_suffix=special_label,)  # Gi_turb
+            modTGYROfile(folder / f"out.tgyro.evo_n{i+1}", var, pos=1, fileN_suffix=special_label)  # Gi (Gi_sim)
+
+            if i != impurityPosition:
+                modTGYROfile(folder / f"out.tgyro.flux_i{i+1}",var,pos=1,fileN_suffix=special_label)  # Gi_neo
+
+    # Rotation: Update
+
+    modTGYROfile(folder / "out.tgyro.flux_i1", MtGB, pos=6, fileN_suffix=special_label)
+
+    if MtNeo is not None:
+        MtGB_neo = MtNeo / tgyro.Pi_GB[-1, 1:]
+        modTGYROfile(folder / "out.tgyro.flux_i1", MtGB_neo, pos=5, fileN_suffix=special_label)
+
+    # Energy exchange: Remove (it will be the electrons one)
+
+    modTGYROfile(folder / "out.tgyro.flux_i1", SGB * 0.0, pos=7, fileN_suffix=special_label)
+
+    # ******************************************************************************************
+    # Impurities
+    # ******************************************************************************************
+
+    # Remove everything from all the rest of non-first ions (except the particles for the impurity chosen)
+
+    for i in range(tgyro.Qi_sim_turb.shape[0] - 1):
+        if tgyro.profiles.Species[i + 1]["S"] == "therm":
+            var = QiGB * 0.0
+            for pos in [3, 4, 5, 6, 7]:
+                modTGYROfile(folder / f"out.tgyro.flux_i{i+2}",var,pos=pos,fileN_suffix=special_label)
+            for pos in [1, 2]:
+                if i + 2 != impurityPosition:
+                    modTGYROfile(folder / f"out.tgyro.flux_i{i+2}",var,pos=pos,fileN_suffix=special_label)
+
+    modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB,pos=2,fileN_suffix=special_label)
+    if GZNeo is not None:
+        GZGB_neo = GZNeo / tgyro.Gamma_GB[-1, 1:]
+        modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB_neo,pos=1,fileN_suffix=special_label)
+
+
+def modTGYROfile(file, var, pos=0, fileN_suffix=None):
+    fileN = file if fileN_suffix is None else file.parent / f"{file.name}{fileN_suffix}"
+
+    if not fileN.exists():
+        shutil.copy2(file, fileN)
+
+    with open(fileN, "r") as f:
+        lines = f.readlines()
+
+    with open(fileN, "w") as f:
+        f.write(lines[0])
+        f.write(lines[1])
+        f.write(lines[2])
+        for i in range(var.shape[0]):
+            new_s = [float(k) for k in lines[3 + i].split()]
+            new_s[pos] = var[i]
+
+            line_new = " "
+            for k in range(len(new_s)):
+                line_new += f'{"" if k==0 else "   "}{new_s[k]:.6e}'
+            f.write(line_new + "\n")
+
+def defineReferenceFluxes(
+    tgyro, factor_tauptauE=5, useConvectiveFluxes=False, impurityPosition=3
+):
+    Qe_target = abs(tgyro.Qe_tar[0, 1:])
+    Qi_target = abs(tgyro.Qi_tar[0, 1:])
+    Mt_target = abs(tgyro.Mt_tar[0, 1:])
+
+    # For particle fluxes, since the targets are often zero... it's more complicated
+    QeMW_target = abs(tgyro.Qe_tarMW[0, 1:])
+    QiMW_target = abs(tgyro.Qi_tarMW[0, 1:])
+    We, Wi, Ne, NZ = tgyro.profiles.deriveContentByVolumes(
+        rhos=tgyro.rho[0, 1:], impurityPosition=impurityPosition
+    )
+
+    tau_special = (
+        (We + Wi) / (QeMW_target + QiMW_target) * factor_tauptauE
+    )  # tau_p in seconds
+    Ge_target_special = (Ne / tau_special) / tgyro.dvoldr[0, 1:]  # (1E20/seconds/m^2)
+
+    if useConvectiveFluxes:
+        Ge_target_special = PLASMAtools.convective_flux(
+            tgyro.Te[0, 1:], Ge_target_special
+        )  # (1E20/seconds/m^2)
+
+    GZ_target_special = Ge_target_special * NZ / Ne
+
+    return Qe_target, Qi_target, Ge_target_special, GZ_target_special, Mt_target
+
