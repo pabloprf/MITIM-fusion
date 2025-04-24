@@ -433,23 +433,23 @@ def curateTGYROfiles(
     # Neo
     # **************************************************************************************************************************
 
-    QeNeo = tgyro.Qe_sim_neo[0, 1:]
+    Qe_tr_neo = tgyro.Qe_sim_neo[0, 1:]
     if includeFast:
-        QiNeo = tgyro.QiIons_sim_neo[0, 1:]
+        Qi_tr_neo = tgyro.QiIons_sim_neo[0, 1:]
     else:
-        QiNeo = tgyro.QiIons_sim_neo_thr[0, 1:]
-    GeNeo = tgyro.Ge_sim_neo[0, 1:]
-    GZNeo = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
-    MtNeo = tgyro.Mt_sim_neo[0, 1:]
+        Qi_tr_neo = tgyro.QiIons_sim_neo_thr[0, 1:]
+    Ge_tr_neo = tgyro.Ge_sim_neo[0, 1:]
+    GZ_tr_neo = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
+    Mt_tr_neo = tgyro.Mt_sim_neo[0, 1:]
 
-    QeNeoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
+    Qe_tr_neoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
     if includeFast:
-        QiNeoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
+        Qi_tr_neoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
     else:
-        QiNeoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
-    GeNeoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
-    GZNeoE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
-    MtNeoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
+        Qi_tr_neoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
+    Ge_tr_neoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
+    GZ_tr_neoE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
+    Mt_tr_neoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
 
     # Merge
 
@@ -462,11 +462,11 @@ def curateTGYROfiles(
         GZ,
         Mt,
         Pexch,
-        QeNeo=QeNeo,
-        QiNeo=QiNeo,
-        GeNeo=GeNeo,
-        GZNeo=GZNeo,
-        MtNeo=MtNeo,
+        Qe_tr_neo=Qe_tr_neo,
+        Qi_tr_neo=Qi_tr_neo,
+        Ge_tr_neo=Ge_tr_neo,
+        GZ_tr_neo=GZ_tr_neo,
+        Mt_tr_neo=Mt_tr_neo,
         impurityPosition=impurityPosition,
     )
 
@@ -479,11 +479,11 @@ def curateTGYROfiles(
         GZE,
         MtE,
         PexchE,
-        QeNeo=QeNeoE,
-        QiNeo=QiNeoE,
-        GeNeo=GeNeoE,
-        GZNeo=GZNeoE,
-        MtNeo=MtNeoE,
+        Qe_tr_neo=Qe_tr_neoE,
+        Qi_tr_neo=Qi_tr_neoE,
+        Ge_tr_neo=Ge_tr_neoE,
+        GZ_tr_neo=GZ_tr_neoE,
+        Mt_tr_neo=Mt_tr_neoE,
         impurityPosition=impurityPosition,
         special_label="_stds",
     )
@@ -564,7 +564,7 @@ def modifyResults(
     tgyro,
     folder_tgyro,
     minErrorPercent=5.0,
-    percentNeo=2.0,
+    percent_tr_neo=2.0,
     useConvectiveFluxes=False,
     Qi_criterion_stable=0.0025,
     impurityPosition=3,
@@ -717,11 +717,11 @@ def modifyFLUX(
     GZ,
     Mt,
     S,
-    QeNeo=None,
-    QiNeo=None,
-    GeNeo=None,
-    GZNeo=None,
-    MtNeo=None,
+    Qe_tr_neo=None,
+    Qi_tr_neo=None,
+    Ge_tr_neo=None,
+    GZ_tr_neo=None,
+    Mt_tr_neo=None,
     impurityPosition=3,
     special_label=None,
 ):
@@ -741,15 +741,15 @@ def modifyFLUX(
     # Particle flux: Update
 
     modTGYROfile(folder / "out.tgyro.flux_e", GeGB, pos=2, fileN_suffix=special_label)
-    if GeNeo is not None:
-        GeGB_neo = GeNeo / tgyro.Gamma_GB[-1, 1:]
+    if Ge_tr_neo is not None:
+        GeGB_neo = Ge_tr_neo / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_e", GeGB_neo, pos=1, fileN_suffix=special_label)
 
     # Energy flux: Update
 
     modTGYROfile(folder / "out.tgyro.flux_e", QeGB, pos=4, fileN_suffix=special_label)
-    if QeNeo is not None:
-        QeGB_neo = QeNeo / tgyro.Q_GB[-1, 1:]
+    if Qe_tr_neo is not None:
+        QeGB_neo = Qe_tr_neo / tgyro.Q_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_e", QeGB_neo, pos=3, fileN_suffix=special_label)
 
     # Rotation: Remove (it will be sum to the first ion)
@@ -773,8 +773,8 @@ def modifyFLUX(
 
     modTGYROfile(folder / "out.tgyro.flux_i1", QiGB, pos=4, fileN_suffix=special_label)
 
-    if QiNeo is not None:
-        QiGB_neo = QiNeo / tgyro.Q_GB[-1, 1:]
+    if Qi_tr_neo is not None:
+        QiGB_neo = Qi_tr_neo / tgyro.Q_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_i1", QiGB_neo, pos=3, fileN_suffix=special_label)
 
     # Particle flux: Make ion particle fluxes zero, because I don't want to mistake TGLF with CGYRO when looking at tgyro results
@@ -792,8 +792,8 @@ def modifyFLUX(
 
     modTGYROfile(folder / "out.tgyro.flux_i1", MtGB, pos=6, fileN_suffix=special_label)
 
-    if MtNeo is not None:
-        MtGB_neo = MtNeo / tgyro.Pi_GB[-1, 1:]
+    if Mt_tr_neo is not None:
+        MtGB_neo = Mt_tr_neo / tgyro.Pi_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_i1", MtGB_neo, pos=5, fileN_suffix=special_label)
 
     # Energy exchange: Remove (it will be the electrons one)
@@ -816,8 +816,8 @@ def modifyFLUX(
                     modTGYROfile(folder / f"out.tgyro.flux_i{i+2}",var,pos=pos,fileN_suffix=special_label)
 
     modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB,pos=2,fileN_suffix=special_label)
-    if GZNeo is not None:
-        GZGB_neo = GZNeo / tgyro.Gamma_GB[-1, 1:]
+    if GZ_tr_neo is not None:
+        GZGB_neo = GZ_tr_neo / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB_neo,pos=1,fileN_suffix=special_label)
 
 

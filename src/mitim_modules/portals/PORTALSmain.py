@@ -420,7 +420,7 @@ class portals(STRATEGYtools.opt_evaluator):
 		-------------------------------------------------------------------------
 		Prepare transport dictionary
 		-------------------------------------------------------------------------
-			Note: var_dict['QeTurb'] must have shape (dim1...N, num_radii)
+			Note: var_dict['Qe_tr_turb'] must have shape (dim1...N, num_radii)
 		"""
 
         var_dict = {}
@@ -650,8 +650,6 @@ def runModelEvaluator(
     return powerstate, dictOFs
 
 def map_powerstate_to_portals(powerstate, dictOFs):
-    """
-    """
 
     for var in powerstate.ProfilesPredicted:
         # Write in OFs
@@ -672,19 +670,11 @@ def map_powerstate_to_portals(powerstate, dictOFs):
             ---------------------
             """
 
-            dictOFs[f"{var0}Turb_{i+1}"]["value"] = powerstate.plasma[
-                f"{var1}_tr_turb"
-            ][0, i+1]
-            dictOFs[f"{var0}Turb_{i+1}"]["error"] = powerstate.plasma[
-                f"{var1}_tr_turb_stds"
-            ][0, i+1]
+            dictOFs[f"{var0}_tr_turb_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_turb"][0, i+1]
+            dictOFs[f"{var0}_tr_turb_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_turb_stds"][0, i+1]
 
-            dictOFs[f"{var0}Neo_{i+1}"]["value"] = powerstate.plasma[
-                f"{var1}_tr_neo"
-            ][0, i+1]
-            dictOFs[f"{var0}Neo_{i+1}"]["error"] = powerstate.plasma[
-                f"{var1}_tr_neo_stds"
-            ][0, i+1]
+            dictOFs[f"{var0}_tr_neo_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_neo"][0, i+1]
+            dictOFs[f"{var0}_tr_neo_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_neo_stds"][0, i+1]
 
             """
             TARGET calculation
@@ -692,12 +682,8 @@ def map_powerstate_to_portals(powerstate, dictOFs):
                 If that radius & profile position has target, evaluate
             """
 
-            dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][
-                0, i+1
-            ]
-            dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[
-                f"{var1}_stds"
-            ][0, i+1]
+            dictOFs[f"{var0}Tar_{i+1}"]["value"] = powerstate.plasma[f"{var1}"][0, i+1]
+            dictOFs[f"{var0}Tar_{i+1}"]["error"] = powerstate.plasma[f"{var1}_stds"][0, i+1]
 
     """
     Turbulent Exchange
@@ -705,12 +691,8 @@ def map_powerstate_to_portals(powerstate, dictOFs):
     """
     if 'PexchTurb_1' in dictOFs:
         for i in range(powerstate.plasma["rho"].shape[1] - 1):
-            dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][
-                0, i+1
-            ]
-            dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma[
-                "PexchTurb_stds"
-            ][0, i+1]
+            dictOFs[f"PexchTurb_{i+1}"]["value"] = powerstate.plasma["PexchTurb"][0, i+1]
+            dictOFs[f"PexchTurb_{i+1}"]["error"] = powerstate.plasma["PexchTurb_stds"][0, i+1]
 
     return dictOFs
 

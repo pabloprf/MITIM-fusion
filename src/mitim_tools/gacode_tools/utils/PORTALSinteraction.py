@@ -327,16 +327,16 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
         var_dict = {}
 
         mapper = {
-            "QeTurb": "QeMWm2_tr_turb",
-            "QiTurb": "QiMWm2_tr_turb",
-            "GeTurb": "Ce_tr_turb",
-            "GZTurb": "CZ_tr_turb",
-            "MtTurb": "Mt_tr_turb",
-            "QeNeo": "QeMWm2_tr_neo",
-            "QiNeo": "QiMWm2_tr_neo",
-            "GeNeo": "Ce_tr_neo",
-            "GZNeo": "CZ_tr_neo",
-            "MtNeo": "Mt_tr_neo",
+            "Qe_tr_turb": "QeMWm2_tr_turb",
+            "Qi_tr_turb": "QiMWm2_tr_turb",
+            "Ge_tr_turb": "Ce_tr_turb",
+            "GZ_tr_turb": "CZ_tr_turb",
+            "Mt_tr_turb": "Mt_tr_turb",
+            "Qe_tr_neo": "QeMWm2_tr_neo",
+            "Qi_tr_neo": "QiMWm2_tr_neo",
+            "Ge_tr_neo": "Ce_tr_neo",
+            "GZ_tr_neo": "CZ_tr_neo",
+            "Mt_tr_neo": "Mt_tr_neo",
             "QeTar": "QeMWm2",
             "QiTar": "QiMWm2",
             "GeTar": "Ce",
@@ -388,10 +388,10 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 
         """
 		-----------------------------------------------------------------------------------
-		Transport (Turb+Neo)
+		Transport (_tr_turb+_tr_neo)
 		-----------------------------------------------------------------------------------
 		"""
-        of0 = var_dict[f"{var}Turb"] + var_dict[f"{var}Neo"]
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
 
         """
 		-----------------------------------------------------------------------------------
@@ -461,16 +461,16 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # Prepare dictionary from powerstate (for use in Analysis)
     
     mapper = {
-        "QeTurb": "QeMWm2_tr_turb",
-        "QiTurb": "QiMWm2_tr_turb",
-        "GeTurb": "Ce_tr_turb",
-        "GZTurb": "CZ_tr_turb",
-        "MtTurb": "Mt_tr_turb",
-        "QeNeo": "QeMWm2_tr_neo",
-        "QiNeo": "QiMWm2_tr_neo",
-        "GeNeo": "Ce_tr_neo",
-        "GZNeo": "CZ_tr_neo",
-        "MtNeo": "Mt_tr_neo",
+        "Qe_tr_turb": "QeMWm2_tr_turb",
+        "Qi_tr_turb": "QiMWm2_tr_turb",
+        "Ge_tr_turb": "Ce_tr_turb",
+        "GZ_tr_turb": "CZ_tr_turb",
+        "Mt_tr_turb": "Mt_tr_turb",
+        "Qe_tr_neo": "QeMWm2_tr_neo",
+        "Qi_tr_neo": "QiMWm2_tr_neo",
+        "Ge_tr_neo": "Ce_tr_neo",
+        "GZ_tr_neo": "CZ_tr_neo",
+        "Mt_tr_neo": "Mt_tr_neo",
         "QeTar": "QeMWm2",
         "QiTar": "QiMWm2",
         "GeTar": "Ce",
@@ -487,7 +487,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         else:
             var_dict[ikey + "_stds"] = None
 
-    dfT = var_dict["QeTurb"]  # as a reference for sizes
+    dfT = var_dict["Qe_tr_turb"]  # as a reference for sizes
 
     # -------------------------------------------------------------------------
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
@@ -524,12 +524,12 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 
         """
 		-----------------------------------------------------------------------------------
-		Transport (Turb+Neo)
+		Transport (_tr_turb+_tr_neo)
 		-----------------------------------------------------------------------------------
 		"""
-        of0 = var_dict[f"{var}Turb"] + var_dict[f"{var}Neo"]
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
         of0E = (
-            var_dict[f"{var}Turb_stds"] ** 2 + var_dict[f"{var}Neo_stds"] ** 2
+            var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neo_stds"] ** 2
         ) ** 0.5
 
         """
