@@ -736,7 +736,7 @@ class wrapped_model_portals:
         self._training_outputs = {}
         if isinstance(gpdict, dict):
             for key in gpdict:
-                if 'Tar' in key:
+                if '_tar' in key:
                     self._targets[key] = gpdict[key]
                 else:
                     self._models[key] = gpdict[key]
