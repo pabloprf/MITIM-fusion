@@ -3,9 +3,9 @@ import shutil
 import torch
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.portals.utils import PORTALScgyro
+from mitim_modules.powertorch.physics_models import transport_tgyro
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-from mitim_modules.powertorch.physics_models import transport_tgyro
 
 class cgyro_model(transport_tgyro.tgyro_model):
     def __init__(self, powerstate, **kwargs):
