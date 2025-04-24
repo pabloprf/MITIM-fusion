@@ -362,13 +362,6 @@ class MITIM_BO:
         self.seed = seed
         self.avoidPoints = []
 
-        if (not self.cold_start) and askQuestions:
-            if not print(
-                f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",
-                typeMsg="q",
-            ):
-                raise Exception("[MITIM] - User requested to stop")
-
         if self.optimization_object.name_objectives is None:
             self.optimization_object.name_objectives = "y"
 
@@ -380,6 +373,13 @@ class MITIM_BO:
         )
 
         self.folderOutputs = self.folderExecution / "Outputs"
+
+        if (not self.cold_start) and askQuestions:
+            
+            # Check if Outputs folder is empty (if it's empty, do not ask the user, just continue)
+            if self.folderOutputs.exists() and (len(list(self.folderOutputs.iterdir())) > 0):
+                if not print(f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",typeMsg="q"):
+                    raise Exception("[MITIM] - User requested to stop")
 
         if optimization_object.optimization_options is not None:
             if not self.folderOutputs.exists():
