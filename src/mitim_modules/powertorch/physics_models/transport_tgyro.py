@@ -271,6 +271,8 @@ def tglf_scan_trick(
     Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
     GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Mt = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    S = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
 
     cont = 0
     for vari in variables_to_scan:
@@ -280,6 +282,8 @@ def tglf_scan_trick(
         Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
         Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
         GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
+        Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt']
+        S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S']
         cont += jump
 
     # Calculate the standard deviation of the scans, that's going to be the reported stds
@@ -302,12 +306,14 @@ def tglf_scan_trick(
     Qi_point, Qi_std = calculate_mean_std(Qi)
     Ge_point, Ge_std = calculate_mean_std(Ge)
     GZ_point, GZ_std = calculate_mean_std(GZ)
+    Mt_point, Mt_std = calculate_mean_std(Mt)
+    S_point, S_std = calculate_mean_std(S)
 
     #TODO: Careful with fast particles
 
-    Flux_base = [Qe[:,0], Qi[:,0], Ge[:,0], GZ[:,0], None, None] #TODO (Mt, Pexch)
-    Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, None, None] #TODO (Mt, Pexch)
-    Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, None, None] #TODO (Mt, Pexch)
+    Flux_base = [Qe[:,0], Qi[:,0], Ge[:,0], GZ[:,0], Mt[:,0], S[:,0]]
+    Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, S_point]
+    Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
 
     return Flux_base, Flux_mean, Flux_std
 # **************************************************************************************************
@@ -364,39 +370,44 @@ def curateTGYROfiles(
             cores_per_tglf_instance=cores_per_tglf_instance
             )
 
-        Qe, Qi, Ge, GZ, _, _ = Flux_mean
-        QeE, QiE, GeE, GZE, _, _ = Flux_std
-
-        #TODO
-        MtE, PexchE = abs(Mt) * 0.1, abs(Pexch) * 0.1
+        Qe, Qi, Ge, GZ, Mt, Pexch = Flux_mean
+        QeE, QiE, GeE, GZE, MtE, PexchE = Flux_std
 
         # ----------------------------------------------------
         # Do a check that TGLF scans are consistent with TGYRO
 
-        Qe_base, Qi_base, Ge_base, GZ_base, _, _ = Flux_base
+        Qe_base, Qi_base, Ge_base, GZ_base, Mt_base, S_base = Flux_base
 
         # Grab fluxes from TGYRO
         Qe_tgyro = tgyro.Qe_sim_turb[0, 1:]
         Qi_tgyro = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
         Ge_tgyro = tgyro.Ge_sim_turb[0, 1:]
         GZ_tgyro = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
+        Mt_tgyro = tgyro.Mt_sim_turb[0, 1:]
+        Pexch_tgyro = tgyro.EXe_sim_turb[0, 1:]
 
         Qe_err = np.abs( (Qe_base - Qe_tgyro) / Qe_tgyro ) if 'te' in ProfilesPredicted else np.zeros_like(Qe_base)
         Qi_err = np.abs( (Qi_base - Qi_tgyro) / Qi_tgyro ) if 'ti' in ProfilesPredicted else np.zeros_like(Qi_base)
         Ge_err = np.abs( (Ge_base - Ge_tgyro) / Ge_tgyro ) if 'ne' in ProfilesPredicted else np.zeros_like(Ge_base)
         GZ_err = np.abs( (GZ_base - GZ_tgyro) / GZ_tgyro ) if 'nZ' in ProfilesPredicted else np.zeros_like(GZ_base)
+        Mt_err = np.abs( (Mt_base - Mt_tgyro) / Mt_tgyro ) if 'w0' in ProfilesPredicted else np.zeros_like(Mt_base)
+        Pexch_err = np.abs( (Pexch - Pexch_tgyro) / Pexch_tgyro ) if provideTurbulentExchange else np.zeros_like(Pexch)
 
-        F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
+        F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err, Mt_err, Pexch_err))
         if F_err.max() > check_coincidence_thr:
-            print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
-            if 'te' in ProfilesPredicted:
+            print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%, in quantity:",typeMsg="w")
+            if ('te' in ProfilesPredicted) and Qe_err.max() > check_coincidence_thr:
                 print('\t\t* Qe:',Qe_err)
-            if 'ti' in ProfilesPredicted:
+            if ('ti' in ProfilesPredicted) and Qi_err.max() > check_coincidence_thr:
                 print('\t\t* Qi:',Qi_err)
-            if 'ne' in ProfilesPredicted:
+            if ('ne' in ProfilesPredicted) and Ge_err.max() > check_coincidence_thr:
                 print('\t\t* Ge:',Ge_err)
-            if 'nZ' in ProfilesPredicted:
+            if ('nZ' in ProfilesPredicted) and GZ_err.max() > check_coincidence_thr:
                 print('\t\t* GZ:',GZ_err)
+            if ('w0' in ProfilesPredicted) and Mt_err.max() > check_coincidence_thr:
+                print('\t\t* Mt:',Mt_err)
+            if provideTurbulentExchange and Pexch_err.max() > check_coincidence_thr:
+                print('\t\t* Pexch:',Pexch_err)
         else:
             print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
         # ----------------------------------------------------
