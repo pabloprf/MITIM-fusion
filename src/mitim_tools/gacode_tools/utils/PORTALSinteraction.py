@@ -52,47 +52,30 @@ def changeRFpower(self, PrfMW=25.0):
 def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
     ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
 
-    self.profiles["te(keV)"] = (
-        self.profiles["te(keV)"] * TkeV / self.profiles["te(keV)"][ix]
-    )
+    self.profiles["te(keV)"] = self.profiles["te(keV)"] * TkeV / self.profiles["te(keV)"][ix]
 
-    print(
-        f"- Producing {typeEdge} boundary condition @ rho = {rho}, T = {TkeV} keV",
-        typeMsg="i",
-    )
+    print(f"- Producing {typeEdge} boundary condition @ rho = {rho}, T = {TkeV} keV",typeMsg="i",)
 
     for sp in range(len(self.Species)):
         if self.Species[sp]["S"] == "therm":
-            self.profiles["ti(keV)"][:, sp] = (
-                self.profiles["ti(keV)"][:, sp]
-                * TkeV
-                / self.profiles["ti(keV)"][ix, sp]
-            )
+            self.profiles["ti(keV)"][:, sp] = self.profiles["ti(keV)"][:, sp] * TkeV / self.profiles["ti(keV)"][ix, sp]
 
     if typeEdge == "linear":
-        self.profiles["te(keV)"][ix:] = np.linspace(
-            TkeV, Tesep, len(self.profiles["rho(-)"][ix:])
-        )
+        self.profiles["te(keV)"][ix:] = np.linspace(TkeV, Tesep, len(self.profiles["rho(-)"][ix:]))
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
-                self.profiles["ti(keV)"][ix:, sp] = np.linspace(
-                    TkeV, Tisep, len(self.profiles["rho(-)"][ix:])
-                )
+                self.profiles["ti(keV)"][ix:, sp] = np.linspace(TkeV, Tisep, len(self.profiles["rho(-)"][ix:]))
 
     elif typeEdge == "same":
         pass
     else:
         raise Exception("no edge")
 
-
 def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
     ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
 
-    print(
-        f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",
-        typeMsg="i",
-    )
+    print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
 
     factor = n20 / self.derived["ne_vol20"]
 
@@ -109,13 +92,11 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
             / self.profiles["ne(10^19/m^3)"][ix:]
         )
 
-        self.profiles["ne(10^19/m^3)"][ix:] = (
-            self.profiles["ne(10^19/m^3)"][ix:] * factor_x
-        )
+        self.profiles["ne(10^19/m^3)"][ix:] = self.profiles["ne(10^19/m^3)"][ix:] * factor_x
+
         for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
-            self.profiles["ni(10^19/m^3)"][ix:, i] = (
-                self.profiles["ni(10^19/m^3)"][ix:, i] * factor_x
-            )
+            self.profiles["ni(10^19/m^3)"][ix:, i] = self.profiles["ni(10^19/m^3)"][ix:, i] * factor_x
+
     elif typeEdge == "same":
         pass
     else:
@@ -528,9 +509,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 		-----------------------------------------------------------------------------------
 		"""
         of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
-        of0E = (
-            var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neo_stds"] ** 2
-        ) ** 0.5
+        of0E = (var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neo_stds"] ** 2) ** 0.5
 
         """
 		-----------------------------------------------------------------------------------
