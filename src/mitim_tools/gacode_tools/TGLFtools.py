@@ -2466,8 +2466,10 @@ class TGLF:
         self.positionIon_scan = positionIon
 
         # ----
-        x, Qe, Qi, Ge, Gi, ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[],[],[],[],[],[]
-        Qe_gb, Qi_gb, Ge_gb, Gi_gb = [], [], [], []
+        x = []
+        Qe, Qi, Ge, Gi, Mt, S = [],[],[],[],[],[]
+        Qe_gb, Qi_gb, Ge_gb, Gi_gb, Mt_gb, S_gb = [],[],[],[],[],[]        
+        ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[]
         etalow_g, etalow_f, etalow_k = [], [], []
         cont = 0
         for ikey in self.results:
@@ -2476,8 +2478,10 @@ class TGLF:
             if isThisTheRightReadResults:
 
                 self.scans[label]["results_tags"].append(ikey)
-                x0, Qe0, Qi0, Ge0, Gi0, ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[],[],[],[],[],[]
-                Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0 = [], [], [], []
+                x0 = []
+                Qe0, Qi0, Ge0, Gi0, Mt0, S0 = [],[],[],[],[],[]
+                Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0, Mt_gb0, S_gb0 = [],[],[],[],[],[]
+                ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[]
                 etalow_g0, etalow_f0, etalow_k0 = [], [], []
                 for irho_cont in range(len(self.rhos)):
                     irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
@@ -2488,6 +2492,8 @@ class TGLF:
                     Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
                     Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
                     Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
+                    Mt_gb0.append(self.results[ikey]["TGLFout"][irho].Mt)
+                    S_gb0.append(self.results[ikey]["TGLFout"][irho].Se)
                     ky0.append(self.results[ikey]["TGLFout"][irho].ky)
                     g0.append(self.results[ikey]["TGLFout"][irho].g)
                     f0.append(self.results[ikey]["TGLFout"][irho].f)
@@ -2505,6 +2511,8 @@ class TGLF:
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
                         Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
+                        Mt0.append(self.results[ikey]["TGLFout"][irho].Mt_unn)
+                        S0.append(self.results[ikey]["TGLFout"][irho].Se_unn)
                     else:
                         self.scans[label]["unnormalization_successful"] = False
 
@@ -2517,6 +2525,8 @@ class TGLF:
                 Ge_gb.append(Ge_gb0)
                 Gi_gb.append(Gi_gb0)
                 Gi.append(Gi0)
+                Mt.append(Mt0)
+                S.append(S0)
                 ky.append(ky0)
                 g.append(g0)
                 f.append(f0)
@@ -2539,10 +2549,14 @@ class TGLF:
         self.scans[label]["Qi_gb"] = np.atleast_2d(np.transpose(Qi_gb))
         self.scans[label]["Ge_gb"] = np.atleast_2d(np.transpose(Ge_gb))
         self.scans[label]["Gi_gb"] = np.atleast_2d(np.transpose(Gi_gb))
+        self.scans[label]["Mt_gb"] = np.atleast_2d(np.transpose(Mt_gb))
+        self.scans[label]["S_gb"] = np.atleast_2d(np.transpose(S_gb))
         self.scans[label]["Qe"] = np.atleast_2d(np.transpose(Qe))
         self.scans[label]["Qi"] = np.atleast_2d(np.transpose(Qi))
         self.scans[label]["Ge"] = np.atleast_2d(np.transpose(Ge))
         self.scans[label]["Gi"] = np.atleast_2d(np.transpose(Gi))
+        self.scans[label]["Mt"] = np.atleast_2d(np.transpose(Mt))
+        self.scans[label]["S"] = np.atleast_2d(np.transpose(S))
         self.scans[label]["eta1"] = np.atleast_2d(np.transpose(eta1))
         self.scans[label]["eta2"] = np.atleast_2d(np.transpose(eta2))
         self.scans[label]["itg"] = np.atleast_2d(np.transpose(itg))
@@ -4491,13 +4505,9 @@ class TGLFoutput:
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
         if suffix == "":
-            print(
-                f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix"
-            )
+            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
         else:
-            print(
-                f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}"
-            )
+            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}")
 
         self.inputclass = TGLFinput(file=self.FolderGACODE / f"input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
@@ -4552,16 +4562,28 @@ class TGLFoutput:
 
         self.Ge = data[0, 0]
         self.Qe = data[1, 0]
+        self.Me = data[2, 0]
+        self.Se = data[3, 0]
 
         self.GiAll = data[0, 1:]
         self.QiAll = data[1, 1:]
+        self.MiAll = data[2, 1:]
+        self.SiAll = data[3, 1:]
 
-        print(
-            f"\t\t- For Qi, summing contributions from ions {self.ions_included} (#0 is e-)",
-            typeMsg="i",
-        )
+        print(f"\t\t- For Qi, summing contributions from ions {self.ions_included} (#0 is e-)",typeMsg="i",)
         self.Gi = data[0, self.ions_included].sum()
         self.Qi = data[1, self.ions_included].sum()
+
+        signMt = - self.inputclass.plasma['SIGN_IT'] # Following tgyro_flux.f90
+        print(f"\t\t- Sign of Mt given by toroidal current direction (SIGN_IT={-signMt}): {signMt}",typeMsg="i",)
+        self.Me *= signMt
+        self.MiAll *= signMt
+
+        print("\t\t- For Mt, summing all species contributions",typeMsg="i",)
+        self.Mt = self.Me + self.MiAll.sum()
+
+        print("\t\t- For St, summing all ion species contributions",typeMsg="i",)
+        self.Si = self.SiAll.sum()
 
         if require_all_files:
 
@@ -5009,14 +5031,14 @@ class TGLFoutput:
             lines = fi.readlines()
         self.inputFileTGLF = "".join(lines)
 
-    def unnormalize(
-        self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0
-    ):
+    def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):
         if normalization is not None:
             rho_x = normalization["rho"]
             roa_x = normalization["roa"]
             q_gb = normalization["q_gb"]
             g_gb = normalization["g_gb"]
+            pi_gb = normalization["pi_gb"]
+            s_gb = normalization["s_gb"]
             rho_s = normalization["rho_s"]
             a = normalization["rmin"][-1]
 
@@ -5035,6 +5057,9 @@ class TGLFoutput:
             self.Qi_unn = self.Qi * q_gb[ir]
             self.Ge_unn = self.Ge * g_gb[ir]
             self.GiAll_unn = self.GiAll * g_gb[ir]
+
+            self.Mt_unn = self.Mt * pi_gb[ir]
+            self.Se_unn = self.Se * s_gb[ir]
 
             self.AmplitudeSpectrum_Te_level = GACODErun.obtainFluctuationLevel(
                 self.ky,
