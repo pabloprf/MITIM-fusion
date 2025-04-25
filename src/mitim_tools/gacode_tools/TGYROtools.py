@@ -12,15 +12,6 @@ from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-import time
-
-try:
-    from mitim_tools.gacode_tools.utils import PORTALSinteraction
-except:
-    print(
-        "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
-        typeMsg="w",
-    )
 
 """
 Same philosophy as the TGLFtools
@@ -2100,9 +2091,7 @@ class TGYROoutput:
 			Note: This is only valid in the converged case???????????????
 		"""
 
-        if (self.profiles_final is not None) and (
-            "derived" in self.profiles_final.__dict__
-        ):
+        if (self.profiles_final is not None) and ("derived" in self.profiles_final.__dict__):
             prof = self.profiles_final
         elif (self.profiles is not None) and ("derived" in self.profiles.__dict__):
             prof = self.profiles
@@ -2116,9 +2105,7 @@ class TGYROoutput:
 
         self.Q_better = self.P_fusT_tgyro / self.P_inT
 
-        if (self.profiles_final is not None) and (
-            "derived" in self.profiles_final.__dict__
-        ):
+        if (self.profiles_final is not None) and ("derived" in self.profiles_final.__dict__):
             self.Q_best = self.profiles_final.derived["Q"]
 
         """
@@ -2170,10 +2157,7 @@ class TGYROoutput:
             )
             # Profiles do not include ion fluxes
             for j in range(self.Gi_tar.shape[0]):
-                self.Gi_tar[j, i, :], self.Ci_tar[j, i, :] = (
-                    self.Ce_tar[i, :] * 0.0,
-                    self.Ce_tar[i, :] * 0.0,
-                )
+                self.Gi_tar[j, i, :], self.Ci_tar[j, i, :] = self.Ce_tar[i, :] * 0.0, self.Ce_tar[i, :] * 0.0
 
             self.Mt_tar[i, :] = np.interp(
                 rho_coarse, rho_fine, self.profiles_final.derived["mt_Jm2"]
@@ -2184,9 +2168,6 @@ class TGYROoutput:
         self.Qi_tarMW = self.Qi_tar * self.dvoldr
         self.Ge_tarMW = self.Ge_tar * self.dvoldr
         self.Ce_tarMW = self.Ce_tar * self.dvoldr
-
-    def tgyro_to_powerstate(self, *args, **kwargs):
-        return PORTALSinteraction.tgyro_to_powerstate(self, *args, **kwargs)
 
     def plot(self, fn=None, label="", prelabel="", fn_color=None):
         if fn is None:

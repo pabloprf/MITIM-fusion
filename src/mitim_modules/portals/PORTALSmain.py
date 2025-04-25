@@ -7,7 +7,6 @@ from functools import partial
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import (
     PORTALSinit,
@@ -439,7 +438,7 @@ class portals(STRATEGYtools.opt_evaluator):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALSinteraction.calculate_residuals(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
+        of, cal, _, res = PORTALStools.calculate_residuals(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
 
         return of, cal, res
 

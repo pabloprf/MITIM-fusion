@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
-from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_modules.portals.utils import PORTALSplot
+from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -240,7 +240,7 @@ class PORTALSanalyzer:
             # Residual definitions
             # ------------------------------------------------
 
-            _, _, source, res = PORTALSinteraction.calculate_residuals(
+            _, _, source, res = PORTALStools.calculate_residuals(
                 power,
                 self.PORTALSparameters,
             )
@@ -284,7 +284,7 @@ class PORTALSanalyzer:
                         y2,
                         y1_std,
                         y2_std,
-                    ) = PORTALSinteraction.calculate_residuals_distributions(
+                    ) = PORTALStools.calculate_residuals_distributions(
                         power,
                         self.PORTALSparameters,
                     )
@@ -1094,3 +1094,5 @@ class PORTALSinitializer:
 
                 axs[0].legend(prop={"size": 8})
                 axsGrads[0].legend(prop={"size": 8})
+
+
