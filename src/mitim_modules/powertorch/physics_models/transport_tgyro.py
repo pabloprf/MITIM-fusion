@@ -197,16 +197,13 @@ class tgyro_model(TRANSPORTtools.power_transport):
             print("\t- Could not move files", typeMsg="w")
 
 def tglf_scan_trick(
-    fluxesTGYRO, 
-    tgyro, 
-    label, 
+    tglf,
     RadiisToRun, 
     ProfilesPredicted, 
     impurityPosition=1,
     includeFast=False,  
     delta=0.02, 
     cold_start=False, 
-    check_coincidence_thr=1E-2, 
     extra_name="", 
     remove_folders_out = False,
     cores_per_tglf_instance = 4 # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
@@ -214,17 +211,7 @@ def tglf_scan_trick(
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
-    # Grab fluxes from TGYRO
-    Qe_tgyro, Qi_tgyro, Ge_tgyro, GZ_tgyro, Mt_tgyro, Pexch_tgyro = fluxesTGYRO
-
-    # ------------------------------------------------------------------------------------------------------------------------
-    # TGLF scans
-    # ------------------------------------------------------------------------------------------------------------------------
-
     # Prepare scan 
-
-    tglf = tgyro.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
-
     variables_to_scan = []
     for i in ProfilesPredicted:
         if i == 'te': variables_to_scan.append('RLTS_1')
@@ -295,28 +282,6 @@ def tglf_scan_trick(
         GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
         cont += jump
 
-    # ----------------------------------------------------
-    # Do a check that TGLF scans are consistent with TGYRO
-    Qe_err = np.abs( (Qe[:,0] - Qe_tgyro) / Qe_tgyro ) if 'te' in ProfilesPredicted else np.zeros_like(Qe[:,0])
-    Qi_err = np.abs( (Qi[:,0] - Qi_tgyro) / Qi_tgyro ) if 'ti' in ProfilesPredicted else np.zeros_like(Qi[:,0])
-    Ge_err = np.abs( (Ge[:,0] - Ge_tgyro) / Ge_tgyro ) if 'ne' in ProfilesPredicted else np.zeros_like(Ge[:,0])
-    GZ_err = np.abs( (GZ[:,0] - GZ_tgyro) / GZ_tgyro ) if 'nZ' in ProfilesPredicted else np.zeros_like(GZ[:,0])
-
-    F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
-    if F_err.max() > check_coincidence_thr:
-        print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
-        if 'te' in ProfilesPredicted:
-            print('\t\t* Qe:',Qe_err)
-        if 'ti' in ProfilesPredicted:
-            print('\t\t* Qi:',Qi_err)
-        if 'ne' in ProfilesPredicted:
-            print('\t\t* Ge:',Ge_err)
-        if 'nZ' in ProfilesPredicted:
-            print('\t\t* GZ:',GZ_err)
-    else:
-        print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
-    # ----------------------------------------------------
-
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
     def calculate_mean_std(Q):
@@ -338,14 +303,13 @@ def tglf_scan_trick(
     Ge_point, Ge_std = calculate_mean_std(Ge)
     GZ_point, GZ_std = calculate_mean_std(GZ)
 
-    #TODO: Implement Mt and Pexch
-    Mt_point, Pexch_point = Mt_tgyro, Pexch_tgyro
-    Mt_std, Pexch_std = abs(Mt_point) * 0.1, abs(Pexch_point) * 0.1
-
     #TODO: Careful with fast particles
 
-    return Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, Pexch_point, Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, Pexch_std
+    Flux_base = [Qe[:,0], Qi[:,0], Ge[:,0], GZ[:,0], None, None] #TODO (Mt, Pexch)
+    Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, None, None] #TODO (Mt, Pexch)
+    Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, None, None] #TODO (Mt, Pexch)
 
+    return Flux_base, Flux_mean, Flux_std
 # **************************************************************************************************
 # Functions
 # **************************************************************************************************
@@ -363,7 +327,8 @@ def curateTGYROfiles(
     use_tglf_scan_trick=None,
     cold_start=False,
     extra_name="",
-    cores_per_tglf_instance = 4
+    cores_per_tglf_instance = 4,
+    check_coincidence_thr=1E-2, 
     ):
 
     tgyro = tgyroObject.results[label]
@@ -372,11 +337,7 @@ def curateTGYROfiles(
     relativeErrorNEO = percentError[1] / 100.0
     relativeErrorTAR = percentError[2] / 100.0
 
-    # **************************************************************************************************************************
-    # TGLF
-    # **************************************************************************************************************************
-    
-    # Grab fluxes
+    # Grab fluxes from TGYRO
     Qe = tgyro.Qe_sim_turb[0, 1:]
     Qi = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
     Ge = tgyro.Ge_sim_turb[0, 1:]
@@ -387,17 +348,12 @@ def curateTGYROfiles(
     # Determine TGLF standard deviations
     if use_tglf_scan_trick is not None:
 
-        if provideTurbulentExchange:
-            print("> Turbulent exchange not implemented yet in TGLF scans", typeMsg="w") #TODO
+        # Grab TGLF object
+        tglfObject = tgyroObject.grab_tglf_objects(fromlabel=label, subfolder = 'tglf_explorations')
 
-        # --------------------------------------------------------------
-        # If using the scan trick
-        # --------------------------------------------------------------
-
-        Qe, Qi, Ge, GZ, Mt, Pexch, QeE, QiE, GeE, GZE, MtE, PexchE = tglf_scan_trick(
-            [Qe, Qi, Ge, GZ, Mt, Pexch],
-            tgyroObject,
-            label, 
+        # Run TGLF scan trick
+        Flux_base, Flux_mean, Flux_std = tglf_scan_trick(
+            tglfObject,
             RadiisToRun, 
             ProfilesPredicted, 
             impurityPosition=impurityPosition, 
@@ -407,6 +363,43 @@ def curateTGYROfiles(
             extra_name=extra_name,
             cores_per_tglf_instance=cores_per_tglf_instance
             )
+
+        Qe, Qi, Ge, GZ, _, _ = Flux_mean
+        QeE, QiE, GeE, GZE, _, _ = Flux_std
+
+        #TODO
+        MtE, PexchE = abs(Mt) * 0.1, abs(Pexch) * 0.1
+
+        # ----------------------------------------------------
+        # Do a check that TGLF scans are consistent with TGYRO
+
+        Qe_base, Qi_base, Ge_base, GZ_base, _, _ = Flux_base
+
+        # Grab fluxes from TGYRO
+        Qe_tgyro = tgyro.Qe_sim_turb[0, 1:]
+        Qi_tgyro = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
+        Ge_tgyro = tgyro.Ge_sim_turb[0, 1:]
+        GZ_tgyro = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
+
+        Qe_err = np.abs( (Qe_base - Qe_tgyro) / Qe_tgyro ) if 'te' in ProfilesPredicted else np.zeros_like(Qe_base)
+        Qi_err = np.abs( (Qi_base - Qi_tgyro) / Qi_tgyro ) if 'ti' in ProfilesPredicted else np.zeros_like(Qi_base)
+        Ge_err = np.abs( (Ge_base - Ge_tgyro) / Ge_tgyro ) if 'ne' in ProfilesPredicted else np.zeros_like(Ge_base)
+        GZ_err = np.abs( (GZ_base - GZ_tgyro) / GZ_tgyro ) if 'nZ' in ProfilesPredicted else np.zeros_like(GZ_base)
+
+        F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err))
+        if F_err.max() > check_coincidence_thr:
+            print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%",typeMsg="w")
+            if 'te' in ProfilesPredicted:
+                print('\t\t* Qe:',Qe_err)
+            if 'ti' in ProfilesPredicted:
+                print('\t\t* Qi:',Qi_err)
+            if 'ne' in ProfilesPredicted:
+                print('\t\t* Ge:',Ge_err)
+            if 'nZ' in ProfilesPredicted:
+                print('\t\t* GZ:',GZ_err)
+        else:
+            print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
+        # ----------------------------------------------------
 
         min_relative_error = 0.01 # To avoid problems with gpytorch, 1% error minimum
 

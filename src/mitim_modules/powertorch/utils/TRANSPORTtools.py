@@ -67,7 +67,8 @@ class power_transport:
         }
 
     def produce_profiles(self):
-        # Only add self._produce_profiles() if it's needed (e.g. full TGLF), otherwise this is somewhat expensive (e.g. for flux matching)
+        # Only add self._produce_profiles() if it's needed (e.g. full TGLF), otherwise this is somewhat expensive
+        # (e.g. for flux matching of analytical models)
         pass
 
     def _produce_profiles(self,deriveQuantities=True):
