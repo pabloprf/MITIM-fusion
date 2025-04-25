@@ -5,10 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
-from mitim_modules.powertorch.utils import GEOMETRYtools, CALCtools
+from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
-from mitim_tools.gacode_tools.utils import GACODEdefaults
+from mitim_tools.gacode_tools.utils import GACODEdefaults, GEOMETRYtools
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
