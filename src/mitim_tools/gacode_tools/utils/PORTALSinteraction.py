@@ -126,7 +126,7 @@ def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def TGYROmodeledVariables(TGYROresults,
+def tgyro_to_powerstate(TGYROresults,
     powerstate,
     useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
