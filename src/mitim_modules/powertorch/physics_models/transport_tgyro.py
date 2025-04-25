@@ -148,10 +148,10 @@ class tgyro_model(TRANSPORTtools.power_transport):
         forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
-        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
+        impurityPosition = self.powerstate.impurityPosition_transport
 
         # Produce right quantities (TGYRO -> powerstate.plasma)
-        self.powerstate = tgyro.results[label].TGYROmodeledVariables(
+        self.powerstate = tgyro.results[label].tgyro_to_powerstate(
             self.powerstate,
             useConvectiveFluxes=useConvectiveFluxes,
             includeFast=includeFast,
