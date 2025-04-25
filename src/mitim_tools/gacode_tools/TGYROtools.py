@@ -1432,14 +1432,14 @@ class TGYROoutput:
         # Errors - Constructed outside of TGYRO call (e.g. powerstate)
         # ***************************************************************
 
-        if not (self.FolderTGYRO / f"out.tgyro.flux_e_stds").exists():
+        if not (self.FolderTGYRO / "out.tgyro.flux_e_stds").exists():
             self.tgyro_stds = False
 
         else:
             print("\t- Errors in TGYRO fluxes and targets found, adding to class")
             self.tgyro_stds = True
 
-            file = self.FolderTGYRO / f"out.tgyro.flux_e_stds"
+            file = self.FolderTGYRO / "out.tgyro.flux_e_stds"
             (
                 _,
                 self.GeGB_sim_neo_stds,
