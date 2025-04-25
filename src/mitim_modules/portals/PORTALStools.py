@@ -404,3 +404,248 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     else:
         print("\t- No convergence yet, providing as iteration values the scalarized objective")
         return False, yvals
+
+
+
+def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
+    """
+    Notes
+    -----
+        - Works with tensors
+        - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
+    """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "Qe_tr_turb": "QeMWm2_tr_turb",
+            "Qi_tr_turb": "QiMWm2_tr_turb",
+            "Ge_tr_turb": "Ce_tr_turb",
+            "GZ_tr_turb": "CZ_tr_turb",
+            "Mt_tr_turb": "MtJm2_tr_turb",
+            "Qe_tr_neo": "QeMWm2_tr_neo",
+            "Qi_tr_neo": "QiMWm2_tr_neo",
+            "Ge_tr_neo": "Ce_tr_neo",
+            "GZ_tr_neo": "CZ_tr_neo",
+            "Mt_tr_neo": "MtJm2_tr_neo",
+            "Qe_tar": "QeMWm2",
+            "Qi_tar": "QiMWm2",
+            "Ge_tar": "Ce",
+            "GZ_tar": "CZ",
+            "Mt_tar": "MtJm2",
+            "PexchTurb": "PexchTurb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][..., 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][..., 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
+    dfT = list(var_dict.values())[0]  # as a reference for sizes
+
+    # -------------------------------------------------------------------------
+    # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
+    # -------------------------------------------------------------------------
+
+    if PORTALSparameters["surrogateForTurbExch"]:
+        PexchTurb_integrated = computeTurbExchangeIndividual(
+            var_dict["PexchTurb"], powerstate
+        )
+    else:
+        PexchTurb_integrated = torch.zeros(dfT.shape).to(dfT)
+
+    # ------------------------------------------------------------------------
+    # Go through each profile that needs to be predicted, calculate components
+    # ------------------------------------------------------------------------
+
+    of, cal, res = (
+        torch.Tensor().to(dfT),
+        torch.Tensor().to(dfT),
+        torch.Tensor().to(dfT),
+    )
+    for prof in powerstate.ProfilesPredicted:
+        if prof == "te":
+            var = "Qe"
+        elif prof == "ti":
+            var = "Qi"
+        elif prof == "ne":
+            var = "Ge"
+        elif prof == "nZ":
+            var = "GZ"
+        elif prof == "w0":
+            var = "Mt"
+
+        """
+		-----------------------------------------------------------------------------------
+		Transport (_tr_turb+_tr_neo)
+		-----------------------------------------------------------------------------------
+		"""
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
+
+        """
+		-----------------------------------------------------------------------------------
+		Target (Sum here the turbulent exchange power)
+		-----------------------------------------------------------------------------------
+		"""
+        if var == "Qe":
+            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
+        elif var == "Qi":
+            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
+        else:
+            cal0 = var_dict[f"{var}_tar"]
+
+        """
+		-----------------------------------------------------------------------------------
+		Ad-hoc modifications for different weighting
+		-----------------------------------------------------------------------------------
+		"""
+
+        if var == "Qe":
+            of0, cal0 = (
+                of0 * PORTALSparameters["Pseudo_multipliers"][0],
+                cal0 * PORTALSparameters["Pseudo_multipliers"][0],
+            )
+        elif var == "Qi":
+            of0, cal0 = (
+                of0 * PORTALSparameters["Pseudo_multipliers"][1],
+                cal0 * PORTALSparameters["Pseudo_multipliers"][1],
+            )
+        elif var == "Ge":
+            of0, cal0 = (
+                of0 * PORTALSparameters["Pseudo_multipliers"][2],
+                cal0 * PORTALSparameters["Pseudo_multipliers"][2],
+            )
+        elif var == "GZ":
+            of0, cal0 = (
+                of0 * PORTALSparameters["Pseudo_multipliers"][3],
+                cal0 * PORTALSparameters["Pseudo_multipliers"][3],
+            )
+        elif var == "MtJm2":
+            of0, cal0 = (
+                of0 * PORTALSparameters["Pseudo_multipliers"][4],
+                cal0 * PORTALSparameters["Pseudo_multipliers"][4],
+            )
+
+        of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
+
+    # -----------
+    # Composition
+    # -----------
+
+    # Source term is (TARGET - TRANSPORT)
+    source = cal - of
+
+    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2
+    res = -1 / source.shape[-1] * torch.norm(source, p=2, dim=-1)
+
+    return of, cal, source, res
+
+
+def calculate_residuals_distributions(powerstate, PORTALSparameters):
+    """
+    - Works with tensors
+    - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
+    """
+
+    # Prepare dictionary from powerstate (for use in Analysis)
+    
+    mapper = {
+        "Qe_tr_turb": "QeMWm2_tr_turb",
+        "Qi_tr_turb": "QiMWm2_tr_turb",
+        "Ge_tr_turb": "Ce_tr_turb",
+        "GZ_tr_turb": "CZ_tr_turb",
+        "Mt_tr_turb": "MtJm2_tr_turb",
+        "Qe_tr_neo": "QeMWm2_tr_neo",
+        "Qi_tr_neo": "QiMWm2_tr_neo",
+        "Ge_tr_neo": "Ce_tr_neo",
+        "GZ_tr_neo": "CZ_tr_neo",
+        "Mt_tr_neo": "MtJm2_tr_neo",
+        "Qe_tar": "QeMWm2",
+        "Qi_tar": "QiMWm2",
+        "Ge_tar": "Ce",
+        "GZ_tar": "CZ",
+        "Mt_tar": "MtJm2",
+        "PexchTurb": "PexchTurb"
+    }
+
+    var_dict = {}
+    for ikey in mapper:
+        var_dict[ikey] = powerstate.plasma[mapper[ikey]][:, 1:]
+        if mapper[ikey] + "_stds" in powerstate.plasma:
+            var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][:, 1:]
+        else:
+            var_dict[ikey + "_stds"] = None
+
+    dfT = var_dict["Qe_tr_turb"]  # as a reference for sizes
+
+    # -------------------------------------------------------------------------
+    # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
+    # -------------------------------------------------------------------------
+
+    if PORTALSparameters["surrogateForTurbExch"]:
+        PexchTurb_integrated = computeTurbExchangeIndividual(
+            var_dict["PexchTurb"], powerstate
+        )
+        PexchTurb_integrated_stds = computeTurbExchangeIndividual(
+            var_dict["PexchTurb_stds"], powerstate
+        )
+    else:
+        PexchTurb_integrated = torch.zeros(dfT.shape).to(dfT)
+        PexchTurb_integrated_stds = torch.zeros(dfT.shape).to(dfT)
+
+    # ------------------------------------------------------------------------
+    # Go through each profile that needs to be predicted, calculate components
+    # ------------------------------------------------------------------------
+
+    of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
+    ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
+    for prof in powerstate.ProfilesPredicted:
+        if prof == "te":
+            var = "Qe"
+        elif prof == "ti":
+            var = "Qi"
+        elif prof == "ne":
+            var = "Ge"
+        elif prof == "nZ":
+            var = "GZ"
+        elif prof == "w0":
+            var = "MtJm2"
+
+        """
+		-----------------------------------------------------------------------------------
+		Transport (_tr_turb+_tr_neo)
+		-----------------------------------------------------------------------------------
+		"""
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
+        of0E = (var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neo_stds"] ** 2) ** 0.5
+
+        """
+		-----------------------------------------------------------------------------------
+		Target (Sum here the turbulent exchange power)
+		-----------------------------------------------------------------------------------
+		"""
+        if var == "Qe":
+            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
+            cal0E = (
+                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
+            ) ** 0.5
+        elif var == "Qi":
+            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
+            cal0E = (
+                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
+            ) ** 0.5
+        else:
+            cal0 = var_dict[f"{var}_tar"]
+            cal0E = var_dict[f"{var}_tar_stds"]
+
+        of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
+        ofE, calE = torch.cat((ofE, of0E), dim=-1), torch.cat((calE, cal0E), dim=-1)
+
+    return of, cal, ofE, calE

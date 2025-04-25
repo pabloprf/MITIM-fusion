@@ -11,7 +11,6 @@ from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
-from mitim_tools.gacode_tools.utils import PORTALSinteraction
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
@@ -3800,21 +3799,104 @@ class PROFILES_GACODE:
         IOtools.writeExcel_fromDict(dictExcel, file, fromRow=1)
 
     def parabolizePlasma(self):
-        PORTALSinteraction.parabolizePlasma(self)
+        _, T = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["Te_vol"],
+            nu=self.derived["Te_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["te(keV)"][-1],
+        )
+        _, Ti = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["Ti_vol"],
+            nu=self.derived["Ti_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["ti(keV)"][-1, 0],
+        )
+        _, n = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["ne_vol20"] * 1e1,
+            nu=self.derived["ne_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["ne(10^19/m^3)"][-1],
+        )
+
+        self.profiles["te(keV)"] = T
+
+        self.profiles["ti(keV)"][:, 0] = Ti
+        self.makeAllThermalIonsHaveSameTemp(refIon=0)
+
+        factor_n = n / self.profiles["ne(10^19/m^3)"]
+        self.profiles["ne(10^19/m^3)"] = n
+        self.scaleAllThermalDensities(scaleFactor=factor_n)
+
+        self.deriveQuantities()
+
 
     def changeRFpower(self, PrfMW=25.0):
-        PORTALSinteraction.changeRFpower(self, PrfMW=PrfMW)
+        """
+        keeps same partition
+        """
+        print(f"- Changing the RF power from {self.derived['qRF_MWmiller'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
+        
+        if self.derived["qRF_MWmiller"][-1] == 0.0:
+            raise Exception("No RF power in the input.gacode, cannot modify the RF power")
+
+        for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
+            self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MWmiller"][-1]
 
     def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
-        PORTALSinteraction.imposeBCtemps(
-            self, TkeV=TkeV, rho=rho, typeEdge=typeEdge, Tesep=Tesep, Tisep=Tisep
-        )
+
+        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
+
+        self.profiles["te(keV)"] = self.profiles["te(keV)"] * TkeV / self.profiles["te(keV)"][ix]
+
+        print(f"- Producing {typeEdge} boundary condition @ rho = {rho}, T = {TkeV} keV",typeMsg="i",)
+
+        for sp in range(len(self.Species)):
+            if self.Species[sp]["S"] == "therm":
+                self.profiles["ti(keV)"][:, sp] = self.profiles["ti(keV)"][:, sp] * TkeV / self.profiles["ti(keV)"][ix, sp]
+
+        if typeEdge == "linear":
+            self.profiles["te(keV)"][ix:] = np.linspace(TkeV, Tesep, len(self.profiles["rho(-)"][ix:]))
+
+            for sp in range(len(self.Species)):
+                if self.Species[sp]["S"] == "therm":
+                    self.profiles["ti(keV)"][ix:, sp] = np.linspace(TkeV, Tisep, len(self.profiles["rho(-)"][ix:]))
+
+        elif typeEdge == "same":
+            pass
+        else:
+            raise Exception("no edge")
+
 
     def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
-        PORTALSinteraction.imposeBCdens(
-            self, n20=n20, rho=rho, typeEdge=typeEdge, nedge20=nedge20
-        )
+        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
 
+        print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+
+        factor = n20 / self.derived["ne_vol20"]
+
+        for i in ["ne(10^19/m^3)", "ni(10^19/m^3)"]:
+            self.profiles[i] = self.profiles[i] * factor
+
+        if typeEdge == "linear":
+            factor_x = (
+                np.linspace(
+                    self.profiles["ne(10^19/m^3)"][ix],
+                    nedge20 * 1e1,
+                    len(self.profiles["rho(-)"][ix:]),
+                )
+                / self.profiles["ne(10^19/m^3)"][ix:]
+            )
+
+            self.profiles["ne(10^19/m^3)"][ix:] = self.profiles["ne(10^19/m^3)"][ix:] * factor_x
+
+            for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
+                self.profiles["ni(10^19/m^3)"][ix:, i] = self.profiles["ni(10^19/m^3)"][ix:, i] * factor_x
+
+        elif typeEdge == "same":
+            pass
+        else:
+            raise Exception("no edge")
+        
     def addSawtoothEffectOnOhmic(self, PohTot, mixRadius=None, plotYN=False):
         """
         This will implement a flat profile inside the mixRadius to reduce the ohmic power by certain amount
