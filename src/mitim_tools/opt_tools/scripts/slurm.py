@@ -39,7 +39,7 @@ def run_slurm(
 
         command = [venv,script + (f" --seed {seed}" if seed is not None else "")]
 
-        nameJob = f"mitim_opt_{folder.name}{extra_name}"
+        nameJob = f"mitim_{folder.name}{extra_name}"
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
             command,
