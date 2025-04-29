@@ -123,7 +123,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
                 position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
-                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
+                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j+1]:.2f}",markersize=0.5)
                 if self.bounds_current is not None:
                     for u in [0,1]:
                         ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
