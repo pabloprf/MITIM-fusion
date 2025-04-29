@@ -13682,9 +13682,15 @@ class transp_output:
         # ~~~~~~ Impurities
         for cont,i in enumerate(self.nZs):
 
+            foundImpurity = False
             if self.LocationNML is not None:
-                mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
-            else:
+                try:
+                    mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
+                    foundImpurity = True
+                except:
+                    pass
+                
+            if not foundImpurity:
                 print(f"\t- Could not find mass for impurity {i} in namelist. Using default value of 2*Zave", typeMsg="w")
                 mass =self.fZs_avol[i]['Zave'][self.ind_saw]*2
 
