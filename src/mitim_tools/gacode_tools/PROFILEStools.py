@@ -689,8 +689,10 @@ class PROFILES_GACODE:
                 P += self.profiles[i]
         self.derived["qBEAM_MWmiller"] = CALCtools.integrateFS(P, r, volp)
 
-        P = self.derived["qrad"]
-        self.derived["qrad_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qrad_MWmiller"] = CALCtools.integrateFS(self.derived["qrad"], r, volp)
+        self.derived["qrad_sync_MWmiller"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
+        self.derived["qrad_brem_MWmiller"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
+        self.derived["qrad_line_MWmiller"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qfuse(MW/m^3)", "qfusi(MW/m^3)"]:
@@ -778,6 +780,9 @@ class PROFILES_GACODE:
         )
 
         self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
+        self.derived["Prad_sync"] = self.derived["qrad_sync_MWmiller"][-1]
+        self.derived["Prad_brem"] = self.derived["qrad_brem_MWmiller"][-1]
+        self.derived["Prad_line"] = self.derived["qrad_line_MWmiller"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
 
         self.derived["ni_thr"] = []
