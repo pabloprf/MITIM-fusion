@@ -56,7 +56,7 @@ class portals_beat(beat):
 
                     new_name = data_df['Ion'][iZ]
 
-                    print(f"\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})")
+                    print(f'\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})')
 
                     profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
 
