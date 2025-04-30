@@ -132,7 +132,7 @@ def mitimRun(
         if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
             print(
                 f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",
-                typeMsg="w",
+                typeMsg="i",
             )
             cold_start = True
         else:
