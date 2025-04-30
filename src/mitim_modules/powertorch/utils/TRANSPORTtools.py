@@ -120,7 +120,7 @@ class power_transport:
             impurityPosition_new = self.powerstate.impurityPosition
 
         if impurityPosition_new != self.powerstate.impurityPosition:
-            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="w")
+            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
     # ----------------------------------------------------------------------------------------------------

@@ -511,6 +511,7 @@ class TGLF:
         TGLFsettings=None,
         extraOptions={},
         multipliers={},
+        minimum_delta_abs={},
         runWaveForms=None,  # e.g. runWaveForms = [0.3,1.0]
         forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         ApplyCorrections=True,  # Removing ions with too low density and that are fast species
@@ -541,6 +542,7 @@ class TGLF:
             TGLFsettings=TGLFsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
             runWaveForms=runWaveForms,
             forceClosestUnstableWF=forceClosestUnstableWF,
             ApplyCorrections=ApplyCorrections,
@@ -629,6 +631,7 @@ class TGLF:
         TGLFsettings=None,
         extraOptions={},
         multipliers={},
+        minimum_delta_abs={},
         ApplyCorrections=True,  # Removing ions with too low density and that are fast species
         Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
         launchSlurm=True,
@@ -689,6 +692,7 @@ class TGLF:
             TGLFsettings=TGLFsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
             ApplyCorrections=ApplyCorrections,
             Quasineutral=Quasineutral,
         )
@@ -2326,6 +2330,7 @@ class TGLF:
         self,
         subFolderTGLF,  # 'scan1',
         multipliers={},
+        minimum_delta_abs={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
         variables_scanTogether=[],
@@ -2352,6 +2357,7 @@ class TGLF:
         tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
             subFolderTGLF,
             multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
             variable=variable,
             varUpDown=varUpDown_new,
             variables_scanTogether=variables_scanTogether,
@@ -2380,6 +2386,7 @@ class TGLF:
         self,
         subFolderTGLF,  # 'scan1',
         multipliers={},
+        minimum_delta_abs={},
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
         variables_scanTogether=[],
@@ -2443,6 +2450,7 @@ class TGLF:
                 tglf_executor=tglf_executor,
                 tglf_executor_full=tglf_executor_full,
                 multipliers=multipliers_mod,
+                minimum_delta_abs=minimum_delta_abs,
                 **kwargs_TGLFrun,
             )
 
@@ -3141,6 +3149,7 @@ class TGLF:
         variation=0.5,
         add_baseline_to = 'none', # 'all' or 'first' or 'none'
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
+        minimum_delta_abs={},
         positionIon=2,
         **kwargs_TGLFrun,
     ):
@@ -3172,6 +3181,7 @@ class TGLF:
                 scan_name,
                 variable=variable,
                 varUpDown=varUpDown_dict[variable],
+                minimum_delta_abs=minimum_delta_abs,
                 **kwargs_TGLFrun,
             )
 
@@ -3798,6 +3808,7 @@ def changeANDwrite_TGLF(
     TGLFsettings=None,
     extraOptions={},
     multipliers={},
+    minimum_delta_abs={},
     ApplyCorrections=True,
     Quasineutral=False,
 ):
@@ -3818,6 +3829,7 @@ def changeANDwrite_TGLF(
             Settings=TGLFsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
             position_change=i,
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=NS,

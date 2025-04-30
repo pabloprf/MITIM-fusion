@@ -99,6 +99,7 @@ def modifyInputs(
     Settings=None,
     extraOptions={},
     multipliers={},
+    minimum_delta_abs={},
     position_change=0,
     addControlFunction=None,
     **kwargs_to_function,
@@ -160,18 +161,12 @@ def modifyInputs(
                 input_class.plasma[ikey] = var_new
             else:
                 # If the variable in extraOptions wasn't in there, consider it a control param
-                print(
-                    "\t\t- Variable to change did not exist previously, creating now",
-                    typeMsg="i",
-                )
+                print("\t\t- Variable to change did not exist previously, creating now",typeMsg="i")
                 var_orig = None
                 var_new = value_to_change_to
                 input_class.controls[ikey] = var_new
 
-        print(
-            f"\t\t- Changing {ikey} from {var_orig} to {var_new}",
-            typeMsg="i",
-        )
+        print(f"\t\t- Changing {ikey} from {var_orig} to {var_new}",typeMsg="i",)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Change with multipliers -> Input directly, not as multiplier
@@ -184,31 +179,41 @@ def modifyInputs(
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = input_class.species[specie][varK]
-            var_new = var_orig * multipliers[ikey]
+            var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
             input_class.species[specie][varK] = var_new
         else:
             if ikey in input_class.controls:
                 var_orig = input_class.controls[ikey]
-                var_new = var_orig * multipliers[ikey]
+                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.controls[ikey] = var_new
+            
             elif ikey in input_class.geom:
                 var_orig = input_class.geom[ikey]
-                var_new = var_orig * multipliers[ikey]
+                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.geom[ikey] = var_new
+            
             elif ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
-                var_new = var_orig * multipliers[ikey]
+                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.plasma[ikey] = var_new
+            
             else:
-                print(
-                    "\t- Variable to scan did not exist in original file, add it as extraOptions first",
-                    typeMsg="w",
-                )
+                print("\t- Variable to scan did not exist in original file, add it as extraOptions first",typeMsg="w",)
 
         print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{multipliers[ikey]})")
 
     return input_class
 
+def multiplier_tglf_input(var_orig, multiplier, minimum_delta_abs = None):
+
+    delta = var_orig * (multiplier - 1.0)
+
+    if minimum_delta_abs is not None:
+        if (multiplier != 1.0) and abs(delta) < minimum_delta_abs:
+            print(f"\t\t\t- delta = {delta} is smaller than minimum_delta_abs = {minimum_delta_abs}, enforcing",typeMsg="i")
+            delta = np.sign(delta) * minimum_delta_abs
+
+    return var_orig + delta
 
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
