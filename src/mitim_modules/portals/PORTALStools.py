@@ -17,11 +17,10 @@ def surrogate_selection_portals(output, surrogate_options, CGYROrun=False):
         if output[3:6] == "tar":
             surrogate_options["TypeMean"] = 1
             surrogate_options["TypeKernel"] = 2  # Constant kernel
-        # If it's not, stndard
+        # If it's not, standard case for fluxes
         else:
             surrogate_options["TypeMean"] = 2  # Linear in gradients, constant in rest
             surrogate_options["TypeKernel"] = 1  # RBF
-            # surrogate_options['ExtraNoise']  = True
 
     surrogate_options["additional_constraints"] = {
         'lenghtscale_constraint': gpytorch.constraints.constraints.GreaterThan(0.01) # inputs normalized to [0,1], this is  1% lengthscale

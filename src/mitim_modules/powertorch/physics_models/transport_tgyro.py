@@ -203,6 +203,7 @@ def tglf_scan_trick(
     impurityPosition=1,
     includeFast=False,  
     delta=0.02, 
+    minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
     cold_start=False, 
     extra_name="", 
     remove_folders_out = False,
@@ -230,6 +231,12 @@ def tglf_scan_trick(
     
     relative_scan = [1-delta, 1+delta]
 
+    # Enforce at least "minimum_abs_gradient" in gradient, to avoid zero gradient situations
+    minimum_delta_abs = {}
+    for ikey in variables_to_scan:
+        if 'RL' in ikey:
+            minimum_delta_abs[ikey] = minimum_abs_gradient
+
     name = 'turb_drives'
 
     tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
@@ -248,6 +255,7 @@ def tglf_scan_trick(
                     subFolderTGLF = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
+                    minimum_delta_abs = minimum_delta_abs,
                     TGLFsettings = None,
                     ApplyCorrections = False,
                     add_baseline_to = 'first',
