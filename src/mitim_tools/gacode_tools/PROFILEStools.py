@@ -1283,8 +1283,6 @@ class PROFILES_GACODE:
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
-        if 'pfast_fraction' not in self.derived:    self.derived['pfast_fraction'] = np.nan   #TODO: remove this line
-
         try:
             ImpurityText = ""
             for i in range(len(self.Species)):
@@ -1298,90 +1296,30 @@ class PROFILES_GACODE:
             print(f"\tkappa_sep = {self.profiles['kappa(-)'][-1]:.2f}, kappa_995 = {self.derived['kappa995']:.2f}, kappa_95 = {self.derived['kappa95']:.2f}, kappa_a = {self.derived['kappa_a']:.2f}")
             print(f"\tdelta_sep  = {self.profiles['delta(-)'][-1]:.2f}, delta_995  = {self.derived['delta995']:.2f}, delta_95  = {self.derived['delta95']:.2f}")
             print("Performance:")
-            print(
-                "\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(
-                    self.derived["Q"], self.derived["Pfus"], self.derived["qIn"]
-                )
-            )
-            print(
-                "\tH98y2 =  {0:.2f}   (tauE  = {1:.3f} s)".format(
-                    self.derived["H98"], self.derived["tauE"]
-                )
-            )
-            print(
-                "\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(
-                    self.derived["H89"], self.derived["H97L"]
-                )
-            )
-            print(
-                "\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(
-                    self.derived["ne_peaking"], self.derived["nu_eff"]
-                )
-            )
-            print(
-                "\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(
-                    self.derived["ne_peaking0.2"], self.derived["nu_eff2"]
-                )
-            )
+            print("\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(self.derived["Q"], self.derived["Pfus"], self.derived["qIn"]))
+            print("\tH98y2 =  {0:.2f}   (tauE  = {1:.3f} s)".format(self.derived["H98"], self.derived["tauE"]))
+            print("\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(self.derived["H89"], self.derived["H97L"]))
+            print("\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(self.derived["ne_peaking"], self.derived["nu_eff"]))
+            print("\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(self.derived["ne_peaking0.2"], self.derived["nu_eff2"]))
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(f"\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
-            print(
-                f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})"
-            )
-            print(
-                "\tPrad  =  {0:.1f}MW ({1:.1f}% of total)".format(
-                    self.derived["Prad"],
-                    self.derived["Prad"] / self.derived["qHeat"] * 100.0,
-                )
-            )
-            print(
-                "\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(
-                    self.derived["Psol"], self.derived["LHratio"]
-                )
-            )
-            print(
-                "Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(
-                    self.derived["ne_vol20"], self.derived["Te_vol"]
-                )
-            )
-            print(
-                "\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(
-                    self.derived["Ti_vol"],
-                    self.derived["tite_vol"],
-                    self.derived["tite"][0],
-                )
-            )
-            print(
-                "\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(
-                    self.derived["fG"], self.derived["ne_vol20"]
-                )
-            )
-            print(
-                f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]"
-            )
+            print(f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
+            print(f"\tPrad  =  {self.derived['Prad']:.1f}MW ({self.derived['Prad'] / self.derived['qHeat'] * 100.0:.1f}% of total) ({self.derived['Prad_brem']/self.derived['Prad'] * 100.0:.1f}% brem, {self.derived['Prad_line']/self.derived['Prad'] * 100.0:.1f}% line, {self.derived['Prad_sync']/self.derived['Prad'] * 100.0:.1f}% sync)")
+            print("\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
+            print("Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
+            print("\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
+            print("\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
+            print(f"\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]")
             print(f"\tMach  = {self.derived['MachNum_vol']:.2f} (vol avg)")
             print("Content:")
-            print(
-                "\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(
-                    self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]
-                )
-            )
-            print(
-                "\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20 (N_thr = {2:.1f}*10^20)".format(
-                    self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]
-                )
-            )
-            print(
-                f"\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})"
-            )
+            print("\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]))
+            print("\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20 (N_thr = {2:.1f}*10^20)".format(self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]))
+            print(f"\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})")
             print("Species concentration:")
             print(f"\t{ImpurityText}")
             print("******************************************************")
         except KeyError:
-            print(
-                "\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",
-                typeMsg="w",
-            )
+            print("\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",typeMsg="w",)
             if reDeriveIfNotFound:
                 self.deriveQuantities()
                 self.printInfo(label=label, reDeriveIfNotFound=False)
