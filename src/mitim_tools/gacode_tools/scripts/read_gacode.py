@@ -1,4 +1,5 @@
 import argparse
+from turtle import st
 from mitim_tools.gacode_tools import PROFILEStools
 
 """
@@ -11,13 +12,13 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("files", type=str, nargs="*")
-    parser.add_argument(
-        "--rho", type=float, required=False, default=0.89
-    )  # Last rho for gradients plot
+    parser.add_argument("--rho", type=float, required=False, default=0.89)  # Last rho for gradients plot
+    parser.add_argument("--print", required=False, default=False, action="store_true")  # Last rho for gradients plot
     args = parser.parse_args()
 
     files = args.files
     rho = args.rho
+    print_only = args.print
 
     # Read
     profs = []
@@ -29,9 +30,11 @@ def main():
 
     # Plot
 
-    fn = PROFILEStools.plotAll(profs, lastRhoGradients=rho)
+    if not print_only:
 
-    fn.show()
+        fn = PROFILEStools.plotAll(profs, lastRhoGradients=rho)
+
+        fn.show()
 
     # Import IPython and embed an interactive session
     from IPython import embed
