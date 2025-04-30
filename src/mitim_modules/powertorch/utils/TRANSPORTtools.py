@@ -87,7 +87,7 @@ class power_transport:
             insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
-        self.profiles_transport = copy.deepcopy(self.powerstate.profiles)
+        self.powerstate.profiles_transport = copy.deepcopy(self.powerstate.profiles)
 
         self._modify_profiles()
 
@@ -104,7 +104,7 @@ class power_transport:
 
         if profiles_postprocessing_fun is not None:
             print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")
-            self.profiles_transport = profiles_postprocessing_fun(self.file_profs)
+            self.powerstate.profiles_transport = profiles_postprocessing_fun(self.file_profs)
 
         # Position of impurity ion may have changed
         p_old = PROFILEStools.PROFILES_GACODE(self.file_profs_unmod)

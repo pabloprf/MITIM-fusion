@@ -48,7 +48,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
         RadiisToRun = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
-        tgyro.prep(self.folder, profilesclass_custom=self.profiles_transport)
+        tgyro.prep(self.folder, profilesclass_custom=self.powerstate.profiles_transport)
 
         if launchMODELviaSlurm:
             print("\t- Launching TGYRO evaluation as a batch job")
