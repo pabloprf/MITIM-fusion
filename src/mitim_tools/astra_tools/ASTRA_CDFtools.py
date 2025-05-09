@@ -78,6 +78,7 @@ class transp_output:
         self.PEECR = self.f["PEECR"][:]
         self.G11 = self.f["G11"][:]
         self.NALF = self.f["NALF"][:]
+        #self.FTLLM - self.f["FTLLM"][:]
 
         # dummy variables
 
@@ -215,6 +216,11 @@ class transp_output:
         self.ZRD53 = self.f["ZRD53"][:]
         self.ZRD54 = self.f["ZRD54"][:]
         self.ZRD55 = self.f["ZRD55"][:]
+        self.ZRD56 = self.f["ZRD56"][:]
+        self.ZRD57 = self.f["ZRD57"][:]
+        self.ZRD58 = self.f["ZRD58"][:]
+        self.ZRD59 = self.f["ZRD59"][:]
+        self.ZRD60 = self.f["ZRD60"][:]
         self.ZRD50X = self.f["ZRD50X"][:]
         self.ZRD51X = self.f["ZRD51X"][:]
         self.ZRD52X = self.f["ZRD52X"][:]
@@ -275,6 +281,7 @@ class transp_output:
             ].data  # New ASTRA update needs this patch, for old version still need [:]
         except:
             self.t = self.f["TIME"][:]
+        self.t = np.array([self.t]) if np.isscalar(self.t) else np.array(self.t)
         self.rmin = self.f["AMETR"][:]
         self.elong = self.f["ELONG"][:]
         self.elon = self.f["ELON"][:]
@@ -381,6 +388,11 @@ class transp_output:
         self.n_Angioni = np.zeros(len(self.t))
         self.SNEBM_tot = np.zeros(len(self.t))
         self.shear = np.zeros([len(self.t),len(self.xrho)])
+        self.PBRAD = np.zeros([len(self.t),len(self.xrho)])
+        self.PSYNC = np.zeros([len(self.t),len(self.xrho)])
+        self.QBRAD = np.zeros([len(self.t),len(self.xrho)])
+        self.QSYNC = np.zeros([len(self.t),len(self.xrho)])
+        self.PRWOL_PUET_dens = np.zeros([len(self.t),len(self.xrho)])
         for ii in range(0,int(self.na1[-1])):
              if ii>0:
                   self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
@@ -424,6 +436,21 @@ class transp_output:
              self.kappa95[kk] = self.elon[kk,self.q95position[kk]]
              self.n_Angioni[kk] = 1.347-0.117*math.log(max(1.e-12,0.2*self.ne_avg[kk]*self.RTOR[kk]*self.Te_avg[kk]**(-2)))+1.331*self.SNEBM_tot[kk]-4.03*self.beta[kk]
              self.shear[kk,:] = -self.rmin[kk,:]/self.Mu[kk,:]*np.gradient(self.Mu[kk,:]/self.rmin[kk,:])
+             self.PBRAD[kk,:] = 5.06E-5*self.ZEF[kk,:]*self.ne[kk,:]**2*self.Te[kk,:]**0.5
+             self.PSYNC[kk,:] = 1.32E-7*(self.Te_avg[kk]*self.BTOR[kk])**2.5*np.sqrt(self.ne_avg[kk]/self.AB[kk]*(1.+18.*self.AB[kk]/(self.RTOR[kk]*np.sqrt(self.Te_avg[kk]))))
+             for jj in range(0,len(self.xrho)):
+                 T = self.Te[kk,jj]*1000.
+                 Z = np.log10(self.Te[kk,jj])
+                 if T <= 25.25:
+                     self.PRWOL_PUET_dens[kk,jj] = 20.*self.ne[kk,jj]
+                 elif T > 25.25 and T <= 300.:
+                     self.PRWOL_PUET_dens[kk,jj] = (-(150.984*Z**4 + 566.56*Z**3 + 729.562*Z**2 + 377.649*Z + 47.922))*self.ne[kk,jj]
+                 elif T > 300. and T <= 3350.:
+                     self.PRWOL_PUET_dens[kk,jj] = (-119.946*Z**3 - 82.821*Z**2 + 32.707*Z + 42.603)*self.ne[kk,jj]
+                 elif T > 3350.:
+                     self.PRWOL_PUET_dens[kk,jj] = (4.7 + 14.484*np.exp(-3.4196*(Z - 0.602)**2))*self.ne[kk,jj]
+             self.QBRAD[kk,:] = np.cumsum(self.PBRAD[kk,:]*self.HRO[kk]*self.VR[kk,:])
+             self.QSYNC[kk,:] = np.cumsum(self.PSYNC[kk,:]*self.HRO[kk]*self.VR[kk,:])
 
         self.f_Gr = self.ne_avg/10/self.n_Gr
         # self.QNTOT  = self.f['CAR8'][:]
