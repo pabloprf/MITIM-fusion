@@ -156,6 +156,7 @@ def read_eped_file(ipaths):
     return dataset
 
 def launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template_path, run_tag, wait=False): 
+    ivars = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'teped']
     input_params = f90nml.read(str(base_input_path)).todict().get('eped_input', {})
     input_params.update(scan_params)
     data = {}
@@ -183,8 +184,7 @@ def launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template
 def main():
 
     rootdir = Path(os.environ.get('PIXI_PROJECT_ROOT', './'))
-    run_tag = 'scan_tesep'
-    ivars = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'teped']
+    run_tag = 'mitim_eped_test'
     base_input_path = Path('./') / 'eped.input'
     scan_params = {
     #    'tesep': [50.0, 300.0],
@@ -194,8 +194,8 @@ def main():
     template_path = rootdir / 'ips-eped-master' / 'template' / 'engaging'
     wait = False
 
-    launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template_path, run_tag, wait=wait)
 
+    launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template_path, run_tag, wait=wait)
 
 
 if __name__ == '__main__':
