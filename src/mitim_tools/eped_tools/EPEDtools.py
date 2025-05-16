@@ -155,9 +155,8 @@ def read_eped_file(ipaths):
     dataset = xr.merge(data_arrays, join='outer', fill_value=np.nan).sortby('filename')
     return dataset
 
-def launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template_path, run_tag, wait=False): 
+def launch_eped_slurm(input_params, scan_params, nscan, output_path, template_path, run_tag, wait=False): 
     ivars = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'teped']
-    input_params = f90nml.read(str(base_input_path)).todict().get('eped_input', {})
     input_params.update(scan_params)
     data = {}
     for var, val in input_params.items():
@@ -194,8 +193,9 @@ def main():
     template_path = rootdir / 'ips-eped-master' / 'template' / 'engaging'
     wait = False
 
+    input_params = f90nml.read(str(base_input_path)).todict().get('eped_input', {})
 
-    launch_eped_slurm(base_input_path, scan_params, nscan, output_path, template_path, run_tag, wait=wait)
+    launch_eped_slurm(input_params, scan_params, nscan, output_path, template_path, run_tag, wait=wait)
 
 
 if __name__ == '__main__':
