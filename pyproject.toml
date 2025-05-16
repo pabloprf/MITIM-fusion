@@ -43,7 +43,8 @@ dependencies = [
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   "psutil",
   "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
-  "tensorflow"
+  "tensorflow", 
+  "f90nml",
 ]
 
 [project.optional-dependencies]
