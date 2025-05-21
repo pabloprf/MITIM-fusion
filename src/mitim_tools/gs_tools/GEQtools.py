@@ -953,9 +953,9 @@ class freegs_millerized:
             max_error = np.max([max_error, error])
 
         if max_error > warning_error:
-            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='w')
+            print(f"\t\t- Maximum error in equilibrium quantities is {100*max_error:.2f}%", typeMsg='w')
         else:
-            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='i')
+            print(f"\t\t- Maximum error in equilibrium quantities is {100*max_error:.2f}%")
 
         # --------------------------------------------------------------
         # Plotting

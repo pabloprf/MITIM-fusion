@@ -130,15 +130,10 @@ def mitimRun(
         y, yE, _ = optimization_data.grab_data_point(x)
 
         if pd.Series(y).isna().any() or pd.Series(yE).isna().any():
-            print(
-                f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",
-                typeMsg="i",
-            )
+            print(f"--> Reading Tabular file failed or not evaluated yet for element {numEval}",typeMsg="i",)
             cold_start = True
         else:
-            print(
-                f"--> Reading Tabular file successful for element {numEval}",
-            )
+            print(f"--> Reading Tabular file successful for element {numEval}",)
 
     if cold_start:
         # Create folder
@@ -161,11 +156,7 @@ def mitimRun(
         try:
             y, yE = IOtools.readresults(resultsfile)
         except:
-            print(
-                "Could not read results file for {0}, printing error file to screen".format(
-                    numEval
-                )
-            )
+            print(f"Could not read results file for {numEval}, printing error file to screen")
             # print(error)
             y, yE = np.array([np.nan]), np.array([np.nan])
 
