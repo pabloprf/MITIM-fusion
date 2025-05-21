@@ -661,15 +661,13 @@ class transp_output:
         self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])            # LH power threshold
         self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr               # Psep/PLH
         self.fLH_Schmidt = self.PLH_schmidt_perc
-
+        self.a = self.rmin[:, -1]                   # LCFS minor radius at OMP
         rtor_matrix = np.zeros(self.rho.shape)
         for i in range(rtor_matrix.shape[1]):
             rtor_matrix[:, i] = self.RTOR[:]
-
-        self.a = self.rmin[:, -1]
         self.rmaj_LFx = (
             rtor_matrix + self.shif + self.rmin
-        )  # major radius on the low field side
+        )                                           # major radius on the low field side
 
     def calcProfiles(self):
         self.getProfiles()
