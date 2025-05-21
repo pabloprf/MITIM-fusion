@@ -29,12 +29,24 @@ class transp_output:
 
     def getProfiles(self):
 
-        # Constants
+        ### Constants
 
         self.GP = self.f["GP"][:]       # pi
         self.GP2 = self.f["GP2"][:]     # 2*pi
 
-        # Geometry
+        ### Few control parameters
+
+        try:
+            self.t = self.f[
+                "TIME"
+            ].data  # New ASTRA update needs this patch, for old version still need [:]
+        except:
+            self.t = self.f["TIME"][:]
+        self.t = np.array([self.t]) if np.isscalar(self.t) else np.array(self.t)
+        self.tau = self.f["TAU"][:]     # simulation time step
+        self.na1 = self.f["NA1"][:]     # transport grid size
+
+        ### Geometry
         
         try:
             self.R = self.f["r2d"][:]       # R coordinates
@@ -65,23 +77,18 @@ class transp_output:
         self.G11 = self.f["G11"][:]         # geometrical factor 1
         self.G22 = self.f["G22"][:]         # geometrical factor 2
         self.G33 = self.f["G33"][:]         # geometrical factor 3
+
+        self.timesteps = len(self.t)
+        self.radialsize = int(self.na1[-1])
+        self.area = np.zeros([self.timesteps,self.radialsize])
         for ii in range(0,int(self.na1[-1])):
             if ii>0:
                 self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
             else:
                 self.area[:,ii] = self.AREAT[:,ii]    # cross section differential area
 
-        # essential parameters
+        ### Essential parameters
 
-        try:
-            self.t = self.f[
-                "TIME"
-            ].data  # New ASTRA update needs this patch, for old version still need [:]
-        except:
-            self.t = self.f["TIME"][:]
-        self.t = np.array([self.t]) if np.isscalar(self.t) else np.array(self.t)
-        self.tau = self.f["TAU"][:]     # simulation time step
-        self.na1 = self.f["NA1"][:]     # transport grid size
         self.BTOR = self.f["BTOR"][:]   # toroidal magnetic field
         self.IPL = self.f["IPL"][:]     # plasma current
         self.TEX = self.f["TEX"][:]     # experimental electron temperature
@@ -122,7 +129,6 @@ class transp_output:
         self.VR = self.f["VR"][:]           # volume derivative
         self.Cu = self.f["CU"][:]           # current density
         self.Cubs = self.f["CUBS"][:]       # bootstrap current density
-        self.CuOhm = self.CC*self.ULON/(self.RTOR[-1]*2*np.pi)      # Ohmic current density
         self.CuTor = self.f["CUTOR"][:]     # toroidal current density
         self.CD = self.f["CD"][:]           # driven current density
         self.Mu = self.f["MU"][:]           # rotational transform
@@ -152,6 +158,7 @@ class transp_output:
         self.HC = self.f["HC"][:]           # current diffusivity due to Te gradient
         self.XC = self.f["XC"][:]           # current diffusivity due to Ti gradient
         self.CC = self.f["CC"][:]           # conductivity
+        self.UPAR = self.f['UPAR'][:]       # toroidal velocity
         self.XUPAR = self.f['XUPAR'][:]     # Momentum diffusivity
         self.CNPAR = self.f['CNPAR'][:]     # Momentum convective velocity
         self.RUPFR = self.f['RUPFR'][:]     # Toroidal turbulence-driven instrinsique torque
@@ -167,7 +174,7 @@ class transp_output:
         self.UPL = self.f["UPL"][:]         # toroidal loop voltage
         self.IPOL = self.f["IPOL"][:]       # normalized poloidal current
 
-        # Power sources and sinks
+        ### Power sources and sinks
 
         self.PE = self.f["PE"][:]           # local electron power density
         self.PI = self.f["PI"][:]           # local ion power density
@@ -203,7 +210,7 @@ class transp_output:
         self.PEICL = 0.00246*self.COULG*self.ne*self.ni*self.ZMAIN**2
         self.PEICL = self.PEICL*(self.Te-self.Ti)/(self.AMAIN*self.Te*np.sqrt(self.Te))     # Collisional exchange power
 
-        # dummy arrays (used for user-specified quantities)
+        ### Dummy arrays (used for user-specified quantities)
 
         self.CAR1 = self.f["CAR1"][:]
         self.CAR2 = self.f["CAR2"][:]
@@ -334,24 +341,16 @@ class transp_output:
         self.CAR63X = self.f["CAR63X"][:]
         self.CAR64X = self.f["CAR64X"][:]
 
-        # dummy scalars (used for user-specified quantities)
+        ### Dummy scalars (used for user-specified quantities)
 
         self.CRAD1   = self.f['CRAD1'][:]
         self.CRAD2   = self.f['CRAD2'][:]
         self.CRAD3   = self.f['CRAD3'][:]
         self.CRAD4   = self.f['CRAD4'][:]
-        self.CRAD1X   = self.f['CRAD1X'][:]
-        self.CRAD2X   = self.f['CRAD2X'][:]
-        self.CRAD3X   = self.f['CRAD3X'][:]
-        self.CRAD4X   = self.f['CRAD4X'][:]
         self.CIMP1   = self.f['CIMP1'][:]
         self.CIMP2   = self.f['CIMP2'][:]
         self.CIMP3   = self.f['CIMP3'][:]
         self.CIMP4   = self.f['CIMP4'][:]
-        self.CIMP1X   = self.f['CIMP1X'][:]
-        self.CIMP2X   = self.f['CIMP2X'][:]
-        self.CIMP3X   = self.f['CIMP3X'][:]
-        self.CIMP4X   = self.f['CIMP4X'][:]
         self.ZRD1 = self.f["ZRD1"][:]
         self.ZRD2 = self.f["ZRD2"][:]
         self.ZRD3 = self.f["ZRD3"][:]
@@ -488,22 +487,6 @@ class transp_output:
         self.CF14 = self.f["CF14"][:]
         self.CF15 = self.f["CF15"][:]
         self.CF16 = self.f["CF16"][:]
-        self.CF1X = self.f["CF1X"][:]
-        self.CF2X = self.f["CF2X"][:]
-        self.CF3X = self.f["CF3X"][:]
-        self.CF4X = self.f["CF4X"][:]
-        self.CF5X = self.f["CF5X"][:]
-        self.CF6X = self.f["CF6X"][:]
-        self.CF7X = self.f["CF7X"][:]
-        self.CF8X = self.f["CF8X"][:]
-        self.CF9X = self.f["CF9X"][:]
-        self.CF10X = self.f["CF10X"][:]
-        self.CF11X = self.f["CF11X"][:]
-        self.CF12X = self.f["CF12X"][:]
-        self.CF13X = self.f["CF13X"][:]
-        self.CF14X = self.f["CF14X"][:]
-        self.CF15X = self.f["CF15X"][:]
-        self.CF16X = self.f["CF16X"][:]
         self.CV1 = self.f["CV1"][:]
         self.CV2 = self.f["CV2"][:]
         self.CV3 = self.f["CV3"][:]
@@ -520,29 +503,9 @@ class transp_output:
         self.CV14 = self.f["CV14"][:]
         self.CV15 = self.f["CV15"][:]
         self.CV16 = self.f["CV16"][:]
-        self.CV1X = self.f["CV1X"][:]
-        self.CV2X = self.f["CV2X"][:]
-        self.CV3X = self.f["CV3X"][:]
-        self.CV4X = self.f["CV4X"][:]
-        self.CV5X = self.f["CV5X"][:]
-        self.CV6X = self.f["CV6X"][:]
-        self.CV7X = self.f["CV7X"][:]
-        self.CV8X = self.f["CV8X"][:]
-        self.CV9X = self.f["CV9X"][:]
-        self.CV10X = self.f["CV10X"][:]
-        self.CV11X = self.f["CV11X"][:]
-        self.CV12X = self.f["CV12X"][:]
-        self.CV13X = self.f["CV13X"][:]
-        self.CV14X = self.f["CV14X"][:]
-        self.CV15X = self.f["CV15X"][:]
-        self.CV16X = self.f["CV16X"][:]
 
-        # Integrated and few derived quantities
-
-        self.timesteps = len(self.t)
-        self.radialsize = int(self.na1[-1])
-        self.beta = np.zeros(self.timesteps)
-        self.betaN = np.zeros(self.timesteps)
+        ### Initialize derived and integral quantities
+        
         self.QIDT   = np.zeros([self.timesteps,self.radialsize])
         self.QEDT   = np.zeros([self.timesteps,self.radialsize])
         self.QDT   = np.zeros([self.timesteps,self.radialsize])
@@ -567,11 +530,11 @@ class transp_output:
         self.ne_lineavg = np.zeros([self.timesteps])
         self.Te_avg = np.zeros([self.timesteps])
         self.Ti_avg = np.zeros([self.timesteps])
-        self.n_Gr = self.IPL/(np.pi*self.ABC**2)
         self.tau98 = np.zeros([self.timesteps])
         self.tau89 = np.zeros([self.timesteps])
         self.tau98_lineavg = np.zeros([self.timesteps])
-        self.area = np.zeros([self.timesteps,self.radialsize])
+        self.beta = np.zeros(self.timesteps)
+        self.betaN = np.zeros(self.timesteps)
         self.FP_norm = np.zeros([self.timesteps,self.radialsize])
         self.q95position = [0]*self.timesteps
         self.q95 = np.zeros(self.timesteps)
@@ -584,11 +547,15 @@ class transp_output:
         self.PSYNC = np.zeros([self.timesteps,self.radialsize])
         self.QBRAD = np.zeros([self.timesteps,self.radialsize])
         self.QSYNC = np.zeros([self.timesteps,self.radialsize])
-        self.PRWOL_PUET_dens = np.zeros([self.timesteps,self.radialsize])        
+        self.PRWOL_PUET_dens = np.zeros([self.timesteps,self.radialsize])
+        self.rlte  = np.zeros([self.timesteps,self.radialsize])
+        self.rlti  = np.zeros([self.timesteps,self.radialsize])
+        self.rlne  = np.zeros([self.timesteps,self.radialsize])
+
+        ### Integrated quantities
+
         for kk in range(0,self.timesteps):
-             self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)
-             self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
-             self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
+             # volumetric density variables
              self.QIDT[kk,:] = np.cumsum(self.PIDT[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QEICL[kk,:] = np.cumsum(self.PEICL[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QEDT[kk,:] = np.cumsum(self.PEDT[kk,:]*self.HRO[kk]*self.VR[kk,:])
@@ -598,32 +565,53 @@ class transp_output:
              self.QIICRH[kk,:] = np.cumsum((self.PIICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QEICRH[kk,:] = np.cumsum((self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
              self.QICRH[kk,:] = np.cumsum((self.PIICR[kk,:]+self.PEICR[kk,:])*self.HRO[kk]*self.VR[kk,:])
-             self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
-             self.Cubs_tot[kk,:] = np.cumsum(self.Cubs[kk,:]*self.area[kk,:])
              self.QE[kk,:] = np.cumsum(self.PE[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QI[kk,:] = np.cumsum(self.PI[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QRAD[kk,:] = np.cumsum(self.PRAD[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QOH[kk,:] = np.cumsum(self.POH[kk,:]*self.HRO[kk]*self.VR[kk,:])
-             self.Wtot[kk,:] = np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:])*self.HRO[kk]*self.VR[kk,:])
-             self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.NIZ1_avg[kk] = np.cumsum(self.NIZ1[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.NIZ2_avg[kk] = np.cumsum(self.NIZ2[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.NI_avg[kk] = np.cumsum(self.NI[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.ne_lineavg[kk] = np.cumsum(self.ne[kk,:])[-1]/len(self.ne[kk,:])
-             self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              self.SNEBM_tot[kk] = np.cumsum(self.SNEBM[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
-             self.tau89[kk] = 0.048*(self.AMAIN[kk,1])**0.5*(self.IPL[kk])**0.85*(self.RTOR[kk])**1.2*(self.ABC[kk])**0.3*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.5*max(1.e-12,self.ne_lineavg[kk])**0.1*(self.BTOR[kk])**0.2*max(1.e-12,self.QDT[kk,-1]+self.QICRH[kk,-1]+self.QECRH[kk,-1]+self.QNBI[kk,-1]+self.QOH[kk,-1])**(-0.5)
-             self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_avg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
-             self.tau98_lineavg[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_lineavg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19
-             self.q95position[kk] = np.abs(self.FP_norm[kk] - 0.95).argmin()
-             self.q95[kk] = 1/self.Mu[kk,self.q95position[kk]]
-             self.delta95[kk] = self.tria[kk,self.q95position[kk]]
-             self.kappa95[kk] = self.elon[kk,self.q95position[kk]]
-             self.n_Angioni[kk] = 1.347-0.117*math.log(max(1.e-12,0.2*self.ne_avg[kk]*self.RTOR[kk]*self.Te_avg[kk]**(-2)))+1.331*self.SNEBM_tot[kk]-4.03*self.beta[kk]
-             self.shear[kk,:] = -self.rmin[kk,:]/self.Mu[kk,:]*np.gradient(self.Mu[kk,:]/self.rmin[kk,:])
-             self.PBRAD[kk,:] = 5.06E-5*self.ZEF[kk,:]*self.ne[kk,:]**2*self.Te[kk,:]**0.5
-             self.PSYNC[kk,:] = 1.32E-7*(self.Te_avg[kk]*self.BTOR[kk])**2.5*np.sqrt(self.ne_avg[kk]/self.AB[kk]*(1.+18.*self.AB[kk]/(self.RTOR[kk]*np.sqrt(self.Te_avg[kk]))))
+             # areal density variables
+             self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
+             self.Cubs_tot[kk,:] = np.cumsum(self.Cubs[kk,:]*self.area[kk,:])
+        self.QETOT  = self.QE
+        self.QITOT  = self.QI
+
+        ### Derived quantities
+
+        for kk in range(0,self.timesteps):
+             # average values
+             self.ne_avg[kk] = np.cumsum(self.ne[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]          # volume average electron density
+             self.NIZ1_avg[kk] = np.cumsum(self.NIZ1[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]      # volume average 1st impurity density
+             self.NIZ2_avg[kk] = np.cumsum(self.NIZ2[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]      # volume average 2nd impurity density
+             self.NI_avg[kk] = np.cumsum(self.NI[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]          # volume average ion density
+             self.ne_lineavg[kk] = np.cumsum(self.ne[kk,:])[-1]/len(self.ne[kk,:])                              # line average electron density
+             self.Te_avg[kk] = np.cumsum(self.Te[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]          # volume average Te
+             self.Ti_avg[kk] = np.cumsum(self.Ti[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]          # volume average Ti
+             # derived quantities
+             self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])              # normalized poloidal flux
+             self.q95position[kk] = np.abs(self.FP_norm[kk] - 0.95).argmin()                                # coordinate at 95% of poloidal normalized flux
+             self.q95[kk] = 1/self.Mu[kk,self.q95position[kk]]                                              # q at 95% of poloidal normalized flux
+             self.delta95[kk] = self.tria[kk,self.q95position[kk]]                                          # triangularity at 95% of poloidal normalized flux
+             self.kappa95[kk] = self.elon[kk,self.q95position[kk]]                                          # elongation at 95% of poloidal normalized flux
+             self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)                             # plasma beta
+             self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])       # normalized plasma beta
+             self.Wtot[kk,:] = 0.024*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:])*self.HRO[kk]*self.VR[kk,:])          # total plasma energy
+             self.tau89[kk] = 0.048*(self.AMAIN[kk,1])**0.5*(self.IPL[kk])**0.85*(self.RTOR[kk])**1.2*(self.ABC[kk])**0.3*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.5*max(1.e-12,self.ne_lineavg[kk])**0.1*(self.BTOR[kk])**0.2*max(1.e-12,self.QDT[kk,-1]+self.QICRH[kk,-1]+self.QECRH[kk,-1]+self.QNBI[kk,-1]+self.QOH[kk,-1])**(-0.5)          # tau89
+             self.tau98[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_avg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19                          # tau98
+             self.tau98_lineavg[kk] = 0.0562*(self.IPL[kk])**0.93*(self.BTOR[kk])**0.15*max(1.e-12,self.ne_lineavg[kk])**0.41*max(1.e-12,self.QE[kk,-1]+self.QI[kk,-1]+self.QRAD[kk,-1])**(-0.69)*(self.RTOR[kk])**1.97*(self.AREAT[kk,-1]/(3.1415*self.rmin[kk,-1]**2))**0.78*(self.rmin[kk,-1]/self.RTOR[kk])**0.58*(self.AMAIN[kk,1])**0.19              # tau98 computed with line avg density
+             self.n_Angioni[kk] = 1.347-0.117*math.log(max(1.e-12,0.2*self.ne_avg[kk]*self.RTOR[kk]*self.Te_avg[kk]**(-2)))+1.331*self.SNEBM_tot[kk]-4.03*self.beta[kk]     # Angioni density peaking scaling
+             self.shear[kk,:] = -self.rmin[kk,:]/self.Mu[kk,:]*np.gradient(self.Mu[kk,:]/self.rmin[kk,:])       # magnetic shear
+             self.PBRAD[kk,:] = 5.06E-5*self.ZEF[kk,:]*self.ne[kk,:]**2*self.Te[kk,:]**0.5                      # Bremmstrahlung radiation
+             self.PSYNC[kk,:] = 1.32E-7*(self.Te_avg[kk]*self.BTOR[kk])**2.5*np.sqrt(self.ne_avg[kk]/self.AB[kk]*(1.+18.*self.AB[kk]/(self.RTOR[kk]*np.sqrt(self.Te_avg[kk]))))         # Synchrotron radiation
+             # normalized gradients
+             for jj in range(0,self.radialsize-1):
+                 self.rlte[kk,jj]=-self.RTOR[-1]/(0.5*(self.Te[kk,jj]+self.Te[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Te[kk,jj+1]-self.Te[kk,jj]))
+                 self.rlti[kk,jj]=-self.RTOR[-1]/(0.5*(self.Ti[kk,jj]+self.Ti[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Ti[kk,jj+1]-self.Ti[kk,jj]))
+                 self.rlne[kk,jj]=-self.RTOR[-1]/(0.5*(self.ne[kk,jj]+self.ne[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.ne[kk,jj+1]-self.ne[kk,jj]))
+             self.rlte[kk,jj+1]=self.rlte[kk,jj]        # normalized logaritmic Te gradient
+             self.rlti[kk,jj+1]=self.rlti[kk,jj]        # normalized logaritmic Ti gradient
+             self.rlne[kk,jj+1]=self.rlne[kk,jj]        # normalized logaritmic ne gradient
+             #### --------------- Calculation of W radiation by Puetterich formula ------------------------- ###
              for jj in range(0,self.radialsize):
                  T = self.Te[kk,jj]*1000.
                  Z = np.log10(self.Te[kk,jj])
@@ -637,51 +625,42 @@ class transp_output:
                      self.PRWOL_PUET_dens[kk,jj] = (4.7 + 14.484*np.exp(-3.4196*(Z - 0.602)**2))*self.ne[kk,jj]
              self.QBRAD[kk,:] = np.cumsum(self.PBRAD[kk,:]*self.HRO[kk]*self.VR[kk,:])
              self.QSYNC[kk,:] = np.cumsum(self.PSYNC[kk,:]*self.HRO[kk]*self.VR[kk,:])
-
-        self.f_Gr = self.ne_avg/10/self.n_Gr
-        self.QETOT  = self.QE
-        self.QITOT  = self.QI
-        self.Wtot = 0.0024*self.Wtot   #check formula in ASTRA
-        self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)
-        self.H98 = self.tauE[:,-1]/self.tau98
-        self.H89 = self.tauE[:,-1]/self.tau89
-        self.H98_lineavg = self.tauE[:,-1]/self.tau98_lineavg
-        self.fMAIN = self.NMAIN/self.ne
-        self.f1 = self.NIZ1/self.ne
-        self.f2 = self.NIZ2/self.ne
-        self.f3 = self.NIZ3/self.ne
-        self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  #in MPa
-        self.rlte  = np.zeros([self.timesteps,self.radialsize])
-        self.rlti  = np.zeros([self.timesteps,self.radialsize])
-        self.rlne  = np.zeros([self.timesteps,self.radialsize])
-        for kk in range(0,self.timesteps):
-             for jj in range(0,self.radialsize-1):
-                  self.rlte[kk,jj]=-self.RTOR[-1]/(0.5*(self.Te[kk,jj]+self.Te[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Te[kk,jj+1]-self.Te[kk,jj]))
-                  self.rlti[kk,jj]=-self.RTOR[-1]/(0.5*(self.Ti[kk,jj]+self.Ti[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Ti[kk,jj+1]-self.Ti[kk,jj]))
-                  self.rlne[kk,jj]=-self.RTOR[-1]/(0.5*(self.ne[kk,jj]+self.ne[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.ne[kk,jj+1]-self.ne[kk,jj]))
-             self.rlte[kk,jj+1]=self.rlte[kk,jj]
-             self.rlti[kk,jj+1]=self.rlti[kk,jj]
-             self.rlne[kk,jj+1]=self.rlne[kk,jj]
- 
-        ##  check on quasi-neutrality
-        self.quasi = (self.f['NE'][:]-self.f['NMAIN'][:]*self.f['ZMAIN'][:]-self.f['NIZ1'][:]*self.f['ZIM1'][:]-self.f['NIZ2'][:]*self.f['ZIM2'][:]-self.f['NIZ3'][:]*self.f['ZIM3'][:])/self.f['NE'][:]
-
-        ##  some global and performance parameters
-        self.Q = (self.QDT[:,-1]/(self.QICRH[:,-1]+self.QOH[:,-1]))/0.2    ## in teh D+T fusion reactions 20% goes to He and 80% to neutrons
-        self.Pfus = self.QDT/0.2
-        self.ne_PLHmin = 0.07*(self.IPL)**0.34*(self.BTOR)**0.62*(self.RTOR)**(-0.95)*(self.RTOR/self.ABC)**0.4
-        self.ne_PLHmin_perc = self.ne_avg/10/self.ne_PLHmin
-        self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941*(2/self.AMAIN[:,-1])
-        self.PLH_metal = 0.044*(self.ne_avg/10.)**1.06*(self.BTOR)**0.54*(self.SLAT[:,-1])*(2/self.AMAIN[:,-1])**(0.965)
-        self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922*(2/self.AMAIN[:,-1])
-        self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96*(2/self.AMAIN[:,-1])
-        self.PLH_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH
-        self.PLH_metal_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_metal
-        self.PLH_lower_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_lower
-        self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper
-        self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])
-        self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr
+        
+        self.CuOhm = self.CC*self.ULON/(self.RTOR[-1]*2*np.pi)      # Ohmic current density
+        self.n_Gr = self.IPL/(np.pi*self.ABC**2)                # Greenwald density
+        self.f_Gr = self.ne_avg/10/self.n_Gr                    # Greenwald fraction
+        self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)       # energy confinement time
+        self.H98 = self.tauE[:,-1]/self.tau98                   # H98
+        self.H89 = self.tauE[:,-1]/self.tau89                   # H89
+        self.H98_lineavg = self.tauE[:,-1]/self.tau98_lineavg   # H98 with line average density
+        self.fMAIN = self.NMAIN/self.ne                         # main ion concentration
+        self.f1 = self.NIZ1/self.ne                             # 1st impurity concentration
+        self.f2 = self.NIZ2/self.ne                             # 2nd impurity concentration
+        self.f3 = self.NIZ3/self.ne                             # 3rd impurity concentration
+        self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  # total pressure, in MPa
+        self.quasi = (self.f['NE'][:]-self.f['NMAIN'][:]*self.f['ZMAIN'][:]-self.f['NIZ1'][:]*self.f['ZIM1'][:]-self.f['NIZ2'][:]*self.f['ZIM2'][:]-self.f['NIZ3'][:]*self.f['ZIM3'][:])/self.f['NE'][:]        # check if QN is fulfilled (low value expected)
+        #  some global and performance parameters
+        self.Pfus = self.QDT/0.2     # fusion power (in the D+T fusion reactions 20% goes to He and 80% to neutrons)
+        self.Q = self.Pfus[:,-1]/(self.QICRH[:,-1]+self.QOH[:,-1])      # fusion gain
         self.q_Uckan = 5*self.ABC**2*self.BTOR/(self.RTOR*self.IPL)*(1+self.kappa95**2*(1+2*self.delta95**2-1.2*self.delta95**3))/2
+        self.ne_PLHmin = 0.07*(self.IPL)**0.34*(self.BTOR)**0.62*(self.RTOR)**(-0.95)*(self.RTOR/self.ABC)**0.4      # LH transition minimum density
+        self.ne_PLHmin_perc = self.ne_avg/10/self.ne_PLHmin        # percentage of LH transition minimum density (>1 to use Martin scaling)
+        # Martin scaling
+        self.PLH = 0.0488*(self.ne_avg/10.)**0.717*(self.BTOR)**0.803*(self.SLAT[:,-1])**0.941*(2/self.AMAIN[:,-1])                             # LH power threshold
+        self.PLH_lower = 0.0488*math.exp(-0.057)*(self.ne_avg/10.)**0.682*(self.BTOR)**0.771*(self.SLAT[:,-1])**0.922*(2/self.AMAIN[:,-1])      # lower error bar of LH power threshold
+        self.PLH_upper = 0.0488*math.exp(0.057)*(self.ne_avg/10.)**0.752*(self.BTOR)**0.835*(self.SLAT[:,-1])**0.96*(2/self.AMAIN[:,-1])        # upper error bar of LH power threshold
+        self.PLH_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH                     # Psep/PLH
+        self.PLH_lower_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_lower                                                             # lower error bar of LH power threshold
+        self.PLH_upper_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_upper                                                             # upper error bar of LH power threshold
+        self.fLH_Martin = self.PLH_perc
+        # "Metal wall" scaling
+        self.PLH_metal = 0.044*(self.ne_avg/10.)**1.06*(self.BTOR)**0.54*(self.SLAT[:,-1])*(2/self.AMAIN[:,-1])**(0.965)               # LH power threshold
+        self.PLH_metal_perc = (self.QE[:,-1]+self.QI[:,-1])/self.PLH_metal         # Psep/PLH
+        self.fLH_metal = self.PLH_metal_perc
+        # Schmidtmayr scaling
+        self.PLH_schmidtmayr = 0.0325*(self.ne_avg/10.)**1.05*(self.BTOR)**0.68*(self.SLAT[:,-1])**0.93*(2/self.AMAIN[:,-1])            # LH power threshold
+        self.PLH_schmidt_perc = (self.QI[:,-1])/self.PLH_schmidtmayr               # Psep/PLH
+        self.fLH_Schmidt = self.PLH_schmidt_perc
 
         rtor_matrix = np.zeros(self.rho.shape)
         for i in range(rtor_matrix.shape[1]):
