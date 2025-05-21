@@ -151,7 +151,7 @@ class TabBar(QTabBar):
         self.setStyleSheet(
             """
                     QTabBar::tab { 
-                        font-size:           9pt;
+                        font-size:           16pt;
                         }
                     QTabBar::tab:selected {
                         background:          #00FF00;

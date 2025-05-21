@@ -17,7 +17,7 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO_MIT.tar'):
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
@@ -28,19 +28,21 @@ class ASTRA():
         IOtools.askNewFolder(self.folder)
 
         # Move files
-        shutil.copy2(self.file_repo, self.folder / 'ASTRA8_REPO.tar.gz')
+        shutil.copy2(self.file_repo, self.folder / 'ASTRA8_REPO_MIT.tar')
 
         # untar
         with tarfile.open(
-            self.folder / "ASTRA8_REPO.tar.gz", "r"
+            self.folder / "ASTRA8_REPO_MIT.tar", "r"
         ) as tar:
             tar.extractall(path=self.folder)
 
-        (self.folder / "ASTRA8_REPO.tar.gz").unlink(missing_ok=True)
+        (self.folder / "ASTRA8_REPO_MIT.tar").unlink(missing_ok=True)
 
         # Define basic controls
-        self.equfile = 'fluxes'
-        self.expfile = 'aug34954'
+        #self.equfile = 'fluxes'
+        #self.expfile = 'aug34954'
+        self.equfile = 'V2B'
+        self.expfile = 'V2B'
 
     def run(self,
             t_ini,
@@ -71,7 +73,7 @@ class ASTRA():
         # What to run 
         self.command_to_run_astra = f'''
 cd {self.astra_job.folderExecution}/{name} 
-scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
+exe/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_end} -dev aug -batch
 '''
 
         self.shellPreCommand = f'cd {self.astra_job.folderExecution}/{name} &&  ./install.sh'
@@ -80,7 +82,8 @@ scripts/as_exe -m {self.equfile} -v {self.expfile} -s {self.t_ini} -e {self.t_en
         # Execute
         # ---------------------------------------------
 
-        self.output_folder = name / '.res' / 'ncdf'
+        #self.output_folder = name / '.res' / 'ncdf'
+        self.output_folder = name / 'ncdf_out'
 
         self.astra_job.prep(
             self.command_to_run_astra,
