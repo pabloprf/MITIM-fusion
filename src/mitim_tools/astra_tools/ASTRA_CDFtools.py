@@ -28,6 +28,9 @@ class transp_output:
             del self.nc_file
 
     def getProfiles(self):
+
+        # Very essential arrays
+
         try:
             self.R = self.f["r2d"][:]
             self.Z = self.f["z2d"][:]
@@ -53,6 +56,7 @@ class transp_output:
         self.NIZ1 = self.f["NIZ1"][:]
         self.NIZ2 = self.f["NIZ2"][:]
         self.NIZ3 = self.f["NIZ3"][:]
+        self.ZMAIN = self.f["ZMAIN"][:]
         self.FP = self.f["FP"][:]
         self.TF = self.rho[:,-1] * self.rho[:,-1] * self.BTOR[-1] / 2 # Wb/rad
         self.ER = self.f["ER"][:]
@@ -158,6 +162,7 @@ class transp_output:
         self.CIMP1   = self.f['CIMP1'][:]
         self.CIMP2   = self.f['CIMP2'][:]
         self.CIMP3   = self.f['CIMP3'][:]
+        self.CIMP4   = self.f['CIMP4'][:]
         self.ZRD1 = self.f["ZRD1"][:]
         self.ZRD1X = self.f["ZRD1X"][:]
         self.ZRD2 = self.f["ZRD2"][:]
@@ -297,17 +302,10 @@ class transp_output:
         self.PI = self.f["PI"][:]
         self.PEBM = self.f["PEBM"][:]  # NBI power to electrons
         self.PIBM = self.f["PIBM"][:]  # NBI power to ions
-        # self.POH    = self.f['POH'][:] # Ohmic Power
         self.PEECR = self.f["PEECR"][:]  # ECH heating to electrons
         self.PRAD = self.f["PRAD"][:]  # Radiated Power
         self.PEICR = self.f["PEICR"][:]
         self.PIICR = self.f["PIICR"][:]
-        # self.PEICL  = self.f['PEICL'][:] # Exchange power, given to ions --> not saved rn
-        self.chi_e_TGLF = self.f["CAR18"][:]  # TGLF effective electron diffusivity
-        self.chi_i_TGLF = self.f["CAR17"][:]  # TGLF effective ion plot_diffusivity
-        self.chi_e_TGLF_smoothed = self.f["CAR22"][:]
-        self.chi_i_TGLF_smoothed = self.f["CAR21"][:]
-        self.pinch_TGLF_smoothed = self.f["CAR24"][:]
         self.FTO = self.f["FTO"][:]
         self.DN = self.f["DN"][:]
         # self.HN    = self.f['HN'][:]
@@ -340,14 +338,50 @@ class transp_output:
         self.IPOL = self.f["IPOL"][:]
         self.G22 = self.f["G22"][:]
         self.G33 = self.f["G33"][:]
-        # self.POH   = self.CC/(self.ULON/(self.GP2[-1]*self.RTOR[-1]*self.IPOL))**2/self.G33*1e-6
-        self.PEDT = self.f["CAR3"][:]
-        self.PIDT = self.f["CAR4"][:]
-        self.PEICL = self.f["CAR5"][:]
-        self.POH = self.f["CAR6"][:]
+        self.POH = self.CC*(self.ULON/(self.GP2[-1]*self.RTOR[-1]*self.IPOL))**2/self.G33
+        
+        ## Calculation of fusion partition between main ions and electrons ##
+        YVALP = 1.2960e+07
+        ne = np.maximum(self.ne, 1e-30)
+        te = np.maximum(self.Te, 1e-30)
 
+        YLLAME = 23.9 + np.log(1e3 * te / np.sqrt(1e19 * ne))
+        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * (4.0 * self.AMAIN * YVALP) / (4.0 + self.AMAIN)
+        YLLAMI = 14.2 + np.log(np.maximum(yy6, 0.1))
+
+        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * 2.0 * YVALP
+        YLLAMA = 14.2 + np.log(np.maximum(yy6, 0.01))
+
+        yy6 = (YLLAMI * self.NI / (self.AMAIN * ne) + YLLAMA * self.NALF / ne) * 7.3e-4 / YLLAME
+        yy6 = np.maximum(yy6, 1e-4)
+
+        yvc = yy6**0.33 * np.sqrt(2.0 * te * 1.7564e14)
+        yeps = YVALP / (yvc + 1e-4)
+
+        yy6 = np.arctan(0.577 * (2.0 * yeps - 1.0))
+        yy7 = np.log((1.0 + yeps)**2 / (1.0 - yeps + yeps**2))
+
+        self.PAION1 = 2.0 / yeps**2 * (0.577 * yy6 - 0.167 * yy7 + 0.3)
+        
+        ## Calculation of fusion cross section:
+        self.SVDT = self.Ti**(-1/3)
+        self.SVDT = 8.972*np.exp(-19.9826*self.SVDT)*self.SVDT*self.SVDT*((self.Ti+1.0134)/(1.+6.386E-3*(self.Ti+1.0134)**2)+1.877*np.exp(-0.16176*self.Ti*np.sqrt(self.Ti)))
+        self.PDT = 5.632*self.NDEUT*self.NTRIT*self.SVDT
+        self.PEDT = (1-self.PAION1)*self.PDT
+        self.PIDT = self.PAION1*self.PDT
+
+        ## Calculation of the Coloumb logarithm and collisional exchange power:
+        self.COULG = 15.9-0.5*np.log(self.ne)+np.log(self.Te)
+        self.PEICL = 0.00246*self.COULG*self.ne*self.ni*self.ZMAIN**2
+        self.PEICL = self.PEICL*(self.Te-self.Ti)/(self.AMAIN*self.Te*np.sqrt(self.Te))
+        
         self.AREAT = self.f['AREAT'][:]
         self.SLAT = self.f['SLAT'][:]
+
+        self.XUPAR = self.f['XUPAR'][:]   # Momentum diffusivity
+        self.CNPAR = self.f['CNPAR'][:]   # Momentum convective velocity
+        self.RUPFR = self.f['RUPFR'][:]   # Toroidal turbulence-driven instrinsique torque
+        self.TTRQ = self.f['TTRQ'][:]   # Applied external torque (e.g. NBI)
 
         self.beta = np.zeros(len(self.t))
         self.betaN = np.zeros(len(self.t))
@@ -453,7 +487,6 @@ class transp_output:
              self.QSYNC[kk,:] = np.cumsum(self.PSYNC[kk,:]*self.HRO[kk]*self.VR[kk,:])
 
         self.f_Gr = self.ne_avg/10/self.n_Gr
-        # self.QNTOT  = self.f['CAR8'][:]
         self.QETOT  = self.QE
         self.QITOT  = self.QI
         self.SNTOT = self.f["SNTOT"][:]
@@ -469,8 +502,6 @@ class transp_output:
         self.f1 = self.NIZ1/self.ne
         self.f2 = self.NIZ2/self.ne
         self.f3 = self.NIZ3/self.ne
-        self.CAR7 = self.f["CAR7"][:]
-        self.ZMAIN = self.f["ZMAIN"][:]
         self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  #in MPa
         self.rlte  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
         self.rlti  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
