@@ -29,66 +29,184 @@ class transp_output:
 
     def getProfiles(self):
 
-        # Very essential arrays
+        # Constants
 
+        self.GP = self.f["GP"][:]       # pi
+        self.GP2 = self.f["GP2"][:]     # 2*pi
+
+        # Geometry
+        
         try:
-            self.R = self.f["r2d"][:]
-            self.Z = self.f["z2d"][:]
+            self.R = self.f["r2d"][:]       # R coordinates
+            self.Z = self.f["z2d"][:]       # Z coordinates
         except:
             self.R = self.f["R"][:]
             self.Z = self.f["Z"][:]
-        self.rho = self.f["RHO"][:]
-        self.xrho = self.f["XRHO"][:]
-        self.na1 = self.f["NA1"][:]
-        self.BTOR = self.f["BTOR"][:]
-        self.IPL = self.f["IPL"][:]
-        self.Te = self.f["TE"][:]
-        self.TEX = self.f["TEX"][:]
-        self.TIX = self.f["TIX"][:]
-        self.NEX = self.f["NEX"][:]
-        self.Ti = self.f["TI"][:]
-        self.ne = self.f["NE"][:]
-        self.ni = self.f["NI"][:]
-        self.NI = self.f["NI"][:]
-        self.NMAIN = self.f["NMAIN"][:]
-        self.NDEUT = self.f["NDEUT"][:]
-        self.NTRIT = self.f["NTRIT"][:]
-        self.NIZ1 = self.f["NIZ1"][:]
-        self.NIZ2 = self.f["NIZ2"][:]
-        self.NIZ3 = self.f["NIZ3"][:]
-        self.ZMAIN = self.f["ZMAIN"][:]
-        self.FP = self.f["FP"][:]
-        self.TF = self.rho[:,-1] * self.rho[:,-1] * self.BTOR[-1] / 2 # Wb/rad
-        self.ER = self.f["ER"][:]
-        self.VPOL = self.f["VPOL"][:]
-        self.VTOR = self.f["VTOR"][:]
-        self.F1 = self.f["F1"][:]
-        self.F2 = self.f["F2"][:]
-        self.F3 = self.f["F3"][:]
-        self.VR = self.f["VR"][:]
-        self.Cu = self.f["CU"][:]
-        self.Cubs = self.f["CUBS"][:]
-        #self.CuOhm = self.f["CUOHM"][:]
-        self.CuTor = self.f["CUTOR"][:]
-        self.CD = self.f["CD"][:]
-        self.Mu = self.f["MU"][:]
-        self.q_onaxis = 1/self.Mu[:,0]
-        self.MV = self.f["MV"][:]
-        self.FV = self.f["FV"][:]
-        self.VP = self.f["VP"][:]
-        self.Qi = self.f["QI"][:]
-        self.Qe = self.f["QE"][:]
-        self.Qn = self.f["QN"][:]
-        self.PEECR = self.f["PEECR"][:]
-        self.G11 = self.f["G11"][:]
-        self.NALF = self.f["NALF"][:]
-        #self.FTLLM - self.f["FTLLM"][:]
+        self.ROC = self.f["ROC"][:]         # effective minor radius
+        self.rho = self.f["RHO"][:]         # main magnetic surface label
+        self.xrho = self.f["XRHO"][:]       # sqrt of normalized toroidal magnetic flux
+        self.XRHO = self.xrho
+        self.HRO = self.f["HRO"][:]         # radial grid step in rho
+        self.rmin = self.f["AMETR"][:]      # minor radius
+        self.elong = self.f["ELONG"][:]     # separatrix elongation
+        self.elon = self.f["ELON"][:]       # elongation profile
+        self.trian = self.f["TRIAN"][:]     # separatrix triangularity
+        self.tria = self.f["TRIA"][:]       # triangularity
+        self.UPDWN = self.f["UPDWN"][:]     # vertical shift separatrix      
+        self.shift = self.f["SHIFT"][:]     # Shafranov shift separatrix
+        self.shif = self.f["SHIF"][:]       # Shafranov shift profile
+        self.RTOR = self.f["RTOR"][:]       # Major radius
+        self.ABC = self.f["ABC"][:]         # minor radius at separatrix on OMP
+        self.AB = self.f["AB"][:]           # maximum value allowed for ABC
+        self.vol = self.f["VOLUM"][:]       # plasma volume profile
+        self.VOLUME = self.f["VOLUME"][:]   # plasma volume inside separatrix
+        self.AREAT = self.f['AREAT'][:]     # cross section area
+        self.SLAT = self.f['SLAT'][:]       # lateral plasma surface
+        self.G11 = self.f["G11"][:]         # geometrical factor 1
+        self.G22 = self.f["G22"][:]         # geometrical factor 2
+        self.G33 = self.f["G33"][:]         # geometrical factor 3
+        for ii in range(0,int(self.na1[-1])):
+            if ii>0:
+                self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
+            else:
+                self.area[:,ii] = self.AREAT[:,ii]    # cross section differential area
 
-        # dummy variables
+        # essential parameters
+
+        try:
+            self.t = self.f[
+                "TIME"
+            ].data  # New ASTRA update needs this patch, for old version still need [:]
+        except:
+            self.t = self.f["TIME"][:]
+        self.t = np.array([self.t]) if np.isscalar(self.t) else np.array(self.t)
+        self.tau = self.f["TAU"][:]     # simulation time step
+        self.na1 = self.f["NA1"][:]     # transport grid size
+        self.BTOR = self.f["BTOR"][:]   # toroidal magnetic field
+        self.IPL = self.f["IPL"][:]     # plasma current
+        self.TEX = self.f["TEX"][:]     # experimental electron temperature
+        self.TIX = self.f["TIX"][:]     # experimental ion temperature
+        self.NEX = self.f["NEX"][:]     # experimental electron density
+        self.NIX = self.f["NIX"][:]     # experimental ion density
+        self.Te = self.f["TE"][:]       # electron temperature
+        self.Ti = self.f["TI"][:]       # ion temperature
+        self.ne = self.f["NE"][:]       # electron density
+        self.NE = self.ne
+        self.ni = self.f["NI"][:]       # ion density
+        self.NI = self.ni
+        self.NMAIN = self.f["NMAIN"][:]     # main ion density
+        self.NDEUT = self.f["NDEUT"][:]     # D density
+        self.NTRIT = self.f["NTRIT"][:]     # T density
+        self.NIZ1 = self.f["NIZ1"][:]       # 1st impurity density
+        self.NIZ2 = self.f["NIZ2"][:]       # 2nd impurity density
+        self.NIZ3 = self.f["NIZ3"][:]       # 3rd impurity density
+        self.NALF = self.f["NALF"][:]       # alpha density
+        self.ZMJ = self.f["ZMJ"][:]         # main ion charge
+        self.ZMAIN = self.f["ZMAIN"][:]     # main ion charge
+        self.ZIM1 = self.f["ZIM1"][:]       # 1st impurity charge
+        self.ZIM2 = self.f["ZIM2"][:]       # 2nd impurity charge
+        self.ZIM3 = self.f["ZIM3"][:]       # 3rd impurity charge
+        self.AMJ = self.f["AMJ"][:]         # main ion mass
+        self.AMAIN = self.f["AMAIN"][:]     # main ion mass
+        self.AIM1 = self.f["AIM1"][:]       # 1st impurity mass
+        self.AIM2 = self.f["AIM2"][:]       # 2nd impurity mass
+        self.AIM3 = self.f["AIM3"][:]       # 3rd impurity mass
+        self.FP = self.f["FP"][:]           # poloidal magnetic flux
+        self.TF = self.rho[:,-1] * self.rho[:,-1] * self.BTOR[-1] / 2       # ~average toroidal flux?? (Wb/rad)
+        self.ER = self.f["ER"][:]           # radial electric field
+        self.VPOL = self.f["VPOL"][:]       # poloidal plasma velocity
+        self.VTOR = self.f["VTOR"][:]       # toroidal plasma velocity
+        self.F1 = self.f["F1"][:]           # density of 1st additional transported species
+        self.F2 = self.f["F2"][:]           # density of 2nd additional transported species
+        self.F3 = self.f["F3"][:]           # density of 3rd additional transported species
+        self.VR = self.f["VR"][:]           # volume derivative
+        self.Cu = self.f["CU"][:]           # current density
+        self.Cubs = self.f["CUBS"][:]       # bootstrap current density
+        self.CuOhm = self.CC*self.ULON/(self.RTOR[-1]*2*np.pi)      # Ohmic current density
+        self.CuTor = self.f["CUTOR"][:]     # toroidal current density
+        self.CD = self.f["CD"][:]           # driven current density
+        self.Mu = self.f["MU"][:]           # rotational transform
+        self.q  = 1/self.Mu                 # safety factor
+        self.q_onaxis = 1/self.Mu[:,0]      # q on axis
+        self.MV = self.f["MV"][:]           # vacuum rotational transform
+        self.FV = self.f["FV"][:]           # poloidal flux for vacuum magnetic field
+        self.VP = self.f["VP"][:]           # pinch velocity
+        self.Qi = self.f["QI"][:]           # total transported ion heat flux
+        self.Qe = self.f["QE"][:]           # total transported electron heat flux
+        self.Qn = self.f["QN"][:]           # total transported particles flux
+        self.ZEF = self.f["ZEF"][:]         # Zeff
+        self.FTO = self.f["FTO"][:]         # toroidal magnetic flux at the edge
+        self.DN = self.f["DN"][:]           # main ion particle diffusivity
+        # self.HN    = self.f['HN'][:]
+        # self.XN    = self.f['XN'][:]
+        self.CN = self.f["CN"][:]           # particle convection
+        # self.DE    = self.f['DE'][:]
+        self.HE = self.f["HE"][:]           # electron heat diffusivity due to Te gradient
+        # self.XE    = self.f['XE'][:]
+        self.CE = self.f["CE"][:]           # electron heat convection
+        # self.DI    = self.f['DI'][:]
+        # self.HI    = self.f['HI'][:]
+        self.XI = self.f["XI"][:]           # main ion heat diffusivity due to Ti gradient
+        self.CI = self.f["CI"][:]           # ion heat convection
+        self.DC = self.f["DC"][:]           # current diffusivity due to n gradient
+        self.HC = self.f["HC"][:]           # current diffusivity due to Te gradient
+        self.XC = self.f["XC"][:]           # current diffusivity due to Ti gradient
+        self.CC = self.f["CC"][:]           # conductivity
+        self.XUPAR = self.f['XUPAR'][:]     # Momentum diffusivity
+        self.CNPAR = self.f['CNPAR'][:]     # Momentum convective velocity
+        self.RUPFR = self.f['RUPFR'][:]     # Toroidal turbulence-driven instrinsique torque
+        self.TTRQ = self.f['TTRQ'][:]       # Applied external torque (e.g. NBI)
+        self.SN = self.f["SN"][:]           # particle source
+        self.SNTOT = self.f["SNTOT"][:]
+        self.SNEBM = self.f['SNEBM'][:]     # particle source due to NBI
+        # self.SNN   = self.f['SNN'][:]
+        # self.SNNEU  = self.f['SNNEU'][:]
+        self.PBPER = self.f['PBPER'][:]     # pressure of fast ions in the perpendicular direction (wrt Bt)
+        self.PBLON = self.f['PBLON'][:]     # pressure of fast ions in the longitudinal direction (wrt Bt)
+        self.ULON = self.f["ULON"][:]       # longitudinal loop voltage
+        self.UPL = self.f["UPL"][:]         # toroidal loop voltage
+        self.IPOL = self.f["IPOL"][:]       # normalized poloidal current
+
+        # Power sources and sinks
+
+        self.PE = self.f["PE"][:]           # local electron power density
+        self.PI = self.f["PI"][:]           # local ion power density
+        self.PEBM = self.f["PEBM"][:]       # NBI power to electrons
+        self.PIBM = self.f["PIBM"][:]       # NBI power to ions
+        self.PEECR = self.f["PEECR"][:]     # ECH heating to electrons
+        self.PRAD = self.f["PRAD"][:]       # Radiated Power
+        self.PEICR = self.f["PEICR"][:]     # ICH heating to electrons
+        self.PIICR = self.f["PIICR"][:]     # ICH heating to ions
+        self.POH = self.CC*(self.ULON/(self.GP2[-1]*self.RTOR[-1]*self.IPOL))**2/self.G33
+        #### --------------- Calculation of fusion partition between main ions and electrons ------------------------- ###
+        YVALP = 1.2960e+07
+        ne = np.maximum(self.ne, 1e-30)
+        te = np.maximum(self.Te, 1e-30)
+        YLLAME = 23.9 + np.log(1e3 * te / np.sqrt(1e19 * ne))
+        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * (4.0 * self.AMAIN * YVALP) / (4.0 + self.AMAIN)
+        YLLAMI = 14.2 + np.log(np.maximum(yy6, 0.1))
+        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * 2.0 * YVALP
+        YLLAMA = 14.2 + np.log(np.maximum(yy6, 0.01))
+        yy6 = (YLLAMI * self.NI / (self.AMAIN * ne) + YLLAMA * self.NALF / ne) * 7.3e-4 / YLLAME
+        yy6 = np.maximum(yy6, 1e-4)
+        yvc = yy6**0.33 * np.sqrt(2.0 * te * 1.7564e14)
+        yeps = YVALP / (yvc + 1e-4)
+        yy6 = np.arctan(0.577 * (2.0 * yeps - 1.0))
+        yy7 = np.log((1.0 + yeps)**2 / (1.0 - yeps + yeps**2))
+        self.PAION1 = 2.0 / yeps**2 * (0.577 * yy6 - 0.167 * yy7 + 0.3)     # alpha power fraction to main ions
+        self.SVDT = self.Ti**(-1/3)
+        self.SVDT = 8.972*np.exp(-19.9826*self.SVDT)*self.SVDT*self.SVDT*((self.Ti+1.0134)/(1.+6.386E-3*(self.Ti+1.0134)**2)+1.877*np.exp(-0.16176*self.Ti*np.sqrt(self.Ti)))       # nuclear fusion cross section
+        self.PDT = 5.632*self.NDEUT*self.NTRIT*self.SVDT                # total alpha power
+        self.PEDT = (1-self.PAION1)*self.PDT                            # alpha power to electrons
+        self.PIDT = self.PAION1*self.PDT                                # alpha power to main ions
+        self.COULG = 15.9-0.5*np.log(self.ne)+np.log(self.Te)           # Coloumb logarithm
+        self.PEICL = 0.00246*self.COULG*self.ne*self.ni*self.ZMAIN**2
+        self.PEICL = self.PEICL*(self.Te-self.Ti)/(self.AMAIN*self.Te*np.sqrt(self.Te))     # Collisional exchange power
+
+        # dummy arrays (used for user-specified quantities)
 
         self.CAR1 = self.f["CAR1"][:]
         self.CAR2 = self.f["CAR2"][:]
-        self.CAR2X = self.f["CAR2X"][:]
         self.CAR3 = self.f["CAR3"][:]
         self.CAR4 = self.f["CAR4"][:]
         self.CAR5 = self.f["CAR5"][:]
@@ -101,9 +219,7 @@ class transp_output:
         self.CAR12 = self.f["CAR12"][:]
         self.CAR13 = self.f["CAR13"][:]
         self.CAR14 = self.f["CAR14"][:]
-        self.CAR14X = self.f["CAR14X"][:]
         self.CAR15 = self.f["CAR15"][:]
-        self.CAR15X = self.f["CAR15X"][:]
         self.CAR16 = self.f["CAR16"][:]
         self.CAR17 = self.f["CAR17"][:]
         self.CAR18 = self.f["CAR18"][:]
@@ -130,8 +246,6 @@ class transp_output:
         self.CAR39 = self.f["CAR39"][:]
         self.CAR40 = self.f["CAR40"][:]
         self.CAR41 = self.f["CAR41"][:]
-        self.CAR40X = self.f["CAR40X"][:]
-        self.CAR41X = self.f["CAR41X"][:]
         self.CAR42 = self.f["CAR42"][:]
         self.CAR43 = self.f["CAR43"][:]
         self.CAR44 = self.f["CAR44"][:]
@@ -155,20 +269,92 @@ class transp_output:
         self.CAR62 = self.f["CAR62"][:]
         self.CAR63 = self.f["CAR63"][:]
         self.CAR64 = self.f["CAR64"][:]
+        self.CAR1X = self.f["CAR1X"][:]
+        self.CAR2X = self.f["CAR2X"][:]
+        self.CAR3X = self.f["CAR3X"][:]
+        self.CAR4X = self.f["CAR4X"][:]
+        self.CAR5X = self.f["CAR5X"][:]
+        self.CAR6X = self.f["CAR6X"][:]
+        self.CAR7X = self.f["CAR7X"][:]
+        self.CAR8X = self.f["CAR8X"][:]
+        self.CAR9X = self.f["CAR9X"][:]
+        self.CAR10X = self.f["CAR10X"][:]
+        self.CAR11X = self.f["CAR11X"][:]
+        self.CAR12X = self.f["CAR12X"][:]
+        self.CAR13X = self.f["CAR13X"][:]
+        self.CAR14X = self.f["CAR14X"][:]
+        self.CAR15X = self.f["CAR15X"][:]
+        self.CAR16X = self.f["CAR16X"][:]
+        self.CAR17X = self.f["CAR17X"][:]
+        self.CAR18X = self.f["CAR18X"][:]
+        self.CAR19X = self.f["CAR19X"][:]
+        self.CAR20X = self.f["CAR20X"][:]
+        self.CAR21X = self.f["CAR21X"][:]
+        self.CAR22X = self.f["CAR22X"][:]
+        self.CAR23X = self.f["CAR23X"][:]
+        self.CAR24X = self.f["CAR24X"][:]
+        self.CAR25X = self.f["CAR25X"][:]
+        self.CAR26X = self.f["CAR26X"][:]
+        self.CAR27X = self.f["CAR27X"][:]
+        self.CAR28X = self.f["CAR28X"][:]
+        self.CAR29X = self.f["CAR29X"][:]
+        self.CAR30X = self.f["CAR30X"][:]
+        self.CAR31X = self.f["CAR31X"][:]
+        self.CAR32X = self.f["CAR32X"][:]
+        self.CAR33X = self.f["CAR33X"][:]
+        self.CAR34X = self.f["CAR34X"][:]
+        self.CAR35X = self.f["CAR35X"][:]
+        self.CAR36X = self.f["CAR36X"][:]
+        self.CAR37X = self.f["CAR37X"][:]
+        self.CAR38X = self.f["CAR38X"][:]
+        self.CAR39X = self.f["CAR39X"][:]
+        self.CAR40X = self.f["CAR40X"][:]
+        self.CAR41X = self.f["CAR41X"][:]
+        self.CAR42X = self.f["CAR42X"][:]
+        self.CAR43X = self.f["CAR43X"][:]
+        self.CAR44X = self.f["CAR44X"][:]
+        self.CAR45X = self.f["CAR45X"][:]
+        self.CAR46X = self.f["CAR46X"][:]
+        self.CAR47X = self.f["CAR47X"][:]
+        self.CAR48X = self.f["CAR48X"][:]
+        self.CAR49X = self.f["CAR49X"][:]
+        self.CAR50X = self.f["CAR50X"][:]
+        self.CAR51X = self.f["CAR51X"][:]
+        self.CAR52X = self.f["CAR52X"][:]
+        self.CAR53X = self.f["CAR53X"][:]
+        self.CAR54X = self.f["CAR54X"][:]
+        self.CAR55X = self.f["CAR55X"][:]
+        self.CAR56X = self.f["CAR56X"][:]
+        self.CAR57X = self.f["CAR57X"][:]
+        self.CAR58X = self.f["CAR58X"][:]
+        self.CAR59X = self.f["CAR59X"][:]
+        self.CAR60X = self.f["CAR60X"][:]
+        self.CAR61X = self.f["CAR61X"][:]
+        self.CAR62X = self.f["CAR62X"][:]
+        self.CAR63X = self.f["CAR63X"][:]
+        self.CAR64X = self.f["CAR64X"][:]
+
+        # dummy scalars (used for user-specified quantities)
+
         self.CRAD1   = self.f['CRAD1'][:]
         self.CRAD2   = self.f['CRAD2'][:]
         self.CRAD3   = self.f['CRAD3'][:]
         self.CRAD4   = self.f['CRAD4'][:]
+        self.CRAD1X   = self.f['CRAD1X'][:]
+        self.CRAD2X   = self.f['CRAD2X'][:]
+        self.CRAD3X   = self.f['CRAD3X'][:]
+        self.CRAD4X   = self.f['CRAD4X'][:]
         self.CIMP1   = self.f['CIMP1'][:]
         self.CIMP2   = self.f['CIMP2'][:]
         self.CIMP3   = self.f['CIMP3'][:]
         self.CIMP4   = self.f['CIMP4'][:]
+        self.CIMP1X   = self.f['CIMP1X'][:]
+        self.CIMP2X   = self.f['CIMP2X'][:]
+        self.CIMP3X   = self.f['CIMP3X'][:]
+        self.CIMP4X   = self.f['CIMP4X'][:]
         self.ZRD1 = self.f["ZRD1"][:]
-        self.ZRD1X = self.f["ZRD1X"][:]
         self.ZRD2 = self.f["ZRD2"][:]
-        self.ZRD2X = self.f["ZRD2X"][:]
         self.ZRD3 = self.f["ZRD3"][:]
-        self.ZRD3X = self.f["ZRD3X"][:]
         self.ZRD4 = self.f["ZRD4"][:]
         self.ZRD5 = self.f["ZRD5"][:]
         self.ZRD6 = self.f["ZRD6"][:]
@@ -226,13 +412,66 @@ class transp_output:
         self.ZRD58 = self.f["ZRD58"][:]
         self.ZRD59 = self.f["ZRD59"][:]
         self.ZRD60 = self.f["ZRD60"][:]
+        self.ZRD1X = self.f["ZRD1X"][:]
+        self.ZRD2X = self.f["ZRD2X"][:]
+        self.ZRD3X = self.f["ZRD3X"][:]
+        self.ZRD4X = self.f["ZRD4X"][:]
+        self.ZRD5X = self.f["ZRD5X"][:]
+        self.ZRD6X = self.f["ZRD6X"][:]
+        self.ZRD7X = self.f["ZRD7X"][:]
+        self.ZRD8X = self.f["ZRD8X"][:]
+        self.ZRD9X = self.f["ZRD9X"][:]
+        self.ZRD10X = self.f["ZRD10X"][:]
+        self.ZRD11X = self.f["ZRD11X"][:]
+        self.ZRD12X = self.f["ZRD12X"][:]
+        self.ZRD13X = self.f["ZRD13X"][:]
+        self.ZRD14X = self.f["ZRD14X"][:]
+        self.ZRD15X = self.f["ZRD15X"][:]
+        self.ZRD16X = self.f["ZRD16X"][:]
+        self.ZRD17X = self.f["ZRD17X"][:]
+        self.ZRD18X = self.f["ZRD18X"][:]
+        self.ZRD19X = self.f["ZRD19X"][:]
+        self.ZRD20X = self.f["ZRD20X"][:]
+        self.ZRD21X = self.f["ZRD21X"][:]
+        self.ZRD22X = self.f["ZRD22X"][:]
+        self.ZRD23X = self.f["ZRD23X"][:]
+        self.ZRD24X = self.f["ZRD24X"][:]
+        self.ZRD25X = self.f["ZRD25X"][:]
+        self.ZRD26X = self.f["ZRD26X"][:]
+        self.ZRD27X = self.f["ZRD27X"][:]
+        self.ZRD28X = self.f["ZRD28X"][:]
+        self.ZRD29X = self.f["ZRD29X"][:]
+        self.ZRD30X = self.f["ZRD30X"][:]
+        self.ZRD31X = self.f["ZRD31X"][:]
+        self.ZRD32X = self.f["ZRD32X"][:]
+        self.ZRD33X = self.f["ZRD33X"][:]
+        self.ZRD34X = self.f["ZRD34X"][:]
+        self.ZRD35X = self.f["ZRD35X"][:]
+        self.ZRD36X = self.f["ZRD36X"][:]
+        self.ZRD37X = self.f["ZRD37X"][:]
+        self.ZRD38X = self.f["ZRD38X"][:]
+        self.ZRD39X = self.f["ZRD39X"][:]
+        self.ZRD40X = self.f["ZRD40X"][:]
+        self.ZRD41X = self.f["ZRD41X"][:]
+        self.ZRD42X = self.f["ZRD42X"][:]
+        self.ZRD43X = self.f["ZRD43X"][:]
+        self.ZRD44X = self.f["ZRD44X"][:]
+        self.ZRD45X = self.f["ZRD45X"][:]
+        self.ZRD46X = self.f["ZRD46X"][:]
+        self.ZRD47X = self.f["ZRD47X"][:]
+        self.ZRD48X = self.f["ZRD48X"][:]
+        self.ZRD49X = self.f["ZRD49X"][:]
         self.ZRD50X = self.f["ZRD50X"][:]
         self.ZRD51X = self.f["ZRD51X"][:]
         self.ZRD52X = self.f["ZRD52X"][:]
         self.ZRD53X = self.f["ZRD53X"][:]
         self.ZRD54X = self.f["ZRD54X"][:]
         self.ZRD55X = self.f["ZRD55X"][:]
-
+        self.ZRD56X = self.f["ZRD56X"][:]
+        self.ZRD57X = self.f["ZRD57X"][:]
+        self.ZRD58X = self.f["ZRD58X"][:]
+        self.ZRD59X = self.f["ZRD59X"][:]
+        self.ZRD60X = self.f["ZRD60X"][:]
         self.CF1 = self.f["CF1"][:]
         self.CF2 = self.f["CF2"][:]
         self.CF3 = self.f["CF3"][:]
@@ -249,6 +488,22 @@ class transp_output:
         self.CF14 = self.f["CF14"][:]
         self.CF15 = self.f["CF15"][:]
         self.CF16 = self.f["CF16"][:]
+        self.CF1X = self.f["CF1X"][:]
+        self.CF2X = self.f["CF2X"][:]
+        self.CF3X = self.f["CF3X"][:]
+        self.CF4X = self.f["CF4X"][:]
+        self.CF5X = self.f["CF5X"][:]
+        self.CF6X = self.f["CF6X"][:]
+        self.CF7X = self.f["CF7X"][:]
+        self.CF8X = self.f["CF8X"][:]
+        self.CF9X = self.f["CF9X"][:]
+        self.CF10X = self.f["CF10X"][:]
+        self.CF11X = self.f["CF11X"][:]
+        self.CF12X = self.f["CF12X"][:]
+        self.CF13X = self.f["CF13X"][:]
+        self.CF14X = self.f["CF14X"][:]
+        self.CF15X = self.f["CF15X"][:]
+        self.CF16X = self.f["CF16X"][:]
         self.CV1 = self.f["CV1"][:]
         self.CV2 = self.f["CV2"][:]
         self.CV3 = self.f["CV3"][:]
@@ -265,175 +520,72 @@ class transp_output:
         self.CV14 = self.f["CV14"][:]
         self.CV15 = self.f["CV15"][:]
         self.CV16 = self.f["CV16"][:]
+        self.CV1X = self.f["CV1X"][:]
+        self.CV2X = self.f["CV2X"][:]
+        self.CV3X = self.f["CV3X"][:]
+        self.CV4X = self.f["CV4X"][:]
+        self.CV5X = self.f["CV5X"][:]
+        self.CV6X = self.f["CV6X"][:]
+        self.CV7X = self.f["CV7X"][:]
+        self.CV8X = self.f["CV8X"][:]
+        self.CV9X = self.f["CV9X"][:]
+        self.CV10X = self.f["CV10X"][:]
+        self.CV11X = self.f["CV11X"][:]
+        self.CV12X = self.f["CV12X"][:]
+        self.CV13X = self.f["CV13X"][:]
+        self.CV14X = self.f["CV14X"][:]
+        self.CV15X = self.f["CV15X"][:]
+        self.CV16X = self.f["CV16X"][:]
 
-        self.AMJ = self.f["AMJ"][:]
-        self.AMAIN = self.f['AMAIN'][:]
-        self.AIM1 = self.f['AIM1'][:]
-        self.AIM2 = self.f['AIM2'][:]
-        self.AIM3 = self.f['AIM3'][:]
-        self.ZIM1 = self.f['ZIM1'][:]
-        self.ZIM2 = self.f['ZIM2'][:]
-        self.ZIM3 = self.f['ZIM3'][:]
-        self.ZMJ = self.f["ZMJ"][:]
-        self.ZEF = self.f["ZEF"][:]
-        self.ROC = self.f["ROC"][:]
-        self.tau = self.f["TAU"][:]
-        self.vol = self.f["VOLUM"][:]
-        self.VOLUME = self.f["VOLUME"][:]
-        try:
-            self.t = self.f[
-                "TIME"
-            ].data  # New ASTRA update needs this patch, for old version still need [:]
-        except:
-            self.t = self.f["TIME"][:]
-        self.t = np.array([self.t]) if np.isscalar(self.t) else np.array(self.t)
-        self.rmin = self.f["AMETR"][:]
-        self.elong = self.f["ELONG"][:]
-        self.elon = self.f["ELON"][:]
-        self.trian = self.f["TRIAN"][:]
-        self.tria = self.f["TRIA"][:]
-        self.UPDWN = self.f["UPDWN"][:]
-        self.shif = self.f["SHIF"][:]
-        self.shift = self.f["SHIFT"][:]
-        self.RTOR = self.f["RTOR"][:]
-        self.AB = self.f["AB"][:]
-        self.ABC = self.f["ABC"][:]
-        self.PE = self.f["PE"][:]
-        self.PI = self.f["PI"][:]
-        self.PEBM = self.f["PEBM"][:]  # NBI power to electrons
-        self.PIBM = self.f["PIBM"][:]  # NBI power to ions
-        self.PEECR = self.f["PEECR"][:]  # ECH heating to electrons
-        self.PRAD = self.f["PRAD"][:]  # Radiated Power
-        self.PEICR = self.f["PEICR"][:]
-        self.PIICR = self.f["PIICR"][:]
-        self.FTO = self.f["FTO"][:]
-        self.DN = self.f["DN"][:]
-        # self.HN    = self.f['HN'][:]
-        # self.XN    = self.f['XN'][:]
-        # self.DE    = self.f['DE'][:]
-        self.HE = self.f["HE"][:]
-        # self.XE    = self.f['XE'][:]
-        # self.DI    = self.f['DI'][:]
-        # self.HI    = self.f['HI'][:]
-        self.XI = self.f["XI"][:]
-        self.CN = self.f["CN"][:]
-        self.CE = self.f["CE"][:]
-        self.CI = self.f["CI"][:]
-        self.DC = self.f["DC"][:]
-        self.HC = self.f["HC"][:]
-        self.XC = self.f["XC"][:]
-        self.SN = self.f["SN"][:]
-        # self.SNN   = self.f['SNN'][:]
-        # self.SNNEU  = self.f['SNNEU'][:]
-        self.XRHO = self.f["XRHO"][:]
-        self.HRO = self.f["HRO"][:]
-        self.PBPER = self.f['PBPER'][:]
-        self.PBLON = self.f['PBLON'][:]
-        self.SNEBM = self.f['SNEBM'][:]
+        # Integrated and few derived quantities
 
-        self.CC = self.f["CC"][:]
-        self.ULON = self.f["ULON"][:]
-        self.UPL = self.f["UPL"][:]
-        self.GP2 = self.f["GP2"][:]
-        self.IPOL = self.f["IPOL"][:]
-        self.G22 = self.f["G22"][:]
-        self.G33 = self.f["G33"][:]
-        self.POH = self.CC*(self.ULON/(self.GP2[-1]*self.RTOR[-1]*self.IPOL))**2/self.G33
-        
-        ## Calculation of fusion partition between main ions and electrons ##
-        YVALP = 1.2960e+07
-        ne = np.maximum(self.ne, 1e-30)
-        te = np.maximum(self.Te, 1e-30)
-
-        YLLAME = 23.9 + np.log(1e3 * te / np.sqrt(1e19 * ne))
-        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * (4.0 * self.AMAIN * YVALP) / (4.0 + self.AMAIN)
-        YLLAMI = 14.2 + np.log(np.maximum(yy6, 0.1))
-
-        yy6 = np.sqrt(1e3 * te / 1e19 / ne) * 2.0 * YVALP
-        YLLAMA = 14.2 + np.log(np.maximum(yy6, 0.01))
-
-        yy6 = (YLLAMI * self.NI / (self.AMAIN * ne) + YLLAMA * self.NALF / ne) * 7.3e-4 / YLLAME
-        yy6 = np.maximum(yy6, 1e-4)
-
-        yvc = yy6**0.33 * np.sqrt(2.0 * te * 1.7564e14)
-        yeps = YVALP / (yvc + 1e-4)
-
-        yy6 = np.arctan(0.577 * (2.0 * yeps - 1.0))
-        yy7 = np.log((1.0 + yeps)**2 / (1.0 - yeps + yeps**2))
-
-        self.PAION1 = 2.0 / yeps**2 * (0.577 * yy6 - 0.167 * yy7 + 0.3)
-        
-        ## Calculation of fusion cross section:
-        self.SVDT = self.Ti**(-1/3)
-        self.SVDT = 8.972*np.exp(-19.9826*self.SVDT)*self.SVDT*self.SVDT*((self.Ti+1.0134)/(1.+6.386E-3*(self.Ti+1.0134)**2)+1.877*np.exp(-0.16176*self.Ti*np.sqrt(self.Ti)))
-        self.PDT = 5.632*self.NDEUT*self.NTRIT*self.SVDT
-        self.PEDT = (1-self.PAION1)*self.PDT
-        self.PIDT = self.PAION1*self.PDT
-
-        ## Calculation of the Coloumb logarithm and collisional exchange power:
-        self.COULG = 15.9-0.5*np.log(self.ne)+np.log(self.Te)
-        self.PEICL = 0.00246*self.COULG*self.ne*self.ni*self.ZMAIN**2
-        self.PEICL = self.PEICL*(self.Te-self.Ti)/(self.AMAIN*self.Te*np.sqrt(self.Te))
-        
-        self.AREAT = self.f['AREAT'][:]
-        self.SLAT = self.f['SLAT'][:]
-
-        self.XUPAR = self.f['XUPAR'][:]   # Momentum diffusivity
-        self.CNPAR = self.f['CNPAR'][:]   # Momentum convective velocity
-        self.RUPFR = self.f['RUPFR'][:]   # Toroidal turbulence-driven instrinsique torque
-        self.TTRQ = self.f['TTRQ'][:]   # Applied external torque (e.g. NBI)
-
-        self.beta = np.zeros(len(self.t))
-        self.betaN = np.zeros(len(self.t))
-        self.QIDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        self.QEDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        self.QDT   = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        self.QEICRH = np.zeros([len(self.t),len(self.xrho)])
-        self.QIICRH = np.zeros([len(self.t),len(self.xrho)])
-        self.QICRH = np.zeros([len(self.t),len(self.xrho)])
-        self.QNBI = np.zeros([len(self.t),len(self.xrho)])
-        self.QECRH = np.zeros([len(self.t),len(self.xrho)])
-        self.QEICL = np.zeros([len(self.t),len(self.xrho)])
-        self.Cu_tot = np.zeros([len(self.t),len(self.xrho)])
-        self.Cubs_tot = np.zeros([len(self.t),len(self.xrho)])
-        self.QE = np.zeros([len(self.t),len(self.xrho)])
-        self.QI = np.zeros([len(self.t),len(self.xrho)])
-        self.QRAD = np.zeros([len(self.t),len(self.xrho)])
-        self.QOH = np.zeros([len(self.t),len(self.xrho)])
-        self.Wtot = np.zeros([len(self.t),len(self.xrho)])
-        self.ne_avg = np.zeros([len(self.t)])
-        self.NIZ1_avg = np.zeros([len(self.t)])
-        self.NIZ2_avg = np.zeros([len(self.t)])
-        self.NIZ3_avg = np.zeros([len(self.t)])
-        self.NI_avg = np.zeros([len(self.t)])
-        self.ne_lineavg = np.zeros([len(self.t)])
-        self.Te_avg = np.zeros([len(self.t)])
-        self.Ti_avg = np.zeros([len(self.t)])
+        self.timesteps = len(self.t)
+        self.radialsize = int(self.na1[-1])
+        self.beta = np.zeros(self.timesteps)
+        self.betaN = np.zeros(self.timesteps)
+        self.QIDT   = np.zeros([self.timesteps,self.radialsize])
+        self.QEDT   = np.zeros([self.timesteps,self.radialsize])
+        self.QDT   = np.zeros([self.timesteps,self.radialsize])
+        self.QEICRH = np.zeros([self.timesteps,self.radialsize])
+        self.QIICRH = np.zeros([self.timesteps,self.radialsize])
+        self.QICRH = np.zeros([self.timesteps,self.radialsize])
+        self.QNBI = np.zeros([self.timesteps,self.radialsize])
+        self.QECRH = np.zeros([self.timesteps,self.radialsize])
+        self.QEICL = np.zeros([self.timesteps,self.radialsize])
+        self.Cu_tot = np.zeros([self.timesteps,self.radialsize])
+        self.Cubs_tot = np.zeros([self.timesteps,self.radialsize])
+        self.QE = np.zeros([self.timesteps,self.radialsize])
+        self.QI = np.zeros([self.timesteps,self.radialsize])
+        self.QRAD = np.zeros([self.timesteps,self.radialsize])
+        self.QOH = np.zeros([self.timesteps,self.radialsize])
+        self.Wtot = np.zeros([self.timesteps,self.radialsize])
+        self.ne_avg = np.zeros([self.timesteps])
+        self.NIZ1_avg = np.zeros([self.timesteps])
+        self.NIZ2_avg = np.zeros([self.timesteps])
+        self.NIZ3_avg = np.zeros([self.timesteps])
+        self.NI_avg = np.zeros([self.timesteps])
+        self.ne_lineavg = np.zeros([self.timesteps])
+        self.Te_avg = np.zeros([self.timesteps])
+        self.Ti_avg = np.zeros([self.timesteps])
         self.n_Gr = self.IPL/(np.pi*self.ABC**2)
-        self.tau98 = np.zeros([len(self.t)])
-        self.tau89 = np.zeros([len(self.t)])
-        self.tau98_lineavg = np.zeros([len(self.t)])
-        self.area = np.zeros([len(self.t),len(self.xrho)])
-        self.FP_norm = np.zeros([len(self.t),len(self.xrho)])
-        self.q95position = [0]*len(self.t)
-        self.q95 = np.zeros(len(self.t))
-        self.delta95 = np.zeros(len(self.t))
-        self.kappa95 = np.zeros(len(self.t))
-        self.n_Angioni = np.zeros(len(self.t))
-        self.SNEBM_tot = np.zeros(len(self.t))
-        self.shear = np.zeros([len(self.t),len(self.xrho)])
-        self.PBRAD = np.zeros([len(self.t),len(self.xrho)])
-        self.PSYNC = np.zeros([len(self.t),len(self.xrho)])
-        self.QBRAD = np.zeros([len(self.t),len(self.xrho)])
-        self.QSYNC = np.zeros([len(self.t),len(self.xrho)])
-        self.PRWOL_PUET_dens = np.zeros([len(self.t),len(self.xrho)])
-        for ii in range(0,int(self.na1[-1])):
-             if ii>0:
-                  self.area[:,ii] = self.AREAT[:,ii]-self.AREAT[:,ii-1]
-             else:
-                  self.area[:,ii] = self.AREAT[:,ii]
-        
-        for kk in range(0,len(self.t)):
+        self.tau98 = np.zeros([self.timesteps])
+        self.tau89 = np.zeros([self.timesteps])
+        self.tau98_lineavg = np.zeros([self.timesteps])
+        self.area = np.zeros([self.timesteps,self.radialsize])
+        self.FP_norm = np.zeros([self.timesteps,self.radialsize])
+        self.q95position = [0]*self.timesteps
+        self.q95 = np.zeros(self.timesteps)
+        self.delta95 = np.zeros(self.timesteps)
+        self.kappa95 = np.zeros(self.timesteps)
+        self.n_Angioni = np.zeros(self.timesteps)
+        self.SNEBM_tot = np.zeros(self.timesteps)
+        self.shear = np.zeros([self.timesteps,self.radialsize])
+        self.PBRAD = np.zeros([self.timesteps,self.radialsize])
+        self.PSYNC = np.zeros([self.timesteps,self.radialsize])
+        self.QBRAD = np.zeros([self.timesteps,self.radialsize])
+        self.QSYNC = np.zeros([self.timesteps,self.radialsize])
+        self.PRWOL_PUET_dens = np.zeros([self.timesteps,self.radialsize])        
+        for kk in range(0,self.timesteps):
              self.beta[kk] = 0.00402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]/(self.BTOR[kk]**2)
              self.betaN[kk] = 0.402*np.cumsum((self.ne[kk,:]*self.Te[kk,:]+self.ni[kk,:]*self.Ti[kk,:]+0.5*(self.PBPER[kk,:]+self.PBLON[kk,:]))*self.VR[kk,:])[-1]/np.cumsum(self.VR[kk,:])[-1]*self.ABC[kk]/(self.BTOR[kk]*self.IPL[kk])
              self.FP_norm[kk,:] = (self.FP[kk,:]-self.FP[kk,0])/(self.FP[kk,-1]-self.FP[kk,0])
@@ -472,7 +624,7 @@ class transp_output:
              self.shear[kk,:] = -self.rmin[kk,:]/self.Mu[kk,:]*np.gradient(self.Mu[kk,:]/self.rmin[kk,:])
              self.PBRAD[kk,:] = 5.06E-5*self.ZEF[kk,:]*self.ne[kk,:]**2*self.Te[kk,:]**0.5
              self.PSYNC[kk,:] = 1.32E-7*(self.Te_avg[kk]*self.BTOR[kk])**2.5*np.sqrt(self.ne_avg[kk]/self.AB[kk]*(1.+18.*self.AB[kk]/(self.RTOR[kk]*np.sqrt(self.Te_avg[kk]))))
-             for jj in range(0,len(self.xrho)):
+             for jj in range(0,self.radialsize):
                  T = self.Te[kk,jj]*1000.
                  Z = np.log10(self.Te[kk,jj])
                  if T <= 25.25:
@@ -489,25 +641,21 @@ class transp_output:
         self.f_Gr = self.ne_avg/10/self.n_Gr
         self.QETOT  = self.QE
         self.QITOT  = self.QI
-        self.SNTOT = self.f["SNTOT"][:]
         self.Wtot = 0.0024*self.Wtot   #check formula in ASTRA
         self.tauE = self.Wtot/(self.QRAD+self.QE+self.QI)
         self.H98 = self.tauE[:,-1]/self.tau98
         self.H89 = self.tauE[:,-1]/self.tau89
         self.H98_lineavg = self.tauE[:,-1]/self.tau98_lineavg
-        self.ZIM1 = self.f["ZIM1"][:]
-        self.ZIM2 = self.f["ZIM2"][:]
-        self.ZIM3 = self.f["ZIM3"][:]
         self.fMAIN = self.NMAIN/self.ne
         self.f1 = self.NIZ1/self.ne
         self.f2 = self.NIZ2/self.ne
         self.f3 = self.NIZ3/self.ne
         self.ptot  = (self.ne*self.Te+self.ni*self.Ti+0.5*(self.PBPER+self.PBLON))*1.6e-3  #in MPa
-        self.rlte  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        self.rlti  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        self.rlne  = np.zeros([len(self.t),len(self.PEDT[-1,:])])
-        for kk in range(0,len(self.t)):
-             for jj in range(0,len(self.xrho)-1):
+        self.rlte  = np.zeros([self.timesteps,self.radialsize])
+        self.rlti  = np.zeros([self.timesteps,self.radialsize])
+        self.rlne  = np.zeros([self.timesteps,self.radialsize])
+        for kk in range(0,self.timesteps):
+             for jj in range(0,self.radialsize-1):
                   self.rlte[kk,jj]=-self.RTOR[-1]/(0.5*(self.Te[kk,jj]+self.Te[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Te[kk,jj+1]-self.Te[kk,jj]))
                   self.rlti[kk,jj]=-self.RTOR[-1]/(0.5*(self.Ti[kk,jj]+self.Ti[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.Ti[kk,jj+1]-self.Ti[kk,jj]))
                   self.rlne[kk,jj]=-self.RTOR[-1]/(0.5*(self.ne[kk,jj]+self.ne[kk,jj+1])*(self.rmin[kk,jj+1]-self.rmin[kk,jj])/(self.ne[kk,jj+1]-self.ne[kk,jj]))
@@ -589,7 +737,7 @@ class transp_output:
         self.rho_tor_aims = rho_tor_aims
         self.i_rho_tor_aims = []
 
-        for t in range(len(self.t)):
+        for t in range(self.timesteps):
             rho_t = np.array(self.rho[t, :])
             ROC_t = self.ROC[t]
             rho_tor_t = rho_t / ROC_t
@@ -626,7 +774,7 @@ class transp_output:
         for i in range(self.i_rho_tor_aims.shape[1]):
             param_list = []
 
-            for t in range(len(self.t)):
+            for t in range(self.timesteps):
                 i_rho_tor = self.i_rho_tor_aims[t, i]
                 param_list.append(param[t, i_rho_tor])
 
