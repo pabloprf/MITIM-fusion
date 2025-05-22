@@ -69,11 +69,12 @@ def run_slurm(
 
 
 def run_slurm_array(
-    scripts,
+    script,
+    array_input,
     folder,
     partition,
-    venv,
     max_concurrent_jobs, 
+    venv = '',
     seeds=None,    # If not None, assume that the script is able to receive --seeds #
     hours=8,
     n=32,
@@ -101,19 +102,13 @@ def run_slurm_array(
 
         folder.mkdir(parents=True, exist_ok=True)
 
-        scan_size = len(scripts)cd 
-        commands = [venv,scripts[0] + (f" --seed {seed}" if seed is not None else "")]
-        for script in scripts[1:]:
-            commands.append(script)
-        
-
-        print('Commands' + str(commands))
-        print('folder' + str(folder))   
+        command = ['echo $SLURM_ARRAY_TASK_ID', venv, script + ' $SLURM_ARRAY_TASK_ID'+ (f" --seed {seed}" if seed is not None else "")]
+        string_of_array_input = ','.join([str(i) for i in array_input])
 
         nameJob = f"mitim_{folder.name}{extra_name}"
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
-            command=commands,
+            command=command,
             folder_remote=folder,
             folder_local=folder,
             nameJob=nameJob,
@@ -122,7 +117,7 @@ def run_slurm_array(
             ntasks=1,
             cpuspertask=n,
             memory_req_by_job=mem,
-            job_array=f'0-{scan_size}%{max_concurrent_jobs}',
+            job_array=f'{string_of_array_input}%{max_concurrent_jobs}',
 
         )
 
