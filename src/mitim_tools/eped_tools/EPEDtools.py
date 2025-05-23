@@ -3,10 +3,122 @@ import re
 import subprocess
 import f90nml
 from pathlib import Path
+from mitim_tools.misc_tools import FARMINGtools
 import numpy as np
 import pandas as pd
 import xarray as xr
+from IPython import embed
 
+class EPED:
+    def __init__(
+            self,
+            folder
+            ):
+        
+        self.folder = Path(folder)
+
+        self.folder.mkdir(parents=True, exist_ok=True)
+
+        self.results = {}
+
+    def run(
+            self,
+            subfolder = 'run1',
+            input_params = None,
+            nproc = 64,
+            ):
+
+        # Set up folder
+        self.folder_run = self.folder / subfolder
+        self.folder_run.mkdir(parents=True, exist_ok=True)
+
+        # ------------------------------------
+        # Write input file to EPED
+        # ------------------------------------
+
+        eped_input_file = self.folder_run / 'eped.input'
+
+        shot = 0
+        timeid = 0
+
+        # Update with fixed parameters
+        input_params.update(
+            {'num_scan': 1,
+             'shot': shot,
+             'timeid': timeid,
+             'runid': 0,
+             'm': 2,
+             'z': 1,
+             'mi': 20,
+             'zi': 10,
+             'tewid': 0.03,
+             'ptotwid': 0.03,
+             'teped': -1,
+             'ptotped': -1,
+            }
+        )
+
+        eped_input = {'eped_input': input_params}
+        nml = f90nml.Namelist(eped_input)
+        
+        # Write the input file
+        f90nml.write(nml, eped_input_file, force=True)
+
+        # Initialize Job
+        self.eped_job = FARMINGtools.mitim_job(self.folder_run)
+
+        self.eped_job.define_machine(
+            "eped",
+            "mitim_eped",
+            launchSlurm=False,
+        )
+
+        # -------------------------------------
+        # Executable commands
+        # -------------------------------------
+
+        EPEDcommand = f'cp $EPED_SOURCE_PATH/template/engaging/eped_run_template/* {self.eped_job.folderExecution}/. && export NPROC_EPED={nproc} && ips.py --config=eped.config --platform=psfc_cluster.conf'
+
+        # -------------------------------------
+        # Execute
+        # -------------------------------------
+
+        output_file = f'e{shot:06d}.{timeid:05d}'
+
+        self.eped_job.prep(
+            EPEDcommand,
+            input_files=[eped_input_file],
+            output_files=[f'eped/SUMMARY/{output_file}'],
+        )
+
+        self.eped_job.run(removeScratchFolders=False)
+
+
+        # Rename output file
+        os.system(f'mv {self.folder_run / output_file} {self.folder_run / "output.nc"}')
+
+    def read(
+            self,
+            subfolder = 'run1',
+            name = 'run1',
+            ):
+
+        output_file = self.folder / subfolder / 'output.nc'
+
+        data = xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4')
+        data = postprocess_eped(data, 'G', 0.03)
+
+        self.results[name] = data
+
+    def plot(
+            self,
+            name = 'run1',
+            ):
+
+        data = self.results[name]
+
+# ************************************************************************************************************
+# ************************************************************************************************************
 
 def convert_to_dimensional(df):
     #ee = 1.60217663e-19
