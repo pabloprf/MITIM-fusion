@@ -199,11 +199,9 @@ class CGYRO:
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
         try:
-            self.results[label] = cgyrodata_plot(folder)
+            self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
         except:
-            if (
-                True
-            ):  # print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
+            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
                 os.chdir(folder)
                 os.system("cgyro -t")
             self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
@@ -211,14 +209,9 @@ class CGYRO:
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
         self.results[label].all_flags = np.arange(0, len(self.results[label].z), 1)
-        self.results[label].ions_flags = self.results[label].all_flags[
-            self.results[label].all_flags != self.results[label].electron_flag
-        ]
+        self.results[label].ions_flags = self.results[label].all_flags[self.results[label].all_flags != self.results[label].electron_flag]
 
-        self.results[label].all_names = [
-            f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})"
-            for i in self.results[label].all_flags
-        ]
+        self.results[label].all_names = [f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})" for i in self.results[label].all_flags]
 
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()

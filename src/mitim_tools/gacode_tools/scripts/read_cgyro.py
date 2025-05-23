@@ -4,7 +4,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
 
 """
-e.g.	plot_cgyro.py folder
+e.g.	read_cgyro.py folder
 """
 
 def main():
