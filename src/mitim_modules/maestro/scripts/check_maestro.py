@@ -75,7 +75,7 @@ def check_cases(folders):
                         minutes = (time_in_queue.seconds % 3600) // 60
                         job_status = f"{state.strip()} for {hours}h {minutes}m ({cores} cores on {partition})"
 
-        if (outputs_folder / 'beat_final').exists():
+        if (outputs_folder / 'beat_final').exists() and slurm_output.exists():
             mod_time = datetime.fromtimestamp((outputs_folder / 'beat_final').stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             with open(slurm_output, 'r') as f:
                 lines = f.readlines()
