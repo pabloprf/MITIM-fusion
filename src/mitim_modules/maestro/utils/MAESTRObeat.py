@@ -177,6 +177,27 @@ class initializer_from_geqdsk(beat_initializer):
         print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
+        # Sometimes I may want to change Ip and Bt
+        if 'Ip_MA' in kwargs_profiles and kwargs_profiles['Ip_MA'] is not None:
+            Ip_in_geqdsk = p.profiles['current(MA)'][0]
+            if Ip_in_geqdsk != kwargs_profiles['Ip_MA']:
+                print(f'\t- Requested to ignore geqdsk current and use user-specified one, changing Ip from {Ip_in_geqdsk} to {kwargs_profiles["Ip_MA"]}', typeMsg = 'w')
+                p.profiles['current(MA)'][0] = kwargs_profiles['Ip_MA']
+                print(f'\t\t* Scaling poloidal flux by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
+                p.profiles['polflux(Wb/radian)'] *= kwargs_profiles['Ip_MA'] / Ip_in_geqdsk
+                print(f'\t\t* Scaling q-profile by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
+                p.profiles['q(-)'] *= 1/(kwargs_profiles['Ip_MA'] / Ip_in_geqdsk)
+
+        if 'B_T' in kwargs_profiles and kwargs_profiles['B_T'] is not None:
+            Bt_in_geqdsk = p.profiles['bcentr(T)'][0]
+            if Bt_in_geqdsk != kwargs_profiles['B_T']:
+                print(f'\t- Requested to ignore geqdsk B and use user-specified one, changing Bt from {Bt_in_geqdsk} to {kwargs_profiles["B_T"]}', typeMsg = 'w')
+                p.profiles['bcentr(T)'][0] = kwargs_profiles['B_T']
+                print(f'\t\t* Scaling toroidal flux by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
+                p.profiles['torfluxa(Wb/radian)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
+                print(f'\t\t* Scaling q-profile by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
+                p.profiles['q(-)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
+
         # Write it to initialization folder
         p.writeCurrentStatus(file=self.folder / 'input.geqdsk.gacode')
 
