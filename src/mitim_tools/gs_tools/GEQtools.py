@@ -364,7 +364,6 @@ class MITIMgeqdsk:
         profiles['ze'] = np.array([-1.0])
         profiles['z'] = np.array([1.0, Z])
 
-
         profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
         profiles['rcentr(m)'] = np.array([R0])
         profiles['bcentr(T)'] = np.array([B0])
