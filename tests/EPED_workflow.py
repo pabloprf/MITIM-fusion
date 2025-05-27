@@ -1,4 +1,3 @@
-from re import sub
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools import __mitimroot__
 
@@ -21,8 +20,10 @@ eped.run(
         'nesep': 0.25,
         'tesep': 1.0,
     },
-    nproc = 64
+    nproc = 64,
+    cold_start = True,
 )
 
 eped.read(subfolder='run1')
 
+eped.plot(labels=['run1'])
