@@ -4,7 +4,7 @@ import subprocess
 import matplotlib.pyplot as plt
 import f90nml
 from pathlib import Path
-from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools
+from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools, IOtools
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -24,7 +24,7 @@ class EPED:
         self.results = {}
 
 
-    def cold_start_checker(
+    def case_exists(
             self,
             subfolder = 'run1'
             ):
@@ -34,29 +34,41 @@ class EPED:
 
         output_file = self.folder_run / 'output.nc'
 
-        return not output_file.exists() or not output_file.is_file()
+        return output_file.exists() and output_file.is_file()
 
     def run(
             self,
             subfolder = 'run1',
             input_params = None,
             nproc = 64,
+            minutes_slurm = 60,
             cold_start = False,
             ):
 
-        if (not cold_start) and not self.cold_start_checker(subfolder):
-            print(f'\t> Run {subfolder} already exists and cold_start is set to False. Skipping run.', typeMsg='i')
-            return
-
-        # Set up folder
         self.folder_run = self.folder / subfolder
+
+        if self.case_exists(subfolder):
+            if cold_start:
+                res = print(f'\t> Run {subfolder} already exists but cold_start is set to True. Running from scratch.', typeMsg='q')
+                if res:
+                    IOtools.shutil_rmtree(self.folder_run)
+                else:
+                    return
+            else:
+                print(f'\t> Run {subfolder} already exists and cold_start is set to False. Skipping run.', typeMsg='i')
+                return
+            
+        # Set up folder
+        
         self.folder_run.mkdir(parents=True, exist_ok=True)
 
         # ------------------------------------
         # Write input file to EPED
         # ------------------------------------
 
-        eped_input_file = self.folder_run / 'eped.input'
+        eped_input_file_suffix = 'eped.input.1' # Do not call it directly 'eped.input' as it may be overwritten by the job script template copying commands
+
+        eped_input_file = self.folder_run / eped_input_file_suffix
 
         shot = 0
         timeid = 0
@@ -92,7 +104,7 @@ class EPED:
             "mitim_eped",
             slurm_settings={
                 'name': 'mitim_eped',
-                'minutes': 20,
+                'minutes': minutes_slurm,
                 'ntasks': nproc,
             }
         )
@@ -100,7 +112,9 @@ class EPED:
         # Executable commands
         # -------------------------------------
 
-        EPEDcommand = f'cp $EPED_SOURCE_PATH/template/engaging/eped_run_template/* {self.eped_job.folderExecution}/. && export NPROC_EPED={nproc} && ips.py --config=eped.config --platform=psfc_cluster.conf'
+        required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
+
+        EPEDcommand = f'cp {required_files_folder}/* {self.eped_job.folderExecution}/. && mv {self.eped_job.folderExecution}/{eped_input_file_suffix} {self.eped_job.folderExecution}/eped.input && export NPROC_EPED={nproc} && ips.py --config=eped.config --platform=psfc_cluster.conf'
 
         # -------------------------------------
         # Execute
@@ -122,7 +136,7 @@ class EPED:
     def read(
             self,
             subfolder = 'run1',
-            name = 'run1',
+            label = None,
             ):
 
         output_file = self.folder / subfolder / 'output.nc'
@@ -130,7 +144,7 @@ class EPED:
         data = xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4')
         data = postprocess_eped(data, 'G', 0.03)
 
-        self.results[name] = data
+        self.results[label if label is not None else subfolder] = data
 
     def plot(
             self,
