@@ -8,22 +8,23 @@ eped = EPEDtools.EPED(folder=folder)
 eped.run(
     subfolder = 'run1',
     input_params = {
-        'ip': 0.5,
-        'bt': 1.0,
-        'r': 1.0,
-        'a': 0.5,
-        'kappa': 1.5,
+        'ip': 12.0,
+        'bt': 12.16,
+        'r': 1.85,
+        'a': 0.57,
+        'kappa': 1.9,
         'delta': 0.5,
-        'neped': 1.0,
-        'betan': 0.5,
-        'zeffped': 1.0,
-        'nesep': 0.25,
-        'tesep': 1.0,
+        'neped': 30.0,
+        'betan': 1.0,
+        'zeffped': 1.5,
+        'nesep': 10.0,
+        'tesep': 100.0,
     },
     nproc = 64,
     cold_start = True,
 )
 
 eped.read(subfolder='run1')
+
 
 eped.plot(labels=['run1'])
