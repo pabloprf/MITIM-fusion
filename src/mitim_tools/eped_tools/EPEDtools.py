@@ -1,12 +1,14 @@
 import os
 import re
 import subprocess
+import matplotlib.pyplot as plt
 import f90nml
 from pathlib import Path
-from mitim_tools.misc_tools import FARMINGtools
+from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools
 import numpy as np
 import pandas as pd
 import xarray as xr
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class EPED:
@@ -21,12 +23,30 @@ class EPED:
 
         self.results = {}
 
+
+    def cold_start_checker(
+            self,
+            subfolder = 'run1'
+            ):
+        
+        # Check if the run folder exists
+        self.folder_run = self.folder / subfolder
+
+        output_file = self.folder_run / 'output.nc'
+
+        return not output_file.exists() or not output_file.is_file()
+
     def run(
             self,
             subfolder = 'run1',
             input_params = None,
             nproc = 64,
+            cold_start = False,
             ):
+
+        if (not cold_start) and not self.cold_start_checker(subfolder):
+            print(f'\t> Run {subfolder} already exists and cold_start is set to False. Skipping run.', typeMsg='i')
+            return
 
         # Set up folder
         self.folder_run = self.folder / subfolder
@@ -70,9 +90,12 @@ class EPED:
         self.eped_job.define_machine(
             "eped",
             "mitim_eped",
-            launchSlurm=False,
+            slurm_settings={
+                'name': 'mitim_eped',
+                'minutes': 20,
+                'ntasks': nproc,
+            }
         )
-
         # -------------------------------------
         # Executable commands
         # -------------------------------------
@@ -93,9 +116,8 @@ class EPED:
 
         self.eped_job.run(removeScratchFolders=False)
 
-
         # Rename output file
-        os.system(f'mv {self.folder_run / output_file} {self.folder_run / "output.nc"}')
+        os.system(f'mv {self.folder_run / 'eped' / 'SUMMARY' /output_file} {self.folder_run / "output.nc"}')
 
     def read(
             self,
@@ -112,10 +134,35 @@ class EPED:
 
     def plot(
             self,
-            name = 'run1',
+            labels = ['run1'],
             ):
 
-        data = self.results[name]
+        plt.ion(); fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+
+        colors = GRAPHICStools.listColors()
+
+        for i,name in enumerate(labels):
+
+            data = self.results[name]
+
+            neped = float(data['neped'])
+            ptop = float(data['ptop'])
+            wtop = float(data['wptop'])
+
+            axs[0].plot(neped,ptop,'-s', c = colors[i], ms = 12)
+            axs[1].plot(neped,wtop,'-s', c = colors[i], ms = 12)
+
+        ax = axs[0]
+        ax.set_xlabel('neped ($10^{19}m^{-3}$)')
+        ax.set_ylabel('ptop (kPa)')
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[1]
+        ax.set_xlabel('neped ($10^{19}m^{-3}$)')
+        ax.set_ylabel('wptop (psi_pol)')
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
 
 # ************************************************************************************************************
 # ************************************************************************************************************

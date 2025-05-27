@@ -147,7 +147,7 @@ def printTable(diff, warning_percent=1e-1):
                     perc = np.nan
                 print(
                     f"{key:>15}{str(diff[key][0]):>25}{str(diff[key][1]):>25}  (~{perc:.0e}%)",
-                    typeMsg="w" if perc > warning_percent else "",
+                    typeMsg="i" if perc > warning_percent else "",
                 )
             else:
                 print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}")
