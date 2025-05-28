@@ -263,7 +263,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     bcentr = np.array([c.BTOR[ai]])             ; params['bcentr(T)'] = bcentr
     current = np.array([c.IPL[ai]])             ; params['current(MA)'] = current
     rho = interp_to_nexp(c.rho[ai]/c.rho[ai,-1]); params['rho(-)'] = rho
-    polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
+    polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux/2/np.pi
 
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
     
