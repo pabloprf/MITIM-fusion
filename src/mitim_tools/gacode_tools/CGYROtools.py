@@ -198,13 +198,18 @@ class CGYRO:
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
+        original_dir = os.getcwd()
+
         try:
+            print(f"\t- Reading CGYRO data from {folder.resolve()}")
             self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
         except:
             if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
                 os.chdir(folder)
                 os.system("cgyro -t")
             self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+
+        os.chdir(original_dir)
 
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
