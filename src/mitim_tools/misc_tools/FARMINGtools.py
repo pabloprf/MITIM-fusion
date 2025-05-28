@@ -141,6 +141,10 @@ class mitim_job:
 
         # Pass to class
         self.command = command
+
+        if not isinstance(self.command, list):
+            self.command = [self.command]
+
         self.input_files = input_files if isinstance(input_files, list) else []
         self.input_folders = input_folders if isinstance(input_folders, list) else []
         self.output_files = output_files if isinstance(output_files, list) else []
@@ -164,8 +168,11 @@ class mitim_job:
             removeScratchFolders = False
 
         # Always start by going to the folder (inside sbatch file)
-        command_str_mod = [f"cd {self.folderExecution}", f"{self.command}"]
+        command_str_mod = [f"cd {self.folderExecution}"]
 
+        for command in self.command:
+            command_str_mod += [command]
+            
         # ****** Prepare SLURM job *****************************
         comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
             command_str_mod,
@@ -196,12 +203,8 @@ class mitim_job:
         self.output_files = curateOutFiles(self.output_files)
 
         # Relative paths
-        self.input_files = [
-            path.relative_to(self.folder_local) for path in self.input_files
-        ]
-        self.input_folders = [
-            path.relative_to(self.folder_local) for path in self.input_folders
-        ]
+        self.input_files = [path.relative_to(self.folder_local) for path in self.input_files]
+        self.input_folders = [path.relative_to(self.folder_local) for path in self.input_folders]
 
         # Process
         self.full_process(
@@ -1135,10 +1138,13 @@ def create_slurm_execution_files(
 	"""
 
     commandSHELL = ["#!/usr/bin/env bash"]
-    commandSHELL.extend(copy.deepcopy(shellPreCommands))
+
     commandSHELL.append("")
     if modules_remote is not None:
         commandSHELL.append(modules_remote)
+
+    commandSHELL.extend(copy.deepcopy(shellPreCommands))
+
     commandSHELL.append(f"{launch} {fileSBATCH_remote}")
     commandSHELL.append("")
     for i in range(len(shellPostCommands)):
