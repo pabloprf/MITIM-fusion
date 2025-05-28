@@ -20,7 +20,7 @@ def main():
 
     labels = []
     for i, folder in enumerate(folders):
-        labels.append(f"{IOtools.reducePathLevel(folder)[-1]}")
+        labels.append(f"case {i + 1}")
         c.read(label=labels[-1], folder=folder)
 
     c.plot(labels=labels)
