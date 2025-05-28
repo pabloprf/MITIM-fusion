@@ -83,6 +83,8 @@ def printMsg(*args, typeMsg=""):
             if typeMsg == "q":
                 return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
 
+    return True # Default return value if no specific typeMsg is provided
+
 
 if not sys.platform.startswith('win'):
     import termios
