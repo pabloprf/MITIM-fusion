@@ -1,5 +1,6 @@
 import os
 import re
+import copy
 import subprocess
 import matplotlib.pyplot as plt
 import f90nml
@@ -23,53 +24,137 @@ class EPED:
 
         self.results = {}
 
-
-    def case_exists(
-            self,
-            subfolder = 'run1'
-            ):
-        
-        # Check if the run folder exists
-        self.folder_run = self.folder / subfolder
-
-        output_file = self.folder_run / 'output.nc'
-
-        return output_file.exists() and output_file.is_file()
-
     def run(
             self,
             subfolder = 'run1',
-            input_params = None,
-            nproc = 64,
-            minutes_slurm = 60,
+            input_params = None,    # {'ip': 12.0, 'bt': 12.16, 'r': 1.85, 'a': 0.57, 'kappa': 1.9, 'delta': 0.5, 'neped': 30.0, 'betan': 1.0, 'zeffped': 1.5, 'nesep': 10.0, 'tesep': 100.0},
+            scan_param = None,      # {'variable': 'neped', 'values': [10.0, 20.0, 30.0]}
+            keep_nsep_ratio = None, # Ratio of neped to nesep
+            nproc_per_run = 64,
+            minutes_slurm = 30,
             cold_start = False,
             ):
 
+        # ------------------------------------
+        # Prepare job
+        # ------------------------------------
+
+        # Prepare folder structure
         self.folder_run = self.folder / subfolder
 
-        if self.case_exists(subfolder):
-            if cold_start:
-                res = print(f'\t> Run {subfolder} already exists but cold_start is set to True. Running from scratch.', typeMsg='q')
-                if res:
-                    IOtools.shutil_rmtree(self.folder_run)
-                else:
-                    return
-            else:
-                print(f'\t> Run {subfolder} already exists and cold_start is set to False. Skipping run.', typeMsg='i')
-                return
+        # Prepare scan parameters
+        scan_param_variable = scan_param['variable'] if scan_param is not None else None
+        scan_param_values = scan_param['values'] if scan_param is not None else [None]
+
+        # Prepare job array setup
+        job_array = ''
+        for i in range(len(scan_param_values)):
+            job_array += f'{i+1}' if i == 0 else f',{i+1}'
+
+        # Initialize Job
+        self.eped_job = FARMINGtools.mitim_job(self.folder_run)
+
+        self.eped_job.define_machine(
+            "eped",
+            "mitim_eped",
+            slurm_settings={
+                'name': 'mitim_eped',
+                'minutes': minutes_slurm,
+                'ntasks': nproc_per_run,
+                'job_array': job_array
+            }
+        )
+
+        # ------------------------------------
+        # Prepare each individual case
+        # ------------------------------------
+
+        folder_cases, output_files, shellPreCommands = [], [], []
+        for i,value in enumerate(scan_param_values):
+
+            # Folder structure
+            subfolder = f'run{i+1}'
+            folder_case = self.folder_run / subfolder
             
-        # Set up folder
+            # Prepare input parameters
+            if scan_param_variable is not None:
+                input_params_new = input_params.copy() if input_params is not None else {}
+                input_params_new[scan_param_variable] = value
+            else:
+                input_params_new = input_params
+
+            if keep_nsep_ratio is not None:
+                print(f'\t> Setting nesep to {keep_nsep_ratio} * neped')
+                input_params_new['nesep'] = keep_nsep_ratio * input_params_new['neped']
+
+            # *******************************
+            # Check if the case should be run
+            run_case = True
+            force_res = False
+            if (self.folder_run / f'output_{subfolder}.nc').exists():
+                if cold_start:
+                    res = print(f'\t> Run {subfolder} already exists but cold_start is set to True. Running from scratch.', typeMsg='i' if force_res else 'q')
+                    if res:
+                        IOtools.shutil_rmtree(folder_case)
+                        (self.folder_run / f'output_{subfolder}.nc').unlink(missing_ok=True)
+                        force_res = True
+                    else:
+                        run_case = False
+                else:
+                    print(f'\t> Run {subfolder} already exists and cold_start is set to False. Skipping run.', typeMsg='i')
+                    run_case = False
+
+            if not run_case:
+                continue
+            # *******************************
+
+            # Set up folder
+            folder_case.mkdir(parents=True, exist_ok=True)
+
+            # Preparation of the run folder by copying the template files
+            eped_input_file = 'eped.input.1'
+            required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
+            shellPreCommands.append(f'cp {required_files_folder}/* {self.eped_job.folderExecution}/{subfolder}/. && mv {self.eped_job.folderExecution}/{subfolder}/{eped_input_file} {self.eped_job.folderExecution}/{subfolder}/eped.input')
+
+            # Write input file to EPED, determining the expected output file
+            output_file = self._prep_input_file(folder_case,input_params=input_params_new,eped_input_file=eped_input_file)
+
+            output_files.append(output_file.as_posix())
+            folder_cases.append(folder_case)
+
+        # -------------------------------------
+        # Execute
+        # -------------------------------------
+
+        # Command to execute by each job in the array
+        EPEDcommand  = f'cd {self.eped_job.folderExecution}/run"$SLURM_ARRAY_TASK_ID" && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf'
+
+        # Prepare the job script
+        self.eped_job.prep(EPEDcommand,input_folders=folder_cases,output_files=copy.deepcopy(output_files),shellPreCommands=shellPreCommands)
+
+        # Run the job
+        self.eped_job.run() #removeScratchFolders=False)
+
+        # -------------------------------------
+        # Postprocessing
+        # -------------------------------------
+
+        # Remove potential output files from previous runs
+        output_files_old = sorted(list(self.folder_run.glob("*.nc")))
+        for output_file in output_files_old:
+            output_file.unlink()
+
+        # Rename output files
+        for i in range(len(output_files)):
+            os.system(f'mv {self.folder_run / output_files[i]} {self.folder_run / f"output_run{i+1}.nc"}')
+
+    def _prep_input_file(
+            self,
+            folder_case,
+            input_params = None,
+            eped_input_file = 'eped.input.1', # Do not call it directly 'eped.input' as it may be overwritten by the job script template copying commands
+            ):
         
-        self.folder_run.mkdir(parents=True, exist_ok=True)
-
-        # ------------------------------------
-        # Write input file to EPED
-        # ------------------------------------
-
-        eped_input_file_suffix = 'eped.input.1' # Do not call it directly 'eped.input' as it may be overwritten by the job script template copying commands
-
-        eped_input_file = self.folder_run / eped_input_file_suffix
-
         shot = 0
         timeid = 0
 
@@ -94,44 +179,12 @@ class EPED:
         nml = f90nml.Namelist(eped_input)
         
         # Write the input file
-        f90nml.write(nml, eped_input_file, force=True)
+        f90nml.write(nml, folder_case / eped_input_file, force=True)
 
-        # Initialize Job
-        self.eped_job = FARMINGtools.mitim_job(self.folder_run)
+        # What's the expected output file?
+        output_file = folder_case.relative_to(self.folder_run) / 'eped' / 'SUMMARY' / f'e{shot:06d}.{timeid:05d}'
 
-        self.eped_job.define_machine(
-            "eped",
-            "mitim_eped",
-            slurm_settings={
-                'name': 'mitim_eped',
-                'minutes': minutes_slurm,
-                'ntasks': nproc,
-            }
-        )
-        # -------------------------------------
-        # Executable commands
-        # -------------------------------------
-
-        required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
-
-        EPEDcommand = f'cp {required_files_folder}/* {self.eped_job.folderExecution}/. && mv {self.eped_job.folderExecution}/{eped_input_file_suffix} {self.eped_job.folderExecution}/eped.input && export NPROC_EPED={nproc} && ips.py --config=eped.config --platform=psfc_cluster.conf'
-
-        # -------------------------------------
-        # Execute
-        # -------------------------------------
-
-        output_file = f'e{shot:06d}.{timeid:05d}'
-
-        self.eped_job.prep(
-            EPEDcommand,
-            input_files=[eped_input_file],
-            output_files=[f'eped/SUMMARY/{output_file}'],
-        )
-
-        self.eped_job.run(removeScratchFolders=False)
-
-        # Rename output file
-        os.system(f'mv {self.folder_run / 'eped' / 'SUMMARY' /output_file} {self.folder_run / "output.nc"}')
+        return output_file
 
     def read(
             self,
@@ -139,12 +192,19 @@ class EPED:
             label = None,
             ):
 
-        output_file = self.folder / subfolder / 'output.nc'
+        self.results[label if label is not None else subfolder] = {}
+        
+        output_files = sorted(list((self.folder / subfolder).glob("*.nc")))
 
-        data = xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4')
-        data = postprocess_eped(data, 'G', 0.03)
+        for output_file in output_files:
 
-        self.results[label if label is not None else subfolder] = data
+
+            data = xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4')
+            data = postprocess_eped(data, 'G', 0.03)
+
+            sublabel = output_file.name.split('_')[-1].split('.')[0]
+
+            self.results[label if label is not None else subfolder][sublabel] = data
 
     def plot(
             self,
@@ -159,12 +219,18 @@ class EPED:
 
             data = self.results[name]
 
-            neped = float(data['neped'])
-            ptop = float(data['ptop'])
-            wtop = float(data['wptop'])
-
-            axs[0].plot(neped,ptop,'-s', c = colors[i], ms = 12)
-            axs[1].plot(neped,wtop,'-s', c = colors[i], ms = 12)
+            neped, ptop, wtop = [], [], []
+            for sublabel in data:
+                neped.append(float(data[sublabel]['neped']))
+                if 'ptop' in data[sublabel].data_vars:
+                    ptop.append(float(data[sublabel]['ptop']))
+                    wtop.append(float(data[sublabel]['wptop']))
+                else:
+                    ptop.append(0.0)
+                    wtop.append(0.0)
+            
+            axs[0].plot(neped,ptop,'-s', c = colors[i], ms = 10)
+            axs[1].plot(neped,wtop,'-s', c = colors[i], ms = 10)
 
         ax = axs[0]
         ax.set_xlabel('neped ($10^{19}m^{-3}$)')
@@ -177,6 +243,8 @@ class EPED:
         ax.set_ylabel('wptop (psi_pol)')
         ax.set_ylim(bottom=0)
         GRAPHICStools.addDenseAxis(ax)
+
+        plt.tight_layout()
 
 # ************************************************************************************************************
 # ************************************************************************************************************
