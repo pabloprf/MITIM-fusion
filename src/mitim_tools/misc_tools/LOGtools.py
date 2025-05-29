@@ -27,7 +27,7 @@ def printMsg(*args, typeMsg=""):
     verbose = read_verbose_level()
 
     if verbose == 0:
-        return False
+        return True
     else:
 
         # -----------------------------------------------------------------------------
@@ -57,8 +57,6 @@ def printMsg(*args, typeMsg=""):
             # Print
             if typeMsg in ["w"]:
                 print(*total)
-            # Question result
-            return False
 
         elif verbose == 2:
             # Print
@@ -83,7 +81,7 @@ def printMsg(*args, typeMsg=""):
             if typeMsg == "q":
                 return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
 
-    return True # Default return value if no specific typeMsg is provided
+        return True # Default return value if no specific typeMsg is provided
 
 
 if not sys.platform.startswith('win'):
