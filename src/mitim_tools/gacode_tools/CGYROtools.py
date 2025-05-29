@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun
+from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -186,15 +186,13 @@ class CGYRO:
             self.cgyro_job.retrieve()
             self.cgyro_job.close()
         else:
-            print(
-                "- Not retrieving results because this was run command line (not slurm)"
-            )
+            print("- Not retrieving results because this was run command line (not slurm)")
 
     # ---------------------------------------------------------------------------------------------------------
     # Reading and plotting
     # ---------------------------------------------------------------------------------------------------------
 
-    def read(self, label="cgyro1", folder=None):
+    def read(self, label="cgyro1", folder=None, tmin = 0.0):
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
@@ -217,6 +215,132 @@ class CGYRO:
         self.results[label].ions_flags = self.results[label].all_flags[self.results[label].all_flags != self.results[label].electron_flag]
 
         self.results[label].all_names = [f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})" for i in self.results[label].all_flags]
+
+        # ************************
+        # Calculations
+        # ************************
+
+        cgyro = self.results[label]
+        cgyro.getflux()
+        cgyro.getnorm("elec")
+
+        self.results[label].t = self.results[label].tnorm
+
+        ys = np.sum(cgyro.ky_flux, axis=(2, 3))
+
+        self.results[label].Qe = ys[-1, 1, :] / cgyro.qc
+        self.results[label].Qi_all = ys[:-1, 1, :] / cgyro.qc
+        self.results[label].Qi = self.results[label].Qi_all.sum(axis=0)
+        self.results[label].Ge = ys[-1, 0, :]
+
+        self.results[label].Qe_mean, self.results[label].Qe_std = self.derive_statistics(self.results[label].t, self.results[label].Qe, x_min=tmin)
+        self.results[label].Qi_mean, self.results[label].Qi_std = self.derive_statistics(self.results[label].t, self.results[label].Qi, x_min=tmin)
+        self.results[label].Ge_mean, self.results[label].Ge_std = self.derive_statistics(self.results[label].t, self.results[label].Ge, x_min=tmin)
+
+        roa,alne,self.results[label].aLTi,alte,self.results[label].Qi_mean,self.results[label].Qi_std,self.results[label].Qe_mean,self.results[label].Qe_std,self.results[label].Ge_mean, self.results[label].Ge_std,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt = CGYROutils.grab_cgyro_nth(str(folder.resolve()), tmin, False, False)
+
+
+    def derive_statistics(self,x,y,x_min=0.0):
+
+        return y.mean(), y.std()
+
+    def plot(self, labels=[""]):
+        from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+        self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
+
+        colors = GRAPHICStools.listColors()
+
+        fig = self.fn.add_figure(label="Fluxes Time Traces")
+        axsFluxes_t = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+
+        for j in range(len(labels)):
+            self.plot_fluxes(
+                axs=axsFluxes_t,
+                label=labels[j],
+                c=colors[j],
+                plotLegend=j == len(labels) - 1,
+            )
+
+    def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+				AB
+                CD
+				"""
+            )
+
+        ls = GRAPHICStools.listLS()
+
+        # Electron energy flux
+        ax = axs["A"]
+        ax.plot(
+            self.results[label].t,
+            self.results[label].Qe,
+            ls=ls[0],
+            lw=lw,
+            c=c,
+            label=f"{label}, electron",
+        )
+        ax.set_xlabel("$t$ ($a/c_s$)")
+        ax.set_ylabel("$Q_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron energy flux')
+
+        # Ion energy fluxes
+        ax = axs["B"]
+        ax.plot(
+            self.results[label].t,
+            self.results[label].Qi,
+            ls=ls[0],
+            lw=lw,
+            c=c,
+            label=f"{label}",
+        )
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes')
+
+        ax = axs["C"]
+        for j, i in enumerate(self.results[label].ions_flags):
+            ax.plot(
+                self.results[label].t,
+                self.results[label].Qi_all[j],
+                ls=ls[j + 1],
+                lw=lw / 2,
+                c=c,
+                label=f"{label}, {self.results[label].all_names[i]}",
+            )
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes (separate species)')
+        GRAPHICStools.addLegendApart(ax,ratio=0.95, withleg=True, size = 8)
+
+
+        # Electron particle flux
+        ax = axs["D"]
+        ax.plot(
+            self.results[label].t,
+            self.results[label].Ge,
+            ls=ls[0],
+            lw=lw,
+            c=c,
+            label=f"{label}, electron",
+        )
+        ax.set_ylabel("$\\Gamma_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron particle flux')
+
+
 
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
@@ -383,266 +507,6 @@ class CGYRO:
         for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    def get_flux(self, label="", moment="e", ispec=0, retrieveSpecieFlag=True):
-        cgyro = self.results[label]
-
-        # Time
-        usec = cgyro.getflux()
-        cgyro.getnorm("elec")
-        t = cgyro.tnorm
-
-        # Flux
-        ys = np.sum(cgyro.ky_flux, axis=(2, 3))
-        if moment == "n":
-            y = ys[ispec, 0, :]
-            mtag = r"\Gamma"
-        elif moment == "e":
-            y = ys[ispec, 1, :] / cgyro.qc
-            mtag = r"Q"
-        elif moment == "v":
-            y = ys[ispec, 2, :]
-            mtag = r"\Pi"
-        elif moment == "s":
-            y = ys[ispec, 3, :]
-            mtag = r"S"
-
-        name = gacodefuncs.specmap(cgyro.mass[ispec], cgyro.z[ispec])
-
-        if retrieveSpecieFlag:
-            flag = f"${mtag}_{{{name}}}$ (GB)"
-        else:
-            flag = f"${mtag}$ (GB)"
-
-        return t, y, flag
-
-    def plot_flux(
-        self,
-        ax=None,
-        label="",
-        moment="e",
-        ispecs=[0],
-        labelPlot="",
-        c="b",
-        lw=1,
-        tmax=None,
-        dense=True,
-        ls="-",
-    ):
-        if ax is None:
-            plt.ion()
-            fig, ax = plt.subplots()
-
-        for i, ispec in enumerate(ispecs):
-            t, y0, yl = self.get_flux(
-                label=label,
-                moment=moment,
-                ispec=ispec,
-                retrieveSpecieFlag=len(ispecs) == 1,
-            )
-
-            if i == 0:
-                y = y0
-            else:
-                y += y0
-
-        if tmax is not None:
-            it = np.argmin(np.abs(t - tmax))
-            t = t[: it + 1]
-            y = y[: it + 1]
-
-        ax.plot(t, y, ls=ls, lw=lw, c=c, label=labelPlot)
-
-        ax.set_xlabel("$t$ ($a/c_s$)")
-        # ax.set_xlim(left=0)
-        ax.set_ylabel(yl)
-
-        if dense:
-            GRAPHICStools.addDenseAxis(ax)
-
-    def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
-        if axs is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-            axs = fig.subplot_mosaic(
-                """
-										 ABC
-										 DEF
-										 """
-            )
-
-        ls = GRAPHICStools.listLS()
-
-        # Electron
-        ax = axs["A"]
-        self.plot_flux(
-            ax=ax,
-            label=label,
-            moment="e",
-            ispecs=[self.results[label].electron_flag],
-            labelPlot=label,
-            c=c,
-            lw=lw,
-        )
-        ax.set_title("Electron energy flux")
-
-        ax = axs["B"]
-        self.plot_flux(
-            ax=ax,
-            label=label,
-            moment="e",
-            ispecs=self.results[label].ions_flags,
-            labelPlot=f"{label}, sum",
-            c=c,
-            lw=lw,
-            ls=ls[0],
-        )
-        for j, i in enumerate(self.results[label].ions_flags):
-            self.plot_flux(
-                ax=ax,
-                label=label,
-                moment="e",
-                ispecs=[i],
-                labelPlot=f"{label}, {self.results[label].all_names[i]}",
-                c=c,
-                lw=lw / 2,
-                ls=ls[j + 1],
-            )
-        ax.set_title(f"Ion energy fluxes")
-
-        # Ion
-        ax = axs["D"]
-        self.plot_flux(
-            ax=ax,
-            label=label,
-            moment="n",
-            ispecs=[self.results[label].electron_flag],
-            labelPlot=label,
-            c=c,
-            lw=lw,
-        )
-        ax.set_title("Electron particle flux")
-
-        ax = axs["E"]
-        for j, i in enumerate(self.results[label].ions_flags):
-            self.plot_flux(
-                ax=ax,
-                label=label,
-                moment="n",
-                ispecs=[i],
-                labelPlot=f"{label}, {self.results[label].all_names[i]}",
-                c=c,
-                lw=lw / 2,
-                ls=ls[j + 1],
-            )
-        self.plot_flux(
-            ax=ax,
-            label=label,
-            moment="n",
-            ispecs=self.results[label].ions_flags,
-            labelPlot=f"{label}, sum",
-            c=c,
-            lw=lw,
-            ls=ls[0],
-        )
-        ax.set_title("Ion particle fluxes")
-
-        # Extra
-        ax = axs["C"]
-        for j, i in enumerate(self.results[label].all_flags):
-            self.plot_flux(
-                ax=ax,
-                label=label,
-                moment="v",
-                ispecs=[i],
-                labelPlot=f"{label}, {self.results[label].all_names[i]}",
-                c=c,
-                lw=lw / 2,
-                ls=ls[j + 1],
-            )
-        self.plot_flux(
-            ax=ax,
-            label=label,
-            moment="v",
-            ispecs=self.results[label].all_flags,
-            labelPlot=f"{label}, sum",
-            c=c,
-            lw=lw,
-            ls=ls[0],
-        )
-        ax.set_title("Momentum flux")
-
-        ax = axs["F"]
-        try:
-            for j, i in enumerate(self.results[label].all_flags):
-                self.plot_flux(
-                    ax=ax,
-                    label=label,
-                    moment="s",
-                    ispecs=[self.results[label].electron_flag],
-                    labelPlot=f"{label}, {self.results[label].all_names[i]}",
-                    c=c,
-                    lw=lw,
-                )
-            worked = True
-        except:
-            print("Could not plot energy exchange", typeMsg="w")
-            worked = False
-        ax.set_title("Electron energy exchange")
-
-        plt.subplots_adjust()
-        if plotLegend:
-            for n in ["B", "E", "C"]:
-                GRAPHICStools.addLegendApart(
-                    axs[n],
-                    ratio=0.7,
-                    withleg=True,
-                    extraPad=0,
-                    size=7,
-                    loc="upper left",
-                )
-            for n in ["F"]:
-                GRAPHICStools.addLegendApart(
-                    axs[n],
-                    ratio=0.7,
-                    withleg=worked,
-                    extraPad=0,
-                    size=7,
-                    loc="upper left",
-                )
-            for n in ["A", "D"]:
-                GRAPHICStools.addLegendApart(
-                    axs[n],
-                    ratio=0.7,
-                    withleg=False,
-                    extraPad=0,
-                    size=7,
-                    loc="upper left",
-                )
-
-    def plot(self, labels=[""]):
-        from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
-
-        colors = GRAPHICStools.listColors()
-
-        fig = self.fn.add_figure(label="Fluxes Time Traces")
-        axsFluxes_t = fig.subplot_mosaic(
-            """
-									 ABC
-									 DEF
-									 """
-        )
-
-        for j in range(len(labels)):
-            self.plot_fluxes(
-                axs=axsFluxes_t,
-                label=labels[j],
-                c=colors[j],
-                plotLegend=j == len(labels) - 1,
-            )
 
 
 class CGYROinput:
