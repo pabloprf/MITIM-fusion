@@ -6,9 +6,9 @@ folder = __mitimroot__ / "tests" / "scratch" / "eped_test"
 eped = EPEDtools.EPED(folder=folder)
 
 eped.run(
-    subfolder = 'run1',
+    subfolder = 'case1',
     input_params = {
-        'ip': 12.0,
+        'ip': 8.7,
         'bt': 12.16,
         'r': 1.85,
         'a': 0.57,
@@ -20,11 +20,12 @@ eped.run(
         'nesep': 10.0,
         'tesep': 100.0,
     },
-    nproc = 64,
+    scan_param = {'variable': 'neped', 'values': [15.0, 30.0, 45.0, 60.0, 75.0]},
+    keep_nsep_ratio = 0.4,
+    nproc_per_run = 64,
     cold_start = True,
 )
 
-eped.read(subfolder='run1')
+eped.read(subfolder='case1')
 
-
-eped.plot(labels=['run1'])
+eped.plot(labels=['case1'])
