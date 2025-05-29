@@ -544,6 +544,8 @@ def create_initial_conditions(te_avg,
             T[BC_index:] = T_ped[BC_index:]
 
             print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
+    else:
+        x=rho
 
     preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM
