@@ -3792,6 +3792,8 @@ class PROFILES_GACODE:
         for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
             self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MWmiller"][-1]
 
+        self.deriveQuantities()
+
     def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
 
         ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
@@ -3817,25 +3819,25 @@ class PROFILES_GACODE:
             raise Exception("no edge")
 
 
-    def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5):
+    def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5, isn20_edge=True):
         ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
 
-        print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+        # Determine the factor to scale the density (either average or at rho)
+        if not isn20_edge:
+            print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+            factor = n20 / self.derived["ne_vol20"]
+        else:
+            print(f"- Changing the density at rho={rho} from {self.profiles['ne(10^19/m^3)'][ix]*1E-1:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+            factor = n20 / (self.profiles["ne(10^19/m^3)"][ix]*1E-1)
+        # ------------------------------------------------------------------
 
-        factor = n20 / self.derived["ne_vol20"]
-
+        # Scale the density profiles
         for i in ["ne(10^19/m^3)", "ni(10^19/m^3)"]:
             self.profiles[i] = self.profiles[i] * factor
 
+        # Apply the edge condition
         if typeEdge == "linear":
-            factor_x = (
-                np.linspace(
-                    self.profiles["ne(10^19/m^3)"][ix],
-                    nedge20 * 1e1,
-                    len(self.profiles["rho(-)"][ix:]),
-                )
-                / self.profiles["ne(10^19/m^3)"][ix:]
-            )
+            factor_x = np.linspace(self.profiles["ne(10^19/m^3)"][ix],nedge20 * 1e1,len(self.profiles["rho(-)"][ix:]),)/ self.profiles["ne(10^19/m^3)"][ix:]
 
             self.profiles["ne(10^19/m^3)"][ix:] = self.profiles["ne(10^19/m^3)"][ix:] * factor_x
 
