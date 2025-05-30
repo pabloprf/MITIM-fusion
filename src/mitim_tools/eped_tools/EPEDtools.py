@@ -24,6 +24,8 @@ class EPED:
 
         self.results = {}
 
+        self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep']
+
     def run(
             self,
             subfolder = 'run1',
@@ -193,6 +195,7 @@ class EPED:
     def read(
             self,
             subfolder = 'run1',
+            print_results = True,
             label = None,
             ):
 
@@ -209,6 +212,26 @@ class EPED:
             sublabel = output_file.name.split('_')[-1].split('.')[0]
 
             self.results[label if label is not None else subfolder][sublabel] = data
+
+            if print_results:
+                self.print(label if label is not None else subfolder, sublabel)
+
+    def print(self,label,sublabel):
+        
+        print(f'\n\t> EPED results {sublabel}:')
+        data = self.results[label][sublabel]
+
+        print('\t\t> Inputs:')
+        for input_param in self.inputs_potential:
+            print(f'\t\t\t{input_param}: {data[input_param].values[0]}')
+
+        
+        print('\t\t> Outputs:')
+        if 'ptop' in data.data_vars:
+            print(f'\t\t\tptop: {data["ptop"].values[0]:.2f} kPa')
+            print(f'\t\t\twptop: {data["wptop"].values[0]:.3f} psi_pol')
+        else:
+            print('\t\t\tptop: Not available',typeMsg='w')
 
     def plot(
             self,
