@@ -233,13 +233,14 @@ class CGYRO:
         self.results[label].Qi = self.results[label].Qi_all.sum(axis=0)
         self.results[label].Ge = ys[-1, 0, :]
 
-        self.results[label].Qe_mean, self.results[label].Qe_std = self.derive_statistics(self.results[label].t, self.results[label].Qe, x_min=tmin)
-        self.results[label].Qi_mean, self.results[label].Qi_std = self.derive_statistics(self.results[label].t, self.results[label].Qi, x_min=tmin)
-        self.results[label].Ge_mean, self.results[label].Ge_std = self.derive_statistics(self.results[label].t, self.results[label].Ge, x_min=tmin)
-
         roa,alne,self.results[label].aLTi,alte,self.results[label].Qi_mean,self.results[label].Qi_std,self.results[label].Qe_mean,self.results[label].Qe_std,self.results[label].Ge_mean, self.results[label].Ge_std,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt = CGYROutils.grab_cgyro_nth(str(folder.resolve()), tmin, False, False)
+    
+        self.results[label].Qi_mean *= qgb
+        self.results[label].Qi_std *= qgb
+        self.results[label].Qe_mean *= qgb
+        self.results[label].Qe_std *= qgb
 
-
+    
     def derive_statistics(self,x,y,x_min=0.0):
 
         return y.mean(), y.std()
