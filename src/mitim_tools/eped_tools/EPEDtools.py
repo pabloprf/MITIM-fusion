@@ -122,6 +122,10 @@ class EPED:
             output_files.append(output_file.as_posix())
             folder_cases.append(folder_case)
 
+        # If no cases to run, exit
+        if len(folder_cases) == 0:
+            return
+
         # -------------------------------------
         # Execute
         # -------------------------------------
