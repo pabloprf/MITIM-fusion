@@ -122,7 +122,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
 
         for var, varn in zip(
             ["Qe (MW/m^2)", "Qi (MW/m^2)", "Ce (MW/m^2)", "CZ (MW/m^2)", "MtJm2 (J/m^2) "],
-            ["QeMWm2", "Pi", "Ce", "CZ", "MtJm2"],
+            ["QeMWm2", "QiMWm2", "Ce", "CZ", "MtJm2"],
         ):
             txt += f"\n{var}  = "
             for j in range(self.powerstate.plasma["rho"].shape[1] - 1):
