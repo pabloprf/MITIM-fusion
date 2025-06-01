@@ -1,4 +1,5 @@
 import os
+from re import sub
 import shutil
 import datetime
 import time
@@ -74,19 +75,16 @@ class CGYRO:
         self.inputgacode_file = self.folder / "input.gacode"
         shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
 
-    def run(
+    def _prerun(
         self,
         subFolderCGYRO,
         roa=0.55,
         CGYROsettings=None,
         extraOptions={},
         multipliers={},
-        test_run=False,
-        n=16,
-        nomp=1,
     ):
 
-        self.folderCGYRO = self.folder / f"{subFolderCGYRO}_{roa:.6f}"
+        self.folderCGYRO = self.folder / Path(subFolderCGYRO)
 
         self.folderCGYRO.mkdir(parents=True, exist_ok=True)
 
@@ -109,30 +107,97 @@ class CGYRO:
             multipliers=multipliers,
             addControlFunction=GACODEdefaults.addCGYROcontrol,
             rmin=roa,
+            control_file = 'input.cgyro.controls'
         )
 
         inputCGYRO.writeCurrentStatus()
 
+        return input_cgyro_file, inputgacode_file_this
+
+    def run_test(
+        self,
+        subFolderCGYRO,
+        roa=0.55,
+        CGYROsettings=None,
+        extraOptions={},
+        multipliers={},
+        **kwargs
+    ):
+        
+        if 'scan_param' in kwargs:
+            print("\t- Cannot run CGYRO tests with scan_param, running just the base",typeMsg="i")
+        
+        input_cgyro_file, inputgacode_file_this = self._prerun(
+            subFolderCGYRO,
+            roa=roa,
+            CGYROsettings=CGYROsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+        )
+
         self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
 
-        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}{"_test" if test_run else ""}'
+        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}_test'
+
+        self.cgyro_job.define_machine(
+            "cgyro",
+            name,
+            slurm_settings={
+                "name": name,
+                "minutes": 5,
+                "cpuspertask": 1,
+                "ntasks": 1,
+            },
+        )
+
+        CGYROcommand = "cgyro -t ."
+
+        self.cgyro_job.prep(
+            CGYROcommand,
+            input_files=[input_cgyro_file, inputgacode_file_this],
+            output_files=self.output_files_test,
+        )
+
+        self.cgyro_job.run()
+
+    def run(self,subFolderCGYRO,test_run=False,**kwargs):
 
         if test_run:
-
-            self.cgyro_job.define_machine(
-                "cgyro",
-                name,
-                slurm_settings={
-                    "name": name,
-                    "minutes": 5,
-                    "cpuspertask": 1,
-                    "ntasks": 1,
-                },
-            )
-
-            CGYROcommand = "cgyro -t ."
-
+            self.run_test(subFolderCGYRO,**kwargs)
         else:
+            self.run_full(subFolderCGYRO,**kwargs)
+
+    def run_full(
+        self,
+        subFolderCGYRO,
+        roa=0.55,
+        CGYROsettings=None,
+        extraOptions={},
+        multipliers={},
+        scan_param = None,      # {'variable': 'KY', 'values': [0.2,0.3,0.4]}
+        minutes = 5,
+        n = 16,
+        nomp = 1,
+        submit_via_qsub=True,
+        clean_folder_going_in=True, # Make sure the scratch folder is removed before running (unless I want a restart!)
+    ):
+        
+        input_cgyro_file, inputgacode_file_this = self._prerun(
+            subFolderCGYRO,
+            roa=roa,
+            CGYROsettings=CGYROsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+        )
+
+        self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
+
+        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}'
+
+        if scan_param is not None and submit_via_qsub:
+            raise Exception(" <MITIM> Cannot use scan_param with submit_via_qsub=True, because it requires a different job for each value of the scan parameter.")
+
+        if submit_via_qsub:
 
             self.cgyro_job.define_machine(
                 "cgyro",
@@ -140,21 +205,106 @@ class CGYRO:
                 launchSlurm=False,
             )
 
-            if self.cgyro_job.launchSlurm:
-                CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -repo {self.cgyro_job.machineSettings["slurm"]["account"]} -queue {self.cgyro_job.machineSettings["slurm"]["partition"]} -w 0:10:00 -s'
+            CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -queue {self.cgyro_job.machineSettings['slurm']['partition']} -w 0:{minutes}:00 -s'
+
+            if "account" in self.cgyro_job.machineSettings["slurm"] and self.cgyro_job.machineSettings["slurm"]["account"] is not None:
+                CGYROcommand += f" -repo {self.cgyro_job.machineSettings['slurm']['account']}"
+
+            self.slurm_output = "batch.out"
+
+        else:
+
+            if scan_param is None:
+                job_array = None
+                folder = 'scan0'
+                scan_param = {'variable': None, 'values': [0]}  # Dummy scan parameter to avoid issues with the code below
             else:
+                # Array
+                job_array = ''
+                for i,value in enumerate(scan_param['values']):
+                    if job_array != '':
+                        job_array += ','
+                    job_array += str(i)
 
-                CGYROcommand = f"cgyro -e . -n {n} -nomp {nomp}"
+                folder = 'scan"$SLURM_ARRAY_TASK_ID"'
 
+            # Machine
+            self.cgyro_job.define_machine(
+                "cgyro",
+                name,
+                slurm_settings={
+                    "name": name,
+                    "minutes": minutes,
+                    "ntasks": n,
+                    "job_array": job_array,
+                },
+            )
+
+            if not self.cgyro_job.launchSlurm:
+                raise Exception(" <MITIM> Cannot run CGYRO scans without slurm")
+
+            # Command to run cgyro
+            CGYROcommand = f'cgyro -e {folder} -n {n} -nomp {nomp} -p {self.cgyro_job.folderExecution}'
+
+            # Scans
+            input_folders = []
+            output_folders = []
+            for i,value in enumerate(scan_param['values']):
+                subfolder = f"scan{i}"
+                folder_run = self.folderCGYRO / subfolder
+                folder_run.mkdir(parents=True, exist_ok=True)
+
+                # Copy the input.cgyro in the subfolder
+                input_cgyro_file_this = folder_run / "input.cgyro"
+                shutil.copy2(input_cgyro_file, input_cgyro_file_this)
+
+                # Modify the input.cgyro file with the scan parameter
+                extraOptions_this = extraOptions.copy()
+                if scan_param['variable'] is not None:
+                    extraOptions_this[scan_param['variable']] = value
+                inputCGYRO = CGYROinput(file=input_cgyro_file_this)
+                input_cgyro_file_this = GACODErun.modifyInputs(
+                    inputCGYRO,
+                    Settings=CGYROsettings,
+                    extraOptions=extraOptions_this,
+                    multipliers=multipliers,
+                    addControlFunction=GACODEdefaults.addCGYROcontrol,
+                    rmin=roa,
+                    control_file = 'input.cgyro.controls'
+                )
+
+                input_cgyro_file_this.writeCurrentStatus()
+
+                # Copy the input.gacode file in the subfolder
+                inputgacode_file_this = folder_run / "input.gacode"
+                shutil.copy2(self.inputgacode_file, inputgacode_file_this)
+
+                # Prepare the input and output folders
+                input_folders.append(folder_run)
+                output_folders.append(subfolder)
+
+            self.slurm_output = "slurm_output.dat"
+
+        # First submit the job with gacode_qsub, which will submit the cgyro job via slurm, with name 
         self.cgyro_job.prep(
             CGYROcommand,
-            input_files=[input_cgyro_file, inputgacode_file_this],
-            output_files=self.output_files if not test_run else self.output_files_test,
-        )
+            input_folders = input_folders,
+            output_folders=output_folders,
+            )
 
         self.cgyro_job.run(
-            waitYN=not self.cgyro_job.launchSlurm
-        )  # ,removeScratchFolders=False)
+            waitYN=False,
+            check_if_files_received=False,
+            removeScratchFolders=False,
+            removeScratchFolders_goingIn=clean_folder_going_in, 
+            )
+
+        # Prepare how to search for the job without waiting for it
+        name_default_submission_qsub = Path(self.cgyro_job.folderExecution).name
+
+        self.cgyro_job.launchSlurm = True
+        self.cgyro_job.slurm_settings['name'] = name_default_submission_qsub
+
 
     def check(self, every_n_minutes=5):
 
@@ -162,7 +312,7 @@ class CGYRO:
             print("- Checker job status")
 
             while True:
-                self.cgyro_job.check()
+                self.cgyro_job.check(file_output = self.slurm_output)
                 print(
                     f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})'
                 )
@@ -176,10 +326,12 @@ class CGYRO:
 
         print("\t- Job considered finished")
 
-    def get(self):
+    def fetch(self):
         """
         For a job that has been submitted but not waited for, once it is done, get the results
         """
+
+        print("\n\n\t- Fetching results")
 
         if self.cgyro_job.launchSlurm:
             self.cgyro_job.connect()
@@ -187,6 +339,19 @@ class CGYRO:
             self.cgyro_job.close()
         else:
             print("- Not retrieving results because this was run command line (not slurm)")
+
+    def delete(self):
+
+        print("\n\n\t- Deleting job")
+
+        self.cgyro_job.launchSlurm = False
+
+        self.cgyro_job.prep(
+            f"scancel -n {self.cgyro_job.slurm_settings['name']}",
+            label_log_files="_finish",
+        )
+
+        self.cgyro_job.run()
 
     # ---------------------------------------------------------------------------------------------------------
     # Reading and plotting
@@ -196,18 +361,37 @@ class CGYRO:
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
-        original_dir = os.getcwd()
+        folders = sorted(list((folder).glob("scan*")))
 
-        try:
-            print(f"\t- Reading CGYRO data from {folder.resolve()}")
-            self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-        except:
-            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.chdir(folder)
-                os.system("cgyro -t")
-            self.results[label] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+        if len(folders) == 0:
+            folders = [folder]
+        else:
+            print(f"\t- Found {len(folders)} scan folders in {folder.resolve()}:")
+            for f in folders:
+                print(f"\t\t- {f.name}")
 
-        os.chdir(original_dir)
+        for folder in folders:
+
+            original_dir = os.getcwd()
+
+            try:
+                print(f"\t- Reading CGYRO data from {folder.resolve()}")
+                self.results[f'{label}_{folder.name}'] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+            except:
+                if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
+                    os.chdir(folder)
+                    os.system("cgyro -t")
+                self.results[f'{label}_{folder.name}']  = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+
+            os.chdir(original_dir)
+
+            try:
+                self._postprocess(f'{label}_{folder.name}', folder, tmin=tmin)
+            except Exception as e:
+                print(f"\t- Error during postprocessing: {e}")
+                print("\t- Skipping postprocessing, results may be incomplete or linear run")
+
+    def _postprocess(self, label, folder, tmin=0.0):
 
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
@@ -351,12 +535,12 @@ class CGYRO:
 
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fnLS = FigureNotebook(
+            self.fn = FigureNotebook(
                 "Linear CGYRO Notebook",
                 geometry="1600x1000",
             )
-            fig1 = self.fnLS.add_figure(label="Linear Stability")
-            fig2 = self.fnLS.add_figure(label="Ballooning")
+            fig1 = self.fn.add_figure(label="Linear Stability")
+            fig2 = self.fn.add_figure(label="Ballooning")
 
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax00 = fig1.add_subplot(grid[0, 0])
@@ -430,7 +614,7 @@ class CGYRO:
         ax.set_xlim(left=0)
 
         ax = ax01
-        ax.set_xlim([5e-2, 50.0])
+        #ax.set_xlim([5e-2, 50.0])
 
         grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
         ax00 = fig2.add_subplot(grid[0, 0])
