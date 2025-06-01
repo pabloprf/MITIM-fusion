@@ -414,9 +414,9 @@ def convolution_CECE(d_perp_dict, dRdx=1.0):
 
     return fun, factorTot_to_Perp
 
-def review_controls(TGLFoptions):
+def review_controls(TGLFoptions, control = "input.tglf.controls"):
 
-    TGLFoptions_check = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False)
+    TGLFoptions_check = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / control, caseInsensitive=False)
 
     # Add plasma too
     potential_flags = ['NS', 'SIGN_BT', 'SIGN_IT', 'VEXB', 'VEXB_SHEAR', 'BETAE', 'XNUE', 'ZEFF', 'DEBYE']
@@ -431,4 +431,4 @@ def review_controls(TGLFoptions):
         isGeometry = option.split('_')[-1] in ['LOC']
         
         if (not isSpecie) and (not isGeometry) and (option not in TGLFoptions_check):
-            print(f"\t- TGLF option {option} not in input.tglf.controls, prone to errors", typeMsg="q")
+            print(f"\t- Option {option} not in {control}, prone to errors", typeMsg="q")
