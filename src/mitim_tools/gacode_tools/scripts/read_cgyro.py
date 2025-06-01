@@ -11,9 +11,11 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
+    parser.add_argument("--linear", action="store_true", help="linear run")
     args = parser.parse_args()
 
     folders = args.folders
+    linear = args.linear
 
     # Read
     c = CGYROtools.CGYRO()
@@ -23,7 +25,11 @@ def main():
         labels.append(f"case {i + 1}")
         c.read(label=labels[-1], folder=folder)
 
-    c.plot(labels=labels)
+    if linear:
+        # Plot linear spectrum
+        c.plotLS(labels=labels)
+    else:
+        c.plot(labels=labels)
 
     c.fn.show()
     embed()
