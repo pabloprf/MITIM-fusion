@@ -102,12 +102,13 @@ def modifyInputs(
     minimum_delta_abs={},
     position_change=0,
     addControlFunction=None,
+    control_file = 'input.tglf.controls',
     **kwargs_to_function,
 ):
 
     # Check that those are valid flags
-    GACODEdefaults.review_controls(extraOptions)
-    GACODEdefaults.review_controls(multipliers)
+    GACODEdefaults.review_controls(extraOptions, control = control_file)
+    GACODEdefaults.review_controls(multipliers, control = control_file)
     # -------------------------------------------
 
     if Settings is not None:
