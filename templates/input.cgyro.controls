@@ -99,6 +99,9 @@ PRINT_STEP=100
 #Max simulation time (units a/c_s)
 MAX_TIME=100 #900
 
+#Frequency Tolerance
+FREQ_TOL=0.001
+
 #Number of data outputs before saving a cold_start (DELTA_T*PRINT_STEP is one data output)
 RESTART_STEP=10
 
@@ -113,9 +116,9 @@ COLLISION_MODEL=4
 #Rotation Scaling of Exp. Values
 ROTATION_MODEL=2
 SHEAR_METHOD=2
-GAMMA_E_SCALE=0.0
-GAMMA_P_SCALE=0.0
-MACH_SCALE=0.0
+GAMMA_E_SCALE=1.0
+GAMMA_P_SCALE=1.0
+MACH_SCALE=1.0
 
 #Scaling of Electron beta and Lambda Debye
 BETAE_UNIT_SCALE=1.0
