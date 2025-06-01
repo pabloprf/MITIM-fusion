@@ -160,12 +160,17 @@ class mitim_job:
             waitYN=True,
             timeoutSecs=1e6,
             removeScratchFolders=True,
+            removeScratchFolders_goingIn=None,
             check_if_files_received=True,
             attempts_execution=1,
             ):
 
+        removeScratchFolders_goingOut = removeScratchFolders
+        if removeScratchFolders_goingIn is None:
+            removeScratchFolders_goingIn = removeScratchFolders
+
         if not waitYN:
-            removeScratchFolders = False
+            removeScratchFolders_goingOut = False
 
         # Always start by going to the folder (inside sbatch file)
         command_str_mod = [f"cd {self.folderExecution}"]
@@ -209,7 +214,8 @@ class mitim_job:
         # Process
         self.full_process(
             comm,
-            removeScratchFolders=removeScratchFolders,
+            removeScratchFolders_goingIn=removeScratchFolders_goingIn,
+            removeScratchFolders_goingOut=removeScratchFolders_goingOut,
             timeoutSecs=timeoutSecs,
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
@@ -237,7 +243,8 @@ class mitim_job:
         self,
         comm,
         timeoutSecs=1e6,
-        removeScratchFolders=True,
+        removeScratchFolders_goingIn=True,
+        removeScratchFolders_goingOut=True,
         check_if_files_received=True,
         check_files_in_folder={},
         attempts_execution = 1,
@@ -256,7 +263,7 @@ class mitim_job:
         self.connect(log_file=self.folder_local / "paramiko.log")
 
         # ~~~~~~ Prepare scratch folder
-        if removeScratchFolders:
+        if removeScratchFolders_goingIn:
             self.remove_scratch_folder()
         self.create_scratch_folder()
 
@@ -289,7 +296,7 @@ class mitim_job:
 
         # ~~~~~~ Remove scratch folder
         if received:
-            if wait_for_all_commands and removeScratchFolders:
+            if wait_for_all_commands and removeScratchFolders_goingOut:
                 self.remove_scratch_folder()
         else:
 
@@ -365,7 +372,7 @@ class mitim_job:
                 self.target_host,
                 username=self.target_user,
                 disabled_algorithms=disabled_algorithms,
-                key_filename=self.key_filename,
+                key_filename=str(self.key_filename) if self.key_filename is not None else None,
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
@@ -377,7 +384,7 @@ class mitim_job:
                 self.target_host,
                 username=self.target_user,
                 disabled_algorithms=disabled_algorithms,
-                key_filename=self.key_filename,
+                key_filename=str(self.key_filename) if self.key_filename is not None else None,
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
@@ -566,14 +573,10 @@ class mitim_job:
         return output, error
 
     def retrieve(self, check_if_files_received=True, check_files_in_folder={}):
-        print(
-            f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
-        )
+        print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the output files & folders on the remote machine
-        print(
-            "\t\t- Removing local output files & folders that potentially exist from previous runs"
-        )
+        print("\t\t- Removing local output files & folders that potentially exist from previous runs")
         for file in self.output_files:
             (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
