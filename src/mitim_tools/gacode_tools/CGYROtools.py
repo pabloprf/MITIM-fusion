@@ -365,28 +365,35 @@ class CGYRO:
 
         if len(folders) == 0:
             folders = [folder]
+            attach_name = False
         else:
             print(f"\t- Found {len(folders)} scan folders in {folder.resolve()}:")
             for f in folders:
                 print(f"\t\t- {f.name}")
+            attach_name = True
 
         for folder in folders:
 
             original_dir = os.getcwd()
 
+            if attach_name:
+                label_new = f"{label}_{folder.name}"
+            else:
+                label_new = label
+
             try:
                 print(f"\t- Reading CGYRO data from {folder.resolve()}")
-                self.results[f'{label}_{folder.name}'] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                self.results[label_new] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
             except:
                 if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
                     os.chdir(folder)
                     os.system("cgyro -t")
-                self.results[f'{label}_{folder.name}']  = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                self.results[label_new]  = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
 
             os.chdir(original_dir)
 
             try:
-                self._postprocess(f'{label}_{folder.name}', folder, tmin=tmin)
+                self._postprocess(label_new, folder, tmin=tmin)
             except Exception as e:
                 print(f"\t- Error during postprocessing: {e}")
                 print("\t- Skipping postprocessing, results may be incomplete or linear run")
