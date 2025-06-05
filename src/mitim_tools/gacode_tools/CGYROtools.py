@@ -178,7 +178,7 @@ class CGYRO:
         minutes = 5,
         n = 16,
         nomp = 1,
-        submit_via_qsub=True,
+        submit_via_qsub=True, #TODO fix this, works only at NERSC? no scans?
         clean_folder_going_in=True, # Make sure the scratch folder is removed before running (unless I want a restart!)
     ):
         
@@ -205,12 +205,30 @@ class CGYRO:
                 launchSlurm=False,
             )
 
-            CGYROcommand = f'gacode_qsub -e . -n {n} -nomp {nomp} -queue {self.cgyro_job.machineSettings['slurm']['partition']} -w 0:{minutes}:00 -s'
+            subfolder = "scan0"
+
+            CGYROcommand = f'gacode_qsub -e {subfolder} -n {n} -nomp {nomp} -queue {self.cgyro_job.machineSettings['slurm']['partition']} -w 0:{minutes}:00 -s'
 
             if "account" in self.cgyro_job.machineSettings["slurm"] and self.cgyro_job.machineSettings["slurm"]["account"] is not None:
                 CGYROcommand += f" -repo {self.cgyro_job.machineSettings['slurm']['account']}"
 
             self.slurm_output = "batch.out"
+
+            # ---
+            folder_run = self.folderCGYRO / subfolder
+            folder_run.mkdir(parents=True, exist_ok=True)
+
+            # Copy the input.cgyro in the subfolder
+            input_cgyro_file_this = folder_run / "input.cgyro"
+            shutil.copy2(input_cgyro_file, input_cgyro_file_this)
+
+            # Copy the input.gacode file in the subfolder
+            inputgacode_file_this = folder_run / "input.gacode"
+            shutil.copy2(self.inputgacode_file, inputgacode_file_this)
+
+            # Prepare the input and output folders
+            input_folders = [folder_run]
+            output_folders = [subfolder]
 
         else:
 
