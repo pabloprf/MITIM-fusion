@@ -208,8 +208,9 @@ class CGYRO:
             )
 
             subfolder = "scan0"
+            queue = "-queue " + self.cgyro_job.machineSettings['slurm']['partition'] if "partition" in self.cgyro_job.machineSettings['slurm'] else ""
 
-            CGYROcommand = f'gacode_qsub -e {subfolder} -n {n} -nomp {nomp} -queue {self.cgyro_job.machineSettings['slurm']['partition']} -w 0:{minutes}:00 -s'
+            CGYROcommand = f'gacode_qsub -e {subfolder} -n {n} -nomp {nomp} {queue} -w 0:{minutes}:00 -s'
 
             if "account" in self.cgyro_job.machineSettings["slurm"] and self.cgyro_job.machineSettings["slurm"]["account"] is not None:
                 CGYROcommand += f" -repo {self.cgyro_job.machineSettings['slurm']['account']}"
