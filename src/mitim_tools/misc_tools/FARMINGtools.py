@@ -1067,7 +1067,8 @@ def create_slurm_execution_files(
         commandSBATCH.append("#SBATCH --mail-user=" + email)
 
     # ******* Partition / Billing
-    commandSBATCH.append(f"#SBATCH --partition {partition}")
+    if partition is not None:
+        commandSBATCH.append(f"#SBATCH --partition {partition}")
 
     if account is not None:
         commandSBATCH.append(f"#SBATCH --account {account}")
