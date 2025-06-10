@@ -690,9 +690,18 @@ class PROFILES_GACODE:
         self.derived["qBEAM_MWmiller"] = CALCtools.integrateFS(P, r, volp)
 
         self.derived["qrad_MWmiller"] = CALCtools.integrateFS(self.derived["qrad"], r, volp)
-        self.derived["qrad_sync_MWmiller"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
-        self.derived["qrad_brem_MWmiller"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
-        self.derived["qrad_line_MWmiller"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
+        if "qsync(MW/m^3)" in self.profiles:
+            self.derived["qrad_sync_MWmiller"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
+        else:
+            self.derived["qrad_sync_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
+        if "qbrem(MW/m^3)" in self.profiles:
+            self.derived["qrad_brem_MWmiller"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
+        else:
+            self.derived["qrad_brem_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
+        if "qline(MW/m^3)" in self.profiles:    
+            self.derived["qrad_line_MWmiller"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
+        else:
+            self.derived["qrad_line_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qfuse(MW/m^3)", "qfusi(MW/m^3)"]:
