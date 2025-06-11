@@ -85,7 +85,7 @@ def integrateQuadPoly(r, s, p=None):
     Computes int(s*dr), so if s is s*dV/dr, then int(s*dV), which is the full integral
 
     From tgyro_volume_int.f90
-    r - minor raidus
+    r - minor radius
     s - s*volp
 
     (Modified to avoid if statements and for loops)
