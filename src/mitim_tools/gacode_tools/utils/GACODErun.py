@@ -152,11 +152,11 @@ def modifyInputs(
                 var_orig = input_class.controls[ikey]
                 var_new = value_to_change_to
                 input_class.controls[ikey] = var_new
-            elif ikey in input_class.geom:
+            elif 'geom' in input_class.__dict__ and ikey in input_class.geom:
                 var_orig = input_class.geom[ikey]
                 var_new = value_to_change_to
                 input_class.geom[ikey] = var_new
-            elif ikey in input_class.plasma:
+            elif 'plasma' in input_class.__dict__ and ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
                 var_new = value_to_change_to
                 input_class.plasma[ikey] = var_new
