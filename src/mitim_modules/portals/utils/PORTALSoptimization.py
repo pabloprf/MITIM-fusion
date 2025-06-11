@@ -1,6 +1,7 @@
 import copy
 import torch
 import shutil
+import random
 from functools import partial
 from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
@@ -31,15 +32,19 @@ def initialization_simple_relax(self):
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
     namingConvention = f"portals_sr_{b}_ev"
 
+    if self.seed is not None and self.seed != 0:
+        random.seed(self.seed)
+        addon_relax = random.uniform(-0.03, 0.03) 
+
     # Solver options tuned for simple relax of beginning of PORTALS (big jumps)
     solver_options = {
         "tol": None,
         "maxiter": self.Originalinitial_training,
-        "relax": 0.2,           # Defines relationship between flux and gradient
-        "dx_max": 0.2,          # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 20% each time)
+        "relax": 0.2+addon_relax,   # Defines relationship between flux and gradient
+        "dx_max": 0.2,              # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 20% each time)
         "relax_dyn": False,
-        "dx_max_abs": None,     # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
-        "dx_min_abs": 0.1,      # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
+        "dx_max_abs": None,         # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
+        "dx_min_abs": 0.1,          # Minimum step size in gradient, absolute (e.g. a/Lx can only increase by 0.01 each time)
         "print_each": 1,
         "folder": MainFolder,
         "namingConvention": namingConvention,

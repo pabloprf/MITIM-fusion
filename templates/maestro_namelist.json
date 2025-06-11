@@ -1,5 +1,6 @@
 {
     "flag": "SPARC PRD",
+     "seed": 0,
      "machine": {
           "Bt": 12.2,
           "Ip": 8.7,

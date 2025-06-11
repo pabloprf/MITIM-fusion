@@ -1,4 +1,5 @@
 import argparse
+import shutil
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -10,6 +11,11 @@ from IPython import embed
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
     maestro_namelist = IOtools.read_mitim_nml(file_path)
+
+    if "seed" in maestro_namelist:
+        seed = maestro_namelist["seed"]
+    else:
+        seed = 0
 
     # ---------------------------------------------------------------------------------------
     # Engineering parameters
@@ -148,7 +154,7 @@ def parse_maestro_nml(file_path):
 
     maestro_beats = maestro_namelist["maestro"]
 
-    return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats
+    return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
 
 @mitim_timer('\t\t* MAESTRO')
 def run_maestro_local(    
@@ -157,6 +163,7 @@ def run_maestro_local(
         geometry, 
         beat_namelists, 
         maestro_beats,
+        seed,
         folder=None,
         terminal_outputs = False,
         force_cold_start = False,
@@ -171,7 +178,7 @@ def run_maestro_local(
     if folder is None:
         folder = IOtools.expandPath('./')
 
-    m = maestro(folder, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
+    m = maestro(folder, master_seed = seed, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
 
     # -------------------------------------------------------------------------
     # Loop through beats
@@ -231,10 +238,16 @@ def main():
     parser.add_argument('cpus', type=int, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     args = parser.parse_args()
-    folder = args.folder
+    folder = IOtools.expandPath(args.folder)
     file_path = args.file_path
     cpus = args.cpus
     terminal_outputs = args.terminal
+
+    if not folder.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+    
+    shutil.copy2(file_path, folder / 'maestro_namelist.json')
+
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 

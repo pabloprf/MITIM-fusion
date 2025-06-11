@@ -1074,13 +1074,9 @@ class MITIM_BO:
 
         # Print Optimization Settings
 
-        print(
-            "\n=============================================================================="
-        )
+        print("\n==============================================================================")
         print(f"  {IOtools.getStringFromTime()}, Starting MITIM Optimization")
-        print(
-            "=============================================================================="
-        )
+        print("==============================================================================")
 
         print(f"* Folder: {self.folderExecution}")
         print("* Optimization Settings:")

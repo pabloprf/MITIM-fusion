@@ -30,7 +30,8 @@ class maestro:
             terminal_outputs = False,
             master_cold_start = False,
             overall_log_file = True,
-            keep_all_files = True
+            keep_all_files = True,
+            master_seed = 0
             ):
         '''
         Inputs:
@@ -41,6 +42,7 @@ class maestro:
         self.terminal_outputs = terminal_outputs
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
         self.keep_all_files = keep_all_files             # If True, all files will be kept, if False, only the final output files will be kept
+        self.master_seed = master_seed
 
         # --------------------------------------------------------------------------------------------
         # Prepare folders
