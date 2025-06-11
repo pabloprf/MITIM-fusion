@@ -175,11 +175,13 @@ class CGYRO:
         extraOptions={},
         multipliers={},
         scan_param = None,      # {'variable': 'KY', 'values': [0.2,0.3,0.4]}
+        enforce_equality = None,  # e.g. {'DLNTDR_SCALE_2': 'DLNTDR_SCALE_1', 'DLNTDR_SCALE_3': 'DLNTDR_SCALE_1'}
         minutes = 5,
         n = 16,
         nomp = 1,
         submit_via_qsub=True, #TODO fix this, works only at NERSC? no scans?
         clean_folder_going_in=True, # Make sure the scratch folder is removed before running (unless I want a restart!)
+        submit_run=True, # False if I just want to check and fetch the job that was already submitted (e.g. via qsub or slurm)
     ):
         
         input_cgyro_file, inputgacode_file_this = self._prerun(
@@ -280,6 +282,13 @@ class CGYRO:
                 extraOptions_this = extraOptions.copy()
                 if scan_param['variable'] is not None:
                     extraOptions_this[scan_param['variable']] = value
+
+
+                # If there is an enforce_equality, apply it
+                if enforce_equality is not None:
+                    for key in enforce_equality:
+                        extraOptions_this[key] = extraOptions_this[enforce_equality[key]]
+
                 inputCGYRO = CGYROinput(file=input_cgyro_file_this)
                 input_cgyro_file_this = GACODErun.modifyInputs(
                     inputCGYRO,
@@ -310,12 +319,13 @@ class CGYRO:
             output_folders=output_folders,
             )
 
-        self.cgyro_job.run(
-            waitYN=False,
-            check_if_files_received=False,
-            removeScratchFolders=False,
-            removeScratchFolders_goingIn=clean_folder_going_in, 
-            )
+        if submit_run:
+            self.cgyro_job.run(
+                waitYN=False,
+                check_if_files_received=False,
+                removeScratchFolders=False,
+                removeScratchFolders_goingIn=clean_folder_going_in, 
+                )
 
         # Prepare how to search for the job without waiting for it
         name_default_submission_qsub = Path(self.cgyro_job.folderExecution).name
@@ -342,7 +352,7 @@ class CGYRO:
         else:
             print("- Not checking status because this was run command line (not slurm)")
 
-        print("\t- Job considered finished")
+        print("\n\t* Job considered finished",typeMsg="i")
 
     def fetch(self):
         """
