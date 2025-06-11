@@ -516,6 +516,7 @@ class transp_output:
         self.QECRH = np.zeros([self.timesteps,self.radialsize])
         self.QEICL = np.zeros([self.timesteps,self.radialsize])
         self.Cu_tot = np.zeros([self.timesteps,self.radialsize])
+        self.CuTor_tot = np.zeros([self.timesteps,self.radialsize])
         self.Cubs_tot = np.zeros([self.timesteps,self.radialsize])
         self.QE = np.zeros([self.timesteps,self.radialsize])
         self.QI = np.zeros([self.timesteps,self.radialsize])
@@ -572,6 +573,7 @@ class transp_output:
              self.SNEBM_tot[kk] = np.cumsum(self.SNEBM[kk,:]*self.HRO[kk]*self.VR[kk,:])[-1]/self.vol[kk,-1]
              # areal density variables
              self.Cu_tot[kk,:] = np.cumsum(self.Cu[kk,:]*self.area[kk,:])
+             self.CuTor_tot[kk,:] = np.cumsum(self.CuTor[kk,:]*self.area[kk,:])
              self.Cubs_tot[kk,:] = np.cumsum(self.Cubs[kk,:]*self.area[kk,:])
         self.QETOT  = self.QE
         self.QITOT  = self.QI
