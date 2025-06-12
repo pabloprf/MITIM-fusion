@@ -35,6 +35,8 @@ def initialization_simple_relax(self):
     if self.seed is not None and self.seed != 0:
         random.seed(self.seed)
         addon_relax = random.uniform(-0.03, 0.03) 
+    else:
+        addon_relax = 0.0
 
     # Solver options tuned for simple relax of beginning of PORTALS (big jumps)
     solver_options = {

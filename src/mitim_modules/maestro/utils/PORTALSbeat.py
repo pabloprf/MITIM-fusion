@@ -96,7 +96,7 @@ class portals_beat(beat):
 
         portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
 
-        self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.seed, cold_start = cold_start, askQuestions = False)
+        self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False)
 
         if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point and self.folder_starting_point is not None:
 
@@ -109,7 +109,7 @@ class portals_beat(beat):
 
             portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
 
-            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.seed,cold_start = cold_start, askQuestions = False)
+            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
         self.mitim_bo.run()
 
