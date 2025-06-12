@@ -134,6 +134,7 @@ class transp_output:
         self.Mu = self.f["MU"][:]           # rotational transform
         self.q  = 1/self.Mu                 # safety factor
         self.q_onaxis = 1/self.Mu[:,0]      # q on axis
+        self.sheas = self.f["SHEAR"][:]       # magnetic
         self.MV = self.f["MV"][:]           # vacuum rotational transform
         self.FV = self.f["FV"][:]           # poloidal flux for vacuum magnetic field
         self.VP = self.f["VP"][:]           # pinch velocity
