@@ -422,7 +422,7 @@ class OPTstep:
 
         # Add this because of the way train_X is defined within the gpmodel, which is fundamental, but the acquisition for sample
         # around best, needs the raw one! (for noisy it is automatic)
-        self.evaluators["acq_function"].X_baseline = self.evaluators["GP"].train_X
+        self.evaluators["acq_function"]._X_baseline = self.evaluators["GP"].train_X #TOFIX
 
         # **************************************************************************************************
         # Selector (Takes x and residuals of optimized points, and provides the indices for organization)
