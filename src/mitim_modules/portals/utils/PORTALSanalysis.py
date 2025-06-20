@@ -25,11 +25,7 @@ class PORTALSanalyzer:
 
         self.opt_fun = opt_fun
 
-        self.folder = (
-            IOtools.expandPath(folderAnalysis)
-            if folderAnalysis is not None
-            else self.opt_fun.folder / "Analysis"
-        )
+        self.folder = IOtools.expandPath(folderAnalysis) if folderAnalysis is not None else self.opt_fun.folder / "Analysis"
 
         try:
             self.folder.mkdir(parents=True, exist_ok=True)
@@ -100,12 +96,8 @@ class PORTALSanalyzer:
 
         merged_instance = cls(base_instance.opt_fun, folderAnalysis)
         merged_instance.mitim_runs = merged_mitim_runs
-        merged_instance.mitim_runs["profiles_original"] = base_instance.mitim_runs[
-            "profiles_original"
-        ]
-        merged_instance.mitim_runs["profiles_modified"] = base_instance.mitim_runs[
-            "profiles_modified"
-        ]
+        merged_instance.mitim_runs["profiles_original"] = base_instance.mitim_runs["profiles_original"]
+        merged_instance.mitim_runs["profiles_modified"] = base_instance.mitim_runs["profiles_modified"]
 
         merged_instance.prep_metrics(ilast=cont - 1)
 
@@ -148,10 +140,7 @@ class PORTALSanalyzer:
         self.ibest = self.opt_fun.res.best_absolute_index
         self.i0 = 0
 
-        if self.ilast == self.ibest:
-            self.iextra = None
-        else:
-            self.iextra = self.ilast
+        self.iextra = None if self.ilast == self.ibest else self.ilast
 
         if self.mitim_runs[0] is None:
             print("* Issue with reading mitim_run 0, likely due to a cold_start of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
@@ -183,7 +172,6 @@ class PORTALSanalyzer:
 
         # runWithImpurity_transport is stored after powerstate has run transport
         self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.ProfilesPredicted else None
-
 
         if len(self.powerstates) <= self.ibest:
             print("\t- PORTALS was read after new residual was computed but before pickle was written!",typeMsg="w")
@@ -439,6 +427,7 @@ class PORTALSanalyzer:
         '''
         modified_profiles: if True, it will extract the profiles that supposedly has been modified by the model (e.g. lumping, etc)
         '''
+
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -490,6 +479,7 @@ class PORTALSanalyzer:
         return wrapped_model_portals(models)
 
     def extractPORTALS(self, evaluation=None, folder=None, modified_profiles=False):
+        
         if evaluation is None:
             evaluation = self.ibest
         elif evaluation < 0:
@@ -599,7 +589,7 @@ class PORTALSanalyzer:
 
         print(f"> Extracting and preparing TGLF in {IOtools.clipstr(folder)} from evaluation #{evaluation}")
 
-        inputgacode = folder / f"input.gacode.start"
+        inputgacode = folder / "input.gacode.start"
         p = self.extractProfiles(evaluation=evaluation,modified_profiles=modified_profiles)
         p.writeCurrentStatus(file=inputgacode)
 
@@ -635,10 +625,7 @@ class PORTALSanalyzer:
 
         folder.mkdir(parents=True, exist_ok=True)
 
-        if onlyBest:
-            ranges = [self.ibest]
-        else:
-            ranges = range(self.ilast + 1)
+        ranges = [self.ibest] if onlyBest else range(self.ilast + 1)
 
         for ev in ranges:
             tglf, TGLFsettings, extraOptions = self.extractTGLF(
@@ -790,9 +777,7 @@ class wrapped_model_portals:
 
     def printInfo(self, detailed=False):
         print(f"> Models for {self.output_variables} created")
-        print(
-            f"\t- Requires {len(self.input_variables)} variables to evaluate: {self.input_variables}"
-        )
+        print(f"\t- Requires {len(self.input_variables)} variables to evaluate: {self.input_variables}")
         if detailed:
             for key, model in self._models.items():
                 model.printInfo()
@@ -803,9 +788,7 @@ class wrapped_model_portals:
             x = torch.Tensor(x)
             numpy_provided = True
 
-        mean, upper, lower, _ = self._models[key].predict(
-            x, produceFundamental=True
-        )
+        mean, upper, lower, _ = self._models[key].predict(x, produceFundamental=True)
 
         mean_out = mean[..., 0].detach()
         upper_out = upper[..., 0].detach()
@@ -823,9 +806,7 @@ class wrapped_model_portals:
             x = torch.Tensor(x)
             numpy_provided = True
 
-        _, _, _, samples = self._models[key].predict(
-            x, produceFundamental=True, nSamples=samples
-        )
+        _, _, _, samples = self._models[key].predict(x, produceFundamental=True, nSamples=samples)
 
         samples_out = samples[..., 0].detach()
         if numpy_provided:
