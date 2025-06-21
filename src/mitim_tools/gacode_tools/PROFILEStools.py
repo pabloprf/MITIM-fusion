@@ -25,11 +25,15 @@ class PROFILES_GACODE(mitim_state):
 
         super().__init__(type_file='input.gacode')
 
-        """
-        Depending on resolution, derived can be expensive, so I mmay not do it every time
-        """
-
         self.file = file
+
+        self._read_inputgacocde()
+
+        if self.file is not None:
+            # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
+            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+
+    def _read_inputgacocde(self):
 
         self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
         self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
@@ -44,9 +48,6 @@ class PROFILES_GACODE(mitim_state):
             self._read_profiles()
             self._ensure_existence()
 
-            # Derive
-            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
-
     def _read_header(self):
         for i in range(len(self.lines)):
             if "# nexp" in self.lines[i]:
@@ -54,7 +55,7 @@ class PROFILES_GACODE(mitim_state):
         self.header = self.lines[:istartProfs]
 
     def _read_profiles(self):
-        singleLine, title, var = None, None, None  # for ruff complaints
+        singleLine, title, var = None, None, None 
 
         # ---
         found = False
@@ -92,10 +93,7 @@ class PROFILES_GACODE(mitim_state):
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
-                    varT = [
-                        float(j) if (j[-4].upper() == "E" or "." in j) else 0.0
-                        for j in var0[1:]
-                    ]
+                    varT = [float(j) if (j[-4].upper() == "E" or "." in j) else 0.0for j in var0[1:]]
 
                     var.append(varT)
 
@@ -148,7 +146,7 @@ class PROFILES_GACODE(mitim_state):
             self.varqmom,
         ]
 
-        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
         for i in range(num_moments):
             some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
             if i > 1:
