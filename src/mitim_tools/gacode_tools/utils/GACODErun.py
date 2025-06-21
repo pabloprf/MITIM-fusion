@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools.utils import PLASMASTATEtools
+from mitim_tools.transp_tools.utils import NTCCtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -463,7 +463,7 @@ def runPROFILES_GEN(
     if UseMITIMmodification:
         print("\t\t- Running modifyPlasmaState")
         shutil.copy2(FolderTGLF / f"{nameFiles}.cdf", FolderTGLF / f"{nameFiles}.cdf_old")
-        pls = PLASMASTATEtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
+        pls = NTCCtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
         pls.modify_default(FolderTGLF / f"{nameFiles}.cdf")
 
     inputFiles = [
