@@ -306,9 +306,9 @@ def calculatePressure(Te, Ti, ne, ni):
 def calculateVolumeAverage(rmin, var, dVdr):
     W, vals = [], []
     for it in range(rmin.shape[0]):
-        W.append(CALCtools.integrateFS(var[it, :], rmin[it, :], dVdr[it, :])[-1])
+        W.append(CALCtools.volume_integration(var[it, :], rmin[it, :], dVdr[it, :])[-1])
         vals.append(
-            CALCtools.integrateFS(np.ones(rmin.shape[1]), rmin[it, :], dVdr[it, :])[-1]
+            CALCtools.volume_integration(np.ones(rmin.shape[1]), rmin[it, :], dVdr[it, :])[-1]
         )
 
     W = np.array(W) / np.array(vals)
@@ -344,7 +344,7 @@ def calculateContent(rmin, Te, Ti, ne, ni, dVdr):
     for it in range(rmin.shape[0]):
         # Number of electrons
         Ne.append(
-            CALCtools.integrateFS(ne[it, :], rmin[it, :], dVdr[it, :])[-1]
+            CALCtools.volume_integration(ne[it, :], rmin[it, :], dVdr[it, :])[-1]
         )  # Number of particles total
 
         # Number of ions
@@ -352,14 +352,14 @@ def calculateContent(rmin, Te, Ti, ne, ni, dVdr):
         for i in range(ni.shape[1]):
             ni0 += ni[it, i, :]
         Ni.append(
-            CALCtools.integrateFS(ni0, rmin[it, :], dVdr[it, :])[-1]
+            CALCtools.volume_integration(ni0, rmin[it, :], dVdr[it, :])[-1]
         )  # Number of particles total
 
         # Electron stored energy
         Wx = 3 / 2 * pe[it, :]
-        We.append(CALCtools.integrateFS(Wx, rmin[it, :], dVdr[it, :])[-1])  # MJ
+        We.append(CALCtools.volume_integration(Wx, rmin[it, :], dVdr[it, :])[-1])  # MJ
         Wx = 3 / 2 * pi[it, :]
-        Wi.append(CALCtools.integrateFS(Wx, rmin[it, :], dVdr[it, :])[-1])  # MJ
+        Wi.append(CALCtools.volume_integration(Wx, rmin[it, :], dVdr[it, :])[-1])  # MJ
 
     We = np.array(We)
     Wi = np.array(Wi)
