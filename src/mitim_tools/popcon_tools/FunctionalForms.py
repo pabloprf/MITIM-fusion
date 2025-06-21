@@ -156,7 +156,7 @@ def MITIMfunctional_aLyTanh(
     aLy_profile[~linear_region] = aLy 
 
     # Create core profile
-    Ycore = CALCtools.integrateGradient(torch.from_numpy(xcore).unsqueeze(0),
+    Ycore = CALCtools.integration_Lx(torch.from_numpy(xcore).unsqueeze(0),
                                         torch.from_numpy(aLy_profile).unsqueeze(0),
                                         y_top
                                     ).cpu().numpy()[0]
@@ -182,7 +182,7 @@ def MITIMfunctional_aLyTanh(
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
-        aLy_reconstructed = CALCtools.produceGradient(torch.from_numpy(x), torch.from_numpy(y)).cpu().numpy()
+        aLy_reconstructed = CALCtools.derivation_into_Lx(torch.from_numpy(x), torch.from_numpy(y)).cpu().numpy()
 
         ax.plot(x, aLy_reconstructed, '-o', c='b', markersize=3, lw=1.0)
         ax.plot(xcore, aLy_profile, '-*', c='r', markersize=1, lw=1.0) 

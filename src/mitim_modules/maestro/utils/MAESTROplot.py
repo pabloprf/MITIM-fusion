@@ -103,7 +103,7 @@ def plot_results(self, fn):
     maxPlot = 5
     if len(ps) > 0:
         # Plot profiles
-        figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
+        figs = MITIMstate.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
             MITIMstate.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)

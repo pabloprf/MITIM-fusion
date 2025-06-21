@@ -3987,7 +3987,7 @@ def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
 def aLT(r, p):
     return (
         r[-1]
-        * CALCtools.produceGradient(
+        * CALCtools.derivation_into_Lx(
             torch.from_numpy(r).to(torch.double), torch.from_numpy(p).to(torch.double)
         )
         .cpu()
@@ -4049,7 +4049,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     aLTe = np.append(np.append(aLT0, aLT1), aLT2)
     Te = (
-        CALCtools.integrateGradient(
+        CALCtools.integration_Lx(
             torch.from_numpy(p.derived["roa"]).unsqueeze(0),
             torch.Tensor(aLTe).unsqueeze(0),
             p.profiles["te(keV)"][-1],
@@ -4068,7 +4068,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     aLTi = np.append(np.append(aLT0, aLT1), aLT2)
     Ti = (
-        CALCtools.integrateGradient(
+        CALCtools.integration_Lx(
             torch.from_numpy(p.derived["roa"]).unsqueeze(0),
             torch.Tensor(aLTi).unsqueeze(0),
             p.profiles["ti(keV)"][-1, 0],
@@ -4087,7 +4087,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
 
     aLne = np.append(np.append(aLT0, aLT1), aLT2)
     ne = (
-        CALCtools.integrateGradient(
+        CALCtools.integration_Lx(
             torch.from_numpy(p.derived["roa"]).unsqueeze(0),
             torch.Tensor(aLne).unsqueeze(0),
             p.profiles["ne(10^19/m^3)"][-1],
