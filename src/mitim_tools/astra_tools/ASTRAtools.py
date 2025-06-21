@@ -158,7 +158,7 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
     """
 
     template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
-    p = PROFILEStools.PROFILES_GACODE(template_path)
+    p = PROFILEStools.gacode_state(template_path)
     params = p.profiles
 
     # Extract CDF file
@@ -204,7 +204,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     """
 
     template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
-    p = PROFILEStools.PROFILES_GACODE(template_path)
+    p = PROFILEStools.gacode_state(template_path)
     params = p.profiles
 
     #c.calcProfiles()

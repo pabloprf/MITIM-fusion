@@ -35,7 +35,7 @@ Create a PROFILES class from the input.gacode file:
 
 .. code-block:: python
 
-	profiles = PROFILEStools.PROFILES_GACODE(gacode_file)
+	profiles = PROFILEStools.gacode_state(gacode_file)
 
 .. tip::
 
@@ -120,7 +120,7 @@ Create a profiles class with the `input.gacode` file that TGYRO used to run and 
 	gacode_file = Path('MITIM-fusion/tests/data/input.gacode')
 	folder      = Path('MITIM-fusion/tests/scratch/tgyro_tut/run1')
 
-	profiles    = PROFILEStools.PROFILES_GACODE(gacode_file)
+	profiles    = PROFILEStools.gacode_state(gacode_file)
 	tgyro_out   = TGYROtools.TGYROoutput(folder,profiles=profiles)
 
 Plot results:

@@ -141,7 +141,7 @@ class TGYRO:
 
             self.file_input_profiles = self.FolderGACODE / "input.gacode"
             from mitim_tools.gacode_tools import PROFILEStools
-            self.profiles = PROFILEStools.PROFILES_GACODE(self.file_input_profiles)
+            self.profiles = PROFILEStools.gacode_state(self.file_input_profiles)
 
             if correctPROFILES:
                 self.profiles.correct(write=True)
@@ -463,7 +463,7 @@ class TGYRO:
                 print("\t- It was requested that input.gacode.new is modified according to what TypeTarget was",typeMsg="i",)
 
                 from mitim_tools.gacode_tools import PROFILEStools
-                inputgacode_new = PROFILEStools.PROFILES_GACODE(self.FolderTGYRO_tmp / "input.gacode.new")
+                inputgacode_new = PROFILEStools.gacode_state(self.FolderTGYRO_tmp / "input.gacode.new")
 
                 if TGYRO_physics_options["TypeTarget"] < 3:
                     for ikey in [
@@ -538,7 +538,7 @@ class TGYRO:
                 prof = self.profiles
         else:
             from mitim_tools.gacode_tools import PROFILEStools
-            prof = PROFILEStools.PROFILES_GACODE(file_input_profiles)
+            prof = PROFILEStools.gacode_state(file_input_profiles)
 
         self.results[label] = TGYROoutput(folder, profiles=prof)
 
@@ -1203,7 +1203,7 @@ class TGYROoutput:
 
         if (profiles is None) and (FolderTGYRO / "input.gacode").exists():
             from mitim_tools.gacode_tools import PROFILEStools
-            profiles = PROFILEStools.PROFILES_GACODE(FolderTGYRO / f"input.gacode", calculateDerived=False)
+            profiles = PROFILEStools.gacode_state(FolderTGYRO / f"input.gacode", calculateDerived=False)
 
         self.profiles = profiles
 
@@ -1217,7 +1217,7 @@ class TGYROoutput:
 
         calculateDerived = True
         try:
-            self.profiles_final = PROFILEStools.PROFILES_GACODE(self.FolderTGYRO / "input.gacode.new",calculateDerived=calculateDerived,)
+            self.profiles_final = PROFILEStools.gacode_state(self.FolderTGYRO / "input.gacode.new",calculateDerived=calculateDerived,)
         except:
             self.profiles_final = None
 

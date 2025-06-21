@@ -396,10 +396,10 @@ class portals(STRATEGYtools.opt_evaluator):
         if self.optimization_extra is not None:
             dictStore = IOtools.unpickle_mitim(self.optimization_extra)                           #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
-            dictStore["profiles_modified"] = PROFILEStools.PROFILES_GACODE(
+            dictStore["profiles_modified"] = PROFILEStools.gacode_state(
                 self.folder / "Initialization" / "input.gacode_modified"
             )
-            dictStore["profiles_original"] = PROFILEStools.PROFILES_GACODE(
+            dictStore["profiles_original"] = PROFILEStools.gacode_state(
                 self.folder / "Initialization" / "input.gacode_original"
             )
             with open(self.optimization_extra, "wb") as handle:

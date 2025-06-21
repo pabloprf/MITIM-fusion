@@ -172,7 +172,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     useConvectiveFluxes = PORTALSparameters["useConvectiveFluxes"]
 
     try:
-        impurityPosition = PROFILEStools.impurity_location(PROFILEStools.PROFILES_GACODE(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
+        impurityPosition = PROFILEStools.impurity_location(PROFILEStools.gacode_state(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
     except ValueError:
         if 'nZ' in ProfilesPredicted:
             raise ValueError(f"Impurity {PORTALSparameters['ImpurityOfInterest']} not found in the profiles and needed for CGYRO evaluation")
@@ -246,7 +246,7 @@ def cgyroing(
         print(f"\t- Modifying {IOtools.clipstr(FolderEvaluation)} with position {k} in CGYRO results file {IOtools.clipstr(file)}")
 
         # Get TGYRO
-        tgyro = TGYROtools.TGYROoutput(FolderEvaluation,profiles=PROFILEStools.PROFILES_GACODE(unmodified_profiles))
+        tgyro = TGYROtools.TGYROoutput(FolderEvaluation,profiles=PROFILEStools.gacode_state(unmodified_profiles))
 
         # Quick checker of correct file
         wasThisTheCorrectRun(aLTe, aLTi, aLne, Q_gb, tgyro)

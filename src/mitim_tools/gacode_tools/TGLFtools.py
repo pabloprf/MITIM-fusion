@@ -235,7 +235,7 @@ class TGLF:
 
         from mitim_tools.gacode_tools import PROFILEStools
         profiles = (
-            PROFILEStools.PROFILES_GACODE(inputgacode)
+            PROFILEStools.gacode_state(inputgacode)
             if inputgacode is not None
             else None
         )
@@ -375,7 +375,7 @@ class TGLF:
 
         from mitim_tools.gacode_tools import PROFILEStools
         self.profiles = (
-            PROFILEStools.PROFILES_GACODE(inputgacode)
+            PROFILEStools.gacode_state(inputgacode)
             if inputgacode is not None
             else None
         )
@@ -480,7 +480,7 @@ class TGLF:
         # Main folder where things are
         from mitim_tools.gacode_tools import PROFILEStools
         self.NormalizationSets, _ = NORMtools.normalizations(
-            PROFILEStools.PROFILES_GACODE(input_gacode)
+            PROFILEStools.gacode_state(input_gacode)
             if input_gacode is not None
             else None
         )

@@ -18,7 +18,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "tgyro_test"
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
-profiles = PROFILEStools.PROFILES_GACODE(gacode_file)
+profiles = PROFILEStools.gacode_state(gacode_file)
 tgyro = TGYROtools.TGYRO()
 tgyro.prep(folder, profilesclass_custom=profiles, cold_start=True, forceIfcold_start=True)
 

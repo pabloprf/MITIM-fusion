@@ -193,7 +193,7 @@ class maestro:
 
             if self.profiles_with_engineering_parameters is None:
                 # First initialization, freeze engineering parameters
-                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
+                self._freeze_parameters(profiles = PROFILEStools.gacode_state(self.beat.initialize.folder / 'input.gacode'))
 
     @mitim_timer('\t\t* Preparation', name_timer=None)
     def prepare(self, *args, **kwargs):
@@ -255,7 +255,7 @@ class maestro:
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
-            profiles = PROFILEStools.PROFILES_GACODE(self.beat.folder_output / 'input.gacode')
+            profiles = PROFILEStools.gacode_state(self.beat.folder_output / 'input.gacode')
 
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)

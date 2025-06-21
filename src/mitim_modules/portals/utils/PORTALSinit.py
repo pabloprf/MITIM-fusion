@@ -69,7 +69,7 @@ def initializeProblem(
     # ---- Initialize file to modify and increase resolution
 
     initialization_file = FolderInitialization / "input.gacode"
-    profiles = PROFILEStools.PROFILES_GACODE(initialization_file)
+    profiles = PROFILEStools.gacode_state(initialization_file)
 
     # About radial locations
     if portals_fun.MODELparameters["RoaLocations"] is not None:
