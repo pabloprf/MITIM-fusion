@@ -35,13 +35,10 @@ def doubleLinear_aLT(x, g1, g2, t, T1):
 def calculate_simplified_volavg(x, T):
     x = np.atleast_2d(x)
     dVdr = 2 * x
-    vol = CALCtools.integrateQuadPoly(torch.from_numpy(x), torch.ones(x.shape) * dVdr)
+    vol = CALCtools.volume_integration(torch.ones(x.shape), torch.from_numpy(x), dVdr)
 
     Tvol = (
-        CALCtools.integrateQuadPoly(torch.from_numpy(x), torch.from_numpy(T) * dVdr)[
-            :, -1
-        ]
-        / vol[:, -1]
+        CALCtools.volume_integration(torch.from_numpy(T), torch.from_numpy(x), dVdr)[:, -1] / vol[:, -1]
     ).cpu().numpy()
 
     return Tvol

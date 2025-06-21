@@ -756,13 +756,13 @@ class powerstate:
         """
 
         if force_dim is None:
-            return CALCtools.integrateQuadPoly(
-                self.plasma["rmin"], var * self.plasma["volp"]
-            ) / self.plasma["volp"]
+            return CALCtools.volume_integration(
+                var, self.plasma["rmin"], self.plasma["volp"]
+                ) / self.plasma["volp"]
         else:
-            return CALCtools.integrateQuadPoly(
-                self.plasma["rmin"][0,:].repeat(force_dim,1), var * self.plasma["volp"][0,:].repeat(force_dim,1),
-            ) / self.plasma["volp"][0,:].repeat(force_dim,1)
+            return CALCtools.volume_integration(
+                var, self.plasma["rmin"][0,:].repeat(force_dim,1), self.plasma["volp"][0,:].repeat(force_dim,1)
+                ) / self.plasma["volp"][0,:].repeat(force_dim,1)            
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 

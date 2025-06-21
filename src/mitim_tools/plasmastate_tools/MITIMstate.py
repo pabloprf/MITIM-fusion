@@ -332,9 +332,9 @@ class mitim_state:
         r = self.profiles["rmin(m)"]
         volp = self.derived["volp_geo"]
 
-        self.derived["qe_MW"] = CALCtools.integrateFS(self.derived["qe"], r, volp)
-        self.derived["qi_MW"] = CALCtools.integrateFS(self.derived["qi"], r, volp)
-        self.derived["ge_10E20"] = CALCtools.integrateFS(self.derived["ge"] * 1e-20, r, volp)  # Because the units were #/sec/m^3
+        self.derived["qe_MW"] = CALCtools.volume_integration(self.derived["qe"], r, volp)
+        self.derived["qi_MW"] = CALCtools.volume_integration(self.derived["qi"], r, volp)
+        self.derived["ge_10E20"] = CALCtools.volume_integration(self.derived["ge"] * 1e-20, r, volp)  # Because the units were #/sec/m^3
 
         self.derived["geIn"] = self.derived["ge_10E20"][-1]  # 1E20 particles/sec
 
@@ -353,7 +353,7 @@ class mitim_state:
         )
 
         # qmom
-        self.derived["mt_Jmiller"] = CALCtools.integrateFS(
+        self.derived["mt_Jmiller"] = CALCtools.volume_integration(
             self.profiles[self.varqmom], r, volp
         )
         self.derived["mt_Jm2"] = self.derived["mt_Jmiller"] / (volp)
@@ -366,10 +366,10 @@ class mitim_state:
             P += self.profiles["qbrem(MW/m^3)"]
         if "qline(MW/m^3)" in self.profiles:
             P += self.profiles["qline(MW/m^3)"]
-        self.derived["qe_rad_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_rad_MW"] = CALCtools.volume_integration(P, r, volp)
 
         P = self.profiles["qei(MW/m^3)"]
-        self.derived["qe_exc_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_exc_MW"] = CALCtools.volume_integration(P, r, volp)
 
         """
 		---------------------------------------------------------------------------------------------------------------------
@@ -386,14 +386,14 @@ class mitim_state:
                 P += self.profiles[i]
 
         self.derived["qe_auxONLY"] = copy.deepcopy(P)
-        self.derived["qe_auxONLY_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_auxONLY_MW"] = CALCtools.volume_integration(P, r, volp)
 
         for i in ["qione(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
 
         self.derived["qe_aux"] = copy.deepcopy(P)
-        self.derived["qe_aux_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_aux_MW"] = CALCtools.volume_integration(P, r, volp)
 
         # ** Ions
 
@@ -403,14 +403,14 @@ class mitim_state:
                 P += self.profiles[i]
 
         self.derived["qi_auxONLY"] = copy.deepcopy(P)
-        self.derived["qi_auxONLY_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_auxONLY_MW"] = CALCtools.volume_integration(P, r, volp)
 
         for i in ["qioni(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
 
         self.derived["qi_aux"] = copy.deepcopy(P)
-        self.derived["qi_aux_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_aux_MW"] = CALCtools.volume_integration(P, r, volp)
 
         # ** General
 
@@ -418,19 +418,19 @@ class mitim_state:
         for i in ["qohme(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qOhm_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qOhm_MW"] = CALCtools.volume_integration(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qRF_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qRF_MW"] = CALCtools.volume_integration(P, r, volp)
         if "qrfe(MW/m^3)" in self.profiles:
-            self.derived["qRFe_MW"] = CALCtools.integrateFS(
+            self.derived["qRFe_MW"] = CALCtools.volume_integration(
                 self.profiles["qrfe(MW/m^3)"], r, volp
             )
         if "qrfi(MW/m^3)" in self.profiles:
-            self.derived["qRFi_MW"] = CALCtools.integrateFS(
+            self.derived["qRFi_MW"] = CALCtools.volume_integration(
                 self.profiles["qrfi(MW/m^3)"], r, volp
             )
 
@@ -438,19 +438,19 @@ class mitim_state:
         for i in ["qbeame(MW/m^3)", "qbeami(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qBEAM_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qBEAM_MW"] = CALCtools.volume_integration(P, r, volp)
 
-        self.derived["qrad_MW"] = CALCtools.integrateFS(self.derived["qrad"], r, volp)
+        self.derived["qrad_MW"] = CALCtools.volume_integration(self.derived["qrad"], r, volp)
         if "qsync(MW/m^3)" in self.profiles:
-            self.derived["qrad_sync_MW"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
+            self.derived["qrad_sync_MW"] = CALCtools.volume_integration(self.profiles["qsync(MW/m^3)"], r, volp)
         else:
             self.derived["qrad_sync_MW"] = self.derived["qrad_MW"]*0.0
         if "qbrem(MW/m^3)" in self.profiles:
-            self.derived["qrad_brem_MW"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
+            self.derived["qrad_brem_MW"] = CALCtools.volume_integration(self.profiles["qbrem(MW/m^3)"], r, volp)
         else:
             self.derived["qrad_brem_MW"] = self.derived["qrad_MW"]*0.0
         if "qline(MW/m^3)" in self.profiles:    
-            self.derived["qrad_line_MW"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
+            self.derived["qrad_line_MW"] = CALCtools.volume_integration(self.profiles["qline(MW/m^3)"], r, volp)
         else:
             self.derived["qrad_line_MW"] = self.derived["qrad_MW"]*0.0
 
@@ -458,13 +458,13 @@ class mitim_state:
         for i in ["qfuse(MW/m^3)", "qfusi(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qFus_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qFus_MW"] = CALCtools.volume_integration(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qioni(MW/m^3)", "qione(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qz_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qz_MW"] = CALCtools.volume_integration(P, r, volp)
 
         self.derived["q_MW"] = (
             self.derived["qe_MW"] + self.derived["qi_MW"]
@@ -476,12 +476,12 @@ class mitim_state:
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfuse(MW/m^3)" in self.profiles:
             P = self.profiles["qfuse(MW/m^3)"]
-        self.derived["qe_fus_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_fus_MW"] = CALCtools.volume_integration(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfusi(MW/m^3)" in self.profiles:
             P = self.profiles["qfusi(MW/m^3)"]
-        self.derived["qi_fus_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_fus_MW"] = CALCtools.volume_integration(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfusi(MW/m^3)" in self.profiles:
@@ -490,7 +490,7 @@ class mitim_state:
             ) * 5
             P = self.derived["q_fus"]
         self.derived["q_fus"] = P
-        self.derived["q_fus_MW"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["q_fus_MW"] = CALCtools.volume_integration(P, r, volp)
 
         """
 		Derivatives
@@ -632,11 +632,11 @@ class mitim_state:
         ).transpose().repeat(self.profiles["ni(10^19/m^3)"].shape[1], axis=1)
 
         # Vol-avg density
-        self.derived["volume"] = CALCtools.integrateFS(np.ones(r.shape[0]), r, volp)[
+        self.derived["volume"] = CALCtools.volume_integration(np.ones(r.shape[0]), r, volp)[
             -1
         ]  # m^3
         self.derived["ne_vol20"] = (
-            CALCtools.integrateFS(self.profiles["ne(10^19/m^3)"] * 0.1, r, volp)[-1]
+            CALCtools.volume_integration(self.profiles["ne(10^19/m^3)"] * 0.1, r, volp)[-1]
             / self.derived["volume"]
         )  # 1E20/m^3
 
@@ -644,7 +644,7 @@ class mitim_state:
         self.derived["fi_vol"] = np.zeros(self.profiles["ni(10^19/m^3)"].shape[1])
         for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
             self.derived["ni_vol20"][i] = (
-                CALCtools.integrateFS(
+                CALCtools.volume_integration(
                     self.profiles["ni(10^19/m^3)"][:, i] * 0.1, r, volp
                 )[-1]
                 / self.derived["volume"]
@@ -671,14 +671,14 @@ class mitim_state:
         )
 
         self.derived["Te_vol"] = (
-            CALCtools.integrateFS(self.profiles["te(keV)"], r, volp)[-1]
+            CALCtools.volume_integration(self.profiles["te(keV)"], r, volp)[-1]
             / self.derived["volume"]
         )  # keV
         self.derived["Te_peaking"] = (
             self.profiles["te(keV)"][0] / self.derived["Te_vol"]
         )
         self.derived["Ti_vol"] = (
-            CALCtools.integrateFS(self.profiles["ti(keV)"][:, 0], r, volp)[-1]
+            CALCtools.volume_integration(self.profiles["ti(keV)"][:, 0], r, volp)[-1]
             / self.derived["volume"]
         )  # keV
         self.derived["Ti_peaking"] = (
@@ -686,17 +686,17 @@ class mitim_state:
         )
 
         self.derived["ptot_manual_vol"] = (
-            CALCtools.integrateFS(self.derived["ptot_manual"], r, volp)[-1]
+            CALCtools.volume_integration(self.derived["ptot_manual"], r, volp)[-1]
             / self.derived["volume"]
         )  # MPa
         self.derived["pthr_manual_vol"] = (
-            CALCtools.integrateFS(self.derived["pthr_manual"], r, volp)[-1]
+            CALCtools.volume_integration(self.derived["pthr_manual"], r, volp)[-1]
             / self.derived["volume"]
         )  # MPa
 
         self.derived['pfast_manual'] = self.derived['ptot_manual'] - self.derived['pthr_manual']
         self.derived["pfast_manual_vol"] = (
-            CALCtools.integrateFS(self.derived["pfast_manual"], r, volp)[-1]
+            CALCtools.volume_integration(self.derived["pfast_manual"], r, volp)[-1]
             / self.derived["volume"]
         )  # MPa
 
@@ -714,7 +714,7 @@ class mitim_state:
             / self.profiles["ne(10^19/m^3)"]
         )
         self.derived["Zeff_vol"] = (
-            CALCtools.integrateFS(self.derived["Zeff"], r, volp)[-1]
+            CALCtools.volume_integration(self.derived["Zeff"], r, volp)[-1]
             / self.derived["volume"]
         )
 
@@ -766,7 +766,7 @@ class mitim_state:
         w0_Mach1 = Vtor_LF_Mach1 / (self.derived["R_LF"])  # rad/s
         self.derived["MachNum"] = self.profiles["w0(rad/s)"] / w0_Mach1
         self.derived["MachNum_vol"] = (
-            CALCtools.integrateFS(self.derived["MachNum"], r, volp)[-1]
+            CALCtools.volume_integration(self.derived["MachNum"], r, volp)[-1]
             / self.derived["volume"]
         )
 
@@ -791,9 +791,9 @@ class mitim_state:
         # Calculate the volume averages of bt2 and bp2
 
         P = self.derived["bp2_exp"]
-        self.derived["bp2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+        self.derived["bp2_vol_avg"] = CALCtools.volume_integration(P, r, volp)[-1] / self.derived["volume"]
         P = self.derived["bt2_exp"]
-        self.derived["bt2_vol_avg"] = CALCtools.integrateFS(P, r, volp)[-1] / self.derived["volume"]
+        self.derived["bt2_vol_avg"] = CALCtools.volume_integration(P, r, volp)[-1] / self.derived["volume"]
 
         # calculate beta_poloidal and beta_toroidal using volume averaged values
         # mu0 = 4pi x 10^-7, also need to convert MPa to Pa
@@ -1278,26 +1278,15 @@ class mitim_state:
             elif self.Tion is not None:
                 self.Mion = self.Tion  # Main
             else:
-                self.Mion = (
-                    0  # If no D or T, assume that the main ion is the first and only
-                )
+                self.Mion = 0  # If no D or T, assume that the main ion is the first and only
 
-        self.ion_list_main = []
-        if self.DTplasmaBool:
-            self.ion_list_main = [self.Dion+1, self.Tion+1]
-        else:
-            self.ion_list_main = [self.Mion+1]
-        
+        self.ion_list_main = [self.Dion+1, self.Tion+1] if self.DTplasmaBool else [self.Mion+1]
         self.ion_list_impurities = [i+1 for i in range(len(self.Species)) if i+1 not in self.ion_list_main]
 
     def remove(self, ions_list):
         # First order them
         ions_list.sort()
-        print(
-            "\t\t- Removing ions in positions (of ions order, no zero): ",
-            ions_list,
-            typeMsg="i",
-        )
+        print("\t\t- Removing ions in positions (of ions order, no zero): ",ions_list,typeMsg="i",)
 
         ions_list = [i - 1 for i in ions_list]
 
@@ -1308,10 +1297,7 @@ class mitim_state:
             try:
                 self.profiles[i] = np.delete(self.profiles[i], ions_list)
             except:
-                print(
-                    f"\t\t\t* Ions {[k+1 for k in ions_list]} could not be removed",
-                    typeMsg="w",
-                )
+                print(f"\t\t\t* Ions {[k+1 for k in ions_list]} could not be removed",typeMsg="w")
                 fail = True
                 break
 
@@ -1322,9 +1308,7 @@ class mitim_state:
 
         if not fail:
             # Ensure we extract the scalar value from the array
-            self.profiles["nion"] = np.array(
-                [str(int(self.profiles["nion"][0]) - len(ions_list))]
-            )
+            self.profiles["nion"] = np.array([str(int(self.profiles["nion"][0]) - len(ions_list))])
 
         self.readSpecies()
         self.derive_quantities(rederiveGeometry=False)
@@ -1363,12 +1347,7 @@ class mitim_state:
             fZ2 += self.Species[i - 1]["Z"] ** 2 * self.derived["fi"][:, i - 1]
 
         Zr = fZ2 / fZ1
-        Zr_vol = (
-            CALCtools.integrateFS(
-                Zr, self.profiles["rmin(m)"], self.derived["volp_geo"]
-            )[-1]
-            / self.derived["volume"]
-        )
+        Zr_vol = CALCtools.volume_integration(Zr, self.profiles["rmin(m)"], self.derived["volp_geo"])[-1] / self.derived["volume"]
 
         print(f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
@@ -3271,13 +3250,13 @@ class mitim_state:
             ne = self.profiles["ne(10^19/m^3)"]
             axq.plot(self.profiles["rho(-)"], ne, color="m")
             ne_vol = (
-                CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+                CALCtools.volume_integration(ne * 0.1, r, volp)[-1] / self.derived["volume"]
             )
             axq.axhline(y=ne_vol * 10, color="m")
 
         ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
         ne[ix:] = (0,) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_vol = CALCtools.volume_integration(ne * 0.1, r, volp)[-1] / self.derived["volume"]
         ne_peaking0 = (
             ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
         )
@@ -3288,7 +3267,7 @@ class mitim_state:
 
         ne = copy.deepcopy(self.profiles["ne(10^19/m^3)"])
         ne[ix:] = (ne[ix],) * len(ne[ix:])
-        ne_vol = CALCtools.integrateFS(ne * 0.1, r, volp)[-1] / self.derived["volume"]
+        ne_vol = CALCtools.volume_integration(ne * 0.1, r, volp)[-1] / self.derived["volume"]
         ne_peaking1 = (
             ne[np.argmin(np.abs(self.derived["rho_pol"] - 0.2))] * 0.1 / ne_vol
         )

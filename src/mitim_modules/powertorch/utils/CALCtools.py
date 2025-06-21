@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import contextlib
 from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -76,72 +77,45 @@ def produceGradient_lin(r, p):
 
     return z
 
+def _to_2d(x, xp):
+    """Ensure shape (batch, N) for either NumPy or Torch."""
+    if xp is np:
+        return np.atleast_2d(x)
+    else:                           # torch
+        return x.unsqueeze(0) if x.ndim == 1 else x
 
-
-def integrateQuadPoly(r, s, p=None):
+def volume_integration(p, r, volp):
     """
-    (batch,dim)
+    Compute the volume integral  ∫ p · dV   with  dV/dr = volp.
 
-    Computes int(s*dr), so if s is s*dV/dr, then int(s*dV), which is the full integral
+    Parameters
+    ----------
+    p, r, volp : 1-D or 2-D NumPy arrays  (shape: (N,)  or  (M, N))
+                 • If they are 1-D, each represents a single radial profile.
+                 • If they are 2-D -> (batch,dim_radius)
 
-    From tgyro_volume_int.f90
-    r - minor radius
-    s - s*volp
-
-    (Modified to avoid if statements and for loops)
-
-    """
-
-    if p is None:
-        p = torch.zeros((r.shape[0], r.shape[1])).to(r)
-
-    # First point
-
-    x1, x2, x3 = r[..., 0], r[..., 1], r[..., 2]
-    f1, f2, f3 = s[..., 0], s[..., 1], s[..., 2]
-
-    p[..., 1] = (x2 - x1) * (
-        (3 * x3 - x2 - 2 * x1) * f1 / 6 / (x3 - x1)
-        + (3 * x3 - 2 * x2 - x1) * f2 / 6 / (x3 - x2)
-        - (x2 - x1) ** 2 * f3 / 6 / (x3 - x1) / (x3 - x2)
-    )
-
-    # Next points
-    x1, x2, x3 = r[..., :-2], r[..., 1:-1], r[..., 2:]
-    f1, f2, f3 = s[..., :-2], s[..., 1:-1], s[..., 2:]
-
-    p[..., 2:] = (
-        (x3 - x2)
-        / (x3 - x1)
-        / 6
-        * (
-            (2 * x3 + x2 - 3 * x1) * f3
-            + (x3 + 2 * x2 - 3 * x1) * f2 * (x3 - x1) / (x2 - x1)
-            - (x3 - x2) ** 2 * f1 / (x2 - x1)
-        )
-    )
-
-    try:
-        p = torch.cumsum(p, 1)
-    except:
-        p = np.cumsum(p, 1)
-
-    return p
-
-
-def integrateFS(P, r, volp):
-    """
-    Based on the idea that volp = dV/dr, whatever r is
-
-    Ptot = int_V P*dV = int_r P*V'*dr
-
+    Returns
+    -------
+    out : ndarray
+        • 1-D array if the inputs were 1-D
+        • 2-D array (same leading dimension as the inputs) otherwise
     """
 
-    I = integrateQuadPoly(
-        np.atleast_2d(r), np.atleast_2d(P * volp), p=np.zeros((1, P.shape[0]))
-    )[0, :]
+    # Decide backend from *p* only
+    xp      = torch if isinstance(p, torch.Tensor) else np
 
-    return I
+    # Remember whether the caller passed 1-D profiles
+    one_dim = (p.ndim == 1) and (r.ndim == 1) and (volp.ndim == 1)
+
+    # Promote to 2-D for vectorised processing
+    r_2d     = _to_2d(r, xp)
+    pdVdr_2d = _to_2d(p * volp, xp)
+
+    # Integrate row-wise (using your original routine)
+    result_2d = MATHtools.integrateQuadPoly(r_2d, pdVdr_2d)
+
+    # Collapse back to original rank if necessary
+    return result_2d[0] if one_dim else result_2d
 
 
 """
@@ -149,10 +123,6 @@ def integrateFS(P, r, volp):
 https://github.com/aliutkus/torchinterp1d
 ----------------------------------------------------------------------------------------------------------------
 """
-
-import torch
-import contextlib
-
 
 class Interp1d(torch.autograd.Function):
     def __call__(self, x, y, xnew, out=None):

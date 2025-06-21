@@ -62,7 +62,7 @@ class power_targets:
         """
 		**************************************************************************************************
 		Calculate integral of all targets, and then sum aux.
-		Reason why I do it this convoluted way is to make it faster in mitim, not to run integrateQuadPoly all the time.
+		Reason why I do it this convoluted way is to make it faster in mitim, not to run the volume integral all the time.
 		Run once for all the batch and also for electrons and ions
 		(in MW/m^2)
 		**************************************************************************************************
