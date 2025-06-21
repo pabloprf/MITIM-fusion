@@ -3606,7 +3606,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_fus_MWmiller"]
+            P = self.profiles.derived["qe_fus_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3614,7 +3614,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_fus_MWmiller"]
+            P = self.profiles_final.derived["qe_fus_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3647,7 +3647,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_aux_MWmiller"]
+            P = self.profiles.derived["qe_aux_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3655,7 +3655,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_aux_MWmiller"]
+            P = self.profiles_final.derived["qe_aux_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3728,7 +3728,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -1 * sign * self.profiles.derived["qe_rad_MWmiller"]
+            P = -1 * sign * self.profiles.derived["qe_rad_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3736,7 +3736,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_rad_MWmiller"]
+            P = self.profiles_final.derived["qe_rad_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3800,14 +3800,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -self.profiles.derived["qe_exc_MWmiller"]
+            P = -self.profiles.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -self.profiles_final.derived["qe_exc_MWmiller"]
+            P = -self.profiles_final.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3845,14 +3845,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_MWmiller"]
+            P = self.profiles.derived["qe_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_MWmiller"]
+            P = self.profiles_final.derived["qe_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3886,14 +3886,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_fus_MWmiller"]
+            P = self.profiles.derived["qi_fus_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_fus_MWmiller"]
+            P = self.profiles_final.derived["qi_fus_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3935,20 +3935,20 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_aux_MWmiller"]
+            P = self.profiles.derived["qi_aux_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_aux_MWmiller"]
+            P = self.profiles_final.derived["qi_aux_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
             ax.plot(
                 roa,
-                self.profiles_final.derived["qi_aux_MWmiller"]
-                + self.profiles_final.derived["qe_aux_MWmiller"],
+                self.profiles_final.derived["qi_aux_MW"]
+                + self.profiles_final.derived["qe_aux_MW"],
                 "-.",
                 c="y",
                 lw=0.5,
@@ -3974,8 +3974,8 @@ class TGYROoutput:
                 / self.profiles.profiles["rmin(m)"][-1]
             )
             P = (
-                self.profiles.derived["qe_fus_MWmiller"]
-                + self.profiles.derived["qi_fus_MWmiller"]
+                self.profiles.derived["qe_fus_MW"]
+                + self.profiles.derived["qi_fus_MW"]
             )
             ax.plot(roa, 5 * P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
@@ -3984,8 +3984,8 @@ class TGYROoutput:
                 / self.profiles_final.profiles["rmin(m)"][-1]
             )
             P = (
-                self.profiles_final.derived["qe_fus_MWmiller"]
-                + self.profiles_final.derived["qi_fus_MWmiller"]
+                self.profiles_final.derived["qe_fus_MW"]
+                + self.profiles_final.derived["qi_fus_MW"]
             )
             ax.plot(roa, 5 * P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
@@ -4025,7 +4025,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_exc_MWmiller"]
+            P = self.profiles.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -4033,7 +4033,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_exc_MWmiller"]
+            P = self.profiles_final.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -4059,7 +4059,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_MWmiller"]
+            P = self.profiles.derived["qi_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -4067,7 +4067,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_MWmiller"]
+            P = self.profiles_final.derived["qi_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)

@@ -110,7 +110,7 @@ def calculator(
         p.volume_integrate(p.plasma["qrad"]) * p.plasma["volp"]
     )[..., -1]
 
-    p.profiles.deriveQuantities()
+    p.profiles.derive_quantities()
     
     p.from_powerstate(
         write_input_gacode=folder / "input.gacode.new.powerstate",

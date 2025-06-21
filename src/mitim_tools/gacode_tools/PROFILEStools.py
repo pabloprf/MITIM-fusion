@@ -2,6 +2,8 @@ import copy
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
+from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gacode_tools.utils import GEOMETRYtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -15,6 +17,10 @@ class PROFILES_GACODE(mitim_state):
     and writes them in the way that MITIMstate class expects.
     '''
 
+    # ------------------------------------------------------------------
+    # Reading and interpreting
+    # ------------------------------------------------------------------
+
     def __init__(self, file, calculateDerived=True, mi_ref=None):
 
         super().__init__(type_file='input.gacode')
@@ -23,21 +29,12 @@ class PROFILES_GACODE(mitim_state):
         Depending on resolution, derived can be expensive, so I mmay not do it every time
         """
 
-        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
-        self.titles_singleArr = [
-            "masse",
-            "mass",
-            "ze",
-            "z",
-            "torfluxa(Wb/radian)",
-            "rcentr(m)",
-            "bcentr(T)",
-            "current(MA)",
-        ]
-        self.titles_single = self.titles_singleNum + self.titles_singleArr
-
         self.file = file
 
+        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
+        self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
+        self.titles_single = self.titles_singleNum + self.titles_singleArr
+        
         if self.file is not None:
             with open(self.file, "r") as f:
                 self.lines = f.readlines()
@@ -45,10 +42,10 @@ class PROFILES_GACODE(mitim_state):
             # Read file and store raw data
             self._read_header()
             self._read_profiles()
-
             self._ensure_existence()
 
-            self.deriveQuantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            # Derive
+            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
 
     def _read_header(self):
         for i in range(len(self.lines)):

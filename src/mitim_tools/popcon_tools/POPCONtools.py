@@ -202,8 +202,8 @@ class MITIMpopcon:
         
         Prad_residual = (point['P_radiation'].data.magnitude - profiles_gacode.derived['Prad']) / profiles_gacode.derived['Prad']
 
-        Pin_derived = (profiles_gacode.derived['qi_aux_MWmiller'][-1]
-                       +profiles_gacode.derived['qe_aux_MWmiller'][-1]
+        Pin_derived = (profiles_gacode.derived['qi_aux_MW'][-1]
+                       +profiles_gacode.derived['qe_aux_MW'][-1]
                        ) 
         
         Pin_residual = (point['P_auxillary_launched'].data.magnitude - Pin_derived) / Pin_derived
@@ -428,13 +428,13 @@ class MITIMpopcon:
             print(f"P_sol: ", f"POPCON: {(point['P_LH_thresh'].data.magnitude *point['ratio_of_P_SOL_to_P_LH'].data.magnitude):.2f}",
                 f"GACODE: {profiles_gacode.derived['Psol']:.2f}","(MW)", f"(~%{point['ratio_of_P_SOL_to_P_LH'].data.magnitude*1e2:.2f} of LH threshold)")
             print(f"P_aux: ", f"POPCON: {point['P_auxillary_launched'].data.magnitude:.2f}",
-                f"GACODE: {(profiles_gacode.derived['qi_aux_MWmiller'][-1]+profiles_gacode.derived['qe_aux_MWmiller'][-1]):.2f}",
+                f"GACODE: {(profiles_gacode.derived['qi_aux_MW'][-1]+profiles_gacode.derived['qe_aux_MW'][-1]):.2f}",
                 "(MW)")
             print(f"P_rad: ", f"POPCON: {point['P_radiation'].data.magnitude:.2f}",f"GACODE: {profiles_gacode.derived['Prad']:.2f}","(MW)")
             print(f"P_ext: ", f"POPCON: {point['P_external'].data.magnitude:.2f}","(MW)")
-            print(f"P_ohm: ", f"POPCON: {point['P_ohmic'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['qOhm_MWmiller'][-1]:.2f}","(MW)")
+            print(f"P_ohm: ", f"POPCON: {point['P_ohmic'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['qOhm_MW'][-1]:.2f}","(MW)")
             print(f"P_in:  ", f"POPCON: {point['P_in'].data.magnitude:.2f}", 
-                f"GACODE: {(profiles_gacode.derived['qOhm_MWmiller'][-1]+profiles_gacode.derived['qi_aux_MWmiller'][-1]+profiles_gacode.derived['qe_aux_MWmiller'][-1]+profiles_gacode.derived['Pfus']*0.2):.2f}",
+                f"GACODE: {(profiles_gacode.derived['qOhm_MW'][-1]+profiles_gacode.derived['qi_aux_MW'][-1]+profiles_gacode.derived['qe_aux_MW'][-1]+profiles_gacode.derived['Pfus']*0.2):.2f}",
                 "(MW)")
             print(f"q95:   ", f"POPCON: {point['q_star'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['q95']:.2f}")
             print(f"Wtot:  ", f"POPCON: {point['plasma_stored_energy'].data.magnitude:.2f}", f"GACODE: {profiles_gacode.derived['Wthr']:.2f}", "(MJ)")

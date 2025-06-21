@@ -69,7 +69,7 @@ def gacode_to_powerstate(self, rho_vec=None):
         ["rho", "rho(-)", None, True, False],
         ["roa", "roa", None, True, True],
         ["Rmajoa", "Rmajoa", None, True, True],
-        ["volp", "volp_miller", None, True, True],
+        ["volp", "volp_geo", None, True, True],
         ["rmin", "rmin(m)", None, True, False],
         ["te", "te(keV)", None, True, False],
         ["ti", "ti(keV)", 0, True, False],
@@ -114,21 +114,21 @@ def gacode_to_powerstate(self, rho_vec=None):
     # *********************************************************************************************
 
     quantitites = {}
-    quantitites["QeMWm2_fixedtargets"] = input_gacode.derived["qe_aux_MWmiller"]
-    quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MWmiller"]
-    quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20miller"]
-    quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20miller"] * 0.0
+    quantitites["QeMWm2_fixedtargets"] = input_gacode.derived["qe_aux_MW"]
+    quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MW"]
+    quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20"]
+    quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20"] * 0.0
     quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
 
     if self.TargetOptions["ModelOptions"]["TypeTarget"] < 3:
         # Fusion and radiation fixed if 1,2
-        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MWmiller"] - input_gacode.derived["qrad_MWmiller"]
-        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qi_fus_MWmiller"]
+        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MW"] - input_gacode.derived["qrad_MW"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qi_fus_MW"]
     
     if self.TargetOptions["ModelOptions"]["TypeTarget"] < 2:
         # Exchange fixed if 1
-        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qe_exc_MWmiller"]
-        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qe_exc_MWmiller"]
+        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qe_exc_MW"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qe_exc_MW"]
 
     for key in quantitites:
         
@@ -335,7 +335,7 @@ def powerstate_to_gacode(
     # ------------------------------------------------------------------------------------------
 
     if rederive or recompute_ptot:
-        profiles.deriveQuantities(rederiveGeometry=False)
+        profiles.derive_quantities(rederiveGeometry=False)
 
     if recompute_ptot:
         profiles.selfconsistentPTOT()
@@ -347,7 +347,7 @@ def powerstate_to_gacode(
 
 def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
 
-    profiles.deriveQuantities(rederiveGeometry=False)
+    profiles.derive_quantities(rederiveGeometry=False)
 
     print("\t- Insering powers")
 

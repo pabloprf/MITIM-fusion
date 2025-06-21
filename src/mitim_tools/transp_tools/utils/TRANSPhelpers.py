@@ -808,7 +808,7 @@ class transp_input_time:
             z = self.p.derived['Zeff']
         elif var == 'PichT':
             x = [1]
-            z = self.p.derived['qRF_MWmiller'][-1]*1E6
+            z = self.p.derived['qRF_MW'][-1]*1E6
 
         return x,z
 

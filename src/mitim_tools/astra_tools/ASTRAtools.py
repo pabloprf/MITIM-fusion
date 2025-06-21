@@ -342,7 +342,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     p.profiles['rho(-)'][0] = 0.0
 
     # rederive quantities
-    p.deriveQuantities()
+    p.derive_quantities()
 
     # Print output to check Q, Pfus, etc.
     p.printInfo()
@@ -501,7 +501,7 @@ def create_initial_conditions(te_avg,
                 profiles.makeAllThermalIonsHaveSameTemp()
                 profiles.profiles['ni(10^19/m^3)'][:,0] = profiles.profiles['ne(10^19/m^3)']
                 profiles.enforceQuasineutrality()
-                profiles.deriveQuantities()
+                profiles.derive_quantities()
 
                 print("residual:", ((profiles.derived['BetaN_engineering']-betan_desired) / betan_desired)**2)
 

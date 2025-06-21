@@ -338,7 +338,7 @@ class TGLF:
         print("> Setting up normalizations")
 
         print("\t- Using mass of deuterium to unnormalize TGLF (not necesarily the first ion)",typeMsg="i")
-        self.tgyro.profiles.deriveQuantities(mi_ref=mi_D)
+        self.tgyro.profiles.derive_quantities(mi_ref=mi_D)
 
         self.NormalizationSets, cdf = NORMtools.normalizations(
             self.tgyro.profiles,
@@ -398,7 +398,7 @@ class TGLF:
 
             self.profiles = self.tgyro.profiles
 
-        self.profiles.deriveQuantities(mi_ref=mi_D)
+        self.profiles.derive_quantities(mi_ref=mi_D)
 
         self.profiles.correct(options={'recompute_ptot':recalculatePTOT,'removeFast':onlyThermal_TGYRO})
 
@@ -451,7 +451,7 @@ class TGLF:
             "\t- Using mass of deuterium to normalize things (not necesarily the first ion)",
             typeMsg="w",
         )
-        self.profiles.deriveQuantities(mi_ref=mi_D)
+        self.profiles.derive_quantities(mi_ref=mi_D)
 
         self.NormalizationSets, cdf = NORMtools.normalizations(
             self.profiles,

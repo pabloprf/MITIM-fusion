@@ -420,14 +420,14 @@ class MITIMgeqdsk:
 
         p = MITIMstate.mitim_state.scratch(profiles)
 
-        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
+        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
         p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
 
         # -------------------------------------------------------------------------------------------------------
         # Ready to go
         # -------------------------------------------------------------------------------------------------------
 
-        p.deriveQuantities()
+        p.derive_quantities()
 
         # -------------------------------------------------------------------------------------------------------
         # Plotting

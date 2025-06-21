@@ -6,9 +6,8 @@ import matplotlib.pyplot as plt
 from collections import OrderedDict
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.utils import CALCtools
-from mitim_tools.gs_tools import GEQtools
 from mitim_tools.gacode_tools import NEOtools
-from mitim_tools.gacode_tools.utils import GACODEdefaults, GEOMETRYtools
+from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -24,11 +23,10 @@ class mitim_state:
 
         self.type = type_file
 
-    def deriveQuantities(self, mi_ref=None, calculateDerived=True, n_theta_geo=1001, rederiveGeometry=True):
+    def derive_quantities(self, mi_ref=None, calculateDerived=True, rederiveGeometry=True):
 
         # -------------------------------------------------------------------------------------------------------------------
         self.readSpecies()
-        self.produce_shape_lists()
         self.mi_first = self.Species[0]["A"]
         self.DTplasma()
         self.sumFast()
@@ -46,24 +44,21 @@ class mitim_state:
 
         # Useful to have gradients in the basic ----------------------------------------------------------
         self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
-        self.derived["aLne"] = aLT(
-            self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"]
-        )
+        self.derived["aLne"] = aLT(self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"])
 
         self.derived["aLTi"] = self.profiles["ti(keV)"] * 0.0
         self.derived["aLni"] = []
         for i in range(self.profiles["ti(keV)"].shape[1]):
-            self.derived["aLTi"][:, i] = aLT(
-                self.profiles["rmin(m)"], self.profiles["ti(keV)"][:, i]
-            )
-            self.derived["aLni"].append(
-                aLT(self.profiles["rmin(m)"], self.profiles["ni(10^19/m^3)"][:, i])
-            )
+            self.derived["aLTi"][:, i] = aLT(self.profiles["rmin(m)"], self.profiles["ti(keV)"][:, i])
+            self.derived["aLni"].append(aLT(self.profiles["rmin(m)"], self.profiles["ni(10^19/m^3)"][:, i]))
         self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
         # ------------------------------------------------------------------------------------------------
 
         if calculateDerived:
-            self.deriveQuantities_full(rederiveGeometry=rederiveGeometry)
+            self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
+
+    def derive_geometry(self, **kwargs):
+        raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
 
     # -------------------------------------------------------------------------------------
     # Method to write a scratch file
@@ -128,35 +123,14 @@ class mitim_state:
 
         for ikey in variables:
             if ikey in profiles_new.profiles:
-                print(
-                    f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}'
-                )
+                print(f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}')
                 self.profiles[ikey] = profiles_new.profiles[ikey]
 
-        self.deriveQuantities()
+        self.derive_quantities()
 
         if write_new_file is not None:
             self.writeCurrentStatus(file=write_new_file)
-            
-    def produce_shape_lists(self):
-        self.shape_cos = [
-            self.profiles["shape_cos0(-)"],  # tilt
-            self.profiles["shape_cos1(-)"],
-            self.profiles["shape_cos2(-)"],
-            self.profiles["shape_cos3(-)"],
-            self.profiles["shape_cos4(-)"],
-            self.profiles["shape_cos5(-)"],
-            self.profiles["shape_cos6(-)"],
-        ]
-        self.shape_sin = [
-            None,
-            None,  # s1 is arcsin(triangularity)
-            None,  # s2 is minus squareness
-            self.profiles["shape_sin3(-)"],
-            self.profiles["shape_sin4(-)"],
-            self.profiles["shape_sin5(-)"],
-            self.profiles["shape_sin6(-)"],
-        ]
+
 
     def readSpecies(self, maxSpecies=100):
         maxSpecies = int(self.profiles["nion"][0])
@@ -191,11 +165,9 @@ class mitim_state:
                 )
             else:
                 self.nThermal += self.profiles["ni(10^19/m^3)"][:, sp]
-                self.nZThermal += (
-                    self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
-                )
+                self.nZThermal += self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
 
-    def deriveQuantities_full(self, mi_ref=None, n_theta_geo=1001, rederiveGeometry=True):
+    def derive_quantities_full(self, mi_ref=None, rederiveGeometry=True):
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
@@ -220,15 +192,8 @@ class mitim_state:
         self.derived["Rmajoa"] = self.profiles["rmaj(m)"] / self.derived["a"]
         self.derived["Zmagoa"] = self.profiles["zmag(m)"] / self.derived["a"]
 
-        self.derived["torflux"] = (
-            float(self.profiles["torfluxa(Wb/radian)"][0])
-            * 2
-            * np.pi
-            * self.profiles["rho(-)"] ** 2
-        )  # Wb
-        self.derived["B_unit"] = PLASMAtools.Bunit(
-            self.derived["torflux"], self.profiles["rmin(m)"]
-        )
+        self.derived["torflux"] = float(self.profiles["torfluxa(Wb/radian)"][0])* 2* np.pi* self.profiles["rho(-)"] ** 2 # Wb
+        self.derived["B_unit"] = PLASMAtools.Bunit(self.derived["torflux"], self.profiles["rmin(m)"])
 
         self.derived["psi_pol_n"] = (
             self.profiles["polflux(Wb/radian)"] - self.profiles["polflux(Wb/radian)"][0]
@@ -238,100 +203,42 @@ class mitim_state:
         )
         self.derived["rho_pol"] = self.derived["psi_pol_n"] ** 0.5
 
-        self.derived["q95"] = np.interp(
-            0.95, self.derived["psi_pol_n"], self.profiles["q(-)"]
-        )
+        self.derived["q95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["q(-)"])
 
         self.derived["q0"] = self.profiles["q(-)"][0]
 
         if self.profiles["q(-)"].min() > 1.0: 
             self.derived["rho_saw"] = np.nan
         else:
-            self.derived["rho_saw"] = np.interp(
-                1.0, self.profiles["q(-)"], self.profiles["rho(-)"]
-            )
+            self.derived["rho_saw"] = np.interp(1.0, self.profiles["q(-)"], self.profiles["rho(-)"])
 
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
-        if rederiveGeometry or ("volp_miller" not in self.derived):
-
-            self.produce_shape_lists()
-
-            (
-                self.derived["volp_miller"],
-                self.derived["surf_miller"],
-                self.derived["gradr_miller"],
-                self.derived["bp2_miller"],
-                self.derived["bt2_miller"],
-                self.derived["geo_bt"],
-            ) = GEOMETRYtools.calculateGeometricFactors(
-                self,
-                n_theta=n_theta_geo,
-            )
-
-            # Calculate flux surfaces
-            cn = np.array(self.shape_cos).T
-            sn = copy.deepcopy(self.shape_sin)
-            sn[0] = self.profiles["rmaj(m)"]*0.0
-            sn[1] = np.arcsin(self.profiles["delta(-)"])
-            sn[2] = -self.profiles["zeta(-)"]
-            sn = np.array(sn).T
-            flux_surfaces = GEQtools.mitim_flux_surfaces()
-            flux_surfaces.reconstruct_from_mxh_moments(
-                self.profiles["rmaj(m)"],
-                self.profiles["rmin(m)"],
-                self.profiles["kappa(-)"],
-                self.profiles["zmag(m)"],
-                cn,
-                sn)
-            self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
-            # -----------------------------------------------
-
-            #cross-sectional area of each flux surface
-            self.derived["surfXS"] = GEOMETRYtools.xsec_area_RZ(
-                self.derived["R_surface"],
-                self.derived["Z_surface"]
-                )
-
-            self.derived["R_LF"] = self.derived["R_surface"].max(
-                axis=1
-            )  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
-
-            # For Synchrotron
-            self.derived["B_ref"] = np.abs(
-                self.derived["B_unit"] * self.derived["geo_bt"]
-            )
+        if rederiveGeometry or ("volp_geo" not in self.derived):
+            self.derive_geometry()
 
         # --------------------------------------------------------------------------
         # Reference mass
         # --------------------------------------------------------------------------
 
-        # Forcing mass from this specific deriveQuantities call
+        # Forcing mass from this specific derive_quantities call
         if mi_ref is not None:
             self.derived["mi_ref"] = mi_ref
-            print(f'\t- Using mi_ref={self.derived["mi_ref"]} provided in this particular deriveQuantities method, subtituting initialization one',typeMsg='i')
+            print(f'\t- Using mi_ref={self.derived["mi_ref"]} provided in this particular derive_quantities method, subtituting initialization one',typeMsg='i')
 
         # ---------------------------------------------------------------------------------------------------------------------
         # --------- Important for scaling laws
         # ---------------------------------------------------------------------------------------------------------------------
 
-        self.derived["kappa95"] = np.interp(
-            0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
-        )
+        self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
-        self.derived["kappa995"] = np.interp(
-            0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"]
-        )
+        self.derived["kappa995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 
-        self.derived["delta95"] = np.interp(
-            0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"]
-        )
+        self.derived["delta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
-        self.derived["delta995"] = np.interp(
-            0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"]
-        )
+        self.derived["delta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
         self.derived["Rgeo"] = float(self.profiles["rcentr(m)"][-1])
         self.derived["B0"] = np.abs(float(self.profiles["bcentr(T)"][-1]))
@@ -339,21 +246,17 @@ class mitim_state:
         # ---------------------------------------------------------------------------------------------------------------------
 
         """
-		surf_miller is truly surface area, but because of the GACODE definitions of flux, 
+		surf_geo is truly surface area, but because of the GACODE definitions of flux, 
 		Surf 		= V' <|grad r|>	 
 		Surf_GACODE = V'
 		"""
 
-        self.derived["surfGACODE_miller"] = (self.derived["surf_miller"] / self.derived["gradr_miller"])
+        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
 
-        self.derived["surfGACODE_miller"][np.isnan(self.derived["surfGACODE_miller"])] = 0
+        self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
 
-        self.derived["c_s"] = PLASMAtools.c_s(
-            self.profiles["te(keV)"], self.derived["mi_ref"]
-        )
-        self.derived["rho_s"] = PLASMAtools.rho_s(
-            self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"]
-        )
+        self.derived["c_s"] = PLASMAtools.c_s(self.profiles["te(keV)"], self.derived["mi_ref"])
+        self.derived["rho_s"] = PLASMAtools.rho_s(self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"])
 
         self.derived["q_gb"], self.derived["g_gb"], self.derived["pi_gb"], self.derived["s_gb"], _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
@@ -427,25 +330,23 @@ class mitim_state:
 		"""
 
         r = self.profiles["rmin(m)"]
-        volp = self.derived["volp_miller"]
+        volp = self.derived["volp_geo"]
 
-        self.derived["qe_MWmiller"] = CALCtools.integrateFS(self.derived["qe"], r, volp)
-        self.derived["qi_MWmiller"] = CALCtools.integrateFS(self.derived["qi"], r, volp)
-        self.derived["ge_10E20miller"] = CALCtools.integrateFS(
-            self.derived["ge"] * 1e-20, r, volp
-        )  # Because the units were #/sec/m^3
+        self.derived["qe_MW"] = CALCtools.integrateFS(self.derived["qe"], r, volp)
+        self.derived["qi_MW"] = CALCtools.integrateFS(self.derived["qi"], r, volp)
+        self.derived["ge_10E20"] = CALCtools.integrateFS(self.derived["ge"] * 1e-20, r, volp)  # Because the units were #/sec/m^3
 
-        self.derived["geIn"] = self.derived["ge_10E20miller"][-1]  # 1E20 particles/sec
+        self.derived["geIn"] = self.derived["ge_10E20"][-1]  # 1E20 particles/sec
 
-        self.derived["qe_MWm2"] = self.derived["qe_MWmiller"] / (volp)
-        self.derived["qi_MWm2"] = self.derived["qi_MWmiller"] / (volp)
-        self.derived["ge_10E20m2"] = self.derived["ge_10E20miller"] / (volp)
+        self.derived["qe_MWm2"] = self.derived["qe_MW"] / (volp)
+        self.derived["qi_MWm2"] = self.derived["qi_MW"] / (volp)
+        self.derived["ge_10E20m2"] = self.derived["ge_10E20"] / (volp)
 
         self.derived["QiQe"] = self.derived["qi_MWm2"] / np.where(self.derived["qe_MWm2"] == 0, 1e-10, self.derived["qe_MWm2"]) # to avoid division by zero
 
         # "Convective" flux
-        self.derived["ce_MWmiller"] = PLASMAtools.convective_flux(
-            self.profiles["te(keV)"], self.derived["ge_10E20miller"]
+        self.derived["ce_MW"] = PLASMAtools.convective_flux(
+            self.profiles["te(keV)"], self.derived["ge_10E20"]
         )
         self.derived["ce_MWm2"] = PLASMAtools.convective_flux(
             self.profiles["te(keV)"], self.derived["ge_10E20m2"]
@@ -465,10 +366,10 @@ class mitim_state:
             P += self.profiles["qbrem(MW/m^3)"]
         if "qline(MW/m^3)" in self.profiles:
             P += self.profiles["qline(MW/m^3)"]
-        self.derived["qe_rad_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_rad_MW"] = CALCtools.integrateFS(P, r, volp)
 
         P = self.profiles["qei(MW/m^3)"]
-        self.derived["qe_exc_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_exc_MW"] = CALCtools.integrateFS(P, r, volp)
 
         """
 		---------------------------------------------------------------------------------------------------------------------
@@ -485,14 +386,14 @@ class mitim_state:
                 P += self.profiles[i]
 
         self.derived["qe_auxONLY"] = copy.deepcopy(P)
-        self.derived["qe_auxONLY_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_auxONLY_MW"] = CALCtools.integrateFS(P, r, volp)
 
         for i in ["qione(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
 
         self.derived["qe_aux"] = copy.deepcopy(P)
-        self.derived["qe_aux_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_aux_MW"] = CALCtools.integrateFS(P, r, volp)
 
         # ** Ions
 
@@ -502,14 +403,14 @@ class mitim_state:
                 P += self.profiles[i]
 
         self.derived["qi_auxONLY"] = copy.deepcopy(P)
-        self.derived["qi_auxONLY_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_auxONLY_MW"] = CALCtools.integrateFS(P, r, volp)
 
         for i in ["qioni(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
 
         self.derived["qi_aux"] = copy.deepcopy(P)
-        self.derived["qi_aux_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_aux_MW"] = CALCtools.integrateFS(P, r, volp)
 
         # ** General
 
@@ -517,19 +418,19 @@ class mitim_state:
         for i in ["qohme(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qOhm_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qOhm_MW"] = CALCtools.integrateFS(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qRF_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qRF_MW"] = CALCtools.integrateFS(P, r, volp)
         if "qrfe(MW/m^3)" in self.profiles:
-            self.derived["qRFe_MWmiller"] = CALCtools.integrateFS(
+            self.derived["qRFe_MW"] = CALCtools.integrateFS(
                 self.profiles["qrfe(MW/m^3)"], r, volp
             )
         if "qrfi(MW/m^3)" in self.profiles:
-            self.derived["qRFi_MWmiller"] = CALCtools.integrateFS(
+            self.derived["qRFi_MW"] = CALCtools.integrateFS(
                 self.profiles["qrfi(MW/m^3)"], r, volp
             )
 
@@ -537,36 +438,36 @@ class mitim_state:
         for i in ["qbeame(MW/m^3)", "qbeami(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qBEAM_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qBEAM_MW"] = CALCtools.integrateFS(P, r, volp)
 
-        self.derived["qrad_MWmiller"] = CALCtools.integrateFS(self.derived["qrad"], r, volp)
+        self.derived["qrad_MW"] = CALCtools.integrateFS(self.derived["qrad"], r, volp)
         if "qsync(MW/m^3)" in self.profiles:
-            self.derived["qrad_sync_MWmiller"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
+            self.derived["qrad_sync_MW"] = CALCtools.integrateFS(self.profiles["qsync(MW/m^3)"], r, volp)
         else:
-            self.derived["qrad_sync_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
+            self.derived["qrad_sync_MW"] = self.derived["qrad_MW"]*0.0
         if "qbrem(MW/m^3)" in self.profiles:
-            self.derived["qrad_brem_MWmiller"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
+            self.derived["qrad_brem_MW"] = CALCtools.integrateFS(self.profiles["qbrem(MW/m^3)"], r, volp)
         else:
-            self.derived["qrad_brem_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
+            self.derived["qrad_brem_MW"] = self.derived["qrad_MW"]*0.0
         if "qline(MW/m^3)" in self.profiles:    
-            self.derived["qrad_line_MWmiller"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
+            self.derived["qrad_line_MW"] = CALCtools.integrateFS(self.profiles["qline(MW/m^3)"], r, volp)
         else:
-            self.derived["qrad_line_MWmiller"] = self.derived["qrad_MWmiller"]*0.0
+            self.derived["qrad_line_MW"] = self.derived["qrad_MW"]*0.0
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qfuse(MW/m^3)", "qfusi(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qFus_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qFus_MW"] = CALCtools.integrateFS(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qioni(MW/m^3)", "qione(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
-        self.derived["qz_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qz_MW"] = CALCtools.integrateFS(P, r, volp)
 
-        self.derived["q_MWmiller"] = (
-            self.derived["qe_MWmiller"] + self.derived["qi_MWmiller"]
+        self.derived["q_MW"] = (
+            self.derived["qe_MW"] + self.derived["qi_MW"]
         )
 
         # ---------------------------------------------------------------------------------------------------------------------
@@ -575,12 +476,12 @@ class mitim_state:
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfuse(MW/m^3)" in self.profiles:
             P = self.profiles["qfuse(MW/m^3)"]
-        self.derived["qe_fus_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qe_fus_MW"] = CALCtools.integrateFS(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfusi(MW/m^3)" in self.profiles:
             P = self.profiles["qfusi(MW/m^3)"]
-        self.derived["qi_fus_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["qi_fus_MW"] = CALCtools.integrateFS(P, r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         if "qfusi(MW/m^3)" in self.profiles:
@@ -589,7 +490,7 @@ class mitim_state:
             ) * 5
             P = self.derived["q_fus"]
         self.derived["q_fus"] = P
-        self.derived["q_fus_MWmiller"] = CALCtools.integrateFS(P, r, volp)
+        self.derived["q_fus_MW"] = CALCtools.integrateFS(P, r, volp)
 
         """
 		Derivatives
@@ -622,26 +523,26 @@ class mitim_state:
         """
 		Other, performance
 		"""
-        qFus = self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"]
+        qFus = self.derived["qe_fus_MW"] + self.derived["qi_fus_MW"]
         self.derived["Pfus"] = qFus[-1] * 5
 
         # Note that in cases with NPRAD=0 in TRANPS, this includes radiation! no way to deal wit this...
-        qIn = self.derived["qe_aux_MWmiller"] + self.derived["qi_aux_MWmiller"]
+        qIn = self.derived["qe_aux_MW"] + self.derived["qi_aux_MW"]
         self.derived["qIn"] = qIn[-1]
         self.derived["Q"] = self.derived["Pfus"] / self.derived["qIn"]
         self.derived["qHeat"] = qIn[-1] + qFus[-1]
 
         self.derived["qTr"] = (
-            self.derived["qe_aux_MWmiller"]
-            + self.derived["qi_aux_MWmiller"]
-            + (self.derived["qe_fus_MWmiller"] + self.derived["qi_fus_MWmiller"])
-            - self.derived["qrad_MWmiller"]
+            self.derived["qe_aux_MW"]
+            + self.derived["qi_aux_MW"]
+            + (self.derived["qe_fus_MW"] + self.derived["qi_fus_MW"])
+            - self.derived["qrad_MW"]
         )
 
-        self.derived["Prad"] = self.derived["qrad_MWmiller"][-1]
-        self.derived["Prad_sync"] = self.derived["qrad_sync_MWmiller"][-1]
-        self.derived["Prad_brem"] = self.derived["qrad_brem_MWmiller"][-1]
-        self.derived["Prad_line"] = self.derived["qrad_line_MWmiller"][-1]
+        self.derived["Prad"] = self.derived["qrad_MW"][-1]
+        self.derived["Prad_sync"] = self.derived["qrad_sync_MW"][-1]
+        self.derived["Prad_brem"] = self.derived["qrad_brem_MW"][-1]
+        self.derived["Prad_line"] = self.derived["qrad_line_MW"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
 
         self.derived["ni_thr"] = []
@@ -884,8 +785,8 @@ class mitim_state:
         ---------------------------------------------------------------------------------------------------
         '''
 
-        self.derived["bp2_exp"] = self.derived["bp2_miller"] * self.derived["B_unit"] ** 2
-        self.derived["bt2_exp"] = self.derived["bt2_miller"] * self.derived["B_unit"] ** 2
+        self.derived["bp2_exp"] = self.derived["bp2_geo"] * self.derived["B_unit"] ** 2
+        self.derived["bt2_exp"] = self.derived["bt2_geo"] * self.derived["B_unit"] ** 2
 
         # Calculate the volume averages of bt2 and bp2
 
@@ -1099,7 +1000,7 @@ class mitim_state:
                 np.expand_dims(
                     np.transpose(self.profiles["ni(10^19/m^3)"][:i] * 0.1), 0
                 ),
-                np.expand_dims(self.derived["volp_miller"][:i], 0),
+                np.expand_dims(self.derived["volp_geo"][:i], 0),
             )
 
             _, _, Ni_x[i], _ = PLASMAtools.calculateContent(
@@ -1112,7 +1013,7 @@ class mitim_state:
                 np.expand_dims(
                     np.transpose(self.profiles["ni(10^19/m^3)"][:i] * 0.1), 0
                 ),
-                np.expand_dims(self.derived["volp_miller"][:i], 0),
+                np.expand_dims(self.derived["volp_geo"][:i], 0),
             )
 
         We, Wi, Ne, Ni = (
@@ -1169,7 +1070,7 @@ class mitim_state:
         except KeyError:
             print("\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",typeMsg="w",)
             if reDeriveIfNotFound:
-                self.deriveQuantities()
+                self.derive_quantities()
                 self.printInfo(label=label, reDeriveIfNotFound=False)
 
     def export_to_table(self, table=None, name=None):
@@ -1353,13 +1254,9 @@ class mitim_state:
 
                     pro[i] = np.transpose(prof)
 
-        self.produce_shape_lists()
+        self.derive_quantities()
 
-        self.deriveQuantities()
-
-        print(
-            f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}"
-        )
+        print(f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}")
 
     def DTplasma(self):
         self.Dion, self.Tion = None, None
@@ -1430,7 +1327,7 @@ class mitim_state:
             )
 
         self.readSpecies()
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         print("\t\t\t- Set of ions in updated profiles: ", self.profiles["name"])
 
@@ -1453,11 +1350,7 @@ class mitim_state:
         else:
             lab = "therm"
 
-        print(
-            "\t\t- Lumping ions in positions (of ions order, no zero): ",
-            ions_list,
-            typeMsg="i",
-        )
+        print("\t\t- Lumping ions in positions (of ions order, no zero): ",ions_list,typeMsg="i",)
 
         if forcename is None:
             forcename = "LUMPED"
@@ -1472,7 +1365,7 @@ class mitim_state:
         Zr = fZ2 / fZ1
         Zr_vol = (
             CALCtools.integrateFS(
-                Zr, self.profiles["rmin(m)"], self.derived["volp_miller"]
+                Zr, self.profiles["rmin(m)"], self.derived["volp_geo"]
             )[-1]
             / self.derived["volume"]
         )
@@ -1507,7 +1400,7 @@ class mitim_state:
         )
 
         self.readSpecies()
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         # Remove species
         self.remove(ions_list)
@@ -1585,11 +1478,11 @@ class mitim_state:
 
         self.readSpecies()
 
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         if enforceSameGradients:
             self.scaleAllThermalDensities()
-            self.deriveQuantities(rederiveGeometry=False)
+            self.derive_quantities(rederiveGeometry=False)
 
         print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
@@ -1620,7 +1513,7 @@ class mitim_state:
             )
 
         self.readSpecies()
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         if position_to_moveTO_in_profiles > position_to_moveFROM_in_profiles:
             self.remove([position_to_moveFROM_in_profiles + 1])
@@ -1660,7 +1553,7 @@ class mitim_state:
             )
 
         self.readSpecies()
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
     def correct(self, options={}, write=False, new_file=None):
         """
@@ -1738,7 +1631,7 @@ class mitim_state:
 
         # Recompute ptot
         if recompute_ptot:
-            self.deriveQuantities(rederiveGeometry=False)
+            self.derive_quantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
@@ -1755,7 +1648,7 @@ class mitim_state:
         # Re-derive
         # ----------------------------------------------------------------------
 
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         # ----------------------------------------------------------------------
         # Write
@@ -1771,7 +1664,7 @@ class mitim_state:
                 self.profiles["ni(10^19/m^3)"][:, sp] = self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
                 txt += f"{self.Species[sp]['N']} "
         print(f"\t\t- Making all thermal ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
     def make_fast_ions_thermal(self):
         modified_num = 0
@@ -1819,18 +1712,18 @@ class mitim_state:
             f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)"
         )
 
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
     def introduceRotationProfile(self, Mach_LF=1.0, new_file=None):
         print(f"\t- Enforcing Mach Number in LF of {Mach_LF}")
-        self.deriveQuantities()
+        self.derive_quantities()
         Vtor_LF = PLASMAtools.constructVtorFromMach(
             Mach_LF, self.profiles["ti(keV)"][:, 0], self.derived["mbg"]
         )  # m/s
 
         self.profiles["w0(rad/s)"] = Vtor_LF / (self.derived["R_LF"])  # rad/s
 
-        self.deriveQuantities()
+        self.derive_quantities()
 
         if new_file is not None:
             self.writeCurrentStatus(file=new_file)
@@ -2532,7 +2425,7 @@ class mitim_state:
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         ax = axs6[3]
-        ax.plot(self.profiles["rho(-)"], self.derived["q_fus_MWmiller"], c=color, lw=lw)
+        ax.plot(self.profiles["rho(-)"], self.derived["q_fus_MW"], c=color, lw=lw)
         ax.set_ylabel("$P_{fus}$ ($MW$)")
         ax.set_xlim([0, 1])
 
@@ -2576,10 +2469,10 @@ class mitim_state:
             label=extralab + "$Q_i/Q_e$",
         )
         safe_division = np.divide(
-            self.derived["qi_aux_MWmiller"],
-            self.derived["qe_aux_MWmiller"],
-            where=self.derived["qe_aux_MWmiller"] != 0,
-            out=np.full_like(self.derived["qi_aux_MWmiller"], np.nan),
+            self.derived["qi_aux_MW"],
+            self.derived["qe_aux_MW"],
+            where=self.derived["qe_aux_MW"] != 0,
+            out=np.full_like(self.derived["qi_aux_MW"], np.nan),
         )
         ax.plot(
             self.profiles["rho(-)"],
@@ -3028,15 +2921,15 @@ class mitim_state:
         # F
         ax = axs[2]
         P = (
-            self.derived["qe_fus_MWmiller"]
-            + self.derived["qe_aux_MWmiller"]
-            + -self.derived["qe_rad_MWmiller"]
-            + -self.derived["qe_exc_MWmiller"]
+            self.derived["qe_fus_MW"]
+            + self.derived["qe_aux_MW"]
+            + -self.derived["qe_rad_MW"]
+            + -self.derived["qe_exc_MW"]
         )
 
         ax.plot(
             roa,
-            -self.derived["qe_MWmiller"],
+            -self.derived["qe_MW"],
             c="g",
             lw=2,
             label="$P_{e}$" if leg else "",
@@ -3044,7 +2937,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qe_fus_MWmiller"],
+            self.derived["qe_fus_MW"],
             c="r",
             lw=2,
             label="$P_{fus,e}$" if leg else "",
@@ -3052,7 +2945,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qe_aux_MWmiller"],
+            self.derived["qe_aux_MW"],
             c="b",
             lw=2,
             label="$P_{aux,e}$" if leg else "",
@@ -3060,7 +2953,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            -self.derived["qe_exc_MWmiller"],
+            -self.derived["qe_exc_MW"],
             c="m",
             lw=2,
             label="$P_{exc,e}$" if leg else "",
@@ -3068,7 +2961,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            -self.derived["qe_rad_MWmiller"],
+            -self.derived["qe_rad_MW"],
             c="c",
             lw=2,
             label="$P_{rad,e}$" if leg else "",
@@ -3081,7 +2974,7 @@ class mitim_state:
 
         ax.plot(
             roa,
-            -self.derived["ce_MWmiller"],
+            -self.derived["ce_MW"],
             c="k",
             lw=1,
             label="($P_{conv,e}$)" if leg else "",
@@ -3102,14 +2995,14 @@ class mitim_state:
 
         ax = axs[3]
         P = (
-            self.derived["qi_fus_MWmiller"]
-            + self.derived["qi_aux_MWmiller"]
-            + self.derived["qe_exc_MWmiller"]
+            self.derived["qi_fus_MW"]
+            + self.derived["qi_aux_MW"]
+            + self.derived["qe_exc_MW"]
         )
 
         ax.plot(
             roa,
-            -self.derived["qi_MWmiller"],
+            -self.derived["qi_MW"],
             c="g",
             lw=2,
             label="$P_{i}$" if leg else "",
@@ -3117,7 +3010,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qi_fus_MWmiller"],
+            self.derived["qi_fus_MW"],
             c="r",
             lw=2,
             label="$P_{fus,i}$" if leg else "",
@@ -3125,7 +3018,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qi_aux_MWmiller"],
+            self.derived["qi_aux_MW"],
             c="b",
             lw=2,
             label="$P_{aux,i}$" if leg else "",
@@ -3133,7 +3026,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qe_exc_MWmiller"],
+            self.derived["qe_exc_MW"],
             c="m",
             lw=2,
             label="$P_{exc,i}$" if leg else "",
@@ -3162,7 +3055,7 @@ class mitim_state:
 
         ax.plot(
             roa,
-            self.derived["ge_10E20miller"],
+            self.derived["ge_10E20"],
             c="g",
             lw=2,
             label="$\\Gamma_{e}$" if leg else "",
@@ -3185,17 +3078,17 @@ class mitim_state:
         # TOTAL
         ax = axs[5]
         P = (
-            self.derived["qOhm_MWmiller"]
-            + self.derived["qRF_MWmiller"]
-            + self.derived["qFus_MWmiller"]
-            + -self.derived["qe_rad_MWmiller"]
-            + self.derived["qz_MWmiller"]
-            + self.derived["qBEAM_MWmiller"]
+            self.derived["qOhm_MW"]
+            + self.derived["qRF_MW"]
+            + self.derived["qFus_MW"]
+            + -self.derived["qe_rad_MW"]
+            + self.derived["qz_MW"]
+            + self.derived["qBEAM_MW"]
         )
 
         ax.plot(
             roa,
-            -self.derived["q_MWmiller"],
+            -self.derived["q_MW"],
             c="g",
             lw=2,
             label="$P$" if leg else "",
@@ -3203,7 +3096,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qOhm_MWmiller"],
+            self.derived["qOhm_MW"],
             c="k",
             lw=2,
             label="$P_{Oh}$" if leg else "",
@@ -3211,7 +3104,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qRF_MWmiller"],
+            self.derived["qRF_MW"],
             c="b",
             lw=2,
             label="$P_{RF}$" if leg else "",
@@ -3219,7 +3112,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qBEAM_MWmiller"],
+            self.derived["qBEAM_MW"],
             c="pink",
             lw=2,
             label="$P_{NBI}$" if leg else "",
@@ -3227,7 +3120,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qFus_MWmiller"],
+            self.derived["qFus_MW"],
             c="r",
             lw=2,
             label="$P_{fus}$" if leg else "",
@@ -3235,7 +3128,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            -self.derived["qe_rad_MWmiller"],
+            -self.derived["qe_rad_MW"],
             c="c",
             lw=2,
             label="$P_{rad}$" if leg else "",
@@ -3243,7 +3136,7 @@ class mitim_state:
         )
         ax.plot(
             roa,
-            self.derived["qz_MWmiller"],
+            self.derived["qz_MW"],
             c="orange",
             lw=1,
             label="$P_{ionz.}$" if leg else "",
@@ -3369,7 +3262,7 @@ class mitim_state:
 
         # Extra
         r = self.profiles["rmin(m)"]
-        volp = self.derived["volp_miller"]
+        volp = self.derived["volp_geo"]
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
 
         if debugPlot:
@@ -3625,22 +3518,22 @@ class mitim_state:
         self.profiles["ne(10^19/m^3)"] = n
         self.scaleAllThermalDensities(scaleFactor=factor_n)
 
-        self.deriveQuantities()
+        self.derive_quantities()
 
 
     def changeRFpower(self, PrfMW=25.0):
         """
         keeps same partition
         """
-        print(f"- Changing the RF power from {self.derived['qRF_MWmiller'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
+        print(f"- Changing the RF power from {self.derived['qRF_MW'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
         
-        if self.derived["qRF_MWmiller"][-1] == 0.0:
+        if self.derived["qRF_MW"][-1] == 0.0:
             raise Exception("No RF power in the input.gacode, cannot modify the RF power")
 
         for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
-            self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MWmiller"][-1]
+            self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MW"][-1]
 
-        self.deriveQuantities()
+        self.derive_quantities()
 
     def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
 
@@ -3705,10 +3598,10 @@ class mitim_state:
         if mixRadius is None:
             mixRadius = self.profiles["rho(-)"][np.where(self.profiles["q(-)"] > 1)][0]
 
-        print(f"\t- Original Ohmic power: {self.derived['qOhm_MWmiller'][-1]:.2f}MW")
+        print(f"\t- Original Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
         Ohmic_old = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
 
-        dvol = self.derived["volp_miller"] * np.append(
+        dvol = self.derived["volp_geo"] * np.append(
             [0], np.diff(self.profiles["rmin(m)"])
         )
 
@@ -3718,13 +3611,13 @@ class mitim_state:
         Psaw = CDFtools.profilePower(
             self.profiles["rho(-)"],
             dvol,
-            PohTot - self.derived["qOhm_MWmiller"][-1],
+            PohTot - self.derived["qOhm_MW"][-1],
             mixRadius,
         )
         self.profiles["qohme(MW/m^3)"] += Psaw
-        self.deriveQuantities()
+        self.derive_quantities()
 
-        print(f"\t- New Ohmic power: {self.derived['qOhm_MWmiller'][-1]:.2f}MW")
+        print(f"\t- New Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
         Ohmic_new = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
 
         if plotYN:
@@ -4228,7 +4121,7 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p.profiles["ti(keV)"][:, 0] = Ti
     p.profiles["ne(10^19/m^3)"] = ne
 
-    p.deriveQuantities()
+    p.derive_quantities()
 
     return p
 

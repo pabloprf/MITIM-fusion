@@ -671,6 +671,6 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
     # Re-derive
     # ---------------------------------
 
-    profiles_output.deriveQuantities(rederiveGeometry=False)
+    profiles_output.derive_quantities(rederiveGeometry=False)
 
     return profiles_output

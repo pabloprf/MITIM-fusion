@@ -94,7 +94,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
     p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
 
-    p.deriveQuantities()
+    p.derive_quantities()
 
     # Change Zeff
     p.changeZeff(Zeff, ion_pos=3)
@@ -116,7 +116,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20)
         
         # Derive quantities
-        p.deriveQuantities(rederiveGeometry=False)
+        p.derive_quantities(rederiveGeometry=False)
 
         BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
 

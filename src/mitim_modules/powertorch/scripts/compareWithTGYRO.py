@@ -22,7 +22,7 @@ ls = "o-"
 
 # TGYRO
 t = TGYROtools.TGYROoutput(folderTGYRO)
-t.profiles.deriveQuantities()
+t.profiles.derive_quantities()
 
 t.useFineGridTargets()
 
