@@ -615,7 +615,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         elif prof == "nZ":
             var = "GZ"
         elif prof == "w0":
-            var = "MtJm2"
+            var = "Mt"
 
         """
 		-----------------------------------------------------------------------------------

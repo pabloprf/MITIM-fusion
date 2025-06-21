@@ -3,7 +3,6 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import POWERplot
@@ -1827,7 +1826,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot PROFILES
     # -------------------------------------------------------
 
-    figs = PROFILEStools.add_figures(fn,fnlab_pre = "PROFILES - ")
+    figs = MITIMstate.add_figures(fn,fnlab_pre = "PROFILES - ")
 
     if indecesPlot[0] < len(self.powerstates):
         _ = MITIMstate.plotAll(

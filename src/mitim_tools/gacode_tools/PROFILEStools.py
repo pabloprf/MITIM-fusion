@@ -3,7 +3,7 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.gacode_tools.utils import GEOMETRYtools
+from mitim_tools.misc_tools import MATHtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
