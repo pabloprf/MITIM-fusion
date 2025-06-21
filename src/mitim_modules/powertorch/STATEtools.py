@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_modules.powertorch.utils import TARGETStools, CALCtools, TRANSPORTtools
@@ -449,7 +450,7 @@ class powerstate:
                     axsRes.append(figOpt.add_subplot(grid[j, i+1]))
 
             # Profiles
-            figs = PROFILEStools.add_figures(fn, tab_color='b')
+            figs = MITIMstate.add_figures(fn, tab_color='b')
 
             axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
         

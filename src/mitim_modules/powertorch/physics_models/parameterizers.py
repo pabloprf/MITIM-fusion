@@ -27,14 +27,14 @@ def piecewise_linear(
     if parameterize_in_aLx:
         # 1/Lx = -1/X*dX/dr
         integrator_function, derivator_function = (
-            CALCtools.integrateGradient,
-            CALCtools.produceGradient,
+            CALCtools.integration_Lx,
+            CALCtools.derivation_into_Lx,
         )
     else:
         # -dX/dr
         integrator_function, derivator_function = (
-            CALCtools.integrateGradient_lin,
-            CALCtools.produceGradient_lin,
+            CALCtools.integration_dxdr,
+            CALCtools.derivation_into_dxdr,
         )
 
     y_coord = torch.from_numpy(y_coord_raw).to(x_coarse_tensor) * multiplier_quantity

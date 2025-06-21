@@ -488,12 +488,12 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
 
         # Calculate gradient in entire region
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
 
         # I'm only interested in core region, plus one ghost point with the same gradient
         aLy = torch.cat( (aLy[:ibc+1], aLy[ibc].unsqueeze(0)) )
 
-        y_mod = CALCtools.integrateGradient( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
+        y_mod = CALCtools.integration_Lx( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
         ynew[:ibc+2] = y_mod
 
 
@@ -511,11 +511,11 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         ax.legend()
 
         ax = axs[1]
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
         ax.plot(x,aLy,'-o',color='b', label='old')
         ax.axvline(x=xp_old,color='b',ls='--')
 
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(ynew) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(ynew) )
         ax.plot(x,aLy,'-o',color='r', label='new')
         ax.axvline(x=xp,color='r',ls='--')
 

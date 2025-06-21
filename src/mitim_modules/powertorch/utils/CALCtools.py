@@ -6,16 +6,22 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 # ********************************************************************************************************************
-# Normalized logaritmic gradient calculations
+# Gradient calculations
 # ********************************************************************************************************************
 
-def integrateGradient(x, z, z0_bound):
+def integration_Lx(x, z, f_bound):
     """
-    inputs as 
-    (batch,dim)
-    From tgyro_profile_functions.f90
-    x is r
-    z is 1/LT = =-1/T*dT/dr
+    Integrates the gradient scale length into the profile
+        (adapted from tgyro_profile_functions.f90)
+    Inputs as 
+        (batch,dim)
+    
+        x is r
+        z is 1/LT = =-1/T*dT/dr
+        f_bound is T @ at boundary condition (last point of the given profile)
+
+    Notes:
+        - If x is r/a, then z is a/LT
 
     """
 
@@ -24,31 +30,25 @@ def integrateGradient(x, z, z0_bound):
     f1 = b / torch.cumprod(b, 1) * torch.prod(b, 1, keepdims=True)
 
     # Add the extra point of bounday condition
-    f = torch.cat((f1, torch.ones(z.shape[0], 1).to(f1)), dim=1) * z0_bound
+    f = torch.cat((f1, torch.ones(z.shape[0], 1).to(f1)), dim=1) * f_bound
 
     return f
     
-
-def produceGradient(r, p):
+def derivation_into_Lx(r, p):
     """
     Produces -1/p * dp/dr
-    or if r is roa: a/Lp
+        (adapted from  expro_util.f90, bound_deriv)
+
+    Notes:
+        - if r is r/a: a/Lp
     """
 
-    # This is the same as it happens in expro_util.f90, bound_deriv
     z = MATHtools.deriv(r, -torch.log(p), array=False)
 
-    # # COMMENTED because this should happen at the coarse grid
-    # z = tgyro_math_zfind(r,p,z=z)
-
-    return z  # .nan_to_num(0.0) # Added this so that, when evaluating things like rotation shear, it doesn't blow
-
-# ********************************************************************************************************************
-# Linear gradient calculations
-# ********************************************************************************************************************
+    return z
 
 
-def integrateGradient_lin(x, z, z0_bound):
+def integration_dxdr(x, z, z0_bound):
     """
     (batch,dim)
     From tgyro_profile_functions.f90
@@ -67,7 +67,7 @@ def integrateGradient_lin(x, z, z0_bound):
     return f
 
 
-def produceGradient_lin(r, p):
+def derivation_into_dxdr(r, p):
     """
     Produces -dp/dr
     """
@@ -76,6 +76,11 @@ def produceGradient_lin(r, p):
     z = MATHtools.deriv(r, -p, array=False)
 
     return z
+
+# ********************************************************************************************************************
+# Volume calculations
+# ********************************************************************************************************************
+
 
 def _to_2d(x, xp):
     """Ensure shape (batch, N) for either NumPy or Torch."""

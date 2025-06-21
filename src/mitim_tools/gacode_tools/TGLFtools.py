@@ -3682,7 +3682,7 @@ class TGLF:
                 from mitim_modules.powertorch.utils import CALCtools
 
                 BC = 1.0
-                T = CALCtools.integrateGradient(
+                T = CALCtools.integration_Lx(
                     torch.from_numpy(rho_mod).unsqueeze(0),
                     torch.from_numpy(aLn).unsqueeze(0),
                     BC,
