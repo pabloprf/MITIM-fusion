@@ -106,7 +106,7 @@ def piecewise_linear(
         Reason why something like this is not used for the full profile is because derivative of this will not be as original,
                 which is needed to match TGYRO
         """
-        yCPs = CALCtools.Interp1d()(aLy_coarse[:, 0][:-1].repeat((y.shape[0], 1)), y, x)
+        yCPs = CALCtools.Interp1d_torch()(aLy_coarse[:, 0][:-1].repeat((y.shape[0], 1)), y, x)
         return x, integrator_function(x, yCPs, y_bc_real) / multiplier
 
     def profile_constructor_fine(x, y, multiplier=multiplier_quantity):
@@ -124,7 +124,7 @@ def piecewise_linear(
         y = torch.cat((y, aLy_coarse[-1][-1].repeat((y.shape[0], 1))), dim=1)
 
         # Model curve (basically, what happens in between points)
-        yBS = CALCtools.Interp1d()(x.repeat(y.shape[0], 1), y, x_notrail.repeat(y.shape[0], 1))
+        yBS = CALCtools.Interp1d_torch()(x.repeat(y.shape[0], 1), y, x_notrail.repeat(y.shape[0], 1))
 
         """
         ---------------------------------------------------------------------------------------------------------
