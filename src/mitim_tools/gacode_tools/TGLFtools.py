@@ -4,7 +4,8 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
+
+from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.misc_tools import (
     IOtools,
     GRAPHICStools,
@@ -232,6 +233,7 @@ class TGLF:
 
         # PROFILES class.
 
+        from mitim_tools.gacode_tools import PROFILEStools
         profiles = (
             PROFILEStools.PROFILES_GACODE(inputgacode)
             if inputgacode is not None
@@ -371,6 +373,7 @@ class TGLF:
 
         # PROFILES class.
 
+        from mitim_tools.gacode_tools import PROFILEStools
         self.profiles = (
             PROFILEStools.PROFILES_GACODE(inputgacode)
             if inputgacode is not None
@@ -475,6 +478,7 @@ class TGLF:
         self.FolderGACODE = IOtools.expandPath(FolderGACODE)
 
         # Main folder where things are
+        from mitim_tools.gacode_tools import PROFILEStools
         self.NormalizationSets, _ = NORMtools.normalizations(
             PROFILEStools.PROFILES_GACODE(input_gacode)
             if input_gacode is not None

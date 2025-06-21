@@ -480,7 +480,7 @@ def runPROFILES_GEN(
         txt += f" -g {nameFiles}.geq\n"
     else:
         txt += "\n"
-    with open(FolderTGLF + "profiles_gen.sh", "w") as f:
+    with open(FolderTGLF / "profiles_gen.sh", "w") as f:
         f.write(txt)
     # ******************
 

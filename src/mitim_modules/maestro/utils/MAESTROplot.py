@@ -2,6 +2,7 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import LOGtools, GRAPHICStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -99,7 +100,7 @@ def plot_results(self, fn):
         figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
-            PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
+            MITIMstate.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
     for p,pl in zip(ps,ps_lab):
         p.printInfo(label = pl)
