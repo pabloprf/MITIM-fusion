@@ -209,7 +209,7 @@ class maestro:
                     self.beat.initialize()
                 # -----------------------------
 
-                self.beat.profiles_current.deriveQuantities()
+                self.beat.profiles_current.derive_quantities()
                 
                 self.beat.prepare(*args, **kwargs)
         else:

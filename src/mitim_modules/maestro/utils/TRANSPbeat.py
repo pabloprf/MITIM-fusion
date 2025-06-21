@@ -104,7 +104,7 @@ class transp_beat(beat):
         self._additional_operations_add_initialization()
 
         # ICRF on
-        PichT_MW    = self.profiles_current.derived['qRF_MWmiller'][-1]
+        PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
         
         if freq_ICH is None:
 
@@ -181,11 +181,11 @@ class transp_beat(beat):
         force_auxiliary_heating_at_output['Pe'] has the shaping function (takes rho) and the integrated value
         '''
 
-        for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MWmiller', 'qRFi_MWmiller']):
+        for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MW', 'qRFi_MW']):
 
             if force_auxiliary_heating_at_output[key] is not None:
                 self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
-                self.profiles_output.deriveQuantities()
+                self.profiles_output.derive_quantities()
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
 
     def merge_parameters(self):
@@ -230,13 +230,13 @@ class transp_beat(beat):
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
-        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
-        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MWmiller'][-1] / self.profiles_output.derived['qRF_MWmiller'][-1]
+        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
 
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
-        self.profiles_output.deriveQuantities()
+        self.profiles_output.derive_quantities()
         self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def grab_output(self):

@@ -193,7 +193,7 @@ class PORTALSanalyzer:
                 self.profiles_next_new.printInfo(label="NEXT")
             else:
                 self.profiles_next_new = self.profiles_next
-                self.profiles_next_new.deriveQuantities()
+                self.profiles_next_new.derive_quantities()
         else:
             print("\t\t- Could not read next profile to evaluate (from folder)")
 
@@ -217,7 +217,7 @@ class PORTALSanalyzer:
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 
             if 'Q' not in power.profiles.derived:
-                power.profiles.deriveQuantities()
+                power.profiles.derive_quantities()
 
             self.evaluations.append(i)
             self.FusionGain.append(power.profiles.derived["Q"])
@@ -966,7 +966,7 @@ class PORTALSinitializer:
             except FileNotFoundError:
                 break
 
-            p.profiles.deriveQuantities()
+            p.profiles.derive_quantities()
             self.powerstates.append(p)
 
         self.fn = None

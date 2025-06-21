@@ -71,7 +71,7 @@ class power_transport:
         # (e.g. for flux matching of analytical models)
         pass
 
-    def _produce_profiles(self,deriveQuantities=True):
+    def _produce_profiles(self,derive_quantities=True):
 
         self.applyCorrections = self.powerstate.TransportOptions["ModelOptions"].get("MODELparameters", {}).get("applyCorrections", {})
 
@@ -83,8 +83,8 @@ class power_transport:
         self.powerstate.profiles = powerstate_detached.from_powerstate(
             write_input_gacode=self.file_profs,
             postprocess_input_gacode=self.applyCorrections,
-            rederive_profiles = deriveQuantities,        # Derive quantities so that it's ready for analysis and plotting later
-            insert_highres_powers = deriveQuantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
+            rederive_profiles = derive_quantities,        # Derive quantities so that it's ready for analysis and plotting later
+            insert_highres_powers = derive_quantities,    # Insert powers so that Q, Pfus and all that it's consistent when read later
         )
 
         self.powerstate.profiles_transport = copy.deepcopy(self.powerstate.profiles)

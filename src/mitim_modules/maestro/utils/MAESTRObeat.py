@@ -311,7 +311,7 @@ class creator:
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
             # Update derived
-            self.initialize_instance.profiles_current.deriveQuantities()
+            self.initialize_instance.profiles_current.derive_quantities()
 
         def _inform_save(self, **kwargs):
             pass

@@ -64,8 +64,8 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_fluxsurfave_grad_r,
         geo_fluxsurfave_bp2,
         geo_fluxsurfave_bt2,
-        geo_bt0,
-    ) = volp_surf_Miller_vectorized(
+        bt_geo0,
+    ) = volp_surf_geo_vectorized(
         R,
         r,
         delta,
@@ -92,9 +92,9 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     volp = geo_volume_prime * profiles.profiles["rmin(m)"][-1] ** 2
     surf = geo_surf * profiles.profiles["rmin(m)"][-1] ** 2
 
-    return volp, surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, geo_bt0
+    return volp, surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0
 
-def volp_surf_Miller_vectorized(
+def volp_surf_geo_vectorized(
     geo_rmaj_in,
     geo_rmin_in,
     geo_delta_in,
@@ -356,7 +356,7 @@ def volp_surf_Miller_vectorized(
     z = (x0 - x1) / dx
     if i2 == n_theta:
         i2 -= 1
-    geo_bt0 = geov_bt[i1] + (geov_bt[i2] - geov_bt[i1]) * z
+    bt_geo0 = geov_bt[i1] + (geov_bt[i2] - geov_bt[i1]) * z
 
     denom = 0
     for i in range(n_theta - 1):
@@ -383,7 +383,7 @@ def volp_surf_Miller_vectorized(
             + geov_bp ** 2 * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave__bp2, geo_fluxsurfave_bt2, geo_bt0
+    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave__bp2, geo_fluxsurfave_bt2, bt_geo0
 
 def xsec_area_RZ(
         R,

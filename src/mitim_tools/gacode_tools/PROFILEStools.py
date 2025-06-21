@@ -2,6 +2,8 @@ import copy
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
+from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gacode_tools.utils import GEOMETRYtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -15,6 +17,10 @@ class PROFILES_GACODE(mitim_state):
     and writes them in the way that MITIMstate class expects.
     '''
 
+    # ------------------------------------------------------------------
+    # Reading and interpreting
+    # ------------------------------------------------------------------
+
     def __init__(self, file, calculateDerived=True, mi_ref=None):
 
         super().__init__(type_file='input.gacode')
@@ -23,21 +29,12 @@ class PROFILES_GACODE(mitim_state):
         Depending on resolution, derived can be expensive, so I mmay not do it every time
         """
 
-        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
-        self.titles_singleArr = [
-            "masse",
-            "mass",
-            "ze",
-            "z",
-            "torfluxa(Wb/radian)",
-            "rcentr(m)",
-            "bcentr(T)",
-            "current(MA)",
-        ]
-        self.titles_single = self.titles_singleNum + self.titles_singleArr
-
         self.file = file
 
+        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
+        self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
+        self.titles_single = self.titles_singleNum + self.titles_singleArr
+        
         if self.file is not None:
             with open(self.file, "r") as f:
                 self.lines = f.readlines()
@@ -45,10 +42,10 @@ class PROFILES_GACODE(mitim_state):
             # Read file and store raw data
             self._read_header()
             self._read_profiles()
-
             self._ensure_existence()
 
-            self.deriveQuantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            # Derive
+            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
 
     def _read_header(self):
         for i in range(len(self.lines)):
@@ -161,3 +158,75 @@ class PROFILES_GACODE(mitim_state):
             if ikey not in self.profiles.keys():
                 self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
 
+    # ------------------------------------------------------------------
+    # Derivation (different from MITIMstate)
+    # ------------------------------------------------------------------
+   
+    def derive_quantities(self, **kwargs):
+ 
+        self._produce_shape_lists()
+
+        super().derive_quantities(**kwargs)
+
+    def _produce_shape_lists(self):
+        self.shape_cos = [
+            self.profiles["shape_cos0(-)"],  # tilt
+            self.profiles["shape_cos1(-)"],
+            self.profiles["shape_cos2(-)"],
+            self.profiles["shape_cos3(-)"],
+            self.profiles["shape_cos4(-)"],
+            self.profiles["shape_cos5(-)"],
+            self.profiles["shape_cos6(-)"],
+        ]
+        self.shape_sin = [
+            None,
+            None,  # s1 is arcsin(triangularity)
+            None,  # s2 is minus squareness
+            self.profiles["shape_sin3(-)"],
+            self.profiles["shape_sin4(-)"],
+            self.profiles["shape_sin5(-)"],
+            self.profiles["shape_sin6(-)"],
+        ]
+
+    # ------------------------------------------------------------------
+    # Geometry
+    # ------------------------------------------------------------------
+   
+    def derive_geometry(self, n_theta_geo=1001):
+
+        self._produce_shape_lists()
+
+        (
+            self.derived["volp_geo"],
+            self.derived["surf_geo"],
+            self.derived["gradr_geo"],
+            self.derived["bp2_geo"],
+            self.derived["bt2_geo"],
+            self.derived["bt_geo"],
+        ) = GEOMETRYtools.calculateGeometricFactors(self,n_theta=n_theta_geo)
+
+        # Calculate flux surfaces
+        cn = np.array(self.shape_cos).T
+        sn = copy.deepcopy(self.shape_sin)
+        sn[0] = self.profiles["rmaj(m)"]*0.0
+        sn[1] = np.arcsin(self.profiles["delta(-)"])
+        sn[2] = -self.profiles["zeta(-)"]
+        sn = np.array(sn).T
+        flux_surfaces = GEQtools.mitim_flux_surfaces()
+        flux_surfaces.reconstruct_from_mxh_moments(
+            self.profiles["rmaj(m)"],
+            self.profiles["rmin(m)"],
+            self.profiles["kappa(-)"],
+            self.profiles["zmag(m)"],
+            cn,
+            sn)
+        self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
+        # -----------------------------------------------
+
+        #cross-sectional area of each flux surface
+        self.derived["surfXS"] = GEOMETRYtools.xsec_area_RZ(self.derived["R_surface"],self.derived["Z_surface"])
+
+        self.derived["R_LF"] = self.derived["R_surface"].max(axis=1)  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
+
+        # For Synchrotron
+        self.derived["B_ref"] = np.abs(self.derived["B_unit"] * self.derived["bt_geo"])

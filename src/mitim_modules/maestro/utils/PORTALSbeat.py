@@ -230,7 +230,7 @@ class portals_beat(beat):
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
-        self.profiles_output.deriveQuantities()
+        self.profiles_output.derive_quantities()
         self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
 
     def grab_output(self, full = False):

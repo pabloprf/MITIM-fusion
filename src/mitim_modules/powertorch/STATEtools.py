@@ -141,7 +141,7 @@ class powerstate:
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
             self.profiles = copy.deepcopy(profiles_object)
             if "derived" not in self.profiles.__dict__:
-                self.profiles.deriveQuantities()
+                self.profiles.derive_quantities()
 
         else:
             raise ValueError("[MITIM] The input profile object is not recognized, please use PROFILES_GACODE")
