@@ -248,7 +248,7 @@ def powerstate_to_gacode(
     ):
     """
     Notes:
-        - This function assumes that "profiles" is the PROFILES_GACODE that everything started with.
+        - This function assumes that "profiles" is the gacode_state that everything started with.
         - We assume that what changes is only the kinetic profiles allowed to vary.
         - This only works for a single profile, in position_in_powerstate_batch
         - rederive is expensive, so I'm not re-deriving the geometry which is the most expensive

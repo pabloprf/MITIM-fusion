@@ -28,7 +28,7 @@ args = parser.parse_args()
 inputgacode = IOtools.expandPath(args.file)
 rho = np.array([float(i) for i in args.rhos])
 
-profiles = PROFILEStools.PROFILES_GACODE(inputgacode)
+profiles = PROFILEStools.gacode_state(inputgacode)
 
 markersize_coarse = 6
 markersize_fine = 3

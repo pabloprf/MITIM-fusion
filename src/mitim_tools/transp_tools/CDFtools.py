@@ -15444,7 +15444,7 @@ class transp_output:
             profiles[key] = profiles[key].clip(min=minimum)
 
         from mitim_tools.gacode_tools import PROFILEStools
-        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+        p = PROFILEStools.gacode_state.scratch(profiles)
 
         return p
 

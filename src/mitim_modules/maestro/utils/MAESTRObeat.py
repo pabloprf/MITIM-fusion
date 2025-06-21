@@ -92,7 +92,7 @@ class beat_initializer:
     def __call__(self, profiles_file = None, Vsurf = None,   **kwargs_beat):
 
         # Load profiles
-        self.profiles_current = PROFILEStools.PROFILES_GACODE(profiles_file)
+        self.profiles_current = PROFILEStools.gacode_state(profiles_file)
 
         # --------------------------------------------------------------------------------------------
         # Operations

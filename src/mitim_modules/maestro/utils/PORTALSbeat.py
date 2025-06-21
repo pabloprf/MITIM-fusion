@@ -246,7 +246,7 @@ class portals_beat(beat):
 
         opt_fun = STRATEGYtools.opt_evaluator(folder) if full else PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 
-        profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode') if isitfinished else None
+        profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode') if isitfinished else None
         
         return opt_fun, profiles
 

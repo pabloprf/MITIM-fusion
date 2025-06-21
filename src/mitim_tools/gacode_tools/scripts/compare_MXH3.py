@@ -12,7 +12,7 @@ e.g.
 """
 
 file_input_gacode = sys.argv[1]
-p = PROFILEStools.PROFILES_GACODE(file_input_gacode)
+p = PROFILEStools.gacode_state(file_input_gacode)
 
 file_geq = sys.argv[2]
 g = GEQtools.MITIMgeqdsk(file_geq)

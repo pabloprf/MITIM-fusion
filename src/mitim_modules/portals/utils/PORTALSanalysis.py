@@ -183,11 +183,11 @@ class PORTALSanalyzer:
         file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode_unmodified"
         if file.exists():
             print("\t\t- Reading next profile to evaluate (from folder)")
-            self.profiles_next = PROFILEStools.PROFILES_GACODE(file, calculateDerived=False)
+            self.profiles_next = PROFILEStools.gacode_state(file, calculateDerived=False)
 
             file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode.new"
             if file.exists():
-                self.profiles_next_new = PROFILEStools.PROFILES_GACODE(
+                self.profiles_next_new = PROFILEStools.gacode_state(
                     file, calculateDerived=False
                 )
                 self.profiles_next_new.printInfo(label="NEXT")
@@ -951,7 +951,7 @@ class PORTALSinitializer:
         self.profiles = []
         for i in range(100):
             try:
-                prof = PROFILEStools.PROFILES_GACODE(
+                prof = PROFILEStools.gacode_state(
                     self.folder / "Outputs" / "portals_profiles" / f"input.gacode.{i}"
                 )
             except FileNotFoundError:

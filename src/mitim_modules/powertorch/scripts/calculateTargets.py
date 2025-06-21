@@ -21,7 +21,7 @@ def calculator(
     fineTargetsResolution = None,
 ):
     profiles = (
-        input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
+        input_gacode if profProvided else PROFILEStools.gacode_state(input_gacode)
     )
 
     # Calculate using TGYRO

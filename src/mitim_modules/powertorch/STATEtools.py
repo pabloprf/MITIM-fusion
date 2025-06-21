@@ -30,7 +30,7 @@ class powerstate:
     ):
         '''
         Inputs:
-            - profiles_object: Object for PROFILES_GACODE or others
+            - profiles_object: Object for gacode_state or others
             - EvolutionOptions:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
@@ -134,7 +134,7 @@ class powerstate:
         # Object type (e.g. input.gacode)
         # -------------------------------------------------------------------------------------
 
-        if isinstance(profiles_object, PROFILEStools.PROFILES_GACODE):
+        if isinstance(profiles_object, PROFILEStools.gacode_state):
             self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
@@ -144,7 +144,7 @@ class powerstate:
                 self.profiles.derive_quantities()
 
         else:
-            raise ValueError("[MITIM] The input profile object is not recognized, please use PROFILES_GACODE")
+            raise ValueError("[MITIM] The input profile object is not recognized, please use gacode_state")
 
         # -------------------------------------------------------------------------------------
         # Fine targets (need to do it here so that it's only once per definition of powerstate)

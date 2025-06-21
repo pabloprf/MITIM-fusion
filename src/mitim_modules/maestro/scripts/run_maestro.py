@@ -139,7 +139,7 @@ def parse_maestro_nml(file_path):
 
                 # add postprocessing function
                 def profiles_postprocessing_fun(file_profs):
-                    p = PROFILEStools.PROFILES_GACODE(file_profs)
+                    p = PROFILEStools.gacode_state(file_profs)
                     if lumpImpurities:
                         p.lumpImpurities()
                     if enforce_same_density_gradients:

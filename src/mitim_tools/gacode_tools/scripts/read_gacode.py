@@ -23,7 +23,7 @@ def main():
     # Read
     profs = []
     for file in files:
-        p = PROFILEStools.PROFILES_GACODE(file)
+        p = PROFILEStools.gacode_state(file)
         profs.append(p)
 
         p.printInfo()

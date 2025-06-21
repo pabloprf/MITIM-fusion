@@ -65,7 +65,7 @@ def plot_results(self, fn):
     # ********************************************************************************************************
 
     # Collect initialization
-    ini = {'geqdsk': None, 'profiles': PROFILEStools.PROFILES_GACODE(f'{self.beats[1].initialize.folder}/input.gacode')}
+    ini = {'geqdsk': None, 'profiles': PROFILEStools.gacode_state(f'{self.beats[1].initialize.folder}/input.gacode')}
     if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
         ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
 
@@ -96,7 +96,7 @@ def plot_results(self, fn):
     # ********************************************************************************************************
     ps, ps_lab = [], []
     for label in objs:
-        if isinstance(objs[label], PROFILEStools.PROFILES_GACODE):
+        if isinstance(objs[label], PROFILEStools.gacode_state):
             ps.append(objs[label])
             ps_lab.append(label)
 

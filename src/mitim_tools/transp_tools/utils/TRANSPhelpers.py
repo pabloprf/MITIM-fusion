@@ -761,7 +761,7 @@ class transp_input_time:
 
         if isinstance(profiles_file, str):
             from mitim_tools.gacode_tools import PROFILEStools
-            self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
+            self.p = PROFILEStools.gacode_state(profiles_file)
         else:
             self.p = profiles_file
 

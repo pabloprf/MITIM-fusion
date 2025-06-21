@@ -7,7 +7,7 @@ from mitim_modules.powertorch.physics import TRANSPORTtools
 from mitim_tools import __mitimroot__
 
 # Inputs
-inputgacode = PROFILEStools.PROFILES_GACODE(__mitimroot__ / "tests" / "data" / "input.gacode")
+inputgacode = PROFILEStools.gacode_state(__mitimroot__ / "tests" / "data" / "input.gacode")
 rho       = torch.from_numpy(np.linspace(0.1,0.9,9)).to(dtype=torch.double)
 
 s = STATEtools.powerstate(inputgacode,

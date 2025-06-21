@@ -7,7 +7,7 @@ from mitim_tools.gacode_tools.utils import GEOMETRYtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class PROFILES_GACODE(mitim_state):
+class gacode_state(mitim_state):
     '''
     Class to read and manipulate GACODE profiles files (input.gacode).
     It inherits from the main MITIMstate class, which provides basic

@@ -107,8 +107,8 @@ class power_transport:
             self.powerstate.profiles_transport = profiles_postprocessing_fun(self.file_profs)
 
         # Position of impurity ion may have changed
-        p_old = PROFILEStools.PROFILES_GACODE(self.file_profs_unmod)
-        p_new = PROFILEStools.PROFILES_GACODE(self.file_profs)
+        p_old = PROFILEStools.gacode_state(self.file_profs_unmod)
+        p_new = PROFILEStools.gacode_state(self.file_profs)
 
         impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
 

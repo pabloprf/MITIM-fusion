@@ -252,7 +252,7 @@ class transp_beat(beat):
 
         if isitfinished:
             c = CDFtools.transp_output(self.folder_output)
-            profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode')
+            profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
         else:
             # Trying to see if there's an intermediate CDF in folder
             print('\t\t- Searching for intermediate CDF in folder')
