@@ -6,6 +6,7 @@ import pandas as pd
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -90,7 +91,7 @@ def initializeProblem(
         profiles.correct(options=INITparameters)
 
     if portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
-        position_of_impurity = PROFILEStools.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
+        position_of_impurity = MITIMstate.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
     else:
         position_of_impurity = 1
 
