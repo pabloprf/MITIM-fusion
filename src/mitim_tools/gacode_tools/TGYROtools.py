@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import (
     GRAPHICStools,
     PLASMAtools,
 )
-from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
+from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -140,6 +140,7 @@ class TGYRO:
             )
 
             self.file_input_profiles = self.FolderGACODE / "input.gacode"
+            from mitim_tools.gacode_tools import PROFILEStools
             self.profiles = PROFILEStools.PROFILES_GACODE(self.file_input_profiles)
 
             if correctPROFILES:
@@ -501,6 +502,7 @@ class TGYRO:
             else:
                 prof = self.profiles
         else:
+            from mitim_tools.gacode_tools import PROFILEStools
             prof = PROFILEStools.PROFILES_GACODE(file_input_profiles)
 
         self.results[label] = TGYROoutput(folder, profiles=prof)
@@ -1164,10 +1166,9 @@ class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
         self.FolderTGYRO = FolderTGYRO
 
-        if (profiles is None) and (FolderTGYRO / f"input.gacode").exists():
-            profiles = PROFILEStools.PROFILES_GACODE(
-                FolderTGYRO / f"input.gacode", calculateDerived=False
-            )
+        if (profiles is None) and (FolderTGYRO / "input.gacode").exists():
+            from mitim_tools.gacode_tools import PROFILEStools
+            profiles = PROFILEStools.PROFILES_GACODE(FolderTGYRO / f"input.gacode", calculateDerived=False)
 
         self.profiles = profiles
 
@@ -1181,10 +1182,7 @@ class TGYROoutput:
 
         calculateDerived = True
         try:
-            self.profiles_final = PROFILEStools.PROFILES_GACODE(
-                self.FolderTGYRO / f"input.gacode.new",
-                calculateDerived=calculateDerived,
-            )
+            self.profiles_final = PROFILEStools.PROFILES_GACODE(self.FolderTGYRO / "input.gacode.new",calculateDerived=calculateDerived,)
         except:
             self.profiles_final = None
 

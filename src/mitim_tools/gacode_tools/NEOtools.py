@@ -1,5 +1,4 @@
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -67,6 +66,7 @@ class NEO:
 
         # ---- Postprocess
 
+        from mitim_tools.gacode_tools import PROFILEStools
         self.inputgacode_vgen = PROFILEStools.PROFILES_GACODE(
             file_new, calculateDerived=True, mi_ref=self.inputgacode.mi_ref
         )

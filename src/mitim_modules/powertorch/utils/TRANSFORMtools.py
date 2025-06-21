@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from mitim_tools.misc_tools import LOGtools, IOtools
-from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_modules.powertorch.physics_models import targets_analytic, parameterizers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
@@ -548,7 +548,7 @@ def debug_transformation(p, p_new, s):
     print(f'Profile mean error: {np.mean(err_prof):.2f}%', typeMsg='i' if np.mean(err_prof) < 1e-0 else 'w')
     print(f'Gradient mean error (ignoring 0.0): {np.mean(err_grad):.2f}%', typeMsg='i' if np.mean(err_grad) < 1e-0 else 'w')
 
-    fn = PROFILEStools.plotAll([p,p_new],extralabs=['Original','New'],lastRhoGradients=rho[-1].item()+0.01)
+    fn = MITIMstate.plotAll([p,p_new],extralabs=['Original','New'],lastRhoGradients=rho[-1].item()+0.01)
 
     axs = fn.figure_handles[3].figure.axes
 

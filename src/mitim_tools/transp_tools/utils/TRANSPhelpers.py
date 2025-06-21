@@ -1,10 +1,8 @@
-import os
 import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -762,6 +760,7 @@ class transp_input_time:
         self.time = time
 
         if isinstance(profiles_file, str):
+            from mitim_tools.gacode_tools import PROFILEStools
             self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
         else:
             self.p = profiles_file

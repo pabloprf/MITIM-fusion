@@ -5,7 +5,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
-from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
 from scipy.integrate import quad
@@ -418,7 +418,7 @@ class MITIMgeqdsk:
 
         _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
 
-        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+        p = MITIMstate.mitim_state.scratch(profiles)
 
         p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
         p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]

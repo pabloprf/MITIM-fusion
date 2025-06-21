@@ -7,6 +7,7 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import POWERplot
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -1829,7 +1830,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     figs = PROFILEStools.add_figures(fn,fnlab_pre = "PROFILES - ")
 
     if indecesPlot[0] < len(self.powerstates):
-        _ = PROFILEStools.plotAll(
+        _ = MITIMstate.plotAll(
             [
                 self.powerstates[indecesPlot[1]].profiles,
                 self.powerstates[indecesPlot[0]].profiles,

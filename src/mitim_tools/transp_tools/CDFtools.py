@@ -15,7 +15,7 @@ from mitim_tools.misc_tools import (
     GRAPHICStools,
 )
 from mitim_tools.transp_tools import UFILEStools
-from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
+from mitim_tools.gacode_tools import TGLFtools, TGYROtools
 from mitim_tools.gacode_tools.utils import GACODEplotting, GACODErun, TRANSPgacode
 from mitim_tools.transp_tools.utils import (
     FBMtools,
@@ -15443,6 +15443,7 @@ class transp_output:
         for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
             profiles[key] = profiles[key].clip(min=minimum)
 
+        from mitim_tools.gacode_tools import PROFILEStools
         p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
 
         return p

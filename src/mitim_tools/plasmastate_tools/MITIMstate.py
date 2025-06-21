@@ -1,165 +1,170 @@
 import copy
+import torch
+import csv
 import numpy as np
+import matplotlib.pyplot as plt
 from collections import OrderedDict
-from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
+from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
+from mitim_modules.powertorch.utils import CALCtools
+from mitim_tools.gs_tools import GEQtools
+from mitim_tools.gacode_tools import NEOtools
+from mitim_tools.gacode_tools.utils import GACODEdefaults, GEOMETRYtools
+from mitim_tools.transp_tools import CDFtools
+from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools import __version__
 from IPython import embed
 
-class PROFILES_GACODE(mitim_state):
+class mitim_state:
     '''
-    Class to read and manipulate GACODE profiles files (input.gacode).
-    It inherits from the main MITIMstate class, which provides basic
-    functionality for plasma state management.
-
-    The class reads the GACODE profiles file, extracts relevant data,
-    and writes them in the way that MITIMstate class expects.
+    Class to manipulate the plasma state in MITIM.
     '''
 
-    def __init__(self, file, calculateDerived=True, mi_ref=None):
+    def __init__(self, type_file = 'input.gacode'):
 
-        super().__init__(type_file='input.gacode')
+        self.type = type_file
 
-        """
-        Depending on resolution, derived can be expensive, so I mmay not do it every time
-        """
-
-        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
-        self.titles_singleArr = [
-            "masse",
-            "mass",
-            "ze",
-            "z",
-            "torfluxa(Wb/radian)",
-            "rcentr(m)",
-            "bcentr(T)",
-            "current(MA)",
-        ]
-        self.titles_single = self.titles_singleNum + self.titles_singleArr
-
-        self.file = file
-
-        if self.file is not None:
-            with open(self.file, "r") as f:
-                self.lines = f.readlines()
-
-            # Read file and store raw data
-            self._read_header()
-            self._read_profiles()
-
-            self._ensure_existence()
-
-            self.deriveQuantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
-
-    def _read_header(self):
-        for i in range(len(self.lines)):
-            if "# nexp" in self.lines[i]:
-                istartProfs = i
-        self.header = self.lines[:istartProfs]
-
-    def _read_profiles(self):
-        singleLine, title, var = None, None, None  # for ruff complaints
-
-        # ---
-        found = False
-        self.profiles = OrderedDict()
-        for i in range(len(self.lines)):
-            if self.lines[i][0] == "#" and self.lines[i + 1][0] != "#":
-                # previous
-                if found and not singleLine:
-                    self.profiles[title] = np.array(var)
-                    if self.profiles[title].shape[1] == 1:
-                        self.profiles[title] = self.profiles[title][:, 0]
-
-                linebr = self.lines[i].split("#")[1].split("\n")[0].split()
-                title_Orig = linebr[0]
-                if len(linebr) > 1:
-                    unit = self.lines[i].split("#")[1].split("\n")[0].split()[2]
-                    title = title_Orig + f"({unit})"
-                else:
-                    title = title_Orig
-                found, var = True, []
-
-                if title in self.titles_single:
-                    singleLine = True
-                else:
-                    singleLine = False
-            elif found:
-                var0 = self.lines[i].split()
-                if singleLine:
-                    if title in self.titles_singleArr:
-                        self.profiles[title] = np.array([float(i) for i in var0])
-                    else:
-                        self.profiles[title] = np.array(var0)
-                else:
-                    # varT = [float(j) for j in var0[1:]]
-                    """
-                    Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
-                    """
-                    varT = [
-                        float(j) if (j[-4].upper() == "E" or "." in j) else 0.0
-                        for j in var0[1:]
-                    ]
-
-                    var.append(varT)
-
-        # last
-        if not singleLine:
-            while len(var[-1]) < 1:
-                var = var[:-1]  # Sometimes there's an extra space, remove
-            self.profiles[title] = np.array(var)
-            if self.profiles[title].shape[1] == 1:
-                self.profiles[title] = self.profiles[title][:, 0]
-
-        # Accept omega0
-        if ("w0(rad/s)" not in self.profiles) and ("omega0(rad/s)" in self.profiles):
-            self.profiles["w0(rad/s)"] = self.profiles["omega0(rad/s)"]
-            del self.profiles["omega0(rad/s)"]
-
-    def _ensure_existence(self):
-        # Calculate necessary quantities
-
-        if "qpar_beam(MW/m^3)" in self.profiles:
-            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
-        else:
-            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
-
-        if "qmom(Nm)" in self.profiles:
-            self.varqmom = "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-        else:
-            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
+    def deriveQuantities(self, mi_ref=None, calculateDerived=True, n_theta_geo=1001, rederiveGeometry=True):
 
         # -------------------------------------------------------------------------------------------------------------------
-        # Insert zeros in those cases whose column are not there
-        # -------------------------------------------------------------------------------------------------------------------
+        self.readSpecies()
+        self.produce_shape_lists()
+        self.mi_first = self.Species[0]["A"]
+        self.DTplasma()
+        self.sumFast()
+        # -------------------------------------
 
-        some_times_are_not_here = [
-            "qei(MW/m^3)",
-            "qohme(MW/m^3)",
-            "johm(MA/m^2)",
-            "jbs(MA/m^2)",
-            "jbstor(MA/m^2)",
-            "w0(rad/s)",
-            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
-            "zmag(m)",
-            "qsync(MW/m^3)",
-            "qbrem(MW/m^3)",
-            "qline(MW/m^3)",
-            self.varqpar,
-            self.varqpar2,
-            "shape_cos0(-)",
-            self.varqmom,
+        if "derived" not in self.__dict__:
+            self.derived = {}
+
+        if mi_ref is not None:
+            self.derived["mi_ref"] = mi_ref
+            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",typeMsg="w")
+        else:
+            self.derived["mi_ref"] = self.mi_first
+            print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
+
+        # Useful to have gradients in the basic ----------------------------------------------------------
+        self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
+        self.derived["aLne"] = aLT(
+            self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"]
+        )
+
+        self.derived["aLTi"] = self.profiles["ti(keV)"] * 0.0
+        self.derived["aLni"] = []
+        for i in range(self.profiles["ti(keV)"].shape[1]):
+            self.derived["aLTi"][:, i] = aLT(
+                self.profiles["rmin(m)"], self.profiles["ti(keV)"][:, i]
+            )
+            self.derived["aLni"].append(
+                aLT(self.profiles["rmin(m)"], self.profiles["ni(10^19/m^3)"][:, i])
+            )
+        self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
+        # ------------------------------------------------------------------------------------------------
+
+        if calculateDerived:
+            self.deriveQuantities_full(rederiveGeometry=rederiveGeometry)
+
+    # -------------------------------------------------------------------------------------
+    # Method to write a scratch file
+    # -------------------------------------------------------------------------------------
+
+    @classmethod
+    def scratch(cls, profiles, label_header='', **kwargs_process):
+        instance = cls(None)
+
+        # Header
+        instance.header = f'''
+#  Created from scratch with MITIM version {__version__}
+#  {label_header}                                                       
+#
+'''
+        # Add data to profiles
+        instance.profiles = profiles
+
+        instance.process(**kwargs_process)
+
+        return instance
+
+    # -------------------------------------------------------------------------------------
+
+    def calculate_Er(
+        self,
+        folder,
+        rhos=None,
+        vgenOptions={},
+        name="vgen1",
+        includeAll=False,
+        write_new_file=None,
+        cold_start=False,
+        ):
+        profiles = copy.deepcopy(self)
+
+        # Resolution?
+        resol_changed = False
+        if rhos is not None:
+            profiles.changeResolution(rho_new=rhos)
+            resol_changed = True
+
+        self.neo = NEOtools.NEO()
+        self.neo.prep(profiles, folder)
+        self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, cold_start=cold_start)
+
+        profiles_new = copy.deepcopy(self.neo.inputgacode_vgen)
+        if resol_changed:
+            profiles_new.changeResolution(rho_new=self.profiles["rho(-)"])
+
+        # Get the information from the NEO run
+
+        variables = ["w0(rad/s)"]
+        if includeAll:
+            variables += [
+                "vpol(m/s)",
+                "vtor(m/s)",
+                "jbs(MA/m^2)",
+                "jbstor(MA/m^2)",
+                "johm(MA/m^2)",
+            ]
+
+        for ikey in variables:
+            if ikey in profiles_new.profiles:
+                print(
+                    f'\t- Inserting {ikey} from NEO run{" (went back to original resolution by interpolation)" if resol_changed else ""}'
+                )
+                self.profiles[ikey] = profiles_new.profiles[ikey]
+
+        self.deriveQuantities()
+
+        if write_new_file is not None:
+            self.writeCurrentStatus(file=write_new_file)
+            
+    def produce_shape_lists(self):
+        self.shape_cos = [
+            self.profiles["shape_cos0(-)"],  # tilt
+            self.profiles["shape_cos1(-)"],
+            self.profiles["shape_cos2(-)"],
+            self.profiles["shape_cos3(-)"],
+            self.profiles["shape_cos4(-)"],
+            self.profiles["shape_cos5(-)"],
+            self.profiles["shape_cos6(-)"],
+        ]
+        self.shape_sin = [
+            None,
+            None,  # s1 is arcsin(triangularity)
+            None,  # s2 is minus squareness
+            self.profiles["shape_sin3(-)"],
+            self.profiles["shape_sin4(-)"],
+            self.profiles["shape_sin5(-)"],
+            self.profiles["shape_sin6(-)"],
         ]
 
-        num_moments = 6  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-        for i in range(num_moments):
-            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
-            if i > 1:
-                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
+    def readSpecies(self, maxSpecies=100):
+        maxSpecies = int(self.profiles["nion"][0])
 
-        for ikey in some_times_are_not_here:
-            if ikey not in self.profiles.keys():
-                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
+        Species = []
+        for j in range(maxSpecies):
+            # To determine later if this specie has zero density
+            niT = self.profiles["ni(10^19/m^3)"][0, j]
 
             sp = {
                 "N": self.profiles["name"][j],
@@ -1026,8 +1031,8 @@ class PROFILES_GACODE(mitim_state):
         self.derived['s_delta']  = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["delta(-)"])
         self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
         
-        self.derived['s_hat'] =  self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
-        self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * self.derived['s_hat'][1:]]) # infinite in first location
+        s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
+        self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
 
         '''
         Rotations
@@ -1525,32 +1530,18 @@ class PROFILES_GACODE(mitim_state):
 
         self.moveSpecie(pos=len(self.Species), pos_new=1)
 
-    def changeZeff(
-        self,
-        Zeff,
-        ion_pos = 2,                  # Position of ion to change (if (D,Z1,Z2), pos 1 -> change Z1)
-        keep_fmain = False,           # If True, it will keep fmain and change Z of ion in position ion_pos. If False, it will change the content of ion in position ion_pos and the content of quasineutral ions to achieve Zeff
-        fmain_force = None,           # If keep_fmain is True, it will force fmain to this value. If None, it will use the current fmain
-        enforceSameGradients = False  # If True, it will scale all thermal densities to have the same gradients after changing Zeff
-        ):
+    def changeZeff(self, Zeff, ion_pos=2, quasineutral_ions=None, enforceSameGradients=False):
+        """
+        if (D,Z1,Z2), pos 1 -> change Z1
+        """
 
-        if not keep_fmain and fmain_force is not None:
-            raise ValueError("[MITIM] fmain_force can only be used if keep_fmain is True")
+        if quasineutral_ions is None:
+            if self.DTplasmaBool:
+                quasineutral_ions = [self.Dion, self.Tion]
+            else:
+                quasineutral_ions = [self.Mion]
 
-        if fmain_force is not None:
-            fmain_factor = fmain_force / self.derived["fmain"]
-        else:
-            fmain_factor = 1.0
-
-        if self.DTplasmaBool:
-            quasineutral_ions = [self.Dion, self.Tion]
-        else:
-            quasineutral_ions = [self.Mion]
-
-        if not keep_fmain:
-            print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i")
-        else:
-            print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content and Z of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions} and keeping fmain={self.derived["fmain"]*fmain_factor:.3f}',typeMsg="i")
+        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i",)
 
         # Plasma needs to be in quasineutrality to start with
         self.enforceQuasineutrality()
@@ -1560,72 +1551,37 @@ class PROFILES_GACODE(mitim_state):
         # ------------------------------------------------------
         Zq = np.zeros(self.derived["fi"].shape[0])
         Zq2 = np.zeros(self.derived["fi"].shape[0])
-        fZq = np.zeros(self.derived["fi"].shape[0])
-        fZq2 = np.zeros(self.derived["fi"].shape[0])
         fZj = np.zeros(self.derived["fi"].shape[0])
         fZj2 = np.zeros(self.derived["fi"].shape[0])
         for i in range(len(self.Species)):
-            
-            # Ions for quasineutrality (main ones)
             if i in quasineutral_ions:
                 Zq += self.Species[i]["Z"] 
                 Zq2 += self.Species[i]["Z"] ** 2 
-                
-                fZq += self.Species[i]["Z"] * self.derived["fi"][:, i]          * fmain_factor
-                fZq2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]    * fmain_factor
-            # Non-quasineutral and not the ion to change
             elif i != ion_pos:
                 fZj += self.Species[i]["Z"] * self.derived["fi"][:, i]
                 fZj2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
-            # Ion to change
             else:
                 Zk = self.Species[i]["Z"]
 
+        # ------------------------------------------------------
+        # Find free parameters (fk and fq)
+        # ------------------------------------------------------
+
+        fk = ( Zeff - (1-fZj)*Zq2/Zq - fZj2 ) / ( Zk**2 - Zk*Zq2/Zq)
+        fq = ( 1 - fZj - fk*Zk ) / Zq
+
+        if (fq<0).any():
+            raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
+
+        # ------------------------------------------------------
+        # Insert
+        # ------------------------------------------------------
+
         fi_orig = self.derived["fi"][:, ion_pos]
-        Zi_orig = self.Species[ion_pos]["Z"]
-        Ai_orig = self.Species[ion_pos]["A"]
 
-        if not keep_fmain:
-            # ------------------------------------------------------
-            # Find free parameters (fk and fq)
-            # ------------------------------------------------------
-
-            fk = ( Zeff - (1-fZj)*Zq2/Zq - fZj2 ) / ( Zk**2 - Zk*Zq2/Zq)
-            fq = ( 1 - fZj - fk*Zk ) / Zq
-
-            if (fq<0).any():
-                raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
-
-            # ------------------------------------------------------
-            # Insert
-            # ------------------------------------------------------
-
-            self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
-            for i in quasineutral_ions:
-                self.profiles["ni(10^19/m^3)"][:, i] = fq * self.profiles["ne(10^19/m^3)"]
-        else:
-            # ------------------------------------------------------
-            # Find free parameters (fk and Zk)
-            # ------------------------------------------------------
-
-            Zk = (Zeff - fZq2 - fZj2) / (1 - fZq - fZj)
-            
-            # I need a single value
-            Zk_ave = CALCtools.integrateFS(Zk, self.profiles["rmin(m)"], self.derived["volp_miller"])[-1] / self.derived["volume"]
-
-            fk = (1 - fZq - fZj) / Zk_ave
-
-            # ------------------------------------------------------
-            # Insert
-            # ------------------------------------------------------
-
-            self.profiles['z'][ion_pos] = Zk_ave
-            self.profiles['mass'][ion_pos] = Zk_ave * 2
-            self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
-            
-            if fmain_force is not None:
-                for i in quasineutral_ions:
-                    self.profiles["ni(10^19/m^3)"][:, i] *= fmain_factor
+        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
+        for i in quasineutral_ions:
+            self.profiles["ni(10^19/m^3)"][:, i] = fq * self.profiles["ne(10^19/m^3)"]
 
         self.readSpecies()
 
@@ -1635,7 +1591,7 @@ class PROFILES_GACODE(mitim_state):
             self.scaleAllThermalDensities()
             self.deriveQuantities(rederiveGeometry=False)
 
-        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) of ion [{Zi_orig:.2f},{Ai_orig:.2f}] to { self.derived["fi"][:, ion_pos].mean():.2e} of ion [{self.profiles["z"][ion_pos]:.2f}, {self.profiles["mass"][ion_pos]:.2f}] to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
+        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
@@ -1753,10 +1709,16 @@ class PROFILES_GACODE(mitim_state):
                     int(self.profiles["z"][i]), int(self.profiles["mass"][i])
                 )
                 if name is not None:
-                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',typeMsg="i",)
+                    print(
+                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',
+                        typeMsg="i",
+                    )
                     self.profiles["name"][i] = name
                 else:
-                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',typeMsg="w",)
+                    print(
+                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',
+                        typeMsg="w",
+                    )
 
         # Correct qione
         if groupQIONE and (np.abs(self.profiles["qione(MW/m^3)"].sum()) > 1e-14):
@@ -2770,7 +2732,6 @@ class PROFILES_GACODE(mitim_state):
         self,
         axs4,
         color="b",
-        fast_color='r',
         lw=1.0,
         label="",
         ls="-o",
@@ -2857,19 +2818,6 @@ class PROFILES_GACODE(mitim_state):
                 markersize=ms,
                 alpha=alpha,
             )
-            for i in range(len(self.Species)):
-                if self.Species[i]["S"] != "therm":
-                                ax.plot(
-                                xcoord[:ix],
-                                self.derived["aLTi"][:ix, i],
-                                ls,
-                                c=fast_color,
-                                lw=lw,
-                                markersize=ms,
-                                alpha=alpha,
-                                label=self.Species[i]["N"],
-            )
-            ax.legend(loc="best", fontsize=7)
             ax = axs4[5]
             ax.plot(
                 xcoord[:ix],
