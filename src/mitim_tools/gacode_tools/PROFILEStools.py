@@ -3,7 +3,7 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import MATHtools, IOtools
+from mitim_tools.misc_tools import MATHtools, IOtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -57,6 +57,7 @@ class gacode_state(MITIMstate.mitim_state):
                 self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
             if "qpar_wall(MW/m^3)" in self.profiles:
                 self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+            
             """
             Note that in prgen_map_plasmastate, that variable:
             expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
@@ -84,7 +85,15 @@ class gacode_state(MITIMstate.mitim_state):
 
             """
 
-
+            # Ensure that we also have the shape coefficients
+            num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+            if "shape_cos0(-)" not in self.profiles:
+                self.profiles["shape_cos0(-)"] = np.ones(self.profiles["rmaj(m)"].shape)
+            for i in range(num_moments):
+                if f"shape_cos{i + 1}(-)" not in self.profiles:
+                    self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+                if f"shape_sin{i + 1}(-)" not in self.profiles and i > 1:
+                    self.profiles[f"shape_sin{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
 
     def _read_header(self):
         for i in range(len(self.lines)):

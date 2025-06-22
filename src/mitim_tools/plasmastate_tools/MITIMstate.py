@@ -49,15 +49,9 @@ def ensure_variables_existence(self):
         "kappa(-)": 1,
         "delta(-)": 1,
         "zeta(-)": 1,
-        "shape_cos0(-)": 1,
     })
         
-    num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-    for i in range(num_moments):
-        required_profiles[f"shape_cos{i + 1}(-)"] = 1
-        if i > 1:
-            required_profiles[f"shape_sin{i + 1}(-)"] = 1  
-        
+
     # Sources and Sinks
     required_profiles.update({
         "qohme(MW/m^3)": 1,
@@ -1789,13 +1783,15 @@ class mitim_state:
 
         state_plotting.plot_profiles(self,axs1, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
         state_plotting.plot_powers(self,axs2, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
-        state_plotting.plot_geometry(self,axs3, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
+        self.plot_geometry(axs3, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
         state_plotting.plot_gradients(self,axs4, color=color, lw=lw, lastRho=lastRhoGradients, label=extralab)
         if axsFlows is not None:
             state_plotting.plot_flows(self, axsFlows, ls=lsFlows, leg=legFlows, showtexts=showtexts)
         state_plotting.plot_other(self,axs6, color=color, lw=lw, extralab=extralab, fs=fs)
         state_plotting.plot_ions(self,axsImps, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
         
+    def plot_geometry(self, *args, **kwargs):
+        pass
         
     def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
         if ("R_surface" in self.derived) and (self.derived["R_surface"] is not None):
