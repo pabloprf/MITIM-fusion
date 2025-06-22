@@ -10,7 +10,7 @@ class vmec_state(mitim_state):
     # Reading and interpreting
     # ------------------------------------------------------------------
 
-    def __init__(self, file, calculateDerived=True, mi_ref=None):
+    def __init__(self, file, derive_quantities=True, mi_ref=None):
 
         super().__init__(type_file='vmec')
 
@@ -20,7 +20,7 @@ class vmec_state(mitim_state):
 
         if self.file is not None:
             # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
-            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
     def _read_vmec(self):
         pass
