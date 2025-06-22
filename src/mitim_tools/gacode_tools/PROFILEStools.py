@@ -3,7 +3,7 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import MATHtools, IOtools
+from mitim_tools.misc_tools import MATHtools, IOtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -57,6 +57,7 @@ class gacode_state(MITIMstate.mitim_state):
                 self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
             if "qpar_wall(MW/m^3)" in self.profiles:
                 self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+            
             """
             Note that in prgen_map_plasmastate, that variable:
             expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
@@ -84,7 +85,15 @@ class gacode_state(MITIMstate.mitim_state):
 
             """
 
-
+            # Ensure that we also have the shape coefficients
+            num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+            if "shape_cos0(-)" not in self.profiles:
+                self.profiles["shape_cos0(-)"] = np.ones(self.profiles["rmaj(m)"].shape)
+            for i in range(num_moments):
+                if f"shape_cos{i + 1}(-)" not in self.profiles:
+                    self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+                if f"shape_sin{i + 1}(-)" not in self.profiles and i > 1:
+                    self.profiles[f"shape_sin{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
 
     def _read_header(self):
         for i in range(len(self.lines)):
@@ -230,6 +239,160 @@ class gacode_state(MITIMstate.mitim_state):
 		"""
         self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
         self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
+
+    def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
+
+        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax13c] = axs3
+
+        rho = self.profiles["rho(-)"]
+        lines = GRAPHICStools.listLS()
+
+        ax = ax00c
+        varL = "cos Shape Params"
+        yl = 0
+        cont = 0
+
+        for i, s in enumerate(self.shape_cos):
+            if s is not None:
+                valmax = np.abs(s).max()
+                if valmax > 1e-10:
+                    lab = f"c{i}"
+                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
+                    cont += 1
+
+                yl = np.max([yl, valmax])
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel(varL)
+
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+
+        ax = ax01c
+        varL = "sin Shape Params"
+        cont = 0
+        for i, s in enumerate(self.shape_sin):
+            if s is not None:
+                valmax = np.abs(s).max()
+                if valmax > 1e-10:
+                    lab = f"s{i}"
+                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
+                    cont += 1
+
+                yl = np.max([yl, valmax])
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel(varL)
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+        ax = ax02c
+        var = self.profiles["polflux(Wb/radian)"]
+        ax.plot(rho, var, lw=lw, ls="-", c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("Poloidal $\\psi$ ($Wb/rad$)")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+        ax = ax10c
+        var = self.profiles["delta(-)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("$\\delta$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+        ax = ax11c
+
+        var = self.profiles["rmin(m)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylim(bottom=0)
+        ax.set_ylabel("$r_{min}$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+        ax = ax20c
+
+        var = self.profiles["rmaj(m)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("$R_{maj}$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+        ax = ax21c
+
+        var = self.profiles["zmag(m)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        yl = np.max([0.1, np.max(np.abs(var))])
+        ax.set_ylim([-yl, yl])
+        ax.set_ylabel("$Z_{maj}$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+        ax = ax22c
+
+        var = self.profiles["kappa(-)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("$\\kappa$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=1)
+
+        ax = ax12c
+
+        var = self.profiles["zeta(-)"]
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("zeta")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+        ax = ax13c
+        self.plot_state_flux_surfaces(ax=ax, color=color)
+
+        ax.set_xlabel("R (m)")
+        ax.set_ylabel("Z (m)")
+        GRAPHICStools.addDenseAxis(ax)
+
+
+
 
 def calculateGeometricFactors(profiles, n_theta=1001):
 

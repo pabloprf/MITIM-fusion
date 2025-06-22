@@ -1,7 +1,7 @@
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.plasmastate_tools import MITIMstate
 
-from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
-
-class vmec_state(mitim_state):
+class vmec_state(MITIMstate.mitim_state):
     '''
     Class to read and manipulate VMEC files
     '''
@@ -22,5 +22,6 @@ class vmec_state(mitim_state):
             # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
             self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
+    @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_vmec(self):
         pass
