@@ -94,6 +94,19 @@ def mitim_timer(name="\t* Script",name_timer = '\t* Start time: '):
         return wrapper_timer
     return decorator_timer
 
+# Decorator to hook methods before and after execution
+def hook_method(before=None, after=None):
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            if before:
+                before(self)
+            result = func(self, *args, **kwargs)
+            if after:
+                after(self)
+            return result
+        return wrapper
+    return decorator
+
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
         txt = f"{txt}"
