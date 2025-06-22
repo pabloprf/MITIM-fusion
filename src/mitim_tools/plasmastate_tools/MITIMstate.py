@@ -14,6 +14,85 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
+def ensure_variables_existence(self):
+    # ---------------------------------------------------------------------------
+    # Determine minimal set of variables that should be present in the profiles
+    # ---------------------------------------------------------------------------
+    
+    # Kinetics
+    required_profiles = {
+        "te(keV)": 1,
+        "ti(keV)": 2,
+        "ne(10^19/m^3)": 1,
+        "ni(10^19/m^3)": 2,
+        "ptot(Pa)": 1,
+        "zeff(-)": 1,
+        "w0(rad/s)": 1,
+    }
+    
+    # Electromagnetics
+    required_profiles.update({
+        "q(-)": 1,
+        "torfluxa(Wb/radian)": 1,
+        "polflux(Wb/radian)": 1,
+        "johm(MA/m^2)": 1,
+        "jbs(MA/m^2)": 1,
+        "jbstor(MA/m^2)": 1,
+    })
+    
+    # Geometry
+    required_profiles.update({
+        "rho(-)": 1,
+        "rmin(m)": 1,
+        "rmaj(m)": 1,
+        "zmag(m)": 1,
+        "rcentr(m)": 1,
+        "kappa(-)": 1,
+        "delta(-)": 1,
+        "zeta(-)": 1,
+        "shape_cos0(-)": 1,
+    })
+        
+    num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+    for i in range(num_moments):
+        required_profiles[f"shape_cos{i + 1}(-)"] = 1
+        if i > 1:
+            required_profiles[f"shape_sin{i + 1}(-)"] = 1  
+        
+    # Sources and Sinks
+    required_profiles.update({
+        "qohme(MW/m^3)": 1,
+        "qei(MW/m^3)": 1,
+        "qbeame(MW/m^3)": 1,
+        "qbeami(MW/m^3)": 1,
+        "qrfe(MW/m^3)": 1,
+        "qrfi(MW/m^3)": 1,
+        "qfuse(MW/m^3)": 1,
+        "qfusi(MW/m^3)": 1,
+        "qsync(MW/m^3)": 1,
+        "qbrem(MW/m^3)": 1,
+        "qline(MW/m^3)": 1,
+        "qpar_beam(1/m^3/s)": 1,
+        "qpar_wall(1/m^3/s)": 1,
+        "qmom(N/m^2)": 1,
+    })
+    
+    # ---------------------------------------------------------------------------
+    # Insert zeros in those cases whose column are not there
+    # ---------------------------------------------------------------------------
+
+    # Choose a template for dimensionality
+    template_key_1d = "rmin(m)"
+    template_key_2d = "ti(keV)"
+
+    template_1d = copy.deepcopy(self.profiles[template_key_1d]) * 0.0
+    template_2d = copy.deepcopy(self.profiles[template_key_2d]) * 0.0
+
+    # Ensure required keys exist
+    for key, dim in required_profiles.items():
+        if key not in self.profiles:
+            self.profiles[key] = template_1d if dim == 1 else template_2d
+
 class mitim_state:
     '''
     Class to manipulate the plasma state in MITIM.
@@ -23,9 +102,9 @@ class mitim_state:
 
         self.type = type_file
 
-    def derive_quantities(self, mi_ref=None, calculateDerived=True, rederiveGeometry=True):
+    def derive_quantities(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
 
-        # -------------------------------------------------------------------------------------------------------------------
+        # -------------------------------------
         self.readSpecies()
         self.mi_first = self.Species[0]["A"]
         self.DTplasma()
@@ -54,7 +133,7 @@ class mitim_state:
         self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
         # ------------------------------------------------------------------------------------------------
 
-        if calculateDerived:
+        if derive_quantities:
             self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
 
     def derive_geometry(self, **kwargs):
@@ -171,10 +250,6 @@ class mitim_state:
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
-
-        self.varqmom = "qmom(N/m^2)"
-        if self.varqmom not in self.profiles:
-            self.profiles[self.varqmom] = self.profiles["rho(-)"] * 0.0
 
         if "derived" not in self.__dict__:
             self.derived = {}
@@ -315,7 +390,7 @@ class mitim_state:
                 self.derived["qi"] += qi_terms[i] * self.profiles[i]
 
         # Depends on GACODE version
-        ge_terms = {self.varqpar: 1, self.varqpar2: 1}
+        ge_terms = {"qpar_beam(1/m^3/s)": 1, "qpar_wall(1/m^3/s)": 1}
 
         self.derived["ge"] = np.zeros(len(self.profiles["rho(-)"]))
         for i in ge_terms:
@@ -354,7 +429,7 @@ class mitim_state:
 
         # qmom
         self.derived["mt_Jmiller"] = CALCtools.volume_integration(
-            self.profiles[self.varqmom], r, volp
+            self.profiles["qmom(N/m^2)"], r, volp
         )
         self.derived["mt_Jm2"] = self.derived["mt_Jmiller"] / (volp)
 
@@ -1616,8 +1691,8 @@ class mitim_state:
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
         if ensurePostiveGamma:
             print("\t\t- Making particle flux always positive", typeMsg="i")
-            self.profiles[self.varqpar] = self.profiles[self.varqpar].clip(0)
-            self.profiles[self.varqpar2] = self.profiles[self.varqpar2].clip(0)
+            self.profiles["qpar_beam(1/m^3/s)"] = self.profiles["qpar_beam(1/m^3/s)"].clip(0)
+            self.profiles["qpar_wall(1/m^3/s)"] = self.profiles["qpar_wall(1/m^3/s)"].clip(0)
 
         # Mach
         if ensureMachNumber is not None:
@@ -2042,11 +2117,8 @@ class mitim_state:
         GRAPHICStools.autoscale_y(ax)
 
         ax = ax01b
-        if "varqmom" not in self.__dict__:
-            self.varqmom = "qmom(N/m^2)"
-            self.profiles[self.varqmom] = self.profiles["rho(-)"] * 0.0
 
-        ax.plot(rho, self.profiles[self.varqmom], lw=lw, ls="-", c=color)
+        ax.plot(rho, self.profiles["qmom(N/m^2)"], lw=lw, ls="-", c=color)
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
         ax.set_ylabel("$N/m^2$, $J/m^3$")
@@ -2177,9 +2249,9 @@ class mitim_state:
 
         ax = ax11b
         cont = 0
-        var = self.profiles[self.varqpar] * 1e-20
+        var = self.profiles["qpar_beam(1/m^3/s)"] * 1e-20
         ax.plot(rho, var, lw=lw, ls=lines[0], c=color, label=extralab + "beam")
-        var = self.profiles[self.varqpar2] * 1e-20
+        var = self.profiles["qpar_wall(1/m^3/s)"] * 1e-20
         ax.plot(rho, var, lw=lw, ls=lines[1], c=color, label=extralab + "wall")
 
         ax.set_xlim([0, 1])

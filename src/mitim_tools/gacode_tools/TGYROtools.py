@@ -1203,7 +1203,7 @@ class TGYROoutput:
 
         if (profiles is None) and (FolderTGYRO / "input.gacode").exists():
             from mitim_tools.gacode_tools import PROFILEStools
-            profiles = PROFILEStools.gacode_state(FolderTGYRO / f"input.gacode", calculateDerived=False)
+            profiles = PROFILEStools.gacode_state(FolderTGYRO / f"input.gacode", derive_quantities=False)
 
         self.profiles = profiles
 
@@ -1215,9 +1215,9 @@ class TGYROoutput:
         self.readNu()
         self.readProfiles()
 
-        calculateDerived = True
+        derive_quantities = True
         try:
-            self.profiles_final = PROFILEStools.gacode_state(self.FolderTGYRO / "input.gacode.new",calculateDerived=calculateDerived,)
+            self.profiles_final = PROFILEStools.gacode_state(self.FolderTGYRO / "input.gacode.new",derive_quantities=derive_quantities,)
         except:
             self.profiles_final = None
 

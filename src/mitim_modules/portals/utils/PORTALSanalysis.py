@@ -183,12 +183,12 @@ class PORTALSanalyzer:
         file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode_unmodified"
         if file.exists():
             print("\t\t- Reading next profile to evaluate (from folder)")
-            self.profiles_next = PROFILEStools.gacode_state(file, calculateDerived=False)
+            self.profiles_next = PROFILEStools.gacode_state(file, derive_quantities=False)
 
             file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "model_complete" / "input.gacode.new"
             if file.exists():
                 self.profiles_next_new = PROFILEStools.gacode_state(
-                    file, calculateDerived=False
+                    file, derive_quantities=False
                 )
                 self.profiles_next_new.printInfo(label="NEXT")
             else:

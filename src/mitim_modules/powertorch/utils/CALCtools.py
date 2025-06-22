@@ -81,7 +81,6 @@ def derivation_into_dxdr(r, p):
 # Volume calculations
 # ********************************************************************************************************************
 
-
 def _to_2d(x, xp):
     """Ensure shape (batch, N) for either NumPy or Torch."""
     if xp is np:
