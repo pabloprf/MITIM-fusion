@@ -1,5 +1,5 @@
 import argparse
-from mitim_tools.plasmastate_tools import MITIMstate
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.gacode_tools import PROFILEStools
 
 """
@@ -32,7 +32,7 @@ def main():
 
     if not print_only:
 
-        fn = MITIMstate.plotAll(profs, lastRhoGradients=rho)
+        fn = state_plotting.plotAll(profs, lastRhoGradients=rho)
 
         fn.show()
 

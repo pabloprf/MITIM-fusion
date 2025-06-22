@@ -820,7 +820,7 @@ class transp_input_time:
         # Separatrix
         # --------------------------------------------------------------
 
-        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][-1], self.p.derived["Z_surface"][-1]
+        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][0,:,-1], self.p.derived["Z_surface"][0,:,-1]
 
         # --------------------------------------------------------------
         # VV

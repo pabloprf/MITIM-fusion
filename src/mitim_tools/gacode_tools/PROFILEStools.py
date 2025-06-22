@@ -57,6 +57,33 @@ class gacode_state(MITIMstate.mitim_state):
                 self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
             if "qpar_wall(MW/m^3)" in self.profiles:
                 self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+            """
+            Note that in prgen_map_plasmastate, that variable:
+            expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
+
+            Note that in prgen_read_plasmastate, that variable:
+            ! Particle source
+                err = nf90_inq_varid(ncid,trim('sn_trans'),varid)
+                err = nf90_get_var(ncid,varid,plst_sn_trans(1:nx-1))
+                plst_sn_trans(nx) = 0.0
+
+            Note that in the plasmastate file, the variable "sn_trans":
+
+                long_name:      particle transport (loss)
+                units:          #/sec
+                component:      PLASMA
+                section:        STATE_PROFILES
+                specification:  R|units=#/sec|step*dV sn_trans(~nrho,0:nspec_th)
+
+            So, this means that expro_qpar_beam is in units of #/sec/m^3, meaning that
+            it is a particle flux DENSITY. It therefore requires volume integral and
+            divide by surface to produce a flux.
+
+            The units of this qpar_beam column is NOT MW/m^3. In the gacode source codes
+            they also say that those units are wrong.
+
+            """
+
 
 
     def _read_header(self):

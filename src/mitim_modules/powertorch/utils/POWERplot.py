@@ -1,7 +1,8 @@
-from mitim_tools.plasmastate_tools import MITIMstate
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from mitim_tools.plasmastate_tools.utils import state_plotting
 
 def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, compare_to_state=None, c_orig = "b"):
     
@@ -15,7 +16,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
         profiles_new = self.from_powerstate(insert_highres_powers=True)
 
         # Plot the inserted profiles together with the original ones
-        _ = MITIMstate.plotAll([self.profiles, profiles_new], figs=figs)
+        _ = state_plotting.plotAll([self.profiles, profiles_new], figs=figs)
 
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot plasma state

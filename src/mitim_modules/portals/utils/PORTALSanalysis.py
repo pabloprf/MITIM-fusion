@@ -1010,7 +1010,7 @@ class PORTALSinitializer:
                 self.powerstates[i].plot(axs=axs, c=colors[i], label=f"#{i}")
 
                 # Add profiles too
-                self.powerstates[i].profiles.plotGradients(
+                self.powerstates[i].profiles.plot_gradients(
                     axsGrads_extra,
                     color=colors[i],
                     plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
@@ -1025,7 +1025,7 @@ class PORTALSinitializer:
 
         # Add next profile
         if len(self.profiles) > len(self.powerstates):
-            self.profiles[-1].plotGradients(
+            self.profiles[-1].plot_gradients(
                 axsGrads_extra,
                 color=colors[i+1],
                 plotImpurity=self.powerstates[-1].impurityPosition_transport if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
@@ -1053,7 +1053,7 @@ class PORTALSinitializer:
                     for i in range(2):
                         axsGrads.append(figG.add_subplot(grid[i, j]))
                 for i, p in enumerate(self.powerstates):
-                    p.profiles.plotGradients(
+                    p.profiles.plot_gradients(
                         axsGrads,
                         color=colors[i],
                         plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
@@ -1065,7 +1065,7 @@ class PORTALSinitializer:
 
                 if len(self.profiles) > len(self.powerstates):
                     prof = self.profiles[-1]
-                    prof.plotGradients(
+                    prof.plot_gradients(
                         axsGrads,
                         color=colors[i+1],
                         plotImpurity=p.impurityPosition_transport if 'nZ' in p.ProfilesPredicted else None,
