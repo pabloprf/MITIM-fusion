@@ -112,7 +112,7 @@ class beat_initializer:
         # --------------------------------------------------------------------------------------------
 
         # Write it to initialization folder
-        self.profiles_current.writeCurrentStatus(file=self.folder / 'input.gacode')
+        self.profiles_current.write_state(file=self.folder / 'input.gacode')
 
         # Pass the profiles to the beat instance
         self.beat_instance.profiles_current = self.profiles_current
@@ -199,7 +199,7 @@ class initializer_from_geqdsk(beat_initializer):
                 p.profiles['q(-)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
 
         # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder / 'input.geqdsk.gacode')
+        p.write_state(file=self.folder / 'input.geqdsk.gacode')
 
         # Copy original geqdsk for reference use
         shutil.copy2(geqdsk_file, self.folder / "input.geqdsk")

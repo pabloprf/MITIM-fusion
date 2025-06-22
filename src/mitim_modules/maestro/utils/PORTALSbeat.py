@@ -63,7 +63,7 @@ class portals_beat(beat):
             self.profiles_current = profiles
 
 
-        self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
+        self.profiles_current.write_state(file = self.fileGACODE)
 
         self.PORTALSparameters = PORTALSparameters
         self.MODELparameters = MODELparameters
@@ -155,7 +155,7 @@ class portals_beat(beat):
             print('\t\t- PORTALS probably converged in training, so analyzing a bit differently')
             self.profiles_output = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
 
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         '''
@@ -172,7 +172,7 @@ class portals_beat(beat):
         '''
 
         # Write the pre-merge input.gacode before modifying it
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -231,7 +231,7 @@ class portals_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.derive_quantities()
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def grab_output(self, full = False):
 

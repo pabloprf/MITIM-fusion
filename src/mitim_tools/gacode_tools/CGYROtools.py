@@ -110,7 +110,7 @@ class CGYRO:
             control_file = 'input.cgyro.controls'
         )
 
-        inputCGYRO.writeCurrentStatus()
+        inputCGYRO.write_state()
 
         return input_cgyro_file, inputgacode_file_this
 
@@ -301,7 +301,7 @@ class CGYRO:
                     control_file = 'input.cgyro.controls'
                 )
 
-                input_cgyro_file_this.writeCurrentStatus()
+                input_cgyro_file_this.write_state()
 
                 # Copy the input.gacode file in the subfolder
                 inputgacode_file_this = folder_run / "input.gacode"
@@ -743,7 +743,7 @@ class CGYROinput:
 
         self.controls = GACODErun.buildDictFromInput(self.file_txt)
 
-    def writeCurrentStatus(self, file=None):
+    def write_state(self, file=None):
         print("\t- Writting CGYRO input file")
 
         if file is None:

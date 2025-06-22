@@ -49,7 +49,7 @@ class NEO:
             if runThisCase:
                 IOtools.askNewFolder(self.folder_vgen, force=True)
 
-        self.inputgacode.writeCurrentStatus(file=(self.folder_vgen / f"input.gacode"))
+        self.inputgacode.write_state(file=(self.folder_vgen / f"input.gacode"))
 
         # ---- Run
 

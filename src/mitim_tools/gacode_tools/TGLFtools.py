@@ -429,7 +429,7 @@ class TGLF:
 
         for rho in self.inputsTGLF:
             self.inputsTGLF[rho].file = self.FolderGACODE / f'input.tglf_{rho:.4f}'
-            self.inputsTGLF[rho].writeCurrentStatus()
+            self.inputsTGLF[rho].write_state()
 
         """
 		~~~~~ Create Normalizations ~~~~~
@@ -3854,7 +3854,7 @@ def changeANDwrite_TGLF(
         else:
             print('\t- Not applying corrections nor quasineutrality because "TGLFsettings" is None')
 
-        inputTGLF_rho.writeCurrentStatus(file=newfile)
+        inputTGLF_rho.write_state(file=newfile)
 
         modInputTGLF[rho] = inputTGLF_rho
 
@@ -4126,7 +4126,7 @@ class TGLFinput:
 
         return position
 
-    def writeCurrentStatus(self, file=None):
+    def write_state(self, file=None):
         print("\t- Writting TGLF input file")
 
         maxSpeciesTGLF = 6  # TGLF cannot handle more than 6 species

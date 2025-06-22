@@ -348,7 +348,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     p.printInfo()
     
     if gacode_out is not None:
-        p.writeCurrentStatus(file=gacode_out)
+        p.write_state(file=gacode_out)
     if plot_result:
         p.plot()
 

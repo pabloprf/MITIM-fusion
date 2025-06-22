@@ -285,7 +285,7 @@ class eped_beat(beat):
         for key in eped_results:
             print(f'\t\t- {key}: {eped_results[key]}')
 
-        self.profiles_output.writeCurrentStatus(file=self.folder / 'input.gacode.eped')
+        self.profiles_output.write_state(file=self.folder / 'input.gacode.eped')
 
         return eped_results
 
@@ -293,7 +293,7 @@ class eped_beat(beat):
         
         self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
 
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine

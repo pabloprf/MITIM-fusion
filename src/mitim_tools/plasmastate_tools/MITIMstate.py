@@ -126,7 +126,10 @@ class mitim_state:
         if derive_quantities:
             self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
 
-    def derive_geometry(self, **kwargs):
+    def derive_geometry(self, *args, **kwargs):
+        raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
+
+    def write_state(self, *args, **kwargs):
         raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
 
     # -------------------------------------------------------------------------------------
@@ -198,7 +201,7 @@ class mitim_state:
         self.derive_quantities()
 
         if write_new_file is not None:
-            self.writeCurrentStatus(file=write_new_file)
+            self.write_state(file=write_new_file)
 
 
     def readSpecies(self, maxSpecies=100):
@@ -1192,98 +1195,6 @@ class mitim_state:
         self.profiles.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
         self.derived.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.derived.items() if isinstance(tensor, torch.Tensor)})
 
-    def writeCurrentStatus(self, file=None, limitedNames=False):
-        print("\t- Writting input.gacode file")
-
-        if file is None:
-            file = self.file
-
-        with open(file, "w") as f:
-            for line in self.header:
-                f.write(line)
-
-            for i in self.profiles:
-                if "(" not in i:
-                    f.write(f"# {i}\n")
-                else:
-                    f.write(f"# {i.split('(')[0]} | {i.split('(')[-1].split(')')[0]}\n")
-
-                if i in self.titles_single:
-                    if i == "name" and limitedNames:
-                        newlist = [self.profiles[i][0]]
-                        for k in self.profiles[i][1:]:
-                            if k not in [
-                                "D",
-                                "H",
-                                "T",
-                                "He4",
-                                "he4",
-                                "C",
-                                "O",
-                                "Ar",
-                                "W",
-                            ]:
-                                newlist.append("C")
-                            else:
-                                newlist.append(k)
-                        print(
-                            f"\n\n!! Correcting ion names from {self.profiles[i]} to {newlist} to avoid TGYRO radiation error (to solve in future?)\n\n",
-                            typeMsg="w",
-                        )
-                        listWrite = newlist
-                    else:
-                        listWrite = self.profiles[i]
-
-                    if IOtools.isfloat(listWrite[0]):
-                        listWrite = [f"{i:.7e}".rjust(14) for i in listWrite]
-                        f.write(f"{''.join(listWrite)}\n")
-                    else:
-                        f.write(f"{' '.join(listWrite)}\n")
-
-                else:
-                    if len(self.profiles[i].shape) == 1:
-                        for j, val in enumerate(self.profiles[i]):
-                            pos = f"{j + 1}".rjust(3)
-                            valt = f"{round(val,99):.7e}".rjust(15)
-                            f.write(f"{pos}{valt}\n")
-                    else:
-                        for j, val in enumerate(self.profiles[i]):
-                            pos = f"{j + 1}".rjust(3)
-                            txt = "".join([f"{k:.7e}".rjust(15) for k in val])
-                            f.write(f"{pos}{txt}\n")
-
-        print(f"\t\t~ File {IOtools.clipstr(file)} written")
-
-        # Update file
-        self.file = file
-
-    def writeMiminalKinetic(self, file):
-        setProfs = [
-            "rho(-)",
-            "polflux(Wb/radian)",
-            "q(-)",
-            "te(keV)",
-            "ti(keV)",
-            "ne(10^19/m^3)",
-        ]
-
-        with open(file, "w") as f:
-            for i in setProfs:
-                if "(" not in i:
-                    f.write(f"# {i}\n")
-                else:
-                    f.write(f"# {i.split('(')[0]} | {i.split('(')[-1].split(')')[0]}\n")
-
-                if len(self.profiles[i].shape) > 1:
-                    p = self.profiles[i][:, 0]
-                else:
-                    p = self.profiles[i]
-
-                for j, val in enumerate(p):
-                    pos = f"{j + 1}".rjust(3)
-                    valt = f"{val:.7e}".rjust(15)
-                    f.write(f"{pos}{valt}\n")
-
     def changeResolution(self, n=100, rho_new=None, interpolation_function=MATHtools.extrapolateCubicSpline):
         rho = copy.deepcopy(self.profiles["rho(-)"])
 
@@ -1689,7 +1600,7 @@ class mitim_state:
         # Write
         # ----------------------------------------------------------------------
         if write:
-            self.writeCurrentStatus(file=new_file)
+            self.write_state(file=new_file)
             self.printInfo()
         
     def enforce_same_density_gradients(self):
@@ -1761,7 +1672,7 @@ class mitim_state:
         self.derive_quantities()
 
         if new_file is not None:
-            self.writeCurrentStatus(file=new_file)
+            self.write_state(file=new_file)
 
 
     def plot(

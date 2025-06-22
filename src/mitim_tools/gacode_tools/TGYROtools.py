@@ -374,7 +374,7 @@ class TGYRO:
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
         )
-        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tglf")
+        inputclass_TGLF.write_state(file=self.FolderTGYRO_tmp / "input.tglf")
 
         # -----------------------------------
         # ------ Write input profiles
@@ -391,7 +391,7 @@ class TGYRO:
         if "z_eff(-)" not in self.profiles.profiles:
             self.profiles.profiles["z_eff(-)"] = self.profiles.derived["Zeff"]
 
-        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / f"{fil}")
+        self.profiles.write_state(file=self.FolderTGYRO_tmp / f"{fil}")
 
         # -----------------------------------
         # ------ Create TGYRO file
@@ -410,7 +410,7 @@ class TGYRO:
             special_radii=special_radii_mod,
         )
 
-        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tgyro")
+        inputclass_TGYRO.write_state(file=self.FolderTGYRO_tmp / "input.tgyro")
 
         # -----------------------------------
         # ------ Check density for problems
@@ -499,7 +499,7 @@ class TGYRO:
                                 inputgacode_new.profiles["rho(-)"] * 0.0
                             )
 
-                inputgacode_new.writeCurrentStatus()
+                inputgacode_new.write_state()
             # ------------------------------------------------------------------------------------------------------------------------
 
             # Copy those files that I'm interested in, plus the extra file, into the main folder
@@ -4586,7 +4586,7 @@ class TGYROinput:
         )
         self.loc_n_ion = spec["LOC_N_ION"]
 
-    def writeCurrentStatus(self, file=None):
+    def write_state(self, file=None):
         print("\t- Writting TGYRO input file")
 
         if file is None:

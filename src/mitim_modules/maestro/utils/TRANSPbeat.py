@@ -174,7 +174,7 @@ class transp_beat(beat):
         self._add_heating_profiles(force_auxiliary_heating_at_output)
 
         # Write profiles
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / "input.gacode")
+        self.profiles_output.write_state(file=self.folder_output / "input.gacode")
 
     def _add_heating_profiles(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}):
         '''
@@ -206,7 +206,7 @@ class transp_beat(beat):
 
         # Write the pre-merge input.gacode before modifying it
         profiles_output_pre_merge = copy.deepcopy(self.profiles_output)
-        profiles_output_pre_merge.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
+        profiles_output_pre_merge.write_state(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -237,7 +237,7 @@ class transp_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.derive_quantities()
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def grab_output(self):
 
