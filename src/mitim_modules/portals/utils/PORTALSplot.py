@@ -1,3 +1,4 @@
+from mitim_tools.plasmastate_tools.utils import state_plotting
 import torch
 import copy
 import numpy as np
@@ -5,6 +6,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -1826,10 +1828,10 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # Plot PROFILES
     # -------------------------------------------------------
 
-    figs = MITIMstate.add_figures(fn,fnlab_pre = "PROFILES - ")
+    figs = state_plotting.add_figures(fn,fnlab_pre = "PROFILES - ")
 
     if indecesPlot[0] < len(self.powerstates):
-        _ = MITIMstate.plotAll(
+        _ = state_plotting.plotAll(
             [
                 self.powerstates[indecesPlot[1]].profiles,
                 self.powerstates[indecesPlot[0]].profiles,
@@ -1887,7 +1889,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             [0.2, 1.0, 1.0, 1.0],
         )
     ):
-        profiles.plotGradients(
+        profiles.plot_gradients(
             axs4,
             color=colors[i],
             label=label,
@@ -1955,7 +1957,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     ms = 0
     
     p = self.mitim_runs[self.i0]["powerstate"].profiles
-    p.plotGradients(
+    p.plot_gradients(
         axsR,
         color="b",
         lastRho=self.MODELparameters["RhoLocations"][-1],
@@ -1972,7 +1974,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
             break
 
         p = self.mitim_runs[ikey]["powerstate"].profiles
-        p.plotGradients(
+        p.plot_gradients(
             axsR,
             color="r",
             lastRho=self.MODELparameters["RhoLocations"][-1],
@@ -1984,7 +1986,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         )
 
     p = self.mitim_runs[self.ibest]["powerstate"].profiles
-    p.plotGradients(
+    p.plot_gradients(
         axsR,
         color="g",
         lastRho=self.MODELparameters["RhoLocations"][-1],

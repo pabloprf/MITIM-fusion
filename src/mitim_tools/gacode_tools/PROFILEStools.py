@@ -57,6 +57,33 @@ class gacode_state(MITIMstate.mitim_state):
                 self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
             if "qpar_wall(MW/m^3)" in self.profiles:
                 self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+            """
+            Note that in prgen_map_plasmastate, that variable:
+            expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
+
+            Note that in prgen_read_plasmastate, that variable:
+            ! Particle source
+                err = nf90_inq_varid(ncid,trim('sn_trans'),varid)
+                err = nf90_get_var(ncid,varid,plst_sn_trans(1:nx-1))
+                plst_sn_trans(nx) = 0.0
+
+            Note that in the plasmastate file, the variable "sn_trans":
+
+                long_name:      particle transport (loss)
+                units:          #/sec
+                component:      PLASMA
+                section:        STATE_PROFILES
+                specification:  R|units=#/sec|step*dV sn_trans(~nrho,0:nspec_th)
+
+            So, this means that expro_qpar_beam is in units of #/sec/m^3, meaning that
+            it is a particle flux DENSITY. It therefore requires volume integral and
+            divide by surface to produce a flux.
+
+            The units of this qpar_beam column is NOT MW/m^3. In the gacode source codes
+            they also say that those units are wrong.
+
+            """
+
 
 
     def _read_header(self):
@@ -183,19 +210,26 @@ class gacode_state(MITIMstate.mitim_state):
             self.profiles["zmag(m)"],
             cn,
             sn)
-        self.derived["R_surface"],self.derived["Z_surface"] = flux_surfaces.R, flux_surfaces.Z
+        self.derived["R_surface"],self.derived["Z_surface"] = np.array([flux_surfaces.R]), np.array([flux_surfaces.Z])
+        
+        # R and Z have [toroidal, radius, point], to allow for non-axisymmetric cases
         # -----------------------------------------------
 
         #cross-sectional area of each flux surface
-        self.derived["surfXS"] = xsec_area_RZ(self.derived["R_surface"],self.derived["Z_surface"])
+        self.derived["surfXS"] = xsec_area_RZ(self.derived["R_surface"][0,...],self.derived["Z_surface"][0,...])
 
-        self.derived["R_LF"] = self.derived["R_surface"].max(axis=1)  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
+        self.derived["R_LF"] = self.derived["R_surface"][0,...].max(axis=-1)  # self.profiles['rmaj(m)'][0]+self.profiles['rmin(m)']
 
         # For Synchrotron
         self.derived["B_ref"] = np.abs(self.derived["B_unit"] * self.derived["bt_geo"])
 
-
-
+        """
+		surf_geo is truly surface area, but because of the GACODE definitions of flux, 
+		Surf 		= V' <|grad r|>	 
+		Surf_GACODE = V'
+		"""
+        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
+        self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
 
 def calculateGeometricFactors(profiles, n_theta=1001):
 

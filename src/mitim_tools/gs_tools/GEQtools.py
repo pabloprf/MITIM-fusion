@@ -438,7 +438,7 @@ class MITIMgeqdsk:
             fig, ax = plt.subplots()
             ff = np.linspace(0, 1, 11)
             self.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
-            p.plotGeometry(ax=ax, surfaces_rho=ff, color="b")
+            p.plot_state_flux_surfaces(ax=ax, surfaces_rho=ff, color="b")
             plt.show()
 
         return p

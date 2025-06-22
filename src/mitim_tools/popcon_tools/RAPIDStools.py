@@ -316,7 +316,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
             resultsS,
             ['r','b','g'],
             ):
-        results['profs'][0].plotGeometry(ax=ax, surfaces_rho=[1.0], color=c)
+        results['profs'][0].plot_state_flux_surfaces(ax=ax, surfaces_rho=[1.0], color=c)
 
     GRAPHICStools.addDenseAxis(ax)
     ax.set_xlabel("R (m)")
