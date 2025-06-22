@@ -1,13 +1,13 @@
 import copy
 import numpy as np
 from collections import OrderedDict
-from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import MATHtools
+from mitim_tools.misc_tools import MATHtools, IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class gacode_state(mitim_state):
+class gacode_state(MITIMstate.mitim_state):
     '''
     Class to read and manipulate GACODE profiles files (input.gacode).
     It inherits from the main MITIMstate class, which provides basic
@@ -18,21 +18,24 @@ class gacode_state(mitim_state):
     '''
 
     # ------------------------------------------------------------------
-    # Reading and interpreting
+    # Reading and interpreting input.gacode files
     # ------------------------------------------------------------------
 
-    def __init__(self, file, calculateDerived=True, mi_ref=None):
+    def __init__(self, file, derive_quantities=True, mi_ref=None):
 
+        # Initialize the base class and tell it the type of file
         super().__init__(type_file='input.gacode')
 
+        # Read the input file and store the raw data
         self.file = file
-
         self._read_inputgacocde()
 
+        # Derive quantities if requested
         if self.file is not None:
             # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
-            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
+    @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_inputgacocde(self):
 
         self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
@@ -46,7 +49,15 @@ class gacode_state(mitim_state):
             # Read file and store raw data
             self._read_header()
             self._read_profiles()
-            self._ensure_existence()
+
+            # Ensure correctness (wrong names in older input.gacode files)
+            if "qmom(Nm)" in self.profiles:
+                self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
+            if "qpar_beam(MW/m^3)" in self.profiles:
+                self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
+            if "qpar_wall(MW/m^3)" in self.profiles:
+                self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+
 
     def _read_header(self):
         for i in range(len(self.lines)):
