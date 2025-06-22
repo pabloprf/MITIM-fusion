@@ -1,13 +1,13 @@
 import copy
 import numpy as np
 from collections import OrderedDict
-from mitim_tools.plasmastate_tools.MITIMstate import mitim_state
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import MATHtools
+from mitim_tools.misc_tools import MATHtools, IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class gacode_state(mitim_state):
+class gacode_state(MITIMstate.mitim_state):
     '''
     Class to read and manipulate GACODE profiles files (input.gacode).
     It inherits from the main MITIMstate class, which provides basic
@@ -18,21 +18,24 @@ class gacode_state(mitim_state):
     '''
 
     # ------------------------------------------------------------------
-    # Reading and interpreting
+    # Reading and interpreting input.gacode files
     # ------------------------------------------------------------------
 
-    def __init__(self, file, calculateDerived=True, mi_ref=None):
+    def __init__(self, file, derive_quantities=True, mi_ref=None):
 
+        # Initialize the base class and tell it the type of file
         super().__init__(type_file='input.gacode')
 
+        # Read the input file and store the raw data
         self.file = file
-
         self._read_inputgacocde()
 
+        # Derive quantities if requested
         if self.file is not None:
             # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
-            self.derive_quantities(mi_ref=mi_ref, calculateDerived=calculateDerived)
+            self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
+    @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_inputgacocde(self):
 
         self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
@@ -46,7 +49,15 @@ class gacode_state(mitim_state):
             # Read file and store raw data
             self._read_header()
             self._read_profiles()
-            self._ensure_existence()
+
+            # Ensure correctness (wrong names in older input.gacode files)
+            if "qmom(Nm)" in self.profiles:
+                self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
+            if "qpar_beam(MW/m^3)" in self.profiles:
+                self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
+            if "qpar_wall(MW/m^3)" in self.profiles:
+                self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
+
 
     def _read_header(self):
         for i in range(len(self.lines)):
@@ -109,52 +120,6 @@ class gacode_state(mitim_state):
         if ("w0(rad/s)" not in self.profiles) and ("omega0(rad/s)" in self.profiles):
             self.profiles["w0(rad/s)"] = self.profiles["omega0(rad/s)"]
             del self.profiles["omega0(rad/s)"]
-
-    def _ensure_existence(self):
-        # Calculate necessary quantities
-
-        if "qpar_beam(MW/m^3)" in self.profiles:
-            self.varqpar, self.varqpar2 = "qpar_beam(MW/m^3)", "qpar_wall(MW/m^3)"
-        else:
-            self.varqpar, self.varqpar2 = "qpar_beam(1/m^3/s)", "qpar_wall(1/m^3/s)"
-
-        if "qmom(Nm)" in self.profiles:
-            self.varqmom = "qmom(Nm)"  # Old, wrong one. But Candy fixed it as of 02/24/2023
-        else:
-            self.varqmom = "qmom(N/m^2)"  # CORRECT ONE
-
-        # -------------------------------------------------------------------------------------------------------------------
-        # Insert zeros in those cases whose column are not there
-        # -------------------------------------------------------------------------------------------------------------------
-
-        some_times_are_not_here = [
-            "qei(MW/m^3)",
-            "qohme(MW/m^3)",
-            "johm(MA/m^2)",
-            "jbs(MA/m^2)",
-            "jbstor(MA/m^2)",
-            "w0(rad/s)",
-            "ptot(Pa)",  # e.g. if I haven't written that info from ASTRA
-            "zeta(-)",  # e.g. if TGYRO is run with zeta=0, it won't write this column in .new
-            "zmag(m)",
-            "qsync(MW/m^3)",
-            "qbrem(MW/m^3)",
-            "qline(MW/m^3)",
-            self.varqpar,
-            self.varqpar2,
-            "shape_cos0(-)",
-            self.varqmom,
-        ]
-
-        num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-        for i in range(num_moments):
-            some_times_are_not_here.append(f"shape_cos{i + 1}(-)")
-            if i > 1:
-                some_times_are_not_here.append(f"shape_sin{i + 1}(-)")
-
-        for ikey in some_times_are_not_here:
-            if ikey not in self.profiles.keys():
-                self.profiles[ikey] = copy.deepcopy(self.profiles["rmin(m)"]) * 0.0
 
     # ------------------------------------------------------------------
     # Derivation (different from MITIMstate)
