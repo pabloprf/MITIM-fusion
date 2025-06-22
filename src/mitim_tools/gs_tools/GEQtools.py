@@ -450,7 +450,7 @@ class MITIMgeqdsk:
         folder.mkdir(parents=True, exist_ok=True)
 
         p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
-        p.writeCurrentStatus(folder / 'input.gacode')
+        p.write_state(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
 

@@ -185,7 +185,7 @@ def initializeProblem(
     )
 
     # After resolution and corrections, store.
-    profiles.writeCurrentStatus(file=FolderInitialization / "input.gacode_modified")
+    profiles.write_state(file=FolderInitialization / "input.gacode_modified")
 
     # ***************************************************************************************************
     # ***************************************************************************************************

@@ -269,7 +269,7 @@ class maestro:
 
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
-        self.profiles_with_engineering_parameters.writeCurrentStatus(file= (self.folder_output / 'input.gacode_frozen'))
+        self.profiles_with_engineering_parameters.write_state(file= (self.folder_output / 'input.gacode_frozen'))
 
     @mitim_timer(
         lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Finalizing',
@@ -283,7 +283,7 @@ class maestro:
 
             final_file= (self.folder_output / 'input.gacode_final')
 
-            self.beat.profiles_output.writeCurrentStatus(file= final_file)
+            self.beat.profiles_output.write_state(file= final_file)
 
             print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 

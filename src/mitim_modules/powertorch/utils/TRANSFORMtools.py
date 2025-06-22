@@ -226,7 +226,7 @@ def to_gacode(
         write_input_gacode = Path(write_input_gacode)
         print(f"\t- Writing input.gacode file: {IOtools.clipstr(write_input_gacode)}")
         write_input_gacode.parent.mkdir(parents=True, exist_ok=True)
-        profiles.writeCurrentStatus(file=write_input_gacode)
+        profiles.write_state(file=write_input_gacode)
 
     # If corrections modify the ions set... it's better to re-read, otherwise powerstate will be confused
     if rederive_profiles:

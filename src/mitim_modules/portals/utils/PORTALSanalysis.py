@@ -498,7 +498,7 @@ class PORTALSanalyzer:
         # Start from the profiles of that step
         fileGACODE = folder / "input.gacode_transferred"
         p = self.extractProfiles(evaluation=evaluation, modified_profiles=modified_profiles)
-        p.writeCurrentStatus(file=fileGACODE)
+        p.write_state(file=fileGACODE)
 
         # New class
         from mitim_modules.portals.PORTALSmain import portals
@@ -592,7 +592,7 @@ class PORTALSanalyzer:
 
         inputgacode = folder / "input.gacode.start"
         p = self.extractProfiles(evaluation=evaluation,modified_profiles=modified_profiles)
-        p.writeCurrentStatus(file=inputgacode)
+        p.write_state(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep(folder, cold_start=cold_start, inputgacode=inputgacode)
