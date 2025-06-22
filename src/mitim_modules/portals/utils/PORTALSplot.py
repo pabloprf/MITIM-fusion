@@ -8,7 +8,6 @@ from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_modules.powertorch.utils import POWERplot
-from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 

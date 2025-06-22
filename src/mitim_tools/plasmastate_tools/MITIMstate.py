@@ -1790,6 +1790,10 @@ class mitim_state:
         state_plotting.plot_other(self,axs6, color=color, lw=lw, extralab=extralab, fs=fs)
         state_plotting.plot_ions(self,axsImps, color=color, legYN=legYN, extralab=extralab, lw=lw, fs=fs)
         
+    # To allow this to be called from the object
+    def plot_gradients(self, *args, **kwargs):
+        return state_plotting.plot_gradients(self, *args, **kwargs)
+        
     def plot_geometry(self, *args, **kwargs):
         pass
         
