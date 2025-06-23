@@ -50,7 +50,6 @@ def ensure_variables_existence(self):
         "delta(-)": 1,
         "zeta(-)": 1,
     })
-        
 
     # Sources and Sinks
     required_profiles.update({

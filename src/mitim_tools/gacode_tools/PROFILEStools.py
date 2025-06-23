@@ -27,73 +27,73 @@ class gacode_state(MITIMstate.mitim_state):
         super().__init__(type_file='input.gacode')
 
         # Read the input file and store the raw data
-        self.file = file
-        self._read_inputgacocde()
+        self.files = [file]
+        
+        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
+        self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
+        self.titles_single = self.titles_singleNum + self.titles_singleArr
+        
+        if self.files is not None:
 
-        # Derive quantities if requested
-        if self.file is not None:
+            self._read_inputgacocde()
+            
             # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
             self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
     @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_inputgacocde(self):
 
-        self.titles_singleNum = ["nexp", "nion", "shot", "name", "type", "time"]
-        self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
-        self.titles_single = self.titles_singleNum + self.titles_singleArr
+        with open(self.files[0], "r") as f:
+            self.lines = f.readlines()
+
+        # Read file and store raw data
+        self._read_header()
+        self._read_profiles()
+
+        # Ensure correctness (wrong names in older input.gacode files)
+        if "qmom(Nm)" in self.profiles:
+            self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
+        if "qpar_beam(MW/m^3)" in self.profiles:
+            self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
+        if "qpar_wall(MW/m^3)" in self.profiles:
+            self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
         
-        if self.file is not None:
-            with open(self.file, "r") as f:
-                self.lines = f.readlines()
+        """
+        Note that in prgen_map_plasmastate, that variable:
+        expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
 
-            # Read file and store raw data
-            self._read_header()
-            self._read_profiles()
+        Note that in prgen_read_plasmastate, that variable:
+        ! Particle source
+            err = nf90_inq_varid(ncid,trim('sn_trans'),varid)
+            err = nf90_get_var(ncid,varid,plst_sn_trans(1:nx-1))
+            plst_sn_trans(nx) = 0.0
 
-            # Ensure correctness (wrong names in older input.gacode files)
-            if "qmom(Nm)" in self.profiles:
-                self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
-            if "qpar_beam(MW/m^3)" in self.profiles:
-                self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
-            if "qpar_wall(MW/m^3)" in self.profiles:
-                self.profiles["qpar_wall(1/m^3/s)"] = self.profiles.pop("qpar_wall(MW/m^3)")
-            
-            """
-            Note that in prgen_map_plasmastate, that variable:
-            expro_qpar_beam(i) = plst_sn_trans(i-1)/dvol
+        Note that in the plasmastate file, the variable "sn_trans":
 
-            Note that in prgen_read_plasmastate, that variable:
-            ! Particle source
-                err = nf90_inq_varid(ncid,trim('sn_trans'),varid)
-                err = nf90_get_var(ncid,varid,plst_sn_trans(1:nx-1))
-                plst_sn_trans(nx) = 0.0
+            long_name:      particle transport (loss)
+            units:          #/sec
+            component:      PLASMA
+            section:        STATE_PROFILES
+            specification:  R|units=#/sec|step*dV sn_trans(~nrho,0:nspec_th)
 
-            Note that in the plasmastate file, the variable "sn_trans":
+        So, this means that expro_qpar_beam is in units of #/sec/m^3, meaning that
+        it is a particle flux DENSITY. It therefore requires volume integral and
+        divide by surface to produce a flux.
 
-                long_name:      particle transport (loss)
-                units:          #/sec
-                component:      PLASMA
-                section:        STATE_PROFILES
-                specification:  R|units=#/sec|step*dV sn_trans(~nrho,0:nspec_th)
+        The units of this qpar_beam column is NOT MW/m^3. In the gacode source codes
+        they also say that those units are wrong.
 
-            So, this means that expro_qpar_beam is in units of #/sec/m^3, meaning that
-            it is a particle flux DENSITY. It therefore requires volume integral and
-            divide by surface to produce a flux.
+        """
 
-            The units of this qpar_beam column is NOT MW/m^3. In the gacode source codes
-            they also say that those units are wrong.
-
-            """
-
-            # Ensure that we also have the shape coefficients
-            num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
-            if "shape_cos0(-)" not in self.profiles:
-                self.profiles["shape_cos0(-)"] = np.ones(self.profiles["rmaj(m)"].shape)
-            for i in range(num_moments):
-                if f"shape_cos{i + 1}(-)" not in self.profiles:
-                    self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
-                if f"shape_sin{i + 1}(-)" not in self.profiles and i > 1:
-                    self.profiles[f"shape_sin{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+        # Ensure that we also have the shape coefficients
+        num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+        if "shape_cos0(-)" not in self.profiles:
+            self.profiles["shape_cos0(-)"] = np.ones(self.profiles["rmaj(m)"].shape)
+        for i in range(num_moments):
+            if f"shape_cos{i + 1}(-)" not in self.profiles:
+                self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+            if f"shape_sin{i + 1}(-)" not in self.profiles and i > 1:
+                self.profiles[f"shape_sin{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
 
     def _read_header(self):
         for i in range(len(self.lines)):
@@ -244,7 +244,7 @@ class gacode_state(MITIMstate.mitim_state):
         print("\t- Writting input.gacode file")
 
         if file is None:
-            file = self.file
+            file = self.files[0]
 
         with open(file, "w") as f:
             for line in self.header:
@@ -303,7 +303,7 @@ class gacode_state(MITIMstate.mitim_state):
         print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
         # Update file
-        self.file = file
+        self.files[0] = file
 
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
 
