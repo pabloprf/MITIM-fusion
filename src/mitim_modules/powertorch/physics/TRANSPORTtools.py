@@ -788,7 +788,7 @@ def profilesToShare(self):
         fil = whereFolder / f"input.gacode.{self.evaluation_number}"
         shutil.copy2(self.file_profs, fil)
         shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
-        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new")
+        shutil.copy2(self.file_profs_targets, fil.parent / f"{fil.name}.new_fromtgyro_modified")
         print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
     else:
         print("\t- Could not move files", typeMsg="w")
