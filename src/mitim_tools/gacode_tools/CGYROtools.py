@@ -429,6 +429,8 @@ class CGYRO:
 
     def _postprocess(self, label, folder, tmin=0.0):
 
+        self.results[label].tmin = tmin
+
         # Extra postprocessing
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
         self.results[label].all_flags = np.arange(0, len(self.results[label].z), 1)
@@ -454,6 +456,8 @@ class CGYRO:
         self.results[label].Ge = ys[-1, 0, :]
 
         roa,alne,self.results[label].aLTi,alte,self.results[label].Qi_mean,self.results[label].Qi_std,self.results[label].Qe_mean,self.results[label].Qe_std,self.results[label].Ge_mean, self.results[label].Ge_std,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt = CGYROutils.grab_cgyro_nth(str(folder.resolve()), tmin, False, False)
+    
+        self.results[label].qgb = qgb
     
         self.results[label].Qi_mean *= qgb
         self.results[label].Qi_std *= qgb
