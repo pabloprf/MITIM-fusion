@@ -2,6 +2,7 @@ import os
 import shutil
 import psutil
 import copy
+from typing import Callable
 import dill as pickle_dill
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
@@ -63,36 +64,116 @@ class speeder(object):
             f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
         )
 
-class timer(object):
 
-    def __init__(self, name="\t* Script", name_timer = '\t* Start time: '):
-        self.name = name
-        self.name_timer = name_timer
+class timer:
+    '''
+    Context manager to time a script or function execution.
+    '''
+    # ────────────────────────────────────────────────────────────────────
+    def __init__(self,
+                 name: str = "Script",                  # Name of the script for printing, visualization
+                 print_at_entering: str | None = None,  # Prefix printed right before the timer starts
+                 log_file: Path | None = None):         # File to log the timing information in JSON format
+        self.name       = name
+        self.print_at_entering = print_at_entering
+        self.log_file   = log_file
 
+    # ────────────────────────────────────────────────────────────────────
     def __enter__(self):
-        self.timeBeginning = datetime.datetime.now()
-        if self.name_timer is not None: print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+        # high-resolution timer + wall-clock stamp
+        
+        self.t0_wall    = time.perf_counter()
+        self.t0         = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if self.print_at_entering:
+            print(f'{self.print_at_entering}{self.t0}')
         return self
 
-    def __exit__(self, *args):
-        self._get_time()
+    # ────────────────────────────────────────────────────────────────────
+    def __exit__(self, exc_type, exc, tb):
+        self._finish() 
+        return False            # propagate any exception
 
-    def _get_time(self):
+    # ────────────────────────────────────────────────────────────────────
+    def _finish(self):
+        
+        dt = time.perf_counter() - self.t0_wall
+        t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        print(f'\t\t* {self.name} took {createTimeTXT(dt)}')
 
-        self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
-
-        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+        if self.log_file:
+            record = {
+                "script"      : self.name,
+                "t_start"     : self.t0,
+                "ts_end"      : t1,
+                "duration_s"  : dt,
+            }
+            with Path(self.log_file).open("a", buffering=1) as f:
+                f.write(json.dumps(record) + "\n")
 
 # Decorator to time functions
 
-def mitim_timer(name="\t* Script",name_timer = '\t* Start time: '):
+def mitim_timer(
+        name: str | None = None,
+        print_at_entering: str | None = None,
+        log_file: str | Path | Callable[[object], str | Path] | None = None
+    ):
+    """
+    Decorator that times a function / method and optionally appends one JSON
+    line to *log_file* after the call finishes.
+
+    Parameters
+    ----------
+    name : str | None
+        Human-readable beat name.  If None, defaults to the wrapped function's __name__.
+    print_at_entering : str
+        Prefix printed right before the timer starts
+    log_file : str | Path | callable(self) -> str | Path | None
+        • str / Path  → literal path written every time the beat finishes  
+        • callable    → called **at call time** with the bound instance
+                        (`self`) and must return the path to use  
+        • None        → no file is written, only console timing is printed
+
+    Notes
+    -----
+    *When* the wrapper runs it has access to the bound instance (`self`), so
+    callable argument values let you access self variables.
+    """
+
     def decorator_timer(func):
+        script_name = name or func.__name__
+
         @functools.wraps(func)
         def wrapper_timer(*args, **kwargs):
-            with timer(name,name_timer=name_timer):
+            # -------------------- resolve name --------------------------
+            if callable(script_name):
+                # assume first positional arg is `self` for bound methods
+                instance = args[0] if args else None
+                chosen_script_name = script_name(instance)
+            else:
+                chosen_script_name = script_name
+            # ---------------------------------------------------------------
+            # -------------------- resolve log_file --------------------------
+            if callable(log_file):
+                # assume first positional arg is `self` for bound methods
+                instance = args[0] if args else None
+                chosen_log_file = log_file(instance)
+            else:
+                chosen_log_file = log_file
+            # ---------------------------------------------------------------
+
+            # Your original context-manager timer class:
+            with timer(chosen_script_name,
+                       print_at_entering=print_at_entering,
+                       log_file=chosen_log_file):
                 return func(*args, **kwargs)
+
         return wrapper_timer
+
     return decorator_timer
+
+# ------------------------------------
 
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
