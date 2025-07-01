@@ -114,11 +114,15 @@ def main():
         )
         
         fig = fn.add_figure(label='MAESTRO timings ALL', tab_color=4)
-        axsTiming = fig.subplot_mosaic("""A""")
+        axsTiming = fig.subplot_mosaic("""
+                                       A
+                                       B
+                                       """)
         
         colors = GRAPHICStools.listColors()
             
     ms = []
+    x, scripts = [], []
     for i,folder in enumerate(folders):
         m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
         ms.append(m)
@@ -127,10 +131,18 @@ def main():
         if len(folders) > 1:
             MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
             if (m.folder_performance / 'timing.jsonl').exists():
-                MAESTROplot.plot_timings(m.folder_performance / 'timing.jsonl', ax = axsTiming['A'], label = f'Case #{i}', color=colors[i])
+                x0, scripts0 = MAESTROplot.plot_timings(m.folder_performance / 'timing.jsonl', axs = axsTiming, label = f'Case #{i}', color=colors[i])
+    
+        # Only keep the longest
+        if len(x0) > len(x):
+            x = x0
+            scripts = scripts0
+    
     if len(folders) > 1:
-        axsTiming['A'].set_xlim(left=0)
-        axsTiming['A'].set_ylim(bottom=0)
+        for let in ['A','B']:
+            axsTiming[let].set_xlim(left=0)
+            axsTiming[let].set_ylim(bottom=0)
+            axsTiming[let].set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
 
     fn.show()
 
