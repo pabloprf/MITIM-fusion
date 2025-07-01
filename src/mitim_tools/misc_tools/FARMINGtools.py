@@ -1246,7 +1246,15 @@ def perform_quick_remote_execution(
     job.run(check_if_files_received=check_if_files_received)
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False, ensure_files = True):
+def retrieve_files_from_remote(
+    folder_local,
+    machine,
+    files_remote = [],
+    folders_remote = [],
+    only_folder_structure_with_files = None, # If not None, only the folder structure is retrieved, with files in the list
+    purge_tmp_files = False,
+    ensure_files = True
+    ):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 
@@ -1273,7 +1281,19 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         output_files.append(file0)
     for folder in folders_remote:
         folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
-        command += f'cp -r {folder} {machineSettings["folderWork"]}/{folder0}\n'
+        
+        folder_source = folder
+        folder_destination = f'{machineSettings["folderWork"]}/{folder0}'
+        if only_folder_structure_with_files is None:
+            # Normal full copy
+            command += f'cp -r {folder_source} {folder_destination}\n'
+        else:
+            retrieve_files = ''
+            for file in only_folder_structure_with_files:
+                retrieve_files += f'-f"+ {file}" '
+            # Only copy the folder structure with a few files
+            command += f'rsync -av -f"+ */" {retrieve_files}-f"- *" {folder_source}/ {folder_destination}/\n'
+            
         output_folders.append(folder0)
 
     # ------------------------------------------------

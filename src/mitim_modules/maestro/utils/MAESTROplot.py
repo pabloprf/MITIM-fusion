@@ -73,7 +73,8 @@ def plot_results(self, fn):
 
     for i,beat in enumerate(self.beats.values()):
 
-        _, profs = beat.grab_output()
+        # _, profs = beat.grab_output()
+        profs = PROFILEStools.PROFILES_GACODE(beat.folder_output / 'input.gacode')
 
         if isinstance(beat, transp_beat):
             key = f'TRANSP b#{i+1}'
