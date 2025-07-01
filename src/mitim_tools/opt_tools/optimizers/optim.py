@@ -127,7 +127,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     # Perform optimization
     # --------------------------------------------------------------------------------------------------------
 
-    with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
+    with IOtools.timer(name="SCIPY.ROOT multi-variate root finding method"):
         sol = root(function_for_optimizer, x_initial0, jac=jac_ad, method=solver, tol=tol, options=algorithm_options)
 
     # --------------------------------------------------------------------------------------------------------

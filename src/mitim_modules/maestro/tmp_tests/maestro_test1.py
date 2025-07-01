@@ -77,7 +77,7 @@ eped_parameters = { 'nn_location': f'{mfe_im_path}/private_code_mitim/NN_DATA/EP
 
 from mitim_tools.misc_tools.IOtools import mitim_timer
 
-@mitim_timer('\t\t* MAESTRO')
+@mitim_timer('MAESTRO')
 def run_maestro():
     m = maestro(folder, terminal_outputs = False)
 

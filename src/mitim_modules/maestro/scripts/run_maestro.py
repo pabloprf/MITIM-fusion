@@ -156,7 +156,7 @@ def parse_maestro_nml(file_path):
 
     return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
 
-@mitim_timer('\t\t* MAESTRO')
+@mitim_timer('MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
         parameters_initialize, 
