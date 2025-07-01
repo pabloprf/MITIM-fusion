@@ -36,6 +36,7 @@ def main():
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--remote",type=str, required=False, default=None)
     parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None)
+    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true")
     parser.add_argument("--beats", type=int, required=False, default=2)  # Last beats to plot
     parser.add_argument("--only", type=str, required=False, default=None)
     parser.add_argument("--full", required=False, default=False, action="store_true")  
@@ -46,6 +47,10 @@ def main():
     remote = args.remote
     folders = args.folders
     fix = args.fix
+    beats = args.beats
+    only = args.only
+    full = args.full
+
 
     # Retrieve remote
     if remote is not None:
@@ -53,7 +58,18 @@ def main():
             folders_remote = args.remote_folders
         else:
             folders_remote = folders
-        _, folders = FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
+            
+        if args.remote_minimal:
+            only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode"]
+            
+            beats = 0
+            
+        _, folders = FARMINGtools.retrieve_files_from_remote(
+            IOtools.expandPath('./'),
+            remote,
+            folders_remote = folders_remote,
+            purge_tmp_files = True,
+            only_folder_structure_with_files=only_folder_structure_with_files)
     
     # Fix pkl optimization portals in remote
     if fix:
@@ -62,10 +78,7 @@ def main():
     # -----
 
     folders = [IOtools.expandPath(folder) for folder in folders]
-    beats = args.beats
-    only = args.only
-    full = args.full
-
+    
     fn = GUItools.FigureNotebook("MAESTRO")
 
     ms = []

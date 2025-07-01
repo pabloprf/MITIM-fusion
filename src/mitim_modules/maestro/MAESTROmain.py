@@ -291,7 +291,8 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
+        if num_beats>0:
+            self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
         self._plot_results(self.fn)
 
         if not wasProvided:
