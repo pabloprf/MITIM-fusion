@@ -5,8 +5,10 @@ from mitim_tools.misc_tools import LOGtools, GRAPHICStools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+import json, re
+from pathlib import Path
+import matplotlib.pyplot as plt
 from IPython import embed
-
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
@@ -74,7 +76,10 @@ def plot_results(self, fn):
     for i,beat in enumerate(self.beats.values()):
 
         # _, profs = beat.grab_output()
-        profs = PROFILEStools.PROFILES_GACODE(beat.folder_output / 'input.gacode')
+        if (beat.folder_output / 'input.gacode').exists():
+            profs = PROFILEStools.PROFILES_GACODE(beat.folder_output / 'input.gacode')
+        else:
+            profs = None
 
         if isinstance(beat, transp_beat):
             key = f'TRANSP b#{i+1}'
@@ -196,6 +201,14 @@ def plot_results(self, fn):
     )
     
     plot_special_quantities(ps, ps_lab, axs)
+    
+    if (self.folder_performance / 'timing.jsonl').exists():
+        # ********************************************************************************************************
+        # Timings
+        # ********************************************************************************************************
+        fig = fn.add_figure(label='MAESTRO timings', tab_color=3)
+        axs = fig.subplot_mosaic("""A""")
+        plot_timings(self.folder_performance / 'timing.jsonl', ax = axs['A'])
     
     return ps, ps_lab
 
@@ -324,3 +337,68 @@ def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
     g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
     axs[3].plot(g.g['RHOVN'], g.g['PRES']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
     axs[4].plot(g.g['RHOVN'], g.g['QPSI'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+
+# ---------------------------------------------------------------------------
+def plot_timings(jsonl_path, ax = None, unit: str = "min", color = "b", label= ''):
+    """
+    Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
+    with vertical lines when the beat number changes.
+
+    Parameters
+    ----------
+    jsonl_path : str | Path
+        File with one JSON record per line.
+    unit : {"s", "min", "h"}
+        Unit for the y-axis.
+    """
+    multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
+
+    scripts, script_time, cumulative, beat_nums = [], [], [], []
+    running = 0.0
+    beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
+
+    # ── read the file ───────────────────────────────────────────────────────
+    with Path(jsonl_path).expanduser().open() as f:
+        for line in f:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            running += rec["duration_s"]
+            scripts.append(rec["script"])
+            script_time.append(rec["duration_s"] * multiplier)
+            cumulative.append(running * multiplier)
+
+            m = beat_pat.search(rec["script"])
+            beat_nums.append(int(m.group(1)) if m else None)
+
+    if not scripts:
+        raise ValueError(f"No records found in {jsonl_path}")
+
+
+    scripts = ['ini'] + scripts  # Add initial beat
+    script_time = [0.0] + script_time  # Start with zero time
+    cumulative = [0.0] + cumulative  # Start with zero time
+
+    # ── plot ────────────────────────────────────────────────────────────────
+    x = list(range(len(scripts)))
+    
+    if ax is None:
+        plt.ion()
+        fig, ax = plt.subplots()
+    
+    ax.plot(x, cumulative, "-s", markersize=8, color=color, label=label)
+    
+    for i in range(len(scripts)-2):
+        ax.plot([x[i], x[i+1]], [0, script_time[i+1]], "-.o", markersize=5, lw = 0.5, color=color)
+
+    for i in range(1, len(beat_nums)):
+        if beat_nums[i] != beat_nums[i - 1]:
+            ax.axvline(i - 0.5, color='k',linestyle="-.")
+
+    ax.set_xlabel("Beat"); #ax.set_xlim(left=0)
+    ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
+    ax.set_xticks(x, scripts, rotation=20, ha="right", fontsize=8)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.legend(loc='upper left', fontsize=8)
+
+

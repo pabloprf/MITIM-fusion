@@ -137,8 +137,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker',
-        log_file = lambda self: self.folder_performance / "timing.jsonl")
+        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
     def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
@@ -292,8 +291,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting',
-        log_file = lambda self: self.folder_performance / "timing.jsonl")
+        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
     def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
         print('*** Plotting MAESTRO ******************************************************************** ')

@@ -78,7 +78,7 @@ def main():
     if remote is not None:
 
         if args.remote_minimal:
-            only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode"]
+            only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
             
             beats = 0
             
@@ -113,6 +113,9 @@ def main():
             """
         )
         
+        fig = fn.add_figure(label='MAESTRO timings ALL', tab_color=4)
+        axsTiming = fig.subplot_mosaic("""A""")
+        
         colors = GRAPHICStools.listColors()
             
     ms = []
@@ -123,6 +126,11 @@ def main():
         # Plot all special quantities together
         if len(folders) > 1:
             MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
+            if (m.folder_performance / 'timing.jsonl').exists():
+                MAESTROplot.plot_timings(m.folder_performance / 'timing.jsonl', ax = axsTiming['A'], label = f'Case #{i}', color=colors[i])
+    if len(folders) > 1:
+        axsTiming['A'].set_xlim(left=0)
+        axsTiming['A'].set_ylim(bottom=0)
 
     fn.show()
 
