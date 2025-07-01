@@ -3,6 +3,7 @@ from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from pathlib import Path
+from IPython import embed
 
 """
 Quick way to plot several input.gacode files together (assumes unix in remote)
@@ -33,14 +34,28 @@ def fix_maestro(folders):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--remote",type=str, required=False, default=None)
-    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None)
-    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true")
-    parser.add_argument("--beats", type=int, required=False, default=2)  # Last beats to plot
-    parser.add_argument("--only", type=str, required=False, default=None)
-    parser.add_argument("--full", required=False, default=False, action="store_true")  
-    parser.add_argument('--fix', required=False, default=False, action='store_true')
+    
+    # Standard options
+    parser.add_argument("folders", type=str, nargs="*",
+                        help="Paths to the folders to read.")
+    parser.add_argument("--beats", type=int, required=False, default=2,
+                        help="Number of beats to plot. If 0, it will not plot beat information.")
+    parser.add_argument("--only", type=str, required=False, default=None,
+                        help="If provided, it will only plot the specified beats (e.g., transp)")
+    parser.add_argument("--full", required=False, default=False, action="store_true",
+                        help="If set, it will plot the full beat information.")
+   
+    # Remote options
+    parser.add_argument("--remote",type=str, required=False, default=None,
+                        help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
+    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+                        help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
+    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
+                        help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
+    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+                        help="If set, it will only retrieve the folder structure with a few files (input.gacode, input.gacode_final, initializer_geqdsk/input.gacode).")
+    parser.add_argument('--fix', required=False, default=False, action='store_true',
+                        help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
 
@@ -51,14 +66,17 @@ def main():
     only = args.only
     full = args.full
 
+    if args.remote_folder_parent is not None:
+        folders_remote = [args.remote_folder_parent + '/' + folder.split('/')[-1] for folder in folders]
+    elif args.remote_folders is not None:
+        folders_remote = args.remote_folders
+    else:
+        folders_remote = folders
+            
 
     # Retrieve remote
     if remote is not None:
-        if args.remote_folders is not None:
-            folders_remote = args.remote_folders
-        else:
-            folders_remote = folders
-            
+
         if args.remote_minimal:
             only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode"]
             
