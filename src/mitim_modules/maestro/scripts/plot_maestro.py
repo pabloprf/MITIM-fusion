@@ -1,6 +1,6 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from pathlib import Path
 from IPython import embed
@@ -99,10 +99,30 @@ def main():
     
     fn = GUItools.FigureNotebook("MAESTRO")
 
+    if len(folders) > 1:
+        fig = fn.add_figure(label='MAESTRO special ALL', tab_color=4)
+        
+        axsAll = fig.subplot_mosaic(
+            """
+            ABGI
+            ABGI
+            AEGI
+            DEHJ
+            DFHJ
+            DFHJ
+            """
+        )
+        
+        colors = GRAPHICStools.listColors()
+            
     ms = []
-    for folder in folders:
-        m = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
+    for i,folder in enumerate(folders):
+        m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
         ms.append(m)
+
+        # Plot all special quantities together
+        if len(folders) > 1:
+            MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
 
     fn.show()
 

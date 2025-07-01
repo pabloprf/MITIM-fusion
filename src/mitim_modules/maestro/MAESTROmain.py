@@ -293,10 +293,12 @@ class maestro:
 
         if num_beats>0:
             self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        self._plot_results(self.fn)
+        ps, ps_lab = self._plot_results(self.fn)
 
         if not wasProvided:
             self.fn.show()
+            
+        return ps, ps_lab
 
     def _plot_beats(self, fn, num_beats = 2, only_beats = None, full_plot = True):
 
@@ -315,7 +317,7 @@ class maestro:
 
         print('\t- Plotting MAESTRO results...')
 
-        MAESTROplot.plot_results(self, fn)
+        return MAESTROplot.plot_results(self, fn)
 
 
 

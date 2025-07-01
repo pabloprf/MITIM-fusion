@@ -51,9 +51,9 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
     m = grabMAESTRO(folder)
 
     # Plot
-    m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
+    ps, ps_lab = m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
 
-    return m
+    return m, ps, ps_lab
 
 def plot_results(self, fn):
 
@@ -194,7 +194,13 @@ def plot_results(self, fn):
         DFHJ
         """
     )
+    
+    plot_special_quantities(ps, ps_lab, axs)
+    
+    return ps, ps_lab
 
+def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
+    
     x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
@@ -213,22 +219,25 @@ def plot_results(self, fn):
 
     # -----------------------------------------------------------------
     ax = axs['A']
-    ax.plot(x, BetaN, '-s', markersize=7, lw = 1)
+    ax.plot(x, BetaN, '-s', color=color, markersize=7, lw = 1, label = label)
     ax.set_ylabel('$\\beta_N$ (engineering)')
     ax.set_title('Pressure Evolution')
+    if len(label) > 0:
+        ax.legend()
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
 
     ax = axs['D']
-    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal <p>')
-    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total <p>')
-    ax.plot(x, p90, '-*', markersize=7, lw = 1, label='Total, p(rho=0.9)')
+    ax.plot(x, p_th, '-s', color=color, markersize=7, lw = 1, label='Thermal <p>')
+    ax.plot(x, p_tot, '-o', color=color, markersize=7, lw = 1, label='Total <p>')
+    ax.plot(x, p90, '-*', color=color, markersize=7, lw = 1, label='Total, p(rho=0.9)')
     ax.set_ylabel('$p$ (MPa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
-    ax.legend()
+    if legYN:
+        ax.legend()
 
     rotation = 90
     fontsize = 6
@@ -237,7 +246,7 @@ def plot_results(self, fn):
     # -----------------------------------------------------------------
 
     ax = axs['B']
-    ax.plot(x, Q, '-s', markersize=7, lw = 1)
+    ax.plot(x, Q, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$Q$')
     ax.set_title('Performance Evolution')
     GRAPHICStools.addDenseAxis(ax)
@@ -247,7 +256,7 @@ def plot_results(self, fn):
 
 
     ax = axs['E']
-    ax.plot(x, Pfus, '-s', markersize=7, lw = 1)
+    ax.plot(x, Pfus, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$P_{fus}$ (MW)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
@@ -256,7 +265,7 @@ def plot_results(self, fn):
 
 
     ax = axs['F']
-    ax.plot(x, Pin, '-s', markersize=7, lw = 1)
+    ax.plot(x, Pin, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$P_{in}$ (MW)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
@@ -265,7 +274,7 @@ def plot_results(self, fn):
 
     # -----------------------------------------------------------------
     ax = axs['G']
-    ax.plot(x, fG, '-s', markersize=7, lw = 1)
+    ax.plot(x, fG, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$f_{G}$')
     ax.set_title('Density Evolution')
     ax.axhline(y=1, color = 'k', lw = 1, ls = '--')
@@ -276,7 +285,7 @@ def plot_results(self, fn):
     ax.set_xticklabels([])
 
     ax = axs['H']
-    ax.plot(x, nu_ne, '-s', markersize=7, lw = 1)
+    ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$\\nu_{ne}$')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
@@ -287,19 +296,20 @@ def plot_results(self, fn):
 
     # -----------------------------------------------------------------
     ax = axs['I']
-    ax.plot(x, q95, '-s', markersize=7, lw = 1, label='q95')
-    ax.plot(x, q0, '-*', markersize=7, lw = 1, label='q0')
+    ax.plot(x, q95, '-s', color=color, markersize=7, lw = 1, label='q95')
+    ax.plot(x, q0, '-*', color=color, markersize=7, lw = 1, label='q0')
     ax.set_ylabel('$q$')
     ax.set_title('Current Evolution')
     GRAPHICStools.addDenseAxis(ax)
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
-    ax.legend()
+    if legYN:
+        ax.legend()
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
 
     ax = axs['J']
-    ax.plot(x, xsaw, '-s', markersize=7, lw = 1)
+    ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('Inversion radius (rho)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
