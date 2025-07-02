@@ -233,6 +233,12 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         xsaw.append(p.derived['rho_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
+    def _special(ax,x):
+        for xi in x:
+            if 'portals' in xi.lower():
+                if legYN:
+                    ax.axvline(xi, color='y', linestyle='-', lw=5, alpha=0.2)
+
     # -----------------------------------------------------------------
     ax = axs['A']
     ax.plot(x, BetaN, '-s', color=color, markersize=7, lw = 1, label = label)
@@ -242,6 +248,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         ax.legend()
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
+    
+    _special(ax, x)
 
     ax.set_xticklabels([])
 
@@ -254,6 +262,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
     if legYN:
         ax.legend()
+        
+    _special(ax, x)
 
     rotation = 90
     fontsize = 6
@@ -269,6 +279,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
 
     ax = axs['E']
@@ -278,6 +290,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
 
     ax = axs['F']
@@ -287,6 +301,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
     ax = axs['G']
@@ -299,6 +315,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim([0,1.2])
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
     ax = axs['H']
     ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
@@ -307,6 +325,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
 
@@ -323,6 +343,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
     ax = axs['J']
     ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
@@ -331,6 +353,8 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylim([0,1])
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
 
