@@ -123,6 +123,7 @@ def main():
             
     ms = []
     x, scripts = [], []
+    x0, scripts0 = [], []
     for i,folder in enumerate(folders):
         m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
         ms.append(m)
