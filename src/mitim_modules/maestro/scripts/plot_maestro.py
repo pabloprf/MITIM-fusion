@@ -77,6 +77,7 @@ def main():
     # Retrieve remote
     if remote is not None:
 
+        only_folder_structure_with_files = None
         if args.remote_minimal:
             only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
             
