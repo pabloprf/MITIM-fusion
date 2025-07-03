@@ -310,7 +310,7 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num
     change_in_metric = metric1 - metric0
 
     if (change_in_metric < relax_dyn_tol):
-        if relax.all() > min_relax:
+        if (relax > min_relax).all():
             print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax.max():.1e} to {relax.max()/relax_dyn_decrease:.1e}")
             relax = relax / relax_dyn_decrease
             return relax, True, False
