@@ -2,7 +2,7 @@ import torch
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
 
 """
@@ -10,7 +10,7 @@ Script to grab the GP object from a full run, at a given step, for a given outpu
 This way, you can try plot, re-ft, find best parameters, etc.
 It calculates speed, and generates profile file to look at bottlenecks
 e.g.
-	evaluate_model.py --folder run1/ --output Qi_tr_turb_5 --input aLti_5 --around -3
+	evaluate_model.py --folder run1/ --output Qi_tr_turb_5 --inputs aLti_5 --around -3
 	evaluate_model.py --folder run1/ --step -1 --output Qi_tr_turb_5 --file figure.eps
 """
 
@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--folder", required=True, type=str)
 parser.add_argument("--step", type=int, required=False, default=-1)
 parser.add_argument("--output", required=False, type=str, default="Qi_tr_turb_1")
-parser.add_argument("--input", required=False, type=str, default="aLti_1")
+parser.add_argument("--inputs", required=False, type=str,nargs='*', default=["aLti_1"])
 parser.add_argument("--around", type=int, required=False, default=-1)
 parser.add_argument("--xrange", type=float, required=False, default=0.5)
 parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
@@ -31,7 +31,7 @@ args = parser.parse_args()
 folderWork = IOtools.expandPath(args.folder)
 step_num = args.step
 output_label = args.output
-input_label = args.input
+input_labels = args.inputs
 file = args.file
 plotYN = args.plot
 around = args.around
@@ -48,12 +48,18 @@ gp = step.GP["individual_models"][np.where(np.array(opt_fun.mitim_model.outputs)
 
 # ***************** Plot
 
+cols = GRAPHICStools.listColors()
+
 if plotYN:
     gp.plot()
     if file is not None:
         plt.savefig(file, transparent=True, dpi=300)
 
-    gp.localBehavior_scan(gpA.train_X[around, :], dimension_label=input_label,xrange=xrange)
+    fig, axs = plt.subplots(nrows=2, figsize=(6, 9))
+    for i,input_label in enumerate(input_labels):
+        gp.localBehavior_scan(gpA.train_X[around, :], dimension_label=input_label,xrange=xrange, axs=axs, c=cols[i], label=input_label)
+
+    axs[0].legend()
 
     # gp.plot(plotFundamental=False)
     # gp.plotTraining()
