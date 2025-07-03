@@ -258,9 +258,8 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
             break
 
         if relax_dyn and (i-its_since_last_dyn_relax > relax_dyn_num):
-            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel,i+1)
-            if changed:
-                its_since_last_dyn_relax = i
+            relax, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel,i+1)
+            its_since_last_dyn_relax = i
             if hardbreak:
                 break
 
@@ -301,7 +300,7 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, rel
 
     # Only consider a number of last iterations
     y_history = torch.stack(y_history)
-    y_history_considered = y_history[-relax_dyn_num:]
+    y_history_considered = y_history[-relax_dyn_num:].abs()
 
     # ---------------------------------------------------------
     # Calculate improvement in each dimension
@@ -337,17 +336,17 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, rel
         
         if (relax[:,mask_reduction] < min_relax).all():
             print(f"\t\t\t<> Metric not improving enough (@{it}), relax already at minimum of {min_relax:.1e}, not worth continuing", typeMsg="i")
-            return relax, False, True
+            return relax, True
         
         print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax for {mask_reduction.sum()} out of {n_radii} channels")
         relax[:,mask_reduction] = relax[:,mask_reduction] / relax_dyn_decrease
         print(f"\t\t\t\t- New relax values: from {relax.min():.1e} to {relax.max():.1e}")
         
-        return relax, True, False        
+        return relax, False        
     else:
         print(f"\t\t\t<> Metric improving enough (@{it}), relax remains at  {relax.min():.1e} to {relax.max():.1e}")
         
-        return relax, False, False
+        return relax, False
         
 def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10):
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
