@@ -763,7 +763,7 @@ def localBehavior_surrogate_model(
 
 
 def localBehavior_scan_surrogate_model(
-    self, x, numP=50, dimension_label=None, plotYN=True, axs=None, c="b", xrange=0.5
+    self, x, numP=50, dimension_label=None, plotYN=True, axs=None, c="b", xrange=0.5, label=''
 ):
     """
     This works only for individual models
@@ -801,15 +801,17 @@ def localBehavior_scan_surrogate_model(
         xlabel = xlabels[x_dim_chosen]
 
         ax = axs[0]
-        ax.plot(Jx, Y, "-o", color=c, lw=1.0)
+        ax.plot(Jx, Y, "-o", color=c, lw=1.0, label=label, markersize=3)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(f"{self.output}")
+        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
-        ax.plot(Jx, J, "-o", color=c, lw=1.0)
+        ax.plot(Jx, J, "-o", color=c, lw=1.0, label=label, markersize=3)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(f"d({self.output})/d({xlabel})")
         ax.set_title("Scan of local Jacobian")
+        GRAPHICStools.addDenseAxis(ax)
 
 
 # ----------------------------------------------------------------------------------------------------

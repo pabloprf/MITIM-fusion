@@ -102,9 +102,7 @@ class surrogate_model:
         # Points to be added from file
         if ("extrapointsFile" in self.surrogate_options) and (self.surrogate_options["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogate_options["extrapointsModels"]):
 
-            print(
-                f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}"
-            )
+            print(f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}")
 
             df = pd.read_csv(self.surrogate_options["extrapointsFile"])
             df_model = df[df['Model'] == self.output]
@@ -114,6 +112,7 @@ class surrogate_model:
                 continueAdding = False
             else:
                 continueAdding = True
+                print(f"\t\t- Found {len(df_model)} points for this output in the file, adding them to the training set", typeMsg="i")
         else:
             continueAdding = False
 
@@ -334,17 +333,13 @@ class surrogate_model:
         outcome_transform_normalization._is_trained = torch.tensor(True)
 
     def fit(self):
-        print(
-            f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points"
-        )
+        print(f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points")
 
         # ---------------------------------------------------------------------------------------------------
         # Define loss Function to minimize
         # ---------------------------------------------------------------------------------------------------
 
-        mll = gpytorch.mlls.ExactMarginalLogLikelihood(
-            self.gpmodel.likelihood, self.gpmodel
-        )
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gpmodel.likelihood, self.gpmodel)
 
         # ---------------------------------------------------------------------------------------------------
         # Prepare for training
@@ -397,17 +392,11 @@ class surrogate_model:
         (train_x,) = mll.model.train_inputs
         approx_mll = len(train_x) > 2000
         if approx_mll:
-            print(
-                f"\t* Using approximate MLL because x has {len(train_x)} elements",
-            )
+            print(f"\t* Using approximate MLL because x has {len(train_x)} elements")
         # --------------------------------------------------
 
         # Store first MLL value
-        track_fval = [
-            -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
-            .detach()
-            .item()
-        ]
+        track_fval = [-mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets).detach().item()]
 
         def callback(x, y, mll=mll):
             track_fval.append(y.fval)
