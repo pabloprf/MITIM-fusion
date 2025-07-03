@@ -332,7 +332,7 @@ class powerstate:
 
             self.update_var(i)
 
-    def flux_match(self, algorithm="root", solver_options=None, bounds=None):
+    def flux_match(self, algorithm="root", solver_options=None, bounds=None, debugYN=False):
         self.FluxMatch_plasma_orig = copy.deepcopy(self.plasma)
         self.bounds_current = bounds
 
@@ -421,6 +421,10 @@ class powerstate:
 
         print("**********************************************************************************************")
         print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")
+
+        if debugYN:
+            self.plot()
+            embed()
 
     # ------------------------------------------------------------------
     # Plotting tools
