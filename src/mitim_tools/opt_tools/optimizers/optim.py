@@ -193,7 +193,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
     relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
     relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
-    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
+    relax_dyn_tol_rel = solver_options.get("relax_dyn_tol_rel", 5e-2)  # Tolerance to consider that the residual is not decreasing (relative, 0.1 -> 10% minimum change)
 
     print_each = solver_options.get("print_each", 1e2)
     
@@ -258,7 +258,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
             break
 
         if relax_dyn and (i-its_since_last_dyn_relax > relax_dyn_num):
-            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol,i+1)
+            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel,i+1)
             if changed:
                 its_since_last_dyn_relax = i
             if hardbreak:
@@ -292,7 +292,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     return x_best, y_history, x_history, metric_history
 
 
-def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol, it, min_relax=1e-6):
+def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel, it, min_relax=1e-6):
     '''
     Logic:  If the metric is not improving enough, decrease the relax parameter. To determine
             if the metric is improving enough, I will fit a line to the last relax_dyn_num points and
@@ -316,17 +316,22 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, rel
     
     # Fit line to each radius dimension separately
     for i_radius in range(n_radii):
+        
+        # Fit a line that fits all the considered history
         y_fit = y_history_considered[:, i_radius].cpu().numpy()
         slope, intercept = np.polyfit(x_fit, y_fit, 1)
-        metric0 = intercept
-        metric1 = slope * len(y_history_considered) + intercept
-        change_in_metric[i_radius] = metric1 - metric0
+        
+        # Calculate the relative change in metric
+        metric0 = slope * x_fit[0]  + intercept
+        metric1 = slope * x_fit[-1] + intercept
+        
+        change_in_metric[i_radius] = np.abs((metric1 - metric0) / metric0)
 
     # ---------------------------------------------------------
     # Determine which dimensions will need a reduction in relax
     # ---------------------------------------------------------
 
-    mask_reduction = change_in_metric < relax_dyn_tol
+    mask_reduction = change_in_metric < relax_dyn_tol_rel
 
     if mask_reduction.any():
         
@@ -336,7 +341,7 @@ def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, rel
         
         print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax for {mask_reduction.sum()} out of {n_radii} channels")
         relax[:,mask_reduction] = relax[:,mask_reduction] / relax_dyn_decrease
-        print(f"\t\t\t\t<> New relax values: from {relax.min():.1e} to {relax.max():.1e}")
+        print(f"\t\t\t\t- New relax values: from {relax.min():.1e} to {relax.max():.1e}")
         
         return relax, True, False        
     else:
