@@ -1,5 +1,4 @@
 import os
-from re import sub
 import shutil
 import datetime
 import time
@@ -642,7 +641,7 @@ class CGYRO:
         self._plot_flux(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
         self._plot_flux(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
-        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux')
@@ -654,7 +653,7 @@ class CGYRO:
         self._plot_flux(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
         self._plot_flux(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
-        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux')
@@ -666,7 +665,7 @@ class CGYRO:
         self._plot_flux(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
         self._plot_flux(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
-        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes')
@@ -678,7 +677,7 @@ class CGYRO:
         for j, i in enumerate(self.results[label].ions_flags):
             self._plot_flux(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
             
-        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes (separate species)')
