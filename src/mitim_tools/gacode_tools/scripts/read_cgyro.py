@@ -12,10 +12,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--linear", action="store_true", help="linear run")
+    parser.add_argument("--tmin", type=float, default=0.0, help="Minimum time to calculate mean and std")
     args = parser.parse_args()
 
     folders = args.folders
     linear = args.linear
+    tmin = args.tmin
 
     # Read
     c = CGYROtools.CGYRO()
@@ -23,7 +25,7 @@ def main():
     labels = []
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
-        c.read(label=labels[-1], folder=folder)
+        c.read(label=labels[-1], folder=folder, tmin=tmin)
 
     if linear:
         # Plot linear spectrum
