@@ -11,7 +11,7 @@ from cgyro.data import cgyrodata
 import math
 #from omfit_classes import omfit_gapy
 
-def grab_cgyro_nth(data_dir, tstart, plotflag, printflag, file = None):
+def grab_cgyro_nth(data_dir, tstart_t, plotflag, printflag, file = None):
     
     #Get all the relevant simulation quantities
     data = cgyrodata(data_dir+'/')
@@ -114,9 +114,8 @@ def grab_cgyro_nth(data_dir, tstart, plotflag, printflag, file = None):
 
     #Determine if the time step has changed mid simulation
     #Change the value of tstart internally if it has
-    tstart_save=tstart
     tend=data.t[nt-1]
-    tstart=(np.abs(t - tstart)).argmin()
+    tstart=(np.abs(t - tstart_t)).argmin()
     
     #Take the mean values of the fluxes
     m_qe= np.mean(eflux[int(tstart):int(nt)+1])
@@ -260,10 +259,7 @@ def grab_cgyro_nth(data_dir, tstart, plotflag, printflag, file = None):
     print(f"{m_tur:.4f}")
     print('Turb Ex. Std deviation (in GB)')
     print(f"{std_tur:.4f}")
-    
-    #Reset the starting time to correspond to the a/cs
-    tstart=tstart_save
-    
+
     #Print the results to results file
     if printflag ==1:
        file1=open(file,"a")

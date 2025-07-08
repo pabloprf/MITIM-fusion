@@ -23,7 +23,7 @@ def surrogate_selection_portals(output, surrogate_options, CGYROrun=False):
             surrogate_options["TypeKernel"] = 1  # RBF
 
     surrogate_options["additional_constraints"] = {
-        'lenghtscale_constraint': gpytorch.constraints.constraints.GreaterThan(0.05) # inputs normalized to [0,1], this is  1% lengthscale
+        'lenghtscale_constraint': gpytorch.constraints.constraints.GreaterThan(0.05) # inputs normalized to [0,1], 0.01 is 1% lengthscale
     }
 
     return surrogate_options
