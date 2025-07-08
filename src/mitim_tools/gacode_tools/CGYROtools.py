@@ -3,6 +3,7 @@ import shutil
 import datetime
 import time
 from pathlib import Path
+from matplotlib import markers
 import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
@@ -421,11 +422,27 @@ class CGYRO:
 
             os.chdir(original_dir)
 
-            try:
-                self._postprocess_nl(label_new, tmin=tmin)
-            except Exception as e:
-                print(f"\t- Error during postprocessing: {e}")
-                print("\t- Skipping postprocessing, results may be incomplete or linear run")
+            # --------------------------------------------------------------
+            # Read inputs
+            # --------------------------------------------------------------
+            
+            self.results[label_new].params1D = {}
+            for var in self.results[label_new].__dict__:
+                par = self.results[label_new].__dict__[var]
+                if isinstance(par, bool) or IOtools.isnum(par):
+                    self.results[label_new].params1D[var] = par
+                elif isinstance(par, (list, np.ndarray)) and par.ndim==1 and len(par) <= 5:
+                    for i, p in enumerate(par):
+                        self.results[label_new].params1D[f"{var}_{i}"] = p
+           
+            # --------------------------------------------------------------
+            # Postprocess NL run with MITIM-curated structures and variables
+            # --------------------------------------------------------------
+            #try:
+            self._postprocess_nl(label_new, tmin=tmin)
+            # except Exception as e:
+            #     print(f"\t- Error during postprocessing: {e}")
+            #     print("\t- Skipping postprocessing, results may be incomplete or linear run")
 
     def _postprocess_nl(self, label, tmin=0.0):
 
@@ -454,7 +471,14 @@ class CGYRO:
         self.results[label].Ggb = self.results[label].gamma_gb_norm
 
         # ************************
-        # Calculations
+        # Turbulence
+        # ************************
+        self.results[label].ky = self.results[label].kynorm
+        self.results[label].f = self.results[label].fnorm[0,:,:] # ky, time
+        self.results[label].g = self.results[label].fnorm[1,:,:] # ky, time
+
+        # ************************
+        # Fluxes
         # ************************
         
         self.results[label].t = self.results[label].tnorm
@@ -518,7 +542,9 @@ class CGYRO:
         'Ge_ES': ['Qgb', 'MWm2'], 
         'Qe_EM': ['Qgb', 'MWm2'], 
         'Qi_EM': ['Qgb', 'MWm2'], 
-        'Ge_EM': ['Ggb', '?']
+        'Ge_EM': ['Ggb', '?'],
+        'g': [None, None],
+        'f': [None, None],
         }
         
         for iflag in flags:
@@ -533,36 +559,49 @@ class CGYRO:
             self.results[label].__dict__[iflag+'_std'] = Qstd
                 
             # Real units
-            self.results[label].__dict__[iflag+flags[iflag][1]+'_mean'] = self.results[label].__dict__[iflag+'_mean'] * self.results[label].__dict__[flags[iflag][0]]
-            self.results[label].__dict__[iflag+flags[iflag][1]+'_std'] = self.results[label].__dict__[iflag+'_std'] * self.results[label].__dict__[flags[iflag][0]]
+            if flags[iflag][0] is not None:
+                self.results[label].__dict__[iflag+flags[iflag][1]+'_mean'] = self.results[label].__dict__[iflag+'_mean'] * self.results[label].__dict__[flags[iflag][0]]
+                self.results[label].__dict__[iflag+flags[iflag][1]+'_std'] = self.results[label].__dict__[iflag+'_std'] * self.results[label].__dict__[flags[iflag][0]]
     
     def _apply_ac(self, t, S, tmin = 0, label_print = ''):
+        
+        # Correct the standard deviation
+        def grab_ncorrelation(S, tmin):
+            # Calculate the autocorrelation function
+            i_acf = sm.tsa.acf(S)
+            
+            # Calculate how many time slices make the autocorrelation function is 0.36
+            icor = np.abs(i_acf-0.36).argmin()
+            
+            # Define number of samples
+            n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
+            
+            return n_corr, icor
         
         it0 = np.argmin(np.abs(t - tmin))
         
         # Calculate the mean and std of the signal after tmin
-        S_mean = np.mean(S[it0:])
-        S_std = np.std(S[it0:-1]) # To follow NTH convention
-    
-        # Calculate the autocorrelation function
-        i_acf = sm.tsa.acf(S)
-        
-        # Calculate how many time slices make the autocorrelation function is 0.36
-        icor = np.abs(i_acf-0.36).argmin()
-        
-        # Define number of samples
-        n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
-    
-        # Correct the standard deviation
-        S_std = S_std / np.sqrt(n_corr)
+        S_mean = np.mean(S[...,it0:],axis=-1)
+        S_std = np.std(S[...,it0:],axis=-1) # To follow NTH convention
 
-        print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr. time: {icor:.1e} -> {n_corr:.1f} (samples), resulting in mean= {S_mean:.2e} and std={S_std:.2e}")
+        if S.ndim == 1:
+            n_corr, icor = grab_ncorrelation(S, tmin)
+            
+            S_std = S_std / np.sqrt(n_corr)
+            
+            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
+            
+        elif S.ndim == 2:
+            n_corr = np.zeros(S.shape[0])
+            icor = np.zeros(S.shape[0])
+            for i in range(S.shape[0]):
+                n_corr[i], icor[i] = grab_ncorrelation(S[i], tmin)
+            S_std = S_std / np.sqrt(n_corr)
+
+            for i in range(S.shape[0]):
+                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr time for {i}: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
 
         return S_mean, S_std
-    
-    def derive_statistics(self,x,y,x_min=0.0):
-
-        return y.mean(), y.std()
 
     def plot(self, labels=[""]):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -578,13 +617,41 @@ class CGYRO:
             BD
             """
         )
-
+        
+        fig = self.fn.add_figure(label="Turbulence")
+        axsTurbulence = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+        
+        
+        fig = self.fn.add_figure(label="Inputs")
+        axsInputs = fig.subplot_mosaic(
+            """
+            A
+            """
+        )
         for j in range(len(labels)):
             self.plot_fluxes(
                 axs=axsFluxes_t,
                 label=labels[j],
                 c=colors[j],
                 plotLegend=j == len(labels) - 1,
+            )
+            self.plot_turbulence(
+                axs=axsTurbulence,
+                label=labels[j],
+                c=colors[j],
+            )
+            self.plot_inputs(
+                ax=axsInputs["A"],
+                label=labels[j],
+                c=colors[j],
+                ms= 10-j*2,  # Decrease marker size for each label
+                normalization_label= labels[0],  # Normalize to the first label
+                only_plot_differences=len(labels) > 1,  # Only plot differences if there are multiple labels
             )
 
     def _plot_flux(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True):
@@ -622,6 +689,43 @@ class CGYRO:
                 label=label_plot + f" {self.results[label].__dict__[variable + '_mean']:.2f} ± {self.results[label].__dict__[variable + '_std']:.2f} (1$\\sigma$)",
             )
 
+    def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
+        
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots(1, 1, figsize=(18, 9))
+
+        legadded = False
+        for i, ikey in enumerate(self.results[label].params1D):
+            
+            z = self.results[label].params1D[ikey]
+            
+            if normalization_label is not None:
+                z0 = self.results[normalization_label].params1D[ikey]
+                zp = z/z0 if z0 != 0 else 0
+                label_plot = f"{label} / {normalization_label}"
+            else:
+                label_plot = label
+                zp = z
+
+            if (not only_plot_differences) or (not np.isclose(z, z0)):
+                ax.plot(ikey,zp,'o',markersize=ms,color=c,label=label_plot if not legadded else '')
+                legadded = True
+
+        if normalization_label is not None:
+            if only_plot_differences:
+                ylabel = f"Parameters (DIFFERENT) relative to {normalization_label}"
+            else:
+                ylabel = f"Parameters relative to {normalization_label}"
+        else:
+            ylabel = "Parameters"
+
+        ax.set_xlabel("Parameter")
+        ax.tick_params(axis='x', rotation=90)
+        ax.set_ylabel(ylabel)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc='best')
+
     def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
         if axs is None:
             plt.ion()
@@ -646,7 +750,7 @@ class CGYRO:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux')
         if plotLegend:
-            ax.legend(loc='best') #prop={'size': 10},)
+            ax.legend(loc='best', prop={'size': 8},)
 
         # Electron particle flux
         ax = axs["B"]
@@ -658,7 +762,7 @@ class CGYRO:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux')
         if plotLegend:
-            ax.legend(loc='best') #prop={'size': 10},)
+            ax.legend(loc='best', prop={'size': 8},)
 
         # Ion energy fluxes
         ax = axs["C"]
@@ -670,7 +774,7 @@ class CGYRO:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes')
         if plotLegend:
-            ax.legend(loc='best') #prop={'size': 10},)
+            ax.legend(loc='best', prop={'size': 8},)
 
         # Ion species energy fluxes
         ax = axs["D"]
@@ -682,11 +786,87 @@ class CGYRO:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes (separate species)')
         if plotLegend:
-            ax.legend(loc='best') #prop={'size': 10},)
+            ax.legend(loc='best', prop={'size': 8},)
 
         plt.tight_layout()
 
 
+    def plot_turbulence(self, axs = None, label= "cgyro1", c="b", kys = None):
+        
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+				AC
+                BD
+				"""
+            )
+
+        # Is no kys provided, select just 3: first, last and middle
+        if kys is None:
+            ikys = [0, len(self.results[label].ky) // 2, -1]
+        else:
+            ikys = [self.results[label].ky.index(ky) for ky in kys if ky in self.results[label].ky]    
+
+        # Growth rate as function of time
+        ax = axs["A"]
+        for i,ky in enumerate(ikys):
+            self._plot_flux(
+                ax,
+                label,
+                self.results[label].g[ky, :],
+                c=c,
+                ls = GRAPHICStools.listLS()[i],
+                lw=1,
+                label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
+            )
+            
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\gamma$ (norm.)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Growth rate vs time')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        # Frequency as function of time
+        ax = axs["B"]
+        for i,ky in enumerate(ikys):
+            self._plot_flux(
+                ax,
+                label,
+                self.results[label].f[ky, :],
+                c=GRAPHICStools.listColors()[i],
+                lw=1,
+                label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
+            )
+            
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\omega$ (norm.)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Real Frequency vs time')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        # Mean+Std Growth rate as function of ky
+        ax = axs["C"]
+        ax.errorbar(self.results[label].ky, self.results[label].g_mean, yerr=self.results[label].g_std, fmt='-o', markersize=5, color=c, label=label+' (mean+std)')
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\gamma$ (norm.)")
+        ax.set_title('Saturated Growth Rate')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc='best', prop={'size': 8},)
+        
+        # Mean+Std Frequency as function of ky
+        ax = axs["D"]
+        ax.errorbar(self.results[label].ky, self.results[label].f_mean, yerr=self.results[label].f_std, fmt='-o', markersize=5, color=c, label=label+' (mean+std)')
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\omega$ (norm.)")
+        ax.set_title('Saturated Real Frequency')
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc='best', prop={'size': 8},)
+        
+        plt.tight_layout()
+        
     def plotLS(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
 
