@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
@@ -422,48 +423,143 @@ class CGYRO:
             os.chdir(original_dir)
 
             try:
-                self._postprocess(label_new, folder, tmin=tmin)
+                self._postprocess_nl(label_new, tmin=tmin)
             except Exception as e:
                 print(f"\t- Error during postprocessing: {e}")
                 print("\t- Skipping postprocessing, results may be incomplete or linear run")
 
-    def _postprocess(self, label, folder, tmin=0.0):
+    def _postprocess_nl(self, label, tmin=0.0):
+
+        self.results[label].getflux()
+        self.results[label].getnorm("elec")
 
         self.results[label].tmin = tmin
 
-        # Extra postprocessing
+        # Understand positions
         self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
         self.results[label].all_flags = np.arange(0, len(self.results[label].z), 1)
         self.results[label].ions_flags = self.results[label].all_flags[self.results[label].all_flags != self.results[label].electron_flag]
 
         self.results[label].all_names = [f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})" for i in self.results[label].all_flags]
 
+        self.results[label].fields = np.arange(self.results[label].n_field)
+
+        # ************************
+        # Inputs
+        # ************************
+
+        self.results[label].aLTi = self.results[label].dlntdr[0] #technically ion 1 scale length
+        self.results[label].aLTe = self.results[label].dlntdr[self.results[label].electron_flag]
+        self.results[label].aLne = self.results[label].dlnndr[self.results[label].electron_flag]
+        self.results[label].Qgb = self.results[label].q_gb_norm
+        self.results[label].Ggb = self.results[label].gamma_gb_norm
+
         # ************************
         # Calculations
         # ************************
-
-        cgyro = self.results[label]
-        cgyro.getflux()
-        cgyro.getnorm("elec")
-
+        
         self.results[label].t = self.results[label].tnorm
 
-        ys = np.sum(cgyro.ky_flux, axis=(2, 3))
+        flux = np.sum(self.results[label].ky_flux, axis=3)  # (species, moments, fields, time)
 
-        self.results[label].Qe = ys[-1, 1, :] / cgyro.qc
-        self.results[label].Qi_all = ys[:-1, 1, :] / cgyro.qc
+        # Electron energy flux
+        
+        i_species, i_moment = -1, 1
+        i_fields = 0
+        self.results[label].Qe_ES = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        i_fields = 1
+        self.results[label].Qe_EM_apar = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        i_fields = 2
+        self.results[label].Qe_EM_aper = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        
+        self.results[label].Qe_EM = self.results[label].Qe_EM_apar + self.results[label].Qe_EM_aper
+        self.results[label].Qe = self.results[label].Qe_ES + self.results[label].Qe_EM
+        
+        # Electron particle flux
+        
+        i_species, i_moment = -1, 0
+        i_fields = 0
+        self.results[label].Ge_ES = flux[i_species, i_moment, i_fields, :]
+        i_fields = 1
+        self.results[label].Ge_EM_apar = flux[i_species, i_moment, i_fields, :]
+        i_fields = 2
+        self.results[label].Ge_EM_aper = flux[i_species, i_moment, i_fields, :]
+        
+        self.results[label].Ge_EM = self.results[label].Ge_EM_apar + self.results[label].Ge_EM_aper
+        self.results[label].Ge = self.results[label].Ge_ES + self.results[label].Ge_EM
+        
+        # Ions energy flux
+        
+        i_species, i_moment = self.results[label].ions_flags, 1
+        i_fields = 0
+        self.results[label].Qi_all_ES = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        i_fields = 1
+        self.results[label].Qi_all_EM_apar = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        i_fields = 2
+        self.results[label].Qi_all_EM_aper = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
+        
+        self.results[label].Qi_all_EM = self.results[label].Qi_all_EM_apar + self.results[label].Qi_all_EM_aper
+        self.results[label].Qi_all = self.results[label].Qi_all_ES + self.results[label].Qi_all_EM
+        
+        
         self.results[label].Qi = self.results[label].Qi_all.sum(axis=0)
-        self.results[label].Ge = ys[-1, 0, :]
-
-        roa,alne,self.results[label].aLTi,alte,self.results[label].Qi_mean,self.results[label].Qi_std,self.results[label].Qe_mean,self.results[label].Qe_std,self.results[label].Ge_mean, self.results[label].Ge_std,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt = CGYROutils.grab_cgyro_nth(str(folder.resolve()), tmin, False, False)
+        self.results[label].Qi_EM = self.results[label].Qi_all_EM.sum(axis=0)
+        self.results[label].Qi_ES = self.results[label].Qi_all_ES.sum(axis=0)
+        
+        # ************************
+        # Saturated
+        # ************************
+        
+        flags = {
+        'Qe': ['Qgb', 'MWm2'], 
+        'Qi': ['Qgb', 'MWm2'], 
+        'Ge': ['Ggb', '?'], 
+        'Qe_ES': ['Qgb', 'MWm2'], 
+        'Qi_ES': ['Qgb', 'MWm2'], 
+        'Ge_ES': ['Qgb', 'MWm2'], 
+        'Qe_EM': ['Qgb', 'MWm2'], 
+        'Qi_EM': ['Qgb', 'MWm2'], 
+        'Ge_EM': ['Ggb', '?']
+        }
+        
+        for iflag in flags:
+            Qm, Qstd = self._apply_ac(
+                    self.results[label].t,
+                    self.results[label].__dict__[iflag],
+                    tmin=self.results[label].tmin,
+                    label_print=iflag
+                    )
+                
+            self.results[label].__dict__[iflag+'_mean'] = Qm
+            self.results[label].__dict__[iflag+'_std'] = Qstd
+                
+            # Real units
+            self.results[label].__dict__[iflag+flags[iflag][1]+'_mean'] = self.results[label].__dict__[iflag+'_mean'] * self.results[label].__dict__[flags[iflag][0]]
+            self.results[label].__dict__[iflag+flags[iflag][1]+'_std'] = self.results[label].__dict__[iflag+'_std'] * self.results[label].__dict__[flags[iflag][0]]
     
-        self.results[label].qgb = qgb
+    def _apply_ac(self, t, S, tmin = 0, label_print = ''):
+        
+        it0 = np.argmin(np.abs(t - tmin))
+        
+        # Calculate the mean and std of the signal after tmin
+        S_mean = np.mean(S[it0:])
+        S_std = np.std(S[it0:-1]) # To follow NTH convention
     
-        self.results[label].Qi_mean *= qgb
-        self.results[label].Qi_std *= qgb
-        self.results[label].Qe_mean *= qgb
-        self.results[label].Qe_std *= qgb
+        # Calculate the autocorrelation function
+        i_acf = sm.tsa.acf(S)
+        
+        # Calculate how many time slices make the autocorrelation function is 0.36
+        icor = np.abs(i_acf-0.36).argmin()
+        
+        # Define number of samples
+        n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
+    
+        # Correct the standard deviation
+        S_std = S_std / np.sqrt(n_corr)
 
+        print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr. time: {icor:.1e} -> {n_corr:.1f} (samples), resulting in mean= {S_mean:.2e} and std={S_std:.2e}")
+
+        return S_mean, S_std
     
     def derive_statistics(self,x,y,x_min=0.0):
 
