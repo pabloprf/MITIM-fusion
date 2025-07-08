@@ -588,6 +588,41 @@ class CGYRO:
                 plotLegend=j == len(labels) - 1,
             )
 
+    def _plot_flux(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True):
+        
+        t = self.results[label].t
+        
+        if not isinstance(variable, str):
+            z = variable
+            meanstd = False
+        else:
+            z = self.results[label].__dict__[variable]
+        
+        ax.plot(
+            t,
+            z,
+            ls=ls,
+            lw=lw,
+            c=c,
+            label=label_plot,
+        )
+        
+        if meanstd and (variable+'_mean' in self.results[label].__dict__):
+            GRAPHICStools.fillGraph(
+                ax,
+                t[t>self.results[label].tmin],
+                self.results[label].__dict__[variable + '_mean'],
+                y_down=self.results[label].__dict__[variable + '_mean']
+                - self.results[label].__dict__[variable + '_std'],
+                y_up=self.results[label].__dict__[variable + '_mean']
+                + self.results[label].__dict__[variable + '_std'],
+                alpha=0.1,
+                color=c,
+                lw=0.5,
+                islwOnlyMean=True,
+                label=label_plot + f" {self.results[label].__dict__[variable + '_mean']:.2f} ± {self.results[label].__dict__[variable + '_std']:.2f} (1$\\sigma$)",
+            )
+
     def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
         if axs is None:
             plt.ion()
@@ -604,63 +639,53 @@ class CGYRO:
 
         # Electron energy flux
         ax = axs["A"]
-        ax.plot(
-            self.results[label].t,
-            self.results[label].Qe,
-            ls=ls[0],
-            lw=lw,
-            c=c,
-            label=f"{label}, electron",
-        )
-        ax.set_xlabel("$t$ ($a/c_s$)")
+        self._plot_flux(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_flux(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        
+        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux')
-
-        # Ion energy fluxes
-        ax = axs["B"]
-        ax.plot(
-            self.results[label].t,
-            self.results[label].Qi,
-            ls=ls[0],
-            lw=lw,
-            c=c,
-            label=f"{label}",
-        )
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes')
-
-        ax = axs["C"]
-        for j, i in enumerate(self.results[label].ions_flags):
-            ax.plot(
-                self.results[label].t,
-                self.results[label].Qi_all[j],
-                ls=ls[j + 1],
-                lw=lw / 2,
-                c=c,
-                label=f"{label}, {self.results[label].all_names[i]}",
-            )
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes (separate species)')
-        GRAPHICStools.addLegendApart(ax,ratio=0.95, withleg=True, size = 8)
-
+        if plotLegend:
+            ax.legend(loc='best') #prop={'size': 10},)
 
         # Electron particle flux
-        ax = axs["D"]
-        ax.plot(
-            self.results[label].t,
-            self.results[label].Ge,
-            ls=ls[0],
-            lw=lw,
-            c=c,
-            label=f"{label}, electron",
-        )
+        ax = axs["B"]
+        self._plot_flux(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_flux(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        
+        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux')
+        if plotLegend:
+            ax.legend(loc='best') #prop={'size': 10},)
 
+        # Ion energy fluxes
+        ax = axs["C"]
+        self._plot_flux(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_flux(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        
+        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes')
+        if plotLegend:
+            ax.legend(loc='best') #prop={'size': 10},)
+
+        # Ion species energy fluxes
+        ax = axs["D"]
+        for j, i in enumerate(self.results[label].ions_flags):
+            self._plot_flux(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
+            
+        ax.set_xlabel("$t$ ($a/c_s$)"); ax.set_xlim(left=0.0)
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes (separate species)')
+        if plotLegend:
+            ax.legend(loc='best') #prop={'size': 10},)
+
+        plt.tight_layout()
 
 
     def plotLS(self, labels=["cgyro1"], fig=None):
