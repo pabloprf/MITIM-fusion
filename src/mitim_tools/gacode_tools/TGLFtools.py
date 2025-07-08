@@ -1036,9 +1036,7 @@ class TGLF:
                         max_fields.append(il)
 
         if fn is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF MITIM Notebook", geometry="1700x900", vertical=True
-            )
+            self.fn = GUItools.FigureNotebook("TGLF MITIM Notebook", geometry="1700x900", vertical=True)
         else:
             self.fn = fn
 
@@ -1048,47 +1046,28 @@ class TGLF:
         figFluctuations = self.fn.add_figure(
             label=f"{extratitle}Spectra", tab_color=fn_color
         )
-        figFields1 = self.fn.add_figure(
-            label=f"{extratitle}Fields: Phi", tab_color=fn_color
-        )
+        figFields1 = self.fn.add_figure(label=f"{extratitle}Fields: Phi", tab_color=fn_color)
         if "a_par" in max_fields:
             figFields2 = self.fn.add_figure(
                 label=f"{extratitle}Fields: A_par", tab_color=fn_color
             )
         if "a_per" in max_fields:
-            figFields3 = self.fn.add_figure(
-                label=f"{extratitle}Fields: A_per", tab_color=fn_color
-            )
-        figO = self.fn.add_figure(
-            label=f"{extratitle}Model Details", tab_color=fn_color
-        )
+            figFields3 = self.fn.add_figure(label=f"{extratitle}Fields: A_per", tab_color=fn_color)
+        figO = self.fn.add_figure(label=f"{extratitle}Model Details", tab_color=fn_color)
 
         figsWF = {}
         for ky_single0 in ky_single_stored_unique:
-            figsWF[ky_single0] = self.fn.add_figure(
-                label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
+            figsWF[ky_single0] = self.fn.add_figure(label=f"{extratitle}WF @ ky~{ky_single0}", tab_color=fn_color
             )
         fig5 = self.fn.add_figure(label=f"{extratitle}Input Plasma", tab_color=fn_color)
-        fig7 = self.fn.add_figure(
-            label=f"{extratitle}Input Controls", tab_color=fn_color
-        )
+        fig7 = self.fn.add_figure(label=f"{extratitle}Input Controls", tab_color=fn_color)
 
         # *** Postprocess Figures
         if successful_normalization:
             figS = self.fn.add_figure(label=f"{extratitle}Simple", tab_color=fn_color)
-            figF = self.fn.add_figure(
-                label=f"{extratitle}Fluctuations", tab_color=fn_color
-            )
-            fig4 = (
-                self.fn.add_figure(
-                    label=f"{extratitle}Normalization", tab_color=fn_color
-                )
-                if plotNormalizations
-                else None
-            )
-            fig3 = self.fn.add_figure(
-                label=f"{extratitle}Exp. Fluxes", tab_color=fn_color
-            )
+            figF = self.fn.add_figure(label=f"{extratitle}Fluctuations", tab_color=fn_color)
+            fig4 = self.fn.add_figure(label=f"{extratitle}Normalization", tab_color=fn_color) if plotNormalizations else None
+            fig3 = self.fn.add_figure(label=f"{extratitle}Exp. Fluxes", tab_color=fn_color)
 
         # *** GACODE Figures
 
@@ -1438,12 +1417,8 @@ class TGLF:
                 # TGLF inputs
                 # --------------------------------
 
-                self.results[label]["inputclasses"][irho].plotSpecies(
-                    axs=axs5, color=colors[cont], legends=contLab == 0
-                )
-                self.results[label]["inputclasses"][irho].plotPlasma(
-                    axs=axs6, color=colors[cont], legends=contLab == 0
-                )
+                self.results[label]["inputclasses"][irho].plotSpecies(axs=axs5, color=colors[cont], legends=contLab == 0)
+                self.results[label]["inputclasses"][irho].plotPlasma(axs=axs6, color=colors[cont], legends=contLab == 0)
                 self.results[label]["inputclasses"][irho].plotControls(
                     axs=axs7,
                     color=colors[cont],
