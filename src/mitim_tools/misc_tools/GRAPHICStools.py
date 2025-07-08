@@ -1,4 +1,5 @@
 import socket
+from matplotlib.pylab import f
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -666,6 +667,14 @@ def fillGraph(
     ms=None,
     ls="-",
 ):
+
+    if IOtools.isnum(y):
+        y = np.array([y] * len(x))
+    if IOtools.isnum(y_down):
+        y_down = np.array([y_down] * len(x))
+    if IOtools.isnum(y_up):
+        y_up = np.array([y_up] * len(x))
+    
     if y_up is not None:
         l = ax.fill_between(x, y, y_up, facecolor=color, alpha=alpha, label=label)
     if y_down is not None:
