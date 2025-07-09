@@ -3,17 +3,12 @@ import shutil
 import datetime
 import time
 from pathlib import Path
-from matplotlib import markers
 import numpy as np
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from torch import normal
-from pygacode.cgyro.data_plot import cgyrodata_plot
-from pygacode import gacodefuncs
 from IPython import embed
 
 
@@ -406,209 +401,16 @@ class CGYRO:
         additional_labels = []
         for folder in folders:
 
-            original_dir = os.getcwd()
-
             if attach_name:
                 additional_labels.append(f"{label}_{folder.name}")
                 label_new = f"{label}_{folder.name}"
             else:
                 label_new = label
 
-            try:
-                print(f"\t- Reading CGYRO data from {folder.resolve()}")
-                self.results[label_new] = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-            except:
-                if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                    os.chdir(folder)
-                    os.system("cgyro -t")
-                self.results[label_new]  = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-
-            os.chdir(original_dir)
-
-            # --------------------------------------------------------------
-            # Read inputs
-            # --------------------------------------------------------------
-            
-            self.results[label_new].params1D = {}
-            for var in self.results[label_new].__dict__:
-                par = self.results[label_new].__dict__[var]
-                if isinstance(par, bool) or IOtools.isnum(par):
-                    self.results[label_new].params1D[var] = par
-                elif isinstance(par, (list, np.ndarray)) and par.ndim==1 and len(par) <= 5:
-                    for i, p in enumerate(par):
-                        self.results[label_new].params1D[f"{var}_{i}"] = p
-           
-            # --------------------------------------------------------------
-            # Postprocess with MITIM-curated structures and variables
-            # --------------------------------------------------------------
-            
-            if 'phib' in self.results[label_new].__dict__:
-                print('\t- Forcing tmin to the last time point because this is a linear run')
-                tmin = self.results[label_new].t[-1]
-            
-            self._postprocess_nl(label_new, tmin=tmin)
+            self.results[label_new] = CGYROutils.CGYROout(folder, tmin=tmin)
             
         if attach_name:
             self.results[label] = additional_labels
-
-    def _postprocess_nl(self, label, tmin=0.0):
-
-        self.results[label].getflux()
-        self.results[label].getnorm("elec")
-
-        self.results[label].tmin = tmin
-
-        # Understand positions
-        self.results[label].electron_flag = np.where(self.results[label].z == -1)[0][0]
-        self.results[label].all_flags = np.arange(0, len(self.results[label].z), 1)
-        self.results[label].ions_flags = self.results[label].all_flags[self.results[label].all_flags != self.results[label].electron_flag]
-
-        self.results[label].all_names = [f"{gacodefuncs.specmap(self.results[label].mass[i],self.results[label].z[i])}({self.results[label].z[i]},{self.results[label].mass[i]:.1f})" for i in self.results[label].all_flags]
-
-        self.results[label].fields = np.arange(self.results[label].n_field)
-
-        # ************************
-        # Inputs
-        # ************************
-
-        self.results[label].aLTi = self.results[label].dlntdr[0] #technically ion 1 scale length
-        self.results[label].aLTe = self.results[label].dlntdr[self.results[label].electron_flag]
-        self.results[label].aLne = self.results[label].dlnndr[self.results[label].electron_flag]
-        self.results[label].Qgb = self.results[label].q_gb_norm
-        self.results[label].Ggb = self.results[label].gamma_gb_norm
-
-        # ************************
-        # Turbulence
-        # ************************
-        self.results[label].ky = self.results[label].kynorm
-        self.results[label].f = self.results[label].fnorm[0,:,:] # ky, time
-        self.results[label].g = self.results[label].fnorm[1,:,:] # ky, time
-
-        # ************************
-        # Fluxes
-        # ************************
-        
-        self.results[label].t = self.results[label].tnorm
-
-        flux = np.sum(self.results[label].ky_flux, axis=3)  # (species, moments, fields, time)
-
-        # Electron energy flux
-        
-        i_species, i_moment = -1, 1
-        i_fields = 0
-        self.results[label].Qe_ES = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        i_fields = 1
-        self.results[label].Qe_EM_apar = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        i_fields = 2
-        self.results[label].Qe_EM_aper = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        
-        self.results[label].Qe_EM = self.results[label].Qe_EM_apar + self.results[label].Qe_EM_aper
-        self.results[label].Qe = self.results[label].Qe_ES + self.results[label].Qe_EM
-        
-        # Electron particle flux
-        
-        i_species, i_moment = -1, 0
-        i_fields = 0
-        self.results[label].Ge_ES = flux[i_species, i_moment, i_fields, :]
-        i_fields = 1
-        self.results[label].Ge_EM_apar = flux[i_species, i_moment, i_fields, :]
-        i_fields = 2
-        self.results[label].Ge_EM_aper = flux[i_species, i_moment, i_fields, :]
-        
-        self.results[label].Ge_EM = self.results[label].Ge_EM_apar + self.results[label].Ge_EM_aper
-        self.results[label].Ge = self.results[label].Ge_ES + self.results[label].Ge_EM
-        
-        # Ions energy flux
-        
-        i_species, i_moment = self.results[label].ions_flags, 1
-        i_fields = 0
-        self.results[label].Qi_all_ES = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        i_fields = 1
-        self.results[label].Qi_all_EM_apar = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        i_fields = 2
-        self.results[label].Qi_all_EM_aper = flux[i_species, i_moment, i_fields, :] / self.results[label].qc
-        
-        self.results[label].Qi_all_EM = self.results[label].Qi_all_EM_apar + self.results[label].Qi_all_EM_aper
-        self.results[label].Qi_all = self.results[label].Qi_all_ES + self.results[label].Qi_all_EM
-        
-        
-        self.results[label].Qi = self.results[label].Qi_all.sum(axis=0)
-        self.results[label].Qi_EM = self.results[label].Qi_all_EM.sum(axis=0)
-        self.results[label].Qi_ES = self.results[label].Qi_all_ES.sum(axis=0)
-        
-        # ************************
-        # Saturated
-        # ************************
-        
-        flags = {
-        'Qe': ['Qgb', 'MWm2'], 
-        'Qi': ['Qgb', 'MWm2'], 
-        'Ge': ['Ggb', '?'], 
-        'Qe_ES': ['Qgb', 'MWm2'], 
-        'Qi_ES': ['Qgb', 'MWm2'], 
-        'Ge_ES': ['Qgb', 'MWm2'], 
-        'Qe_EM': ['Qgb', 'MWm2'], 
-        'Qi_EM': ['Qgb', 'MWm2'], 
-        'Ge_EM': ['Ggb', '?'],
-        'g': [None, None],
-        'f': [None, None],
-        }
-        
-        for iflag in flags:
-            Qm, Qstd = self._apply_ac(
-                    self.results[label].t,
-                    self.results[label].__dict__[iflag],
-                    tmin=self.results[label].tmin,
-                    label_print=iflag
-                    )
-                
-            self.results[label].__dict__[iflag+'_mean'] = Qm
-            self.results[label].__dict__[iflag+'_std'] = Qstd
-                
-            # Real units
-            if flags[iflag][0] is not None:
-                self.results[label].__dict__[iflag+flags[iflag][1]+'_mean'] = self.results[label].__dict__[iflag+'_mean'] * self.results[label].__dict__[flags[iflag][0]]
-                self.results[label].__dict__[iflag+flags[iflag][1]+'_std'] = self.results[label].__dict__[iflag+'_std'] * self.results[label].__dict__[flags[iflag][0]]
-    
-    def _apply_ac(self, t, S, tmin = 0, label_print = ''):
-        
-        # Correct the standard deviation
-        def grab_ncorrelation(S, tmin):
-            # Calculate the autocorrelation function
-            i_acf = sm.tsa.acf(S)
-            
-            # Calculate how many time slices make the autocorrelation function is 0.36
-            icor = np.abs(i_acf-0.36).argmin()
-            
-            # Define number of samples
-            n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
-            
-            return n_corr, icor
-        
-        it0 = np.argmin(np.abs(t - tmin))
-        
-        # Calculate the mean and std of the signal after tmin
-        S_mean = np.mean(S[...,it0:],axis=-1)
-        S_std = np.std(S[...,it0:],axis=-1) # To follow NTH convention
-
-        if S.ndim == 1:
-            n_corr, icor = grab_ncorrelation(S, tmin)
-            
-            S_std = S_std / np.sqrt(n_corr)
-            
-            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
-            
-        elif S.ndim == 2:
-            n_corr = np.zeros(S.shape[0])
-            icor = np.zeros(S.shape[0])
-            for i in range(S.shape[0]):
-                n_corr[i], icor[i] = grab_ncorrelation(S[i], tmin)
-            S_std = S_std / np.sqrt(n_corr)
-
-            for i in range(S.shape[0]):
-                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
-
-        return S_mean, S_std
 
     def plot(self, labels=[""]):
         from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -671,7 +473,7 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            if 'phib' in self.results[labels[j]].__dict__:
+            if 'phi' in self.results[labels[j]].__dict__:
                 self.plot_ballooning(
                     axs=axsBallooning,
                     label=labels[j],
@@ -1020,8 +822,6 @@ class CGYRO:
 
     def plot_ballooning(self, label="cgyro1", c="b", axs=None):
         
-        colors = GRAPHICStools.listColors()
-
         if axs is None:
             plt.ion()
             fig = plt.figure(figsize=(18, 9))
@@ -1045,14 +845,14 @@ class CGYRO:
         ax = axs['1']
         for ky in range(len(self.results[label].ky)):
             for var, axsT in zip(
-                ["phib", "aparb", "bparb"],
+                ["phi", "apar", "bpar"],
                 [[axs['1'], axs['2']], [axs['3'], axs['4']], [axs['5'], axs['6']]],
             ):
 
                 f = self.results[label].__dict__[var][:, it]
                 y1 = np.real(f)
                 y2 = np.imag(f)
-                x = self.results[label].thetab / np.pi
+                x = self.results[label].theta_ballooning / np.pi
 
                 # Normalize
                 y1_max = np.max(np.abs(y1))
