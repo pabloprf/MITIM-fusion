@@ -7,6 +7,27 @@ from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed
 
+class CGYROlinear_scan:
+    def __init__(self, labels, cgyro_data):   
+
+        self.labels = labels
+
+        # Store the data in a structured way        
+        self.aLTi = []
+        self.ky = []
+        self.g_mean = []
+        self.f_mean = []
+
+        for label in labels:
+            self.ky.append(cgyro_data[label].ky[0])
+            self.aLTi.append(cgyro_data[label].aLTi)
+            self.g_mean.append(cgyro_data[label].g_mean[0])
+            self.f_mean.append(cgyro_data[label].f_mean[0])
+
+        self.ky = np.array(self.ky)
+        self.aLTi = np.array(self.aLTi)
+        self.g_mean = np.array(self.g_mean)
+        self.f_mean = np.array(self.f_mean)
 
 class CGYROout:
     def __init__(self, folder, tmin=0.0):
@@ -85,11 +106,11 @@ class CGYROout:
         self.f = self.cgyrodata.fnorm[0,:,:] # ky, time
         self.g = self.cgyrodata.fnorm[1,:,:] # ky, time
 
-
-        self.phi = self.cgyrodata.phib # (ball, time)
-        self.apar = self.cgyrodata.aparb # (ball, time)
-        self.bpar = self.cgyrodata.bparb # (ball, time)
-        self.theta_ballooning = self.cgyrodata.thetab # (ball, time)
+        if 'phib' in self.cgyrodata.__dict__:
+            self.phi = self.cgyrodata.phib # (ball, time)
+            self.apar = self.cgyrodata.aparb # (ball, time)
+            self.bpar = self.cgyrodata.bparb # (ball, time)
+            self.theta_ballooning = self.cgyrodata.thetab # (ball, time)
 
         # ************************
         # Fluxes

@@ -3,6 +3,7 @@ import shutil
 import datetime
 import time
 from pathlib import Path
+from lazy_loader import attach
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
@@ -398,26 +399,27 @@ class CGYRO:
                 print(f"\t\t- {f.name}")
             attach_name = True
 
-        additional_labels = []
+        data = {}
+        labels = []
         for folder in folders:
-
-            if attach_name:
-                additional_labels.append(f"{label}_{folder.name}")
-                label_new = f"{label}_{folder.name}"
-            else:
-                label_new = label
-
-            self.results[label_new] = CGYROutils.CGYROout(folder, tmin=tmin)
             
+            if attach_name:
+                label1 = f"{label}_{folder.name}"
+            else:
+                label1 = label
+
+            data[label1] = CGYROutils.CGYROout(folder, tmin=tmin)
+            labels.append(label1)
+
+        self.results.update(data)
+        
         if attach_name:
-            self.results[label] = additional_labels
+            self.results[label] = CGYROutils.CGYROlinear_scan(labels, data)
 
     def plot(self, labels=[""]):
+        
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
         self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
-
-        colors = GRAPHICStools.listColors()
 
         fig = self.fn.add_figure(label="Fluxes Time Traces")
         axsFluxes_t = fig.subplot_mosaic(
@@ -449,16 +451,19 @@ class CGYRO:
             A
             """
         )
-        
-        # Correct labels if they were scans
+
+        # If it has scans, we need to correct the labels
         labels_corrected = []
         for i in range(len(labels)):
-            if isinstance(self.results[labels[i]], list):
-                for j in range(len(self.results[labels[i]])):
-                    labels_corrected.append(self.results[labels[i]][j])
+            if isinstance(self.results[labels[i]], CGYROutils.CGYROlinear_scan):    
+                for scan_label in self.results[labels[i]].labels:
+                    labels_corrected.append(scan_label)
             else:
                 labels_corrected.append(labels[i])
         labels = labels_corrected
+        # ------------------------------------------------
+        
+        colors = GRAPHICStools.listColors()
 
         for j in range(len(labels)):
             
@@ -728,97 +733,6 @@ class CGYRO:
         ax.legend(loc='best', prop={'size': 8},)
         
         plt.tight_layout()
-        
-    def plot_quick_linear(self, labels=["cgyro1"], fig=None):
-        colors = GRAPHICStools.listColors()
-
-        if fig is None:
-            fig = plt.figure(figsize=(15,9))
-
-        axs = fig.subplot_mosaic(
-            """
-            12
-            34
-            """
-        )
-            
-        def _plot_linear_stability(axs, labels, col_lin ='b', start_cont=0):
-            K, G, F = [], [], []
-            for cont, label in enumerate(labels):
-                c = self.results[label]
-                baseColor = colors[cont+start_cont]
-                colorsC, _ = GRAPHICStools.colorTableFade(
-                    len(c.ky),
-                    startcolor=baseColor,
-                    endcolor=baseColor,
-                    alphalims=[1.0, 0.4],
-                )
-
-                ax = axs['1']
-                for ky in range(len(c.ky)):
-                    ax.plot(
-                        c.t,
-                        c.freq[1, ky, :],
-                        color=colorsC[ky],
-                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                    )
-
-                ax = axs['2']
-                for ky in range(len(c.ky)):
-                    ax.plot(
-                        c.t,
-                        c.freq[0, ky, :],
-                        color=colorsC[ky],
-                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                    )
-
-                K.append(np.abs(c.ky[0]))
-                G.append(c.freq[1, 0, -1])
-                F.append(c.freq[0, 0, -1])
-                
-
-            GACODEplotting.plotTGLFspectrum(
-                [axs['3'], axs['4']],
-                K,
-                G,
-                freq=F,
-                coeff=0.0,
-                c=col_lin,
-                ls="-",
-                lw=1,
-                label="",
-                facecolors=colors[: len(K)],
-                markersize=50,
-                alpha=1.0,
-                titles=["Growth Rate", "Real Frequency"],
-                removeLow=1e-4,
-                ylabel=True,
-            )
-            
-            return cont
-            
-        co = 0
-        for i,label0 in enumerate(labels):
-            if isinstance(self.results[label0], list):
-                co = _plot_linear_stability(axs, self.results[label0], start_cont=co, col_lin=colors[i])
-
-            else:
-                co = _plot_linear_stability(axs, [label0], start_cont=co, col_lin=colors[i])
-
-        ax = axs['1']
-        ax.set_xlabel("Time $(a/c_s)$")
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-        ax.set_ylabel("$\\gamma$ $(c_s/a)$")
-        ax.set_title("Growth Rate")
-        ax.set_xlim(left=0)
-        ax.legend()
-        ax = axs['2']
-        ax.set_xlabel("Time $(a/c_s)$")
-        ax.set_ylabel("$\\omega$ $(c_s/a)$")
-        ax.set_title("Real Frequency")
-        ax.axhline(y=0, lw=0.5, ls="--", c="k")
-        ax.set_xlim(left=0)
-
 
     def plot_ballooning(self, label="cgyro1", c="b", axs=None):
         
@@ -923,6 +837,92 @@ class CGYRO:
         for ax in [axs['1'], axs['3'], axs['5'], axs['2'], axs['4'], axs['6']]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+        
+    def plot_quick_linear(self, labels=["cgyro1"], fig=None):
+        colors = GRAPHICStools.listColors()
+
+        if fig is None:
+            fig = plt.figure(figsize=(15,9))
+
+        axs = fig.subplot_mosaic(
+            """
+            12
+            34
+            """
+        )
+            
+        def _plot_linear_stability(axs, labels, label_base,col_lin ='b', start_cont=0):
+
+            for cont, label in enumerate(labels):
+                c = self.results[label]
+                baseColor = colors[cont+start_cont+1]
+                colorsC, _ = GRAPHICStools.colorTableFade(
+                    len(c.ky),
+                    startcolor=baseColor,
+                    endcolor=baseColor,
+                    alphalims=[1.0, 0.4],
+                )
+
+                ax = axs['1']
+                for ky in range(len(c.ky)):
+                    ax.plot(
+                        c.t,
+                        c.g[ky,:],
+                        color=colorsC[ky],
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                    )
+
+                ax = axs['2']
+                for ky in range(len(c.ky)):
+                    ax.plot(
+                        c.t,
+                        c.f[ky,:],
+                        color=colorsC[ky],
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                    )
+
+            GACODEplotting.plotTGLFspectrum(
+                [axs['3'], axs['4']],
+                self.results[label_base].ky,
+                self.results[label_base].g_mean,
+                freq=self.results[label_base].f_mean,
+                coeff=0.0,
+                c=col_lin,
+                ls="-",
+                lw=1,
+                label="",
+                facecolors=colors,
+                markersize=50,
+                alpha=1.0,
+                titles=["Growth Rate", "Real Frequency"],
+                removeLow=1e-4,
+                ylabel=True,
+            )
+            
+            return cont
+
+        co = -1
+        for i,label0 in enumerate(labels):
+            if isinstance(self.results[label0], CGYROutils.CGYROlinear_scan):
+                co = _plot_linear_stability(axs, self.results[label0].labels, label0, start_cont=co, col_lin=colors[i])
+            else:
+                co = _plot_linear_stability(axs, [label0], label0, start_cont=co, col_lin=colors[i])
+
+        ax = axs['1']
+        ax.set_xlabel("Time $(a/c_s)$")
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+        ax.set_ylabel("$\\gamma$ $(c_s/a)$")
+        ax.set_title("Growth Rate")
+        ax.set_xlim(left=0)
+        ax.legend()
+        ax = axs['2']
+        ax.set_xlabel("Time $(a/c_s)$")
+        ax.set_ylabel("$\\omega$ $(c_s/a)$")
+        ax.set_title("Real Frequency")
+        ax.axhline(y=0, lw=0.5, ls="--", c="k")
+        ax.set_xlim(left=0)
+
 
 
 class CGYROinput:
