@@ -11,7 +11,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--linear", action="store_true", help="linear run")
+    parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
     parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
     args = parser.parse_args()
 
