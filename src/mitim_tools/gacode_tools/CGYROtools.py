@@ -263,8 +263,8 @@ class CGYRO:
                 },
             )
 
-            if not self.cgyro_job.launchSlurm:
-                raise Exception(" <MITIM> Cannot run CGYRO scans without slurm")
+            # if not self.cgyro_job.launchSlurm:
+            #     raise Exception(" <MITIM> Cannot run CGYRO scans without slurm")
 
             # Command to run cgyro
             CGYROcommand = f'cgyro -e {folder} -n {n} -nomp {nomp} -p {self.cgyro_job.folderExecution}'
