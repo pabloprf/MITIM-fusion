@@ -156,8 +156,15 @@ class transp_beat(beat):
             print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
             
             # Find CDF name
-            files = [f for f in self.folder_output.iterdir() if f.is_file()]
-            cdf_prefix = next((file.stem for file in files if file.suffix.lower() == '.cdf'), None)
+            files = [f for f in self.folder.iterdir() if f.is_file()]
+            cdf_prefix = next(
+                (file.stem                           
+                for file in files
+                if file.suffix.lower() == ".cdf"    # keep only .cdf files …
+                    and not file.name.lower().endswith("ph.cdf")),  # … but skip *.ph.cdf
+                None
+            )
+
             shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
             shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
             shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
