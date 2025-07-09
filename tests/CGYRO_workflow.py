@@ -33,5 +33,5 @@ cgyro.delete()
 
 cgyro.read(label="cgyro1")
 
-cgyro.plotLS()
+cgyro.plot_quick_linear(labels=["cgyro1"])
 cgyro.fn.show()
