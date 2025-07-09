@@ -11,6 +11,7 @@ from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from torch import normal
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed
@@ -402,11 +403,13 @@ class CGYRO:
                 print(f"\t\t- {f.name}")
             attach_name = True
 
+        additional_labels = []
         for folder in folders:
 
             original_dir = os.getcwd()
 
             if attach_name:
+                additional_labels.append(f"{label}_{folder.name}")
                 label_new = f"{label}_{folder.name}"
             else:
                 label_new = label
@@ -436,13 +439,17 @@ class CGYRO:
                         self.results[label_new].params1D[f"{var}_{i}"] = p
            
             # --------------------------------------------------------------
-            # Postprocess NL run with MITIM-curated structures and variables
+            # Postprocess with MITIM-curated structures and variables
             # --------------------------------------------------------------
-            #try:
+            
+            if 'phib' in self.results[label_new].__dict__:
+                print('\t- Forcing tmin to the last time point because this is a linear run')
+                tmin = self.results[label_new].t[-1]
+            
             self._postprocess_nl(label_new, tmin=tmin)
-            # except Exception as e:
-            #     print(f"\t- Error during postprocessing: {e}")
-            #     print("\t- Skipping postprocessing, results may be incomplete or linear run")
+            
+        if attach_name:
+            self.results[label] = additional_labels
 
     def _postprocess_nl(self, label, tmin=0.0):
 
@@ -599,7 +606,7 @@ class CGYRO:
             S_std = S_std / np.sqrt(n_corr)
 
             for i in range(S.shape[0]):
-                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr time for {i}: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
+                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
 
         return S_mean, S_std
 
@@ -626,6 +633,13 @@ class CGYRO:
             """
         )
         
+        fig = self.fn.add_figure(label="Ballooning")
+        axsBallooning = fig.subplot_mosaic(
+            """
+            135
+            246
+            """
+            )
         
         fig = self.fn.add_figure(label="Inputs")
         axsInputs = fig.subplot_mosaic(
@@ -633,7 +647,19 @@ class CGYRO:
             A
             """
         )
+        
+        # Correct labels if they were scans
+        labels_corrected = []
+        for i in range(len(labels)):
+            if isinstance(self.results[labels[i]], list):
+                for j in range(len(self.results[labels[i]])):
+                    labels_corrected.append(self.results[labels[i]][j])
+            else:
+                labels_corrected.append(labels[i])
+        labels = labels_corrected
+
         for j in range(len(labels)):
+            
             self.plot_fluxes(
                 axs=axsFluxes_t,
                 label=labels[j],
@@ -645,24 +671,47 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
+            if 'phib' in self.results[labels[j]].__dict__:
+                self.plot_ballooning(
+                    axs=axsBallooning,
+                    label=labels[j],
+                    c=colors[j],
+                )
+            
             self.plot_inputs(
                 ax=axsInputs["A"],
                 label=labels[j],
                 c=colors[j],
-                ms= 10-j*2,  # Decrease marker size for each label
+                ms= 10-j*0.5,  # Decrease marker size for each label
                 normalization_label= labels[0],  # Normalize to the first label
                 only_plot_differences=len(labels) > 1,  # Only plot differences if there are multiple labels
             )
+            
+        axsInputs["A"].axhline(
+            1.0,
+            color="k",
+            ls="--",
+            lw=2.0
+        )
 
-    def _plot_flux(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True):
+    def _plot_trace(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True, var_meanstd= None):
         
         t = self.results[label].t
         
         if not isinstance(variable, str):
             z = variable
-            meanstd = False
+            if var_meanstd is not None:
+                z_mean = var_meanstd[0]
+                z_std = var_meanstd[1]
+            
         else:
             z = self.results[label].__dict__[variable]
+            if meanstd and (f'{variable}_mean' in self.results[label].__dict__):
+                z_mean = self.results[label].__dict__[variable + '_mean']
+                z_std = self.results[label].__dict__[variable + '_std']
+            else:
+                z_mean = None
+                z_std = None
         
         ax.plot(
             t,
@@ -673,20 +722,20 @@ class CGYRO:
             label=label_plot,
         )
         
-        if meanstd and (variable+'_mean' in self.results[label].__dict__):
+        if meanstd and z_std>0.0:
             GRAPHICStools.fillGraph(
                 ax,
                 t[t>self.results[label].tmin],
-                self.results[label].__dict__[variable + '_mean'],
-                y_down=self.results[label].__dict__[variable + '_mean']
-                - self.results[label].__dict__[variable + '_std'],
-                y_up=self.results[label].__dict__[variable + '_mean']
-                + self.results[label].__dict__[variable + '_std'],
+                z_mean,
+                y_down=z_mean
+                - z_std,
+                y_up=z_mean
+                + z_std,
                 alpha=0.1,
                 color=c,
                 lw=0.5,
                 islwOnlyMean=True,
-                label=label_plot + f" {self.results[label].__dict__[variable + '_mean']:.2f} ± {self.results[label].__dict__[variable + '_std']:.2f} (1$\\sigma$)",
+                label=label_plot + f" {z_mean:.2f} ± {z_std:.2f} (1$\\sigma$)",
             )
 
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
@@ -694,6 +743,8 @@ class CGYRO:
         if ax is None:
             plt.ion()
             fig, ax = plt.subplots(1, 1, figsize=(18, 9))
+
+        rel_tol = 1e-2
 
         legadded = False
         for i, ikey in enumerate(self.results[label].params1D):
@@ -708,13 +759,13 @@ class CGYRO:
                 label_plot = label
                 zp = z
 
-            if (not only_plot_differences) or (not np.isclose(z, z0)):
+            if (not only_plot_differences) or (not np.isclose(z, z0, rtol=rel_tol)):
                 ax.plot(ikey,zp,'o',markersize=ms,color=c,label=label_plot if not legadded else '')
                 legadded = True
 
         if normalization_label is not None:
             if only_plot_differences:
-                ylabel = f"Parameters (DIFFERENT) relative to {normalization_label}"
+                ylabel = f"Parameters (DIFFERENT by {rel_tol*100:.2f}%) relative to {normalization_label}"
             else:
                 ylabel = f"Parameters relative to {normalization_label}"
         else:
@@ -742,8 +793,8 @@ class CGYRO:
 
         # Electron energy flux
         ax = axs["A"]
-        self._plot_flux(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_flux(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        self._plot_trace(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_trace(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_e$ (GB)")
@@ -754,8 +805,8 @@ class CGYRO:
 
         # Electron particle flux
         ax = axs["B"]
-        self._plot_flux(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_flux(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        self._plot_trace(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_trace(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\Gamma_e$ (GB)")
@@ -766,8 +817,8 @@ class CGYRO:
 
         # Ion energy fluxes
         ax = axs["C"]
-        self._plot_flux(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_flux(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+        self._plot_trace(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+        self._plot_trace(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
         
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
@@ -779,7 +830,7 @@ class CGYRO:
         # Ion species energy fluxes
         ax = axs["D"]
         for j, i in enumerate(self.results[label].ions_flags):
-            self._plot_flux(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
+            self._plot_trace(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
             
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
@@ -799,21 +850,27 @@ class CGYRO:
 
             axs = fig.subplot_mosaic(
                 """
-				AC
+                AC
                 BD
-				"""
+                """
             )
 
         # Is no kys provided, select just 3: first, last and middle
         if kys is None:
-            ikys = [0, len(self.results[label].ky) // 2, -1]
+            ikys = [0]
+            if len(self.results[label].ky) > 1:
+                ikys.append(-1)
+            if len(self.results[label].ky) > 2:
+                ikys.append(len(self.results[label].ky) // 2)
+                
+            ikys = np.unique(ikys)            
         else:
             ikys = [self.results[label].ky.index(ky) for ky in kys if ky in self.results[label].ky]    
 
         # Growth rate as function of time
         ax = axs["A"]
         for i,ky in enumerate(ikys):
-            self._plot_flux(
+            self._plot_trace(
                 ax,
                 label,
                 self.results[label].g[ky, :],
@@ -821,6 +878,7 @@ class CGYRO:
                 ls = GRAPHICStools.listLS()[i],
                 lw=1,
                 label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
+                var_meanstd = [self.results[label].g_mean[ky], self.results[label].g_std[ky]],
             )
             
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
@@ -832,13 +890,15 @@ class CGYRO:
         # Frequency as function of time
         ax = axs["B"]
         for i,ky in enumerate(ikys):
-            self._plot_flux(
+            self._plot_trace(
                 ax,
                 label,
                 self.results[label].f[ky, :],
-                c=GRAPHICStools.listColors()[i],
+                c=c,
+                ls = GRAPHICStools.listLS()[i],
                 lw=1,
                 label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
+                var_meanstd = [self.results[label].f_mean[ky], self.results[label].f_std[ky]],
             )
             
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
@@ -867,169 +927,200 @@ class CGYRO:
         
         plt.tight_layout()
         
-    def plotLS(self, labels=["cgyro1"], fig=None):
+    def plot_quick_linear(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
 
         if fig is None:
-            # fig = plt.figure(figsize=(15,9))
+            fig = plt.figure(figsize=(15,9))
 
-            from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-            self.fn = FigureNotebook(
-                "Linear CGYRO Notebook",
-                geometry="1600x1000",
-            )
-            fig1 = self.fn.add_figure(label="Linear Stability")
-            fig2 = self.fn.add_figure(label="Ballooning")
-
-        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
-        ax00 = fig1.add_subplot(grid[0, 0])
-        ax10 = fig1.add_subplot(grid[1, 0], sharex=ax00)
-        ax01 = fig1.add_subplot(grid[0, 1])
-        ax11 = fig1.add_subplot(grid[1, 1], sharex=ax01)
-
-        K, G, F = [], [], []
-        for cont, label in enumerate(self.results):
-            c = self.results[label]
-            baseColor = colors[cont]
-            colorsC, _ = GRAPHICStools.colorTableFade(
-                len(c.ky),
-                startcolor=baseColor,
-                endcolor=baseColor,
-                alphalims=[1.0, 0.4],
-            )
-
-            ax = ax00
-            for ky in range(len(c.ky)):
-                ax.plot(
-                    c.t,
-                    c.freq[1, ky, :],
-                    color=colorsC[ky],
-                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                )
-
-            ax = ax10
-            for ky in range(len(c.ky)):
-                ax.plot(
-                    c.t,
-                    c.freq[0, ky, :],
-                    color=colorsC[ky],
-                    label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                )
-
-            K.append(np.abs(c.ky[0]))
-            G.append(c.freq[1, 0, -1])
-            F.append(c.freq[0, 0, -1])
-
-        GACODEplotting.plotTGLFspectrum(
-            [ax01, ax11],
-            K,
-            G,
-            freq=F,
-            coeff=0.0,
-            c=colors[0],
-            ls="-",
-            lw=1,
-            label="",
-            facecolors=colors[: len(K)],
-            markersize=50,
-            alpha=1.0,
-            titles=["Growth Rate", "Real Frequency"],
-            removeLow=1e-4,
-            ylabel=True,
+        axs = fig.subplot_mosaic(
+            """
+            12
+            34
+            """
         )
+            
+        def _plot_linear_stability(axs, labels, col_lin ='b', start_cont=0):
+            K, G, F = [], [], []
+            for cont, label in enumerate(labels):
+                c = self.results[label]
+                baseColor = colors[cont+start_cont]
+                colorsC, _ = GRAPHICStools.colorTableFade(
+                    len(c.ky),
+                    startcolor=baseColor,
+                    endcolor=baseColor,
+                    alphalims=[1.0, 0.4],
+                )
 
-        ax = ax00
+                ax = axs['1']
+                for ky in range(len(c.ky)):
+                    ax.plot(
+                        c.t,
+                        c.freq[1, ky, :],
+                        color=colorsC[ky],
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                    )
+
+                ax = axs['2']
+                for ky in range(len(c.ky)):
+                    ax.plot(
+                        c.t,
+                        c.freq[0, ky, :],
+                        color=colorsC[ky],
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                    )
+
+                K.append(np.abs(c.ky[0]))
+                G.append(c.freq[1, 0, -1])
+                F.append(c.freq[0, 0, -1])
+                
+
+            GACODEplotting.plotTGLFspectrum(
+                [axs['3'], axs['4']],
+                K,
+                G,
+                freq=F,
+                coeff=0.0,
+                c=col_lin,
+                ls="-",
+                lw=1,
+                label="",
+                facecolors=colors[: len(K)],
+                markersize=50,
+                alpha=1.0,
+                titles=["Growth Rate", "Real Frequency"],
+                removeLow=1e-4,
+                ylabel=True,
+            )
+            
+            return cont
+            
+        co = 0
+        for i,label0 in enumerate(labels):
+            if isinstance(self.results[label0], list):
+                co = _plot_linear_stability(axs, self.results[label0], start_cont=co, col_lin=colors[i])
+
+            else:
+                co = _plot_linear_stability(axs, [label0], start_cont=co, col_lin=colors[i])
+
+        ax = axs['1']
         ax.set_xlabel("Time $(a/c_s)$")
         ax.axhline(y=0, lw=0.5, ls="--", c="k")
         ax.set_ylabel("$\\gamma$ $(c_s/a)$")
         ax.set_title("Growth Rate")
         ax.set_xlim(left=0)
         ax.legend()
-        ax = ax10
+        ax = axs['2']
         ax.set_xlabel("Time $(a/c_s)$")
         ax.set_ylabel("$\\omega$ $(c_s/a)$")
         ax.set_title("Real Frequency")
         ax.axhline(y=0, lw=0.5, ls="--", c="k")
         ax.set_xlim(left=0)
 
-        ax = ax01
-        #ax.set_xlim([5e-2, 50.0])
 
-        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-        ax00 = fig2.add_subplot(grid[0, 0])
-        ax01 = fig2.add_subplot(grid[0, 1], sharex=ax00, sharey=ax00)
-        ax02 = fig2.add_subplot(grid[0, 2], sharex=ax00, sharey=ax00)
-        ax10 = fig2.add_subplot(grid[1, 0], sharex=ax00, sharey=ax00)
-        ax11 = fig2.add_subplot(grid[1, 1], sharex=ax01, sharey=ax00)
-        ax12 = fig2.add_subplot(grid[1, 2], sharex=ax02, sharey=ax00)
+    def plot_ballooning(self, label="cgyro1", c="b", axs=None):
+        
+        colors = GRAPHICStools.listColors()
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                135
+                246
+                """
+            )
 
         it = -1
 
-        for cont, label in enumerate(self.results):
-            c = self.results[label]
-            baseColor = colors[cont]
+        colorsC, _ = GRAPHICStools.colorTableFade(
+            len(self.results[label].ky),
+            startcolor=c,
+            endcolor=c,
+            alphalims=[1.0, 0.4],
+        )
 
-            colorsC, _ = GRAPHICStools.colorTableFade(
-                len(c.ky),
-                startcolor=baseColor,
-                endcolor=baseColor,
-                alphalims=[1.0, 0.4],
-            )
+        ax = axs['1']
+        for ky in range(len(self.results[label].ky)):
+            for var, axsT in zip(
+                ["phib", "aparb", "bparb"],
+                [[axs['1'], axs['2']], [axs['3'], axs['4']], [axs['5'], axs['6']]],
+            ):
 
-            ax = ax00
-            for ky in range(len(c.ky)):
-                for var, axs, label in zip(
-                    ["phib", "aparb", "bparb"],
-                    [[ax00, ax10], [ax01, ax11], [ax02, ax12]],
-                    ["phi", "abar", "aper"],
-                ):
-                    try:
-                        f = c.__dict__[var][0, :, it] + 1j * c.__dict__[var][1, :, it]
-                        y1 = np.real(f)
-                        y2 = np.imag(f)
-                        x = c.thetab / np.pi
+                f = self.results[label].__dict__[var][:, it]
+                y1 = np.real(f)
+                y2 = np.imag(f)
+                x = self.results[label].thetab / np.pi
 
-                        ax = axs[0]
-                        ax.plot(
-                            x,
-                            y1,
-                            color=colorsC[ky],
-                            ls="-",
-                            label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
-                        )
-                        ax = axs[1]
-                        ax.plot(x, y2, color=colorsC[ky], ls="-")
-                    except:
-                        pass
+                # Normalize
+                y1_max = np.max(np.abs(y1))
+                y2_max = np.max(np.abs(y2))
+                y1 /= y1_max
+                y2 /= y2_max
 
-        ax = ax00
-        ax.set_xlabel("$\\theta/\\pi$")
+                ax = axsT[0]
+                ax.plot(
+                    x,
+                    y1,
+                    color=colorsC[ky],
+                    ls="-",
+                    label=f"$k_{{\\theta}}\\rho_s={np.abs( self.results[label].ky[ky]):.2f}$ (max {y1_max:.2e})",
+                )
+                ax = axsT[1]
+                ax.plot(
+                    x, 
+                    y2, 
+                    color=colorsC[ky], 
+                    ls="-",
+                    label=f"$k_{{\\theta}}\\rho_s={np.abs( self.results[label].ky[ky]):.2f}$ (max {y2_max:.2e})",
+                )
+
+
+        ax = axs['1']
+        ax.set_xlabel("$\\theta/\\pi$ (normalized to maximum)")
         ax.set_ylabel("Re($\\delta\\phi$)")
         ax.set_title("$\\delta\\phi$")
-        ax.legend(loc="best")
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
 
         ax.set_xlim([-2 * np.pi, 2 * np.pi])
 
-        ax = ax01
-        ax.set_xlabel("$\\theta/\\pi$")
+        ax = axs['3']
+        ax.set_xlabel("$\\theta/\\pi$ (normalized to maximum)")
         ax.set_ylabel("Re($\\delta A\\parallel$)")
         ax.set_title("$\\delta A\\parallel$")
-        ax = ax02
-        ax.set_xlabel("$\\theta/\\pi$")
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs['5']
+        ax.set_xlabel("$\\theta/\\pi$ (normalized to maximum)")
         ax.set_ylabel("Re($\\delta B\\parallel$)")
         ax.set_title("$\\delta B\\parallel$")
-        ax = ax10
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs['2']
         ax.set_xlabel("$\\theta/\\pi$")
         ax.set_ylabel("Im($\\delta\\phi$)")
-        ax = ax11
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs['4']
         ax.set_xlabel("$\\theta/\\pi$")
         ax.set_ylabel("Im($\\delta A\\parallel$)")
-        ax = ax12
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs['6']
         ax.set_xlabel("$\\theta/\\pi$")
         ax.set_ylabel("Im($\\delta B\\parallel$)")
+        ax.legend(loc="best", prop={"size": 8})
+        GRAPHICStools.addDenseAxis(ax)
 
-        for ax in [ax00, ax01, ax02, ax10, ax11, ax12]:
+
+        for ax in [axs['1'], axs['3'], axs['5'], axs['2'], axs['4'], axs['6']]:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
 

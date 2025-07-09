@@ -1,6 +1,6 @@
 import argparse
+import matplotlib.pyplot as plt
 from IPython import embed
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
 
 """
@@ -32,11 +32,13 @@ def main():
 
     if linear:
         # Plot linear spectrum
-        c.plotLS(labels=labels)
+        c.plot_quick_linear(labels=labels)
+        plt.show()
     else:
         c.plot(labels=labels)
+        c.fn.show()
 
-    c.fn.show()
+    
     embed()
 
 if __name__ == "__main__":
