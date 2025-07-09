@@ -292,6 +292,7 @@ class portals_beat(beat):
         if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
             if 'surrogate_options' not in self.optimization_options:
                 self.optimization_options['surrogate_options'] = {}
+            
             self.optimization_options['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
@@ -372,7 +373,7 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
-        fileTraining = stepSettings['folderOutputs'] / 'surrogate_data.csv'
+        fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
         
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
