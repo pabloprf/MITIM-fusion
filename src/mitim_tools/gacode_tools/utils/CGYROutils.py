@@ -51,9 +51,10 @@ class CGYROout:
 
         os.chdir(original_dir)
             
-        self.process()
+        # Process the data
+        self._process()
 
-    def process(self):
+    def _process(self):
         
         # --------------------------------------------------------------
         # Read inputs
@@ -76,7 +77,6 @@ class CGYROout:
             print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
             self.tmin = self.cgyrodata.t[-1]
 
-
         self.cgyrodata.getflux(cflux='auto')
         self.cgyrodata.getnorm("elec")
 
@@ -93,7 +93,7 @@ class CGYROout:
         # Inputs
         # ************************
 
-        self.aLTi = self.cgyrodata.dlntdr[0] #technically ion 1 scale length
+        self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
         self.Qgb = self.cgyrodata.q_gb_norm
@@ -103,14 +103,14 @@ class CGYROout:
         # Turbulence
         # ************************
         self.ky = self.cgyrodata.kynorm
-        self.f = self.cgyrodata.fnorm[0,:,:] # ky, time
-        self.g = self.cgyrodata.fnorm[1,:,:] # ky, time
+        self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
+        self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
 
         if 'phib' in self.cgyrodata.__dict__:
-            self.phi = self.cgyrodata.phib # (ball, time)
-            self.apar = self.cgyrodata.aparb # (ball, time)
-            self.bpar = self.cgyrodata.bparb # (ball, time)
-            self.theta_ballooning = self.cgyrodata.thetab # (ball, time)
+            self.phi = self.cgyrodata.phib                  # (ball, time)
+            self.apar = self.cgyrodata.aparb                # (ball, time)
+            self.bpar = self.cgyrodata.bparb                # (ball, time)
+            self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
         # ************************
         # Fluxes
@@ -118,7 +118,7 @@ class CGYROout:
         
         self.t = self.cgyrodata.tnorm
 
-        flux = np.sum(self.cgyrodata.ky_flux, axis=3)  # (species, moments, fields, time)
+        flux = np.sum(self.cgyrodata.ky_flux, axis=3)       # (species, moments, fields, time)
 
         # Electron energy flux
         
@@ -158,7 +158,6 @@ class CGYROout:
         
         self.Qi_all_EM = self.Qi_all_EM_apar + self.Qi_all_EM_aper
         self.Qi_all = self.Qi_all_ES + self.Qi_all_EM
-        
         
         self.Qi = self.Qi_all.sum(axis=0)
         self.Qi_EM = self.Qi_all_EM.sum(axis=0)

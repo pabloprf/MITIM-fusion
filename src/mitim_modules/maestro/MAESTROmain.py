@@ -29,7 +29,7 @@ class maestro:
             folder,
             terminal_outputs = False,
             master_cold_start = False,
-            overall_log_file = True,
+            overall_log_file = True,    # Do false if I want embed to work
             keep_all_files = True,
             master_seed = 0
             ):
