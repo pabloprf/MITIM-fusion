@@ -137,7 +137,8 @@ class eped_beat(beat):
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
-            self.current_evaluation[key] = value
+            if key not in ['ptop_kPa', 'wtop_psipol']:
+                self.current_evaluation[key] = value
         # ----------------------------------------------
 
         print('\n\t- Running EPED with:')
@@ -176,8 +177,24 @@ class eped_beat(beat):
                 self.current_evaluation["nesep_ratio"]
                 )
 
-            ptop_kPa, wtop_psipol = self.nn(*inputs_to_nn)
-
+            # -------------------------------------------------------
+            # Give the option to override the ptop_kPa and wtop_psipol
+            if 'ptop_kPa' in self.corrections_set:
+                print(f'\t\t- Overriding ptop_kPa: {self.corrections_set["ptop_kPa"]:.2f} kPa', typeMsg='w')
+                ptop_kPa = self.corrections_set["ptop_kPa"]
+            else:
+                ptop_kPa = None
+                
+            if 'wtop_psipol' in self.corrections_set:
+                print(f'\t\t- Overriding wtop_psipol: {self.corrections_set["wtop_psipol"]:.5f}', typeMsg='w')
+                wtop_psipol = self.corrections_set["wtop_psipol"]
+            else:
+                wtop_psipol = None
+            # -------------------------------------------------------
+            
+            if ptop_kPa is None or wtop_psipol is None:
+                ptop_kPa, wtop_psipol = self.nn(*inputs_to_nn)
+            
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
