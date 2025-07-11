@@ -22,7 +22,7 @@ MAESTRO:
 
 '''
 
-ENABLE_EMBED = True # If True, will enable IPython embed in some places, useful for debugging
+ENABLE_EMBED = False # If True, will enable IPython embed in some places, useful for debugging
 
 class maestro:
 

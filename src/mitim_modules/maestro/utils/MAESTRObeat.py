@@ -461,7 +461,8 @@ class creator_from_eped(creator_from_parameterization):
         self.beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        eped_results = self.beat_eped._run(loopBetaN = 1)
+        nproc_per_run = 64 #TODO: make it a parameter to be received from MAESTRO namelist
+        eped_results = self.beat_eped._run(loopBetaN = 1, nproc_per_run=nproc_per_run, cold_start=True) # Assume always cold start for a creator
 
         # Potentially save variables
         np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)

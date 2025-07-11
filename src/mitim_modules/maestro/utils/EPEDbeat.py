@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.eped_tools import EPEDtools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
@@ -35,11 +36,21 @@ class eped_beat(beat):
             **kwargs
             ):
 
-        self.nn = NNtools.eped_nn(type='tf')
-        nn_location = IOtools.expandPath(nn_location)
-        norm_location = IOtools.expandPath(norm_location)
+        if nn_location is not None:
 
-        self.nn.load(nn_location, norm=norm_location)
+            print(f'\t- Choice of EPED: NN from {IOtools.clipstr(nn_location)}', typeMsg='i')
+
+            self.nn = NNtools.eped_nn(type='tf')
+            nn_location = IOtools.expandPath(nn_location)
+            norm_location = IOtools.expandPath(norm_location)
+
+            self.nn.load(nn_location, norm=norm_location)
+            
+        else:
+            
+            print('\t- Choice of EPED: full', typeMsg='i')
+            
+            self.nn = None
 
         # Parameters to run EPED with instead of those from the profiles
         self.neped_20 = neped_20
@@ -63,7 +74,7 @@ class eped_beat(beat):
         # Run the NN
         # -------------------------------------------------------
 
-        eped_results = self._run(loopBetaN = 1, store_scan=True)
+        eped_results = self._run(loopBetaN = 1, store_scan=True, nproc_per_run=kwargs.get('cpus', 16), cold_start=kwargs.get('cold_start', False))
 
         # -------------------------------------------------------
         # Save stuff
@@ -73,7 +84,7 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
-    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False):
+    def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False, nproc_per_run=64, cold_start=True):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
         '''
@@ -163,7 +174,7 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            inputs_to_nn = (
+            inputs_to_eped = (
                 self.current_evaluation["Ip"],
                 self.current_evaluation["Bt"],
                 self.current_evaluation["R"],
@@ -193,7 +204,15 @@ class eped_beat(beat):
             # -------------------------------------------------------
             
             if ptop_kPa is None or wtop_psipol is None:
-                ptop_kPa, wtop_psipol = self.nn(*inputs_to_nn)
+                
+                if self.nn is not None:
+                    ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
+                else:
+                    ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, nproc_per_run=nproc_per_run, cold_start=cold_start)
+                    
+                    if store_scan:
+                        store_scan = False
+                        print('\t- Warning: store_scan is not available for full EPED runs yet, only for NN-based EPED')
             
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
@@ -268,10 +287,10 @@ class eped_beat(beat):
 
             scan_results = {}
             for k,key in enumerate(scan_relative):
-                inputs_scan = list(copy.deepcopy(inputs_to_nn))
+                inputs_scan = list(copy.deepcopy(inputs_to_eped))
                 scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
                 for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
-                    inputs_scan[k] = inputs_to_nn[k]*m
+                    inputs_scan[k] = inputs_to_eped[k]*m
                     ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
                     scan_results[key]['ptop_kPa'].append(ptop_kPa0)
                     scan_results[key]['wtop_psipol'].append(wtop_psipol0)
@@ -280,7 +299,7 @@ class eped_beat(beat):
                 scan_results[key]['wtop_psipol'] = np.array(scan_results[key]['wtop_psipol'])
                 scan_results[key]['value'] = np.array(scan_results[key]['value'])
 
-                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_nn)
+                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped)
 
         # ---------------------------------
         # Store
@@ -295,7 +314,7 @@ class eped_beat(beat):
             'nesep_20': nesep_20,
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
-            'inputs_to_nn': inputs_to_nn,
+            'inputs_to_eped': inputs_to_eped,
             'scan_results': scan_results
         }
 
@@ -306,6 +325,42 @@ class eped_beat(beat):
 
         return eped_results
 
+    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, nproc_per_run=64, cold_start=True):
+        '''
+            Run the full EPED code with the given inputs.
+            Returns ptop_kPa and wtop_psipol.
+        '''
+
+        eped = EPEDtools.EPED(folder=folder)
+
+        input_params = {
+            'ip': Ip,
+            'bt': Bt,
+            'r': R,
+            'a': a,
+            'kappa': kappa995,
+            'delta': delta995,
+            'neped': neped19,
+            'betan': BetaN,
+            'zeffped': zeff,
+            'nesep': nesep_ratio * neped19,
+            'tesep': Tesep_eV
+        }
+
+        eped.run(
+            subfolder = 'case1',
+            input_params = input_params,
+            nproc_per_run = nproc_per_run,
+            cold_start = cold_start,
+        )
+
+        eped.read(subfolder='case1')
+
+        ptop_kPa = float(eped.results['case1']['run1']['ptop'])
+        wtop_psipol = float(eped.results['case1']['run1']['wptop'])
+
+        return ptop_kPa, wtop_psipol
+        
     def finalize(self, **kwargs):
         
         self.profiles_output = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode.eped')
@@ -414,10 +469,10 @@ class eped_beat(beat):
 
             axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
 
-            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results[ikey]], '^', color=color)
-            axs[i].plot([loaded_results['inputs_to_nn'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results[ikey]], '^', color=color)
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
 
-            axs[i].axvline(loaded_results['inputs_to_nn'][i], color=color, ls='--')
+            axs[i].axvline(loaded_results['inputs_to_eped'][i], color=color, ls='--')
             axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
 
             max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
