@@ -1,4 +1,5 @@
 import argparse
+from xml.etree.ElementInclude import include
 import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.gacode_tools import CGYROtools
@@ -11,6 +12,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
+    parser.add_argument("--two", action="store_true", help="Include 2D plots")
     parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
     parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
     args = parser.parse_args()
@@ -18,6 +20,7 @@ def main():
     folders = args.folders
     linear = args.linear
     tmin = args.tmin
+    include_2D = args.two
     
     if tmin is None:
         tmin = [0.0] * len(folders)
@@ -35,7 +38,7 @@ def main():
         c.plot_quick_linear(labels=labels)
         plt.show()
     else:
-        c.plot(labels=labels)
+        c.plot(labels=labels, include_2D=include_2D)
         c.fn.show()
 
     

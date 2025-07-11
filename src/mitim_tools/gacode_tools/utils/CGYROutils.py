@@ -111,96 +111,104 @@ class CGYROout:
 
         # Ballooning Modes (complex eigenfunctions)
         if 'phib' in self.cgyrodata.__dict__:
-            self.phi_ballooning = self.cgyrodata.phib                  # (ball, time)
-            self.apar_ballooning = self.cgyrodata.aparb                # (ball, time)
-            self.bpar_ballooning = self.cgyrodata.bparb                # (ball, time)
+            self.phi_ballooning = self.cgyrodata.phib       # (ball, time)
+            self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
+            self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
-        # Fluctuation intensities 
+        # Fluctuations (complex numbers)
+        
         theta = -1
-        
-        moment = 'phi'
-        species = None
-        field = 0
-        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
-        # field = 1
-        # self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
-        # field = 2
-        # self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
-        
-        moment = 'n'
-        species = self.electron_flag
-        field = None
-        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
-        species = self.ions_flags
-        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,nions,ntoroidal,time)
-        self.ni = self.ni_all.sum(axis=1)  # (nradial,ntoroidal,time)
 
-        moment = 'e'
-        species = self.electron_flag
-        field = None
-        self.Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        moment, species, field = 'phi', None, 0
+        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)        # (nradial,ntoroidal,time)
+        if 'kxky_apar' in self.cgyrodata.__dict__:
+            field = 1
+            self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)   # (nradial,ntoroidal,time)
+            field = 2
+            self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)   # (nradial,ntoroidal,time)
+        
+        moment, species, field = 'n', self.electron_flag, 0
+        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)         # (nradial,ntoroidal,time)
+        
         species = self.ions_flags
-        self.Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,nions,ntoroidal,time)
+        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)     # (nradial,nions,ntoroidal,time)
+        self.ni = self.ni_all.sum(axis=1)                                                       # (nradial,ntoroidal,time)
+
+        moment, species, field = 'e', self.electron_flag, 0
+        self.Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)         # (nradial,ntoroidal,time)
+        
+        species = self.ions_flags
+        self.Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)     # (nradial,nions,ntoroidal,time)
         self.Ei = self.Ei_all.sum(axis=1)
-
 
         # Sum over radial modes and divide between n=0 and n>0 modes, RMS
         variables = ['phi', 'ne', 'ni_all', 'Ee', 'Ei_all']
         for var in variables:
-            self.__dict__[var+'_sumnr_n0'] = abs(self.__dict__[var][:,0,:]**2).sum(axis=0)**0.5  # (time)
-            self.__dict__[var+'_sumnr_n'] = abs(self.__dict__[var][:,1:,:]**2).sum(axis=(0,1))**0.5 # (time)
+            self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5     # (time)
+            self.__dict__[var+'_rms_sumnr_n'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5 # (time)
 
         # ************************
         # Fluxes
         # ************************
         
         self.t = self.cgyrodata.tnorm
-
-        flux = np.sum(self.cgyrodata.ky_flux, axis=3)       # (species, moments, fields, time)
+        
+        ky_flux = self.cgyrodata.ky_flux # (species, moments, fields, ntoroidal, time)
 
         # Electron energy flux
         
         i_species, i_moment = -1, 1
         i_fields = 0
-        self.Qe_ES = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qe_ES_ky = ky_flux[i_species, i_moment, i_fields, :, :]
         i_fields = 1
-        self.Qe_EM_apar = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qe_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :, :]
         i_fields = 2
-        self.Qe_EM_aper = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qe_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :, :]
 
-        self.Qe_EM = self.Qe_EM_apar + self.Qe_EM_aper
-        self.Qe = self.Qe_ES + self.Qe_EM
+        self.Qe_EM_ky = self.Qe_EM_apar_ky + self.Qe_EM_aper_ky
+        self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
 
         # Electron particle flux
         
         i_species, i_moment = -1, 0
         i_fields = 0
-        self.Ge_ES = flux[i_species, i_moment, i_fields, :]
+        self.Ge_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
         i_fields = 1
-        self.Ge_EM_apar = flux[i_species, i_moment, i_fields, :]
+        self.Ge_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
         i_fields = 2
-        self.Ge_EM_aper = flux[i_species, i_moment, i_fields, :]
+        self.Ge_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
         
-        self.Ge_EM = self.Ge_EM_apar + self.Ge_EM_aper
-        self.Ge = self.Ge_ES + self.Ge_EM
+        self.Ge_EM_ky = self.Ge_EM_apar_ky + self.Ge_EM_aper_ky
+        self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
         
         # Ions energy flux
         
         i_species, i_moment = self.ions_flags, 1
         i_fields = 0
-        self.Qi_all_ES = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
         i_fields = 1
-        self.Qi_all_EM_apar = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
         i_fields = 2
-        self.Qi_all_EM_aper = flux[i_species, i_moment, i_fields, :] / self.cgyrodata.qc
+        self.Qi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
         
-        self.Qi_all_EM = self.Qi_all_EM_apar + self.Qi_all_EM_aper
-        self.Qi_all = self.Qi_all_ES + self.Qi_all_EM
+        self.Qi_all_EM_ky = self.Qi_all_EM_apar_ky + self.Qi_all_EM_aper_ky
+        self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
         
-        self.Qi = self.Qi_all.sum(axis=0)
-        self.Qi_EM = self.Qi_all_EM.sum(axis=0)
-        self.Qi_ES = self.Qi_all_ES.sum(axis=0)
+        self.Qi_ky = self.Qi_all_ky.sum(axis=0)
+        self.Qi_EM_ky = self.Qi_all_EM_ky.sum(axis=0)
+        self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
+        self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
+        self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+        
+        
+        # ************************
+        # Sum total 
+        # ************************
+        variables = ['Qe','Ge','Qi','Qi_all']
+        for var in variables:
+            for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
+                self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
         
         # ************************
         # Saturated
@@ -208,8 +216,11 @@ class CGYROout:
         
         flags = {
         'Qe': ['Qgb', 'MWm2'], 
+        'Qe_ky': ['Qgb', 'MWm2'], 
         'Qi': ['Qgb', 'MWm2'], 
+        'Qi_ky': ['Qgb', 'MWm2'],
         'Ge': ['Ggb', '?'], 
+        'Ge_ky': ['Ggb', '?'], 
         'Qe_ES': ['Qgb', 'MWm2'], 
         'Qi_ES': ['Qgb', 'MWm2'], 
         'Ge_ES': ['Qgb', 'MWm2'], 
