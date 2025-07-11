@@ -164,9 +164,9 @@ chatGPT 4o as of 08/18/2024
 '''
 
 @contextlib.contextmanager
-def conditional_log_to_file(log_file=None, msg=None):
+def conditional_log_to_file(log_file=None, msg=None, write_log=True):
 
-    if log_file is not None:
+    if log_file is not None and write_log:
         with log_to_file(log_file, msg) as logger:
             yield logger
     else:
