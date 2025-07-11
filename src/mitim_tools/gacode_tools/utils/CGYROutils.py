@@ -79,6 +79,9 @@ class CGYROout:
 
         self.cgyrodata.getflux(cflux='auto')
         self.cgyrodata.getnorm("elec")
+        self.cgyrodata.getgeo()
+        self.cgyrodata.getxflux()
+        self.cgyrodata.getbigfield()
 
         # Understand positions
         self.electron_flag = np.where(self.cgyrodata.z == -1)[0][0]
@@ -106,11 +109,47 @@ class CGYROout:
         self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
         self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
 
+        # Ballooning Modes (complex eigenfunctions)
         if 'phib' in self.cgyrodata.__dict__:
-            self.phi = self.cgyrodata.phib                  # (ball, time)
-            self.apar = self.cgyrodata.aparb                # (ball, time)
-            self.bpar = self.cgyrodata.bparb                # (ball, time)
+            self.phi_ballooning = self.cgyrodata.phib                  # (ball, time)
+            self.apar_ballooning = self.cgyrodata.aparb                # (ball, time)
+            self.bpar_ballooning = self.cgyrodata.bparb                # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
+
+        # Fluctuation intensities 
+        theta = -1
+        
+        moment = 'phi'
+        species = None
+        field = 0
+        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        # field = 1
+        # self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        # field = 2
+        # self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        
+        moment = 'n'
+        species = self.electron_flag
+        field = None
+        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        species = self.ions_flags
+        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,nions,ntoroidal,time)
+        self.ni = self.ni_all.sum(axis=1)  # (nradial,ntoroidal,time)
+
+        moment = 'e'
+        species = self.electron_flag
+        field = None
+        self.Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,ntoroidal,time)
+        species = self.ions_flags
+        self.Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True) # (nradial,nions,ntoroidal,time)
+        self.Ei = self.Ei_all.sum(axis=1)
+
+
+        # Sum over radial modes and divide between n=0 and n>0 modes, RMS
+        variables = ['phi', 'ne', 'ni_all', 'Ee', 'Ei_all']
+        for var in variables:
+            self.__dict__[var+'_sumnr_n0'] = abs(self.__dict__[var][:,0,:]**2).sum(axis=0)**0.5  # (time)
+            self.__dict__[var+'_sumnr_n'] = abs(self.__dict__[var][:,1:,:]**2).sum(axis=(0,1))**0.5 # (time)
 
         # ************************
         # Fluxes

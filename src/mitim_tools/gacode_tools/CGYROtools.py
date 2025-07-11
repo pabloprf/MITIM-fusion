@@ -32,6 +32,8 @@ class CGYRO:
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
             "bin.cgyro.kxky_phi",
+            # "bin.cgyro.kxky_apar", # May not exist?
+            # "bin.cgyro.kxky_bpar", # May not exist?
             "bin.cgyro.kxky_v",
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
@@ -436,6 +438,14 @@ class CGYRO:
             BD
             """
         )
+      
+        fig = self.fn.add_figure(label="Intensities")
+        axsIntensities = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
         
         fig = self.fn.add_figure(label="Ballooning")
         axsBallooning = fig.subplot_mosaic(
@@ -478,7 +488,12 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            if 'phi' in self.results[labels[j]].__dict__:
+            self.plot_intensities(
+                axs=axsIntensities,
+                label=labels[j],
+                c=colors[j],
+            )
+            if 'phi_ballooning' in self.results[labels[j]].__dict__:
                 self.plot_ballooning(
                     axs=axsBallooning,
                     label=labels[j],
@@ -734,6 +749,57 @@ class CGYRO:
         
         plt.tight_layout()
 
+    def plot_intensities(self, axs = None, label= "cgyro1", c="b"):
+        
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BD
+                """
+            )
+            
+        ax = axs["A"]
+        ax.plot(self.results[label].t, self.results[label].phi_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].phi_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+  
+  
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        # ax.set_ylabel("$\\gamma$ (norm.)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Fluctuation intensity - Potential')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        ax = axs["B"]
+        ax.plot(self.results[label].t, self.results[label].ne_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].ne_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+  
+  
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        # ax.set_ylabel("$\\gamma$ (norm.)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Fluctuation intensity - Electron Density')
+        ax.legend(loc='best', prop={'size': 8},)
+
+
+        ax = axs["D"]
+        ax.plot(self.results[label].t, self.results[label].Ee_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].Ee_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        # ax.set_ylabel("$\\gamma$ (norm.)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Fluctuation intensity - Electron Energy')
+        ax.legend(loc='best', prop={'size': 8},)
+
+
+
+        plt.tight_layout()
+
+
     def plot_ballooning(self, label="cgyro1", c="b", axs=None):
         
         if axs is None:
@@ -748,7 +814,7 @@ class CGYRO:
             )
 
         it = -1
-
+        
         colorsC, _ = GRAPHICStools.colorTableFade(
             len(self.results[label].ky),
             startcolor=c,
@@ -759,7 +825,7 @@ class CGYRO:
         ax = axs['1']
         for ky in range(len(self.results[label].ky)):
             for var, axsT in zip(
-                ["phi", "apar", "bpar"],
+                ["phi_ballooning", "apar_ballooning", "bpar_ballooning"],
                 [[axs['1'], axs['2']], [axs['3'], axs['4']], [axs['5'], axs['6']]],
             ):
 
