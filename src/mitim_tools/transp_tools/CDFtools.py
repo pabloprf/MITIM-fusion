@@ -7682,12 +7682,14 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.2)
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0, 0])
         ax2 = fig.add_subplot(grid[0, 1], sharex=ax1)
         ax3 = fig.add_subplot(grid[1, 0], sharex=ax1)
         ax4 = fig.add_subplot(grid[1, 1], sharex=ax1)
+        ax5 = fig.add_subplot(grid[0, 2], sharex=ax1)
+        ax6 = fig.add_subplot(grid[1, 2], sharex=ax1)
 
         # ELECTRONS
         ax = ax1
@@ -7774,10 +7776,10 @@ class transp_output:
 
         # ax.plot(self.x_lw,tot,lw=3,label='$P_{ICH}$')
         ax.plot(self.t, self.PichT, c="r", lw=3, label="$P_{ICH}$")
-        ax.plot(self.t, self.PichT_min, lw=2, label="$P_{ICH->min}$")
         ax.plot(self.t, self.PiichT_dir, lw=2, label="$P_{ICH->i}$")
         ax.plot(self.t, self.PeichT_dir, lw=2, label="$P_{ICH->e}$")
         ax.plot(self.t, self.PfichT_dir, lw=2, label="$P_{ICH->fast}$")
+        ax.plot(self.t, self.PichT_min, lw=2, label="$P_{ICH->min}$")
         ax.plot(self.t, self.PichT_check, lw=2, ls="--", c="y", label="check (sum)")
 
         ax.set_title("Total Balance")
@@ -7787,6 +7789,26 @@ class transp_output:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
         GRAPHICStools.addDenseAxis(ax)
+
+        # TOTAL
+        ax = ax6
+
+        ax.plot(self.t, self.PichT, c="r", lw=3, label="$P_{ICH}$")
+        ax.plot(self.t, self.PiichT, lw=2, label="$P_{ICH,i}$")
+        ax.plot(self.t, self.PeichT, lw=2, label="$P_{ICH,e}$")
+        ax.plot(self.t, self.PfichT_dir, lw=2, label="$P_{ICH,fast}$")
+        ax.plot(self.t, self.GainminT, lw=2, label="$dW_{min}/dt$")
+        P = self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT
+        ax.plot(self.t, P, lw=2, ls="--", c="y", label="check (sum)")
+
+        ax.set_title("Total Balance (after thermalization)")
+        ax.set_ylabel("Power (MW)")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylim(bottom=0)
+
+        GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
+        GRAPHICStools.addDenseAxis(ax)
+
 
     def plotRelevantResonances(self, ax, Fich, time=None, legendYN=False, lw=3):
         if time is None:
@@ -8195,13 +8217,11 @@ class transp_output:
         if np.sum(self.PichT) > 1.0e-5:
             for i in range(len(self.PichT_ant)):
                 ax.plot(self.t, self.PichT_ant[i], lw=2, label=f"{i + 1}")
-            ax.plot(
-                self.t, self.PeichT + self.PiichT, c="y", ls="--", label="to species"
-            )
+            ax.plot(self.t, self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT, c="y", ls="--", label="to species (e+i+f+dWmin/dt)")
 
             timeb = 0.25
             it1 = np.argmin(np.abs(self.t - (self.t[-1] - timeb)))
-            mean = np.mean(self.PeichT[it1:] + self.PiichT[it1:])
+            mean = np.mean(self.PeichT[it1:] + self.PiichT[it1:] + self.PfichT_dir[it1:] + self.GainminT[it1:])
             ax.axhline(
                 y=mean,
                 alpha=0.5,
@@ -8213,7 +8233,7 @@ class transp_output:
 
             ax.plot(
                 self.t,
-                self.PeichT + self.PiichT + self.PichTOrbLoss,
+                self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT + self.PichTOrbLoss,
                 c="c",
                 ls="--",
                 label="+ orb losses",
@@ -8462,7 +8482,7 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(nrows=2, ncols=4, hspace=0.3, wspace=0.2)
+        grid = plt.GridSpec(nrows=2, ncols=4, hspace=0.3, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0, 0])
         ax2 = fig.add_subplot(grid[0, 1])
@@ -8478,9 +8498,7 @@ class transp_output:
         ax1.plot(self.t, self.PichT, "r", ls="-", lw=2, label="$P_{ICH}$")
         ax1.plot(self.t, self.PeichT, "b", ls="-", lw=1, label="$P_{ICH,e}$")
         ax1.plot(self.t, self.PiichT, "g", ls="-", lw=1, label="$P_{ICH,i}$")
-        ax1.plot(
-            self.t, self.PeichT + self.PiichT, "y", ls="--", lw=1, label="$P_{ICH,e+i}$"
-        )
+        ax1.plot(self.t, self.PeichT + self.PiichT, "y", ls="--", lw=1, label="$P_{ICH,e+i}$")
 
         ax1.plot(self.t, self.PichT_min, "r", ls="--", lw=1, label="$P_{min}$")
         ax1.plot(self.t, self.PeichT_dir, "r", ls="-.", lw=1, label="$P_{dir,e}$")

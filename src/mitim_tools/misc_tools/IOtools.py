@@ -1955,6 +1955,18 @@ def shutil_rmtree(item):
             shutil.move(item, new_item)
             print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')
 
+def recursive_backup(file, extension='bak'):
+    
+    index = 0
+    file_new = file.with_suffix(f".{extension}.{index}")
+    
+    while file_new.exists():
+        index += 1
+        file_new = file.with_suffix(f".{extension}.{index}")
+
+    shutil.copy2(file, file_new)
+    print(f"> File {clipstr(file)} backed up to {clipstr(file_new)}", typeMsg='i')
+
 def unpickle_mitim(file):
 
     with open(str(file), "rb") as handle:
