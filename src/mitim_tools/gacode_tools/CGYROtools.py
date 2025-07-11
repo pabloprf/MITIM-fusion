@@ -1012,74 +1012,65 @@ class CGYRO:
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
-            
-            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            
+
+            cs1 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            plt.colorbar(cs1, ax=ax)
+
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta\\phi$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
-            
+
             ax = axs[str(time_i+4)]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_n',species = self.results[label].electron_flag, it = it)
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
-            
-            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            
+
+            cs2 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            plt.colorbar(cs2, ax=ax)
+
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta n_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
-            
+
             ax = axs[str(time_i+7)]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_e',species = self.results[label].electron_flag, it = it)
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
-            
-            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            
+
+            cs3 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            plt.colorbar(cs3, ax=ax)
+
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta E_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
-            
+
             plt.tight_layout()
         
         
     def _to_real_space(self, variable = 'kxky_phi', species = None, label="cgyro1", nx = 256, ny = 512, theta_plot = 0, it = -1):
         
-        # FFT version
+        # from pygacode
         def maptoreal_fft(nr,nn,nx,ny,c):
 
-            import numpy as np
-            import time
-
-            # Storage for numpy inverse real transform (irfft2)
             d = np.zeros([nx,nn],dtype=complex)
-
-            start = time.time()
-
             for i in range(nr):
                 p = i-nr//2
-                # k is the "standard FFT index"
                 if -p < 0:
                     k = -p+nx
                 else:
                     k = -p
-                # Use identity f(p,-n) = f(-p,n)*
                 d[k,0:nn] = np.conj(c[i,0:nn])
-
-            # 2D inverse real Hermitian transform
-            # NOTE: using inverse FFT with convention exp(ipx+iny), so need n -> -n
-            # NOTE: need factor of 0.5 to match half-sum method of slow maptoreal()
             f = np.fft.irfft2(d,s=[nx,ny],norm='forward')*0.5
 
-            end = time.time()
+            # Correct for half-sum
+            f = 2*f
 
-            return f,end-start
+            return f
 
         # Real space
         nr = self.results[label].cgyrodata.n_radial
@@ -1090,10 +1081,11 @@ class CGYRO:
             c = craw[:,theta_plot,:,it]
         else:
             c = craw[:,theta_plot,species,:,it]
-        f,t = maptoreal_fft(nr,nn,nx,ny,c)
         
+        # Arrays
         x = np.arange(nx)*2*np.pi/nx
         y = np.arange(ny)*2*np.pi/ny
+        f = maptoreal_fft(nr,nn,nx,ny,c)
         
         # Physical maxima
         ky1 = self.results[label].cgyrodata.ky[1] if len(self.results[label].cgyrodata.ky) > 1 else self.results[label].cgyrodata.ky[0]
