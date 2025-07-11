@@ -227,6 +227,8 @@ def run_maestro_local(
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
             run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+        elif maestro_beats["beats"][0] in ["eped"]:
+            run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])
         m.run(**run_namelist)
@@ -252,8 +254,8 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    shutil.copy2(file_path, folder / 'maestro_namelist.json')
-
+    IOtools.recursive_backup(folder / 'maestro_namelist.json')
+    
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 
