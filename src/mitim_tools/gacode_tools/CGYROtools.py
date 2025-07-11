@@ -418,13 +418,33 @@ class CGYRO:
         if attach_name:
             self.results[label] = CGYROutils.CGYROlinear_scan(labels, data)
 
-    def plot(self, labels=[""]):
+    def plot(self, labels=[""], include_2D=True):
+        
+
+        # If it has scans, we need to correct the labels
+        labels_corrected = []
+        for i in range(len(labels)):
+            if isinstance(self.results[labels[i]], CGYROutils.CGYROlinear_scan):    
+                for scan_label in self.results[labels[i]].labels:
+                    labels_corrected.append(scan_label)
+            else:
+                labels_corrected.append(labels[i])
+        labels = labels_corrected
+        # ------------------------------------------------
+        
         
         from mitim_tools.misc_tools.GUItools import FigureNotebook
         self.fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000")
 
-        fig = self.fn.add_figure(label="Fluxes Time Traces")
+        fig = self.fn.add_figure(label="Fluxes (time)")
         axsFluxes_t = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+        fig = self.fn.add_figure(label="Fluxes (ky)")
+        axsFluxes_ky = fig.subplot_mosaic(
             """
             AC
             BD
@@ -455,6 +475,18 @@ class CGYRO:
             """
             )
         
+        if include_2D:
+            axs2D = []
+            for i in range(len(labels)):
+                fig = self.fn.add_figure(label="Turbulence (2D), " + labels[i])
+                axs2D.append(fig.subplot_mosaic(
+                    """
+                    123
+                    456
+                    789
+                    """
+                ))
+        
         fig = self.fn.add_figure(label="Inputs")
         axsInputs = fig.subplot_mosaic(
             """
@@ -462,16 +494,6 @@ class CGYRO:
             """
         )
 
-        # If it has scans, we need to correct the labels
-        labels_corrected = []
-        for i in range(len(labels)):
-            if isinstance(self.results[labels[i]], CGYROutils.CGYROlinear_scan):    
-                for scan_label in self.results[labels[i]].labels:
-                    labels_corrected.append(scan_label)
-            else:
-                labels_corrected.append(labels[i])
-        labels = labels_corrected
-        # ------------------------------------------------
         
         colors = GRAPHICStools.listColors()
 
@@ -482,6 +504,11 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
                 plotLegend=j == len(labels) - 1,
+            )
+            self.plot_fluxes_ky(
+                axs=axsFluxes_ky,
+                label=labels[j],
+                c=colors[j],
             )
             self.plot_turbulence(
                 axs=axsTurbulence,
@@ -496,6 +523,14 @@ class CGYRO:
             if 'phi_ballooning' in self.results[labels[j]].__dict__:
                 self.plot_ballooning(
                     axs=axsBallooning,
+                    label=labels[j],
+                    c=colors[j],
+                )
+            
+            if include_2D:
+                
+                self.plot_2D(
+                    axs=axs2D[j],
                     label=labels[j],
                     c=colors[j],
                 )
@@ -663,6 +698,54 @@ class CGYRO:
 
         plt.tight_layout()
 
+    def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1):
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BD
+                """
+            )
+
+        # Electron energy flux
+        ax = axs["A"]
+        ax.plot(self.results[label].ky, self.results[label].Qe_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].Qe_ky_mean-self.results[label].Qe_ky_std, self.results[label].Qe_ky_mean+self.results[label].Qe_ky_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$Q_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron energy flux vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+        # Electron particle flux
+        ax = axs["B"]
+        ax.plot(self.results[label].ky, self.results[label].Ge_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].Ge_ky_mean-self.results[label].Ge_ky_std, self.results[label].Ge_ky_mean+self.results[label].Ge_ky_std, color=c, alpha=0.2)
+    
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\Gamma_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron particle flux vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+        # Ion energy flux
+        ax = axs["C"]
+        ax.plot(self.results[label].ky, self.results[label].Qi_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].Qi_ky_mean-self.results[label].Qi_ky_std, self.results[label].Qi_ky_mean+self.results[label].Qi_ky_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
 
     def plot_turbulence(self, axs = None, label= "cgyro1", c="b", kys = None):
         
@@ -763,9 +846,8 @@ class CGYRO:
             )
             
         ax = axs["A"]
-        ax.plot(self.results[label].t, self.results[label].phi_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].phi_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
-  
+        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
   
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
@@ -773,10 +855,10 @@ class CGYRO:
         ax.set_title('Fluctuation intensity - Potential')
         ax.legend(loc='best', prop={'size': 8},)
 
+
         ax = axs["B"]
-        ax.plot(self.results[label].t, self.results[label].ne_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].ne_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
-  
+        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
   
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
@@ -786,8 +868,8 @@ class CGYRO:
 
 
         ax = axs["D"]
-        ax.plot(self.results[label].t, self.results[label].Ee_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].Ee_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+        ax.plot(self.results[label].t, self.results[label].Ee_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].Ee_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
 
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
@@ -904,6 +986,131 @@ class CGYRO:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
+    def plot_2D(self, label="cgyro1", c="b", axs=None, times = None):
+        
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+            
+            axs = fig.subplot_mosaic(
+                """
+                123
+                456
+                789
+                """
+            )
+        
+        if times is None:
+            times = [self.results[label].t[-20], self.results[label].t[-10], self.results[label].t[-1]]
+
+        for time_i, time in enumerate(times):
+            
+            it = np.argmin(np.abs(self.results[label].t - time))
+            
+            ax = axs[str(time_i+1)]
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_phi', it = it)
+
+            fa = np.max(np.abs(fp))
+            f0, f1 = -fa, +fa
+            
+            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            
+            ax.set_xlabel("$x/\\rho_s$")
+            ax.set_ylabel("$y/\\rho_s$")
+            ax.set_title(f"$\\delta\\phi$ (t={self.results[label].t[it]} $a/c_s$)")
+            ax.set_aspect('equal')
+            
+            ax = axs[str(time_i+4)]
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_n',species = self.results[label].electron_flag, it = it)
+
+            fa = np.max(np.abs(fp))
+            f0, f1 = -fa, +fa
+            
+            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            
+            ax.set_xlabel("$x/\\rho_s$")
+            ax.set_ylabel("$y/\\rho_s$")
+            ax.set_title(f"$\\delta n_e$ (t={self.results[label].t[it]} $a/c_s$)")
+            ax.set_aspect('equal')
+            
+            ax = axs[str(time_i+7)]
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_e',species = self.results[label].electron_flag, it = it)
+
+            fa = np.max(np.abs(fp))
+            f0, f1 = -fa, +fa
+            
+            ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
+            
+            ax.set_xlabel("$x/\\rho_s$")
+            ax.set_ylabel("$y/\\rho_s$")
+            ax.set_title(f"$\\delta E_e$ (t={self.results[label].t[it]} $a/c_s$)")
+            ax.set_aspect('equal')
+            
+            plt.tight_layout()
+        
+        
+    def _to_real_space(self, variable = 'kxky_phi', species = None, label="cgyro1", nx = 256, ny = 512, theta_plot = 0, it = -1):
+        
+        # FFT version
+        def maptoreal_fft(nr,nn,nx,ny,c):
+
+            import numpy as np
+            import time
+
+            # Storage for numpy inverse real transform (irfft2)
+            d = np.zeros([nx,nn],dtype=complex)
+
+            start = time.time()
+
+            for i in range(nr):
+                p = i-nr//2
+                # k is the "standard FFT index"
+                if -p < 0:
+                    k = -p+nx
+                else:
+                    k = -p
+                # Use identity f(p,-n) = f(-p,n)*
+                d[k,0:nn] = np.conj(c[i,0:nn])
+
+            # 2D inverse real Hermitian transform
+            # NOTE: using inverse FFT with convention exp(ipx+iny), so need n -> -n
+            # NOTE: need factor of 0.5 to match half-sum method of slow maptoreal()
+            f = np.fft.irfft2(d,s=[nx,ny],norm='forward')*0.5
+
+            end = time.time()
+
+            return f,end-start
+
+        # Real space
+        nr = self.results[label].cgyrodata.n_radial
+        nn = self.results[label].cgyrodata.n_n
+        craw = self.results[label].cgyrodata.__dict__[variable]
+        
+        if species is None:
+            c = craw[:,theta_plot,:,it]
+        else:
+            c = craw[:,theta_plot,species,:,it]
+        f,t = maptoreal_fft(nr,nn,nx,ny,c)
+        
+        x = np.arange(nx)*2*np.pi/nx
+        y = np.arange(ny)*2*np.pi/ny
+        
+        # Physical maxima
+        ky1 = self.results[label].cgyrodata.ky[1] if len(self.results[label].cgyrodata.ky) > 1 else self.results[label].cgyrodata.ky[0]
+        xmax = self.results[label].cgyrodata.length
+        ymax = (2*np.pi)/np.abs(ky1)
+        xp = x/(2*np.pi)*xmax
+        yp = y/(2*np.pi)*ymax
+
+        # Periodic extensions
+        xp = np.append(xp,xmax)
+        yp = np.append(yp,ymax)
+        fp = np.zeros([nx+1,ny+1])
+        fp[0:nx,0:ny] = f[:,:]
+        fp[-1,:] = fp[0,:]
+        fp[:,-1] = fp[:,0]
+        
+        return xp, yp, fp
         
     def plot_quick_linear(self, labels=["cgyro1"], fig=None):
         colors = GRAPHICStools.listColors()
