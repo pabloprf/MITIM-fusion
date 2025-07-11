@@ -19,10 +19,9 @@ from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
-
 '''
 
-ENABLE_EMBED = False # If True, will enable IPython embed in some places, useful for debugging
+ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging
 
 class maestro:
 
