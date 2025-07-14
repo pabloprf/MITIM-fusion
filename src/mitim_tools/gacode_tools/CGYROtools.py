@@ -456,6 +456,13 @@ class CGYRO:
             BD
             """
         )
+        fig = self.fn.add_figure(label="Cross-phases (ky)")
+        axsCrossPhases = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
         fig = self.fn.add_figure(label="Intensities (kx)")
         axsIntensities_kx = fig.subplot_mosaic(
             """
@@ -530,6 +537,11 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
+            self.plot_intensities(
+                axs=axsIntensities,
+                label=labels[j],
+                c=colors[j],
+            )
             self.plot_intensities_kx(
                 axs=axsIntensities_kx,
                 label=labels[j],
@@ -540,8 +552,8 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            self.plot_intensities(
-                axs=axsIntensities,
+            self.plot_cross_phases(
+                axs=axsCrossPhases,
                 label=labels[j],
                 c=colors[j],
             )
@@ -1022,6 +1034,52 @@ class CGYRO:
         ax.legend(loc='best', prop={'size': 8},)
 
         plt.tight_layout()
+
+    def plot_cross_phases(self, axs = None, label= "cgyro1", c="b"):
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BD
+                """
+            )
+            
+        ax = axs["A"]
+        ax.plot(self.results[label].ky, self.results[label].nT_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+        ax.fill_between(self.results[label].ky, self.results[label].nT_kx0_mean-self.results[label].nT_kx0_std, self.results[label].nT_kx0_mean+self.results[label].nT_kx0_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$n_e-T_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        ax.set_title('$n_e-T_e$ cross-phase ($k_x=0$)')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        ax = axs["C"]
+        ax.plot(self.results[label].ky, self.results[label].phin_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+        ax.fill_between(self.results[label].ky, self.results[label].phin_kx0_mean-self.results[label].phin_kx0_std, self.results[label].phin_kx0_mean+self.results[label].phin_kx0_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\phi-n_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        ax.set_title('$\\phi-n_e$ cross-phase ($k_x=0$)')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        ax = axs["D"]
+        ax.plot(self.results[label].ky, self.results[label].phiT_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+        ax.fill_between(self.results[label].ky, self.results[label].phiT_kx0_mean-self.results[label].phiT_kx0_std, self.results[label].phiT_kx0_mean+self.results[label].phiT_kx0_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\phi-T_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        ax.set_title('$\\phi-T_e$ cross-phase ($k_x=0$)')
+        ax.legend(loc='best', prop={'size': 8},)
 
 
     def plot_ballooning(self, label="cgyro1", c="b", axs=None):

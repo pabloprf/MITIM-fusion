@@ -161,6 +161,17 @@ class CGYROout:
             self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
             self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
 
+
+        # Cross-phases
+        self.nT = _cross_phase(self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.nT_kx0 = self.nT[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
+
+        self.phiT = _cross_phase(self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phiT_kx0 = self.phiT[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phin = _cross_phase(self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
+
         # ************************
         # Fluxes
         # ************************
@@ -253,6 +264,9 @@ class CGYROout:
         'Te_rms_n0': [None, None],
         'Te_rms_sumn1': [None, None],
         'Te_rms_sumn': [None, None],
+        'nT_kx0': [None, None],
+        'phiT_kx0': [None, None],
+        'phin_kx0': [None, None],
         }
         
         for iflag in flags:
@@ -330,3 +344,19 @@ def apply_ac(t, S, tmin = 0, label_print = ''):
             print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
 
     return S_mean, S_std
+
+
+def _cross_phase(f1, f2):
+    """
+    Calculate the cross-phase between two complex signals.
+    
+    Parameters:
+    f1, f2 : np.ndarray
+        Complex signals (e.g., fluctuations).
+        
+    Returns:
+    np.ndarray
+        Cross-phase in radians.
+    """
+    return np.angle(f1 * np.conj(f2))
+
