@@ -12,7 +12,6 @@ from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
 class CGYRO:
     def __init__(self):
 
@@ -466,26 +465,27 @@ class CGYRO:
             BD
             """
         )
+        if 'phi_ballooning' in self.results[labels[0]].__dict__:
+
+            fig = self.fn.add_figure(label="Ballooning")
+            axsBallooning = fig.subplot_mosaic(
+                """
+                135
+                246
+                """
+                )
+        else:
+            axsBallooning = None
         
-        fig = self.fn.add_figure(label="Ballooning")
-        axsBallooning = fig.subplot_mosaic(
-            """
-            135
-            246
-            """
-            )
         
         if include_2D:
             axs2D = []
             for i in range(len(labels)):
                 fig = self.fn.add_figure(label="Turbulence (2D), " + labels[i])
-                axs2D.append(fig.subplot_mosaic(
-                    """
-                    123
-                    456
-                    789
-                    """
-                ))
+                
+                mosaic = _2D_mosaic(4) # Plot 4 times by default
+                
+                axs2D.append(fig.subplot_mosaic(mosaic))
         
         fig = self.fn.add_figure(label="Inputs")
         axsInputs = fig.subplot_mosaic(
@@ -520,7 +520,7 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            if 'phi_ballooning' in self.results[labels[j]].__dict__:
+            if axsBallooning is not None:
                 self.plot_ballooning(
                     axs=axsBallooning,
                     label=labels[j],
@@ -532,7 +532,6 @@ class CGYRO:
                 self.plot_2D(
                     axs=axs2D[j],
                     label=labels[j],
-                    c=colors[j],
                 )
             
             self.plot_inputs(
@@ -592,7 +591,7 @@ class CGYRO:
                 color=c,
                 lw=0.5,
                 islwOnlyMean=True,
-                label=label_plot + f" {z_mean:.2f} ± {z_std:.2f} (1$\\sigma$)",
+                label=label_plot + f" $\\mathbf{{{z_mean:.2f} \\pm {z_std:.2f}}}$ (1$\\sigma$)",
             )
 
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
@@ -632,7 +631,8 @@ class CGYRO:
         ax.tick_params(axis='x', rotation=90)
         ax.set_ylabel(ylabel)
         GRAPHICStools.addDenseAxis(ax)
-        ax.legend(loc='best')
+        if legadded:
+            ax.legend(loc='best')
 
     def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
         if axs is None:
@@ -695,8 +695,6 @@ class CGYRO:
         ax.set_title('Ion energy fluxes (separate species)')
         if plotLegend:
             ax.legend(loc='best', prop={'size': 8},)
-
-        plt.tight_layout()
 
     def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1):
         if axs is None:
@@ -986,24 +984,26 @@ class CGYRO:
             ax.axvline(x=0, lw=0.5, ls="--", c="k")
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
-    def plot_2D(self, label="cgyro1", c="b", axs=None, times = None):
-        
-        if axs is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-            
-            axs = fig.subplot_mosaic(
-                """
-                123
-                456
-                789
-                """
-            )
+    def plot_2D(self, label="cgyro1", axs=None, times = None):
         
         if times is None:
-            times = [self.results[label].t[-20], self.results[label].t[-10], self.results[label].t[-1]]
+            times = []
+            
+            number_times = len(axs)//3 if axs is not None else 4
 
+            times = [self.results[label].t[-1-i*10] for i in range(number_times)]
+
+        if axs is None:
+
+            mosaic = _2D_mosaic(len(times))
+
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+            axs = fig.subplot_mosaic(mosaic)
+    
         for time_i, time in enumerate(times):
+            
+            print(f"\t- Plotting 2D turbulence for {label} at time {time}")
             
             it = np.argmin(np.abs(self.results[label].t - time))
             
@@ -1012,44 +1012,51 @@ class CGYRO:
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
+            
+            cfig = ax.get_figure()
 
             cs1 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            plt.colorbar(cs1, ax=ax)
+            cfig.colorbar(cs1, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta\\phi$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
 
-            ax = axs[str(time_i+4)]
+            ax = axs[str(time_i+1+len(times))]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_n',species = self.results[label].electron_flag, it = it)
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
 
             cs2 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            plt.colorbar(cs2, ax=ax)
+            cfig.colorbar(cs2, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta n_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
 
-            ax = axs[str(time_i+7)]
+            ax = axs[str(time_i+1+len(times)*2)]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_e',species = self.results[label].electron_flag, it = it)
 
             fa = np.max(np.abs(fp))
             f0, f1 = -fa, +fa
 
             cs3 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            plt.colorbar(cs3, ax=ax)
+            cfig.colorbar(cs3, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta E_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
 
-            plt.tight_layout()
+
+        cfig.subplots_adjust(
+            hspace=0.4,   # vertical spacing between rows
+            wspace=0.3    # horizontal spacing between columns
+        )
+
         
         
     def _to_real_space(self, variable = 'kxky_phi', species = None, label="cgyro1", nx = 256, ny = 512, theta_plot = 0, it = -1):
@@ -1225,3 +1232,20 @@ class CGYROinput:
             for ikey in self.controls:
                 var = self.controls[ikey]
                 f.write(f"{ikey.ljust(23)} = {var}\n")
+
+
+def _2D_mosaic(n_times):
+
+    num_cols = n_times
+
+    # Create the mosaic layout dynamically
+    mosaic = []
+    counter = 1
+    for _ in range(3):
+        row = []
+        for _ in range(num_cols):
+            row.append(str(counter))
+            counter += 1
+        mosaic.append(row)
+        
+    return mosaic
