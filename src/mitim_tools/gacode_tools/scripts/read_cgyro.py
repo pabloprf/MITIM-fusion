@@ -38,7 +38,7 @@ def main():
         c.plot_quick_linear(labels=labels)
         plt.show()
     else:
-        c.plot(labels=labels, include_2D=include_2D)
+        c.plot(labels=labels, include_2D=include_2D, common_colorbar=True)
         c.fn.show()
 
     

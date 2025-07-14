@@ -106,6 +106,7 @@ class CGYROout:
         # Turbulence
         # ************************
         self.ky = self.cgyrodata.kynorm
+        self.kx = self.cgyrodata.kxnorm
         self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
         self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
 
@@ -118,35 +119,47 @@ class CGYROout:
 
         # Fluctuations (complex numbers)
         
+        gbnorm = False
+        
         theta = -1
 
         moment, species, field = 'phi', None, 0
-        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)        # (nradial,ntoroidal,time)
+        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)        # [COMPLEX] (nradial,ntoroidal,time)
         if 'kxky_apar' in self.cgyrodata.__dict__:
             field = 1
-            self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)   # (nradial,ntoroidal,time)
+            self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
             field = 2
-            self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)   # (nradial,ntoroidal,time)
+            self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
         
         moment, species, field = 'n', self.electron_flag, 0
-        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)         # (nradial,ntoroidal,time)
-        
+        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
+
         species = self.ions_flags
-        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)     # (nradial,nions,ntoroidal,time)
-        self.ni = self.ni_all.sum(axis=1)                                                       # (nradial,ntoroidal,time)
+        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)     # [COMPLEX] (nradial,nions,ntoroidal,time)
+        self.ni = self.ni_all.sum(axis=1)                                                         # [COMPLEX] (nradial,ntoroidal,time)
 
         moment, species, field = 'e', self.electron_flag, 0
-        self.Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)         # (nradial,ntoroidal,time)
+        Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)              # [COMPLEX] (nradial,ntoroidal,time)
         
         species = self.ions_flags
-        self.Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=True)     # (nradial,nions,ntoroidal,time)
-        self.Ei = self.Ei_all.sum(axis=1)
+        Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)          # [COMPLEX] (nradial,nions,ntoroidal,time)
+        Ei = Ei_all.sum(axis=1)
+
+        # Transform to temperature
+        self.Te         = 2/3 * Ee - self.ne
+        self.Ti_all     = 2/3 * Ei_all - self.ni_all
+        self.Ti         = 2/3 * Ei - self.ni
 
         # Sum over radial modes and divide between n=0 and n>0 modes, RMS
-        variables = ['phi', 'ne', 'ni_all', 'Ee', 'Ei_all']
+        variables = ['phi', 'ne', 'ni_all', 'Te', 'Ti_all']
         for var in variables:
-            self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5     # (time)
-            self.__dict__[var+'_rms_sumnr_n'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5 # (time)
+            self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5       # (time)
+            self.__dict__[var+'_rms_sumnr_sumnumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5  # (time)
+            self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0,1))**0.5    # (time)
+            self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0))**0.5        # (ntoroidal, time)
+            self.__dict__[var+'_rms_n0'] = (abs(self.__dict__[var][:,0,:])**2)**0.5                         # (nradial,time) 
+            self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
+            self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
 
         # ************************
         # Fluxes
@@ -201,7 +214,6 @@ class CGYROout:
         self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
         self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
         
-        
         # ************************
         # Sum total 
         # ************************
@@ -229,6 +241,18 @@ class CGYROout:
         'Ge_EM': ['Ggb', '?'],
         'g': [None, None],
         'f': [None, None],
+        'phi_rms_sumnr': [None, None],
+        'ne_rms_sumnr': [None, None],
+        'Te_rms_sumnr': [None, None],
+        'phi_rms_n0': [None, None],
+        'phi_rms_sumn1': [None, None],
+        'phi_rms_sumn': [None, None],
+        'ne_rms_n0': [None, None],
+        'ne_rms_sumn1': [None, None],
+        'ne_rms_sumn': [None, None],
+        'Te_rms_n0': [None, None],
+        'Te_rms_sumn1': [None, None],
+        'Te_rms_sumn': [None, None],
         }
         
         for iflag in flags:
@@ -251,7 +275,7 @@ class CGYROout:
 def apply_ac(t, S, tmin = 0, label_print = ''):
     
     # Correct the standard deviation
-    def grab_ncorrelation(S, tmin):
+    def grab_ncorrelation(S, it0):
         # Calculate the autocorrelation function
         i_acf = sm.tsa.acf(S)
         
@@ -265,25 +289,44 @@ def apply_ac(t, S, tmin = 0, label_print = ''):
     
     it0 = np.argmin(np.abs(t - tmin))
     
-    # Calculate the mean and std of the signal after tmin
-    S_mean = np.mean(S[...,it0:],axis=-1)
-    S_std = np.std(S[...,it0:],axis=-1) # To follow NTH convention
+    # Calculate the mean and std of the signal after tmin (last dimension is time)
+    S_mean = np.mean(S[..., it0:], axis=-1)
+    S_std = np.std(S[..., it0:], axis=-1) # To follow NTH convention
 
     if S.ndim == 1:
-        n_corr, icor = grab_ncorrelation(S, tmin)
-        
+        # 1D case: single time series
+        n_corr, icor = grab_ncorrelation(S[it0:], it0)
         S_std = S_std / np.sqrt(n_corr)
         
         print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
         
-    elif S.ndim == 2:
-        n_corr = np.zeros(S.shape[0])
-        icor = np.zeros(S.shape[0])
-        for i in range(S.shape[0]):
-            n_corr[i], icor[i] = grab_ncorrelation(S[i], tmin)
+    else:
+        # Multi-dimensional case: flatten all dimensions except the last one
+        shape_orig = S.shape[:-1]  # Original shape without time dimension
+        S_reshaped = S.reshape(-1, S.shape[-1])  # Flatten to (n_series, n_time)
+        
+        n_series = S_reshaped.shape[0]
+        n_corr = np.zeros(n_series)
+        icor = np.zeros(n_series)
+        
+        # Calculate correlation for each flattened time series
+        for i in range(n_series):
+            n_corr[i], icor[i] = grab_ncorrelation(S_reshaped[i, it0:], it0)
+        
+        # Reshape correlation arrays back to original shape (without time dimension)
+        n_corr = n_corr.reshape(shape_orig)
+        icor = icor.reshape(shape_orig)
+        
+        # Apply correlation correction to standard deviation
         S_std = S_std / np.sqrt(n_corr)
 
-        for i in range(S.shape[0]):
-            print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
+        # Print results - handle different dimensionalities
+        if S.ndim == 2:
+            # 2D case: print each series
+            for i in range(S.shape[0]):
+                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
+        else:
+            # Higher dimensional case: print summary statistics
+            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
 
     return S_mean, S_std

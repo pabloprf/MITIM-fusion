@@ -417,7 +417,7 @@ class CGYRO:
         if attach_name:
             self.results[label] = CGYROutils.CGYROlinear_scan(labels, data)
 
-    def plot(self, labels=[""], include_2D=True):
+    def plot(self, labels=[""], include_2D=True, common_colorbar=True):
         
 
         # If it has scans, we need to correct the labels
@@ -449,8 +449,29 @@ class CGYRO:
             BD
             """
         )
-        
-        fig = self.fn.add_figure(label="Turbulence")
+        fig = self.fn.add_figure(label="Intensities (ky)")
+        axsIntensities_ky = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+        fig = self.fn.add_figure(label="Intensities (kx)")
+        axsIntensities_kx = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+
+        fig = self.fn.add_figure(label="Intensities (time)")
+        axsIntensities = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
+        fig = self.fn.add_figure(label="Turbulence (linear)")
         axsTurbulence = fig.subplot_mosaic(
             """
             AC
@@ -458,13 +479,6 @@ class CGYRO:
             """
         )
       
-        fig = self.fn.add_figure(label="Intensities")
-        axsIntensities = fig.subplot_mosaic(
-            """
-            AC
-            BD
-            """
-        )
         if 'phi_ballooning' in self.results[labels[0]].__dict__:
 
             fig = self.fn.add_figure(label="Ballooning")
@@ -497,6 +511,7 @@ class CGYRO:
         
         colors = GRAPHICStools.listColors()
 
+        colorbars_all = []  # Store all colorbars for later use
         for j in range(len(labels)):
             
             self.plot_fluxes(
@@ -507,6 +522,16 @@ class CGYRO:
             )
             self.plot_fluxes_ky(
                 axs=axsFluxes_ky,
+                label=labels[j],
+                c=colors[j],
+            )
+            self.plot_intensities_ky(
+                axs=axsIntensities_ky,
+                label=labels[j],
+                c=colors[j],
+            )
+            self.plot_intensities_kx(
+                axs=axsIntensities_kx,
                 label=labels[j],
                 c=colors[j],
             )
@@ -529,10 +554,12 @@ class CGYRO:
             
             if include_2D:
                 
-                self.plot_2D(
+                colorbars = self.plot_2D(
                     axs=axs2D[j],
                     label=labels[j],
                 )
+                
+                colorbars_all.append(colorbars)
             
             self.plot_inputs(
                 ax=axsInputs["A"],
@@ -549,6 +576,24 @@ class CGYRO:
             ls="--",
             lw=2.0
         )
+        
+        # Modify the colorbars to have a common range
+        if include_2D and common_colorbar and len(colorbars_all) > 0:
+            for var in ['phi', 'n', 'e']:
+                min_val = np.inf
+                max_val = -np.inf
+                for ilabel in range(len(colorbars_all)):
+                    cb = colorbars_all[ilabel][0][var]
+                    vals = cb.mappable.get_clim()
+                    min_val = min(min_val, vals[0])
+                    max_val = max(max_val, vals[1])
+                
+                for ilabel in range(len(colorbars_all)):
+                    for it in range(len(colorbars_all[ilabel])):
+                        cb = colorbars_all[ilabel][it][var]
+                        cb.mappable.set_clim(min_val, max_val)
+                        cb.update_ticks()
+                        #cb.set_label(f"{var} (common range)")
 
     def _plot_trace(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True, var_meanstd= None):
         
@@ -744,6 +789,104 @@ class CGYRO:
         ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
 
+    def plot_intensities_ky(self, axs=None, label="", c="b", lw=1):
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BD
+                """
+            )
+
+        # Potential intensity
+        ax = axs["A"]
+        ax.plot(self.results[label].ky, self.results[label].phi_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].phi_rms_sumnr_mean-self.results[label].phi_rms_sumnr_std, self.results[label].phi_rms_sumnr_mean+self.results[label].phi_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta \\phi$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Potential intensity vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+        # Electron particle intensity
+        ax = axs["B"]
+        ax.plot(self.results[label].ky, self.results[label].ne_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].ne_rms_sumnr_mean-self.results[label].ne_rms_sumnr_std, self.results[label].ne_rms_sumnr_mean+self.results[label].ne_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta n_e$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron particle intensity vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+        # Electron temperature intensity
+        ax = axs["D"]
+        ax.plot(self.results[label].ky, self.results[label].Te_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].Te_rms_sumnr_mean-self.results[label].Te_rms_sumnr_std, self.results[label].Te_rms_sumnr_mean+self.results[label].Te_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta T_e$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron temperature intensity vs ky')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+    def plot_intensities_kx(self, axs=None, label="", c="b", lw=1):
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(18, 9))
+
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BD
+                """
+            )
+
+        # Potential intensity
+        ax = axs["A"]
+        ax.plot(self.results[label].kx, self.results[label].phi_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
+        ax.plot(self.results[label].kx, self.results[label].phi_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
+        ax.plot(self.results[label].kx, self.results[label].phi_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+
+        ax.set_xlabel("$k_{x}$")
+        ax.set_ylabel("$\\delta \\phi$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Potential intensity vs kx')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.set_yscale('log')
+
+        # Electron particle intensity
+        ax = axs["B"]
+        ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
+        ax.plot(self.results[label].kx, self.results[label].ne_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
+        ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+
+        ax.set_xlabel("$k_{x}$")
+        ax.set_ylabel("$\\delta n_e$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron particle intensity vs kx')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.set_yscale('log')
+
+        # Electron temperature intensity
+        ax = axs["D"]
+        ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
+        ax.plot(self.results[label].kx, self.results[label].Te_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
+        ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+
+        ax.set_xlabel("$k_{x}$")
+        ax.set_ylabel("$\\delta T_e$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Electron temperature intensity vs kx')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.set_yscale('log')
 
     def plot_turbulence(self, axs = None, label= "cgyro1", c="b", kys = None):
         
@@ -844,8 +987,9 @@ class CGYRO:
             )
             
         ax = axs["A"]
-        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_sumn, '-', c=c, lw=2, label=f"{label}")
+        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_n0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_sumnumn1, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
   
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
@@ -855,8 +999,9 @@ class CGYRO:
 
 
         ax = axs["B"]
-        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn, '-', c=c, lw=2, label=f"{label}")
+        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumnumn1, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
   
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
@@ -866,16 +1011,15 @@ class CGYRO:
 
 
         ax = axs["D"]
-        ax.plot(self.results[label].t, self.results[label].Ee_rms_sumnr_n0, '-', c=c, lw=1, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].Ee_rms_sumnr_n, '--', c=c, lw=1, label=f"{label}, $n>0$")
+        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn, '-', c=c, lw=2, label=f"{label}")
+        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_n0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumnumn1, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
 
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         # ax.set_ylabel("$\\gamma$ (norm.)")
         GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Fluctuation intensity - Electron Energy')
+        ax.set_title('Fluctuation intensity - Electron Temperature')
         ax.legend(loc='best', prop={'size': 8},)
-
-
 
         plt.tight_layout()
 
@@ -985,7 +1129,7 @@ class CGYRO:
             ax.axhline(y=0, lw=0.5, ls="--", c="k")
 
     def plot_2D(self, label="cgyro1", axs=None, times = None):
-        
+    
         if times is None:
             times = []
             
@@ -1000,63 +1144,96 @@ class CGYRO:
             plt.ion()
             fig = plt.figure(figsize=(18, 9))
             axs = fig.subplot_mosaic(mosaic)
-    
+
+        # Pre-calculate global min/max for each field type across all times
+        phi_values = []
+        n_values = []
+        e_values = []
+        
+        for time in times:
+            it = np.argmin(np.abs(self.results[label].t - time))
+            
+            # Get phi values
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_phi', it = it)
+            phi_values.append(fp)
+            
+            # Get n values
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_n',species = self.results[label].electron_flag, it = it)
+            n_values.append(fp)
+            
+            # Get e values
+            xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_e',species = self.results[label].electron_flag, it = it)
+            e_values.append(fp)
+        
+        # Calculate global ranges
+        phi_max = np.max([np.max(np.abs(fp)) for fp in phi_values])
+        phi_min, phi_max = -phi_max, +phi_max
+        
+        n_max = np.max([np.max(np.abs(fp)) for fp in n_values])
+        n_min, n_max = -n_max, +n_max
+        
+        e_max = np.max([np.max(np.abs(fp)) for fp in e_values])
+        e_min, e_max = -e_max, +e_max
+
+        colorbars = []  # Store colorbar references
+        # Now plot with consistent colorbar ranges
         for time_i, time in enumerate(times):
             
             print(f"\t- Plotting 2D turbulence for {label} at time {time}")
             
             it = np.argmin(np.abs(self.results[label].t - time))
             
+            cfig = axs[str(time_i+1)].get_figure()
+            
+            # Phi plot
             ax = axs[str(time_i+1)]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_phi', it = it)
 
-            fa = np.max(np.abs(fp))
-            f0, f1 = -fa, +fa
-            
-            cfig = ax.get_figure()
-
-            cs1 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            cfig.colorbar(cs1, ax=ax)
+            cs1 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(phi_min,phi_max,(phi_max-phi_min)/256),cmap=plt.get_cmap('jet'))
+            cphi = cfig.colorbar(cs1, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta\\phi$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
 
+            # N plot
             ax = axs[str(time_i+1+len(times))]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_n',species = self.results[label].electron_flag, it = it)
 
-            fa = np.max(np.abs(fp))
-            f0, f1 = -fa, +fa
-
-            cs2 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            cfig.colorbar(cs2, ax=ax)
+            cs2 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(n_min,n_max,(n_max-n_min)/256),cmap=plt.get_cmap('jet'))
+            cn = cfig.colorbar(cs2, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta n_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
 
+            # E plot
             ax = axs[str(time_i+1+len(times)*2)]
             xp, yp, fp = self._to_real_space(label=label, variable = 'kxky_e',species = self.results[label].electron_flag, it = it)
 
-            fa = np.max(np.abs(fp))
-            f0, f1 = -fa, +fa
-
-            cs3 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(f0,f1,(f1-f0)/256),cmap=plt.get_cmap('jet'))
-            cfig.colorbar(cs3, ax=ax)
+            cs3 = ax.contourf(xp,yp,np.transpose(fp),levels=np.arange(e_min,e_max,(e_max-e_min)/256),cmap=plt.get_cmap('jet'))
+            ce = cfig.colorbar(cs3, ax=ax)
 
             ax.set_xlabel("$x/\\rho_s$")
             ax.set_ylabel("$y/\\rho_s$")
             ax.set_title(f"$\\delta E_e$ (t={self.results[label].t[it]} $a/c_s$)")
             ax.set_aspect('equal')
-
+            
+            # Store the colorbar objects with their associated contour plots
+            colorbars.append({
+                'phi': cphi,
+                'n': cn,
+                'e': ce
+            })
 
         cfig.subplots_adjust(
             hspace=0.4,   # vertical spacing between rows
             wspace=0.3    # horizontal spacing between columns
         )
 
+        return colorbars
         
         
     def _to_real_space(self, variable = 'kxky_phi', species = None, label="cgyro1", nx = 256, ny = 512, theta_plot = 0, it = -1):
