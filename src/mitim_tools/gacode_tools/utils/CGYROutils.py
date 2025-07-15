@@ -18,6 +18,8 @@ class CGYROlinear_scan:
         self.ky = []
         self.g_mean = []
         self.f_mean = []
+        
+        self.nT_mean = []
 
         for label in labels:
             self.ky.append(cgyro_data[label].ky[0])
@@ -25,10 +27,16 @@ class CGYROlinear_scan:
             self.g_mean.append(cgyro_data[label].g_mean[0])
             self.f_mean.append(cgyro_data[label].f_mean[0])
 
+            try:
+                self.nT_mean.append(cgyro_data[label].nT_kx0_mean[0])
+            except:
+                self.nT_mean.append(np.nan)
+
         self.ky = np.array(self.ky)
         self.aLTi = np.array(self.aLTi)
         self.g_mean = np.array(self.g_mean)
         self.f_mean = np.array(self.f_mean)
+        self.nT_mean = np.array(self.nT_mean)
 
 class CGYROout:
     def __init__(self, folder, tmin=0.0, minimal=False):
