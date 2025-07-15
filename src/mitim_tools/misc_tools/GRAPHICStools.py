@@ -699,6 +699,18 @@ def fillGraph(
 
     return l
 
+def adjust_subplots(fig = None, axs=None, vertical=0.4, horizontal=0.3):
+    
+    if fig is None and axs is None:
+        raise ValueError("Either fig or axs must be provided")
+
+    if axs is not None:
+        fig = next(iter(axs.values())).get_figure()
+
+    fig.subplots_adjust(
+        hspace=vertical,   # vertical spacing between rows
+        wspace=horizontal  # horizontal spacing between columns
+    )
 
 def listColors():
     col = [

@@ -51,11 +51,6 @@ class CGYROout:
 
         os.chdir(original_dir)
             
-        # Process the data
-        self._process()
-
-    def _process(self):
-        
         # --------------------------------------------------------------
         # Read inputs
         # --------------------------------------------------------------
@@ -92,21 +87,30 @@ class CGYROout:
 
         self.fields = np.arange(self.cgyrodata.n_field)
 
-        # ************************
-        # Inputs
-        # ************************
-
         self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
-        self.Qgb = self.cgyrodata.q_gb_norm
-        self.Ggb = self.cgyrodata.gamma_gb_norm
+    
 
         # ************************
-        # Turbulence
+        # Normalization
         # ************************
+        
+        self.t = self.cgyrodata.tnorm
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
+        self.Qgb = self.cgyrodata.q_gb_norm
+        self.Ggb = self.cgyrodata.gamma_gb_norm
+        
+        self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
+
+        self._process_linear()
+        self._process_fluctuations()        
+        self._process_fluxes()        
+        self._saturate_signals()
+
+    def _process_linear(self):
+        
         self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
         self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
 
@@ -117,6 +121,8 @@ class CGYROout:
             self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
+
+    def _process_fluctuations(self):
         # Fluctuations (complex numbers)
         
         gbnorm = False
@@ -151,16 +157,28 @@ class CGYROout:
         self.Ti         = 2/3 * Ei - self.ni
 
         # Sum over radial modes and divide between n=0 and n>0 modes, RMS
-        variables = ['phi', 'ne', 'ni_all', 'Te', 'Ti_all']
+        variables = ['phi', 'apar', 'bpar', 'ne', 'ni_all', 'ni', 'Te', 'Ti', 'Ti_all']
         for var in variables:
-            self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5       # (time)
-            self.__dict__[var+'_rms_sumnr_sumnumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5  # (time)
-            self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0,1))**0.5    # (time)
-            self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0))**0.5        # (ntoroidal, time)
-            self.__dict__[var+'_rms_n0'] = (abs(self.__dict__[var][:,0,:])**2)**0.5                         # (nradial,time) 
-            self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
-            self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5          # (nradial,time)
+            if var in self.__dict__:
+                
+                # Make sure I go to the real units for all of them *******************
+                self.__dict__[var] = self.__dict__[var] * self.artificial_rhos_factor
+                # ********************************************************************
 
+                # Sum over radial modes
+                self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0))**0.5                # (ntoroidal, time)
+                 
+                # Sum over radial modes AND separate n=0 and n>0 (sum) modes
+                self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5               # (time)
+                self.__dict__[var+'_rms_sumnr_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5    # (time)
+                
+                # Sum over radial modes and toroidal modes
+                self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0,1))**0.5         # (time)
+               
+                # Separate n=0, n>0 (sum) modes, and all n (sum) modes
+                self.__dict__[var+'_rms_n0'] = (abs(self.__dict__[var][:,0,:])**2)**0.5                         # (nradial,time) 
+                self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5       # (nradial,time)
+                self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5         # (nradial,time)
 
         # Cross-phases
         self.nT = _cross_phase(self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
@@ -172,11 +190,11 @@ class CGYROout:
         self.phin = _cross_phase(self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
 
+    def _process_fluxes(self):
+        
         # ************************
         # Fluxes
         # ************************
-        
-        self.t = self.cgyrodata.tnorm
         
         ky_flux = self.cgyrodata.ky_flux # (species, moments, fields, ntoroidal, time)
 
@@ -233,41 +251,50 @@ class CGYROout:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
                 self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
         
+        # Convert to MW/m^2     
+        self.QeMWm2 = self.Qe * self.Qgb
+        self.QiMWm2 = self.Qi * self.Qgb
+        self.Qi_allMWm2 = self.Qi_all * self.Qgb
+        
+    def _saturate_signals(self):
+        
         # ************************
         # Saturated
         # ************************
         
-        flags = {
-        'Qe': ['Qgb', 'MWm2'], 
-        'Qe_ky': ['Qgb', 'MWm2'], 
-        'Qi': ['Qgb', 'MWm2'], 
-        'Qi_ky': ['Qgb', 'MWm2'],
-        'Ge': ['Ggb', '?'], 
-        'Ge_ky': ['Ggb', '?'], 
-        'Qe_ES': ['Qgb', 'MWm2'], 
-        'Qi_ES': ['Qgb', 'MWm2'], 
-        'Ge_ES': ['Qgb', 'MWm2'], 
-        'Qe_EM': ['Qgb', 'MWm2'], 
-        'Qi_EM': ['Qgb', 'MWm2'], 
-        'Ge_EM': ['Ggb', '?'],
-        'g': [None, None],
-        'f': [None, None],
-        'phi_rms_sumnr': [None, None],
-        'ne_rms_sumnr': [None, None],
-        'Te_rms_sumnr': [None, None],
-        'phi_rms_n0': [None, None],
-        'phi_rms_sumn1': [None, None],
-        'phi_rms_sumn': [None, None],
-        'ne_rms_n0': [None, None],
-        'ne_rms_sumn1': [None, None],
-        'ne_rms_sumn': [None, None],
-        'Te_rms_n0': [None, None],
-        'Te_rms_sumn1': [None, None],
-        'Te_rms_sumn': [None, None],
-        'nT_kx0': [None, None],
-        'phiT_kx0': [None, None],
-        'phin_kx0': [None, None],
-        }
+        flags = [
+            'Qe',
+            'QeMWm2',
+            'Qe_ky',
+            'Qi',
+            'QiMWm2',
+            'Qi_ky',
+            'Ge',
+            'Ge_ky',
+            'Qe_ES',
+            'Qi_ES',
+            'Ge_ES',
+            'Qe_EM',
+            'Qi_EM',
+            'Ge_EM',
+            'g',
+            'f',
+            'phi_rms_sumnr',
+            'ne_rms_sumnr',
+            'Te_rms_sumnr',
+            'phi_rms_n0',
+            'phi_rms_sumn1',
+            'phi_rms_sumn',
+            'ne_rms_n0',
+            'ne_rms_sumn1',
+            'ne_rms_sumn',
+            'Te_rms_n0',
+            'Te_rms_sumn1',
+            'Te_rms_sumn',
+            'nT_kx0',
+            'phiT_kx0',
+            'phin_kx0'
+        ]
         
         for iflag in flags:
             Qm, Qstd = apply_ac(
@@ -280,11 +307,6 @@ class CGYROout:
             self.__dict__[iflag+'_mean'] = Qm
             self.__dict__[iflag+'_std'] = Qstd
                 
-            # Real units
-            if flags[iflag][0] is not None:
-                self.__dict__[iflag+flags[iflag][1]+'_mean'] = self.__dict__[iflag+'_mean'] * self.__dict__[flags[iflag][0]]
-                self.__dict__[iflag+flags[iflag][1]+'_std'] = self.__dict__[iflag+'_std'] * self.__dict__[flags[iflag][0]]
-
 
 def apply_ac(t, S, tmin = 0, label_print = ''):
     
