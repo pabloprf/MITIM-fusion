@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import statsmodels.api as sm
+import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
@@ -105,7 +106,10 @@ class CGYROout:
         self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
 
         self._process_linear()
-        self._process_fluctuations()        
+        if 'kxky_phi' in self.cgyrodata.__dict__:
+            self._process_fluctuations()        
+        else:
+            print('\t- No fluctuations found in CGYRO data, skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         self._process_fluxes()        
         self._saturate_signals()
 
@@ -297,31 +301,71 @@ class CGYROout:
         ]
         
         for iflag in flags:
-            Qm, Qstd = apply_ac(
-                    self.t,
-                    self.__dict__[iflag],
-                    tmin=self.tmin,
-                    label_print=iflag
-                    )
-                
-            self.__dict__[iflag+'_mean'] = Qm
-            self.__dict__[iflag+'_std'] = Qstd
+            if iflag in self.__dict__:
+                Qm, Qstd = apply_ac(
+                        self.t,
+                        self.__dict__[iflag],
+                        tmin=self.tmin,
+                        label_print=iflag,
+                        print_msg=iflag in ['Qi', 'Qe', 'Ge'],
+                        #debug=iflag == 'Qi'
+                        )
+                # Qm, Qstd = apply_ac_fixed_signal(
+                #         self.t,
+                #         self.__dict__[iflag],
+                #         self.phi_rms_sumnr_sumn,
+                #         tmin=self.tmin,
+                #         label_print=iflag,
+                #         print_msg=iflag == 'Qi'
+                #         )  
+                    
+                self.__dict__[iflag+'_mean'] = Qm
+                self.__dict__[iflag+'_std'] = Qstd
+      
+def _grab_ncorrelation(t, S, it0, debug=False):
+    # Calculate the autocorrelation function
+    i_acf = sm.tsa.acf(S, nlags=len(S))
+
+    if i_acf.min() > 1/np.e:
+        print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
+
+    # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
+    icor = np.abs(i_acf-1/np.e).argmin()
+    
+    # Define number of samples
+    n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
+    
+    if debug:
+        fig, ax = plt.subplots()
+        ax.plot(i_acf, '-o', label='ACF')
+        ax.axhline(1/np.e, color='r', linestyle='--', label='1/e')
+        ax.set_xlabel('Lags'); ax.set_xlim([0, icor+20])
+        ax.set_ylabel('ACF')
+        ax.legend()
+        plt.show()
+        embed()
+    
+    return n_corr, icor
+      
+def apply_ac_fixed_signal(t, S, Scorr, tmin = 0, label_print = '', print_msg = False, debug=False):
+
+    it0 = np.argmin(np.abs(t - tmin))
+    
+    # Calculate the mean and std of the signal after tmin (last dimension is time)
+    S_mean = np.mean(S[..., it0:], axis=-1)
+    S_std = np.std(S[..., it0:], axis=-1)
+
+    # 1D case: single time series
+    n_corr, icor = _grab_ncorrelation(t, Scorr[it0:], it0, debug=debug)
+    S_std = S_std / np.sqrt(n_corr)
+    
+    if print_msg:
+        print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples")# -> {S_mean:.2e} +-{S_std:.2e}")
+    
+    return S_mean, S_std
                 
 
-def apply_ac(t, S, tmin = 0, label_print = ''):
-    
-    # Correct the standard deviation
-    def grab_ncorrelation(S, it0):
-        # Calculate the autocorrelation function
-        i_acf = sm.tsa.acf(S)
-        
-        # Calculate how many time slices make the autocorrelation function is 0.36
-        icor = np.abs(i_acf-0.36).argmin()
-        
-        # Define number of samples
-        n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
-        
-        return n_corr, icor
+def apply_ac(t, S, tmin = 0, label_print = '', print_msg = False, debug=False):
     
     it0 = np.argmin(np.abs(t - tmin))
     
@@ -331,10 +375,11 @@ def apply_ac(t, S, tmin = 0, label_print = ''):
 
     if S.ndim == 1:
         # 1D case: single time series
-        n_corr, icor = grab_ncorrelation(S[it0:], it0)
+        n_corr, icor = _grab_ncorrelation(t, S[it0:], it0, debug=debug)
         S_std = S_std / np.sqrt(n_corr)
         
-        print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
+        if print_msg:
+            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
         
     else:
         # Multi-dimensional case: flatten all dimensions except the last one
@@ -347,7 +392,7 @@ def apply_ac(t, S, tmin = 0, label_print = ''):
         
         # Calculate correlation for each flattened time series
         for i in range(n_series):
-            n_corr[i], icor[i] = grab_ncorrelation(S_reshaped[i, it0:], it0)
+            n_corr[i], icor[i] = _grab_ncorrelation(t, S_reshaped[i, it0:], it0, debug=debug)
         
         # Reshape correlation arrays back to original shape (without time dimension)
         n_corr = n_corr.reshape(shape_orig)
@@ -357,13 +402,14 @@ def apply_ac(t, S, tmin = 0, label_print = ''):
         S_std = S_std / np.sqrt(n_corr)
 
         # Print results - handle different dimensionalities
-        if S.ndim == 2:
-            # 2D case: print each series
-            for i in range(S.shape[0]):
-                print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
-        else:
-            # Higher dimensional case: print summary statistics
-            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
+        if print_msg:
+            if S.ndim == 2:
+                # 2D case: print each series
+                for i in range(S.shape[0]):
+                    print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
+            else:
+                # Higher dimensional case: print summary statistics
+                print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
 
     return S_mean, S_std
 
