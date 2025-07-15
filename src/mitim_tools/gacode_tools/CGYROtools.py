@@ -385,7 +385,7 @@ class CGYRO:
     # Reading and plotting
     # ---------------------------------------------------------------------------------------------------------
 
-    def read(self, label="cgyro1", folder=None, tmin = 0.0):
+    def read(self, label="cgyro1", folder=None, tmin = 0.0, minimal = False):
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
@@ -409,7 +409,7 @@ class CGYRO:
             else:
                 label1 = label
 
-            data[label1] = CGYROutils.CGYROout(folder, tmin=tmin)
+            data[label1] = CGYROutils.CGYROout(folder, tmin=tmin, minimal=minimal)
             labels.append(label1)
 
         self.results.update(data)
@@ -840,6 +840,27 @@ class CGYRO:
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
+        ax = axs["C"]
+        if 'apar' in self.results[label].__dict__:
+            ax.plot(self.results[label].t, self.results[label].apar_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}, $A_\\parallel$")
+            ax.plot(self.results[label].t, self.results[label].bpar_rms_sumnr_sumn*100.0, '--', c=c, lw=2, label=f"{label}, $B_\\parallel$")
+
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\delta F_\\parallel/F_{\\parallel,0}$ (%)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('EM potential intensity fluctuations')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95, 
+                    r'$\sqrt{\langle\sum_{n}\sum_{n_r}|\delta F_\parallel/F_{\parallel,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+
 
         ax = axs["B"]
         ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
@@ -916,6 +937,31 @@ class CGYRO:
                     fontsize=12,
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+        # EM potential intensity
+        ax = axs["C"]
+        if 'apar' in self.results[label].__dict__:
+            ax.plot(self.results[label].ky, self.results[label].apar_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+', $A_\\parallel$ (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].apar_rms_sumnr_mean-self.results[label].apar_rms_sumnr_std, self.results[label].apar_rms_sumnr_mean+self.results[label].apar_rms_sumnr_std, color=c, alpha=0.2)
+            ax.plot(self.results[label].ky, self.results[label].bpar_rms_sumnr_mean, '--', markersize=5, color=c, label=label+', $B_\\parallel$ (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].bpar_rms_sumnr_mean-self.results[label].bpar_rms_sumnr_std, self.results[label].bpar_rms_sumnr_mean+self.results[label].bpar_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel(r"$\delta F_\parallel/F_{\parallel,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('EM potential intensity vs. $k_\\theta\\rho_s$')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95, 
+                    r'$\sqrt{\langle\sum_{n_r}|\delta F_\parallel/F_{\parallel,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
 
         # Electron particle intensity
         ax = axs["B"]
@@ -994,6 +1040,29 @@ class CGYRO:
                     fontsize=12,
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+        # EM potential intensity
+        ax = axs["C"]
+        if 'apar' in self.results[label].__dict__:
+            ax.plot(self.results[label].kx, self.results[label].apar_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+', $A_\\parallel$ (mean)')
+            ax.plot(self.results[label].kx, self.results[label].bpar_rms_sumn_mean, '--', markersize=1.0, lw=1.0, color=c, label=label+', $B_\\parallel$ (mean)')
+
+        ax.set_xlabel("$k_{x}$")
+        ax.set_ylabel("$\\delta F_\\parallel/F_{\\parallel,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('EM potential intensity vs kx')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.set_yscale('log')
+
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95, 
+                    r'$\sqrt{\langle\sum_{n}|\delta F_\parallel/F_{\parallel,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
 
         # Electron particle intensity
         ax = axs["B"]
@@ -1411,10 +1480,11 @@ class CGYRO:
         nn = self.results[label].cgyrodata.n_n
         craw = self.results[label].cgyrodata.__dict__[variable]
         
+        itheta = np.argmin(np.abs(self.results[label].theta_stored-theta_plot))
         if species is None:
-            c = craw[:,theta_plot,:,it]
+            c = craw[:,itheta,:,it]
         else:
-            c = craw[:,theta_plot,species,:,it]
+            c = craw[:,itheta,species,:,it]
 
         nx = self.results[label].cgyrodata.__dict__[variable].shape[0]
         ny = nx

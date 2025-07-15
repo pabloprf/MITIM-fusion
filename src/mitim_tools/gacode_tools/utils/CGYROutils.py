@@ -31,7 +31,7 @@ class CGYROlinear_scan:
         self.f_mean = np.array(self.f_mean)
 
 class CGYROout:
-    def __init__(self, folder, tmin=0.0):
+    def __init__(self, folder, tmin=0.0, minimal=False):
 
         original_dir = os.getcwd()
 
@@ -72,12 +72,14 @@ class CGYROout:
         if 'phib' in self.cgyrodata.__dict__:
             print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
             self.tmin = self.cgyrodata.t[-1]
+            self.linear = True
+        else:
+            self.linear = False
 
         self.cgyrodata.getflux(cflux='auto')
         self.cgyrodata.getnorm("elec")
         self.cgyrodata.getgeo()
         self.cgyrodata.getxflux()
-        self.cgyrodata.getbigfield()
 
         # Understand positions
         self.electron_flag = np.where(self.cgyrodata.z == -1)[0][0]
@@ -100,16 +102,30 @@ class CGYROout:
         self.t = self.cgyrodata.tnorm
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
+        self.theta = self.cgyrodata.theta
+        
+        if self.cgyrodata.theta_plot == 1:
+            self.theta_stored = np.array([0.0])
+        else:
+            self.theta_stored = np.array([-1+2.0*i/self.cgyrodata.theta_plot for i in range(self.cgyrodata.theta_plot)])
+        
         self.Qgb = self.cgyrodata.q_gb_norm
         self.Ggb = self.cgyrodata.gamma_gb_norm
         
         self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
 
         self._process_linear()
-        if 'kxky_phi' in self.cgyrodata.__dict__:
-            self._process_fluctuations()        
+        
+        if not minimal:
+            self.cgyrodata.getbigfield()
+
+            if 'kxky_phi' in self.cgyrodata.__dict__:
+                self._process_fluctuations()
+            else:
+                print('\t- No fluctuations found in CGYRO data, skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         else:
-            print('\t- No fluctuations found in CGYRO data, skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
+            print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
+            
         self._process_fluxes()        
         self._saturate_signals()
 
@@ -284,11 +300,19 @@ class CGYROout:
             'g',
             'f',
             'phi_rms_sumnr',
+            'apar_rms_sumnr',
+            'bpar_rms_sumnr',
             'ne_rms_sumnr',
             'Te_rms_sumnr',
             'phi_rms_n0',
             'phi_rms_sumn1',
             'phi_rms_sumn',
+            'apar_rms_n0',
+            'apar_rms_sumn1',
+            'apar_rms_sumn',
+            'bpar_rms_n0',
+            'bpar_rms_sumn1',
+            'bpar_rms_sumn',
             'ne_rms_n0',
             'ne_rms_sumn1',
             'ne_rms_sumn',
@@ -297,7 +321,7 @@ class CGYROout:
             'Te_rms_sumn',
             'nT_kx0',
             'phiT_kx0',
-            'phin_kx0'
+            'phin_kx0',
         ]
         
         for iflag in flags:
