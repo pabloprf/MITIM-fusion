@@ -220,10 +220,14 @@ class CGYROout:
         self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
 
         # Correlation length
-        phi = (abs(self.phi[:,1:,:])).sum(axis=1) # Sum over toroidal modes n>0
+        phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
         phim, _ = apply_ac(self.t,phi,tmin=self.tmin)
         phim = np.append(0, phim)  # Add n=0 mode
-        self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
+        if np.isinf(phim).any() or np.isnan(phim).any():
+            print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
+            self.l_corr = np.nan
+        else:
+            self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
 
     def _process_fluxes(self):
         
@@ -468,7 +472,7 @@ def _cross_phase(f1, f2):
     return np.angle(f1 * np.conj(f2))
 
         
-def calculate_lcorr(phim, kx, nx, debug=True):
+def calculate_lcorr(phim, kx, nx, debug=False):
     """Calculate the correlation length in the radial direction.
 
     Completely based on pygacode
