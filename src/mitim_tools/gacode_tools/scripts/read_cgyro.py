@@ -35,7 +35,7 @@ def main():
 
     if linear:
         # Plot linear spectrum
-        c.plot_quick_linear(labels=labels)
+        c.plotLS(labels=labels)
         plt.show()
     else:
         c.plot(labels=labels, include_2D=include_2D, common_colorbar=True)
