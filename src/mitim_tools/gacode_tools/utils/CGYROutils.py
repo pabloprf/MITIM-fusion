@@ -1,4 +1,5 @@
 import os
+import scipy
 import numpy as np
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
@@ -217,6 +218,12 @@ class CGYROout:
         
         self.phin = _cross_phase(self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
+
+        # Correlation length
+        phi = (abs(self.phi[:,1:,:])).sum(axis=1) # Sum over toroidal modes n>0
+        phim, _ = apply_ac(self.t,phi,tmin=self.tmin)
+        phim = np.append(0, phim)  # Add n=0 mode
+        self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
 
     def _process_fluxes(self):
         
@@ -460,3 +467,39 @@ def _cross_phase(f1, f2):
     """
     return np.angle(f1 * np.conj(f2))
 
+        
+def calculate_lcorr(phim, kx, nx, debug=True):
+    """Calculate the correlation length in the radial direction.
+
+    Completely based on pygacode
+    """
+
+    ave = np.roll(phim,-nx//2)
+    ave[0] = 0.0
+    corr = np.fft.fft(ave,nx)
+    corr = np.fft.fftshift(corr)
+    corr /= np.max(np.abs(corr))
+    corr = corr.real
+    delta_r = np.fft.fftfreq(nx)
+    delta_r = np.fft.fftshift(delta_r)
+    Lx = 2*np.pi/(kx[1]-kx[0])
+    delta_r *= Lx
+    
+    corr_hilbert = scipy.signal.hilbert(corr)
+    corr_env = np.abs(corr_hilbert)
+    def absexp(x,tau):
+        return np.exp(-np.abs(x)/tau)
+    l_corr, _ = scipy.optimize.curve_fit(absexp, delta_r, corr_env, p0=10.0)
+
+    if debug:
+        fig, ax = plt.subplots()
+        ax.plot(delta_r,0*delta_r,color='k',ls='--')
+        ax.plot(delta_r,corr,color='m')
+        ax.plot(delta_r,corr_env,color='b')
+        ax.plot(delta_r,absexp(delta_r,l_corr),color='k',ls='-.')
+        ax.set_xlim([np.min(delta_r),np.max(delta_r)])
+        ax.set_ylim(-1,1)
+        plt.show()
+        embed()
+
+    return l_corr[0]  # Return the correlation length in the radial direction
