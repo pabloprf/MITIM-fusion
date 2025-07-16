@@ -197,9 +197,7 @@ class TGYRO:
 		Note: running with onlyThermal will result in a input.gacode.new that has 0.0 in the columns of the fast particles
 		"""
         onlyThermal = TGYRO_physics_options.get("onlyThermal", False)
-        limitSpecies = TGYRO_physics_options.get(
-            "limitSpecies", 100
-        )  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
+        limitSpecies = TGYRO_physics_options.get("limitSpecies", 100)  # limitSpecies is not to consider the last ions. In there are 6 ions in input.gacode, and limitSpecies=4, the last 2 won't be considered
         quasineutrality = TGYRO_physics_options.get("quasineutrality", [])
 
         if (
@@ -207,10 +205,7 @@ class TGYRO:
             and ("tgyro_method" in TGYRO_solver_options)
             and (TGYRO_solver_options["tgyro_method"] != 1)
         ):
-            print(
-                f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",
-                typeMsg="w",
-            )
+            print(f"\t- Zero iteration must be run with method 1, changing it from {TGYRO_solver_options['tgyro_method']} to 1",typeMsg="w",)
             TGYRO_solver_options["tgyro_method"] = 1
 
         # ------------------------------------------------------------------------
@@ -231,10 +226,7 @@ class TGYRO:
 
         if vectorRange[2] == 1:
             extra_add = vectorRange[0] + 1e-3
-            print(
-                f" -> TGYRO cannot run with only one point ({vectorRange[0]}), adding {extra_add}",
-                typeMsg="w",
-            )
+            print(f" -> TGYRO cannot run with only one point ({vectorRange[0]}), adding {extra_add}",typeMsg="w",)
             vectorRange[2], vectorRange[1] = 2, extra_add
             if special_radii_mod is not None:
                 special_radii_mod = np.append(special_radii_mod, [extra_add])
@@ -280,26 +272,14 @@ class TGYRO:
 
         if onlyThermal:
             if len(quasineutrality) < 1:
-                print(
-                    "\t- TGYRO will be run by removing fast particles (only thermal ones), without correcting for quasineutrality",
-                    typeMsg="i",
-                )
+                print("\t- TGYRO will be run by removing fast particles (only thermal ones), without correcting for quasineutrality",typeMsg="i",)
             else:
-                print(
-                    f"\t- TGYRO will be run by removing fast particles (only thermal ones), with quasineutrality={quasineutrality}",
-                    typeMsg="i",
-                )
+                print(f"\t- TGYRO will be run by removing fast particles (only thermal ones), with quasineutrality={quasineutrality}",typeMsg="i",)
         else:
             if len(quasineutrality) < 1:
-                print(
-                    "\t- TGYRO will be run with all species (fast and thermal), without correcting for quasineutrality",
-                    typeMsg="i",
-                )
+                print("\t- TGYRO will be run with all species (fast and thermal), without correcting for quasineutrality",typeMsg="i",)
             else:
-                print(
-                    f"\t- TGYRO will be run with all species (fast and thermal), with quasineutrality={quasineutrality}",
-                    typeMsg="i",
-                )
+                print(f"\t- TGYRO will be run with all species (fast and thermal), with quasineutrality={quasineutrality}",typeMsg="i",)
 
         # -----------------------------------
         # ------ Complete required outputs
@@ -362,9 +342,7 @@ class TGYRO:
         if not self.FolderTGYRO_tmp.exists():
             IOtools.askNewFolder(self.FolderTGYRO_tmp)
 
-        print(
-            f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf"
-        )
+        print(f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf")
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = GACODErun.modifyInputs(
             inputclass_TGLF,
@@ -424,9 +402,7 @@ class TGYRO:
 
         minn_true = []
         for i in minn:
-            if (self.profiles.Species[i]["S"] != "fast") or (
-                not TGYRO_physics_options.get("onlyThermal", False)
-            ):
+            if (self.profiles.Species[i]["S"] != "fast") or (not TGYRO_physics_options.get("onlyThermal", False)):
                 minn_true.append(i)
 
         if len(minn_true) > 0:
@@ -435,6 +411,8 @@ class TGYRO:
         # -----------------------------------
         # ------ Run
         # -----------------------------------
+
+        nparallel = len(self.rhosToSimulate)
 
         if not exists:
             # Run TGYRO and store data in self.FolderTGYRO_tmp (this folder will also have all the inputs, that's why I'm keeping it)
@@ -445,7 +423,7 @@ class TGYRO:
                 inputFiles=inputFiles_TGYRO,
                 launchSlurm=launchSlurm,
                 nameJob=nameJob,
-                nparallel=len(self.rhosToSimulate),
+                nparallel=nparallel,
                 minutes=minutesJob,
             )
 
@@ -459,14 +437,9 @@ class TGYRO:
 			------------------------------------------------------------------------------------------------------------------------
 			"""
             if modify_inputgacodenew:
-                print(
-                    "\t- It was requested that input.gacode.new is modified according to what TypeTarget was",
-                    typeMsg="i",
-                )
+                print("\t- It was requested that input.gacode.new is modified according to what TypeTarget was",typeMsg="i",)
 
-                inputgacode_new = PROFILEStools.PROFILES_GACODE(
-                    self.FolderTGYRO_tmp / "input.gacode.new"
-                )
+                inputgacode_new = PROFILEStools.PROFILES_GACODE(self.FolderTGYRO_tmp / "input.gacode.new")
 
                 if TGYRO_physics_options["TypeTarget"] < 3:
                     for ikey in [
@@ -476,31 +449,19 @@ class TGYRO:
                         "qfuse(MW/m^3)",
                         "qfusi(MW/m^3)",
                     ]:
-                        print(
-                            f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode"
-                        )
+                        print(f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode")
                         if ikey in self.profiles.profiles:
-                            inputgacode_new.profiles[ikey] = self.profiles.profiles[
-                                ikey
-                            ]
+                            inputgacode_new.profiles[ikey] = self.profiles.profiles[ikey]
                         else:
-                            inputgacode_new.profiles[ikey] = (
-                                inputgacode_new.profiles["rho(-)"] * 0.0
-                            )
+                            inputgacode_new.profiles[ikey] = inputgacode_new.profiles["rho(-)"] * 0.0
 
                 if TGYRO_physics_options["TypeTarget"] < 2:
                     for ikey in ["qei(MW/m^3)"]:
-                        print(
-                            f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode"
-                        )
+                        print(f"\t- Replacing {ikey} from input.gacode.new to have the same as input.gacode")
                         if ikey in self.profiles.profiles:
-                            inputgacode_new.profiles[ikey] = self.profiles.profiles[
-                                ikey
-                            ]
+                            inputgacode_new.profiles[ikey] = self.profiles.profiles[ikey]
                         else:
-                            inputgacode_new.profiles[ikey] = (
-                                inputgacode_new.profiles["rho(-)"] * 0.0
-                            )
+                            inputgacode_new.profiles[ikey] = inputgacode_new.profiles["rho(-)"] * 0.0
 
                 inputgacode_new.writeCurrentStatus()
             # ------------------------------------------------------------------------------------------------------------------------

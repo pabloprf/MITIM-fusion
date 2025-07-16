@@ -1515,6 +1515,7 @@ class CGYRO:
         colors = GRAPHICStools.listColors()
 
         if fig is None:
+            plt.ion()
             fig = plt.figure(figsize=(15,9))
 
         axs = fig.subplot_mosaic(
