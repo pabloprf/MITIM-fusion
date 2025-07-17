@@ -131,7 +131,7 @@ class CGYROout:
             if 'kxky_phi' in self.cgyrodata.__dict__:
                 self._process_fluctuations()
             else:
-                print('\t- No fluctuations found in CGYRO data, skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
+                print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         else:
             print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
             
@@ -149,7 +149,6 @@ class CGYROout:
             self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
             self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
-
 
     def _process_fluctuations(self):
         # Fluctuations (complex numbers)
