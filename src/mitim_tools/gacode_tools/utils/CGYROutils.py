@@ -166,6 +166,8 @@ class CGYROout:
             field = 2
             self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
         
+        self.tmax_fluct = _detect_exploiding_signal(self.t, self.phi**2)
+        
         moment, species, field = 'n', self.electron_flag, 0
         self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
 
@@ -210,13 +212,13 @@ class CGYROout:
                 self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5         # (nradial,time)
 
         # Cross-phases
-        self.nT = _cross_phase(self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.nT = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.nT_kx0 = self.nT[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
-
-        self.phiT = _cross_phase(self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        
+        self.phiT = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phiT_kx0 = self.phiT[np.argmin(np.abs(self.kx)),:,:]
         
-        self.phin = _cross_phase(self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phin = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
 
         # Correlation length
@@ -318,6 +320,9 @@ class CGYROout:
             'Ge_EM',
             'g',
             'f',
+        ]
+            
+        flags_fluctuations = [
             'phi_rms_sumnr',
             'apar_rms_sumnr',
             'bpar_rms_sumnr',
@@ -345,27 +350,26 @@ class CGYROout:
         
         for iflag in flags:
             if iflag in self.__dict__:
-                Qm, Qstd = apply_ac(
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
                         self.t,
                         self.__dict__[iflag],
                         tmin=self.tmin,
                         label_print=iflag,
                         print_msg=iflag in ['Qi', 'Qe', 'Ge'],
-                        #debug=iflag == 'Qi'
                         )
-                # Qm, Qstd = apply_ac_fixed_signal(
-                #         self.t,
-                #         self.__dict__[iflag],
-                #         self.phi_rms_sumnr_sumn,
-                #         tmin=self.tmin,
-                #         label_print=iflag,
-                #         print_msg=iflag == 'Qi'
-                #         )  
-                    
-                self.__dict__[iflag+'_mean'] = Qm
-                self.__dict__[iflag+'_std'] = Qstd
-      
-def _grab_ncorrelation(t, S, it0, debug=False):
+
+        for iflag in flags_fluctuations:
+            if iflag in self.__dict__:
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
+                        self.t,
+                        self.__dict__[iflag],
+                        tmin=self.tmin,
+                        tmax=self.tmax_fluct,
+                        label_print=iflag,
+                        )     
+              
+            
+def _grab_ncorrelation(S, debug=False):
     # Calculate the autocorrelation function
     i_acf = sm.tsa.acf(S, nlags=len(S))
 
@@ -376,7 +380,7 @@ def _grab_ncorrelation(t, S, it0, debug=False):
     icor = np.abs(i_acf-1/np.e).argmin()
     
     # Define number of samples
-    n_corr = ( len(t) - it0 ) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
+    n_corr = len(S) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
     
     if debug:
         fig, ax = plt.subplots()
@@ -389,36 +393,22 @@ def _grab_ncorrelation(t, S, it0, debug=False):
         embed()
     
     return n_corr, icor
-      
-def apply_ac_fixed_signal(t, S, Scorr, tmin = 0, label_print = '', print_msg = False, debug=False):
 
-    it0 = np.argmin(np.abs(t - tmin))
-    
-    # Calculate the mean and std of the signal after tmin (last dimension is time)
-    S_mean = np.mean(S[..., it0:], axis=-1)
-    S_std = np.std(S[..., it0:], axis=-1)
-
-    # 1D case: single time series
-    n_corr, icor = _grab_ncorrelation(t, Scorr[it0:], it0, debug=debug)
-    S_std = S_std / np.sqrt(n_corr)
-    
-    if print_msg:
-        print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples")# -> {S_mean:.2e} +-{S_std:.2e}")
-    
-    return S_mean, S_std
-                
-
-def apply_ac(t, S, tmin = 0, label_print = '', print_msg = False, debug=False):
+def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
     
     it0 = np.argmin(np.abs(t - tmin))
+    it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
     
+    if it1 <= it0:
+        it0 = it1
+
     # Calculate the mean and std of the signal after tmin (last dimension is time)
-    S_mean = np.mean(S[..., it0:], axis=-1)
-    S_std = np.std(S[..., it0:], axis=-1) # To follow NTH convention
+    S_mean = np.mean(S[..., it0:it1+1], axis=-1)
+    S_std = np.std(S[..., it0:it1+1], axis=-1)
 
     if S.ndim == 1:
         # 1D case: single time series
-        n_corr, icor = _grab_ncorrelation(t, S[it0:], it0, debug=debug)
+        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug)
         S_std = S_std / np.sqrt(n_corr)
         
         if print_msg:
@@ -435,7 +425,7 @@ def apply_ac(t, S, tmin = 0, label_print = '', print_msg = False, debug=False):
         
         # Calculate correlation for each flattened time series
         for i in range(n_series):
-            n_corr[i], icor[i] = _grab_ncorrelation(t, S_reshaped[i, it0:], it0, debug=debug)
+            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug)
         
         # Reshape correlation arrays back to original shape (without time dimension)
         n_corr = n_corr.reshape(shape_orig)
@@ -457,7 +447,7 @@ def apply_ac(t, S, tmin = 0, label_print = '', print_msg = False, debug=False):
     return S_mean, S_std
 
 
-def _cross_phase(f1, f2):
+def _cross_phase(t, f1, f2):
     """
     Calculate the cross-phase between two complex signals.
     
@@ -469,9 +459,21 @@ def _cross_phase(f1, f2):
     np.ndarray
         Cross-phase in radians.
     """
+
     return np.angle(f1 * np.conj(f2))
 
-        
+def _detect_exploiding_signal(t,f1):
+
+    try:
+        idx = np.where(np.isnan(f1.sum(axis=(0,1))) | np.isinf(f1.sum(axis=(0,1))))[0][0]
+        max_t = t[idx]
+        if print(f"\t- Warning: Exploding signal detected at t>={max_t:.2f}", typeMsg='q'):
+            return max_t
+        else:
+            return t[-1]
+    except IndexError:
+        return t[-1]  # No exploding signal detected, return last time point
+
 def calculate_lcorr(phim, kx, nx, debug=False):
     """Calculate the correlation length in the radial direction.
 
