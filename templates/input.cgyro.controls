@@ -31,6 +31,9 @@ N_FIELD=3
 #Data field output flag
 MOMENT_PRINT_FLAG=1
 
+#Make EM fields available as output
+FIELD_PRINT_FLAG=1
+
 #Velocity Order
 #VELOCITY_ORDER=2
 
@@ -58,6 +61,7 @@ N_XI=16
 
 #Number of poloidal grid points
 N_THETA=16
+#THETA_PLOT=16
 
 #Number of points in energy
 N_ENERGY=8

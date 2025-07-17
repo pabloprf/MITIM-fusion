@@ -31,8 +31,8 @@ class CGYRO:
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
             "bin.cgyro.kxky_phi",
-            # "bin.cgyro.kxky_apar", # May not exist?
-            # "bin.cgyro.kxky_bpar", # May not exist?
+            "bin.cgyro.kxky_apar", 
+            "bin.cgyro.kxky_bpar", 
             "bin.cgyro.kxky_v",
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
