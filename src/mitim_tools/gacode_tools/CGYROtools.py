@@ -3,7 +3,6 @@ import shutil
 import datetime
 import time
 from pathlib import Path
-from lazy_loader import attach
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
@@ -389,8 +388,8 @@ class CGYRO:
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
-        folders = sorted(list((folder).glob("scan*")))
-
+        folders = sorted(list((folder).glob("scan*")), key=lambda f: int(''.join(filter(str.isdigit, f.name))))
+        
         if len(folders) == 0:
             folders = [folder]
             attach_name = False
@@ -485,7 +484,12 @@ class CGYRO:
             """
         )
       
-        if 'phi_ballooning' in self.results[labels[0]].__dict__:
+        create_ballooning = False
+        for label in labels:
+            if 'ballooning' in self.results[label].__dict__:
+                create_ballooning = True
+            
+        if create_ballooning:
 
             fig = self.fn.add_figure(label="Ballooning")
             axsBallooning = fig.subplot_mosaic(
@@ -559,7 +563,7 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            if axsBallooning is not None:
+            if 'ballooning' in self.results[label].__dict__:
                 self.plot_ballooning(
                     axs=axsBallooning,
                     label=labels[j],
@@ -1523,7 +1527,6 @@ class CGYRO:
         colors = GRAPHICStools.listColors()
 
         if fig is None:
-            plt.ion()
             fig = plt.figure(figsize=(15,9))
 
         axs = fig.subplot_mosaic(
