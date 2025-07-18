@@ -269,7 +269,7 @@ def cgyroing(
             minErrorPercent=minErrorPercent,
             useConvectiveFluxes=useConvectiveFluxes,
             Qi_criterion_stable=Qi_criterion_stable,
-            percentNeo=percentNeo,
+            percent_tr_neo=percentNeo,
             impurityPosition=impurityPosition,
             OriginalFimp=OriginalFimp,
         )
