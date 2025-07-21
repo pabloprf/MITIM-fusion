@@ -340,9 +340,7 @@ class CGYRO:
 
             while True:
                 self.cgyro_job.check(file_output = self.slurm_output)
-                print(
-                    f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})'
-                )
+                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.cgyro_job.status} ({self.cgyro_job.infoSLURM["STATE"]})')
                 if self.cgyro_job.status == 2:
                     break
                 else:
@@ -486,7 +484,7 @@ class CGYRO:
       
         create_ballooning = False
         for label in labels:
-            if 'ballooning' in self.results[label].__dict__:
+            if 'phi_ballooning' in self.results[label].__dict__:
                 create_ballooning = True
             
         if create_ballooning:
@@ -563,7 +561,7 @@ class CGYRO:
                 label=labels[j],
                 c=colors[j],
             )
-            if 'ballooning' in self.results[label].__dict__:
+            if create_ballooning:
                 self.plot_ballooning(
                     axs=axsBallooning,
                     label=labels[j],
