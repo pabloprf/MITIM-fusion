@@ -1740,6 +1740,7 @@ class PROFILES_GACODE:
 
         fi_orig = self.derived["fi"][:, ion_pos]
         Zi_orig = self.Species[ion_pos]["Z"]
+        Ai_orig = self.Species[ion_pos]["A"]
 
         if not keep_fmain:
             # ------------------------------------------------------
@@ -1776,6 +1777,7 @@ class PROFILES_GACODE:
             # ------------------------------------------------------
 
             self.profiles['z'][ion_pos] = Zk_ave
+            self.profiles['mass'][ion_pos] = Zk_ave * 2
             self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
             
             if fmain_force is not None:
@@ -1790,7 +1792,7 @@ class PROFILES_GACODE:
             self.scaleAllThermalDensities()
             self.deriveQuantities(rederiveGeometry=False)
 
-        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) of ion with Z={Zi_orig:.2f} to { self.derived["fi"][:, ion_pos].mean():.2e} of ion with Z={self.profiles["z"][ion_pos]:.2f} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
+        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) of ion [{Zi_orig:.2f},{Ai_orig:.2f}] to { self.derived["fi"][:, ion_pos].mean():.2e} of ion [{self.profiles["z"][ion_pos]:.2f}, {self.profiles["mass"][ion_pos]:.2f}] to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
     def moveSpecie(self, pos=2, pos_new=1):
         """
@@ -1908,16 +1910,10 @@ class PROFILES_GACODE:
                     int(self.profiles["z"][i]), int(self.profiles["mass"][i])
                 )
                 if name is not None:
-                    print(
-                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',
-                        typeMsg="i",
-                    )
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',typeMsg="i",)
                     self.profiles["name"][i] = name
                 else:
-                    print(
-                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',
-                        typeMsg="w",
-                    )
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',typeMsg="w",)
 
         # Correct qione
         if groupQIONE and (np.abs(self.profiles["qione(MW/m^3)"].sum()) > 1e-14):
