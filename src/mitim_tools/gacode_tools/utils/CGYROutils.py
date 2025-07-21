@@ -308,6 +308,8 @@ class CGYROout:
             'Qe_ky',
             'Qi',
             'QiMWm2',
+            'Qi_all',
+            'Qi_allMWm2',
             'Qi_ky',
             'Ge',
             'Ge_ky',
@@ -466,7 +468,7 @@ def _detect_exploiding_signal(t,f1):
     try:
         idx = np.where(np.isnan(f1.sum(axis=(0,1))) | np.isinf(f1.sum(axis=(0,1))))[0][0]
         max_t = t[idx]
-        if print(f"\t- Warning: Exploding signal detected at t>={max_t:.2f}", typeMsg='q'):
+        if print(f"\t- Warning: Exploding signal detected at t>={max_t:.2f}", typeMsg='w'):
             return max_t
         else:
             return t[-1]
