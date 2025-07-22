@@ -24,6 +24,9 @@ def main():
     
     if tmin is None:
         tmin = [0.0] * len(folders)
+        last_tmin_for_linear = True
+    else:
+        last_tmin_for_linear = False
     
     # Read
     c = CGYROtools.CGYRO()
@@ -31,7 +34,7 @@ def main():
     labels = []
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
-        c.read(label=labels[-1], folder=folder, tmin=tmin[i])
+        c.read(label=labels[-1], folder=folder, tmin=tmin[i], last_tmin_for_linear=last_tmin_for_linear)
 
     if linear:
         # Plot linear spectrum

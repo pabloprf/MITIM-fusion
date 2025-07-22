@@ -382,7 +382,7 @@ class CGYRO:
     # Reading and plotting
     # ---------------------------------------------------------------------------------------------------------
 
-    def read(self, label="cgyro1", folder=None, tmin = 0.0, minimal = False):
+    def read(self, label="cgyro1", folder=None, tmin = 0.0, minimal = False, last_tmin_for_linear = True):
 
         folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
 
@@ -406,7 +406,7 @@ class CGYRO:
             else:
                 label1 = label
 
-            data[label1] = CGYROutils.CGYROout(folder, tmin=tmin, minimal=minimal)
+            data[label1] = CGYROutils.CGYROout(folder, tmin=tmin, minimal=minimal, last_tmin_for_linear=last_tmin_for_linear)
             labels.append(label1)
 
         self.results.update(data)

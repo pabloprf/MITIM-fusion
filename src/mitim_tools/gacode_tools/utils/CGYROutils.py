@@ -40,7 +40,7 @@ class CGYROlinear_scan:
         self.nT_mean = np.array(self.nT_mean)
 
 class CGYROout:
-    def __init__(self, folder, tmin=0.0, minimal=False):
+    def __init__(self, folder, tmin=0.0, minimal=False, last_tmin_for_linear=True):
 
         original_dir = os.getcwd()
 
@@ -78,7 +78,7 @@ class CGYROout:
         # Postprocess with MITIM-curated structures and variables
         # --------------------------------------------------------------
 
-        if 'phib' in self.cgyrodata.__dict__:
+        if 'phib' in self.cgyrodata.__dict__ and last_tmin_for_linear:
             print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
             self.tmin = self.cgyrodata.t[-1]
             self.linear = True
