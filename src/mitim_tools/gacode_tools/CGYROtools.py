@@ -177,6 +177,7 @@ class CGYRO:
         minutes = 5,
         n = 16,
         nomp = 1,
+        cpuspertask=None, # if None, will default to 1
         queue=None, #if blank will default to the one in settings
         mem=None, # in MB
         submit_via_qsub=True, #TODO fix this, works only at NERSC? no scans?
@@ -261,8 +262,15 @@ class CGYRO:
                     "minutes": minutes,
                     "ntasks": n,
                     "job_array": job_array,
+                    # Validate n and nomp before assigning cpuspertask
                 },
             )
+
+            if cpuspertask is not None:
+                if not isinstance(cpuspertask, int):
+                    raise TypeError(" <MITIM> cpuspertask must be an integer")
+                self.cgyro_job.slurm_settings["cpuspertask"] = cpuspertask
+            
 
             if queue is not None:
                 self.cgyro_job.machineSettings['slurm']['partition'] = queue
