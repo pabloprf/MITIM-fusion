@@ -20,7 +20,7 @@ class CGYROlinear_scan:
         self.g_mean = []
         self.f_mean = []
         
-        self.nT_mean = []
+        self.neTe_mean = []
 
         for label in labels:
             self.ky.append(cgyro_data[label].ky[0])
@@ -29,15 +29,15 @@ class CGYROlinear_scan:
             self.f_mean.append(cgyro_data[label].f_mean[0])
 
             try:
-                self.nT_mean.append(cgyro_data[label].nT_kx0_mean[0])
+                self.neTe_mean.append(cgyro_data[label].neTe_kx0_mean[0])
             except:
-                self.nT_mean.append(np.nan)
+                self.neTe_mean.append(np.nan)
 
         self.ky = np.array(self.ky)
         self.aLTi = np.array(self.aLTi)
         self.g_mean = np.array(self.g_mean)
         self.f_mean = np.array(self.f_mean)
-        self.nT_mean = np.array(self.nT_mean)
+        self.neTe_mean = np.array(self.neTe_mean)
 
 class CGYROout:
     def __init__(self, folder, tmin=0.0, minimal=False, last_tmin_for_linear=True):
@@ -211,14 +211,23 @@ class CGYROout:
                 self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5         # (nradial,time)
 
         # Cross-phases
-        self.nT = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.nT_kx0 = self.nT[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
+        self.neTe = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.neTe_kx0 = self.neTe[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
         
-        self.phiT = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phiT_kx0 = self.phiT[np.argmin(np.abs(self.kx)),:,:]
+        self.niTi = _cross_phase(self.t, self.ni, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.niTi_kx0 = self.niTi[np.argmin(np.abs(self.kx)),:,:]
         
-        self.phin = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phin_kx0 = self.phin[np.argmin(np.abs(self.kx)),:,:]
+        self.phiTe = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phiTe_kx0 = self.phiTe[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phiTi = _cross_phase(self.t, self.phi, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phiTi_kx0 = self.phiTi[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phine = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phine_kx0 = self.phine[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phini = _cross_phase(self.t, self.phi, self.ni) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phini_kx0 = self.phini[np.argmin(np.abs(self.kx)),:,:]
 
         # Correlation length
         phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
@@ -344,9 +353,12 @@ class CGYROout:
             'Te_rms_n0',
             'Te_rms_sumn1',
             'Te_rms_sumn',
-            'nT_kx0',
-            'phiT_kx0',
-            'phin_kx0',
+            'neTe_kx0',
+            'niTi_kx0',
+            'phiTe_kx0',
+            'phine_kx0',
+            'phini_kx0',
+            'phiTi_kx0',
         ]
         
         for iflag in flags:
