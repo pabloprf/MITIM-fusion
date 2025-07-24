@@ -1,9 +1,10 @@
 import vmecpp
 import numpy as np
+from collections import OrderedDict
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.interpolate import interp1d
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -50,7 +51,7 @@ class vmec_state(MITIMstate.mitim_state):
         self.wout = vmecpp.VmecWOut.from_wout_file(Path(self.files[0]))
 
         # Initialize profiles dictionary
-        self.profiles = {}
+        self.profiles = OrderedDict()
         
         self.profiles['nion'] = np.array([1])
         self.profiles['name'] = np.array(['D'])
@@ -63,14 +64,12 @@ class vmec_state(MITIMstate.mitim_state):
         self.profiles["current(MA)"] = np.array([0.0])
         
         self.profiles["torfluxa(Wb/radian)"] = [self.wout.phipf[-1]]
-        
+                
         # Produce variables
         self.profiles["rho(-)"] = (self.wout.phi/self.wout.phi[-1])**0.5 #np.linspace(0, 1, self.wout.ns)**0.5
         self.profiles["presf"] = self.wout.presf
-        
-        self.profiles["rmin(m)"] = self.profiles["rho(-)"]
-
         self.profiles["q(-)"] = self.wout.q_factor
+        self.profiles["polflux(Wb/radian)"] = self.wout.chi
 
         # Read Profiles
         data = self._read_profiles(x_coord=self.profiles["rho(-)"])
@@ -88,6 +87,16 @@ class vmec_state(MITIMstate.mitim_state):
     # Derivation (different from MITIMstate)
     # ************************************************************************************************************************************************
    
+    def derive_quantities(self, **kwargs):
+ 
+        if "derived" not in self.__dict__:
+            self.derived = {}
+
+        # Define the minor radius used in all calculations (could be the half-width of the midplance intersect, or an effective minor radius)
+        self.derived["r"] = self.profiles["rho(-)"]
+
+        super().derive_quantities_base(**kwargs)
+
     def derive_geometry(self, **kwargs):
         
         rho = np.linspace(0, 1, self.wout.ns)
@@ -121,8 +130,33 @@ class vmec_state(MITIMstate.mitim_state):
 
     def plot_geometry(self, axs, color="b", legYN=True, extralab="", lw=1, fs=6):
         
-        pass
-        #self.plot_plasma_boundary()
+        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,axs_3d,axs_2d] = axs
+        
+        self.plot_plasma_boundary(ax=axs_3d)
+        
+        self.plot_state_flux_surfaces(ax=axs_2d, c=color)
+
+
+    def plot_state_flux_surfaces(self, ax=None, c='b'):
+        
+        rhos_plot = np.linspace(0.0, 1.0, 10)
+        phis_plot = [0.0, np.pi/2, np.pi, 3*np.pi/2] #np.linspace(0.0, 2.0 * np.pi, 5)
+
+        ls = GRAPHICStools.listLS()
+        
+        for phi_cut, lsi in zip(phis_plot, ls):
+        
+            for i in range(len(rhos_plot)):
+                self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=rhos_plot[i], c=c, lw = 0.5, ls = lsi)
+            self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=1.0, c=c, lw = 2, ls = lsi, label = f"$\\phi={phi_cut*180/np.pi:.1f} deg$")
+
+        ax.set_aspect('equal')
+        ax.set_xlabel('R [m]')
+        ax.set_ylabel('Z [m]')
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, size=6)
+
+        ax.set_title(f'Poloidal Cross-section')
 
     def _read_profiles(self, x_coord=None, debug = False):
         
@@ -290,8 +324,49 @@ class vmec_state(MITIMstate.mitim_state):
 
         # Set an equal aspect ratio
         ax.set_aspect("equal")
+        
+        ax.set_title(f'Plasma Boundary')
 
-        plt.show()
+    def plot_flux_surface(self, ax=None, phi_cut=0.0, rho=1.0, c='b', lw=1, ls='-', label = ''):
+        """
+        Plot poloidal cross-section of the torus at a specified toroidal angle.
+        
+        Parameters:
+        -----------
+        ax : matplotlib axes object, optional
+            Axes to plot on. If None, creates new figure and axes.
+        phi_cut : float, optional
+            Toroidal angle for the cross-section in radians. Default is 0.0.
+        rho : float, optional
+            Normalized flux surface coordinate (0 to 1). Default is 1.0 (boundary).
+        """
+        
+        ns = self.wout.ns
+        xm = self.wout.xm
+        xn = self.wout.xn
+        rmnc = self.wout.rmnc
+        zmns = self.wout.zmns
+
+        # Find closest flux surface index for given rho
+        rho_grid = self.profiles["rho(-)"]
+        j = np.argmin(np.abs(rho_grid - rho))
+
+        num_theta = 201
+        grid_theta = np.linspace(0.0, 2.0 * np.pi, num_theta, endpoint=True)
+
+        R = np.zeros(num_theta)
+        Z = np.zeros(num_theta)
+        
+        for idx_theta, theta in enumerate(grid_theta):
+            kernel = xm * theta - xn * phi_cut
+            R[idx_theta] = np.dot(rmnc[:, j], np.cos(kernel))
+            Z[idx_theta] = np.dot(zmns[:, j], np.sin(kernel))
+
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots()
+
+        ax.plot(R, Z, ls=ls, color = c, linewidth=lw, label=label)
 
 def plot_profiles(data):
     """

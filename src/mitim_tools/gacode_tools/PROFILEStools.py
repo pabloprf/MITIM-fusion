@@ -163,9 +163,15 @@ class gacode_state(MITIMstate.mitim_state):
    
     def derive_quantities(self, **kwargs):
  
+        if "derived" not in self.__dict__:
+            self.derived = {}
+ 
         self._produce_shape_lists()
 
-        super().derive_quantities(**kwargs)
+        # Define the minor radius used in all calculations (could be the half-width of the midplance intersect, or an effective minor radius)
+        self.derived["r"] = self.profiles["rmin(m)"]
+
+        super().derive_quantities_base(**kwargs)
 
     def _produce_shape_lists(self):
         self.shape_cos = [
@@ -249,7 +255,7 @@ class gacode_state(MITIMstate.mitim_state):
 
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
 
-        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax13c] = axs3
+        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,_,ax13c] = axs3
 
         rho = self.profiles["rho(-)"]
         lines = GRAPHICStools.listLS()
