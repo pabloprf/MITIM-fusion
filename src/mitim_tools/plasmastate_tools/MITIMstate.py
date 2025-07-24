@@ -74,7 +74,7 @@ def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
 
     # Choose a template for dimensionality
-    template_key_1d, template_key_2d = "rmin(m)", "ti(keV)"
+    template_key_1d, template_key_2d = "rho(-)", "ti(keV)"
 
     # Ensure required keys exist
     for key, dim in required_profiles.items():
@@ -242,7 +242,7 @@ class mitim_state:
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
-
+        
         if "derived" not in self.__dict__:
             self.derived = {}
 
@@ -296,16 +296,6 @@ class mitim_state:
         # ---------------------------------------------------------------------------------------------------------------------
         # --------- Important for scaling laws
         # ---------------------------------------------------------------------------------------------------------------------
-
-        self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
-
-        self.derived["kappa995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
-
-        self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
-
-        self.derived["delta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"])
-
-        self.derived["delta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
         self.derived["Rgeo"] = float(self.profiles["rcentr(m)"][-1])
         self.derived["B0"] = np.abs(float(self.profiles["bcentr(T)"][-1]))

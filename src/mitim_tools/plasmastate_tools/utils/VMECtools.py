@@ -1,6 +1,8 @@
 import vmecpp
 import numpy as np
+import matplotlib.pyplot as plt
 from pathlib import Path
+from scipy.interpolate import interp1d
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -15,7 +17,13 @@ class vmec_state(MITIMstate.mitim_state):
     # Reading and interpreting
     # ------------------------------------------------------------------
 
-    def __init__(self, file_vmec, file_profs, derive_quantities=True, mi_ref=None):
+    def __init__(
+        self,
+        file_vmec,
+        file_profs,
+        derive_quantities=True,
+        mi_ref=None
+    ):
 
         # Initialize the base class and tell it the type of file
         super().__init__(type_file='vmec')
@@ -24,22 +32,48 @@ class vmec_state(MITIMstate.mitim_state):
         self.files = [file_vmec, file_profs]
         if self.files is not None:
             self._read_vmec()
-            # Derive (Depending on resolution, derived can be expensive, so I mmay not do it every time)
+            
+            # Derive (Depending on resolution, derived can be expensive, so I may not do it every time)
             self.derive_quantities(mi_ref=mi_ref, derive_quantities=derive_quantities)
 
 
     @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_vmec(self):
         
+        self.profiles = {}
+        
         # Read VMEC file
         print("\t- Reading VMEC file")
         self.wout = vmecpp.VmecWOut.from_wout_file(Path(self.files[0]))
         
         # Produce variables
-        
+        self.profiles["rho(-)"] = np.linspace(0, 1, self.wout.ns)**0.5
+        self.profiles["rmin(m)"] = self.profiles["rho(-)"]
+
         self.profiles["torfluxa(Wb/radian)"] = [self.wout.phipf[-1]]
         
-        
+        # Read Profiles
+        data = self._read_profiles(x_coord=self.profiles["rho(-)"])
+
+        self.profiles['te(keV)'] = data['Te']
+        self.profiles['ne(10^19/m^3)'] = data['ne']
+        self.profiles['ti(keV)'] = np.atleast_2d(data['Ti']).T
+        self.profiles['ni(10^19/m^3)'] = np.atleast_2d(data['ni']).T
+
+        self.profiles['qbeami(MW/m^3)'] = data['Qi'] * 1e-6  # Convert from W/m^3 to MW/m^3
+        self.profiles['qrfe(MW/m^3)'] = data['Qe'] * 1e-6 # Convert from W/m^3 to MW/m^3
+        self.profiles['qpar_beam(1/m^3/s)'] = data['S']
+
+        self.profiles['nion'] = np.array([1])
+        self.profiles['name'] = np.array(['D'])
+        self.profiles['type'] = np.array(['[therm]'])
+        self.profiles['mass'] = np.array([2.0])
+        self.profiles['z'] = np.array([1.0])
+
+        self.profiles['rcentr(m)'] = np.array([self.wout.Rmajor_p])
+        self.profiles['bcentr(T)'] = np.array([self.wout.rbtor/self.wout.Rmajor_p])
+        self.profiles["current(MA)"] = np.array([0.0])
+
     def derive_geometry(self, **kwargs):
         
         rho = np.linspace(0, 1, self.wout.ns)
@@ -53,11 +87,280 @@ class vmec_state(MITIMstate.mitim_state):
             * 2
             * np.sqrt(half_grid_rho)
         )
+        d_volume_d_rho[0] = 0.0  # Set the first element to zero to avoid division by zero
         
         #self.derived["B_unit"] = self.profiles["torfluxa(Wb/radian)"] / (np.pi * self.wout.Aminor_p**2)
+        
+        self.derived["volp_geo"] = d_volume_d_rho
+        
+        self.derived["kappa_a"] = 0.0
+        self.derived["kappa95"] = 0.0
+        self.derived["delta95"] = 0.0
+        self.derived["kappa995"] = 0.0
+        self.derived["delta995"] = 0.0
+        self.derived["R_LF"] = np.zeros(self.profiles["rho(-)"].shape)
+
+        self.derived["bp2_exp"] = np.zeros(self.profiles["rho(-)"].shape)
+        self.derived["bt2_exp"] = np.zeros(self.profiles["rho(-)"].shape)
+        self.derived["bp2_geo"] = np.zeros(self.profiles["rho(-)"].shape)
+        self.derived["bt2_geo"] = np.zeros(self.profiles["rho(-)"].shape)
+
 
     def write_state(self,  file=None, **kwargs):
         pass
     
     def plot_geometry(self, axs, color="b", legYN=True, extralab="", lw=1, fs=6):
+        
         pass
+        #self.plot_plasma_boundary()
+
+    def _read_profiles(self, x_coord=None, debug = False):
+        
+        filename = self.files[1]
+        
+        if x_coord is None:
+            # Create uniform coordinate array from 0 to 1
+            x_coord = np.linspace(0, 1, 200)
+        
+        # Raw data storage
+        raw_data = {
+            'Te_data': {'x': [], 'y': []},
+            'ne_data': {'x': [], 'y': []},
+            'Ti_data': {'x': [], 'y': []},
+            'ni_data': {'x': [], 'y': []},
+            'S_data': {'x': [], 'y': []},
+            'Qe_data': {'x': [], 'y': []},
+            'Qi_data': {'x': [], 'y': []}
+        }
+        current_section = None
+        
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for section headers
+            if line.startswith('#'):
+                if 'Te' in line and 'ne' in line:
+                    current_section = 'Te_ne'
+                elif 'Ti' in line and 'ni' in line:
+                    current_section = 'Ti_ni'
+                elif 'Particle source' in line:
+                    current_section = 'S'
+                elif 'Q W/m3' in line:
+                    current_section = 'Qe'
+                elif 'NBI W/m3' in line:
+                    current_section = 'Qi'
+                continue
+            
+            # Parse data lines
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+                
+            x = float(parts[0])  # x/a or r/a coordinate (first column)
+            
+            if current_section == 'Te_ne' and len(parts) == 4:
+                # x/a, x/rho, Te, ne - use x/a coordinate
+                raw_data['Te_data']['x'].append(x)
+                raw_data['Te_data']['y'].append(float(parts[2]))
+                raw_data['ne_data']['x'].append(x)
+                raw_data['ne_data']['y'].append(float(parts[3]))
+                
+            elif current_section == 'Ti_ni' and len(parts) == 4:
+                # x/a, x/rho, Ti, ni - use x/a coordinate
+                raw_data['Ti_data']['x'].append(x)
+                raw_data['Ti_data']['y'].append(float(parts[2]))
+                raw_data['ni_data']['x'].append(x)
+                raw_data['ni_data']['y'].append(float(parts[3]))
+                
+            elif current_section == 'S' and len(parts) == 2:
+                raw_data['S_data']['x'].append(x)
+                raw_data['S_data']['y'].append(float(parts[1]))
+                
+            elif current_section == 'Qe' and len(parts) == 2:
+                raw_data['Qe_data']['x'].append(x)
+                raw_data['Qe_data']['y'].append(float(parts[1]))
+                
+            elif current_section == 'Qi' and len(parts) == 2:
+                raw_data['Qi_data']['x'].append(x)
+                raw_data['Qi_data']['y'].append(float(parts[1]))
+        
+        # Convert to numpy arrays
+        for profile_data in raw_data.values():
+            profile_data['x'] = np.array(profile_data['x'])
+            profile_data['y'] = np.array(profile_data['y'])
+        
+        # Interpolate each profile to uniform grid
+        uniform_data = {'x_coord': x_coord}
+        
+        profile_map = {
+            'Te': 'Te_data', 'ne': 'ne_data', 'Ti': 'Ti_data', 
+            'ni': 'ni_data', 'S': 'S_data', 'Qe': 'Qe_data', 'Qi': 'Qi_data'
+        }
+        
+        for profile_name, data_key in profile_map.items():
+            x_data = raw_data[data_key]['x']
+            y_data = raw_data[data_key]['y']
+            
+            if len(x_data) > 0:
+                # Interpolate using actual coordinates from the data
+                f = interp1d(x_data, y_data, kind='linear', 
+                            bounds_error=False, fill_value=(y_data[0], y_data[-1]))
+                uniform_data[profile_name] = f(x_coord)
+            else:
+                uniform_data[profile_name] = None
+        
+        # Also store original data for plotting
+        uniform_data['raw_data'] = raw_data
+        
+        if debug:
+            plot_profiles(uniform_data)
+            embed()
+        
+        return uniform_data
+
+    
+    def plot_plasma_boundary(self, ax=None):
+
+        # The output object contains the Fourier coefficients of the geometry in R and Z
+        # as a function of the poloidal (theta) and toroidal (phi) angle-like coordinates
+        # for a number of discrete radial locations.
+
+        # number of flux surfaces, i.e., final radial resolution
+        ns = self.wout.ns
+
+        # poloidal mode numbers: m
+        xm = self.wout.xm
+
+        # toroidal mode numbers: n * nfp
+        xn = self.wout.xn
+
+        # stellarator-symmetric Fourier coefficients of flux surface geometry R ~ cos(m * theta - n * nfp * phi)
+        rmnc = self.wout.rmnc
+
+        # stellarator-symmetric Fourier coefficients of flux surface geometry Z ~ sin(m * theta - n * nfp * phi)
+        zmns = self.wout.zmns
+
+        # plot the outermost (last) flux surface, which is the plasma boundary
+        j = ns - 1
+
+        # resolution over the flux surface
+        num_theta = 101
+        num_phi = 181
+        
+        min_phi = 0.0
+        max_phi = 2.0 * np.pi
+
+        # grid in theta and phi along the flux surface
+        grid_theta = np.linspace(0.0, 2.0 * np.pi, num_theta, endpoint=True)
+        grid_phi = np.linspace(min_phi, max_phi, num_phi, endpoint=True)
+
+        # compute Cartesian coordinates of flux surface geometry
+        x = np.zeros([num_theta, num_phi])
+        y = np.zeros([num_theta, num_phi])
+        z = np.zeros([num_theta, num_phi])
+        for idx_theta, theta in enumerate(grid_theta):
+            for idx_phi, phi in enumerate(grid_phi):
+                kernel = xm * theta - xn * phi
+                r = np.dot(rmnc[:, j], np.cos(kernel))
+                x[idx_theta, idx_phi] = r * np.cos(phi)
+                y[idx_theta, idx_phi] = r * np.sin(phi)
+                z[idx_theta, idx_phi] = np.dot(zmns[:, j], np.sin(kernel))
+
+        # actually make the 3D plot
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(projection="3d")
+
+        # Plot the surface
+        ax.plot_surface(x, y, z)
+
+        # Set an equal aspect ratio
+        ax.set_aspect("equal")
+
+        plt.show()
+
+def plot_profiles(data):
+    """
+    Create plots of the plasma profiles
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    
+    raw_data = data['raw_data']
+    
+    # Temperature profiles
+    if len(raw_data['Te_data']['x']) > 0:
+        axes[0,0].plot(raw_data['Te_data']['x'], raw_data['Te_data']['y'], 'ro-', label='Te (original)', markersize=3)
+        if data['Te'] is not None:
+            axes[0,0].plot(data['x_coord'], data['Te'], 'r-', label='Te (interpolated)', linewidth=2)
+    
+    if len(raw_data['Ti_data']['x']) > 0:
+        axes[0,0].plot(raw_data['Ti_data']['x'], raw_data['Ti_data']['y'], 'bo-', label='Ti (original)', markersize=3)
+        if data['Ti'] is not None:
+            axes[0,0].plot(data['x_coord'], data['Ti'], 'b-', label='Ti (interpolated)', linewidth=2)
+    
+    axes[0,0].set_xlabel('x/a')
+    axes[0,0].set_ylabel('Temperature [keV]')
+    axes[0,0].legend()
+    axes[0,0].grid(True)
+    axes[0,0].set_title('Temperature Profiles')
+    
+    # Density profiles
+    if len(raw_data['ne_data']['x']) > 0:
+        axes[0,1].plot(raw_data['ne_data']['x'], raw_data['ne_data']['y'], 'ro-', label='ne (original)', markersize=3)
+        if data['ne'] is not None:
+            axes[0,1].plot(data['x_coord'], data['ne'], 'r-', label='ne (interpolated)', linewidth=2)
+    
+    if len(raw_data['ni_data']['x']) > 0:
+        axes[0,1].plot(raw_data['ni_data']['x'], raw_data['ni_data']['y'], 'bo-', label='ni (original)', markersize=3)
+        if data['ni'] is not None:
+            axes[0,1].plot(data['x_coord'], data['ni'], 'b-', label='ni (interpolated)', linewidth=2)
+    
+    axes[0,1].set_xlabel('x/a')
+    axes[0,1].set_ylabel('Density [10¹⁹ m⁻³]')
+    axes[0,1].legend()
+    axes[0,1].grid(True)
+    axes[0,1].set_title('Density Profiles')
+    
+    # Particle source
+    if len(raw_data['S_data']['x']) > 0:
+        axes[0,2].plot(raw_data['S_data']['x'], raw_data['S_data']['y'], 'go-', label='S (original)', markersize=3)
+        if data['S'] is not None:
+            axes[0,2].plot(data['x_coord'], data['S'], 'g-', label='S (interpolated)', linewidth=2)
+    axes[0,2].set_xlabel('x/a')
+    axes[0,2].set_ylabel('Particle Source [m⁻³s⁻¹]')
+    axes[0,2].legend()
+    axes[0,2].grid(True)
+    axes[0,2].set_title('Particle Source')
+    
+    # Electron heating
+    if len(raw_data['Qe_data']['x']) > 0:
+        axes[1,0].plot(raw_data['Qe_data']['x'], raw_data['Qe_data']['y'], 'ro-', label='Qe (original)', markersize=3)
+        if data['Qe'] is not None:
+            axes[1,0].plot(data['x_coord'], data['Qe'], 'r-', label='Qe (interpolated)', linewidth=2)
+    axes[1,0].set_xlabel('x/a')
+    axes[1,0].set_ylabel('Qe [W/m³]')
+    axes[1,0].legend()
+    axes[1,0].grid(True)
+    axes[1,0].set_title('Electron Heating')
+    
+    # Ion heating
+    if len(raw_data['Qi_data']['x']) > 0:
+        axes[1,1].plot(raw_data['Qi_data']['x'], raw_data['Qi_data']['y'], 'bo-', label='Qi (original)', markersize=3)
+        if data['Qi'] is not None:
+            axes[1,1].plot(data['x_coord'], data['Qi'], 'b-', label='Qi (interpolated)', linewidth=2)
+    axes[1,1].set_xlabel('x/a')
+    axes[1,1].set_ylabel('Qi [W/m³]')
+    axes[1,1].legend()
+    axes[1,1].grid(True)
+    axes[1,1].set_title('Ion Heating (NBI)')
+    
+    # Remove empty subplot
+    axes[1,2].remove()
+    
+    plt.tight_layout()
+    plt.show()
