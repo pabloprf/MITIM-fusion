@@ -240,6 +240,17 @@ class gacode_state(MITIMstate.mitim_state):
         self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
         self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
 
+
+        self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
+
+        self.derived["kappa995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
+
+        self.derived["delta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"])
+
+        self.derived["delta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"])
+        
+        self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
+
     def write_state(self, file=None, limitedNames=False):
         print("\t- Writting input.gacode file")
 
@@ -455,8 +466,6 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_xlabel("R (m)")
         ax.set_ylabel("Z (m)")
         GRAPHICStools.addDenseAxis(ax)
-
-
 
 
 def calculateGeometricFactors(profiles, n_theta=1001):
