@@ -140,7 +140,7 @@ class vmec_state(MITIMstate.mitim_state):
     def plot_state_flux_surfaces(self, ax=None, c='b'):
         
         rhos_plot = np.linspace(0.0, 1.0, 10)
-        phis_plot = [0.0, np.pi/2, np.pi, 3*np.pi/2] #np.linspace(0.0, 2.0 * np.pi, 5)
+        phis_plot = [0.0, np.pi/2, np.pi, 3*np.pi/2]
 
         ls = GRAPHICStools.listLS()
         
