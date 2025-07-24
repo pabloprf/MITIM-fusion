@@ -87,6 +87,8 @@ def ensure_variables_existence(self):
 The mitim_state class is the base class for manipulating plasma states in MITIM.
 Any class that inherits from this class should implement the methods:
 
+    - derive_quantities: to derive quantities from the plasma state (must at least define "r" and call the derive_quantities_base method).
+
     - derive_geometry: to derive the geometry of the plasma state.
     
     - write_state: to write the plasma state to a file.
@@ -124,7 +126,7 @@ class mitim_state:
         return instance
 
     @IOtools.hook_method(before=ensure_variables_existence)
-    def derive_quantities(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
+    def derive_quantities_base(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
 
         # -------------------------------------
         self.readSpecies()
@@ -144,14 +146,14 @@ class mitim_state:
             print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
 
         # Useful to have gradients in the basic ----------------------------------------------------------
-        self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
-        self.derived["aLne"] = aLT(self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"])
+        self.derived["aLTe"] = aLT(self.derived["r"], self.profiles["te(keV)"])
+        self.derived["aLne"] = aLT(self.derived["r"], self.profiles["ne(10^19/m^3)"])
 
         self.derived["aLTi"] = self.profiles["ti(keV)"] * 0.0
         self.derived["aLni"] = []
         for i in range(self.profiles["ti(keV)"].shape[1]):
-            self.derived["aLTi"][:, i] = aLT(self.profiles["rmin(m)"], self.profiles["ti(keV)"][:, i])
-            self.derived["aLni"].append(aLT(self.profiles["rmin(m)"], self.profiles["ni(10^19/m^3)"][:, i]))
+            self.derived["aLTi"][:, i] = aLT(self.derived["r"], self.profiles["ti(keV)"][:, i])
+            self.derived["aLni"].append(aLT(self.derived["r"], self.profiles["ni(10^19/m^3)"][:, i]))
         self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
         # ------------------------------------------------------------------------------------------------
 
@@ -203,6 +205,9 @@ class mitim_state:
     # ************************************************************************************************************************************************
     # Derivation methods that children classes should implement
     # ************************************************************************************************************************************************
+
+    def derive_quantities(self, *args, **kwargs):
+        raise Exception('[MITIM] derive_quantities method is not implemented in the base class (to define "r"). Please use a derived class that implements it.')
 
     def derive_geometry(self, *args, **kwargs):
         raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
@@ -310,17 +315,17 @@ class mitim_state:
         # --------- MAIN (useful for STATEtools)
         # ---------------------------------------------------------------------------------------------------------------------
 
-        self.derived["a"] = self.profiles["rmin(m)"][-1]
+        self.derived["a"] = self.derived["r"][-1]
         # self.derived['epsX'] = self.profiles['rmaj(m)'] / self.profiles['rmin(m)']
         # self.derived['eps'] = self.derived['epsX'][-1]
-        self.derived["eps"] = self.profiles["rmin(m)"][-1] / self.profiles["rmaj(m)"][-1]
+        self.derived["eps"] = self.derived["r"][-1] / self.profiles["rmaj(m)"][-1]
 
-        self.derived["roa"] = self.profiles["rmin(m)"] / self.derived["a"]
+        self.derived["roa"] = self.derived["r"] / self.derived["a"]
         self.derived["Rmajoa"] = self.profiles["rmaj(m)"] / self.derived["a"]
         self.derived["Zmagoa"] = self.profiles["zmag(m)"] / self.derived["a"]
 
         self.derived["torflux"] = float(self.profiles["torfluxa(Wb/radian)"][0])* 2* np.pi* self.profiles["rho(-)"] ** 2 # Wb
-        self.derived["B_unit"] = PLASMAtools.Bunit(self.derived["torflux"], self.profiles["rmin(m)"])
+        self.derived["B_unit"] = PLASMAtools.Bunit(self.derived["torflux"], self.derived["r"])
 
         self.derived["psi_pol_n"] = (
             self.profiles["polflux(Wb/radian)"] - self.profiles["polflux(Wb/radian)"][0]
@@ -371,7 +376,7 @@ class mitim_state:
             self.profiles["ne(10^19/m^3)"] * 1e-1,
             self.derived["mi_ref"],
             np.abs(self.derived["B_unit"]),
-            self.profiles["rmin(m)"][-1],
+            self.derived["r"][-1],
         )
 
         """
@@ -437,7 +442,7 @@ class mitim_state:
 		profiles_gen puts any missing power into the CX: qioni, qione
 		"""
 
-        r = self.profiles["rmin(m)"]
+        r = self.derived["r"]
         volp = self.derived["volp_geo"]
 
         self.derived["qe_MW"] = CALCtools.volume_integration(self.derived["qe"], r, volp)
@@ -467,7 +472,7 @@ class mitim_state:
         self.derived["mt_Jm2"] = self.derived["mt_Jmiller"] / (volp)
 
         # Extras for plotting in TGYRO for comparison
-        P = np.zeros(len(self.profiles["rmin(m)"]))
+        P = np.zeros(len(self.derived["r"]))
         if "qsync(MW/m^3)" in self.profiles:
             P += self.profiles["qsync(MW/m^3)"]
         if "qbrem(MW/m^3)" in self.profiles:
@@ -603,30 +608,30 @@ class mitim_state:
         """
 		Derivatives
 		"""
-        self.derived["aLTe"] = aLT(self.profiles["rmin(m)"], self.profiles["te(keV)"])
+        self.derived["aLTe"] = aLT(self.derived["r"], self.profiles["te(keV)"])
         self.derived["aLTi"] = self.profiles["ti(keV)"] * 0.0
         for i in range(self.profiles["ti(keV)"].shape[1]):
             self.derived["aLTi"][:, i] = aLT(
-                self.profiles["rmin(m)"], self.profiles["ti(keV)"][:, i]
+                self.derived["r"], self.profiles["ti(keV)"][:, i]
             )
         self.derived["aLne"] = aLT(
-            self.profiles["rmin(m)"], self.profiles["ne(10^19/m^3)"]
+            self.derived["r"], self.profiles["ne(10^19/m^3)"]
         )
         self.derived["aLni"] = []
         for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
             self.derived["aLni"].append(
-                aLT(self.profiles["rmin(m)"], self.profiles["ni(10^19/m^3)"][:, i])
+                aLT(self.derived["r"], self.profiles["ni(10^19/m^3)"][:, i])
             )
         self.derived["aLni"] = np.transpose(np.array(self.derived["aLni"]))
 
         if "w0(rad/s)" not in self.profiles:
             self.profiles["w0(rad/s)"] = self.profiles["rho(-)"] * 0.0
-        self.derived["aLw0"] = aLT(self.profiles["rmin(m)"], self.profiles["w0(rad/s)"])
+        self.derived["aLw0"] = aLT(self.derived["r"], self.profiles["w0(rad/s)"])
         self.derived["dw0dr"] = -grad(
-            self.profiles["rmin(m)"], self.profiles["w0(rad/s)"]
+            self.derived["r"], self.profiles["w0(rad/s)"]
         )
 
-        self.derived["dqdr"] = grad(self.profiles["rmin(m)"], self.profiles["q(-)"])
+        self.derived["dqdr"] = grad(self.derived["r"], self.profiles["q(-)"])
 
         """
 		Other, performance
@@ -919,7 +924,7 @@ class mitim_state:
 
         nG = PLASMAtools.Greenwald_density(
             np.abs(float(self.profiles["current(MA)"][-1])),
-            float(self.profiles["rmin(m)"][-1]),
+            float(self.derived["r"][-1]),
         )
         self.derived["fG"] = self.derived["ne_vol20"] / nG
         self.derived["fG_x"] = self.profiles["ne(10^19/m^3)"]* 0.1 / nG
@@ -1008,7 +1013,7 @@ class mitim_state:
     def tglf_plasma(self):
 
         def deriv_gacode(y):
-            return grad(self.profiles["rmin(m)"],y).cpu().numpy()
+            return grad(self.derived["r"],y).cpu().numpy()
 
         self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
 
@@ -1029,18 +1034,18 @@ class mitim_state:
             self.derived["mi_ref"],
             self.derived["B_unit"])
 
-        self.derived['pprime'] = 1E-7 * self.profiles["q(-)"]*self.derived['a']**2/self.profiles["rmin(m)"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
+        self.derived['pprime'] = 1E-7 * self.profiles["q(-)"]*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
         self.derived['pprime'][0] = 0.0
 
-        self.derived['drmin/dr'] = deriv_gacode(self.profiles["rmin(m)"])
+        self.derived['drmin/dr'] = deriv_gacode(self.derived["r"])
         self.derived['dRmaj/dr'] = deriv_gacode(self.profiles["rmaj(m)"])
         self.derived['dZmaj/dr'] = deriv_gacode(self.profiles["zmag(m)"])
 
-        self.derived['s_kappa']  = self.profiles["rmin(m)"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
-        self.derived['s_delta']  = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["delta(-)"])
-        self.derived['s_zeta']   = self.profiles["rmin(m)"]                             * deriv_gacode(self.profiles["zeta(-)"])
+        self.derived['s_kappa']  = self.derived["r"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
+        self.derived['s_delta']  = self.derived["r"]                             * deriv_gacode(self.profiles["delta(-)"])
+        self.derived['s_zeta']   = self.derived["r"]                             * deriv_gacode(self.profiles["zeta(-)"])
         
-        s = self.profiles["rmin(m)"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
+        s = self.derived["r"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
         self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
 
         '''
@@ -1055,7 +1060,7 @@ class mitim_state:
 
         w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
         gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.profiles["rmin(m)"]/self.profiles["q(-)"] 
+        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/self.profiles["q(-)"] 
 
         self.derived['vexb_shear']  = gamma_eb0 * self.derived["a"]/self.derived['c_s']
         self.derived['vpar_shear']  = gamma_p0  * self.derived["a"]/self.derived['c_s']
@@ -1101,7 +1106,7 @@ class mitim_state:
         for j in range(self.profiles["te(keV)"].shape[0] - min_number_points):
             i = j + min_number_points
             We_x[i], Wi_x[i], Ne_x[i], _ = PLASMAtools.calculateContent(
-                np.expand_dims(self.profiles["rmin(m)"][:i], 0),
+                np.expand_dims(self.derived["r"][:i], 0),
                 np.expand_dims(self.profiles["te(keV)"][:i], 0),
                 np.expand_dims(np.transpose(self.profiles["ti(keV)"][:i]), 0),
                 np.expand_dims(self.profiles["ne(10^19/m^3)"][:i] * 0.1, 0),
@@ -1112,7 +1117,7 @@ class mitim_state:
             )
 
             _, _, Ni_x[i], _ = PLASMAtools.calculateContent(
-                np.expand_dims(self.profiles["rmin(m)"][:i], 0),
+                np.expand_dims(self.derived["r"][:i], 0),
                 np.expand_dims(self.profiles["te(keV)"][:i], 0),
                 np.expand_dims(np.transpose(self.profiles["ti(keV)"][:i]), 0),
                 np.expand_dims(
@@ -1363,7 +1368,7 @@ class mitim_state:
             fZ2 += self.Species[i - 1]["Z"] ** 2 * self.derived["fi"][:, i - 1]
 
         Zr = fZ2 / fZ1
-        Zr_vol = CALCtools.volume_integration(Zr, self.profiles["rmin(m)"], self.derived["volp_geo"])[-1] / self.derived["volume"]
+        Zr_vol = CALCtools.volume_integration(Zr, self.derived["r"], self.derived["volp_geo"])[-1] / self.derived["volume"]
 
         print(f'\t\t\t* Original plasma had Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
@@ -1834,7 +1839,7 @@ class mitim_state:
         Ohmic_old = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
 
         dvol = self.derived["volp_geo"] * np.append(
-            [0], np.diff(self.profiles["rmin(m)"])
+            [0], np.diff(self.derived["r"])
         )
 
         print(
@@ -1945,7 +1950,7 @@ class mitim_state:
             print(f"\t- nu_eff = {nu_effCGYRO}, ne_peaking = {ne_peaking}")
 
         # Extra
-        r = self.profiles["rmin(m)"]
+        r = self.derived["r"]
         volp = self.derived["volp_geo"]
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - 0.9))
 

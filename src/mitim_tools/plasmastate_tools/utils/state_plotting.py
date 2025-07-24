@@ -58,7 +58,8 @@ def add_axes(figs):
         fig3.add_subplot(grid[0, 2]),
         fig3.add_subplot(grid[1, 2]),
         fig3.add_subplot(grid[2, 2]),
-        fig3.add_subplot(grid[:, 3]),
+        fig3.add_subplot(grid[0, 3], projection="3d"),
+        fig3.add_subplot(grid[1:, 3]),
     ]
 
     grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
