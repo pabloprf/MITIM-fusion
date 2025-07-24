@@ -358,7 +358,6 @@ class TGYRO:
         # ------ Write input profiles
         # -----------------------------------
 
-        print(f"\t\t- Using input.profiles from {IOtools.clipstr(self.profiles.file)}")
         fil = "input.gacode"
 
         if self.profiles.profiles['rho(-)'][0] > 0.0:
@@ -1166,8 +1165,8 @@ class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
         self.FolderTGYRO = FolderTGYRO
 
+        from mitim_tools.gacode_tools import PROFILEStools
         if (profiles is None) and (FolderTGYRO / "input.gacode").exists():
-            from mitim_tools.gacode_tools import PROFILEStools
             profiles = PROFILEStools.gacode_state(FolderTGYRO / f"input.gacode", derive_quantities=False)
 
         self.profiles = profiles

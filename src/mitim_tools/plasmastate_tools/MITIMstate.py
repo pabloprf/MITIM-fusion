@@ -2247,7 +2247,7 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             plasma = {
-                'NS': len(species)+1,
+                'NS': len(species),
                 'SIGN_BT': -1.0,
                 'SIGN_IT': -1.0,
                 'VEXB': 0.0,
@@ -2299,7 +2299,7 @@ class mitim_state:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
             inputsTGLF[rho] = input_dict
-
+            
         return inputsTGLF
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):

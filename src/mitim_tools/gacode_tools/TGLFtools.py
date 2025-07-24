@@ -233,12 +233,17 @@ class TGLF:
 
         # PROFILES class.
 
-        from mitim_tools.gacode_tools import PROFILEStools
-        profiles = (
-            PROFILEStools.gacode_state(inputgacode)
-            if inputgacode is not None
-            else None
-        )
+        if inputgacode is not None:
+            
+            if isinstance(inputgacode, str) or isinstance(inputgacode, Path):
+                
+                from mitim_tools.gacode_tools import PROFILEStools
+                profiles = PROFILEStools.gacode_state(inputgacode)
+                
+            else:
+                
+                # If inputgacode is already a PROFILEStools object, just use it
+                profiles = inputgacode
 
         # TGYRO class. It checks existence and creates input.profiles/input.gacode
 
@@ -373,14 +378,19 @@ class TGLF:
 
         # PROFILES class.
 
-        from mitim_tools.gacode_tools import PROFILEStools
-        self.profiles = (
-            PROFILEStools.gacode_state(inputgacode)
-            if inputgacode is not None
-            else None
-        )
-
-        if self.profiles is None:
+        if inputgacode is not None:
+            
+            if isinstance(inputgacode, str) or isinstance(inputgacode, Path):
+                
+                from mitim_tools.gacode_tools import PROFILEStools
+                self.profiles = PROFILEStools.gacode_state(inputgacode)
+                
+            else:
+                
+                # If inputgacode is already a PROFILEStools object, just use it
+                self.profiles = inputgacode
+                
+        else:
             
             # TGYRO class. It checks existence and creates input.profiles/input.gacode
 
@@ -412,6 +422,7 @@ class TGLF:
 
             for rho in self.inputsTGLF:
                 self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
+
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize by taking directly the inputs
