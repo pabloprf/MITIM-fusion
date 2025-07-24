@@ -15,6 +15,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
+
 def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
     # Determine minimal set of variables that should be present in the profiles
@@ -81,6 +82,19 @@ def ensure_variables_existence(self):
         if key not in self.profiles:
             self.profiles[key] = copy.deepcopy(self.profiles[template_key_1d]) * 0.0 if dim == 1 else copy.deepcopy(self.profiles[template_key_2d]) * 0.0
 
+
+'''
+The mitim_state class is the base class for manipulating plasma states in MITIM.
+Any class that inherits from this class should implement the methods:
+
+    - derive_geometry: to derive the geometry of the plasma state.
+    
+    - write_state: to write the plasma state to a file.
+    
+    - plot_geometry: to plot the geometry of the plasma state.
+
+'''
+
 class mitim_state:
     '''
     Class to manipulate the plasma state in MITIM.
@@ -89,6 +103,25 @@ class mitim_state:
     def __init__(self, type_file = 'input.gacode'):
 
         self.type = type_file
+
+    @classmethod
+    def scratch(cls, profiles, label_header='', **kwargs_process):
+        # Method to write a scratch file
+        
+        instance = cls(None)
+
+        # Header
+        instance.header = f'''
+#  Created from scratch with MITIM version {__version__}
+#  {label_header}                                                       
+#
+'''
+        # Add data to profiles
+        instance.profiles = profiles
+
+        instance.process(**kwargs_process)
+
+        return instance
 
     @IOtools.hook_method(before=ensure_variables_existence)
     def derive_quantities(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
@@ -125,34 +158,62 @@ class mitim_state:
         if derive_quantities:
             self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
 
+    def write_state(self, file=None):
+        print("\t- Writting input.gacode file")
+
+        if file is None:
+            file = self.files[0]
+
+        with open(file, "w") as f:
+            for line in self.header:
+                f.write(line)
+
+            for i in self.profiles:
+                if "(" not in i:
+                    f.write(f"# {i}\n")
+                else:
+                    f.write(f"# {i.split('(')[0]} | {i.split('(')[-1].split(')')[0]}\n")
+
+                if i in self.titles_single:
+                    listWrite = self.profiles[i]
+
+                    if IOtools.isnum(listWrite[0]):
+                        listWrite = [f"{i:.7e}".rjust(14) for i in listWrite]
+                        f.write(f"{''.join(listWrite)}\n")
+                    else:
+                        f.write(f"{' '.join(listWrite)}\n")
+
+                else:
+                    if len(self.profiles[i].shape) == 1:
+                        for j, val in enumerate(self.profiles[i]):
+                            pos = f"{j + 1}".rjust(3)
+                            valt = f"{round(val,99):.7e}".rjust(15)
+                            f.write(f"{pos}{valt}\n")
+                    else:
+                        for j, val in enumerate(self.profiles[i]):
+                            pos = f"{j + 1}".rjust(3)
+                            txt = "".join([f"{k:.7e}".rjust(15) for k in val])
+                            f.write(f"{pos}{txt}\n")
+
+        print(f"\t\t~ File {IOtools.clipstr(file)} written")
+
+        # Update file
+        self.files[0] = file
+
+    # ************************************************************************************************************************************************
+    # Derivation methods that children classes should implement
+    # ************************************************************************************************************************************************
+
     def derive_geometry(self, *args, **kwargs):
         raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
 
-    def write_state(self, *args, **kwargs):
-        raise Exception('[MITIM] This method is not implemented in the base class. Please use a derived class that implements it.')
+    def plot_geometry(self, *args, **kwargs):
+        print('[MITIM] Method plot_geometry() is not implemented in the base class. Please use a derived class that implements it.')
+        pass
 
-    # -------------------------------------------------------------------------------------
-    # Method to write a scratch file
-    # -------------------------------------------------------------------------------------
-
-    @classmethod
-    def scratch(cls, profiles, label_header='', **kwargs_process):
-        instance = cls(None)
-
-        # Header
-        instance.header = f'''
-#  Created from scratch with MITIM version {__version__}
-#  {label_header}                                                       
-#
-'''
-        # Add data to profiles
-        instance.profiles = profiles
-
-        instance.process(**kwargs_process)
-
-        return instance
-
-    # -------------------------------------------------------------------------------------
+    # ************************************************************************************************************************************************
+    # Derivation methods
+    # ************************************************************************************************************************************************
 
     def calculate_Er(
         self,
@@ -201,7 +262,6 @@ class mitim_state:
 
         if write_new_file is not None:
             self.write_state(file=write_new_file)
-
 
     def readSpecies(self, maxSpecies=100):
         maxSpecies = int(self.profiles["nion"][0])
@@ -1663,6 +1723,144 @@ class mitim_state:
         if new_file is not None:
             self.write_state(file=new_file)
 
+    def parabolizePlasma(self):
+        _, T = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["Te_vol"],
+            nu=self.derived["Te_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["te(keV)"][-1],
+        )
+        _, Ti = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["Ti_vol"],
+            nu=self.derived["Ti_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["ti(keV)"][-1, 0],
+        )
+        _, n = PLASMAtools.parabolicProfile(
+            Tbar=self.derived["ne_vol20"] * 1e1,
+            nu=self.derived["ne_peaking"],
+            rho=self.profiles["rho(-)"],
+            Tedge=self.profiles["ne(10^19/m^3)"][-1],
+        )
+
+        self.profiles["te(keV)"] = T
+
+        self.profiles["ti(keV)"][:, 0] = Ti
+        self.makeAllThermalIonsHaveSameTemp(refIon=0)
+
+        factor_n = n / self.profiles["ne(10^19/m^3)"]
+        self.profiles["ne(10^19/m^3)"] = n
+        self.scaleAllThermalDensities(scaleFactor=factor_n)
+
+        self.derive_quantities()
+
+    def changeRFpower(self, PrfMW=25.0):
+        """
+        keeps same partition
+        """
+        print(f"- Changing the RF power from {self.derived['qRF_MW'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
+        
+        if self.derived["qRF_MW"][-1] == 0.0:
+            raise Exception("No RF power in the input.gacode, cannot modify the RF power")
+
+        for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
+            self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MW"][-1]
+
+        self.derive_quantities()
+
+    def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
+
+        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
+
+        self.profiles["te(keV)"] = self.profiles["te(keV)"] * TkeV / self.profiles["te(keV)"][ix]
+
+        print(f"- Producing {typeEdge} boundary condition @ rho = {rho}, T = {TkeV} keV",typeMsg="i",)
+
+        for sp in range(len(self.Species)):
+            if self.Species[sp]["S"] == "therm":
+                self.profiles["ti(keV)"][:, sp] = self.profiles["ti(keV)"][:, sp] * TkeV / self.profiles["ti(keV)"][ix, sp]
+
+        if typeEdge == "linear":
+            self.profiles["te(keV)"][ix:] = np.linspace(TkeV, Tesep, len(self.profiles["rho(-)"][ix:]))
+
+            for sp in range(len(self.Species)):
+                if self.Species[sp]["S"] == "therm":
+                    self.profiles["ti(keV)"][ix:, sp] = np.linspace(TkeV, Tisep, len(self.profiles["rho(-)"][ix:]))
+
+        elif typeEdge == "same":
+            pass
+        else:
+            raise Exception("no edge")
+
+    def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5, isn20_edge=True):
+        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
+
+        # Determine the factor to scale the density (either average or at rho)
+        if not isn20_edge:
+            print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+            factor = n20 / self.derived["ne_vol20"]
+        else:
+            print(f"- Changing the density at rho={rho} from {self.profiles['ne(10^19/m^3)'][ix]*1E-1:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
+            factor = n20 / (self.profiles["ne(10^19/m^3)"][ix]*1E-1)
+        # ------------------------------------------------------------------
+
+        # Scale the density profiles
+        for i in ["ne(10^19/m^3)", "ni(10^19/m^3)"]:
+            self.profiles[i] = self.profiles[i] * factor
+
+        # Apply the edge condition
+        if typeEdge == "linear":
+            factor_x = np.linspace(self.profiles["ne(10^19/m^3)"][ix],nedge20 * 1e1,len(self.profiles["rho(-)"][ix:]),)/ self.profiles["ne(10^19/m^3)"][ix:]
+
+            self.profiles["ne(10^19/m^3)"][ix:] = self.profiles["ne(10^19/m^3)"][ix:] * factor_x
+
+            for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
+                self.profiles["ni(10^19/m^3)"][ix:, i] = self.profiles["ni(10^19/m^3)"][ix:, i] * factor_x
+
+        elif typeEdge == "same":
+            pass
+        else:
+            raise Exception("no edge")
+        
+    def addSawtoothEffectOnOhmic(self, PohTot, mixRadius=None, plotYN=False):
+        """
+        This will implement a flat profile inside the mixRadius to reduce the ohmic power by certain amount
+        """
+
+        if mixRadius is None:
+            mixRadius = self.profiles["rho(-)"][np.where(self.profiles["q(-)"] > 1)][0]
+
+        print(f"\t- Original Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
+        Ohmic_old = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
+
+        dvol = self.derived["volp_geo"] * np.append(
+            [0], np.diff(self.profiles["rmin(m)"])
+        )
+
+        print(
+            f"\t- Will implement sawtooth ohmic power correction inside rho={mixRadius}"
+        )
+        Psaw = CDFtools.profilePower(
+            self.profiles["rho(-)"],
+            dvol,
+            PohTot - self.derived["qOhm_MW"][-1],
+            mixRadius,
+        )
+        self.profiles["qohme(MW/m^3)"] += Psaw
+        self.derive_quantities()
+
+        print(f"\t- New Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
+        Ohmic_new = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
+
+        if plotYN:
+            fig, ax = plt.subplots()
+            ax.plot(self.profiles["rho(-)"], Ohmic_old, "r", lw=2)
+            ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
+            plt.show()
+
+    # ************************************************************************************************************************************************
+    # Plotting methods for the state class, which is used to plot the profiles, powers, geometry, gradients, flows, and other quantities.
+    # ************************************************************************************************************************************************
 
     def plot(
         self,
@@ -1974,146 +2172,9 @@ class mitim_state:
 
         IOtools.writeExcel_fromDict(dictExcel, file, fromRow=1)
 
-    def parabolizePlasma(self):
-        _, T = PLASMAtools.parabolicProfile(
-            Tbar=self.derived["Te_vol"],
-            nu=self.derived["Te_peaking"],
-            rho=self.profiles["rho(-)"],
-            Tedge=self.profiles["te(keV)"][-1],
-        )
-        _, Ti = PLASMAtools.parabolicProfile(
-            Tbar=self.derived["Ti_vol"],
-            nu=self.derived["Ti_peaking"],
-            rho=self.profiles["rho(-)"],
-            Tedge=self.profiles["ti(keV)"][-1, 0],
-        )
-        _, n = PLASMAtools.parabolicProfile(
-            Tbar=self.derived["ne_vol20"] * 1e1,
-            nu=self.derived["ne_peaking"],
-            rho=self.profiles["rho(-)"],
-            Tedge=self.profiles["ne(10^19/m^3)"][-1],
-        )
-
-        self.profiles["te(keV)"] = T
-
-        self.profiles["ti(keV)"][:, 0] = Ti
-        self.makeAllThermalIonsHaveSameTemp(refIon=0)
-
-        factor_n = n / self.profiles["ne(10^19/m^3)"]
-        self.profiles["ne(10^19/m^3)"] = n
-        self.scaleAllThermalDensities(scaleFactor=factor_n)
-
-        self.derive_quantities()
-
-
-    def changeRFpower(self, PrfMW=25.0):
-        """
-        keeps same partition
-        """
-        print(f"- Changing the RF power from {self.derived['qRF_MW'][-1]:.1f} MW to {PrfMW:.1f} MW",typeMsg="i",)
-        
-        if self.derived["qRF_MW"][-1] == 0.0:
-            raise Exception("No RF power in the input.gacode, cannot modify the RF power")
-
-        for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
-            self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MW"][-1]
-
-        self.derive_quantities()
-
-    def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
-
-        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
-
-        self.profiles["te(keV)"] = self.profiles["te(keV)"] * TkeV / self.profiles["te(keV)"][ix]
-
-        print(f"- Producing {typeEdge} boundary condition @ rho = {rho}, T = {TkeV} keV",typeMsg="i",)
-
-        for sp in range(len(self.Species)):
-            if self.Species[sp]["S"] == "therm":
-                self.profiles["ti(keV)"][:, sp] = self.profiles["ti(keV)"][:, sp] * TkeV / self.profiles["ti(keV)"][ix, sp]
-
-        if typeEdge == "linear":
-            self.profiles["te(keV)"][ix:] = np.linspace(TkeV, Tesep, len(self.profiles["rho(-)"][ix:]))
-
-            for sp in range(len(self.Species)):
-                if self.Species[sp]["S"] == "therm":
-                    self.profiles["ti(keV)"][ix:, sp] = np.linspace(TkeV, Tisep, len(self.profiles["rho(-)"][ix:]))
-
-        elif typeEdge == "same":
-            pass
-        else:
-            raise Exception("no edge")
-
-
-    def imposeBCdens(self, n20=2.0, rho=0.9, typeEdge="linear", nedge20=0.5, isn20_edge=True):
-        ix = np.argmin(np.abs(rho - self.profiles["rho(-)"]))
-
-        # Determine the factor to scale the density (either average or at rho)
-        if not isn20_edge:
-            print(f"- Changing the initial average density from {self.derived['ne_vol20']:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
-            factor = n20 / self.derived["ne_vol20"]
-        else:
-            print(f"- Changing the density at rho={rho} from {self.profiles['ne(10^19/m^3)'][ix]*1E-1:.1f} 1E20/m3 to {n20:.1f} 1E20/m3",typeMsg="i")
-            factor = n20 / (self.profiles["ne(10^19/m^3)"][ix]*1E-1)
-        # ------------------------------------------------------------------
-
-        # Scale the density profiles
-        for i in ["ne(10^19/m^3)", "ni(10^19/m^3)"]:
-            self.profiles[i] = self.profiles[i] * factor
-
-        # Apply the edge condition
-        if typeEdge == "linear":
-            factor_x = np.linspace(self.profiles["ne(10^19/m^3)"][ix],nedge20 * 1e1,len(self.profiles["rho(-)"][ix:]),)/ self.profiles["ne(10^19/m^3)"][ix:]
-
-            self.profiles["ne(10^19/m^3)"][ix:] = self.profiles["ne(10^19/m^3)"][ix:] * factor_x
-
-            for i in range(self.profiles["ni(10^19/m^3)"].shape[1]):
-                self.profiles["ni(10^19/m^3)"][ix:, i] = self.profiles["ni(10^19/m^3)"][ix:, i] * factor_x
-
-        elif typeEdge == "same":
-            pass
-        else:
-            raise Exception("no edge")
-        
-    def addSawtoothEffectOnOhmic(self, PohTot, mixRadius=None, plotYN=False):
-        """
-        This will implement a flat profile inside the mixRadius to reduce the ohmic power by certain amount
-        """
-
-        if mixRadius is None:
-            mixRadius = self.profiles["rho(-)"][np.where(self.profiles["q(-)"] > 1)][0]
-
-        print(f"\t- Original Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
-        Ohmic_old = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
-
-        dvol = self.derived["volp_geo"] * np.append(
-            [0], np.diff(self.profiles["rmin(m)"])
-        )
-
-        print(
-            f"\t- Will implement sawtooth ohmic power correction inside rho={mixRadius}"
-        )
-        Psaw = CDFtools.profilePower(
-            self.profiles["rho(-)"],
-            dvol,
-            PohTot - self.derived["qOhm_MW"][-1],
-            mixRadius,
-        )
-        self.profiles["qohme(MW/m^3)"] += Psaw
-        self.derive_quantities()
-
-        print(f"\t- New Ohmic power: {self.derived['qOhm_MW'][-1]:.2f}MW")
-        Ohmic_new = copy.deepcopy(self.profiles["qohme(MW/m^3)"])
-
-        if plotYN:
-            fig, ax = plt.subplots()
-            ax.plot(self.profiles["rho(-)"], Ohmic_old, "r", lw=2)
-            ax.plot(self.profiles["rho(-)"], Ohmic_new, "g", lw=2)
-            plt.show()
-
-    # ---------------------------------------------------------------------------------------------------------------------------------------
+    # ************************************************************************************************************************************************
     # Code conversions
-    # ---------------------------------------------------------------------------------------------------------------------------------------
+    # ************************************************************************************************************************************************
 
     def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
@@ -2270,6 +2331,7 @@ class mitim_state:
 
         return eped_evaluation
 
+
 class DataTable:
     def __init__(self, variables=None):
 
@@ -2343,37 +2405,6 @@ class DataTable:
             # Write each row in self.data to the CSV file
             for row in self.data:
                 writer.writerow(row)
-
-
-def readTGYRO_profile_extra(file, varLabel="B_unit (T)"):
-    with open(file) as f:
-        aux = f.readlines()
-
-    lenn = int(aux[36].split()[-1])
-
-    i = 38
-    allVec = []
-    while i < len(aux):
-        vec = np.array([float(j) for j in aux[i : i + lenn]])
-        i += lenn
-        allVec.append(vec)
-    allVec = np.array(allVec)
-
-    dictL = OrderedDict()
-    for line in aux[2:35]:
-        lab = line.split("(:)")[-1].split("\n")[0]
-        try:
-            dictL[lab] = int(line.split()[1])
-        except:
-            dictL[lab] = [int(j) for j in line.split()[1].split("-")]
-
-    for i in dictL:
-        if i.strip(" ") == varLabel:
-            val = allVec[dictL[i] - 1]
-            break
-
-    return val
-
 
 def aLT(r, p):
     return (
@@ -2494,7 +2525,6 @@ def gradientsMerger(p0, p_true, roa=0.46, blending=0.1):
     p.derive_quantities()
 
     return p
-
 
 def impurity_location(profiles, impurity_of_interest):
 
