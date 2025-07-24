@@ -17,9 +17,9 @@ class gacode_state(MITIMstate.mitim_state):
     and writes them in the way that MITIMstate class expects.
     '''
 
-    # ------------------------------------------------------------------
+    # ************************************************************************************************************************************************
     # Reading and interpreting input.gacode files
-    # ------------------------------------------------------------------
+    # ************************************************************************************************************************************************
 
     def __init__(self, file, derive_quantities=True, mi_ref=None):
 
@@ -157,9 +157,9 @@ class gacode_state(MITIMstate.mitim_state):
             self.profiles["w0(rad/s)"] = self.profiles["omega0(rad/s)"]
             del self.profiles["omega0(rad/s)"]
 
-    # ------------------------------------------------------------------
+    # ************************************************************************************************************************************************
     # Derivation (different from MITIMstate)
-    # ------------------------------------------------------------------
+    # ************************************************************************************************************************************************
    
     def derive_quantities(self, **kwargs):
  
@@ -187,11 +187,7 @@ class gacode_state(MITIMstate.mitim_state):
             self.profiles["shape_sin6(-)"],
         ]
 
-    # ------------------------------------------------------------------
-    # Geometry
-    # ------------------------------------------------------------------
-   
-    def derive_geometry(self, n_theta_geo=1001):
+    def derive_geometry(self, n_theta_geo=1001, **kwargs):
 
         self._produce_shape_lists()
 
@@ -251,71 +247,6 @@ class gacode_state(MITIMstate.mitim_state):
         
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 
-    def write_state(self, file=None, limitedNames=False):
-        print("\t- Writting input.gacode file")
-
-        if file is None:
-            file = self.files[0]
-
-        with open(file, "w") as f:
-            for line in self.header:
-                f.write(line)
-
-            for i in self.profiles:
-                if "(" not in i:
-                    f.write(f"# {i}\n")
-                else:
-                    f.write(f"# {i.split('(')[0]} | {i.split('(')[-1].split(')')[0]}\n")
-
-                if i in self.titles_single:
-                    if i == "name" and limitedNames:
-                        newlist = [self.profiles[i][0]]
-                        for k in self.profiles[i][1:]:
-                            if k not in [
-                                "D",
-                                "H",
-                                "T",
-                                "He4",
-                                "he4",
-                                "C",
-                                "O",
-                                "Ar",
-                                "W",
-                            ]:
-                                newlist.append("C")
-                            else:
-                                newlist.append(k)
-                        print(
-                            f"\n\n!! Correcting ion names from {self.profiles[i]} to {newlist} to avoid TGYRO radiation error (to solve in future?)\n\n",
-                            typeMsg="w",
-                        )
-                        listWrite = newlist
-                    else:
-                        listWrite = self.profiles[i]
-
-                    if IOtools.isfloat(listWrite[0]):
-                        listWrite = [f"{i:.7e}".rjust(14) for i in listWrite]
-                        f.write(f"{''.join(listWrite)}\n")
-                    else:
-                        f.write(f"{' '.join(listWrite)}\n")
-
-                else:
-                    if len(self.profiles[i].shape) == 1:
-                        for j, val in enumerate(self.profiles[i]):
-                            pos = f"{j + 1}".rjust(3)
-                            valt = f"{round(val,99):.7e}".rjust(15)
-                            f.write(f"{pos}{valt}\n")
-                    else:
-                        for j, val in enumerate(self.profiles[i]):
-                            pos = f"{j + 1}".rjust(3)
-                            txt = "".join([f"{k:.7e}".rjust(15) for k in val])
-                            f.write(f"{pos}{txt}\n")
-
-        print(f"\t\t~ File {IOtools.clipstr(file)} written")
-
-        # Update file
-        self.files[0] = file
-
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
 
         [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax13c] = axs3
@@ -341,7 +272,6 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
         ax.set_ylabel(varL)
-
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
