@@ -1902,45 +1902,6 @@ class mitim_state:
         
     def plot_geometry(self, *args, **kwargs):
         pass
-        
-    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
-        if ("R_surface" in self.derived) and (self.derived["R_surface"] is not None):
-            if ax is None:
-                plt.ion()
-                fig, ax = plt.subplots()
-                provided = False
-            else:
-                provided = True
-
-            for rho in surfaces_rho:
-                ir = np.argmin(np.abs(self.profiles["rho(-)"] - rho))
-
-                for i_toroidal in range(self.derived["R_surface"].shape[0]):
-                    ax.plot(
-                        self.derived["R_surface"][i_toroidal,ir, :],
-                        self.derived["Z_surface"][i_toroidal,ir, :],
-                        "-",
-                        lw=lw if rho<1.0 else lw1,
-                        c=color,
-                    )
-
-            ax.axhline(y=0, ls="--", lw=0.2, c="k")
-            ax.plot(
-                [self.profiles["rmaj(m)"][0]],
-                [self.profiles["zmag(m)"][0]],
-                "o",
-                markersize=2,
-                c=color,
-                label = label
-            )
-
-            if not provided:
-                ax.set_xlabel("R (m)")
-                ax.set_ylabel("Z (m)")
-                ax.set_title("Surfaces @ rho=" + str(surfaces_rho), fontsize=8)
-            ax.set_aspect("equal")
-        else:
-            print("\t- Cannot plot flux surface geometry", typeMsg="w")
 
     def plotPeaking(
         self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False

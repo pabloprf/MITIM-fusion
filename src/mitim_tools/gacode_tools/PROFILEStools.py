@@ -1,5 +1,7 @@
 import copy
+from turtle import color
 import numpy as np
+import matplotlib.pyplot as plt
 from collections import OrderedDict
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools import GEQtools
@@ -2691,6 +2693,87 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_xlabel("R (m)")
         ax.set_ylabel("Z (m)")
         GRAPHICStools.addDenseAxis(ax)
+        
+        ax = ax03c
+        self.plot_plasma_boundary(ax=ax, color=color)
+        
+    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
+        
+        if ax is None:
+            plt.ion()
+            fig, ax = plt.subplots()
+            provided = False
+        else:
+            provided = True
+
+        for rho in surfaces_rho:
+            ir = np.argmin(np.abs(self.profiles["rho(-)"] - rho))
+
+            for i_toroidal in range(self.derived["R_surface"].shape[0]):
+                ax.plot(
+                    self.derived["R_surface"][i_toroidal,ir, :],
+                    self.derived["Z_surface"][i_toroidal,ir, :],
+                    "-",
+                    lw=lw if rho<1.0 else lw1,
+                    c=color,
+                )
+
+        ax.axhline(y=0, ls="--", lw=0.2, c="k")
+        ax.plot(
+            [self.profiles["rmaj(m)"][0]],
+            [self.profiles["zmag(m)"][0]],
+            "o",
+            markersize=2,
+            c=color,
+            label = label
+        )
+
+        if not provided:
+            ax.set_xlabel("R (m)")
+            ax.set_ylabel("Z (m)")
+            ax.set_title("Surfaces @ rho=" + str(surfaces_rho), fontsize=8)
+        ax.set_aspect("equal")
+
+    def plot_plasma_boundary(self, ax=None, color="b"):
+        """
+        Plot the 3D plasma boundary by extruding the poloidal cross-section toroidally.
+        """
+
+        n_phi = 50 # Number of toroidal points for the surface mesh
+
+        R = self.derived["R_surface"][0,-1,:]  # Outermost flux surface R coordinates
+        Z = self.derived["Z_surface"][0,-1,:]  # Outermost flux surface Z coordinates
+
+        # Create toroidal angle array
+        phi = np.linspace(0, 2*np.pi, n_phi)
+        
+        # Create meshgrid for toroidal extrusion
+        PHI, THETA_POINTS = np.meshgrid(phi, range(len(R)))
+        R_mesh = R[THETA_POINTS]
+        Z_mesh = Z[THETA_POINTS]
+        
+        # Convert to Cartesian coordinates
+        x = R_mesh * np.cos(PHI)
+        y = R_mesh * np.sin(PHI)
+        z = Z_mesh * np.ones_like(PHI)  # Z doesn't depend on phi for axisymmetric case
+
+        # Create the 3D plot
+        if ax is None:
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(projection="3d")
+
+        # Plot the surface
+        ax.plot_surface(x, y, z, alpha=0.7, color=color)
+
+        # Set labels and title
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_zlabel('Z (m)')
+        ax.set_title('Plasma Boundary (3D)')
+        
+        # Set equal aspect ratio
+        ax.set_aspect("equal")
+
 
         # Impurities
         ax = axsImps[0]

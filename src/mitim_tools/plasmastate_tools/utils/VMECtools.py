@@ -68,8 +68,8 @@ class vmec_state(MITIMstate.mitim_state):
         # Produce variables
         self.profiles["rho(-)"] = (self.wout.phi/self.wout.phi[-1])**0.5 #np.linspace(0, 1, self.wout.ns)**0.5
         self.profiles["presf"] = self.wout.presf
-        self.profiles["q(-)"] = self.wout.q_factor
-        self.profiles["polflux(Wb/radian)"] = self.wout.chi
+        #self.profiles["q(-)"] = self.wout.q_factor
+        #self.profiles["polflux(Wb/radian)"] = self.wout.chi
 
         # Read Profiles
         data = self._read_profiles(x_coord=self.profiles["rho(-)"])
@@ -132,7 +132,7 @@ class vmec_state(MITIMstate.mitim_state):
         
         [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,axs_3d,axs_2d] = axs
         
-        self.plot_plasma_boundary(ax=axs_3d)
+        self.plot_plasma_boundary(ax=axs_3d, color=color)
         
         self.plot_state_flux_surfaces(ax=axs_2d, c=color)
 
@@ -148,13 +148,14 @@ class vmec_state(MITIMstate.mitim_state):
         
             for i in range(len(rhos_plot)):
                 self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=rhos_plot[i], c=c, lw = 0.5, ls = lsi)
-            self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=1.0, c=c, lw = 2, ls = lsi, label = f"$\\phi={phi_cut*180/np.pi:.1f} deg$")
+            self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=1.0, c=c, lw = 2, ls = lsi, label = f"{phi_cut*180/np.pi:.1f}°")
 
         ax.set_aspect('equal')
         ax.set_xlabel('R [m]')
         ax.set_ylabel('Z [m]')
         GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.addLegendApart(ax, ratio=0.9, size=6)
+        ax.legend(loc='best', fontsize=6)
+        #GRAPHICStools.addLegendApart(ax, ratio=0.9, size=6)
 
         ax.set_title(f'Poloidal Cross-section')
 
@@ -267,7 +268,7 @@ class vmec_state(MITIMstate.mitim_state):
         
         return uniform_data
 
-    def plot_plasma_boundary(self, ax=None):
+    def plot_plasma_boundary(self, ax=None, color="b"):
 
         # The output object contains the Fourier coefficients of the geometry in R and Z
         # as a function of the poloidal (theta) and toroidal (phi) angle-like coordinates
@@ -320,7 +321,7 @@ class vmec_state(MITIMstate.mitim_state):
             ax = fig.add_subplot(projection="3d")
 
         # Plot the surface
-        ax.plot_surface(x, y, z)
+        ax.plot_surface(x, y, z, alpha=0.7, color=color)
 
         # Set an equal aspect ratio
         ax.set_aspect("equal")
