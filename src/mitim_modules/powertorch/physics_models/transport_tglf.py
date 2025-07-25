@@ -1,4 +1,5 @@
-from sympy import per
+
+import shutil
 import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools
@@ -72,6 +73,8 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         if use_tglf_scan_trick is None:
             
+                # Just run TGLF once and apply an ad-hoc percent error to the results
+            
                 tglf.run(
                     'base',
                     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
@@ -92,7 +95,6 @@ class tglf_model(TRANSPORTtools.power_transport):
             
                 tglf.read(label='base',require_all_files=False)
                 
-                
                 Qe = [tglf.results['base']['TGLFout'][i].Qe_unn for i in range(len(RadiisToRun))]
                 Qi = [tglf.results['base']['TGLFout'][i].Qi_unn for i in range(len(RadiisToRun))]
                 Ge = [tglf.results['base']['TGLFout'][i].Ge_unn for i in range(len(RadiisToRun))]
@@ -104,6 +106,8 @@ class tglf_model(TRANSPORTtools.power_transport):
                 Flux_std = abs(Flux_mean)*percentError[0]/100.0
 
         else:
+            
+            # Run TGLF with scans to estimate the uncertainty
             
             Flux_base, Flux_mean, Flux_std = _run_tglf_uncertainty_model(
                 tglf,
@@ -167,6 +171,20 @@ class tglf_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["Ce_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
         
         return None
+
+    def _profiles_to_store(self):
+
+        if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+            if not whereFolder.exists():
+                IOtools.askNewFolder(whereFolder)
+
+            fil = whereFolder / f"input.gacode.{self.evaluation_number}"
+            shutil.copy2(self.file_profs, fil)
+            shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
+            print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
+        else:
+            print("\t- Could not move files", typeMsg="w")
 
 
 def _run_tglf_uncertainty_model(
