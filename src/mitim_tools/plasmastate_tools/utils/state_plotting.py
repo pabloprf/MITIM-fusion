@@ -46,21 +46,24 @@ def add_axes(figs):
         fig2.add_subplot(grid[0, 2]),
         fig2.add_subplot(grid[1, 2]),
     ]
-    grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.3)
-    ax00c = fig3.add_subplot(grid[0, 0])
+    
+    # GEOMETRY
+    grid = plt.GridSpec(6, 4, hspace=0.7, wspace=0.3)
+    ax00c = fig3.add_subplot(grid[0:2, 0])
     axsProf_3 = [
         ax00c,
-        fig3.add_subplot(grid[1, 0], sharex=ax00c),
-        fig3.add_subplot(grid[2, 0]),
-        fig3.add_subplot(grid[0, 1]),
-        fig3.add_subplot(grid[1, 1]),
-        fig3.add_subplot(grid[2, 1]),
-        fig3.add_subplot(grid[0, 2]),
-        fig3.add_subplot(grid[1, 2]),
-        fig3.add_subplot(grid[2, 2]),
-        fig3.add_subplot(grid[0, 3], projection="3d"),
-        fig3.add_subplot(grid[1:, 3]),
+        fig3.add_subplot(grid[2:4, 0], sharex=ax00c),
+        fig3.add_subplot(grid[4:, 0]),
+        fig3.add_subplot(grid[0:2, 1]),
+        fig3.add_subplot(grid[2:4, 1]),
+        fig3.add_subplot(grid[4:, 1]),
+        fig3.add_subplot(grid[0:2, 2]),
+        fig3.add_subplot(grid[2:4, 2]),
+        fig3.add_subplot(grid[4:, 2]),
+        fig3.add_subplot(grid[0:3, 3:], projection="3d"),
+        fig3.add_subplot(grid[3:, 3:]),
     ]
+    # ----
 
     grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
     axsProf_4 = [
