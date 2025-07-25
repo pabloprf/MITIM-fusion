@@ -64,7 +64,7 @@ class CGYROout:
         # --------------------------------------------------------------
         # Read inputs
         # --------------------------------------------------------------
-        
+
         self.params1D = {}
         for var in self.cgyrodata.__dict__:
             par = self.cgyrodata.__dict__[var]
@@ -78,6 +78,7 @@ class CGYROout:
         # Postprocess with MITIM-curated structures and variables
         # --------------------------------------------------------------
 
+        # Check for linear run
         if 'phib' in self.cgyrodata.__dict__ and last_tmin_for_linear:
             print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
             self.tmin = self.cgyrodata.t[-1]
@@ -124,8 +125,8 @@ class CGYROout:
         self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
 
         self._process_linear()
-        
-        if not minimal:
+
+        if minimal or not self.linear:
             self.cgyrodata.getbigfield()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:
@@ -139,9 +140,24 @@ class CGYROout:
         self._saturate_signals()
 
     def _process_linear(self):
+
+        # check for convergence 
+        self.linear_converged = False
+        info_file = f"{self.folder.resolve()}/out.cgyro.info"
+        if not os.path.exists(info_file):
+            raise FileNotFoundError(f"[MITIM] Could not find CGYRO info file at {info_file}. Please check the folder path or run CGYRO first.")
+        else:
+            with open(info_file, 'r') as f:
+                lines = f.readlines()
+                for line in lines: 
+                    if "EXIT: (CGYRO) Linear converged" in line:
+                        self.linear_converged = True
+                        break
         
-        self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
-        self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
+            self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            if self.g is np.nan or self.f is np.nan:
+                raise ValueError(f"[MITIM] Could not find f or g in CGYRO data at {info_file}. Please check the folder path or run CGYRO first.")
 
         # Ballooning Modes (complex eigenfunctions)
         if 'phib' in self.cgyrodata.__dict__:
