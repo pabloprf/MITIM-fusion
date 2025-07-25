@@ -374,19 +374,22 @@ export NCQL3D_NPROCS=0
         # ---------------
         # Execution command
         # ---------------
+        pretrenv="--env ADASDIR=/opt/adas --env PREACTDIR=/opt/preact"
+        transpenv="--env LD_LIBRARY_PATH=/opt/json-fortran/jsonfortran-gnu-9.0.2/lib:/opt/call_py_fort/lib:/opt/ezcdf/lib:/opt/cql3d/lib:$LD_LIBRARY_PATH"
 
         TRANSPcommand_prep = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
+apptainer exec {txt_bind}  $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
+apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
 """
+
 
         TRANSPcommand = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
-singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
+apptainer exec {txt_bind} {pretrenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
+apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
+apptainer exec {txt_bind} $TRANSP_SINGULARITY /bin/link {runid}
+apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/transp {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
 """
 
     # ********** Start from previous
