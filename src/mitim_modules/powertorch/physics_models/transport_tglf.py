@@ -1,3 +1,4 @@
+from sympy import per
 import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools
@@ -16,6 +17,14 @@ class tglf_model(TRANSPORTtools.power_transport):
     def evaluate(self):
 
         tglf = self._evaluate_tglf()
+        neo = self._evaluate_neo()
+        
+        # Sum the turbulent and neoclassical contributions
+        variables = ['QeMWm2', 'QiMWm2', 'Ce']
+        
+        for variable in variables:
+            # Add model suffixes
+            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neo"]
 
     # ************************************************************************************
     # Private functions for the evaluation
@@ -61,19 +70,54 @@ class tglf_model(TRANSPORTtools.power_transport):
         # Run TGLF
         # ------------------------------------------------------------------------------------------------------------------------
         
-        Flux_base, Flux_mean, Flux_std = _run_tglf_model(
-            tglf,
-            RadiisToRun, 
-            self.powerstate.ProfilesPredicted, 
-            TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-            extraOptionsTGLF=MODELparameters["transport_model"]["extraOptionsTGLF"],
-            impurityPosition=impurityPosition, 
-            includeFast=includeFast, 
-            delta = use_tglf_scan_trick,
-            cold_start=cold_start,
-            extra_name=self.name,
-            cores_per_tglf_instance=cores_per_tglf_instance
-            )
+        if use_tglf_scan_trick is None:
+            
+                tglf.run(
+                    'base',
+                    TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
+                    extraOptions= MODELparameters["transport_model"]["extraOptionsTGLF"],
+                    ApplyCorrections=False,
+                    launchSlurm= launchMODELviaSlurm,
+                    cold_start= cold_start,
+                    forceIfcold_start=True,
+                    extra_name= self.name,
+                    anticipate_problems=True,
+                    slurm_setup={
+                        "cores": cores_per_tglf_instance,      
+                        "minutes": 2,
+                        },
+                    attempts_execution=2,
+                    only_minimal_files=True,
+                )
+            
+                tglf.read(label='base',require_all_files=False)
+                
+                
+                Qe = [tglf.results['base']['TGLFout'][i].Qe_unn for i in range(len(RadiisToRun))]
+                Qi = [tglf.results['base']['TGLFout'][i].Qi_unn for i in range(len(RadiisToRun))]
+                Ge = [tglf.results['base']['TGLFout'][i].Ge_unn for i in range(len(RadiisToRun))]
+                GZ = [tglf.results['base']['TGLFout'][i].GiAll_unn[impurityPosition] for i in range(len(RadiisToRun))]
+                Mt = [tglf.results['base']['TGLFout'][i].Mt_unn for i in range(len(RadiisToRun))]
+                S = [tglf.results['base']['TGLFout'][i].Se_unn for i in range(len(RadiisToRun))]
+                
+                Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
+                Flux_std = abs(Flux_mean)*percentError[0]/100.0
+
+        else:
+            
+            Flux_base, Flux_mean, Flux_std = _run_tglf_uncertainty_model(
+                tglf,
+                RadiisToRun, 
+                self.powerstate.ProfilesPredicted, 
+                TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
+                extraOptionsTGLF=MODELparameters["transport_model"]["extraOptionsTGLF"],
+                impurityPosition=impurityPosition, 
+                delta = use_tglf_scan_trick,
+                cold_start=cold_start,
+                extra_name=self.name,
+                cores_per_tglf_instance=cores_per_tglf_instance,
+                launchMODELviaSlurm=launchMODELviaSlurm,
+                )
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information to POWERSTATE
@@ -81,24 +125,29 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         self.powerstate.plasma["QeMWm2_tr_turb"] = Flux_mean[0]
         self.powerstate.plasma["QeMWm2_tr_turb_stds"] = Flux_std[0]
-        
+                
         self.powerstate.plasma["QiMWm2_tr_turb"] = Flux_mean[1]
         self.powerstate.plasma["QiMWm2_tr_turb_stds"] = Flux_std[1]
-        
+                
         self.powerstate.plasma["Ce_tr_turb"] = Flux_mean[2]
-        self.powerstate.plasma["Ce_tr_turb_stds"] = Flux_std[2]
+        self.powerstate.plasma["Ce_tr_turb_stds"] = Flux_std[2]        
         
-        # Turbulence + Neoclassical (#TODO: NEO is not implemented yet)
-        self.powerstate.plasma["QeMWm2_tr"] = self.powerstate.plasma["QeMWm2_tr_turb"]+ 0.0
-        self.powerstate.plasma["QiMWm2_tr"] = self.powerstate.plasma["QiMWm2_tr_turb"]+ 0.0
-        self.powerstate.plasma["Ce_tr"] = self.powerstate.plasma["Ce_tr_turb"] + 0.0
-        
+        # if provideTurbulentExchange:
+        #     self.powerstate.plasma["PexchTurb"] = 
+        #     self.powerstate.plasma["PexchTurb_stds"] = 
+        # else:
+        #     self.powerstate.plasma["PexchTurb"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        #     self.powerstate.plasma["PexchTurb_stds"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+            
+
         # ------------------------------------------------------------------------------------------------------------------------
-        # Curate information for the powerstate (e.g. add batch dimension, rho=0.0, and tensorize)
+        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
         # ------------------------------------------------------------------------------------------------------------------------
         
-        for variable in ['QeMWm2', 'QiMWm2', 'Ce']:
-            for suffix in ['_tr','_tr_turb', '_tr_turb_stds']:
+        variables = ['QeMWm2', 'QiMWm2', 'Ce']
+
+        for variable in variables:
+            for suffix in ['_tr_turb', '_tr_turb_stds']:
 
                 # Make them tensors and add a batch dimension
                 self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
@@ -111,20 +160,29 @@ class tglf_model(TRANSPORTtools.power_transport):
 
         return tglf
 
-def _run_tglf_model(
+    def _evaluate_neo(self):
+        
+        self.powerstate.plasma["QeMWm2_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        self.powerstate.plasma["QiMWm2_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        self.powerstate.plasma["Ce_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        
+        return None
+
+
+def _run_tglf_uncertainty_model(
     tglf,
     RadiisToRun, 
     ProfilesPredicted, 
     TGLFsettings=None,
     extraOptionsTGLF=None,
     impurityPosition=1,
-    includeFast=False,  
     delta=0.02, 
     minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
     cold_start=False, 
     extra_name="", 
     remove_folders_out = False,
-    cores_per_tglf_instance = 4 # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    launchMODELviaSlurm=False,
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -187,6 +245,7 @@ def _run_tglf_model(
                     positionIon=impurityPosition+2,
                     attempts_execution=2, 
                     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
+                    launchSlurm=launchMODELviaSlurm,
                     )
 
     # Remove folders because they are heavy to carry many throughout
