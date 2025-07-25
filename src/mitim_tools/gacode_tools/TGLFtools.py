@@ -458,10 +458,7 @@ class TGLF:
 
         print("> Setting up normalizations")
 
-        print(
-            "\t- Using mass of deuterium to normalize things (not necesarily the first ion)",
-            typeMsg="w",
-        )
+        print("\t- Using mass of deuterium to normalize things (not necesarily the first ion)",typeMsg="w",)
         self.profiles.derive_quantities(mi_ref=mi_D)
 
         self.NormalizationSets, cdf = NORMtools.normalizations(

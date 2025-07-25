@@ -61,10 +61,12 @@ class tglf_model(TRANSPORTtools.power_transport):
         # Run TGLF
         # ------------------------------------------------------------------------------------------------------------------------
         
-        Flux_base, Flux_mean, Flux_std = tglf_scan_trick(
+        Flux_base, Flux_mean, Flux_std = _run_tglf_model(
             tglf,
             RadiisToRun, 
             self.powerstate.ProfilesPredicted, 
+            TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
+            extraOptionsTGLF=MODELparameters["transport_model"]["extraOptionsTGLF"],
             impurityPosition=impurityPosition, 
             includeFast=includeFast, 
             delta = use_tglf_scan_trick,
@@ -72,7 +74,6 @@ class tglf_model(TRANSPORTtools.power_transport):
             extra_name=self.name,
             cores_per_tglf_instance=cores_per_tglf_instance
             )
-        
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information to POWERSTATE
@@ -87,9 +88,14 @@ class tglf_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["Ce_tr_turb"] = Flux_mean[2]
         self.powerstate.plasma["Ce_tr_turb_stds"] = Flux_std[2]
         
+        # Turbulence + Neoclassical (#TODO: NEO is not implemented yet)
         self.powerstate.plasma["QeMWm2_tr"] = self.powerstate.plasma["QeMWm2_tr_turb"]+ 0.0
         self.powerstate.plasma["QiMWm2_tr"] = self.powerstate.plasma["QiMWm2_tr_turb"]+ 0.0
         self.powerstate.plasma["Ce_tr"] = self.powerstate.plasma["Ce_tr_turb"] + 0.0
+        
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Curate information for the powerstate (e.g. add batch dimension, rho=0.0, and tensorize)
+        # ------------------------------------------------------------------------------------------------------------------------
         
         for variable in ['QeMWm2', 'QiMWm2', 'Ce']:
             for suffix in ['_tr','_tr_turb', '_tr_turb_stds']:
@@ -105,11 +111,12 @@ class tglf_model(TRANSPORTtools.power_transport):
 
         return tglf
 
-
-def tglf_scan_trick(
+def _run_tglf_model(
     tglf,
     RadiisToRun, 
     ProfilesPredicted, 
+    TGLFsettings=None,
+    extraOptionsTGLF=None,
     impurityPosition=1,
     includeFast=False,  
     delta=0.02, 
@@ -166,7 +173,8 @@ def tglf_scan_trick(
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,
-                    TGLFsettings = None,
+                    TGLFsettings = TGLFsettings,
+                    extraOptions = extraOptionsTGLF,
                     ApplyCorrections = False,
                     add_baseline_to = 'first',
                     cold_start=cold_start,
