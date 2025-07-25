@@ -379,7 +379,7 @@ export NCQL3D_NPROCS=0
 
         TRANSPcommand_prep = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-apptainer exec {txt_bind}  $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
+apptainer exec {txt_bind} {pretrenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
 apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
 """
 
@@ -400,7 +400,7 @@ apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/ex
         TRANSPcommand_prep = None
 
         TRANSPcommand = f"""
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R |& tee {transp_job.folderExecution}/{runid}tr.log
+apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/transp {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
 """
 
     # ------------------
@@ -545,8 +545,8 @@ def runSINGULARITY_finish(folderWork, runid, tok, job_name):
         txt_bind = ""
 
     TRANSPcommand = f"""
-cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app trlook $TRANSP_SINGULARITY {tok} {runid}
-cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app finishup $TRANSP_SINGULARITY {runid}
+cd {transp_job.machineSettings['folderWork']} && apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/csh/trlook {tok} {runid}
+cd {transp_job.machineSettings['folderWork']} && apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/csh/finishup {runid}
 """
 
     # ---------------
@@ -605,7 +605,7 @@ def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_l
     extra_commands = " --delay-updates --ignore-errors --exclude='*_state.cdf' --exclude='*.tmp' --exclude='mitim*'"
 
     TRANSPcommand = f"""
-rsync -av{extra_commands} {folderTRANSP}/* . &&  singularity run {txt_bind}--app plotcon $TRANSP_SINGULARITY {runid}
+rsync -av{extra_commands} {folderTRANSP}/* . &&  apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/csh/plotcon  {runid}
 """
 
     # ---------------
