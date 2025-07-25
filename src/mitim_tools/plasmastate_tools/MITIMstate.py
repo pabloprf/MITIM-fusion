@@ -2231,7 +2231,7 @@ class mitim_state:
                 'RMIN_LOC':     self.derived['roa'],
                 'RMAJ_LOC':     self.derived['Rmajoa'],
                 'ZMAJ_LOC':     self.derived["Zmagoa"],
-                'DRMINDX_LOC':  self.derived['drmin/dr'],
+                'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 instead of self.derived['drmin/dr'] because of numerical issues in TGLF
                 'DRMAJDX_LOC':  self.derived['dRmaj/dr'],
                 'DZMAJDX_LOC':  self.derived['dZmaj/dr'],
                 'Q_LOC':        self.profiles["q(-)"],
