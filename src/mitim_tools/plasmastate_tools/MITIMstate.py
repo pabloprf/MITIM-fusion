@@ -15,7 +15,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
-
 def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
     # Determine minimal set of variables that should be present in the profiles
@@ -29,7 +28,7 @@ def ensure_variables_existence(self):
         "ni(10^19/m^3)": 2,
         "w0(rad/s)": 1,
         "ptot(Pa)": 1,
-        "zeff(-)": 1,
+        "z_eff(-)": 1,
     }
     
     # Electromagnetics
@@ -268,7 +267,7 @@ class mitim_state:
         if write_new_file is not None:
             self.write_state(file=write_new_file)
 
-    def readSpecies(self, maxSpecies=100):
+    def readSpecies(self, maxSpecies=100, correct_zeff = True):
         maxSpecies = int(self.profiles["nion"][0])
 
         Species = []
@@ -287,7 +286,11 @@ class mitim_state:
             Species.append(sp)
 
         self.Species = Species
-
+        
+        # Correct Zeff if needed
+        if correct_zeff and ("z_eff(-)" in self.profiles):
+            self.profiles["z_eff(-)"] = np.sum(self.profiles["ni(10^19/m^3)"] * self.profiles["z"] ** 2, axis=1) / self.profiles["ne(10^19/m^3)"]
+            
     def sumFast(self):
         self.nFast = self.profiles["ne(10^19/m^3)"] * 0.0
         self.nZFast = self.profiles["ne(10^19/m^3)"] * 0.0
@@ -1648,7 +1651,7 @@ class mitim_state:
         # Re-derive
         # ----------------------------------------------------------------------
 
-        self.derive_quantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False) 
 
         # ----------------------------------------------------------------------
         # Write
@@ -2280,6 +2283,19 @@ class mitim_state:
                 'P_PRIME_LOC':  self.derived['pprime'],
                 'Q_PRIME_LOC':  self.derived['s_q'],
             }
+            
+            # Add MXH and derivatives (#TODO)
+            for ikey in self.profiles:
+                if 'shape_cos' in ikey or 'shape_sin' in ikey:
+                    
+                    # TGLF only accepts 6, as of July 2025
+                    if int(ikey[-4]) > 6:
+                        continue
+                    
+                    key_mod = ikey.upper().split('(')[0]  # Remove any function call like 'shape_cos(1)'
+                    
+                    parameters[key_mod] = self.profiles[ikey]
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.profiles[ikey]*0.0 #TODO
 
             geom = {}
             for k in parameters:
@@ -2288,7 +2304,7 @@ class mitim_state:
 
             geom['BETA_LOC'] = 0.0
             geom['KX0_LOC'] = 0.0
-
+            
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Merging
             # ---------------------------------------------------------------------------------------------------------------------------------------

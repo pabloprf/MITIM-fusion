@@ -1,4 +1,4 @@
-import sys
+import argparse
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
@@ -91,7 +91,10 @@ def compare_number(a,b,precision_of=None):
         else:
             decimal_places = 0
 
-        b_rounded = round(b, decimal_places)
+        if isinstance(b, str):
+            b_rounded = b
+        else:  
+            b_rounded = round(b, decimal_places)
         a_rounded = a
 
     elif precision_of == 2:
@@ -150,9 +153,9 @@ def printTable(diff, warning_percent=1e-1):
                     typeMsg="i" if perc > warning_percent else "",
                 )
             else:
-                print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}")
+                print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}  (100%)", typeMsg="i")
         else:
-            print(f"{key:>15}{'':>25}{str(diff[key][1]):>25}")
+            print(f"{key:>15}{'':>25}{str(diff[key][1]):>25}  (100%)", typeMsg="i")
         print(
             "--------------------------------------------------------------------------------"
         )
@@ -160,19 +163,25 @@ def printTable(diff, warning_percent=1e-1):
 
 def main():
 
-    file1 = sys.argv[1]
-    file2 = sys.argv[2]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file1", type=str, help="First namelist file to compare")
+    parser.add_argument("file2", type=str, help="Second namelist file to compare")
+    parser.add_argument("--separator", type=str, required=False, default="=",
+                        help="Separator used in the namelist files, default is '='")
+    parser.add_argument("--precision", type=int, required=False, default=None,
+                        help="Precision for comparing numbers: 1 for decimal places, 2 for significant figures, None for exact comparison")
+    args = parser.parse_args()
 
-    try:
-        separator = sys.argv[3]
-    except:
-        separator = "="
+    # Get arguments
+    file1 = args.file1
+    file2 = args.file2
+    separator = args.separator
+    precision = args.precision
 
-    diff = compareNML(file1, file2, separator=separator)
+    diff = compareNML(file1, file2, separator=separator, precision_of=precision)
 
     printTable(diff)
     print(f"Differences: {len(diff)}")
-
 
 if __name__ == "__main__":
     main()

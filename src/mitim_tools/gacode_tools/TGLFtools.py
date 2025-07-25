@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+from mitim_tools import __version__ as mitim_version
 
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.misc_tools import (
@@ -422,8 +423,7 @@ class TGLF:
 
             for rho in self.inputsTGLF:
                 self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
-
-
+                
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize by taking directly the inputs
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3900,7 +3900,7 @@ def reduceToControls(dict_all):
         ]:
             plasma[ikey] = dict_all[ikey]
 
-        elif (len(ikey.split("_")) > 1) and (ikey.split("_")[-1] in ["SA", "LOC"]):
+        elif (len(ikey.split("_")) > 1) and ( (ikey.split("_")[-1] in ["SA", "LOC"]) or (ikey.split("_")[0] in ["SHAPE"]) ):
             geom[ikey] = dict_all[ikey]
 
         else:
@@ -4143,15 +4143,9 @@ class TGLFinput:
             file = self.file
 
         with open(file, "w") as f:
-            f.write(
-                "#-------------------------------------------------------------------------\n"
-            )
-            f.write(
-                "# TGLF input file modified by MITIM framework (Rodriguez-Fernandez, 2020)\n"
-            )
-            f.write(
-                "#-------------------------------------------------------------------------"
-            )
+            f.write("#-------------------------------------------------------------------------\n")
+            f.write(f"# TGLF input file modified by MITIM {mitim_version}\n")
+            f.write("#-------------------------------------------------------------------------")
 
             f.write("\n\n# Control parameters\n")
             f.write("# ------------------\n\n")
@@ -4164,7 +4158,7 @@ class TGLFinput:
             for ikey in self.geom:
                 var = self.geom[ikey]
                 f.write(f"{ikey.ljust(23)} = {var}\n")
-
+                
             f.write("\n\n# Plasma parameters\n")
             f.write("# ------------------\n\n")
             for ikey in self.plasma:
