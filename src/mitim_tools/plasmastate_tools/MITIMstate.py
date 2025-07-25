@@ -142,8 +142,8 @@ class mitim_state:
             self.derived["mi_ref"] = mi_ref
             print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",typeMsg="w")
         else:
-            self.derived["mi_ref"] = self.mi_first
-            print(f"\t* Reference mass ({self.derived['mi_ref']}) from first ion",typeMsg="i")
+            self.derived["mi_ref"] = 2.0 #self.mi_first
+            print(f"\t* Reference mass ({self.derived['mi_ref']}) from Deuterium, as convention in gacode",typeMsg="i")
 
         # Useful to have gradients in the basic ----------------------------------------------------------
         self.derived["aLTe"] = aLT(self.derived["r"], self.profiles["te(keV)"])
@@ -2211,13 +2211,14 @@ class mitim_state:
             #mass_ref = self.derived["mi_ref"]
             # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
             mass_ref = 2.0
-
-            mass_e = 0.000272445 * mass_ref
+            
+            if mass_ref != self.derived["mi_ref"]:
+                print(f"\t- Warning: the mass reference in the input.gacode is {self.derived['mi_ref']}, but TGLF expects {mass_ref}. This may lead to problems with the TGLF input file.", typeMsg="q")
 
             species = {
                 1: {
                     'ZS': -1.0,
-                    'MASS': mass_e/mass_ref,
+                    'MASS': 0.000272445,
                     'RLNS': interpolator(self.derived['aLne']),
                     'RLTS': interpolator(self.derived['aLTe']),
                     'TAUS': 1.0,
