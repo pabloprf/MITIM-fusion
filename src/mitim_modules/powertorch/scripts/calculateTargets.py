@@ -36,7 +36,7 @@ def calculator(
                 "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
-                    "TargetCalc":  "tgyro"},
+                    "targets_evaluator_method":  "tgyro"},
             },
             TransportOptions={
                 "transport_evaluator": transport_tgyro.tgyro_model,
@@ -78,7 +78,7 @@ def calculator(
                 "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
-                    "TargetCalc":  "powerstate"},
+                    "targets_evaluator_method":  "powerstate"},
             },
             TransportOptions={
                 "transport_evaluator": None,
