@@ -368,13 +368,13 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
                 "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": self.TargetOptions["ModelOptions"]["TypeTarget"], # Important to keep the same as in the original
-                    "TargetCalc": "powerstate",
+                    "targets_evaluator_method": "powerstate",
                     }
                 },
             increase_profile_resol = False
             )
     state_temp.calculateProfileFunctions()
-    state_temp.TargetOptions["ModelOptions"]["TargetCalc"] = "powerstate"
+    state_temp.TargetOptions["ModelOptions"]["targets_evaluator_method"] = "powerstate"
     state_temp.calculateTargets()
     # ------------------------------------------------------------------------------------------
 

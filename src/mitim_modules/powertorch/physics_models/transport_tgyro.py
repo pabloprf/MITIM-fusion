@@ -162,7 +162,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.TargetOptions['ModelOptions']['TargetCalc'] == "tgyro",
+            provideTargets=self.powerstate.TargetOptions['ModelOptions']['targets_evaluator_method'] == "tgyro",
         )
 
         tgyro.results["use"] = tgyro.results[label]

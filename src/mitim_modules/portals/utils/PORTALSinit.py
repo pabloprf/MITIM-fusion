@@ -179,7 +179,7 @@ def initializeProblem(
             "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
             "ModelOptions": {
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
+                "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
         },
         tensor_opts = tensor_opts
     )
@@ -231,7 +231,7 @@ def initializeProblem(
                 "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
                 "ModelOptions": {
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                    "TargetCalc": portals_fun.PORTALSparameters["TargetCalc"]},
+                    "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
             },
             tensor_opts = tensor_opts
         )

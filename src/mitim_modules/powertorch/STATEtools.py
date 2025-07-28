@@ -54,7 +54,7 @@ class powerstate:
             "targets_evaluator": targets_analytic.analytical_model,
             "ModelOptions": {
                 "TypeTarget": 3,
-                "TargetCalc": "powerstate"
+                "targets_evaluator_method": "powerstate"
                 },
             }
         if tensor_opts is None:
@@ -681,7 +681,7 @@ class powerstate:
         """
 
         # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
-        if (self.TargetOptions["targets_evaluator"] is None) or (self.TargetOptions["ModelOptions"]["TargetCalc"] == "tgyro"):
+        if (self.TargetOptions["targets_evaluator"] is None) or (self.TargetOptions["ModelOptions"]["targets_evaluator_method"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
             targets = self.TargetOptions["targets_evaluator"](self)

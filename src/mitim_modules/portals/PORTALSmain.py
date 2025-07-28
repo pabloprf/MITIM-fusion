@@ -203,7 +203,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "percentError": [5,10,1],  # (%) Error (std, in percent) of model evaluation [TGLF (treated as minimum if scan trick), NEO, TARGET]
             "transport_evaluator": transport_evaluator,
             "targets_evaluator": targets_evaluator,
-            "TargetCalc": "powerstate",  # Method to calculate targets (tgyro or powerstate)
+            "targets_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
             "useConvectiveFluxes": True,  # If True, then convective flux for final metric (not fitting). If False, particle flux
             "includeFastInQi": False,  # If True, and fast ions have been included, in seprateNEO, sum fast
@@ -221,7 +221,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
             "UseOriginalImpurityConcentrationAsWeight": 1.0,  # If not None, using UseOriginalImpurityConcentrationAsWeight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
             "fImp_orig": 1.0,
-            "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults TargetCalc to powerstate)
+            "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults targets_evaluator_method to powerstate)
             "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
@@ -466,13 +466,13 @@ class portals(STRATEGYtools.opt_evaluator):
         # ----------------------------------------------------------------------------------
 
         if self.PORTALSparameters["fineTargetsResolution"] is not None:
-            if self.PORTALSparameters["TargetCalc"] != "powerstate":
+            if self.PORTALSparameters["targets_evaluator_method"] != "powerstate":
                 print("\t- Requested fineTargetsResolution, so running powerstate target calculations",typeMsg="w")
-                self.PORTALSparameters["TargetCalc"] = "powerstate"
+                self.PORTALSparameters["targets_evaluator_method"] = "powerstate"
 
-        if not issubclass(self.PORTALSparameters["transport_evaluator"], transport_tgyro.tgyro_model) and (self.PORTALSparameters["TargetCalc"] == "tgyro"):
+        if not issubclass(self.PORTALSparameters["transport_evaluator"], transport_tgyro.tgyro_model) and (self.PORTALSparameters["targets_evaluator_method"] == "tgyro"):
             print("\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",typeMsg="w")
-            self.PORTALSparameters["TargetCalc"] = "powerstate"
+            self.PORTALSparameters["targets_evaluator_method"] = "powerstate"
 
         if ("InputType" not in self.MODELparameters["Physics_options"]) or self.MODELparameters["Physics_options"]["InputType"] != 1:
             print("\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",typeMsg="i")
@@ -482,8 +482,11 @@ class portals(STRATEGYtools.opt_evaluator):
             print("\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",typeMsg="i")
             self.MODELparameters["Physics_options"]["GradientsType"] = 0
 
-        if self.PORTALSparameters["TargetCalc"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
-            print("\t- Requested custom modification of postprocessing function but targets from tgyro... are you sure?",typeMsg="q")
+        if self.PORTALSparameters["targets_evaluator_method"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
+            print("\t- Requested custom modification of postprocessing function but targets from TGYRO... are you sure?",typeMsg="q")
+
+        if self.PORTALSparameters["targets_evaluator_method"] == "tgyro" and self.PORTALSparameters['transport_evaluator'] != transport_tgyro.tgyro_model:
+            print("\t- Requested TGYRO targets but transport evaluator is not TGYRO... are you sure?",typeMsg="q")
 
         key_rhos = "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
 
