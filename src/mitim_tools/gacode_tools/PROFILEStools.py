@@ -2405,14 +2405,23 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.autoscale_y(ax)
 
         ax = ax00c
-        varL = "cos Shape Params"
-        yl = 0
-        cont = 0
+        ax.plot(self.profiles["rho(-)"], self.derived['volp_geo'], color=color, lw=lw, label = extralab)
+        ax.set_xlabel('$\\rho_N$'); ax.set_xlim(0, 1)
+        ax.set_ylabel(f"$dV/dr$ ($m^3/[r]$)")
+        GRAPHICStools.addDenseAxis(ax)
+        
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
 
+        minShape = 1E-4
+
+        ax = ax01c
+        cont = 0
+        yl = 0
         for i, s in enumerate(self.shape_cos):
             if s is not None:
                 valmax = np.abs(s).max()
-                if valmax > 1e-10:
+                if valmax > minShape:
                     lab = f"c{i}"
                     ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
                     cont += 1
@@ -2437,7 +2446,7 @@ class gacode_state(MITIMstate.mitim_state):
         for i, s in enumerate(self.shape_sin):
             if s is not None:
                 valmax = np.abs(s).max()
-                if valmax > 1e-10:
+                if valmax > minShape:
                     lab = f"s{i}"
                     ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
                     cont += 1
@@ -2446,7 +2455,7 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(varL)
+        ax.set_ylabel(f"Shape Parameters (>{minShape})")
         if legYN:
             ax.legend(loc="best", fontsize=fs)
 
@@ -2496,13 +2505,13 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax = ax11c
 
-        var = self.profiles["rmin(m)"]
+        var = self.derived['r']
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
         ax.set_ylim(bottom=0)
-        ax.set_ylabel("$r_{min}$")
+        ax.set_ylabel("Effective $r$")
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)

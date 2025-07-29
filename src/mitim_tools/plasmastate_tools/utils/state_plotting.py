@@ -37,7 +37,7 @@ def add_axes(figs):
         fig1.add_subplot(grid[2, 2]),
     ]
 
-    grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
     axsProf_2 = [
         fig2.add_subplot(grid[0, 0]),
         fig2.add_subplot(grid[0, 1]),
@@ -45,6 +45,8 @@ def add_axes(figs):
         fig2.add_subplot(grid[1, 1]),
         fig2.add_subplot(grid[0, 2]),
         fig2.add_subplot(grid[1, 2]),
+        fig2.add_subplot(grid[0, 3]),
+        fig2.add_subplot(grid[1, 3]),
     ]
     
     # GEOMETRY
@@ -85,7 +87,7 @@ def add_axes(figs):
         fig5.add_subplot(grid[1, 2]),
     ]
 
-    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
+    grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
     axsProf_6 = [
         fig6.add_subplot(grid[0, 0]),
         fig6.add_subplot(grid[0, 1]),
@@ -95,6 +97,8 @@ def add_axes(figs):
         fig6.add_subplot(grid[1, 2]),
         fig6.add_subplot(grid[0, 3]),
         fig6.add_subplot(grid[1, 3]),
+        fig6.add_subplot(grid[0, 4]),
+        fig6.add_subplot(grid[1, 4]),
     ]
     grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
     axsImps = [
@@ -323,7 +327,7 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
 
 def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
-    [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b] = axs2
+    [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b, ax30b, ax31b] = axs2
 
     rho = self.profiles["rho(-)"]
 
@@ -378,63 +382,6 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
     GRAPHICStools.addDenseAxis(ax)
     GRAPHICStools.autoscale_y(ax)
     ax.set_title("Momentum Source Density")
-
-    ax = ax21b
-    ax.plot(
-        rho, self.derived["qe_MWm2"], lw=lw, ls="-", label=extralab + "qe", c=color
-    )
-    ax.plot(
-        rho, self.derived["qi_MWm2"], lw=lw, ls="--", label=extralab + "qi", c=color
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho$")
-    ax.set_ylabel("Heat Flux ($MW/m^2$)")
-    if legYN:
-        ax.legend(loc="lower left", fontsize=fs)
-    ax.set_title("Flux per unit area (gacode: P/V')")
-    ax.axhline(y=0, lw=0.5, ls="--", c="k")
-
-    GRAPHICStools.addDenseAxis(ax)
-    GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-    ax = ax21b.twinx()
-    ax.plot(
-        rho,
-        self.derived["ge_10E20m2"],
-        lw=lw,
-        ls="-.",
-        label=extralab + "$\\Gamma_e$",
-        c=color,
-    )
-    ax.set_ylabel("Particle Flux ($10^{20}/m^2/s$)")
-    if legYN:
-        ax.legend(loc="lower right", fontsize=fs)
-    GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-    ax = ax20b
-    varL = "$Q_{rad}$ ($MW/m^3$)"
-    if "qbrem(MW/m^3)" in self.profiles:
-        var = self.profiles["qbrem(MW/m^3)"]
-        ax.plot(rho, var, lw=lw, ls="-", label=extralab + "brem", c=color)
-    if "qline(MW/m^3)" in self.profiles:
-        var = self.profiles["qline(MW/m^3)"]
-        ax.plot(rho, var, lw=lw, ls="--", label=extralab + "line", c=color)
-    if "qsync(MW/m^3)" in self.profiles:
-        var = self.profiles["qsync(MW/m^3)"]
-        ax.plot(rho, var, lw=lw, ls=":", label=extralab + "sync", c=color)
-
-    var = self.derived["qrad"]
-    ax.plot(rho, var, lw=lw * 1.5, ls="-", label=extralab + "Total", c=color)
-
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\rho$")
-    # ax.set_ylim(bottom=0);
-    ax.set_ylabel(varL)
-    if legYN:
-        ax.legend(loc="best", fontsize=fs)
-    ax.set_title("Radiation Contributions")
-    GRAPHICStools.addDenseAxis(ax)
-    GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = ax10b
     varL = "$MW/m^3$"
@@ -491,6 +438,69 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
     GRAPHICStools.addDenseAxis(ax)
     GRAPHICStools.autoscale_y(ax)
     
+
+    ax = ax20b
+    varL = "$Q_{rad}$ ($MW/m^3$)"
+    if "qbrem(MW/m^3)" in self.profiles:
+        var = self.profiles["qbrem(MW/m^3)"]
+        ax.plot(rho, var, lw=lw, ls="-", label=extralab + "brem", c=color)
+    if "qline(MW/m^3)" in self.profiles:
+        var = self.profiles["qline(MW/m^3)"]
+        ax.plot(rho, var, lw=lw, ls="--", label=extralab + "line", c=color)
+    if "qsync(MW/m^3)" in self.profiles:
+        var = self.profiles["qsync(MW/m^3)"]
+        ax.plot(rho, var, lw=lw, ls=":", label=extralab + "sync", c=color)
+
+    var = self.derived["qrad"]
+    ax.plot(rho, var, lw=lw * 1.5, ls="-", label=extralab + "Total", c=color)
+
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$\\rho$")
+    # ax.set_ylim(bottom=0);
+    ax.set_ylabel(varL)
+    if legYN:
+        ax.legend(loc="best", fontsize=fs)
+    ax.set_title("Radiation Contributions")
+    GRAPHICStools.addDenseAxis(ax)
+    GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+
+
+    ax = ax30b
+    ax.plot(rho, self.derived["qe_MWm2"], lw=lw, ls="-", label=extralab + "qe", c=color)
+    ax.plot(rho, self.derived["qi_MWm2"], lw=lw, ls="--", label=extralab + "qi", c=color)
+    
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$\\rho$")
+    ax.set_ylabel("Heat Flux ($MW/m^2$)")
+    if legYN:
+        ax.legend(loc="lower left", fontsize=fs)
+    ax.set_title("Heat flux per unit area (gacode: P/V')")
+    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+
+    GRAPHICStools.addDenseAxis(ax)
+    GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+    ax = ax31b
+    ax.plot(
+        rho,
+        self.derived["ge_10E20m2"],
+        lw=lw,
+        ls="-.",
+        label=extralab + "$\\Gamma_e$",
+        c=color,
+    )
+    
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$\\rho$")
+    ax.set_ylabel("Particle Flux ($10^{20}/m^2/s$)")
+    if legYN:
+        ax.legend(loc="lower left", fontsize=fs)
+    ax.set_title("Particle Flux per unit area (gacode: P/V')")
+    ax.axhline(y=0, lw=0.5, ls="--", c="k")
+    
+    GRAPHICStools.addDenseAxis(ax)
+    GRAPHICStools.autoscale_y(ax, bottomy=0)
 
 def plot_gradients(
     self,
@@ -788,8 +798,7 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     ax.set_xlim([0, 1])
     ax.axhline(y=1.0, ls="--", c="k", lw=1.0)
     GRAPHICStools.addDenseAxis(ax)
-    # GRAPHICStools.autoscale_y(ax,bottomy=0)
-    ax.set_ylim(bottom=0)
+    GRAPHICStools.autoscale_y(ax,bottomy=0)#ax.set_ylim(bottom=0)
     ax.legend(loc="best", fontsize=fs)
 
     # Currents
@@ -805,7 +814,7 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
 
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho$")
-    ax.set_ylim(bottom=0)
+    GRAPHICStools.autoscale_y(ax,bottomy=0)#ax.set_ylim(bottom=0)
     ax.set_ylabel("J ($MA/m^2$)")
 
     GRAPHICStools.addDenseAxis(ax)
@@ -836,6 +845,21 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     GRAPHICStools.addDenseAxis(ax)
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
+    ax = axs6[8]
+    
+    ax.plot(rho, self.derived["B_unit"], "-", lw=lw, c=color, label=extralab + "$B_{unit}$")
+    ax.plot(rho, self.derived["B_ref"], "--", lw=lw, c=color, label=extralab + "$B_{ref}$")
+    ax.axhline(y=self.profiles["bcentr(T)"][0], lw=lw, ls=":", c=color, label=extralab + "$B_{centr}$")
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$\\rho$")
+    ax.set_ylabel("$B$ (T)")
+
+    GRAPHICStools.addDenseAxis(ax)
+    
+    ax.legend(loc="best", fontsize=fs)
+
+
+
 
 def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     if axs is None:
@@ -855,7 +879,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
 
     ax = axs[0]
     axT = axs[1]
-    roa = self.profiles["rmin(m)"] / self.profiles["rmin(m)"][-1]
+    roa = self.derived['roa']
     Te = self.profiles["te(keV)"]
     ne = self.profiles["ne(10^19/m^3)"] * 1e-1
     ni = self.profiles["ni(10^19/m^3)"] * 1e-1

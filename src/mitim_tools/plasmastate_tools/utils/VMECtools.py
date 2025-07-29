@@ -62,12 +62,13 @@ class vmec_state(MITIMstate.mitim_state):
         self.profiles['rcentr(m)'] = np.array([self.wout.Rmajor_p])
         self.profiles['bcentr(T)'] = np.array([self.wout.rbtor/self.wout.Rmajor_p])
         self.profiles["current(MA)"] = np.array([0.0])
-        
-        self.profiles["torfluxa(Wb/radian)"] = [self.wout.phipf[-1]]
-                
+
+        self.profiles["torfluxa(Wb/radian)"] = np.array([self.wout.phipf[-1]])
+
         # Produce variables
         self.profiles["rho(-)"] = (self.wout.phi/self.wout.phi[-1])**0.5 #np.linspace(0, 1, self.wout.ns)**0.5
-        self.profiles["presf"] = self.wout.presf
+        self.profiles["ptot(Pa)"] = self.wout.presf
+
         #self.profiles["q(-)"] = self.wout.q_factor
         #self.profiles["polflux(Wb/radian)"] = self.wout.chi
 
@@ -99,38 +100,61 @@ class vmec_state(MITIMstate.mitim_state):
 
     def derive_geometry(self, **kwargs):
         
-        rho = np.linspace(0, 1, self.wout.ns)
+        r = self.derived["r"]
 
-        ds = rho[1] - rho[0]
-        half_grid_rho = rho - ds / 2
-
-        d_volume_d_rho = (
+        half_grid_r = r - (r[1] - r[0]) / 2
+        d_volume_d_r = (
             (2 * np.pi) ** 2
             * np.array(self.wout.vp)
             * 2
-            * np.sqrt(half_grid_rho)
-        )
+            * np.sqrt(half_grid_r)
+        )        
 
-        #self.derived["B_unit"] = self.profiles["torfluxa(Wb/radian)"] / (np.pi * self.wout.Aminor_p**2)
-        
-        self.derived["volp_geo"] = self.wout.vp #d_volume_d_rho
-        self.derived["volp_geo"][0] = 0.0
+        self.derived["B_ref"] = np.ones(r.shape) * self.profiles["torfluxa(Wb/radian)"][-1] / (np.pi * self.wout.Aminor_p**2)
+
+        self.derived["volp_geo"] = d_volume_d_r
+        self.derived["volp_geo"][0] = 1E-9
         
         self.derived["kappa_a"] = 0.0
         self.derived["kappa95"] = 0.0
         self.derived["delta95"] = 0.0
         self.derived["kappa995"] = 0.0
         self.derived["delta995"] = 0.0
-        self.derived["R_LF"] = np.zeros(self.profiles["rho(-)"].shape)
+        self.derived["R_LF"] = np.zeros(r.shape)
 
-        self.derived["bp2_exp"] = np.zeros(self.profiles["rho(-)"].shape)
-        self.derived["bt2_exp"] = np.zeros(self.profiles["rho(-)"].shape)
-        self.derived["bp2_geo"] = np.zeros(self.profiles["rho(-)"].shape)
-        self.derived["bt2_geo"] = np.zeros(self.profiles["rho(-)"].shape)
+        self.derived["bp2_exp"] = np.zeros(r.shape)
+        self.derived["bt2_exp"] = np.zeros(r.shape)
+        self.derived["bp2_geo"] = np.zeros(r.shape)
+        self.derived["bt2_geo"] = np.zeros(r.shape)
 
     def plot_geometry(self, axs, color="b", legYN=True, extralab="", lw=1, fs=6):
         
         [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,axs_3d,axs_2d] = axs
+        
+        rho = self.profiles["rho(-)"]
+        
+        ax = ax00c
+        ax.plot(rho, self.derived['volp_geo'], color=color, lw=lw, label = extralab)
+        ax.set_xlabel('$\\rho$'); ax.set_xlim(0, 1)
+        ax.set_ylabel(f"$dV/d\\rho$ ($m^3$)")
+        GRAPHICStools.addDenseAxis(ax)
+        
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+        
+        ax = ax11c
+
+        var = self.derived['r']
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylim(bottom=0)
+        ax.set_ylabel("Effective $r$")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        
         
         self.plot_plasma_boundary(ax=axs_3d, color=color)
         
