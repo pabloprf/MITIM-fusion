@@ -42,6 +42,7 @@ c_light = 2.9979e10  # cm/s
 md = 3.34358e-24
 me_u = 5.4488741e-04  # as in input.gacode
 
+md_u = md*1E-3 / u
 
 factor_convection = 3 / 2  # IMPORTANT
 
@@ -282,15 +283,17 @@ def calculatePressure(Te, Ti, ne, ni):
             - It only works if the vectors contain the entire plasma (i.e. roa[-1]=1.0), otherwise it will miss that contribution.
     """
 
-    p, peT, piT = [], [], []
+    p, peT, piT, piTall = [], [], [], []
     for it in range(Te.shape[0]):
         pe = (Te[it, :] * 1e3 * e_J) * (ne[it, :] * 1e20) * 1e-6  # MPa
+        piall = (Ti[it, :, :] * 1e3 * e_J) * (ni[it, :, :] * 1e20) * 1e-6  # MPa
         pi = np.zeros(Te.shape[1])
         for i in range(ni.shape[1]):
-            pi += (Ti[it, i, :] * 1e3 * e_J) * (ni[it, i, :] * 1e20) * 1e-6  # MPa
+            pi += piall[i, :]  # Sum over all ions
 
         peT.append(pe)
         piT.append(pi)
+        piTall.append(piall)
 
         # Total pressure
         press = pe + pi
@@ -299,8 +302,9 @@ def calculatePressure(Te, Ti, ne, ni):
     p = np.array(p)
     pe = np.array(peT)
     pi = np.array(piT)
+    pi_all = np.array(piTall)
 
-    return p, pe, pi
+    return p, pe, pi, pi_all
 
 
 def calculateVolumeAverage(rmin, var, dVdr):
@@ -338,7 +342,7 @@ def calculateContent(rmin, Te, Ti, ne, ni, dVdr):
 
     """
 
-    p, pe, pi = calculatePressure(Te, Ti, ne, ni)
+    p, pe, pi, _ = calculatePressure(Te, Ti, ne, ni)
 
     We, Wi, Ne, Ni = [], [], [], []
     for it in range(rmin.shape[0]):

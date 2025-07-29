@@ -15,6 +15,8 @@ from mitim_modules.powertorch.physics_models import targets_analytic
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
+from mitim_tools.misc_tools.PLASMAtools import md_u
+
 # ------------------------------------------------------------------
 # POWERSTATE Class
 # ------------------------------------------------------------------
@@ -623,7 +625,7 @@ class powerstate:
     # Toolset for calculation
     # ------------------------------------------------------------------
 
-    def calculateProfileFunctions(self, calculateRotationQuantities=True, mref=2.01355):
+    def calculateProfileFunctions(self, calculateRotationQuantities=True, mref=md_u):
         """
         Update the normalizations of the current state
         Notes:

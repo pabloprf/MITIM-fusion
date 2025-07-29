@@ -24,7 +24,7 @@ from mitim_tools.gacode_tools.utils import (
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-mi_D = 2.01355
+from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
@@ -345,7 +345,7 @@ class TGLF:
         print("> Setting up normalizations")
 
         print("\t- Using mass of deuterium to unnormalize TGLF (not necesarily the first ion)",typeMsg="i")
-        self.tgyro.profiles.derive_quantities(mi_ref=mi_D)
+        self.tgyro.profiles.derive_quantities(mi_ref=md_u)
 
         self.NormalizationSets, cdf = NORMtools.normalizations(
             self.tgyro.profiles,
@@ -410,7 +410,7 @@ class TGLF:
 
             self.profiles = self.tgyro.profiles
 
-        self.profiles.derive_quantities(mi_ref=mi_D)
+        self.profiles.derive_quantities(mi_ref=md_u)
 
         self.profiles.correct(options={'recompute_ptot':recalculatePTOT,'removeFast':onlyThermal_TGYRO})
 
@@ -460,7 +460,7 @@ class TGLF:
         print("> Setting up normalizations")
 
         print("\t- Using mass of deuterium to normalize things (not necesarily the first ion)",typeMsg="w",)
-        self.profiles.derive_quantities(mi_ref=mi_D)
+        self.profiles.derive_quantities(mi_ref=md_u)
 
         self.NormalizationSets, cdf = NORMtools.normalizations(
             self.profiles,
