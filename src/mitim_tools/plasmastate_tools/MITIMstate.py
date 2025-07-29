@@ -14,6 +14,8 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
 
+from mitim_tools.misc_tools.PLASMAtools import md_u
+
 def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
     # Determine minimal set of variables that should be present in the profiles
@@ -126,6 +128,11 @@ class mitim_state:
     @IOtools.hook_method(before=ensure_variables_existence)
     def derive_quantities_base(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
 
+        # Make sure the profiles have the required dimensions
+        if len(self.profiles["ni(10^19/m^3)"].shape) == 1:
+            self.profiles["ni(10^19/m^3)"] = self.profiles["ni(10^19/m^3)"].reshape(-1, 1)
+            self.profiles["ti(keV)"] = self.profiles["ti(keV)"].reshape(-1, 1)
+
         # -------------------------------------
         self.readSpecies()
         self.mi_first = self.Species[0]["A"]
@@ -138,9 +145,9 @@ class mitim_state:
 
         if mi_ref is not None:
             self.derived["mi_ref"] = mi_ref
-            print(f"\t* Reference mass ({self.derived['mi_ref']:.2f}) to use was forced by class initialization",typeMsg="w")
+            print(f"\t* Reference mass ({self.derived['mi_ref']}) to use was forced by class initialization",typeMsg="w")
         else:
-            self.derived["mi_ref"] = 2.0 #self.mi_first
+            self.derived["mi_ref"] = md_u #2.0 #md_u #self.mi_first
             print(f"\t* Reference mass ({self.derived['mi_ref']}) from Deuterium, as convention in gacode",typeMsg="i")
 
         # Useful to have gradients in the basic ----------------------------------------------------------
@@ -660,11 +667,20 @@ class mitim_state:
         self.derived["Prad_line"] = self.derived["qrad_line_MW"][-1]
         self.derived["Psol"] = self.derived["qHeat"] - self.derived["Prad"]
 
+        self.derived["Ti_thr"] = []
         self.derived["ni_thr"] = []
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 self.derived["ni_thr"].append(self.profiles["ni(10^19/m^3)"][:, sp])
+                self.derived["Ti_thr"].append(self.profiles["ti(keV)"][:, sp])
+                
         self.derived["ni_thr"] = np.transpose(self.derived["ni_thr"])
+        self.derived["Ti_thr"] = np.transpose(np.array(self.derived["Ti_thr"]))
+        
+        if len(self.derived["ni_thr"].shape) == 1:
+            self.derived["ni_thr"] = self.derived["ni_thr"].reshape(-1, 1)
+            self.derived["Ti_thr"] = self.derived["Ti_thr"].reshape(-1, 1)
+        
         self.derived["ni_thrAll"] = self.derived["ni_thr"].sum(axis=1)
 
         self.derived["ni_All"] = self.profiles["ni(10^19/m^3)"].sum(axis=1)
@@ -674,25 +690,30 @@ class mitim_state:
             self.derived["ptot_manual"],
             self.derived["pe"],
             self.derived["pi"],
+            self.derived["pi_all"],
         ) = PLASMAtools.calculatePressure(
             np.expand_dims(self.profiles["te(keV)"], 0),
             np.expand_dims(np.transpose(self.profiles["ti(keV)"]), 0),
             np.expand_dims(self.profiles["ne(10^19/m^3)"] * 0.1, 0),
             np.expand_dims(np.transpose(self.profiles["ni(10^19/m^3)"] * 0.1), 0),
         )
-        self.derived["ptot_manual"], self.derived["pe"], self.derived["pi"] = (
-            self.derived["ptot_manual"][0],
-            self.derived["pe"][0],
-            self.derived["pi"][0],
+        self.derived["ptot_manual"], self.derived["pe"], self.derived["pi"], self.derived["pi_all"] = (
+            self.derived["ptot_manual"][0,...],
+            self.derived["pe"][0,...],
+            self.derived["pi"][0,...],
+            self.derived["pi_all"][0,...],
         )
+        self.derived['pi_all'] = np.transpose(self.derived['pi_all'])  # to have the same shape as ni_thr
+
 
         (
             self.derived["pthr_manual"],
             _,
             self.derived["pi_thr"],
+            _,
         ) = PLASMAtools.calculatePressure(
             np.expand_dims(self.profiles["te(keV)"], 0),
-            np.expand_dims(np.transpose(self.profiles["ti(keV)"]), 0),
+            np.expand_dims(np.transpose(self.derived["Ti_thr"]), 0),
             np.expand_dims(self.profiles["ne(10^19/m^3)"] * 0.1, 0),
             np.expand_dims(np.transpose(self.derived["ni_thr"] * 0.1), 0),
         )
@@ -700,6 +721,7 @@ class mitim_state:
             self.derived["pthr_manual"][0],
             self.derived["pi_thr"][0],
         )
+
 
         # -------
         # Content
@@ -713,7 +735,7 @@ class mitim_state:
         ) = PLASMAtools.calculateContent(
             np.expand_dims(r, 0),
             np.expand_dims(self.profiles["te(keV)"], 0),
-            np.expand_dims(np.transpose(self.profiles["ti(keV)"]), 0),
+            np.expand_dims(np.transpose(self.derived["Ti_thr"]), 0),
             np.expand_dims(self.profiles["ne(10^19/m^3)"] * 0.1, 0),
             np.expand_dims(np.transpose(self.derived["ni_thr"] * 0.1), 0),
             np.expand_dims(volp, 0),
@@ -931,7 +953,8 @@ class mitim_state:
         self.derived["fG"] = self.derived["ne_vol20"] / nG
         self.derived["fG_x"] = self.profiles["ne(10^19/m^3)"]* 0.1 / nG
 
-        self.derived["tite"] = self.profiles["ti(keV)"][:, 0] / self.profiles["te(keV)"]
+        self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
+        self.derived["tite"] = self.derived["tite_all"][:, 0]
         self.derived["tite_vol"] = self.derived["Ti_vol"] / self.derived["Te_vol"]
 
         self.derived["LH_nmin"] = PLASMAtools.LHthreshold_nmin(
@@ -1005,71 +1028,6 @@ class mitim_state:
                 
         # ~~~~ Estimate upstream density
         self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
-
-        # -------------------------------------------------------
-        # TGLF-relevant quantities
-        # -------------------------------------------------------
-
-        self.tglf_plasma()
-
-    def tglf_plasma(self):
-
-        def deriv_gacode(y):
-            return grad(self.derived["r"],y).cpu().numpy()
-        
-        self.derived["sign_it"] = - np.sign(self.profiles["current(MA)"][-1])
-        self.derived["sign_bt"] = - np.sign(self.profiles["bcentr(T)"][-1])
-
-        self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
-
-        self.derived['betae'] = PLASMAtools.betae(
-            self.profiles['te(keV)'],
-            self.profiles['ne(10^19/m^3)']*0.1,
-            self.derived["B_unit"])
-
-        self.derived['xnue'] = PLASMAtools.xnue(
-            torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
-            torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
-            self.derived["a"],
-            mref_u=self.derived["mi_ref"]).cpu().numpy()
-
-        self.derived['debye'] = PLASMAtools.debye(
-            self.profiles['te(keV)'],
-            self.profiles['ne(10^19/m^3)']*0.1,
-            self.derived["mi_ref"],
-            self.derived["B_unit"])
-
-        self.derived['pprime'] = 1E-7 * abs(self.profiles["q(-)"])*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
-        self.derived['pprime'][0] = 0.0
-
-        self.derived['drmin/dr'] = deriv_gacode(self.derived["r"])
-        self.derived['dRmaj/dr'] = deriv_gacode(self.profiles["rmaj(m)"])
-        self.derived['dZmaj/dr'] = deriv_gacode(self.profiles["zmag(m)"])
-
-        self.derived['s_kappa']  = self.derived["r"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
-        self.derived['s_delta']  = self.derived["r"]                             * deriv_gacode(self.profiles["delta(-)"])
-        self.derived['s_zeta']   = self.derived["r"]                             * deriv_gacode(self.profiles["zeta(-)"])
-        
-        s = self.derived["r"] / self.profiles["q(-)"]*deriv_gacode(self.profiles["q(-)"])
-        self.derived['s_q'] =  np.concatenate([np.array([0.0]),(self.profiles["q(-)"][1:] / self.derived['roa'][1:])**2 * s[1:]]) # infinite in first location
-
-        '''
-        Rotations
-        --------------------------------------------------------
-            From TGYRO/TGLF definitions
-                  w0p = expro_w0p(:)/100.0
-                  f_rot(:) = w0p(:)/w0_norm
-                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
-                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
-        '''
-
-        w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
-        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
-
-        self.derived['vexb_shear']  = -self.derived['sign_it'] * gamma_eb0 * self.derived["a"]/self.derived['c_s']
-        self.derived['vpar_shear']  = -self.derived['sign_it'] * gamma_p0  * self.derived["a"]/self.derived['c_s']
-        self.derived['vpar']        = -self.derived['sign_it'] * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -1314,7 +1272,7 @@ class mitim_state:
         ions_list.sort()
         print("\t\t- Removing ions in positions (of ions order, no zero): ",ions_list,typeMsg="i",)
 
-        ions_list = [i - 1 for i in ions_list]
+        ions_list = [(i - 1 if i >-1 else i) for i in ions_list]
 
         fail = False
 
@@ -2149,10 +2107,94 @@ class mitim_state:
 
     def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
-        max_species_tglf = 6  # TGLF only accepts up to 6 species
+        # Derivate function
+        def deriv_gacode(y):
+            return grad(self.derived["r"],y).cpu().numpy()
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Determine the number of species to use in TGLF
+        max_species_tglf = 6  # TGLF only accepts up to 6 species  
+        if len(self.Species) > max_species_tglf-1:
+            print(f"\t- Warning: TGLF only accepts {max_species_tglf} species, but there are {len(self.Species)} ions pecies in the GACODE input. The first {max_species_tglf-1} will be used.", typeMsg="w")
+            tglf_ions_num = max_species_tglf - 1
+        else:
+            tglf_ions_num = len(self.Species)
+
+        # Determinte the mass reference
+        mass_ref = 2.0 # TODO: This is the only way to make it consistent with TGYRO (derivations with mD_u but mass in tglf with 2.0... https://github.com/gafusion/gacode/issues/398
+
+        # -----------------------------------------------------------------------
+        # Derived profiles
+        # -----------------------------------------------------------------------
+        
+        sign_it = -np.sign(self.profiles["current(MA)"][-1])
+        sign_bt = -np.sign(self.profiles["bcentr(T)"][-1])
+
+        betae = PLASMAtools.betae(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            self.derived["B_unit"]
+            )
+
+        xnue = PLASMAtools.xnue(
+            torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
+            torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
+            self.derived["a"],
+            mref_u=self.derived["mi_ref"]
+            ).cpu().numpy()
+
+        debye = PLASMAtools.debye(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            self.derived["mi_ref"],
+            self.derived["B_unit"]
+            )
+
+        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
+        s_delta  = self.derived["r"]                             * deriv_gacode(self.profiles["delta(-)"])
+        s_zeta   = self.derived["r"]                             * deriv_gacode(self.profiles["zeta(-)"])
+        
+        s_hat =  self.derived["r"]*deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
+        s_q = (self.profiles["q(-)"] / self.derived['roa'])**2 * s_hat
+        s_q[0] = 0.0 # infinite in first location
+
+        '''
+        Total pressure
+        --------------------------------------------------------
+            Recompute pprime with those species that belong to this run             #TODO not exact?
+        '''
+
+        adpedr = - self.derived['pe'] * (self.derived['aLTe'] + self.derived['aLne'])
+        adpjdr = - self.derived['pi_all'][:,:tglf_ions_num] * (self.derived['aLTi'][:,:tglf_ions_num] + self.derived['aLni'][:,:tglf_ions_num])
+
+        dpdr  = ( adpedr + adpjdr.sum(axis=-1)) / self.derived['a'] * 1E6
+        
+        pprime = 1E-7 * abs(self.profiles["q(-)"])*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*dpdr
+        pprime[0] = 0 # infinite in first location
+
+        '''
+        Rotations
+        --------------------------------------------------------
+            From TGYRO/TGLF definitions
+                  w0p = expro_w0p(:)/100.0
+                  f_rot(:) = w0p(:)/w0_norm
+                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
+                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
+        '''
+
+        w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
+        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
+        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
+
+        vexb_shear  = -sign_it * gamma_eb0 * self.derived["a"]/self.derived['c_s']
+        vpar_shear  = -sign_it * gamma_p0  * self.derived["a"]/self.derived['c_s']
+        vpar        = -sign_it * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
+
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+        # Prepare the inputs for TGLF
+        # ---------------------------------------------------------------------------------------------------------------------------------------
 
         inputsTGLF = {}
         for rho in rhos:
@@ -2165,7 +2207,7 @@ class mitim_state:
                 return interpolation_function(rho, self.profiles['rho(-)'],y).item()
 
             TGLFinput, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(TGLFsettings)
-
+            
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2176,13 +2218,6 @@ class mitim_state:
             # Species come from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
-            #mass_ref = self.derived["mi_ref"]
-            # input.gacode uses the deuterium mass as reference already (https://github.com/gafusion/gacode/issues/398), so this should be 2.0
-            mass_ref = 2.0
-            
-            if mass_ref != self.derived["mi_ref"]:
-                print(f"\t- Warning: the mass reference in the input.gacode is {self.derived['mi_ref']}, but TGLF expects {mass_ref}. This may lead to problems with the TGLF input file.", typeMsg="q")
-
             species = {
                 1: {
                     'ZS': -1.0,
@@ -2191,14 +2226,11 @@ class mitim_state:
                     'RLTS': interpolator(self.derived['aLTe']),
                     'TAUS': 1.0,
                     'AS': 1.0,
-                    'VPAR': interpolator(self.derived['vpar']),
-                    'VPAR_SHEAR': interpolator(self.derived['vpar_shear']),
+                    'VPAR': interpolator(vpar),
+                    'VPAR_SHEAR': interpolator(vpar_shear),
                     'VNS_SHEAR': 0.0,
                     'VTS_SHEAR': 0.0},
             }
-            
-            if len(self.Species) > max_species_tglf-1:
-                print(f"\t- Warning: TGLF only accepts {max_species_tglf} species, but there are {len(self.Species)} ions pecies in the GACODE input. The first {max_species_tglf-1} will be used.", typeMsg="w")
 
             for i in range(min(len(self.Species), max_species_tglf-1)):
                 species[i+2] = {
@@ -2208,8 +2240,8 @@ class mitim_state:
                     'RLTS': interpolator(self.derived['aLTi'][:,0] if self.Species[i]['S'] == 'therm' else self.derived["aLTi"][:,i]),
                     'TAUS': interpolator(self.derived["tite_all"][:,i]),
                     'AS': interpolator(self.derived['fi'][:,i]),
-                    'VPAR': interpolator(self.derived['vpar']),
-                    'VPAR_SHEAR': interpolator(self.derived['vpar_shear']),
+                    'VPAR': interpolator(vpar),
+                    'VPAR_SHEAR': interpolator(vpar_shear),
                     'VNS_SHEAR': 0.0,
                     'VTS_SHEAR': 0.0
                     }
@@ -2220,16 +2252,16 @@ class mitim_state:
 
             plasma = {
                 'NS': len(species),
-                'SIGN_BT': self.derived['sign_bt'],
-                'SIGN_IT': self.derived['sign_it'],
+                'SIGN_BT': sign_bt,
+                'SIGN_IT': sign_it,
                 'VEXB': 0.0,
-                'VEXB_SHEAR': interpolator(self.derived['vexb_shear']),
-                'BETAE': interpolator(self.derived['betae']),
-                'XNUE': interpolator(self.derived['xnue']),
+                'VEXB_SHEAR': interpolator(vexb_shear),
+                'BETAE': interpolator(betae),
+                'XNUE': interpolator(xnue),
                 'ZEFF': interpolator(self.derived['Zeff']),
-                'DEBYE': interpolator(self.derived['debye']),
+                'DEBYE':interpolator(debye),
                 }
-
+            
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Geometry comes from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2238,18 +2270,18 @@ class mitim_state:
                 'RMIN_LOC':     self.derived['roa'],
                 'RMAJ_LOC':     self.derived['Rmajoa'],
                 'ZMAJ_LOC':     self.derived["Zmagoa"],
-                'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 instead of self.derived['drmin/dr'] because of numerical issues in TGLF
-                'DRMAJDX_LOC':  self.derived['dRmaj/dr'],
-                'DZMAJDX_LOC':  self.derived['dZmaj/dr'],
+                'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 because of numerical issues in TGLF
+                'DRMAJDX_LOC':  deriv_gacode(self.profiles["rmaj(m)"]),
+                'DZMAJDX_LOC':  deriv_gacode(self.profiles["zmag(m)"]),
                 'Q_LOC':        np.abs(self.profiles["q(-)"]),
                 'KAPPA_LOC':    self.profiles["kappa(-)"],
-                'S_KAPPA_LOC':  self.derived['s_kappa'],
+                'S_KAPPA_LOC':  s_kappa,
                 'DELTA_LOC':    self.profiles["delta(-)"],
-                'S_DELTA_LOC':  self.derived['s_delta'],
+                'S_DELTA_LOC':  s_delta,
                 'ZETA_LOC':     self.profiles["zeta(-)"],
-                'S_ZETA_LOC':   self.derived['s_zeta'],
-                'P_PRIME_LOC':  self.derived['pprime'],
-                'Q_PRIME_LOC':  self.derived['s_q'],
+                'S_ZETA_LOC':   s_zeta,
+                'Q_PRIME_LOC':  s_q,
+                'P_PRIME_LOC':  pprime,
             }
             
             # Add MXH and derivatives (#TODO)
@@ -2272,7 +2304,7 @@ class mitim_state:
 
             geom['BETA_LOC'] = 0.0
             geom['KX0_LOC'] = 0.0
-            
+
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Merging
             # ---------------------------------------------------------------------------------------------------------------------------------------
