@@ -1029,6 +1029,37 @@ class mitim_state:
         # ~~~~ Estimate upstream density
         self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
 
+        # -------------------------------------------------------
+        # Transport parameters
+        # -------------------------------------------------------
+
+        self.derived['betae'] = PLASMAtools.betae(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            self.derived["B_unit"]
+            )
+
+        self.derived['xnue'] = PLASMAtools.xnue(
+            torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
+            torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
+            self.derived["a"],
+            mref_u=self.derived["mi_ref"]
+            ).cpu().numpy()
+
+        self.derived['debye'] = PLASMAtools.debye(
+            self.profiles['te(keV)'],
+            self.profiles['ne(10^19/m^3)']*0.1,
+            self.derived["mi_ref"],
+            self.derived["B_unit"]
+            )
+        s_hat =  self.derived["r"]*self._deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
+        self.derived['s_q'] = (self.profiles["q(-)"] / self.derived['roa'])**2 * s_hat
+        self.derived['s_q'][0] = 0.0 # infinite in first location
+
+    # Derivate function
+    def _deriv_gacode(self,y):
+        return grad(self.derived["r"],y).cpu().numpy()
+
     def calculateMass(self):
         self.derived["mbg"] = 0.0
         self.derived["fmain"] = 0.0
@@ -1108,6 +1139,11 @@ class mitim_state:
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
+        Prad_ratio = self.derived['Prad'] / self.derived['qHeat'] 
+        Prad_ratio_brem = self.derived['Prad_brem']/self.derived['Prad'] 
+        Prad_ratio_line = self.derived['Prad_line']/self.derived['Prad'] 
+        Prad_ratio_sync = self.derived['Prad_sync']/self.derived['Prad'] 
+
         try:
             ImpurityText = ""
             for i in range(len(self.Species)):
@@ -1129,7 +1165,7 @@ class mitim_state:
             print(f"\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(f"\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(f"\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
-            print(f"\tPrad  =  {self.derived['Prad']:.1f}MW ({self.derived['Prad'] / self.derived['qHeat'] * 100.0:.1f}% of total) ({self.derived['Prad_brem']/self.derived['Prad'] * 100.0:.1f}% brem, {self.derived['Prad_line']/self.derived['Prad'] * 100.0:.1f}% line, {self.derived['Prad_sync']/self.derived['Prad'] * 100.0:.1f}% sync)")
+            print(f"\tPrad  =  {self.derived['Prad']:.1f}MW ({Prad_ratio*100.0:.1f}% of total) ({Prad_ratio_brem*100.0:.1f}% brem, {Prad_ratio_line*100.0:.1f}% line, {Prad_ratio_sync*100.0:.1f}% sync)")
             print("\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
             print("Operational point ( [<ne>,<Te>] = [{0:.2f},{1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
@@ -2107,10 +2143,6 @@ class mitim_state:
 
     def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
-        # Derivate function
-        def deriv_gacode(y):
-            return grad(self.derived["r"],y).cpu().numpy()
-
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
@@ -2132,33 +2164,10 @@ class mitim_state:
         sign_it = -np.sign(self.profiles["current(MA)"][-1])
         sign_bt = -np.sign(self.profiles["bcentr(T)"][-1])
 
-        betae = PLASMAtools.betae(
-            self.profiles['te(keV)'],
-            self.profiles['ne(10^19/m^3)']*0.1,
-            self.derived["B_unit"]
-            )
-
-        xnue = PLASMAtools.xnue(
-            torch.from_numpy(self.profiles['te(keV)']).to(torch.double),
-            torch.from_numpy(self.profiles['ne(10^19/m^3)']*0.1).to(torch.double),
-            self.derived["a"],
-            mref_u=self.derived["mi_ref"]
-            ).cpu().numpy()
-
-        debye = PLASMAtools.debye(
-            self.profiles['te(keV)'],
-            self.profiles['ne(10^19/m^3)']*0.1,
-            self.derived["mi_ref"],
-            self.derived["B_unit"]
-            )
-
-        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * deriv_gacode(self.profiles["kappa(-)"])
-        s_delta  = self.derived["r"]                             * deriv_gacode(self.profiles["delta(-)"])
-        s_zeta   = self.derived["r"]                             * deriv_gacode(self.profiles["zeta(-)"])
+        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
+        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
+        s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
         
-        s_hat =  self.derived["r"]*deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
-        s_q = (self.profiles["q(-)"] / self.derived['roa'])**2 * s_hat
-        s_q[0] = 0.0 # infinite in first location
 
         '''
         Total pressure
@@ -2184,9 +2193,9 @@ class mitim_state:
                   gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
         '''
 
-        w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
+        w0p         = self._deriv_gacode(self.profiles["w0(rad/s)"])
         gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
+        gamma_eb0   = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
 
         vexb_shear  = -sign_it * gamma_eb0 * self.derived["a"]/self.derived['c_s']
         vpar_shear  = -sign_it * gamma_p0  * self.derived["a"]/self.derived['c_s']
@@ -2256,12 +2265,12 @@ class mitim_state:
                 'SIGN_IT': sign_it,
                 'VEXB': 0.0,
                 'VEXB_SHEAR': interpolator(vexb_shear),
-                'BETAE': interpolator(betae),
-                'XNUE': interpolator(xnue),
+                'XNUE': interpolator(self.derived['xnue']),
                 'ZEFF': interpolator(self.derived['Zeff']),
-                'DEBYE':interpolator(debye),
+                'DEBYE': interpolator(self.derived['debye']),
+                'BETAE': interpolator(self.derived['betae']),
                 }
-            
+
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Geometry comes from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2271,8 +2280,8 @@ class mitim_state:
                 'RMAJ_LOC':     self.derived['Rmajoa'],
                 'ZMAJ_LOC':     self.derived["Zmagoa"],
                 'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 because of numerical issues in TGLF
-                'DRMAJDX_LOC':  deriv_gacode(self.profiles["rmaj(m)"]),
-                'DZMAJDX_LOC':  deriv_gacode(self.profiles["zmag(m)"]),
+                'DRMAJDX_LOC':  self._deriv_gacode(self.profiles["rmaj(m)"]),
+                'DZMAJDX_LOC':  self._deriv_gacode(self.profiles["zmag(m)"]),
                 'Q_LOC':        np.abs(self.profiles["q(-)"]),
                 'KAPPA_LOC':    self.profiles["kappa(-)"],
                 'S_KAPPA_LOC':  s_kappa,
@@ -2280,7 +2289,7 @@ class mitim_state:
                 'S_DELTA_LOC':  s_delta,
                 'ZETA_LOC':     self.profiles["zeta(-)"],
                 'S_ZETA_LOC':   s_zeta,
-                'Q_PRIME_LOC':  s_q,
+                'Q_PRIME_LOC':  self.derived['s_q'],
                 'P_PRIME_LOC':  pprime,
             }
             
