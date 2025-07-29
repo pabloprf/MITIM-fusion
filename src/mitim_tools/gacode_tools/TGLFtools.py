@@ -13,6 +13,7 @@ from mitim_tools.misc_tools import (
     PLASMAtools,
     GUItools,
 )
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.gacode_tools.utils import (
     NORMtools,
     GACODEinterpret,
@@ -1243,87 +1244,9 @@ class TGLF:
             axFluc02Sym = axFluc02.twinx()
 
         if plotGACODE:
-            grid = plt.GridSpec(3, 3, hspace=0.3, wspace=0.3)
-            axsProf_1 = [
-                figProf_1.add_subplot(grid[0, 0]),
-                figProf_1.add_subplot(grid[1, 0]),
-                figProf_1.add_subplot(grid[2, 0]),
-                figProf_1.add_subplot(grid[0, 1]),
-                figProf_1.add_subplot(grid[1, 1]),
-                figProf_1.add_subplot(grid[2, 1]),
-                figProf_1.add_subplot(grid[0, 2]),
-                figProf_1.add_subplot(grid[1, 2]),
-                figProf_1.add_subplot(grid[2, 2]),
-            ]
-
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-            axsProf_2 = [
-                figProf_2.add_subplot(grid[0, 0]),
-                figProf_2.add_subplot(grid[0, 1]),
-                figProf_2.add_subplot(grid[1, 0]),
-                figProf_2.add_subplot(grid[1, 1]),
-                figProf_2.add_subplot(grid[0, 2]),
-                figProf_2.add_subplot(grid[1, 2]),
-            ]
-            grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.5)
-            ax00c = figProf_3.add_subplot(grid[0, 0])
-            axsProf_3 = [
-                ax00c,
-                figProf_3.add_subplot(grid[1, 0], sharex=ax00c),
-                figProf_3.add_subplot(grid[2, 0], sharex=ax00c),
-                figProf_3.add_subplot(grid[0, 1], sharex=ax00c),
-                figProf_3.add_subplot(grid[1, 1], sharex=ax00c),
-                figProf_3.add_subplot(grid[2, 1], sharex=ax00c),
-                figProf_3.add_subplot(grid[0, 2], sharex=ax00c),
-                figProf_3.add_subplot(grid[1, 2], sharex=ax00c),
-                figProf_3.add_subplot(grid[2, 2], sharex=ax00c),
-                figProf_3.add_subplot(grid[0, 3], sharex=ax00c),
-                figProf_3.add_subplot(grid[1, 3], sharex=ax00c),
-                figProf_3.add_subplot(grid[2, 3], sharex=ax00c),
-            ]
-
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-            axsProf_4 = [
-                figProf_4.add_subplot(grid[0, 0]),
-                figProf_4.add_subplot(grid[0, 1]),
-                figProf_4.add_subplot(grid[0, 2]),
-                figProf_4.add_subplot(grid[1, 0]),
-                figProf_4.add_subplot(grid[1, 1]),
-                figProf_4.add_subplot(grid[1, 2]),
-            ]
-
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-
-            axsProf_5 = [
-                figProf_5.add_subplot(grid[0, 0]),
-                figProf_5.add_subplot(grid[1, 0]),
-                figProf_5.add_subplot(grid[0, 1]),
-                figProf_5.add_subplot(grid[0, 2]),
-                figProf_5.add_subplot(grid[1, 1]),
-                figProf_5.add_subplot(grid[1, 2]),
-            ]
-
-            grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-            axsProf_6 = [
-                figProf_6.add_subplot(grid[0, 0]),
-                figProf_6.add_subplot(grid[:, 1]),
-                figProf_6.add_subplot(grid[0, 2]),
-                figProf_6.add_subplot(grid[1, 0]),
-                figProf_6.add_subplot(grid[1, 2]),
-                figProf_6.add_subplot(grid[0, 3]),
-                figProf_6.add_subplot(grid[1, 3]),
-            ]
-
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
-            axsProf_7 = [
-                figProf_7.add_subplot(grid[0, 0]),
-                figProf_7.add_subplot(grid[0, 1]),
-                figProf_7.add_subplot(grid[0, 2]),
-                figProf_7.add_subplot(grid[1, 0]),
-                figProf_7.add_subplot(grid[1, 1]),
-                figProf_7.add_subplot(grid[1, 2]),
-            ]
-
+            axsProf_1, axsProf_2, axsProf_3, axsProf_4, axsProf_5, axsProf_6, axsProf_7 = state_plotting.add_axes([figProf_1, figProf_2, figProf_3, figProf_4, figProf_5, figProf_6, figProf_7])
+            
+            
         grid = plt.GridSpec(2, 4, hspace=0.2, wspace=0.6)
 
         if plotNormalizations:
@@ -3842,19 +3765,13 @@ def changeANDwrite_TGLF(
         modInputTGLF[rho] = inputTGLF_rho
 
         ns_max.append(inputs[rho].plasma["NS"])
-
+        
     # Convert back to a string because that's how runTGLFproduction operates
     inputFileTGLF = inputToVariable(FolderTGLF, rhos)
 
     if (np.diff(ns_max) > 0).any():
-        print(
-            "> Each radial location has its own number of species... probably because of removal of fast or low density...",
-            typeMsg="w",
-        )
-        print(
-            "\t * Reading of TGLF results will fail... consider doing something before launching run",
-            typeMsg="q",
-        )
+        print("> Each radial location has its own number of species... probably because of removal of fast or low density...",typeMsg="w")
+        print("\t * Reading of TGLF results will fail... consider doing something before launching run",typeMsg="q")
 
     return inputFileTGLF, modInputTGLF
 
@@ -4139,6 +4056,8 @@ class TGLFinput:
             for ikey in self.plasma:
                 if ikey == "NS":
                     var = np.min([self.plasma[ikey], maxSpeciesTGLF])
+                    if var < self.plasma[ikey]:
+                        print(f"\t- Maximum number of species in TGLF reached, not considering after {maxSpeciesTGLF} species",typeMsg="w",)
                 else:
                     var = self.plasma[ikey]
                 f.write(f"{ikey.ljust(23)} = {var}\n")
