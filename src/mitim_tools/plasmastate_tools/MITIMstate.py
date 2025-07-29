@@ -3,7 +3,6 @@ import torch
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
-from collections import OrderedDict
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.gacode_tools import NEOtools
@@ -1017,6 +1016,9 @@ class mitim_state:
 
         def deriv_gacode(y):
             return grad(self.derived["r"],y).cpu().numpy()
+        
+        self.derived["sign_it"] = - np.sign(self.profiles["current(MA)"][-1])
+        self.derived["sign_bt"] = - np.sign(self.profiles["bcentr(T)"][-1])
 
         self.derived["tite_all"] = self.profiles["ti(keV)"] / self.profiles["te(keV)"][:, np.newaxis]
 
@@ -1037,7 +1039,7 @@ class mitim_state:
             self.derived["mi_ref"],
             self.derived["B_unit"])
 
-        self.derived['pprime'] = 1E-7 * self.profiles["q(-)"]*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
+        self.derived['pprime'] = 1E-7 * abs(self.profiles["q(-)"])*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*deriv_gacode(self.profiles["ptot(Pa)"])
         self.derived['pprime'][0] = 0.0
 
         self.derived['drmin/dr'] = deriv_gacode(self.derived["r"])
@@ -1063,11 +1065,11 @@ class mitim_state:
 
         w0p         = deriv_gacode(self.profiles["w0(rad/s)"])
         gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/self.profiles["q(-)"] 
+        gamma_eb0   = -deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
 
-        self.derived['vexb_shear']  = gamma_eb0 * self.derived["a"]/self.derived['c_s']
-        self.derived['vpar_shear']  = gamma_p0  * self.derived["a"]/self.derived['c_s']
-        self.derived['vpar']        = self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
+        self.derived['vexb_shear']  = -self.derived['sign_it'] * gamma_eb0 * self.derived["a"]/self.derived['c_s']
+        self.derived['vpar_shear']  = -self.derived['sign_it'] * gamma_p0  * self.derived["a"]/self.derived['c_s']
+        self.derived['vpar']        = -self.derived['sign_it'] * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -2147,6 +2149,8 @@ class mitim_state:
 
     def to_tglf(self, rhos=[0.5], TGLFsettings=1):
 
+        max_species_tglf = 6  # TGLF only accepts up to 6 species
+
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
@@ -2192,8 +2196,11 @@ class mitim_state:
                     'VNS_SHEAR': 0.0,
                     'VTS_SHEAR': 0.0},
             }
+            
+            if len(self.Species) > max_species_tglf-1:
+                print(f"\t- Warning: TGLF only accepts {max_species_tglf} species, but there are {len(self.Species)} ions pecies in the GACODE input. The first {max_species_tglf-1} will be used.", typeMsg="w")
 
-            for i in range(len(self.Species)):
+            for i in range(min(len(self.Species), max_species_tglf-1)):
                 species[i+2] = {
                     'ZS': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
@@ -2213,8 +2220,8 @@ class mitim_state:
 
             plasma = {
                 'NS': len(species),
-                'SIGN_BT': -1.0,
-                'SIGN_IT': -1.0,
+                'SIGN_BT': self.derived['sign_bt'],
+                'SIGN_IT': self.derived['sign_it'],
                 'VEXB': 0.0,
                 'VEXB_SHEAR': interpolator(self.derived['vexb_shear']),
                 'BETAE': interpolator(self.derived['betae']),
@@ -2234,7 +2241,7 @@ class mitim_state:
                 'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 instead of self.derived['drmin/dr'] because of numerical issues in TGLF
                 'DRMAJDX_LOC':  self.derived['dRmaj/dr'],
                 'DZMAJDX_LOC':  self.derived['dZmaj/dr'],
-                'Q_LOC':        self.profiles["q(-)"],
+                'Q_LOC':        np.abs(self.profiles["q(-)"]),
                 'KAPPA_LOC':    self.profiles["kappa(-)"],
                 'S_KAPPA_LOC':  self.derived['s_kappa'],
                 'DELTA_LOC':    self.profiles["delta(-)"],
