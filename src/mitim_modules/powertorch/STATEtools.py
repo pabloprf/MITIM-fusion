@@ -37,7 +37,6 @@ class powerstate:
             - EvolutionOptions:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
-                - useConvectiveFluxes: boolean = whether to use convective fluxes instead of particle fluxes for FM
                 - impurityPosition: int = position of the impurity in the ions set
                 - fineTargetsResolution: int = resolution of the fine targets
             - TransportOptions: dictionary with transport_evaluator and ModelOptions
@@ -76,7 +75,6 @@ class powerstate:
 
         # Default options
         self.ProfilesPredicted = EvolutionOptions.get("ProfilePredicted", ["te", "ti", "ne"])
-        self.useConvectiveFluxes = EvolutionOptions.get("useConvectiveFluxes", True)
         self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
         self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
@@ -709,7 +707,6 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            useConvectiveFluxes=self.useConvectiveFluxes,
             forceZeroParticleFlux=self.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False))
 
     def calculateTransport(

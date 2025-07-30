@@ -110,7 +110,7 @@ class power_targets:
         for i in self.plasma_original:
             self.powerstate.plasma[i] = self.plasma_original[i]
 
-    def postprocessing(self, useConvectiveFluxes=False, forceZeroParticleFlux=False, relative_error_assumed=1.0):
+    def postprocessing(self, forceZeroParticleFlux=False, relative_error_assumed=1.0):
 
         # **************************************************************************************************
         # Plug-in targets that were fixed
@@ -125,13 +125,9 @@ class power_targets:
         if forceZeroParticleFlux:
             self.powerstate.plasma["Ge1E20sm2"]     = self.powerstate.plasma["Ge1E20sm2"] * 0
 
-        # Convective fluxes?
-        if useConvectiveFluxes:
-            self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ge1E20sm2"])  # MW/m^2
-            self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
-        else:
-            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ge1E20sm2"]
-            self.powerstate.plasma["CZ"] = self.powerstate.plasma["CZ_raw"]
+        # Convective fluxes
+        self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ge1E20sm2"])  # MW/m^2
+        self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
 
         # **************************************************************************************************
         # Error
@@ -148,6 +144,6 @@ class power_targets:
 
         self.powerstate.plasma["QeGB"] = self.powerstate.plasma["QeMWm2"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["QiGB"] = self.powerstate.plasma["QiMWm2"] / self.powerstate.plasma["Qgb"]
-        self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
-        self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb" if useConvectiveFluxes else "Ggb"]
+        self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb"]
+        self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["MtGB"] = self.powerstate.plasma["MtJm2"] / self.powerstate.plasma["Pgb"]

@@ -43,16 +43,10 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                     'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
-            if self.useConvectiveFluxes:
-                set_plots.append(
-                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
-                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
-                        1E-1,"Qgb"])
-            else:
-                set_plots.append(
-                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
-                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
-                        1E-1,"Ggb"])
+            set_plots.append(
+                [   'ne', 'aLne', 'Ce_tr', 'Ce',
+                    'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
+                    1E-1,"Qgb"])
 
     if "nZ" in self.ProfilesPredicted:
 
@@ -63,16 +57,10 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
-            if self.useConvectiveFluxes:
-                set_plots.append(
-                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
-                        1E-1,"Qgb"])
-            else:
-                set_plots.append(
-                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
-                        1E-1,"Ggb"])
+            set_plots.append(
+                [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
+                    'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
+                    1E-1,"Qgb"])
 
     if "w0" in self.ProfilesPredicted:
         set_plots.append(
