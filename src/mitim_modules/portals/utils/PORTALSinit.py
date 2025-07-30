@@ -139,7 +139,6 @@ def initializeProblem(
                 "profiles_postprocessing_fun"
             ],
             "impurityPosition": position_of_impurity,
-            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
             "forceZeroParticleFlux": portals_fun.PORTALSparameters[
@@ -167,7 +166,6 @@ def initializeProblem(
         EvolutionOptions={
             "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
             "rhoPredicted": xCPs,
-            "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
             "impurityPosition": position_of_impurity,
             "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
         },
@@ -223,7 +221,6 @@ def initializeProblem(
             EvolutionOptions={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
-                "useConvectiveFluxes": portals_fun.PORTALSparameters["useConvectiveFluxes"],
                 "impurityPosition": position_of_impurity,
                 "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },

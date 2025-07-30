@@ -169,7 +169,6 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     minErrorPercent = PORTALSparameters["percentError_stable"]
     Qi_criterion_stable = PORTALSparameters["Qi_criterion_stable"]
     percentNeo = PORTALSparameters["percentError"][1]
-    useConvectiveFluxes = PORTALSparameters["useConvectiveFluxes"]
 
     try:
         impurityPosition = PROFILEStools.impurity_location(PROFILEStools.gacode_state(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
@@ -189,7 +188,6 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
             numPORTALS,
             minErrorPercent,
             Qi_criterion_stable,
-            useConvectiveFluxes,
             percentNeo,
             radii,
             OriginalFimp=OriginalFimp,
@@ -221,7 +219,6 @@ def cgyroing(
     evaluations,
     minErrorPercent,
     Qi_criterion_stable,
-    useConvectiveFluxes,
     percentNeo,
     radii,
     OriginalFimp=1.0,
@@ -267,7 +264,6 @@ def cgyroing(
             tgyro,
             FolderEvaluation,
             minErrorPercent=minErrorPercent,
-            useConvectiveFluxes=useConvectiveFluxes,
             Qi_criterion_stable=Qi_criterion_stable,
             percentNeo=percentNeo,
             impurityPosition=impurityPosition,

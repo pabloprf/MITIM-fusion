@@ -160,7 +160,6 @@ class PORTALSanalyzer:
 
         self.runWithRotation = "w0" in self.ProfilesPredicted
         self.includeFast = self.PORTALSparameters["includeFastInQi"]
-        self.useConvectiveFluxes = self.PORTALSparameters["useConvectiveFluxes"]
         self.forceZeroParticleFlux = self.PORTALSparameters["forceZeroParticleFlux"]
 
         # Profiles and tgyro results

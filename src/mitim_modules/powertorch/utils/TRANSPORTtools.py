@@ -53,16 +53,8 @@ class power_transport:
         self.powerstate.labelsFluxes = {
             "te": "$Q_e$ ($MW/m^2$)",
             "ti": "$Q_i$ ($MW/m^2$)",
-            "ne": (
-                "$Q_{conv}$ ($MW/m^2$)"
-                if self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
-                else "$\\Gamma_e$ ($10^{20}/s/m^2$)"
-            ),
-            "nZ": (
-                "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)"
-                if self.powerstate.TransportOptions["ModelOptions"].get("useConvectiveFluxes", True)
-                else "$\\Gamma_Z$ $\\cdot f_{Z,0}$ ($10^{20}/s/m^2$)"
-            ),
+            "ne": "$Q_{conv}$ ($MW/m^2$)",
+            "nZ": "$Q_{conv}$ $\\cdot f_{Z,0}$ ($MW/m^2$)",
             "w0": "$M_T$ ($J/m^2$)",
         }
 

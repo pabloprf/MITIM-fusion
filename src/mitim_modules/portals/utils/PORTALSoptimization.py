@@ -138,7 +138,6 @@ def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_writ
         EvolutionOptions={
             "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
             "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
-            "useConvectiveFluxes": step.surrogate_parameters["powerstate"].useConvectiveFluxes,
             "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
             "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
         },

@@ -205,7 +205,6 @@ class portals(STRATEGYtools.opt_evaluator):
             "targets_evaluator": targets_evaluator,
             "targets_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
-            "useConvectiveFluxes": True,  # If True, then convective flux for final metric (not fitting). If False, particle flux
             "includeFastInQi": False,  # If True, and fast ions have been included, in seprateNEO, sum fast
             "portals_transformation_variables": portals_transformation_variables,  # Physics-informed parameters to fit surrogates
             "portals_transformation_variables_trace": portals_transformation_variables_trace,  # Physics-informed parameters to fit surrogates for trace impurities

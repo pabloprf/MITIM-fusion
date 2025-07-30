@@ -142,7 +142,6 @@ class tgyro_model(TRANSPORTtools.power_transport):
         ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
 
         includeFast = ModelOptions.get("includeFastInQi",False)
-        useConvectiveFluxes = ModelOptions.get("useConvectiveFluxes", True)
         UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
         provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
         OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
@@ -155,7 +154,6 @@ class tgyro_model(TRANSPORTtools.power_transport):
         self.powerstate = tgyro_to_powerstate(
             tgyro.results[label],
             self.powerstate,
-            useConvectiveFluxes=useConvectiveFluxes,
             includeFast=includeFast,
             impurityPosition=impurityPosition,
             UseFineGridTargets=UseFineGridTargets,
@@ -580,7 +578,6 @@ def modifyResults(
     folder_tgyro,
     minErrorPercent=5.0,
     percent_tr_neoc=2.0,
-    useConvectiveFluxes=False,
     Qi_criterion_stable=0.0025,
     impurityPosition=3,
     OriginalFimp=1.0,
@@ -599,7 +596,6 @@ def modifyResults(
             Mt_target,
         ) = defineReferenceFluxes(
             tgyro,
-            useConvectiveFluxes=useConvectiveFluxes,
             impurityPosition=impurityPosition,
         )
 
@@ -859,7 +855,7 @@ def modTGYROfile(file, var, pos=0, fileN_suffix=None):
             f.write(line_new + "\n")
 
 def defineReferenceFluxes(
-    tgyro, factor_tauptauE=5, useConvectiveFluxes=False, impurityPosition=3
+    tgyro, factor_tauptauE=5, impurityPosition=3
 ):
     Qe_target = abs(tgyro.Qe_tar[0, 1:])
     Qi_target = abs(tgyro.Qi_tar[0, 1:])
@@ -877,10 +873,9 @@ def defineReferenceFluxes(
     )  # tau_p in seconds
     Ge_target_special = (Ne / tau_special) / tgyro.dvoldr[0, 1:]  # (1E20/seconds/m^2)
 
-    if useConvectiveFluxes:
-        Ge_target_special = PLASMAtools.convective_flux(
-            tgyro.Te[0, 1:], Ge_target_special
-        )  # (1E20/seconds/m^2)
+    Ge_target_special = PLASMAtools.convective_flux(
+        tgyro.Te[0, 1:], Ge_target_special
+    )  # (1E20/seconds/m^2)
 
     GZ_target_special = Ge_target_special * NZ / Ne
 
@@ -894,7 +889,6 @@ def defineReferenceFluxes(
 
 def tgyro_to_powerstate(TGYROresults,
     powerstate,
-    useConvectiveFluxes=False,
     forceZeroParticleFlux=False,
     includeFast=False,
     impurityPosition=1,
@@ -984,29 +978,16 @@ def tgyro_to_powerstate(TGYROresults,
         powerstate.plasma["Ge1E20sm2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
         powerstate.plasma["Ge1E20sm2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
-    if not useConvectiveFluxes:
 
-        powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ge1E20sm2_tr_turb"]
-        powerstate.plasma["Ce_tr_neoc"] = powerstate.plasma["Ge1E20sm2_tr_neoc"]
+    powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ce_tr_neoc"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :nr]).to(powerstate.dfT)
 
-        powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ge1E20sm2_tr_turb_stds"]
-        powerstate.plasma["Ce_tr_neoc_stds"] = powerstate.plasma["Ge1E20sm2_tr_neoc_stds"]
-        
-        if provideTargets:
-            powerstate.plasma["Ce"] = powerstate.plasma["Ge1E20sm2"]
-            powerstate.plasma["Ce_stds"] = powerstate.plasma["Ge1E20sm2_stds"]    
-
-    else:
-
-        powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ce_tr_neoc"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :nr]).to(powerstate.dfT)
-
-        powerstate.plasma["Ce_tr_turb_stds"] = torch.Tensor(TGYROresults.Ce_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["Ce_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        
-        if provideTargets:
-            powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[:, :nr]).to(powerstate.dfT)
-            powerstate.plasma["Ce_stds"] = torch.Tensor(TGYROresults.Ce_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ce_tr_turb_stds"] = torch.Tensor(TGYROresults.Ce_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ce_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    
+    if provideTargets:
+        powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["Ce_stds"] = torch.Tensor(TGYROresults.Ce_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Impurity Fluxes
@@ -1023,29 +1004,15 @@ def tgyro_to_powerstate(TGYROresults,
         powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
         powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
-    if not useConvectiveFluxes:
+    powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+    powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
 
-        powerstate.plasma["CZ_tr_turb"] = powerstate.plasma["CZ_raw_tr_turb"] / OriginalFimp
-        powerstate.plasma["CZ_tr_neoc"] = powerstate.plasma["CZ_raw_tr_neoc"] / OriginalFimp
-        
-        powerstate.plasma["CZ_tr_turb_stds"] = powerstate.plasma["CZ_raw_tr_turb_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neoc_stds"] = powerstate.plasma["CZ_raw_tr_neoc_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
-        
-        if provideTargets:
-            powerstate.plasma["CZ"] = powerstate.plasma["CZ_raw"] / OriginalFimp
-            powerstate.plasma["CZ_stds"] = powerstate.plasma["CZ_raw_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
-
-    else:
-
-        powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-
-        powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Ci_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-        
-        if provideTargets:
-            powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-            powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Ci_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Ci_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    
+    if provideTargets:
+        powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Ci_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
     # **********************************
     # *********** Energy Exchange
