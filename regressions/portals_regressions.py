@@ -151,5 +151,5 @@ for test in tests:
         # # Checks
         # conditions_regressions([
         #     [mitim_bo.optimization_data.data['QeTurb_1'][5],0.0713711320661],
-        #     [mitim_runs[5]['powerstate'].plasma['PexchTurb'][0,3].item(),-0.0009466626542564001]
+        #     [mitim_runs[5]['powerstate'].plasma['QieMWm3_tr_turb'][0,3].item(),-0.0009466626542564001]
         # ])

@@ -185,7 +185,7 @@ def output_transform_portals(X, surrogate_parameters, output):
     return compounded
 
 
-def computeTurbExchangeIndividual(PexchTurb, powerstate):
+def computeTurbExchangeIndividual(QieMWm3_tr_turb, powerstate):
     """
     Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     """
@@ -195,8 +195,8 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 	------------------------------------------------------------------
 		E.g.: (batch1,batch2,batch3,dimR) -> (batch1*batch2*batch3,dimR)
 	"""
-    shape_orig = np.array(PexchTurb.shape)
-    PexchTurb = PexchTurb.view(np.prod(shape_orig[:-1]), shape_orig[-1])
+    shape_orig = np.array(QieMWm3_tr_turb.shape)
+    QieMWm3_tr_turb = QieMWm3_tr_turb.view(np.prod(shape_orig[:-1]), shape_orig[-1])
 
     """
 	2. Integrate
@@ -206,18 +206,18 @@ def computeTurbExchangeIndividual(PexchTurb, powerstate):
 	"""
 
     # Add zeros at zero
-    qExch = torch.cat((torch.zeros(PexchTurb.shape).to(PexchTurb)[..., :1], PexchTurb), dim=-1)
+    qExch = torch.cat((torch.zeros(QieMWm3_tr_turb.shape).to(QieMWm3_tr_turb)[..., :1], QieMWm3_tr_turb), dim=-1)
 
-    PexchTurb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
+    QieMWm3_tr_turb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
 
     """
 	3. Go back to the original batching system
 	------------------------------------------------------------------------
 		E.g.: (batch1*batch2*batch3,dimR) -> (batch1,batch2,batch3,dimR) 
 	"""
-    PexchTurb_integrated = PexchTurb_integrated.view(tuple(shape_orig))
+    QieMWm3_tr_turb_integrated = QieMWm3_tr_turb_integrated.view(tuple(shape_orig))
 
-    return PexchTurb_integrated
+    return QieMWm3_tr_turb_integrated
 
 def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
@@ -383,7 +383,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
             "Ge_tar": "Ce",
             "GZ_tar": "CZ",
             "Mt_tar": "MtJm2",
-            "PexchTurb": "PexchTurb"
+            "QieMWm3_tr_turb": "QieMWm3_tr_turb"
         }
 
         for ikey in mapper:
@@ -400,11 +400,11 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["surrogateForTurbExch"]:
-        PexchTurb_integrated = computeTurbExchangeIndividual(
-            var_dict["PexchTurb"], powerstate
+        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(
+            var_dict["QieMWm3_tr_turb"], powerstate
         )
     else:
-        PexchTurb_integrated = torch.zeros(dfT.shape).to(dfT)
+        QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
 
     # ------------------------------------------------------------------------
     # Go through each profile that needs to be predicted, calculate components
@@ -440,9 +440,9 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] + QieMWm3_tr_turb_integrated
         elif var == "Qi":
-            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
+            cal0 = var_dict[f"{var}_tar"] - QieMWm3_tr_turb_integrated
         else:
             cal0 = var_dict[f"{var}_tar"]
 
@@ -517,7 +517,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         "Ge_tar": "Ce",
         "GZ_tar": "CZ",
         "Mt_tar": "MtJm2",
-        "PexchTurb": "PexchTurb"
+        "QieMWm3_tr_turb": "QieMWm3_tr_turb"
     }
 
     var_dict = {}
@@ -535,15 +535,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["surrogateForTurbExch"]:
-        PexchTurb_integrated = computeTurbExchangeIndividual(
-            var_dict["PexchTurb"], powerstate
-        )
-        PexchTurb_integrated_stds = computeTurbExchangeIndividual(
-            var_dict["PexchTurb_stds"], powerstate
-        )
+        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["QieMWm3_tr_turb"], powerstate)
+        QieMWm3_tr_turb_integrated_stds = computeTurbExchangeIndividual(var_dict["QieMWm3_tr_turb_stds"], powerstate)
     else:
-        PexchTurb_integrated = torch.zeros(dfT.shape).to(dfT)
-        PexchTurb_integrated_stds = torch.zeros(dfT.shape).to(dfT)
+        QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
+        QieMWm3_tr_turb_integrated_stds = torch.zeros(dfT.shape).to(dfT)
 
     # ------------------------------------------------------------------------
     # Go through each profile that needs to be predicted, calculate components
@@ -577,15 +573,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}_tar"] + PexchTurb_integrated
-            cal0E = (
-                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
-            ) ** 0.5
+            cal0 = var_dict[f"{var}_tar"] + QieMWm3_tr_turb_integrated
+            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm3_tr_turb_integrated_stds**2) ** 0.5
         elif var == "Qi":
-            cal0 = var_dict[f"{var}_tar"] - PexchTurb_integrated
-            cal0E = (
-                var_dict[f"{var}_tar_stds"] ** 2 + PexchTurb_integrated_stds**2
-            ) ** 0.5
+            cal0 = var_dict[f"{var}_tar"] - QieMWm3_tr_turb_integrated
+            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm3_tr_turb_integrated_stds**2) ** 0.5
         else:
             cal0 = var_dict[f"{var}_tar"]
             cal0E = var_dict[f"{var}_tar_stds"]

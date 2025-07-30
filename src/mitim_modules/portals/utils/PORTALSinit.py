@@ -303,7 +303,7 @@ def initializeProblem(
 
     if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
         for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"PexchTurb_{i+1}")
+            ofs.append(f"QieMWm3_tr_turb_{i+1}")
 
     name_transformed_ofs = []
     for of in ofs:
@@ -373,7 +373,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
             "Ge",
             "Ge_tr_turb",
             "Ge_tr_neo",
-            "PexchTurb",
+            "QieMWm3_tr_turb",
             "Mt",
             "Mt_tr_turb",
             "Mt_tr_neo",

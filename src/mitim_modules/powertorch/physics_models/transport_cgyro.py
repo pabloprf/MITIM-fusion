@@ -25,7 +25,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
 
         # Some checks
         print("\t- Checking model modifications:")
-        for r in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "MtJm2_tr_turb"]: #, "PexchTurb"]: #TODO: FIX
+        for r in ["QeMWm2_tr_turb", "QiMWm2_tr_turb", "Ce_tr_turb", "CZ_tr_turb", "MtJm2_tr_turb"]: #, "QieMWm3_tr_turb"]: #TODO: FIX
             print(f"\t\t{r}(tglf)  = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(powerstate_orig.plasma[r][0][1:],powerstate_orig.plasma[r+'_stds'][0][1:]) ])}")
             print(f"\t\t{r}(cgyro) = {'  '.join([f'{k:.1e} (+-{ke:.1e})' for k,ke in zip(self.powerstate.plasma[r][0][1:],self.powerstate.plasma[r+'_stds'][0][1:]) ])}")
 

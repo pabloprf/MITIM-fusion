@@ -31,7 +31,7 @@ class power_transport:
         self.variables += [f'{i}_stds' for i in self.variables]
 
         # There is also turbulent exchange
-        self.variables += ['PexchTurb', 'PexchTurb_stds']
+        self.variables += ['QieMWm3_tr_turb', 'QieMWm3_tr_turb_stds']
 
         # And total transport flux
         self.variables += [f'{i}_tr' for i in self.quantities]
