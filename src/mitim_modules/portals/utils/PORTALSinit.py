@@ -344,8 +344,6 @@ def initializeProblem(
         "transformationOutputs": PORTALStools.output_transform_portals,
         "powerstate": portals_fun.powerstate,
         "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
-        "useFluxRatios": portals_fun.PORTALSparameters["useFluxRatios"],
-        "useDiffusivities": portals_fun.PORTALSparameters["useDiffusivities"],
         "surrogate_transformation_variables_alltimes": Variables,
         "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
