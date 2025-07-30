@@ -25,7 +25,7 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         for variable in variables:
             # Add model suffixes
-            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neo"]
+            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
 
     # ************************************************************************************
     # Private functions for the evaluation
@@ -166,9 +166,9 @@ class tglf_model(TRANSPORTtools.power_transport):
 
     def _evaluate_neo(self):
         
-        self.powerstate.plasma["QeMWm2_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
-        self.powerstate.plasma["QiMWm2_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
-        self.powerstate.plasma["Ce_tr_neo"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        self.powerstate.plasma["QeMWm2_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        self.powerstate.plasma["QiMWm2_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        self.powerstate.plasma["Ce_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
         
         return None
 

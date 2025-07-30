@@ -448,23 +448,23 @@ def curateTGYROfiles(
     # Neo
     # **************************************************************************************************************************
 
-    Qe_tr_neo = tgyro.Qe_sim_neo[0, 1:]
+    Qe_tr_neoc = tgyro.Qe_sim_neo[0, 1:]
     if includeFast:
-        Qi_tr_neo = tgyro.QiIons_sim_neo[0, 1:]
+        Qi_tr_neoc = tgyro.QiIons_sim_neo[0, 1:]
     else:
-        Qi_tr_neo = tgyro.QiIons_sim_neo_thr[0, 1:]
-    Ge_tr_neo = tgyro.Ge_sim_neo[0, 1:]
-    GZ_tr_neo = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
-    Mt_tr_neo = tgyro.Mt_sim_neo[0, 1:]
+        Qi_tr_neoc = tgyro.QiIons_sim_neo_thr[0, 1:]
+    Ge_tr_neoc = tgyro.Ge_sim_neo[0, 1:]
+    GZ_tr_neoc = tgyro.Gi_sim_neo[impurityPosition, 0, 1:]
+    Mt_tr_neoc = tgyro.Mt_sim_neo[0, 1:]
 
-    Qe_tr_neoE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
+    Qe_tr_neocE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
     if includeFast:
-        Qi_tr_neoE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
+        Qi_tr_neocE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
     else:
-        Qi_tr_neoE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
-    Ge_tr_neoE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
-    GZ_tr_neoE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
-    Mt_tr_neoE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
+        Qi_tr_neocE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
+    Ge_tr_neocE = abs(tgyro.Ge_sim_neo[0, 1:]) * relativeErrorNEO
+    GZ_tr_neocE = abs(tgyro.Gi_sim_neo[impurityPosition, 0, 1:]) * relativeErrorNEO
+    Mt_tr_neocE = abs(tgyro.Mt_sim_neo[0, 1:]) * relativeErrorNEO
 
     # Merge
 
@@ -477,11 +477,11 @@ def curateTGYROfiles(
         GZ,
         Mt,
         Pexch,
-        Qe_tr_neo=Qe_tr_neo,
-        Qi_tr_neo=Qi_tr_neo,
-        Ge_tr_neo=Ge_tr_neo,
-        GZ_tr_neo=GZ_tr_neo,
-        Mt_tr_neo=Mt_tr_neo,
+        Qe_tr_neoc=Qe_tr_neoc,
+        Qi_tr_neoc=Qi_tr_neoc,
+        Ge_tr_neoc=Ge_tr_neoc,
+        GZ_tr_neoc=GZ_tr_neoc,
+        Mt_tr_neoc=Mt_tr_neoc,
         impurityPosition=impurityPosition,
     )
 
@@ -494,11 +494,11 @@ def curateTGYROfiles(
         GZE,
         MtE,
         PexchE,
-        Qe_tr_neo=Qe_tr_neoE,
-        Qi_tr_neo=Qi_tr_neoE,
-        Ge_tr_neo=Ge_tr_neoE,
-        GZ_tr_neo=GZ_tr_neoE,
-        Mt_tr_neo=Mt_tr_neoE,
+        Qe_tr_neoc=Qe_tr_neocE,
+        Qi_tr_neoc=Qi_tr_neocE,
+        Ge_tr_neoc=Ge_tr_neocE,
+        GZ_tr_neoc=GZ_tr_neocE,
+        Mt_tr_neoc=Mt_tr_neocE,
         impurityPosition=impurityPosition,
         special_label="_stds",
     )
@@ -656,7 +656,7 @@ def modifyResults(
     tgyro,
     folder_tgyro,
     minErrorPercent=5.0,
-    percent_tr_neo=2.0,
+    percent_tr_neoc=2.0,
     useConvectiveFluxes=False,
     Qi_criterion_stable=0.0025,
     impurityPosition=3,
@@ -809,11 +809,11 @@ def modifyFLUX(
     GZ,
     Mt,
     S,
-    Qe_tr_neo=None,
-    Qi_tr_neo=None,
-    Ge_tr_neo=None,
-    GZ_tr_neo=None,
-    Mt_tr_neo=None,
+    Qe_tr_neoc=None,
+    Qi_tr_neoc=None,
+    Ge_tr_neoc=None,
+    GZ_tr_neoc=None,
+    Mt_tr_neoc=None,
     impurityPosition=3,
     special_label=None,
 ):
@@ -833,15 +833,15 @@ def modifyFLUX(
     # Particle flux: Update
 
     modTGYROfile(folder / "out.tgyro.flux_e", GeGB, pos=2, fileN_suffix=special_label)
-    if Ge_tr_neo is not None:
-        GeGB_neo = Ge_tr_neo / tgyro.Gamma_GB[-1, 1:]
+    if Ge_tr_neoc is not None:
+        GeGB_neo = Ge_tr_neoc / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_e", GeGB_neo, pos=1, fileN_suffix=special_label)
 
     # Energy flux: Update
 
     modTGYROfile(folder / "out.tgyro.flux_e", QeGB, pos=4, fileN_suffix=special_label)
-    if Qe_tr_neo is not None:
-        QeGB_neo = Qe_tr_neo / tgyro.Q_GB[-1, 1:]
+    if Qe_tr_neoc is not None:
+        QeGB_neo = Qe_tr_neoc / tgyro.Q_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_e", QeGB_neo, pos=3, fileN_suffix=special_label)
 
     # Rotation: Remove (it will be sum to the first ion)
@@ -865,8 +865,8 @@ def modifyFLUX(
 
     modTGYROfile(folder / "out.tgyro.flux_i1", QiGB, pos=4, fileN_suffix=special_label)
 
-    if Qi_tr_neo is not None:
-        QiGB_neo = Qi_tr_neo / tgyro.Q_GB[-1, 1:]
+    if Qi_tr_neoc is not None:
+        QiGB_neo = Qi_tr_neoc / tgyro.Q_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_i1", QiGB_neo, pos=3, fileN_suffix=special_label)
 
     # Particle flux: Make ion particle fluxes zero, because I don't want to mistake TGLF with CGYRO when looking at tgyro results
@@ -884,8 +884,8 @@ def modifyFLUX(
 
     modTGYROfile(folder / "out.tgyro.flux_i1", MtGB, pos=6, fileN_suffix=special_label)
 
-    if Mt_tr_neo is not None:
-        MtGB_neo = Mt_tr_neo / tgyro.Pi_GB[-1, 1:]
+    if Mt_tr_neoc is not None:
+        MtGB_neo = Mt_tr_neoc / tgyro.Pi_GB[-1, 1:]
         modTGYROfile(folder / "out.tgyro.flux_i1", MtGB_neo, pos=5, fileN_suffix=special_label)
 
     # Energy exchange: Remove (it will be the electrons one)
@@ -908,8 +908,8 @@ def modifyFLUX(
                     modTGYROfile(folder / f"out.tgyro.flux_i{i+2}",var,pos=pos,fileN_suffix=special_label)
 
     modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB,pos=2,fileN_suffix=special_label)
-    if GZ_tr_neo is not None:
-        GZGB_neo = GZ_tr_neo / tgyro.Gamma_GB[-1, 1:]
+    if GZ_tr_neoc is not None:
+        GZGB_neo = GZ_tr_neoc / tgyro.Gamma_GB[-1, 1:]
         modTGYROfile(folder / f"out.tgyro.flux_i{impurityPosition+1}",GZGB_neo,pos=1,fileN_suffix=special_label)
 
 
@@ -999,10 +999,10 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     powerstate.plasma["QeMWm2_tr_turb"] = torch.Tensor(TGYROresults.Qe_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["QeMWm2_tr_neo"] = torch.Tensor(TGYROresults.Qe_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["QeMWm2_tr_neoc"] = torch.Tensor(TGYROresults.Qe_sim_neo[:, :nr]).to(powerstate.dfT)
 
     powerstate.plasma["QeMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Qe_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["QeMWm2_tr_neo_stds"] = torch.Tensor(TGYROresults.Qe_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["QeMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Qe_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
         powerstate.plasma["QeMWm2"] = torch.Tensor(TGYROresults.Qe_tar[:, :nr]).to(powerstate.dfT)
@@ -1015,18 +1015,18 @@ def tgyro_to_powerstate(TGYROresults,
     if includeFast:
 
         powerstate.plasma["QiMWm2_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QiMWm2_tr_neo"] = torch.Tensor(TGYROresults.QiIons_sim_neo[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["QiMWm2_tr_neoc"] = torch.Tensor(TGYROresults.QiIons_sim_neo[:, :nr]).to(powerstate.dfT)
         
         powerstate.plasma["QiMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["QiMWm2_tr_neo_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["QiMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     else:
 
         powerstate.plasma["QiMWm2_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QiMWm2_tr_neo"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["QiMWm2_tr_neoc"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr[:, :nr]).to(powerstate.dfT)
 
         powerstate.plasma["QiMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["QiMWm2_tr_neo_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["QiMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
     if provideTargets:
         powerstate.plasma["QiMWm2"] = torch.Tensor(TGYROresults.Qi_tar[:, :nr]).to(powerstate.dfT)
@@ -1037,10 +1037,10 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     powerstate.plasma["MtJm2_tr_turb"] = torch.Tensor(TGYROresults.Mt_sim_turb[:, :nr]).to(powerstate.dfT) # So far, let's include fast in momentum
-    powerstate.plasma["MtJm2_tr_neo"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["MtJm2_tr_neoc"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :nr]).to(powerstate.dfT)
 
     powerstate.plasma["MtJm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Mt_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["MtJm2_tr_neo_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["MtJm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
         powerstate.plasma["MtJm2"] = torch.Tensor(TGYROresults.Mt_tar[:, :nr]).to(powerstate.dfT)
@@ -1052,10 +1052,10 @@ def tgyro_to_powerstate(TGYROresults,
 
     # Store raw fluxes for better plotting later
     powerstate.plasma["Ge1E20sm2_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ge1E20sm2_tr_neo"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ge1E20sm2_tr_neoc"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
 
     powerstate.plasma["Ge1E20sm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ge1E20sm2_tr_neo_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ge1E20sm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
         powerstate.plasma["Ge1E20sm2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
@@ -1064,10 +1064,10 @@ def tgyro_to_powerstate(TGYROresults,
     if not useConvectiveFluxes:
 
         powerstate.plasma["Ce_tr_turb"] = powerstate.plasma["Ge1E20sm2_tr_turb"]
-        powerstate.plasma["Ce_tr_neo"] = powerstate.plasma["Ge1E20sm2_tr_neo"]
+        powerstate.plasma["Ce_tr_neoc"] = powerstate.plasma["Ge1E20sm2_tr_neoc"]
 
         powerstate.plasma["Ce_tr_turb_stds"] = powerstate.plasma["Ge1E20sm2_tr_turb_stds"]
-        powerstate.plasma["Ce_tr_neo_stds"] = powerstate.plasma["Ge1E20sm2_tr_neo_stds"]
+        powerstate.plasma["Ce_tr_neoc_stds"] = powerstate.plasma["Ge1E20sm2_tr_neoc_stds"]
         
         if provideTargets:
             powerstate.plasma["Ce"] = powerstate.plasma["Ge1E20sm2"]
@@ -1076,10 +1076,10 @@ def tgyro_to_powerstate(TGYROresults,
     else:
 
         powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ce_tr_neo"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["Ce_tr_neoc"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :nr]).to(powerstate.dfT)
 
         powerstate.plasma["Ce_tr_turb_stds"] = torch.Tensor(TGYROresults.Ce_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["Ce_tr_neo_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Ce_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
         
         if provideTargets:
             powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[:, :nr]).to(powerstate.dfT)
@@ -1091,10 +1091,10 @@ def tgyro_to_powerstate(TGYROresults,
 
     # Store raw fluxes for better plotting later
     powerstate.plasma["CZ_raw_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
-    powerstate.plasma["CZ_raw_tr_neo"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["CZ_raw_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
     
     powerstate.plasma["CZ_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_raw_tr_neo_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["CZ_raw_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     if provideTargets:
         powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
@@ -1103,10 +1103,10 @@ def tgyro_to_powerstate(TGYROresults,
     if not useConvectiveFluxes:
 
         powerstate.plasma["CZ_tr_turb"] = powerstate.plasma["CZ_raw_tr_turb"] / OriginalFimp
-        powerstate.plasma["CZ_tr_neo"] = powerstate.plasma["CZ_raw_tr_neo"] / OriginalFimp
+        powerstate.plasma["CZ_tr_neoc"] = powerstate.plasma["CZ_raw_tr_neoc"] / OriginalFimp
         
         powerstate.plasma["CZ_tr_turb_stds"] = powerstate.plasma["CZ_raw_tr_turb_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neo_stds"] = powerstate.plasma["CZ_raw_tr_neo_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neoc_stds"] = powerstate.plasma["CZ_raw_tr_neoc_stds"] / OriginalFimp if TGYROresults.tgyro_stds else None
         
         if provideTargets:
             powerstate.plasma["CZ"] = powerstate.plasma["CZ_raw"] / OriginalFimp
@@ -1115,10 +1115,10 @@ def tgyro_to_powerstate(TGYROresults,
     else:
 
         powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_tr_neo"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
+        powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
 
         powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Ci_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-        powerstate.plasma["CZ_tr_neo_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+        powerstate.plasma["CZ_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
         
         if provideTargets:
             powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
@@ -1149,7 +1149,7 @@ def tgyro_to_powerstate(TGYROresults,
 
     quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20sm2', 'CZ_raw']
     for ikey in quantities:
-        powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neo"]
+        powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neoc"]
     
     return powerstate
 

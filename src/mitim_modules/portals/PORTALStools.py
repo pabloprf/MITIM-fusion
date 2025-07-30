@@ -373,11 +373,11 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
             "Ge_tr_turb": "Ce_tr_turb",
             "GZ_tr_turb": "CZ_tr_turb",
             "Mt_tr_turb": "MtJm2_tr_turb",
-            "Qe_tr_neo": "QeMWm2_tr_neo",
-            "Qi_tr_neo": "QiMWm2_tr_neo",
-            "Ge_tr_neo": "Ce_tr_neo",
-            "GZ_tr_neo": "CZ_tr_neo",
-            "Mt_tr_neo": "MtJm2_tr_neo",
+            "Qe_tr_neoc": "QeMWm2_tr_neoc",
+            "Qi_tr_neoc": "QiMWm2_tr_neoc",
+            "Ge_tr_neoc": "Ce_tr_neoc",
+            "GZ_tr_neoc": "CZ_tr_neoc",
+            "Mt_tr_neoc": "MtJm2_tr_neoc",
             "Qe_tar": "QeMWm2",
             "Qi_tar": "QiMWm2",
             "Ge_tar": "Ce",
@@ -429,10 +429,10 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 
         """
 		-----------------------------------------------------------------------------------
-		Transport (_tr_turb+_tr_neo)
+		Transport (_tr_turb+_tr_neoc)
 		-----------------------------------------------------------------------------------
 		"""
-        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neoc"]
 
         """
 		-----------------------------------------------------------------------------------
@@ -507,11 +507,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         "Ge_tr_turb": "Ce_tr_turb",
         "GZ_tr_turb": "CZ_tr_turb",
         "Mt_tr_turb": "MtJm2_tr_turb",
-        "Qe_tr_neo": "QeMWm2_tr_neo",
-        "Qi_tr_neo": "QiMWm2_tr_neo",
-        "Ge_tr_neo": "Ce_tr_neo",
-        "GZ_tr_neo": "CZ_tr_neo",
-        "Mt_tr_neo": "MtJm2_tr_neo",
+        "Qe_tr_neoc": "QeMWm2_tr_neoc",
+        "Qi_tr_neoc": "QiMWm2_tr_neoc",
+        "Ge_tr_neoc": "Ce_tr_neoc",
+        "GZ_tr_neoc": "CZ_tr_neoc",
+        "Mt_tr_neoc": "MtJm2_tr_neoc",
         "Qe_tar": "QeMWm2",
         "Qi_tar": "QiMWm2",
         "Ge_tar": "Ce",
@@ -561,11 +561,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 
         """
 		-----------------------------------------------------------------------------------
-		Transport (_tr_turb+_tr_neo)
+		Transport (_tr_turb+_tr_neoc)
 		-----------------------------------------------------------------------------------
 		"""
-        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neo"]
-        of0E = (var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neo_stds"] ** 2) ** 0.5
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neoc"]
+        of0E = (var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neoc_stds"] ** 2) ** 0.5
 
         """
 		-----------------------------------------------------------------------------------

@@ -669,8 +669,8 @@ def map_powerstate_to_portals(powerstate, dictOFs):
             dictOFs[f"{var0}_tr_turb_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_turb"][0, i+1]
             dictOFs[f"{var0}_tr_turb_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_turb_stds"][0, i+1]
 
-            dictOFs[f"{var0}_tr_neo_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_neo"][0, i+1]
-            dictOFs[f"{var0}_tr_neo_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_neo_stds"][0, i+1]
+            dictOFs[f"{var0}_tr_neoc_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_neoc"][0, i+1]
+            dictOFs[f"{var0}_tr_neoc_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_neoc_stds"][0, i+1]
 
             """
             TARGET calculation

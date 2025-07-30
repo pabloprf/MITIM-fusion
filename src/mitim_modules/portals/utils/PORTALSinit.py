@@ -295,7 +295,7 @@ def initializeProblem(
 
         for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
             ofs.append(f"{var}_tr_turb_{i+1}")
-            ofs.append(f"{var}_tr_neo_{i+1}")
+            ofs.append(f"{var}_tr_neoc_{i+1}")
 
             ofs.append(f"{var}_tar_{i+1}")
 
@@ -366,17 +366,17 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
         if typ in [
             "Qe",
             "Qe_tr_turb",
-            "Qe_tr_neo",
+            "Qe_tr_neoc",
             "Qi",
             "Qi_tr_turb",
-            "Qi_tr_neo",
+            "Qi_tr_neoc",
             "Ge",
             "Ge_tr_turb",
-            "Ge_tr_neo",
+            "Ge_tr_neoc",
             "QieMWm3_tr_turb",
             "Mt",
             "Mt_tr_turb",
-            "Mt_tr_neo",
+            "Mt_tr_neoc",
         ]:
             if doNotFitOnFixedValues:
                 isAbsValFixed = pos == (
@@ -414,7 +414,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 if useThisOne:
                     Variables[output].append(ikey)
 
-        elif typ in ["GZ", "GZ_tr_turb", "GZ_tr_neo"]:
+        elif typ in ["GZ", "GZ_tr_turb", "GZ_tr_neoc"]:
             if doNotFitOnFixedValues:
                 isAbsValFixed = pos == portals_fun.powerstate.plasma["rho"].shape[-1] - 1
             else:
