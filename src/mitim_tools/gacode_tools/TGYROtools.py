@@ -1047,9 +1047,7 @@ class TGYRO:
             ax.plot(res.roa[-1], res.Qi_sim[-1], "-o", c="b", markersize=3)
             axE.plot(res.roa[-1], res.Qi_res[-1], "-o", c="b", markersize=3)
 
-            ax.plot(
-                res.roa[-1], res.Ce_tar[-1], "--o", c="m", label="Qconv", markersize=3
-            )
+            ax.plot(res.roa[-1], res.Ce_tar[-1], "--o", c="m", label="Qconv", markersize=3)
             ax.plot(res.roa[-1], res.Ce_sim[-1], "-o", c="m", markersize=3)
             axE.plot(res.roa[-1], np.abs(res.Ce_res[-1]), "-o", c="m", markersize=3)
 

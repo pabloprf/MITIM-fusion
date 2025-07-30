@@ -137,11 +137,11 @@ class tglf_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["Ce_tr_turb_stds"] = Flux_std[2]        
         
         # if provideTurbulentExchange:
-        #     self.powerstate.plasma["PexchTurb"] = 
-        #     self.powerstate.plasma["PexchTurb_stds"] = 
+        #     self.powerstate.plasma["QieMWm3_tr_turb"] = 
+        #     self.powerstate.plasma["QieMWm3_tr_turb_stds"] = 
         # else:
-        #     self.powerstate.plasma["PexchTurb"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
-        #     self.powerstate.plasma["PexchTurb_stds"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        #     self.powerstate.plasma["QieMWm3_tr_turb"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        #     self.powerstate.plasma["QieMWm3_tr_turb_stds"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
             
 
         # ------------------------------------------------------------------------------------------------------------------------

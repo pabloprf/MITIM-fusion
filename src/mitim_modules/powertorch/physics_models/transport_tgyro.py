@@ -1052,11 +1052,11 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     if provideTurbulentExchange:
-        powerstate.plasma["PexchTurb"] = torch.Tensor(TGYROresults.EXe_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["PexchTurb_stds"] = torch.Tensor(TGYROresults.EXe_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["QieMWm3_tr_turb"] = torch.Tensor(TGYROresults.EXe_sim_turb[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["QieMWm3_tr_turb_stds"] = torch.Tensor(TGYROresults.EXe_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     else:
-        powerstate.plasma["PexchTurb"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
-        powerstate.plasma["PexchTurb_stds"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        powerstate.plasma["QieMWm3_tr_turb"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        powerstate.plasma["QieMWm3_tr_turb_stds"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
 
     # **********************************
     # *********** Traget extra
