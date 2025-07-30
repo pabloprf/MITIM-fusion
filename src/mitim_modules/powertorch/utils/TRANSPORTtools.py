@@ -25,7 +25,7 @@ class power_transport:
         self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2']
 
         # Each flux has a turbulent and neoclassical component
-        self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neo' for i in self.quantities]
+        self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neoc' for i in self.quantities]
 
         # Each flux component has a standard deviation
         self.variables += [f'{i}_stds' for i in self.variables]
@@ -129,7 +129,7 @@ class power_transport:
     def evaluate(self):
         '''
         This needs to populate the following in self.powerstate.plasma
-            - QeMWm2, QeMWm2_tr, QeMWm2_tr_turb, QeMWm2_tr_neo
+            - QeMWm2, QeMWm2_tr, QeMWm2_tr_turb, QeMWm2_tr_neoc
         Same for QiMWm2, Ce, CZ, MtJm2
         and their respective standard deviations
         '''

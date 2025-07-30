@@ -126,7 +126,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
         ):
             txt += f"\n{var}  = "
             for j in range(self.powerstate.plasma["rho"].shape[1] - 1):
-                txt += f"{self.powerstate.plasma[varn][0,j+1]-self.powerstate.plasma[f'{varn}_tr_neo'][0,j+1]:.4e}   "
+                txt += f"{self.powerstate.plasma[varn][0,j+1]-self.powerstate.plasma[f'{varn}_tr_neoc'][0,j+1]:.4e}   "
 
         return txt
 

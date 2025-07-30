@@ -46,11 +46,11 @@ class diffusion_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["QeMWm2_tr_turb"] = Pe_tr * 2 / 3
         self.powerstate.plasma["QiMWm2_tr_turb"] = Pi_tr * 2 / 3
 
-        self.powerstate.plasma["QeMWm2_tr_neo"] = Pe_tr * 1 / 3
-        self.powerstate.plasma["QiMWm2_tr_neo"] = Pi_tr * 1 / 3
+        self.powerstate.plasma["QeMWm2_tr_neoc"] = Pe_tr * 1 / 3
+        self.powerstate.plasma["QiMWm2_tr_neoc"] = Pi_tr * 1 / 3
 
-        self.powerstate.plasma["QeMWm2_tr"] = self.powerstate.plasma["QeMWm2_tr_turb"] + self.powerstate.plasma["QeMWm2_tr_neo"]
-        self.powerstate.plasma["QiMWm2_tr"] = self.powerstate.plasma["QiMWm2_tr_turb"] + self.powerstate.plasma["QiMWm2_tr_neo"]
+        self.powerstate.plasma["QeMWm2_tr"] = self.powerstate.plasma["QeMWm2_tr_turb"] + self.powerstate.plasma["QeMWm2_tr_neoc"]
+        self.powerstate.plasma["QiMWm2_tr"] = self.powerstate.plasma["QiMWm2_tr_turb"] + self.powerstate.plasma["QiMWm2_tr_neoc"]
 
 # ------------------------------------------------------------------
 # SURROGATE

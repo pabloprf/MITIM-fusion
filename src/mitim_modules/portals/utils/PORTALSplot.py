@@ -218,7 +218,7 @@ def PORTALSanalyzer_plotMetrics(
             if axTe_f is not None:
                 axTe_f.plot(
                     rho,
-                    power.plasma['QeMWm2_tr_turb'].cpu().numpy() + power.plasma['QeMWm2_tr_neo'].cpu().numpy(),
+                    power.plasma['QeMWm2_tr_turb'].cpu().numpy() + power.plasma['QeMWm2_tr_neoc'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
@@ -228,7 +228,7 @@ def PORTALSanalyzer_plotMetrics(
             if axTi_f is not None:
                 axTi_f.plot(
                     rho,
-                    power.plasma['QiMWm2_tr_turb'].cpu().numpy() + power.plasma['QiMWm2_tr_neo'].cpu().numpy(),
+                    power.plasma['QiMWm2_tr_turb'].cpu().numpy() + power.plasma['QiMWm2_tr_neoc'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
@@ -242,7 +242,7 @@ def PORTALSanalyzer_plotMetrics(
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy()+power.plasma['Ge1E20sm2_tr_neo'].cpu().numpy(),
+                    power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy()+power.plasma['Ge1E20sm2_tr_neoc'].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
@@ -255,13 +255,13 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neo'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
                 axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
                     rho,
-                    power.plasma['MtJm2_tr_turb'].cpu().numpy() + power.plasma['MtJm2_tr_neo'].cpu().numpy(),
+                    power.plasma['MtJm2_tr_turb'].cpu().numpy() + power.plasma['MtJm2_tr_neoc'].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
@@ -2883,7 +2883,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         axTe_f.plot(
             r[0][ixF:],
-            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:],
             "-s",
             c=col,
             lw=2,
@@ -2892,10 +2892,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
 
-        m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]
+        m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
@@ -2906,7 +2906,7 @@ def plotFluxComparison(
     if axTi_f is not None:
         axTi_f.plot(
             r[0][ixF:],
-            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2916,13 +2916,13 @@ def plotFluxComparison(
         )
 
         sigma = (
-            power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
         )
 
         m_Qi, M_Qi = (
-            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
         ) - stds * sigma, (
-            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neo'].cpu().numpy()[0][ixF:]
+            power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
 
@@ -2932,7 +2932,7 @@ def plotFluxComparison(
 
     if axne_f is not None:
 
-        Ge = power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy() + power.plasma['Ge1E20sm2_tr_neo'].cpu().numpy()
+        Ge = power.plasma['Ge1E20sm2_tr_turb'].cpu().numpy() + power.plasma['Ge1E20sm2_tr_neoc'].cpu().numpy()
 
         axne_f.plot(
             r[0][ixF:],
@@ -2945,7 +2945,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ge1E20sm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ge1E20sm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['Ge1E20sm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ge1E20sm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -2956,7 +2956,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neo'].cpu().numpy()
+        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neoc'].cpu().numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2969,7 +2969,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neoc_stds'].cpu().numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,
@@ -2984,7 +2984,7 @@ def plotFluxComparison(
     if axw0_f is not None:
         axw0_f.plot(
             r[0][ixF:],
-            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:],
             "-s",
             markersize=msFlux,
             c=col,
@@ -2993,10 +2993,10 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
 
-        m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds * sigma, (
-            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neo'].cpu().numpy()[0][ixF:]
+        m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+            power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]
         ) + stds * sigma
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
@@ -3127,7 +3127,7 @@ def plotFluxComparison(
     if axTe_f is not None:
         (l1,) = axTe_f.plot(
             r[0][ixF:],
-            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:],
+            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:],
             "-",
             c="k",
             lw=2,
@@ -3139,8 +3139,8 @@ def plotFluxComparison(
         )
         l3 = axTe_f.fill_between(
             r[0][ixF:],
-            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) - stds,
-            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neo'].cpu().numpy()[0][ixF:]) + stds,
+            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds,
+            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) + stds,
             facecolor="k",
             alpha=0.3,
         )
