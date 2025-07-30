@@ -169,12 +169,10 @@ def output_transform_portals(X, surrogate_parameters, output):
 
     # --- Original model output is in real units, transform to GB here b/c that's how GK codes work
     factorGB = GBfromXnorm(X, output, powerstate)
-    # --- Ratio of fluxes (quasilinear)
-    factorRat = ratioFactor(X, surrogate_parameters, output, powerstate)
     # --- Specific to output
     factorImp = ImpurityGammaTrick(X, surrogate_parameters, output, powerstate)
 
-    compounded = factorGB * factorRat * factorImp
+    compounded = factorGB * factorImp
 
     """
 	3. Go back to the original batching system
@@ -259,58 +257,6 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
         factor = torch.ones(tuple(x.shape[:-1]) + (1,)).to(x)
 
     return factor
-
-
-def ratioFactor(X, surrogate_parameters, output, powerstate):
-    """
-    This defines the vector to divide by.
-
-    THIS IS BROKEN RIGHT NOW
-    """
-
-    v = torch.ones(tuple(X.shape[:-1]) + (1,)).to(X)
-
-    # """
-    # Apply diffusivities (not real value, just capturing dependencies,
-    # work on normalization, like e_J). Or maybe calculate gradients within powerstate
-    # Remember that for Ti I'm using ne...
-    # """
-    # if surrogate_parameters["useDiffusivities"]:
-    #     pos = int(output.split("_")[-1])
-    #     var = output.split("_")[0]
-
-    #     if var == "te":
-    #         grad = x[:, i] * (
-    #             powerstate.plasma["te"][:, powerstate.indexes_simulation[pos]]
-    #             / powerstate.plasma["a"]
-    #         )  # keV/m
-    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
-
-    #     if var == "ti":
-    #         grad = x[:, i] * (
-    #             powerstate.plasma["ti"][:, powerstate.indexes_simulation[pos]]
-    #             / powerstate.plasma["a"]
-    #         )  # keV/m
-    #         v[:] = grad * powerstate.plasma["ne"][:, powerstate.indexes_simulation[pos]]
-
-    #     # if var == 'ne':
-    #     #     grad = x[:,i] * ( powerstate.plasma['ne'][:,pos]/powerstate.plasma['a']) # keV/m
-    #     #     v[:] = grad
-
-    # """
-    # Apply flux ratios
-    # For example [1,Qi,Qi] means I will fit to [Qi, Qe/Qi, Ge/Qi]
-    # """
-
-    # if surrogate_parameters["useFluxRatios"]:
-    #     """
-    #     Not ready yet... since my code is not dealing with other outputs at a time so
-    #     I don't know Qi if I'm evaluating other fluxes...
-    #     """
-    #     pass
-
-    return v
-
 
 def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=False):
     """
