@@ -1045,15 +1045,15 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["Ge1E20sm2_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ge1E20sm2_tr_neoc"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ge1E20m2_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
+    powerstate.plasma["Ge1E20m2_tr_neoc"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
 
-    powerstate.plasma["Ge1E20sm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ge1E20sm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ge1E20m2_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
     
     if provideTargets:
-        powerstate.plasma["Ge1E20sm2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ge1E20sm2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        powerstate.plasma["Ge1E20m2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
+        powerstate.plasma["Ge1E20m2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
 
 
     powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :nr]).to(powerstate.dfT)
@@ -1114,7 +1114,7 @@ def tgyro_to_powerstate(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20sm2', 'CZ_raw']
+    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'CZ_raw']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neoc"]
     

@@ -264,11 +264,7 @@ def main():
         ]
         txt += f"\n\t...From remote folder {remote_parent}\n"
 
-    print(
-        "\n"
-        + txt
-        + "***************************************************************************"
-    )
+    print("\n"+ txt+ "***************************************************************************")
     print(f"(Analysis level {analysis_level})\n")
 
     if len(folders_complete) == 1:
