@@ -257,12 +257,27 @@ class gacode_state(MITIMstate.mitim_state):
 
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
 
-        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax03c,ax13c] = axs3
+        [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax3D,ax2D] = axs3
 
         rho = self.profiles["rho(-)"]
         lines = GRAPHICStools.listLS()
 
+
         ax = ax00c
+
+        var = self.derived['r']
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylim(bottom=0)
+        ax.set_ylabel("Effective radius ($r$)")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+
+
+        ax = ax01c
         ax.plot(self.profiles["rho(-)"], self.derived['volp_geo'], color=color, lw=lw, label = extralab)
         ax.set_xlabel('$\\rho_N$'); ax.set_xlim(0, 1)
         ax.set_ylabel(f"$dV/dr$ ($m^3/[r]$)")
@@ -271,38 +286,6 @@ class gacode_state(MITIMstate.mitim_state):
         if legYN:
             ax.legend(loc="best", fontsize=fs)
 
-        minShape = 1E-4
-
-        ax = ax01c
-        cont = 0
-        yl = 0
-        for i, s in enumerate(self.shape_cos):
-            if s is not None:
-                valmax = np.abs(s).max()
-                if valmax > minShape:
-                    lab = f"c{i}"
-                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
-                    cont += 1
-
-                yl = np.max([yl, valmax])
-        for i, s in enumerate(self.shape_sin):
-            if s is not None:
-                valmax = np.abs(s).max()
-                if valmax > minShape:
-                    lab = f"s{i}"
-                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
-                    cont += 1
-
-                yl = np.max([yl, valmax])
-
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel(f"Shape Parameters (>{minShape})")
-        if legYN:
-            ax.legend(loc="best", fontsize=fs)
-
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
 
         ax = ax02c
         var = self.profiles["polflux(Wb/radian)"]
@@ -315,35 +298,92 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
-        ax = ax10c
-        var = self.profiles["delta(-)"]
-        ax.plot(rho, var, "-", lw=lw, c=color)
 
+        # ----------------------------------------
+        # Shaping params
+        # ----------------------------------------
+        
+        minShape = 1E-3
+
+        ax = ax10c
+        cont = 0
+        yl = 0
+        for i, s in enumerate(self.shape_cos):
+            if s is not None:
+                valmax = np.abs(s).max()
+                if valmax > minShape:
+                    lab = f"s{i}"
+                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
+                    cont += 1
+
+                yl = np.max([yl, valmax])
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
-        ax.set_ylabel("$\\delta$")
+        ax.set_ylabel(f"sin-shape (>{minShape:.1e})")
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+            GRAPHICStools.gradientSPAN(ax, -minShape, +minShape, color='k', startingalpha = 0.2, endingalpha = 0.2, orientation='horizontal')
 
         GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        GRAPHICStools.autoscale_y(ax)
 
         ax = ax11c
+        cont = 0
+        yl = 0
+        for i, s in enumerate(self.shape_sin):
+            if s is not None:
+                valmax = np.abs(s).max()
+                if valmax > minShape:
+                    lab = f"c{i}"
+                    ax.plot(rho, s, lw=lw, ls=lines[cont], label=lab, c=color)
+                    cont += 1
 
-        var = self.derived['r']
+                yl = np.max([yl, valmax])
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel(f"cos-shape (>{minShape:.1e})")
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+            GRAPHICStools.gradientSPAN(ax, -minShape, +minShape, color='k', startingalpha = 0.2, endingalpha = 0.2, orientation='horizontal')
+
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+
+
+        ax = ax12c
+
+        var = self.profiles["kappa(-)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("Effective $r$")
+        ax.set_ylabel("$\\kappa$")
 
         GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        GRAPHICStools.autoscale_y(ax, bottomy=1)
 
         ax = ax20c
+        var = self.profiles["delta(-)"]
+        ax.plot(rho, var, "-", lw=lw, c=color, label = extralab + ', $\\delta$')
+
+        var = self.profiles["zeta(-)"]
+        ax.plot(rho, var, "--", lw=lw, c=color, label = extralab + ', $\\zeta$')
+
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylabel("$\\delta$ and $\\zeta$")
+
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax)
+        
+        if legYN:
+            ax.legend(loc="best", fontsize=fs)
+
+        ax = ax21c
 
         var = self.profiles["rmaj(m)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
@@ -355,7 +395,7 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
 
-        ax = ax21c
+        ax = ax22c
 
         var = self.profiles["zmag(m)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
@@ -369,38 +409,19 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax)
 
-        ax = ax22c
 
-        var = self.profiles["kappa(-)"]
-        ax.plot(rho, var, "-", lw=lw, c=color)
+        # ------------------------------
+        # 3D and 2D plots
+        # ------------------------------
 
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel("$\\kappa$")
-
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=1)
-
-        ax = ax12c
-
-        var = self.profiles["zeta(-)"]
-        ax.plot(rho, var, "-", lw=lw, c=color)
-
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylabel("zeta")
-
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax)
-
-        ax = ax13c
+        ax = ax2D
         self.plot_state_flux_surfaces(ax=ax, color=color)
 
         ax.set_xlabel("R (m)")
         ax.set_ylabel("Z (m)")
         GRAPHICStools.addDenseAxis(ax)
         
-        ax = ax03c
+        ax = ax3D
         self.plot_plasma_boundary(ax=ax, color=color)
         
     def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):

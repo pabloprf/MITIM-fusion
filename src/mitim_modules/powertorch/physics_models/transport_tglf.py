@@ -2,7 +2,7 @@
 import shutil
 import torch
 import numpy as np
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -20,13 +20,8 @@ class tglf_model(TRANSPORTtools.power_transport):
         tglf = self._evaluate_tglf()
         neo = self._evaluate_neo()
         
-        # Sum the turbulent and neoclassical contributions
-        variables = ['QeMWm2', 'QiMWm2', 'Ce']
+        self._postprocess()
         
-        for variable in variables:
-            # Add model suffixes
-            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
-
     # ************************************************************************************
     # Private functions for the evaluation
     # ************************************************************************************
@@ -133,25 +128,53 @@ class tglf_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["QiMWm2_tr_turb"] = Flux_mean[1]
         self.powerstate.plasma["QiMWm2_tr_turb_stds"] = Flux_std[1]
                 
-        self.powerstate.plasma["Ce_tr_turb"] = Flux_mean[2]
-        self.powerstate.plasma["Ce_tr_turb_stds"] = Flux_std[2]        
+        self.powerstate.plasma["Ge1E20m2_tr_turb"] = Flux_mean[2]
+        self.powerstate.plasma["Ge1E20m2_tr_turb_stds"] = Flux_std[2]        
         
-        # if provideTurbulentExchange:
-        #     self.powerstate.plasma["QieMWm3_tr_turb"] = 
-        #     self.powerstate.plasma["QieMWm3_tr_turb_stds"] = 
-        # else:
-        #     self.powerstate.plasma["QieMWm3_tr_turb"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
-        #     self.powerstate.plasma["QieMWm3_tr_turb_stds"] = self.powerstate.plasma["QeMWm2_tr_turb"] * 0.0
-            
+        self.powerstate.plasma["GZ1E20m2_tr_turb"] = Flux_mean[3]
+        self.powerstate.plasma["GZ1E20m2_tr_turb_stds"] = Flux_std[3]             
+
+        self.powerstate.plasma["MtJm2_tr_turb"] = Flux_mean[4]
+        self.powerstate.plasma["MtJm2_tr_turb_stds"] = Flux_std[4] 
+
+        if provideTurbulentExchange:
+            self.powerstate.plasma["QieMWm3_tr_turb"] = Flux_mean[5]
+            self.powerstate.plasma["QieMWm3_tr_turb_stds"] = Flux_std[5]
+        else:
+            self.powerstate.plasma["QieMWm3_tr_turb"] = Flux_mean[5] * 0.0
+            self.powerstate.plasma["QieMWm3_tr_turb_stds"] = Flux_std[5] * 0.0
+
+        return tglf
+
+    def _evaluate_neo(self):
+        
+        self.powerstate.plasma["QeMWm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["QiMWm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["Ge1E20m2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["GZ1E20m2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["MtJm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        
+        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        
+        self.powerstate.plasma["QieMWm3_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        
+        return None
+
+    def _postprocess(self):
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
         # ------------------------------------------------------------------------------------------------------------------------
         
-        variables = ['QeMWm2', 'QiMWm2', 'Ce']
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
 
         for variable in variables:
-            for suffix in ['_tr_turb', '_tr_turb_stds']:
+            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
 
                 # Make them tensors and add a batch dimension
                 self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
@@ -162,15 +185,30 @@ class tglf_model(TRANSPORTtools.power_transport):
                     self.powerstate.plasma[f"{variable}{suffix}"],
                 ), dim=1)
 
-        return tglf
+        # -----------------------------------------------------------
+        # Sum the turbulent and neoclassical contributions
+        # -----------------------------------------------------------
+        
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
+        
+        for variable in variables:
+            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
 
-    def _evaluate_neo(self):
+        # -----------------------------------------------------------
+        # Convective fluxes
+        # -----------------------------------------------------------
         
-        self.powerstate.plasma["QeMWm2_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
-        self.powerstate.plasma["QiMWm2_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
-        self.powerstate.plasma["Ce_tr_neoc"] = torch.zeros((1, len(self.powerstate.plasma["rho"][0, :])))
+        mapper_convective = {
+            'Ce': 'Ge1E20m2',
+            'CZ': 'GZ1E20m2',
+        }
         
-        return None
+        for key in mapper_convective.keys():
+            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
+                self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
+                    self.powerstate.plasma["te"],
+                    self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
+                )
 
     def _profiles_to_store(self):
 

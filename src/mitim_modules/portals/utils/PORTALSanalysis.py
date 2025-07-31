@@ -296,8 +296,8 @@ class PORTALSanalyzer:
                         ]
                     )
                 except:
-                    embed()
                     print("\t- Could not calculate Ricci metric", typeMsg="w")
+                    embed()
                     calculateRicci = None
                     self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = None, None, None
 

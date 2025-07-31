@@ -50,7 +50,7 @@ def add_axes(figs):
     ]
     
     # GEOMETRY
-    grid = plt.GridSpec(6, 4, hspace=0.7, wspace=0.3)
+    grid = plt.GridSpec(6, 5, hspace=0.8, wspace=0.4)
     ax00c = fig3.add_subplot(grid[0:2, 0])
     axsProf_3 = [
         ax00c,
@@ -100,14 +100,12 @@ def add_axes(figs):
         fig6.add_subplot(grid[0, 4]),
         fig6.add_subplot(grid[1, 4]),
     ]
-    grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+    grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
     axsImps = [
         fig7.add_subplot(grid[0, 0]),
         fig7.add_subplot(grid[0, 1]),
-        fig7.add_subplot(grid[0, 2]),
         fig7.add_subplot(grid[1, 0]),
         fig7.add_subplot(grid[1, 1]),
-        fig7.add_subplot(grid[1, 2]),
     ]
 
     return axsProf_1, axsProf_2, axsProf_3, axsProf_4, axsFlows, axsProf_6, axsImps 
@@ -1281,8 +1279,6 @@ def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     GRAPHICStools.addDenseAxis(ax)
     GRAPHICStools.autoscale_y(ax, bottomy=0)
-
-    ax = axsImps[5]
 
     ax = axsImps[3]
     ax.plot(self.profiles["rho(-)"], self.derived["Zeff"], c=color, lw=lw)

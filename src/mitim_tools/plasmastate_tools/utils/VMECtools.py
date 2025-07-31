@@ -94,7 +94,7 @@ class vmec_state(MITIMstate.mitim_state):
             self.derived = {}
 
         # Define the minor radius used in all calculations (could be the half-width of the midplance intersect, or an effective minor radius)
-        self.derived["r"] = self.profiles["rho(-)"]
+        self.derived["r"] = self.profiles["rho(-)"] # Assume that r = rho so r/a = rho too
 
         super().derive_quantities_base(**kwargs)
 
@@ -134,6 +134,19 @@ class vmec_state(MITIMstate.mitim_state):
         rho = self.profiles["rho(-)"]
         
         ax = ax00c
+
+        var = self.derived['r']
+        ax.plot(rho, var, "-", lw=lw, c=color)
+
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$\\rho$")
+        ax.set_ylim(bottom=0)
+        ax.set_ylabel("Effective radius ($r$)")
+
+        GRAPHICStools.addDenseAxis(ax)
+        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        
+        ax = ax01c
         ax.plot(rho, self.derived['volp_geo'], color=color, lw=lw, label = extralab)
         ax.set_xlabel('$\\rho$'); ax.set_xlim(0, 1)
         ax.set_ylabel(f"$dV/d\\rho$ ($m^3$)")
@@ -142,29 +155,16 @@ class vmec_state(MITIMstate.mitim_state):
         if legYN:
             ax.legend(loc="best", fontsize=fs)
         
-        ax = ax11c
-
-        var = self.derived['r']
-        ax.plot(rho, var, "-", lw=lw, c=color)
-
-        ax.set_xlim([0, 1])
-        ax.set_xlabel("$\\rho$")
-        ax.set_ylim(bottom=0)
-        ax.set_ylabel("Effective $r$")
-
-        GRAPHICStools.addDenseAxis(ax)
-        GRAPHICStools.autoscale_y(ax, bottomy=0)
+        # ----
+        phis_plot = [0.0, np.pi/2, np.pi, 3*np.pi/2]
         
-        
-        self.plot_plasma_boundary(ax=axs_3d, color=color)
-        
-        self.plot_state_flux_surfaces(ax=axs_2d, c=color)
+        self.plot_plasma_boundary(ax=axs_3d, color=color, phi_cuts=phis_plot)
+        self.plot_state_flux_surfaces(ax=axs_2d, c=color, phis_plot=phis_plot)
 
-
-    def plot_state_flux_surfaces(self, ax=None, c='b'):
+    def plot_state_flux_surfaces(self, ax=None, c='b', phis_plot=[0.0]):
         
         rhos_plot = np.linspace(0.0, 1.0, 10)
-        phis_plot = [0.0, np.pi/2, np.pi, 3*np.pi/2]
+        
 
         ls = GRAPHICStools.listLS()
         
@@ -172,7 +172,7 @@ class vmec_state(MITIMstate.mitim_state):
         
             for i in range(len(rhos_plot)):
                 self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=rhos_plot[i], c=c, lw = 0.5, ls = lsi)
-            self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=1.0, c=c, lw = 2, ls = lsi, label = f"{phi_cut*180/np.pi:.1f}°")
+            self.plot_flux_surface(ax = ax, phi_cut=phi_cut, rho=1.0, c=c, lw = 4, ls = lsi, label = f"{phi_cut*180/np.pi:.1f}°")
 
         ax.set_aspect('equal')
         ax.set_xlabel('R [m]')
@@ -181,7 +181,7 @@ class vmec_state(MITIMstate.mitim_state):
         ax.legend(loc='best', fontsize=6)
         #GRAPHICStools.addLegendApart(ax, ratio=0.9, size=6)
 
-        ax.set_title(f'Poloidal Cross-section')
+        ax.set_title(f'Poloidal cross-sections')
 
     def _read_profiles(self, x_coord=None, debug = False):
         
@@ -292,7 +292,7 @@ class vmec_state(MITIMstate.mitim_state):
         
         return uniform_data
 
-    def plot_plasma_boundary(self, ax=None, color="b"):
+    def plot_plasma_boundary(self, ax=None, color="b", phi_cuts=[]):
 
         # The output object contains the Fourier coefficients of the geometry in R and Z
         # as a function of the poloidal (theta) and toroidal (phi) angle-like coordinates
@@ -345,12 +345,16 @@ class vmec_state(MITIMstate.mitim_state):
             ax = fig.add_subplot(projection="3d")
 
         # Plot the surface
-        ax.plot_surface(x, y, z, alpha=0.7, color=color)
+        ax.plot_surface(x, y, z, alpha=0.3 if len(phi_cuts)>0 else 0.7, color=color)
+
+        # Add cutting planes at specific toroidal angles
+        for phi_cut in phi_cuts:
+            self._add_cutting_plane(ax, phi_cut, j, xm, xn, rmnc, zmns, color)
 
         # Set an equal aspect ratio
         ax.set_aspect("equal")
         
-        ax.set_title(f'Plasma Boundary')
+        ax.set_title(f'3D plasma boundary')
 
     def plot_flux_surface(self, ax=None, phi_cut=0.0, rho=1.0, c='b', lw=1, ls='-', label = ''):
         """
@@ -392,6 +396,45 @@ class vmec_state(MITIMstate.mitim_state):
             fig, ax = plt.subplots()
 
         ax.plot(R, Z, ls=ls, color = c, linewidth=lw, label=label)
+
+    def _add_cutting_plane(self, ax, phi_cut, j, xm, xn, rmnc, zmns, plane_color):
+        """
+        Add a cutting plane at a specific toroidal angle to the 3D plot.
+        
+        Parameters:
+        -----------
+        ax : matplotlib 3D axes
+            The 3D axes to plot on
+        phi_cut : float
+            Toroidal angle for the cutting plane in radians
+        j : int
+            Flux surface index (typically ns-1 for boundary)
+        xm, xn : array
+            Poloidal and toroidal mode numbers
+        rmnc, zmns : array
+            Fourier coefficients for R and Z
+        plane_color : str
+            Color for the cutting plane
+        """
+        num_theta = 101
+        grid_theta = np.linspace(0.0, 2.0 * np.pi, num_theta, endpoint=True)
+
+        R = np.zeros(num_theta)
+        Z = np.zeros(num_theta)
+        X = np.zeros(num_theta)
+        Y = np.zeros(num_theta)
+        
+        for idx_theta, theta in enumerate(grid_theta):
+            kernel = xm * theta - xn * phi_cut
+            r = np.dot(rmnc[:, j], np.cos(kernel))
+            R[idx_theta] = r
+            Z[idx_theta] = np.dot(zmns[:, j], np.sin(kernel))
+            X[idx_theta] = r * np.cos(phi_cut)
+            Y[idx_theta] = r * np.sin(phi_cut)
+
+        # Plot the cutting plane as a line in 3D
+        ax.plot(X, Y, Z, color=plane_color, linewidth=2, 
+                label=f'φ = {phi_cut*180/np.pi:.0f}°')
 
 def plot_profiles(data):
     """
@@ -473,4 +516,3 @@ def plot_profiles(data):
     
     plt.tight_layout()
     plt.show()
-''

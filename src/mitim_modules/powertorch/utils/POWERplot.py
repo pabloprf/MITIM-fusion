@@ -37,9 +37,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     if "ne" in self.ProfilesPredicted:
 
         # If this model provides the raw particle flux, go for it
-        if 'Ge1E20sm2_tr' in self.plasma:
+        if 'Ge1E20m2_tr' in self.plasma:
             set_plots.append(
-                [   'ne', 'aLne', 'Ge1E20sm2_tr', 'Ge1E20sm2',
+                [   'ne', 'aLne', 'Ge1E20m2_tr', 'Ge1E20m2',
                     'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
