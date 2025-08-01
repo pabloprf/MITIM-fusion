@@ -255,7 +255,7 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['CZ_raw_tr_turb'].cpu().numpy()+power.plasma['CZ_raw_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
                 axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
@@ -2956,7 +2956,7 @@ def plotFluxComparison(
     # -----------------------------------------------------------------------------------------------
 
     if axnZ_f is not None:
-        GZ = power.plasma['CZ_raw_tr_turb'].cpu().numpy() + power.plasma['CZ_raw_tr_neoc'].cpu().numpy()
+        GZ = power.plasma['GZ1E20m2_tr_turb'].cpu().numpy() + power.plasma['GZ1E20m2_tr_neoc'].cpu().numpy()
 
         axnZ_f.plot(
             r[0][ixF:],
@@ -2969,7 +2969,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['CZ_raw_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['CZ_raw_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        sigma = power.plasma['GZ1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['GZ1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,

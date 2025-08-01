@@ -2396,6 +2396,9 @@ class TGLF:
     def readScan(
         self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
     ):
+        '''
+        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        '''
 
         if subFolderTGLF is None:
             subFolderTGLF = self.subFolderTGLF_scan
@@ -3088,6 +3091,10 @@ class TGLF:
         positionIon=2,
         **kwargs_TGLFrun,
     ):
+        
+        '''
+        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        '''
 
         self.variablesDrives = variablesDrives
 

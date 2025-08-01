@@ -98,7 +98,7 @@ def initializeProblem(
     if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None and portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
         f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
         portals_fun.PORTALSparameters["fImp_orig"] = f0/portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]
-        print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]}',typeMsg="i")
+        print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]:.2e}',typeMsg="i")
     else:
         portals_fun.PORTALSparameters["fImp_orig"] = 1.0
 
@@ -300,7 +300,7 @@ def initializeProblem(
 
     if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
         for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
-            ofs.append(f"QieMWm3_tr_turb_{i+1}")
+            ofs.append(f"Qie_tr_turb_{i+1}")
 
     name_transformed_ofs = []
     for of in ofs:
@@ -370,7 +370,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
             "Ge",
             "Ge_tr_turb",
             "Ge_tr_neoc",
-            "QieMWm3_tr_turb",
+            "Qie_tr_turb",
             "Mt",
             "Mt_tr_turb",
             "Mt_tr_neoc",
