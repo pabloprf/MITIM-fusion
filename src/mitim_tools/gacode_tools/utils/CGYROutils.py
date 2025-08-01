@@ -8,6 +8,8 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed
+import quends as qnds
+import pandas as pd
 
 class CGYROlinear_scan:
     def __init__(self, labels, cgyro_data):   
@@ -246,12 +248,24 @@ class CGYROout:
         
         self.phiTi = _cross_phase(self.t, self.phi, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phiTi_kx0 = self.phiTi[np.argmin(np.abs(self.kx)),:,:]
+      
+        self.phiTi_all = []
+        for ion in self.ions_flags:
+            self.phiTi_all.append(_cross_phase(self.t, self.phi, self.Ti_all[:,ion,:]) * 180/ np.pi)
+        self.phiTi_all = np.array(self.phiTi_all)
+        self.phiTi_all_kx0 = self.phiTi_all[:,np.argmin(np.abs(self.kx)),:,:]
         
         self.phine = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phine_kx0 = self.phine[np.argmin(np.abs(self.kx)),:,:]
         
         self.phini = _cross_phase(self.t, self.phi, self.ni) * 180/ np.pi  # (nradial, ntoroidal, time)
         self.phini_kx0 = self.phini[np.argmin(np.abs(self.kx)),:,:]
+
+        self.phini_all = []
+        for ion in self.ions_flags:
+            self.phini_all.append(_cross_phase(self.t, self.phi, self.ni_all[:,ion,:]) * 180/ np.pi)
+        self.phini_all = np.array(self.phini_all)
+        self.phini_all_kx0 = self.phini_all[:,np.argmin(np.abs(self.kx)),:,:]
 
         # Correlation length
         phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
@@ -344,6 +358,7 @@ class CGYROout:
             'Qi_all',
             'Qi_allMWm2',
             'Qi_ky',
+            'Qi_all_ky',
             'Ge',
             'Ge_ky',
             'Qe_ES',
@@ -361,7 +376,11 @@ class CGYROout:
             'apar_rms_sumnr',
             'bpar_rms_sumnr',
             'ne_rms_sumnr',
+            'ni_rms_sumnr',
+            'ni_all_rms_sumnr',
             'Te_rms_sumnr',
+            'Ti_rms_sumnr',
+            'Ti_all_rms_sumnr',
             'phi_rms_n0',
             'phi_rms_sumn1',
             'phi_rms_sumn',
@@ -374,15 +393,29 @@ class CGYROout:
             'ne_rms_n0',
             'ne_rms_sumn1',
             'ne_rms_sumn',
+            'ni_rms_n0',
+            'ni_rms_sumn1',
+            'ni_rms_sumn',
+            'ni_all_rms_n0',
+            'ni_all_rms_sumn1',
+            'ni_all_rms_sumn',
             'Te_rms_n0',
             'Te_rms_sumn1',
             'Te_rms_sumn',
+            'Ti_rms_n0',
+            'Ti_rms_sumn1',
+            'Ti_rms_sumn',
+            'Ti_all_rms_n0',
+            'Ti_all_rms_sumn1',
+            'Ti_all_rms_sumn',
             'neTe_kx0',
             'niTi_kx0',
             'phiTe_kx0',
             'phine_kx0',
             'phini_kx0',
             'phiTi_kx0',
+            'phini_all_kx0',
+            'phiTi_all_kx0',
         ]
         
         for iflag in flags:
@@ -394,7 +427,7 @@ class CGYROout:
                         label_print=iflag,
                         print_msg=iflag in ['Qi', 'Qe', 'Ge'],
                         )
-
+                
         for iflag in flags_fluctuations:
             if iflag in self.__dict__:
                 self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
@@ -404,7 +437,6 @@ class CGYROout:
                         tmax=self.tmax_fluct,
                         label_print=iflag,
                         )     
-              
             
 def _grab_ncorrelation(S, debug=False):
     # Calculate the autocorrelation function
@@ -546,3 +578,30 @@ def calculate_lcorr(phim, kx, nx, debug=False):
         embed()
 
     return l_corr[0]  # Return the correlation length in the radial direction
+
+
+def quends_analysis(t, S, debug = False):
+    
+    time_dependent_data = {'time': t, 'signal': S}
+    df = pd.DataFrame(time_dependent_data, index = pd.RangeIndex(len(t)))
+    
+    dst = qnds.DataStream(df)
+
+    window_size = 10
+    
+    trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
+    
+    mean = trimmed_df.mean(window_size=window_size)['signal']
+    std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
+    
+    stats = trimmed_df.compute_statistics(window_size=window_size)
+    
+    if debug:
+        plotter = qnds.Plotter()
+        plotter.steady_state_automatic_plot(dst, ["signal"])
+        plotter.plot_acf(trimmed_df)
+        print(stats)
+        plt.show()
+        embed()
+        
+    return mean, std, stats

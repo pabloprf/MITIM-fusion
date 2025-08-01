@@ -468,15 +468,15 @@ class CGYRO:
         fig = self.fn.add_figure(label="Intensities (time)")
         axsIntensities = fig.subplot_mosaic(
             """
-            AC
-            BD
+            ACEG
+            BDFH
             """
         )
         fig = self.fn.add_figure(label="Intensities (ky)")
         axsIntensities_ky = fig.subplot_mosaic(
             """
-            AC
-            BD
+            ACEG
+            BDFH
             """
         )
         fig = self.fn.add_figure(label="Intensities (kx)")
@@ -489,8 +489,8 @@ class CGYRO:
         fig = self.fn.add_figure(label="Cross-phases (ky)")
         axsCrossPhases = fig.subplot_mosaic(
             """
-            ACE
-            BDF
+            ACEG
+            BDFH
             """
         )
         fig = self.fn.add_figure(label="Turbulence (linear)")
@@ -532,6 +532,7 @@ class CGYRO:
         axsInputs = fig.subplot_mosaic(
             """
             A
+            B
             """
         )
 
@@ -551,6 +552,7 @@ class CGYRO:
                 axs=axsFluxes_ky,
                 label=labels[j],
                 c=colors[j],
+                plotLegend=j == len(labels) - 1,
             )
             self.plot_intensities_ky(
                 axs=axsIntensities_ky,
@@ -605,12 +607,21 @@ class CGYRO:
                 only_plot_differences=len(labels) > 1,  # Only plot differences if there are multiple labels
             )
             
+            self.plot_inputs(
+                ax=axsInputs["B"],
+                label=labels[j],
+                c=colors[j],
+                ms= 10-j*0.5,  # Decrease marker size for each label
+            )
+            
         axsInputs["A"].axhline(
             1.0,
             color="k",
             ls="--",
             lw=2.0
         )
+        
+        GRAPHICStools.adjust_subplots(axs=axsInputs, vertical=0.4, horizontal=0.3)
         
         # Modify the colorbars to have a common range
         if include_2D and common_colorbar and len(colorbars_all) > 0:
@@ -708,7 +719,7 @@ class CGYRO:
             ylabel = "Parameters"
 
         ax.set_xlabel("Parameter")
-        ax.tick_params(axis='x', rotation=90)
+        ax.tick_params(axis='x', rotation=60)
         ax.set_ylabel(ylabel)
         GRAPHICStools.addDenseAxis(ax)
         if legadded:
@@ -778,7 +789,7 @@ class CGYRO:
 
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
-    def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1):
+    def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1, plotLegend=True):
         if axs is None:
             plt.ion()
             fig = plt.figure(figsize=(18, 9))
@@ -789,6 +800,8 @@ class CGYRO:
                 BD
                 """
             )
+            
+        ls = GRAPHICStools.listLS()
 
         # Electron energy flux
         ax = axs["A"]
@@ -799,7 +812,8 @@ class CGYRO:
         ax.set_ylabel("$Q_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
+        if plotLegend:
+            ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
 
         # Electron particle flux
@@ -811,7 +825,8 @@ class CGYRO:
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
+        if plotLegend:
+            ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
 
         # Ion energy flux
@@ -823,10 +838,26 @@ class CGYRO:
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
+        if plotLegend:
+            ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
+
+        # Ion species energy fluxes
+        ax = axs["D"]
+        for j, i in enumerate(self.results[label].ions_flags):
+            ax.plot(self.results[label].ky, self.results[label].Qi_all_ky_mean[j],ls[j]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[i]}")
+
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$Q_i$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion energy fluxes vs. $k_\\theta\\rho_s$(separate species)')
+        if plotLegend:
+            ax.legend(loc='best', prop={'size': 8},)
+
+        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
+
 
     def plot_intensities(self, axs = None, label= "cgyro1", c="b", addText=True):
         
@@ -836,10 +867,12 @@ class CGYRO:
 
             axs = fig.subplot_mosaic(
                 """
-                AC
-                BD
+                ACEG
+                BDFH
                 """
             )
+            
+        ls = GRAPHICStools.listLS()
             
         ax = axs["A"]
         ax.plot(self.results[label].t, self.results[label].phi_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
@@ -861,7 +894,7 @@ class CGYRO:
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-        ax = axs["C"]
+        ax = axs["B"]
         if 'apar' in self.results[label].__dict__:
             ax.plot(self.results[label].t, self.results[label].apar_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}, $A_\\parallel$")
             ax.plot(self.results[label].t, self.results[label].bpar_rms_sumnr_sumn*100.0, '--', c=c, lw=2, label=f"{label}, $B_\\parallel$")
@@ -884,7 +917,7 @@ class CGYRO:
 
 
 
-        ax = axs["B"]
+        ax = axs["C"]
         ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
         ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
         ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
@@ -903,6 +936,8 @@ class CGYRO:
                     fontsize=12,
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+
 
         ax = axs["D"]
         ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
@@ -925,6 +960,73 @@ class CGYRO:
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
 
+
+
+        ax = axs["E"]
+        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+  
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\delta n_i/n_{i,0}/n_{i0}$ (%)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion Density intensity fluctuations')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95, 
+                    r'$\sqrt{\langle\sum_{n}\sum_{n_r}|\delta n_i/n_{i,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+
+
+        ax = axs["F"]
+        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\delta T_i/T_{i,0}/T_{i0}$ (%)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion Temperature intensity fluctuations')
+        ax.legend(loc='best', prop={'size': 8},)
+
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95, 
+                    r'$\sqrt{\langle\sum_{n}\sum_{n_r}|\delta T_i/T_{i,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+
+        ax = axs["G"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].t, self.results[label].ni_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
+  
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\delta n_i/n_{i,0}/n_{i0}$ (%)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ions (all) Density intensity fluctuations')
+        ax.legend(loc='best', prop={'size': 8},)
+
+
+        ax = axs["H"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].t, self.results[label].Ti_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
+  
+        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_ylabel("$\\delta T_i/T_{i,0}/n_{i0}$ (%)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ions (all) Temperature intensity fluctuations')
+        ax.legend(loc='best', prop={'size': 8},)
+
+
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
     def plot_intensities_ky(self, axs=None, label="", c="b", addText=True):
@@ -934,10 +1036,12 @@ class CGYRO:
 
             axs = fig.subplot_mosaic(
                 """
-                AC
-                BD
+                ACEG
+                BDFH
                 """
             )
+            
+        ls = GRAPHICStools.listLS()
 
         # Potential intensity
         ax = axs["A"]
@@ -961,7 +1065,7 @@ class CGYRO:
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
         # EM potential intensity
-        ax = axs["C"]
+        ax = axs["B"]
         if 'apar' in self.results[label].__dict__:
             ax.plot(self.results[label].ky, self.results[label].apar_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+', $A_\\parallel$ (mean)')
             ax.fill_between(self.results[label].ky, self.results[label].apar_rms_sumnr_mean-self.results[label].apar_rms_sumnr_std, self.results[label].apar_rms_sumnr_mean+self.results[label].apar_rms_sumnr_std, color=c, alpha=0.2)
@@ -988,7 +1092,7 @@ class CGYRO:
 
 
         # Electron particle intensity
-        ax = axs["B"]
+        ax = axs["C"]
         ax.plot(self.results[label].ky, self.results[label].ne_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
         ax.fill_between(self.results[label].ky, self.results[label].ne_rms_sumnr_mean-self.results[label].ne_rms_sumnr_std, self.results[label].ne_rms_sumnr_mean+self.results[label].ne_rms_sumnr_std, color=c, alpha=0.2)
 
@@ -1028,6 +1132,75 @@ class CGYRO:
                     verticalalignment='top',
                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
+        
+        # Ion particle intensity
+        ax = axs["E"]
+        ax.plot(self.results[label].ky, self.results[label].ni_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].ni_rms_sumnr_mean-self.results[label].ni_rms_sumnr_std, self.results[label].ni_rms_sumnr_mean+self.results[label].ni_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta n_i/n_{i,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion particle intensity vs. $k_\\theta\\rho_s$')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        
+        # Add mathematical definitions text
+        if addText:
+            ax.text(0.02, 0.95,
+                    r'$\sqrt{\langle\sum_{n_r}|\delta n_i/n_{i,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+        # Ion temperature intensity
+        ax = axs["F"]
+        ax.plot(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+        ax.fill_between(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean-self.results[label].Ti_rms_sumnr_std, self.results[label].Ti_rms_sumnr_mean+self.results[label].Ti_rms_sumnr_std, color=c, alpha=0.2)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta T_i/T_{i,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ion temperature intensity vs. $k_\\theta\\rho_s$')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        
+        if addText:
+            ax.text(0.02, 0.95,
+                    r'$\sqrt{\langle\sum_{n_r}|\delta T_i/T_{i,0}|^2\rangle}$',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        
+        # Ion particle intensity
+        ax = axs["G"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].ky, self.results[label].ni_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
+
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta n_i/n_{i,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ions (all) particle intensity vs. $k_\\theta\\rho_s$')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        
+        
+        # Ion temperature intensity
+        ax = axs["H"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].ky, self.results[label].Ti_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
+
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\delta T_i/T_{i,0}$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title('Ions (all) temperature intensity vs. $k_\\theta\\rho_s$')
+        ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
@@ -1228,10 +1401,13 @@ class CGYRO:
 
             axs = fig.subplot_mosaic(
                 """
-                ACE
-                BDF
+                ACEG
+                BDFH
                 """
             )
+            
+        ls = GRAPHICStools.listLS()
+        m = GRAPHICStools.listmarkers()
             
         ax = axs["A"]
         ax.plot(self.results[label].ky, self.results[label].neTe_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
@@ -1298,6 +1474,30 @@ class CGYRO:
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-T_i$ cross-phase ($k_x=0$)')
+        ax.legend(loc='best', prop={'size': 8},)
+        
+        
+        ax = axs["G"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].ky, self.results[label].phiTi_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
+
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\phi-T_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        ax.set_title('$\\phi-T_i$ (all) cross-phase ($k_x=0$)')
+        ax.legend(loc='best', prop={'size': 8},)
+        
+
+        ax = axs["H"]
+        for ion in self.results[label].ions_flags:
+            ax.plot(self.results[label].ky, self.results[label].phini_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
+        
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
+        ax.set_ylabel("$\\phi-n_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
+        ax.set_title('$\\phi-n_i$ (all) cross-phase ($k_x=0$)')
         ax.legend(loc='best', prop={'size': 8},)
         
         
