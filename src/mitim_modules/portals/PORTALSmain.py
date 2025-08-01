@@ -684,10 +684,10 @@ def map_powerstate_to_portals(powerstate, dictOFs):
     Turbulent Exchange
     ------------------
     """
-    if 'QieMWm3_tr_turb_1' in dictOFs:
+    if 'Qie_tr_turb_1' in dictOFs:
         for i in range(powerstate.plasma["rho"].shape[1] - 1):
-            dictOFs[f"QieMWm3_tr_turb_{i+1}"]["value"] = powerstate.plasma["QieMWm3_tr_turb"][0, i+1]
-            dictOFs[f"QieMWm3_tr_turb_{i+1}"]["error"] = powerstate.plasma["QieMWm3_tr_turb_stds"][0, i+1]
+            dictOFs[f"Qie_tr_turb_{i+1}"]["value"] = powerstate.plasma["QieMWm3_tr_turb"][0, i+1]
+            dictOFs[f"Qie_tr_turb_{i+1}"]["error"] = powerstate.plasma["QieMWm3_tr_turb_stds"][0, i+1]
 
     return dictOFs
 

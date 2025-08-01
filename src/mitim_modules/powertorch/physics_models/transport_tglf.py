@@ -42,10 +42,10 @@ class tglf_model(TRANSPORTtools.power_transport):
         percentError = ModelOptions.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
-
+        
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
-
+        
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare TGLF object
         # ------------------------------------------------------------------------------------------------------------------------
@@ -131,8 +131,8 @@ class tglf_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["Ge1E20m2_tr_turb"] = Flux_mean[2]
         self.powerstate.plasma["Ge1E20m2_tr_turb_stds"] = Flux_std[2]        
         
-        self.powerstate.plasma["GZ1E20m2_tr_turb"] = Flux_mean[3]
-        self.powerstate.plasma["GZ1E20m2_tr_turb_stds"] = Flux_std[3]             
+        self.powerstate.plasma["GZ1E20m2_tr_turb"] = Flux_mean[3]           
+        self.powerstate.plasma["GZ1E20m2_tr_turb_stds"] = Flux_std[3]       
 
         self.powerstate.plasma["MtJm2_tr_turb"] = Flux_mean[4]
         self.powerstate.plasma["MtJm2_tr_turb_stds"] = Flux_std[4] 
@@ -167,6 +167,8 @@ class tglf_model(TRANSPORTtools.power_transport):
 
     def _postprocess(self):
 
+        OriginalFimp =  self.powerstate.TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
         # ------------------------------------------------------------------------------------------------------------------------
@@ -195,7 +197,7 @@ class tglf_model(TRANSPORTtools.power_transport):
             self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
 
         # -----------------------------------------------------------
-        # Convective fluxes
+        # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
         # -----------------------------------------------------------
         
         mapper_convective = {
@@ -205,11 +207,14 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         for key in mapper_convective.keys():
             for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
+                
+                mult = 1.0 if key == 'Ce' else 1/OriginalFimp
+                
                 self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
                     self.powerstate.plasma["te"],
                     self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
-                )
-
+                ) * mult
+                
     def _profiles_to_store(self):
 
         if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:

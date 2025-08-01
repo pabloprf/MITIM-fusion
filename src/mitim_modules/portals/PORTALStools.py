@@ -383,7 +383,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
             "Ge_tar": "Ce",
             "GZ_tar": "CZ",
             "Mt_tar": "MtJm2",
-            "QieMWm3_tr_turb": "QieMWm3_tr_turb"
+            "Qie_tr_turb": "QieMWm3_tr_turb"
         }
 
         for ikey in mapper:
@@ -400,7 +400,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["surrogateForTurbExch"]:
-        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["QieMWm3_tr_turb"], powerstate)
+        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
     else:
         QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
 
@@ -515,7 +515,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
         "Ge_tar": "Ce",
         "GZ_tar": "CZ",
         "Mt_tar": "MtJm2",
-        "QieMWm3_tr_turb": "QieMWm3_tr_turb"
+        "Qie_tr_turb": "QieMWm3_tr_turb"
     }
 
     var_dict = {}
@@ -533,8 +533,8 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["surrogateForTurbExch"]:
-        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["QieMWm3_tr_turb"], powerstate)
-        QieMWm3_tr_turb_integrated_stds = computeTurbExchangeIndividual(var_dict["QieMWm3_tr_turb_stds"], powerstate)
+        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
+        QieMWm3_tr_turb_integrated_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
     else:
         QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
         QieMWm3_tr_turb_integrated_stds = torch.zeros(dfT.shape).to(dfT)
