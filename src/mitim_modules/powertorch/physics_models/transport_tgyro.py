@@ -577,7 +577,6 @@ def modifyResults(
     tgyro,
     folder_tgyro,
     minErrorPercent=5.0,
-    percent_tr_neoc=2.0,
     Qi_criterion_stable=0.0025,
     impurityPosition=3,
     OriginalFimp=1.0,
