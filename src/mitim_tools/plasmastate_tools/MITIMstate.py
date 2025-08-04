@@ -163,7 +163,10 @@ class mitim_state:
         # ------------------------------------------------------------------------------------------------
 
         if derive_quantities:
-            self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
+            
+            # Avoid division by zero warning by using np.errstate
+            with np.errstate(divide='ignore', invalid='ignore'):
+                self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
 
     def write_state(self, file=None):
         print("\t- Writting input.gacode file")
@@ -294,8 +297,12 @@ class mitim_state:
         self.Species = Species
         
         # Correct Zeff if needed
-        if correct_zeff and ("z_eff(-)" in self.profiles):
-            self.profiles["z_eff(-)"] = np.sum(self.profiles["ni(10^19/m^3)"] * self.profiles["z"] ** 2, axis=1) / self.profiles["ne(10^19/m^3)"]
+        if correct_zeff:
+            self.correct_zeff_array()
+            
+    def correct_zeff_array(self):
+        
+        self.profiles["z_eff(-)"] = np.sum(self.profiles["ni(10^19/m^3)"] * self.profiles["z"] ** 2, axis=1) / self.profiles["ne(10^19/m^3)"]
             
     def sumFast(self):
         self.nFast = self.profiles["ne(10^19/m^3)"] * 0.0
@@ -1405,9 +1412,7 @@ class mitim_state:
         self.remove(ions_list)
 
         # Contributions to dilution and to Zeff
-        print(
-            f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}'
-        )
+        print(f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
     def lumpImpurities(self):
 
@@ -1508,7 +1513,7 @@ class mitim_state:
             Zk = (Zeff - fZq2 - fZj2) / (1 - fZq - fZj)
             
             # I need a single value
-            Zk_ave = CALCtools.integrateFS(Zk, self.profiles["rmin(m)"], self.derived["volp_miller"])[-1] / self.derived["volume"]
+            Zk_ave = CALCtools.volume_integration(Zk, self.profiles["rmin(m)"], self.derived["volp_geo"])[-1] / self.derived["volume"]
 
             fk = (1 - fZq - fZj) / Zk_ave
 
@@ -1526,11 +1531,11 @@ class mitim_state:
 
         self.readSpecies()
 
-        self.deriveQuantities(rederiveGeometry=False)
+        self.derive_quantities(rederiveGeometry=False)
 
         if enforceSameGradients:
             self.scaleAllThermalDensities()
-            self.deriveQuantities(rederiveGeometry=False)
+            self.derive_quantities(rederiveGeometry=False)
 
         print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) of ion [{Zi_orig:.2f},{Ai_orig:.2f}] to { self.derived["fi"][:, ion_pos].mean():.2e} of ion [{self.profiles["z"][ion_pos]:.2f}, {self.profiles["mass"][ion_pos]:.2f}] to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
