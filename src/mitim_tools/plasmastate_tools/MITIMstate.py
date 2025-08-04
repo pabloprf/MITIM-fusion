@@ -75,12 +75,12 @@ def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
 
     # Choose a template for dimensionality
-    template_key_1d, template_key_2d = "rho(-)", "ti(keV)"
+    template_key_1d = "rho(-)"
 
     # Ensure required keys exist
     for key, dim in required_profiles.items():
         if key not in self.profiles:
-            self.profiles[key] = copy.deepcopy(self.profiles[template_key_1d]) * 0.0 if dim == 1 else copy.deepcopy(self.profiles[template_key_2d]) * 0.0
+            self.profiles[key] = copy.deepcopy(self.profiles[template_key_1d]) * 0.0 if dim == 1 else np.atleast_2d(copy.deepcopy(self.profiles[template_key_1d]) * 0.0).T
 
 
 '''

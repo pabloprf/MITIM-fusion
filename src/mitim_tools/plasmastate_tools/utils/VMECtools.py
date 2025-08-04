@@ -21,7 +21,7 @@ class vmec_state(MITIMstate.mitim_state):
     def __init__(
         self,
         file_vmec,
-        file_profs,
+        file_profs=None,
         derive_quantities=True,
         mi_ref=None
     ):
@@ -37,7 +37,7 @@ class vmec_state(MITIMstate.mitim_state):
         
         # Read the input file and store the raw data
         self.files = [file_vmec, file_profs]
-        if self.files is not None:
+        if self.files[0] is not None:
             self._read_vmec()
             
             # Derive (Depending on resolution, derived can be expensive, so I may not do it every time)
@@ -73,6 +73,10 @@ class vmec_state(MITIMstate.mitim_state):
         #self.profiles["polflux(Wb/radian)"] = self.wout.chi
 
         # Read Profiles
+        if self.files[1] is None:
+            print("\t- No profiles file provided, skipping profile reading")
+            return
+        
         data = self._read_profiles(x_coord=self.profiles["rho(-)"])
 
         self.profiles['te(keV)'] = data['Te']
