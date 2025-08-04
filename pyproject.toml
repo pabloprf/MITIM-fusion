@@ -45,6 +45,7 @@ dependencies = [
   "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
   "tensorflow", 
   "f90nml",
+  "vmecpp"
 ]
 
 [project.optional-dependencies]

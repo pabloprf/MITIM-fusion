@@ -2,6 +2,7 @@ import os
 import shutil
 import psutil
 import copy
+from typing import Callable
 import dill as pickle_dill
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
