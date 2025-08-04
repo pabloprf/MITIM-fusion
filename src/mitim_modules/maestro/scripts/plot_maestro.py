@@ -1,8 +1,9 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools import IOtools, GUItools, FARMINGtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, FARMINGtools
 from mitim_tools.opt_tools import STRATEGYtools
 from pathlib import Path
+from IPython import embed
 
 """
 Quick way to plot several input.gacode files together (assumes unix in remote)
@@ -33,27 +34,61 @@ def fix_maestro(folders):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--remote",type=str, required=False, default=None)
-    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None)
-    parser.add_argument("--beats", type=int, required=False, default=2)  # Last beats to plot
-    parser.add_argument("--only", type=str, required=False, default=None)
-    parser.add_argument("--full", required=False, default=False, action="store_true")  
-    parser.add_argument('--fix', required=False, default=False, action='store_true')
+    
+    # Standard options
+    parser.add_argument("folders", type=str, nargs="*",
+                        help="Paths to the folders to read.")
+    parser.add_argument("--beats", type=int, required=False, default=2,
+                        help="Number of beats to plot. If 0, it will not plot beat information.")
+    parser.add_argument("--only", type=str, required=False, default=None,
+                        help="If provided, it will only plot the specified beats (e.g., transp)")
+    parser.add_argument("--full", required=False, default=False, action="store_true",
+                        help="If set, it will plot the full beat information.")
+   
+    # Remote options
+    parser.add_argument("--remote",type=str, required=False, default=None,
+                        help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
+    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+                        help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
+    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
+                        help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
+    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+                        help="If set, it will only retrieve the folder structure with a few files (input.gacode, input.gacode_final, initializer_geqdsk/input.gacode).")
+    parser.add_argument('--fix', required=False, default=False, action='store_true',
+                        help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
 
     remote = args.remote
     folders = args.folders
     fix = args.fix
+    beats = args.beats
+    only = args.only
+    full = args.full
+
+    if args.remote_folder_parent is not None:
+        folders_remote = [args.remote_folder_parent + '/' + folder.split('/')[-1] for folder in folders]
+    elif args.remote_folders is not None:
+        folders_remote = args.remote_folders
+    else:
+        folders_remote = folders
+            
 
     # Retrieve remote
     if remote is not None:
-        if args.remote_folders is not None:
-            folders_remote = args.remote_folders
-        else:
-            folders_remote = folders
-        _, folders = FARMINGtools.retrieve_files_from_remote(IOtools.expandPath('./'), remote, folders_remote = folders_remote, purge_tmp_files = True)
+
+        only_folder_structure_with_files = None
+        if args.remote_minimal:
+            only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
+            
+            beats = 0
+            
+        _, folders = FARMINGtools.retrieve_files_from_remote(
+            IOtools.expandPath('./'),
+            remote,
+            folders_remote = folders_remote,
+            purge_tmp_files = True,
+            only_folder_structure_with_files=only_folder_structure_with_files)
     
     # Fix pkl optimization portals in remote
     if fix:
@@ -62,16 +97,54 @@ def main():
     # -----
 
     folders = [IOtools.expandPath(folder) for folder in folders]
-    beats = args.beats
-    only = args.only
-    full = args.full
-
+    
     fn = GUItools.FigureNotebook("MAESTRO")
 
+    if len(folders) > 1:
+        fig = fn.add_figure(label='MAESTRO special ALL', tab_color=4)
+        
+        axsAll = fig.subplot_mosaic(
+            """
+            ABGI
+            ABGI
+            AEGI
+            DEHJ
+            DFHJ
+            DFHJ
+            """
+        )
+        
+        fig = fn.add_figure(label='MAESTRO timings ALL', tab_color=4)
+        axsTiming = fig.subplot_mosaic("""
+                                       A
+                                       B
+                                       """)
+        
+        colors = GRAPHICStools.listColors()
+            
     ms = []
-    for folder in folders:
-        m = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
+    x, scripts = [], []
+    x0, scripts0 = [], []
+    for i,folder in enumerate(folders):
+        m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
         ms.append(m)
+
+        # Plot all special quantities together
+        if len(folders) > 1:
+            MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
+            if (m.folder_performance / 'timing.jsonl').exists():
+                x0, scripts0 = MAESTROplot.plot_timings(m.folder_performance / 'timing.jsonl', axs = axsTiming, label = f'Case #{i}', color=colors[i])
+    
+        # Only keep the longest
+        if len(x0) > len(x):
+            x = x0
+            scripts = scripts0
+    
+    if len(folders) > 1:
+        for let in ['A','B']:
+            axsTiming[let].set_xlim(left=0)
+            axsTiming[let].set_ylim(bottom=0)
+            axsTiming[let].set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
 
     fn.show()
 

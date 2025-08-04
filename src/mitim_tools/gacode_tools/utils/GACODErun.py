@@ -1022,7 +1022,7 @@ def runTGLF(
 
     else:
 
-        # Job array 
+        # Standard job
         if total_cores_required < max_cores_per_node:
 
             print(f"\t- TGLF will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
@@ -1040,7 +1040,7 @@ def runTGLF(
             ntasks = total_tglf_executions
             cpuspertask = cores_tglf
 
-        # Standard job
+        # Job array 
         else:
             #raise Exception("TGLF array not implemented yet")
             print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")

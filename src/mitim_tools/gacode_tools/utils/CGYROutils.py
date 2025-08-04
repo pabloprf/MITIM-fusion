@@ -1,367 +1,607 @@
-'''
-From NTH
-'''
-
-import sys
+import os
+import scipy
 import numpy as np
-import matplotlib.pyplot as plt
-from gacodefuncs import *
 import statsmodels.api as sm
-from cgyro.data import cgyrodata
-import math
-#from omfit_classes import omfit_gapy
+import matplotlib.pyplot as plt
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
+from pygacode.cgyro.data_plot import cgyrodata_plot
+from pygacode import gacodefuncs
+from IPython import embed
+import quends as qnds
+import pandas as pd
 
-def grab_cgyro_nth(data_dir, tstart, plotflag, printflag, file = None):
-    
-    #Get all the relevant simulation quantities
-    data = cgyrodata(data_dir+'/')
-    print(dir(data))
-    data.getflux()
-    rho_star=(data.vth_norm/((1.602e-19*data.b_unit)/(data.mass_norm*1e-27)))/data.a_meters
-    nt=data.n_time
-    t=data.t
-    dt=t[0]
-    ky=abs(data.ky)
-    n_n=data.n_n
-    n_spec=data.n_species
-    n_field=data.n_field
-    #print(n_field)
-    flux = data.ky_flux
-    #Shape should be (species,flux,field,ky,time)
-    #rint(dir(data))
-    roa=data.rmin
-    #print data.__init__
-    tmax=np.amax(t)
-    sflux = np.sum(flux,axis=3)
-    kflux=np.mean(flux,axis=4)
-    tkflux=np.sum(kflux,axis=2)
-    #Values of gradients and GB normalizations
-    alti=data.dlntdr[0] #technically ion 1 scale length
-    alte=data.dlntdr[n_spec-1]
-    alne=data.dlnndr[n_spec-1]
-    qgb=data.q_gb_norm
-    ggb=data.gamma_gb_norm
-    pgb=data.pi_gb_norm
-    sgb=qgb/data.a_meters
+class CGYROlinear_scan:
+    def __init__(self, labels, cgyro_data):   
 
-    #Total electron heat flux, sum over field
-    eflux_all=sflux[n_spec-1,1,:,:]
-    eflux=np.sum(eflux_all,axis=0)
-     
-    #ES electron heat flux, just electrostatic
-    efluxes=eflux_all[0,:]
-    
-    #EM electron heat flux, just A_||
-    efluxem=eflux_all[1,:]
-    
-    #Total electron particle flux, sum over fields
-    epflux_all=sflux[n_spec-1,0,:,:]
-    epflux=np.sum(epflux_all,axis=0)
+        self.labels = labels
 
-    #Total impurity particle flux, sum over fields (***NOTE THIS IS FOR SPECIES n_Spec -3******)
-    impflux_all=sflux[n_spec-3,0,:,:]
-    impflux=np.sum(impflux_all,axis=0)
-
-    #Depending on if electrostatic of E&M output components
-    if n_field ==1:
-        epfluxp=epflux_all[0,:]
-        epfluxap=epflux_all[0,:]*0.0 #Zero out the A_par array
-        epfluxbp=epflux_all[0,:]*0.0 #Zero out the B_par array
-
-    if n_field == 2:
-        epfluxp=epflux_all[0,:]
-        epfluxap=epflux_all[1,:]
-        epfluxbp=epflux_all[0,:]*0.0 #Zero out the B_par array
-
-    if n_field ==3:
-        epfluxp=epflux_all[0,:]
-        epfluxap=epflux_all[1,:]
-        epfluxbp=epflux_all[2,:]
+        # Store the data in a structured way        
+        self.aLTi = []
+        self.ky = []
+        self.g_mean = []
+        self.f_mean = []
         
-    
-    #Total (ES+EM) ion flux summed over ions
-    iflux_all=sflux[0:n_spec-1,1,:,:]
-    iflux=np.sum(iflux_all,axis=0) #Sum over ions
-    iflux=np.sum(iflux,axis=0) #Sum over fields
-
-    #Sum the momentum flux (all species)
-    mflux_all=sflux[0:n_spec,2,:,:]
-    mflux=np.sum(mflux_all,axis=0) # Sum over species
-    mflux=np.sum(mflux,axis=0) # Sum over fields
-
-    #Total electron turbulent exchange, sm over all fields
-
-    #Put in an option if turbulent exchange is not enabled
-    if sflux.shape[1] == 4:
-        turflux_all=sflux[n_spec-1,3,:,:]
-    else:
-        turflux_all=sflux[n_spec-1,2,:,:]*0.0 #Fill in with dummy values and 0
+        self.neTe_mean = []
         
-    turflux=np.sum(turflux_all,axis=0)
+        self.Qe_mean = []
+        self.Qi_mean = []
+
+        for label in labels:
+            self.ky.append(cgyro_data[label].ky[0])
+            self.aLTi.append(cgyro_data[label].aLTi)
+            self.g_mean.append(cgyro_data[label].g_mean[0])
+            self.f_mean.append(cgyro_data[label].f_mean[0])
+            
+            self.Qe_mean.append(cgyro_data[label].Qe_mean)
+            self.Qi_mean.append(cgyro_data[label].Qi_mean)
+
+            try:
+                self.neTe_mean.append(cgyro_data[label].neTe_kx0_mean[0])
+            except:
+                self.neTe_mean.append(np.nan)
+
+        self.ky = np.array(self.ky)
+        self.aLTi = np.array(self.aLTi)
+        self.g_mean = np.array(self.g_mean)
+        self.f_mean = np.array(self.f_mean)
+        self.neTe_mean = np.array(self.neTe_mean)
+        self.Qe_mean = np.array(self.Qe_mean)
+        self.Qi_mean = np.array(self.Qi_mean)
+
+class CGYROout:
+    def __init__(self, folder, tmin=0.0, minimal=False, last_tmin_for_linear=True):
+
+        original_dir = os.getcwd()
+
+        self.folder = folder
+        self.tmin = tmin
+
+        try:
+            print(f"\t- Reading CGYRO data from {self.folder.resolve()}")
+            self.cgyrodata = cgyrodata_plot(f"{self.folder.resolve()}{os.sep}")
+        except FileNotFoundError:
+            raise Exception(f"[MITIM] Could not find CGYRO data in {self.folder.resolve()}. Please check the folder path or run CGYRO first.")
+        except Exception as e:
+            print(f"\t- Error reading CGYRO data: {e}")
+            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
+                os.chdir(self.folder)
+                os.system("cgyro -t")
+            self.cgyrodata = cgyrodata_plot(f"{self.folder.resolve()}{os.sep}")
+
+        os.chdir(original_dir)
+            
+        # --------------------------------------------------------------
+        # Read inputs
+        # --------------------------------------------------------------
+
+        self.params1D = {}
+        for var in self.cgyrodata.__dict__:
+            par = self.cgyrodata.__dict__[var]
+            if isinstance(par, bool) or IOtools.isnum(par):
+                self.params1D[var] = par
+            elif isinstance(par, (list, np.ndarray)) and par.ndim==1 and len(par) <= 5:
+                for i, p in enumerate(par):
+                    self.params1D[f"{var}_{i}"] = p
+    
+        # --------------------------------------------------------------
+        # Postprocess with MITIM-curated structures and variables
+        # --------------------------------------------------------------
+
+        # Check for linear run
+        if 'phib' in self.cgyrodata.__dict__ and last_tmin_for_linear:
+            print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
+            self.tmin = self.cgyrodata.t[-1]
+            self.linear = True
+        else:
+            self.linear = False
+
+        self.cgyrodata.getflux(cflux='auto')
+        self.cgyrodata.getnorm("elec")
+        self.cgyrodata.getgeo()
+        self.cgyrodata.getxflux()
+
+        # Understand positions
+        self.electron_flag = np.where(self.cgyrodata.z == -1)[0][0]
+        self.all_flags = np.arange(0, len(self.cgyrodata.z), 1)
+        self.ions_flags = self.all_flags[self.all_flags != self.electron_flag]
+
+        self.all_names = [f"{gacodefuncs.specmap(self.cgyrodata.mass[i],self.cgyrodata.z[i])}({self.cgyrodata.z[i]},{self.cgyrodata.mass[i]:.1f})" for i in self.all_flags]
+
+        self.fields = np.arange(self.cgyrodata.n_field)
+
+        self.aLTi = self.cgyrodata.dlntdr[0]
+        self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
+        self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
+    
+
+        # ************************
+        # Normalization
+        # ************************
         
-    
-    if np.amax(ky) > 1.0:
-        e_ind=np.where(ky > 1.0)[0]
-        eflux_elec_tmp1=flux[:,:,:,e_ind,:]
-        eflux_elec_tmp2=np.sum(eflux_elec_tmp1,axis=3)
-        eflux_elec_all=eflux_elec_tmp2[n_spec-1,1,:,:]
-        eflux_elec=np.sum(eflux_elec_all,axis=0)
+        self.t = self.cgyrodata.tnorm
+        self.ky = self.cgyrodata.kynorm
+        self.kx = self.cgyrodata.kxnorm
+        self.theta = self.cgyrodata.theta
         
-    #Define max values for plot
-    imax=np.amax(iflux)*qgb
-    emax=np.amax(eflux)*qgb
-    smax=imax+emax
-
-    #Determine if the time step has changed mid simulation
-    #Change the value of tstart internally if it has
-    tstart_save=tstart
-    tend=data.t[nt-1]
-    tstart=(np.abs(t - tstart)).argmin()
-    
-    #Take the mean values of the fluxes
-    m_qe= np.mean(eflux[int(tstart):int(nt)+1])
-    m_qi= np.mean(iflux[int(tstart):int(nt)+1])
-    m_ge= np.mean(epflux[int(tstart):int(nt)+1])
-    m_qe_elec=np.mean(eflux_elec[int(tstart):int(nt)+1])
-    m_ge_p=np.mean(epfluxp[int(tstart):int(nt)+1])
-    m_ge_ap=np.mean(epfluxap[int(tstart):int(nt)+1])
-    m_ge_bp=np.mean(epfluxbp[int(tstart):int(nt)+1])
-    m_gimp=np.mean(impflux[int(tstart):int(nt)+1])
-    m_mo=np.mean(mflux[int(tstart):int(nt)+1])
-    m_tur=np.mean(turflux[int(tstart):int(nt)+1])
-    print(nt)
-
-    #Calculate the standard deviations of the fluxes based on autocorrelation
-    i_tmp=iflux[int(tstart):int(nt-1)]
-    e_tmp=eflux[int(tstart):int(nt-1)]
-    ep_tmp=epflux[int(tstart):int(nt-1)]
-    imp_tmp=impflux[int(tstart):int(nt-1)]
-    mo_tmp=mflux[int(tstart):int(nt-1)]
-    tur_tmp=turflux[int(tstart):int(nt-1)]
-    i_acf=sm.tsa.acf(i_tmp)
-    i_array=np.asarray(i_acf)
-    icor=(np.abs(i_array-0.36)).argmin()
-    e_acf=sm.tsa.acf(e_tmp)
-    e_array=np.asarray(e_acf)
-    ecor=(np.abs(e_array-0.36)).argmin()
-    ep_acf=sm.tsa.acf(ep_tmp)
-    ep_array=np.asarray(ep_acf)
-    epcor=(np.abs(ep_array-0.36)).argmin()
-    imp_acf=sm.tsa.acf(imp_tmp)
-    imp_array=np.asarray(imp_acf)
-    impcor=(np.abs(imp_array-0.36)).argmin()
-    mo_acf=sm.tsa.acf(mo_tmp)
-    mo_array=np.asarray(mo_acf)
-    mocor=(np.abs(mo_array-0.36)).argmin()
-    tur_acf=sm.tsa.acf(tur_tmp)
-    tur_array=np.asarray(tur_acf)
-    turcor=(np.abs(tur_array-0.36)).argmin()
-
-    n_corr_i=(nt-tstart)/(3.0*icor) #Define "sample" as 3 x autocor time
-    n_corr_e=(nt-tstart)/(3.0*ecor)
-    n_corr_ep=(nt-tstart)/(3.0*epcor)
-    n_corr_imp=(nt-tstart)/(3.0*impcor)
-    n_corr_mo=(nt-tstart)/(3.0*mocor)
-    n_corr_tur=(nt-tstart)/(3.0*turcor)
-    print(n_corr_i)
-    print(n_corr_e)
-    print(n_corr_ep)
-    print(n_corr_imp)
-    print(n_corr_mo)
-    print(n_corr_tur)
-    std_qe=np.std(eflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_e)
-    std_qi=np.std(iflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_i)
-    std_ge=np.std(epflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_ep)
-    std_gimp=np.std(impflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_imp)
-    std_mo=np.std(mflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_mo)
-    std_tur=np.std(turflux[int(tstart):int(nt-1)])/np.sqrt(n_corr_tur)
-    
-    m_qees= np.mean(efluxes[int(tstart):int(nt-1)])
-    m_qeem= np.mean(efluxem[int(tstart):int(nt-1)])
-
-    #Make some string values so they can be truncated
-    s_alti=str(alti)
-    s_alte=str(alte)
-    s_alne=str(alne)
-    
-    #Print all the simulation information
-    print('')
-    print('========================================')
-    print('Time to start is:')
-    print(tstart)
-    print('Max simulation time is')
-    print(nt)
-    print('Simulation Gradients')
-    print('a/LTi = '+s_alti[:6])
-    print('a/LTe = '+s_alte[:6])
-    print('a/Lne = '+s_alne[:6])
-    print('')
-    print('======================')   
-    print('Heat Flux')
-    print('======================')   
-    print('Q_gb is')
-    print(f"{qgb:.4f}")
-    print('Mean Qi (in GB)')
-    print(f"{m_qi:.4f}")
-    print('Qi Std deviation (in GB)')
-    print(f"{std_qi:.4f}")
-    print('Mean in MW/m^2')
-    print(f"{m_qi*qgb:.4f}")
-    print('----------------------')
-    print('Mean Qe (in GB)')
-    print(f"{m_qe:.4f}")
-    print('Qe Std deviation (in GB)')
-    print(f"{std_qe:.4f}")
-    print('Mean in MW/m^2')
-    print(f"{m_qe*qgb:.4f}")
-    print('Qi/Qe')
-    print(f"{m_qi/m_qe:.4f}")
-    print('High-k Qe (GB)')
-    print(f"{m_qe_elec:.4f}")
-    print('')
-    print('======================')   
-    print('Particle Flux')
-    print('======================')
-    print('Gamma_gb is:')
-    print(f"{ggb:.4f}")
-    print('Mean Gamma_e (in GB)')
-    print(f"{m_ge:.4f}")
-    print('Gamma_e Std deviation (in GB)')
-    print(f"{std_ge:.4f}")
-    print('Mean in e19/m^2*s')
-    print(f"{m_ge*ggb:.4f}")
-    print('Mean Impurity Flux (GB)')
-    print(f"{m_gimp:.4e}")
-    print('Gamma_imp Std. deviation (in GB)')
-    print(f"{std_gimp:.4e}")
-    print('Electron Particle Flux Components(GB)')
-    print('Phi: 'f"{m_ge_p:.4f}")
-    print('A_||: 'f"{m_ge_ap:.4f}")
-    print('B_||: 'f"{m_ge_bp:.4f}")
-    print('')
-    print('======================')   
-    print('Momentum Flux')
-    print('======================')
-    print('Pi_gb is:')
-    print(f"{pgb:.4f}")
-    print('Mean Pi (in GB)')
-    print(f"{m_mo:.4f}")
-    print('Momentum Flux Std deviation (in GB)')
-    print(f"{std_mo:.4f}")
-    print('Mean in J/m^2')
-    print(f"{m_mo*pgb:.4f}")
-    print('')
-    print('======================')   
-    print('Turbulent Exchange')
-    print('======================')
-    print('S_gb is:')
-    print(f"{sgb:.4f}")
-    print('Mean Elec Turb Ex. (in GB)')
-    print(f"{m_tur:.4f}")
-    print('Turb Ex. Std deviation (in GB)')
-    print(f"{std_tur:.4f}")
-    
-    #Reset the starting time to correspond to the a/cs
-    tstart=tstart_save
-    
-    #Print the results to results file
-    if printflag ==1:
-       file1=open(file,"a")
-       file1.write('r/a = {0:4f} \t a/Lne = {1:4f} \t a/LTi = {2:4f} \t a/LTe = {3:4f} \t Qi = {4:4f} \t Qi_std = {5:4f} \t Qe = {6:4f} \t Qe_std = {7:4f} \t Ge = {8:4f} \t Ge_std = {9:4f} \t Gimp = {10:.4e} \t Gimp_std = {11:.4e} \t Pi = {12:4f} \t Pi_std = {13:4f} \t S = {14:4f} \t S_std = {15:4f} \t Q_gb = {16:4f} \t G_gb = {17:4f} \t Pi_gb = {18:4f} \t S_gb = {19:4f} \t tstart = {20:4f} \t tend = {21:4f} \n'.format(roa,alne,alti,alte,m_qi,std_qi,m_qe,std_qe,m_ge,std_ge,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt))
-       file1.close()
-          
-
-
-    #Plot the results               
-    if plotflag == 1:
-
-        summax=2.0*(m_qe*qgb+m_qi*qgb)
-        maxf=np.amax([np.amax(iflux)*qgb,np.amax(eflux)*qgb])
-        pmax=np.amin([2.0*(m_qe*qgb+m_qi*qgb),maxf])
-        gmax=np.amax(epflux*ggb)
-        gmin=np.amin(epflux*ggb)
+        if self.cgyrodata.theta_plot == 1:
+            self.theta_stored = np.array([0.0])
+        else:
+            self.theta_stored = np.array([-1+2.0*i/self.cgyrodata.theta_plot for i in range(self.cgyrodata.theta_plot)])
         
-        # Setting the style for the plots
-        plt.rc('axes', labelsize=25)
-        plt.rc('xtick', labelsize=25)
-        plt.rc('ytick', labelsize=25)
-
-        plt.rcParams['font.family'] = 'serif'
-
-        # Create a figure with 3 subplots vertically stacked (3 rows, 1 column)
-        fig, ax = plt.subplots(2, 1, figsize=(10.0, 9.0))
-
-        # First plot (Q vs Time)
-        ax[0].plot(t, iflux * qgb, 'b-')
-        ax[0].plot([tstart, tend], [m_qi * qgb, m_qi * qgb], 'b-', linewidth=4.0)
-        ax[0].plot([tstart, tend], [(m_qi + std_qi) * qgb, (m_qi + std_qi) * qgb], 'b-', linewidth=2.0)
-        ax[0].plot([tstart, tend], [(m_qi - std_qi) * qgb, (m_qi - std_qi) * qgb], 'b-', linewidth=2.0)
-        ax[0].set_title('Q$_e$ and Q$_i$ vs Time',fontsize=18)
-        ax[0].set_xlabel('a/c$_s$',fontsize=15)
-        ax[0].set_ylabel('MW/m$^2$',fontsize=15)
-        ax[0].axis([0.0, tmax, 0.0, pmax])
-
-        # Second plot (Qe vs Time)
-        ax[0].plot(t, eflux * qgb, 'r-')
-        ax[0].plot([tstart, tend], [m_qe * qgb, m_qe * qgb], 'r-', linewidth=4.0)
-        ax[0].plot([tstart, tend], [(m_qe + std_qe) * qgb, (m_qe + std_qe) * qgb], 'r-', linewidth=2.0)
-        ax[0].plot([tstart, tend], [(m_qe - std_qe) * qgb, (m_qe - std_qe) * qgb], 'r-', linewidth=2.0)
-
-        ax[0].fill_between([tstart,tend], [(m_qe - std_qe) * qgb, (m_qe - std_qe) * qgb], [(m_qe + std_qe) * qgb, (m_qe + std_qe) * qgb], color='red', alpha=0.2)
-        ax[0].fill_between([tstart,tend], [(m_qi - std_qi) * qgb, (m_qi - std_qi) * qgb], [(m_qi + std_qi) * qgb, (m_qi + std_qi) * qgb], color='blue', alpha=0.2)
+        self.Qgb = self.cgyrodata.q_gb_norm
+        self.Ggb = self.cgyrodata.gamma_gb_norm
         
-        #ax[0].plot(t, eflux * qgb, 'g-')  # You can customize this line further
-        ax[0].tick_params(axis='x', labelsize=12)  # x-axis tick labels font size reduced
-        ax[0].tick_params(axis='y', labelsize=12)
-        factor=10 ** 3
-        factor2=10 ** 2
-        num=math.floor(m_qe*qgb*factor)/factor
-        num2=math.floor(std_qe*qgb*factor)/factor
-        ax[0].text(10,pmax*0.8,'$Q_e$='+str(num)+' +/- '+str(num2),fontsize=18,color='red')
+        self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
 
-        num=math.floor(m_qi*qgb*factor)/factor
-        num2=math.floor(std_qi*qgb*factor)/factor
-        num3=math.floor(m_qi/m_qe*factor2)/factor2
-        ax[0].text(10,pmax*0.88,'$Q_i$='+str(num)+' +/- '+str(num2),fontsize=18,color='blue')
-        ax[0].text(10,pmax*0.72,'$Q_i/Q_e$='+str(num3),fontsize=18)
+        self._process_linear()
+
+        if not minimal: # or not self.linear:
+            self.cgyrodata.getbigfield()
+
+            if 'kxky_phi' in self.cgyrodata.__dict__:
+                self._process_fluctuations()
+            else:
+                print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
+        else:
+            print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
+            
+        self._process_fluxes()        
+        self._saturate_signals()
+
+    def _process_linear(self):
+
+        # check for convergence 
+        self.linear_converged = False
+        info_file = f"{self.folder.resolve()}/out.cgyro.info"
+        if not os.path.exists(info_file):
+            raise FileNotFoundError(f"[MITIM] Could not find CGYRO info file at {info_file}. Please check the folder path or run CGYRO first.")
+        else:
+            with open(info_file, 'r') as f:
+                lines = f.readlines()
+                for line in lines: 
+                    if "EXIT: (CGYRO) Linear converged" in line:
+                        self.linear_converged = True
+                        break
         
-        # Third plot (epflux vs Time)
-        ax[1].plot(t, epflux * ggb, 'g-')  # Plotting epflux on the third subplot
-        ax[1].set_title('$\Gamma_e$ vs Time',fontsize=18)
-        ax[1].set_xlabel('a/c$_s$',fontsize=15)
-        ax[1].set_ylabel('1e19/m$^2$s',fontsize=15)
-        ax[1].tick_params(axis='x', labelsize=12)  # x-axis tick labels font size reduced
-        ax[1].plot([tstart, tend], [m_ge * ggb, m_ge * ggb], 'g-', linewidth=4.0)
-        ax[1].plot([tstart, tend], [(m_ge + std_ge) * ggb, (m_ge + std_ge) * ggb], 'g-', linewidth=2.0)
-        ax[1].plot([tstart, tend], [(m_ge - std_ge) * ggb, (m_ge - std_ge) * ggb], 'g-', linewidth=2.0)
-        ax[1].fill_between([tstart,tend], [(m_ge - std_ge) * ggb, (m_ge - std_ge) * ggb], [(m_ge + std_ge) * ggb, (m_ge + std_ge) * ggb], color='green', alpha=0.2)
+            self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
+            self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            if self.g is np.nan or self.f is np.nan:
+                raise ValueError(f"[MITIM] Could not find f or g in CGYRO data at {info_file}. Please check the folder path or run CGYRO first.")
 
-        ax[1].plot(t, epflux * ggb, 'g-')
-        ax[1].plot(t,t*0.0,'k',linestyle='--')
-        ax[1].tick_params(axis='y', labelsize=12)
-        ax[1].axis([0.0, tmax, gmin, gmax])
+        # Ballooning Modes (complex eigenfunctions)
+        if 'phib' in self.cgyrodata.__dict__:
+            self.phi_ballooning = self.cgyrodata.phib       # (ball, time)
+            self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
+            self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
+            self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
-        factor=10 ** 3
-        num=math.floor(m_ge*ggb*factor)/factor
-        num2=math.floor(std_ge*ggb*factor)/factor
-        ax[1].text(10,gmax*0.8,'$\Gamma_e$='+str(num)+' +/- '+str(num2),fontsize=18)
-        ax[1].text(10,gmin*0.95,str(int(tend))+' a/c$_s$',fontsize=18)
-        # Adjust spacing between subplots
-        plt.tight_layout()
+    def _process_fluctuations(self):
+        # Fluctuations (complex numbers)
+        
+        gbnorm = False
+        
+        theta = -1
 
-        # Show the plot
+        moment, species, field = 'phi', None, 0
+        self.phi, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)        # [COMPLEX] (nradial,ntoroidal,time)
+        if 'kxky_apar' in self.cgyrodata.__dict__:
+            field = 1
+            self.apar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
+            field = 2
+            self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
+        
+        self.tmax_fluct = _detect_exploiding_signal(self.t, self.phi**2)
+        
+        moment, species, field = 'n', self.electron_flag, 0
+        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
+
+        species = self.ions_flags
+        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)     # [COMPLEX] (nradial,nions,ntoroidal,time)
+        self.ni = self.ni_all.sum(axis=1)                                                         # [COMPLEX] (nradial,ntoroidal,time)
+
+        moment, species, field = 'e', self.electron_flag, 0
+        Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)              # [COMPLEX] (nradial,ntoroidal,time)
+        
+        species = self.ions_flags
+        Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)          # [COMPLEX] (nradial,nions,ntoroidal,time)
+        Ei = Ei_all.sum(axis=1)
+
+        # Transform to temperature
+        self.Te         = 2/3 * Ee - self.ne
+        self.Ti_all     = 2/3 * Ei_all - self.ni_all
+        self.Ti         = 2/3 * Ei - self.ni
+
+        # Sum over radial modes and divide between n=0 and n>0 modes, RMS
+        variables = ['phi', 'apar', 'bpar', 'ne', 'ni_all', 'ni', 'Te', 'Ti', 'Ti_all']
+        for var in variables:
+            if var in self.__dict__:
+                
+                # Make sure I go to the real units for all of them *******************
+                self.__dict__[var] = self.__dict__[var] * self.artificial_rhos_factor
+                # ********************************************************************
+
+                # Sum over radial modes
+                self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0))**0.5                # (ntoroidal, time)
+                 
+                # Sum over radial modes AND separate n=0 and n>0 (sum) modes
+                self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5               # (time)
+                self.__dict__[var+'_rms_sumnr_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5    # (time)
+                
+                # Sum over radial modes and toroidal modes
+                self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0,1))**0.5         # (time)
+               
+                # Separate n=0, n>0 (sum) modes, and all n (sum) modes
+                self.__dict__[var+'_rms_n0'] = (abs(self.__dict__[var][:,0,:])**2)**0.5                         # (nradial,time) 
+                self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5       # (nradial,time)
+                self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5         # (nradial,time)
+
+        # Cross-phases
+        self.neTe = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.neTe_kx0 = self.neTe[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
+        
+        self.niTi = _cross_phase(self.t, self.ni, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.niTi_kx0 = self.niTi[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phiTe = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phiTe_kx0 = self.phiTe[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phiTi = _cross_phase(self.t, self.phi, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phiTi_kx0 = self.phiTi[np.argmin(np.abs(self.kx)),:,:]
+      
+        self.phiTi_all = []
+        for ion in self.ions_flags:
+            self.phiTi_all.append(_cross_phase(self.t, self.phi, self.Ti_all[:,ion,:]) * 180/ np.pi)
+        self.phiTi_all = np.array(self.phiTi_all)
+        self.phiTi_all_kx0 = self.phiTi_all[:,np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phine = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phine_kx0 = self.phine[np.argmin(np.abs(self.kx)),:,:]
+        
+        self.phini = _cross_phase(self.t, self.phi, self.ni) * 180/ np.pi  # (nradial, ntoroidal, time)
+        self.phini_kx0 = self.phini[np.argmin(np.abs(self.kx)),:,:]
+
+        self.phini_all = []
+        for ion in self.ions_flags:
+            self.phini_all.append(_cross_phase(self.t, self.phi, self.ni_all[:,ion,:]) * 180/ np.pi)
+        self.phini_all = np.array(self.phini_all)
+        self.phini_all_kx0 = self.phini_all[:,np.argmin(np.abs(self.kx)),:,:]
+
+        # Correlation length
+        phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
+        phim, _ = apply_ac(self.t,phi,tmin=self.tmin)
+        phim = np.append(0, phim)  # Add n=0 mode
+        if np.isinf(phim).any() or np.isnan(phim).any():
+            print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
+            self.l_corr = np.nan
+        else:
+            self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
+
+    def _process_fluxes(self):
+        
+        # ************************
+        # Fluxes
+        # ************************
+        
+        ky_flux = self.cgyrodata.ky_flux # (species, moments, fields, ntoroidal, time)
+
+        # Electron energy flux
+        
+        i_species, i_moment = -1, 1
+        i_fields = 0
+        self.Qe_ES_ky = ky_flux[i_species, i_moment, i_fields, :, :]
+        i_fields = 1
+        self.Qe_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :, :]
+        i_fields = 2
+        self.Qe_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :, :]
+
+        self.Qe_EM_ky = self.Qe_EM_apar_ky + self.Qe_EM_aper_ky
+        self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
+
+        # Electron particle flux
+        
+        i_species, i_moment = -1, 0
+        i_fields = 0
+        self.Ge_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
+        i_fields = 1
+        self.Ge_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
+        i_fields = 2
+        self.Ge_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
+        
+        self.Ge_EM_ky = self.Ge_EM_apar_ky + self.Ge_EM_aper_ky
+        self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
+        
+        # Ions energy flux
+        
+        i_species, i_moment = self.ions_flags, 1
+        i_fields = 0
+        self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
+        i_fields = 1
+        self.Qi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
+        i_fields = 2
+        self.Qi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
+        
+        self.Qi_all_EM_ky = self.Qi_all_EM_apar_ky + self.Qi_all_EM_aper_ky
+        self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
+        
+        self.Qi_ky = self.Qi_all_ky.sum(axis=0)
+        self.Qi_EM_ky = self.Qi_all_EM_ky.sum(axis=0)
+        self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
+        self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
+        self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+        
+        # ************************
+        # Sum total 
+        # ************************
+        variables = ['Qe','Ge','Qi','Qi_all']
+        for var in variables:
+            for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
+                self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
+        
+        # Convert to MW/m^2     
+        self.QeMWm2 = self.Qe * self.Qgb
+        self.QiMWm2 = self.Qi * self.Qgb
+        self.Qi_allMWm2 = self.Qi_all * self.Qgb
+        
+    def _saturate_signals(self):
+        
+        # ************************
+        # Saturated
+        # ************************
+        
+        flags = [
+            'Qe',
+            'QeMWm2',
+            'Qe_ky',
+            'Qi',
+            'QiMWm2',
+            'Qi_all',
+            'Qi_allMWm2',
+            'Qi_ky',
+            'Qi_all_ky',
+            'Ge',
+            'Ge_ky',
+            'Qe_ES',
+            'Qi_ES',
+            'Ge_ES',
+            'Qe_EM',
+            'Qi_EM',
+            'Ge_EM',
+            'g',
+            'f',
+        ]
+            
+        flags_fluctuations = [
+            'phi_rms_sumnr',
+            'apar_rms_sumnr',
+            'bpar_rms_sumnr',
+            'ne_rms_sumnr',
+            'ni_rms_sumnr',
+            'ni_all_rms_sumnr',
+            'Te_rms_sumnr',
+            'Ti_rms_sumnr',
+            'Ti_all_rms_sumnr',
+            'phi_rms_n0',
+            'phi_rms_sumn1',
+            'phi_rms_sumn',
+            'apar_rms_n0',
+            'apar_rms_sumn1',
+            'apar_rms_sumn',
+            'bpar_rms_n0',
+            'bpar_rms_sumn1',
+            'bpar_rms_sumn',
+            'ne_rms_n0',
+            'ne_rms_sumn1',
+            'ne_rms_sumn',
+            'ni_rms_n0',
+            'ni_rms_sumn1',
+            'ni_rms_sumn',
+            'ni_all_rms_n0',
+            'ni_all_rms_sumn1',
+            'ni_all_rms_sumn',
+            'Te_rms_n0',
+            'Te_rms_sumn1',
+            'Te_rms_sumn',
+            'Ti_rms_n0',
+            'Ti_rms_sumn1',
+            'Ti_rms_sumn',
+            'Ti_all_rms_n0',
+            'Ti_all_rms_sumn1',
+            'Ti_all_rms_sumn',
+            'neTe_kx0',
+            'niTi_kx0',
+            'phiTe_kx0',
+            'phine_kx0',
+            'phini_kx0',
+            'phiTi_kx0',
+            'phini_all_kx0',
+            'phiTi_all_kx0',
+        ]
+        
+        for iflag in flags:
+            if iflag in self.__dict__:
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
+                        self.t,
+                        self.__dict__[iflag],
+                        tmin=self.tmin,
+                        label_print=iflag,
+                        print_msg=iflag in ['Qi', 'Qe', 'Ge'],
+                        )
+                
+        for iflag in flags_fluctuations:
+            if iflag in self.__dict__:
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
+                        self.t,
+                        self.__dict__[iflag],
+                        tmin=self.tmin,
+                        tmax=self.tmax_fluct,
+                        label_print=iflag,
+                        )     
+            
+def _grab_ncorrelation(S, debug=False):
+    # Calculate the autocorrelation function
+    i_acf = sm.tsa.acf(S, nlags=len(S))
+
+    if i_acf.min() > 1/np.e:
+        print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
+
+    # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
+    icor = np.abs(i_acf-1/np.e).argmin()
+    
+    # Define number of samples
+    n_corr = len(S) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
+    
+    if debug:
+        fig, ax = plt.subplots()
+        ax.plot(i_acf, '-o', label='ACF')
+        ax.axhline(1/np.e, color='r', linestyle='--', label='1/e')
+        ax.set_xlabel('Lags'); ax.set_xlim([0, icor+20])
+        ax.set_ylabel('ACF')
+        ax.legend()
         plt.show()
+        embed()
+    
+    return n_corr, icor
 
-    return roa,alne,alti,alte,m_qi,std_qi,m_qe,std_qe,m_ge,std_ge,m_gimp,std_gimp,m_mo,std_mo,m_tur,std_tur,qgb,ggb,pgb,sgb,tstart,nt
+def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
+    
+    it0 = np.argmin(np.abs(t - tmin))
+    it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
+    
+    if it1 <= it0:
+        it0 = it1
+
+    # Calculate the mean and std of the signal after tmin (last dimension is time)
+    S_mean = np.mean(S[..., it0:it1+1], axis=-1)
+    S_std = np.std(S[..., it0:it1+1], axis=-1)
+
+    if S.ndim == 1:
+        # 1D case: single time series
+        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug)
+        S_std = S_std / np.sqrt(n_corr)
+        
+        if print_msg:
+            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
+        
+    else:
+        # Multi-dimensional case: flatten all dimensions except the last one
+        shape_orig = S.shape[:-1]  # Original shape without time dimension
+        S_reshaped = S.reshape(-1, S.shape[-1])  # Flatten to (n_series, n_time)
+        
+        n_series = S_reshaped.shape[0]
+        n_corr = np.zeros(n_series)
+        icor = np.zeros(n_series)
+        
+        # Calculate correlation for each flattened time series
+        for i in range(n_series):
+            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug)
+        
+        # Reshape correlation arrays back to original shape (without time dimension)
+        n_corr = n_corr.reshape(shape_orig)
+        icor = icor.reshape(shape_orig)
+        
+        # Apply correlation correction to standard deviation
+        S_std = S_std / np.sqrt(n_corr)
+
+        # Print results - handle different dimensionalities
+        if print_msg:
+            if S.ndim == 2:
+                # 2D case: print each series
+                for i in range(S.shape[0]):
+                    print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
+            else:
+                # Higher dimensional case: print summary statistics
+                print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
+
+    return S_mean, S_std
 
 
-if __name__ == "__main__":
-    # Example usage
-    data_dir = sys.argv[1]  # Directory containing the cgyro data
-    tstart = float(sys.argv[2])  # Start time for analysis
-    plotflag = int(sys.argv[3])  # Flag to indicate if plotting is required
-    printflag = int(sys.argv[4])  # Flag to indicate if printing results is required
-    file = sys.argv[5] # Print to this file
+def _cross_phase(t, f1, f2):
+    """
+    Calculate the cross-phase between two complex signals.
+    
+    Parameters:
+    f1, f2 : np.ndarray
+        Complex signals (e.g., fluctuations).
+        
+    Returns:
+    np.ndarray
+        Cross-phase in radians.
+    """
 
-    grab_cgyro_nth(data_dir, tstart, plotflag, printflag, file = file)
+    return np.angle(f1 * np.conj(f2))
 
+def _detect_exploiding_signal(t,f1):
+
+    try:
+        idx = np.where(np.isnan(f1.sum(axis=(0,1))) | np.isinf(f1.sum(axis=(0,1))))[0][0]
+        max_t = t[idx]
+        if print(f"\t- Warning: Exploding signal detected at t>={max_t:.2f}", typeMsg='w'):
+            return max_t
+        else:
+            return t[-1]
+    except IndexError:
+        return t[-1]  # No exploding signal detected, return last time point
+
+def calculate_lcorr(phim, kx, nx, debug=False):
+    """Calculate the correlation length in the radial direction.
+
+    Completely based on pygacode
+    """
+
+    ave = np.roll(phim,-nx//2)
+    ave[0] = 0.0
+    corr = np.fft.fft(ave,nx)
+    corr = np.fft.fftshift(corr)
+    corr /= np.max(np.abs(corr))
+    corr = corr.real
+    delta_r = np.fft.fftfreq(nx)
+    delta_r = np.fft.fftshift(delta_r)
+    Lx = 2*np.pi/(kx[1]-kx[0])
+    delta_r *= Lx
+    
+    corr_hilbert = scipy.signal.hilbert(corr)
+    corr_env = np.abs(corr_hilbert)
+    def absexp(x,tau):
+        return np.exp(-np.abs(x)/tau)
+    l_corr, _ = scipy.optimize.curve_fit(absexp, delta_r, corr_env, p0=10.0)
+
+    if debug:
+        fig, ax = plt.subplots()
+        ax.plot(delta_r,0*delta_r,color='k',ls='--')
+        ax.plot(delta_r,corr,color='m')
+        ax.plot(delta_r,corr_env,color='b')
+        ax.plot(delta_r,absexp(delta_r,l_corr),color='k',ls='-.')
+        ax.set_xlim([np.min(delta_r),np.max(delta_r)])
+        ax.set_ylim(-1,1)
+        plt.show()
+        embed()
+
+    return l_corr[0]  # Return the correlation length in the radial direction
+
+
+def quends_analysis(t, S, debug = False):
+    
+    time_dependent_data = {'time': t, 'signal': S}
+    df = pd.DataFrame(time_dependent_data, index = pd.RangeIndex(len(t)))
+    
+    dst = qnds.DataStream(df)
+
+    window_size = 10
+    
+    trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
+    
+    mean = trimmed_df.mean(window_size=window_size)['signal']
+    std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
+    
+    stats = trimmed_df.compute_statistics(window_size=window_size)
+    
+    if debug:
+        plotter = qnds.Plotter()
+        plotter.steady_state_automatic_plot(dst, ["signal"])
+        plotter.plot_acf(trimmed_df)
+        print(stats)
+        plt.show()
+        embed()
+        
+    return mean, std, stats

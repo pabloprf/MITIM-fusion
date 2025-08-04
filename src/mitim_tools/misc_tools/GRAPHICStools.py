@@ -666,6 +666,14 @@ def fillGraph(
     ms=None,
     ls="-",
 ):
+    
+    if IOtools.isnum(y):
+        y = np.array([y] * len(x))
+    if IOtools.isnum(y_down):
+        y_down = np.array([y_down] * len(x))
+    if IOtools.isnum(y_up):
+        y_up = np.array([y_up] * len(x))
+    
     if y_up is not None:
         l = ax.fill_between(x, y, y_up, facecolor=color, alpha=alpha, label=label)
     if y_down is not None:
@@ -689,6 +697,19 @@ def fillGraph(
                 ax.plot(x, y_down, ls, c=color, lw=lw, markersize=ms)
 
     return l
+
+def adjust_subplots(fig = None, axs=None, vertical=0.4, horizontal=0.3):
+    
+    if fig is None and axs is None:
+        raise ValueError("Either fig or axs must be provided")
+
+    if axs is not None:
+        fig = next(iter(axs.values())).get_figure()
+
+    fig.subplots_adjust(
+        hspace=vertical,   # vertical spacing between rows
+        wspace=horizontal  # horizontal spacing between columns
+    )
 
 
 def listColors():
@@ -1070,44 +1091,6 @@ def colorTableFade(num, startcolor="b", endcolor="r", alphalims=[1.0, 1.0]):
     cn = [(col[0], col[1], col[2], alpha) for col, alpha in zip(cols, alphas)]
 
     return cn, cpick
-
-
-def createAnimation(
-    fig, FunctionToAnimate, framesCalc, FramesPerSecond, BITrate, MovieFile, DPIs
-):
-    plt.rcParams["animation.ffmpeg_path"] = "/usr/local/bin/ffmpeg"
-    if "mfews" in socket.gethostname():
-        plt.rcParams["animation.ffmpeg_path"] = "/usr/bin/ffmpeg"
-    ani = animation.FuncAnimation(
-        fig, FunctionToAnimate, frames=framesCalc, repeat=True
-    )
-
-    Writer = animation.writers["ffmpeg"]
-    writer = Writer(fps=FramesPerSecond, metadata=dict(artist="PRF"), bitrate=BITrate)
-    ani.save(writer=writer, filename=MovieFile, dpi=DPIs)
-
-
-def animageFunction(
-    plottingFunction,
-    axs,
-    fig,
-    MovieFile,
-    HowManyFrames,
-    framePS=50,
-    BITrate=1200,
-    DPIs=150,
-):
-    if type(axs) not in [np.ndarray, list]:
-        axs = [axs]
-
-    def animate(i):
-        for j in range(len(axs)):
-            axs[j].clear()
-        plottingFunction(axs, i)
-        print(f"\t~~ Frame {i + 1}/{HowManyFrames}")
-
-    print(" --> Creating animation")
-    createAnimation(fig, animate, HowManyFrames, framePS, BITrate, MovieFile, DPIs)
 
 
 def reduceVariable(var, howmanytimes, t=None, trange=[0, 100]):
@@ -1494,3 +1477,41 @@ def PSFCcolors():
     colors["Orange Edge"] = "#FFA630"
 
     return colors
+
+
+'''
+********************************************************************
+Capabilities to create animations using matplotlib's FuncAnimation.
+********************************************************************
+'''
+
+def animateFunction(
+    plottingFunction,       # Function that plots the data, must receive axs and frame index as arguments
+    axs,                    # List of axes to plot on
+    fig,                    # Figure object to create the animation in
+    MovieFile,              # Output filename for the movie
+    HowManyFrames: int,     # Total number of frames in the animation
+    framePS: int = 50,      # Frames per second for the animation
+    BITrate: int = 1200,    # Bitrate for the output video
+    DPIs: int = 150,        # Dots per inch for the output video
+    ffmpeg_path = None      # Path to ffmpeg executable, if None it uses the default. e.g. /usr/local/bin/ffmpeg, /usr/bin/ffmpeg
+):
+    if type(axs) not in [np.ndarray, list]:
+        axs = [axs]
+
+    def animate(i):
+        for j in range(len(axs)):
+            axs[j].clear()
+        plottingFunction(axs, i)
+        print(f"\t~~ Frame {i + 1}/{HowManyFrames}")
+
+    print(" --> Creating animation")
+ 
+    if ffmpeg_path is not None:
+        plt.rcParams["animation.ffmpeg_path"] = ffmpeg_path
+
+    ani = animation.FuncAnimation(fig, animate, frames=HowManyFrames, repeat=True)
+
+    Writer = animation.writers["ffmpeg"]
+    writer = Writer(fps=framePS, metadata=dict(artist="PRF"), bitrate=BITrate)
+    ani.save(writer=writer, filename=MovieFile, dpi=DPIs)

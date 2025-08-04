@@ -1049,9 +1049,7 @@ class TGLF:
                         max_fields.append(il)
 
         if fn is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF MITIM Notebook", geometry="1700x900", vertical=True
-            )
+            self.fn = GUItools.FigureNotebook("TGLF MITIM Notebook", geometry="1700x900", vertical=True)
         else:
             self.fn = fn
 

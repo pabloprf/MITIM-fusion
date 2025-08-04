@@ -1422,18 +1422,32 @@ class mitim_state:
 
         self.moveSpecie(pos=len(self.Species), pos_new=1)
 
-    def changeZeff(self, Zeff, ion_pos=2, quasineutral_ions=None, enforceSameGradients=False):
-        """
-        if (D,Z1,Z2), pos 1 -> change Z1
-        """
+    def changeZeff(
+        self,
+        Zeff,
+        ion_pos = 2,                  # Position of ion to change (if (D,Z1,Z2), pos 1 -> change Z1)
+        keep_fmain = False,           # If True, it will keep fmain and change Z of ion in position ion_pos. If False, it will change the content of ion in position ion_pos and the content of quasineutral ions to achieve Zeff
+        fmain_force = None,           # If keep_fmain is True, it will force fmain to this value. If None, it will use the current fmain
+        enforceSameGradients = False  # If True, it will scale all thermal densities to have the same gradients after changing Zeff
+        ):
 
-        if quasineutral_ions is None:
-            if self.DTplasmaBool:
-                quasineutral_ions = [self.Dion, self.Tion]
-            else:
-                quasineutral_ions = [self.Mion]
+        if not keep_fmain and fmain_force is not None:
+            raise ValueError("[MITIM] fmain_force can only be used if keep_fmain is True")
 
-        print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i",)
+        if fmain_force is not None:
+            fmain_factor = fmain_force / self.derived["fmain"]
+        else:
+            fmain_factor = 1.0
+
+        if self.DTplasmaBool:
+            quasineutral_ions = [self.Dion, self.Tion]
+        else:
+            quasineutral_ions = [self.Mion]
+
+        if not keep_fmain:
+            print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions}',typeMsg="i")
+        else:
+            print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content and Z of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions} and keeping fmain={self.derived["fmain"]*fmain_factor:.3f}',typeMsg="i")
 
         # Plasma needs to be in quasineutrality to start with
         self.enforceQuasineutrality()
@@ -1443,47 +1457,82 @@ class mitim_state:
         # ------------------------------------------------------
         Zq = np.zeros(self.derived["fi"].shape[0])
         Zq2 = np.zeros(self.derived["fi"].shape[0])
+        fZq = np.zeros(self.derived["fi"].shape[0])
+        fZq2 = np.zeros(self.derived["fi"].shape[0])
         fZj = np.zeros(self.derived["fi"].shape[0])
         fZj2 = np.zeros(self.derived["fi"].shape[0])
         for i in range(len(self.Species)):
+            
+            # Ions for quasineutrality (main ones)
             if i in quasineutral_ions:
                 Zq += self.Species[i]["Z"] 
                 Zq2 += self.Species[i]["Z"] ** 2 
+                
+                fZq += self.Species[i]["Z"] * self.derived["fi"][:, i]          * fmain_factor
+                fZq2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]    * fmain_factor
+            # Non-quasineutral and not the ion to change
             elif i != ion_pos:
                 fZj += self.Species[i]["Z"] * self.derived["fi"][:, i]
                 fZj2 += self.Species[i]["Z"] ** 2 * self.derived["fi"][:, i]
+            # Ion to change
             else:
                 Zk = self.Species[i]["Z"]
 
-        # ------------------------------------------------------
-        # Find free parameters (fk and fq)
-        # ------------------------------------------------------
-
-        fk = ( Zeff - (1-fZj)*Zq2/Zq - fZj2 ) / ( Zk**2 - Zk*Zq2/Zq)
-        fq = ( 1 - fZj - fk*Zk ) / Zq
-
-        if (fq<0).any():
-            raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
-
-        # ------------------------------------------------------
-        # Insert
-        # ------------------------------------------------------
-
         fi_orig = self.derived["fi"][:, ion_pos]
+        Zi_orig = self.Species[ion_pos]["Z"]
+        Ai_orig = self.Species[ion_pos]["A"]
 
-        self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
-        for i in quasineutral_ions:
-            self.profiles["ni(10^19/m^3)"][:, i] = fq * self.profiles["ne(10^19/m^3)"]
+        if not keep_fmain:
+            # ------------------------------------------------------
+            # Find free parameters (fk and fq)
+            # ------------------------------------------------------
+
+            fk = ( Zeff - (1-fZj)*Zq2/Zq - fZj2 ) / ( Zk**2 - Zk*Zq2/Zq)
+            fq = ( 1 - fZj - fk*Zk ) / Zq
+
+            if (fq<0).any():
+                raise ValueError(f"Zeff cannot be reduced by changing ion #{ion_pos} because it would require negative densities for quasineutral ions")
+
+            # ------------------------------------------------------
+            # Insert
+            # ------------------------------------------------------
+
+            self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
+            for i in quasineutral_ions:
+                self.profiles["ni(10^19/m^3)"][:, i] = fq * self.profiles["ne(10^19/m^3)"]
+        else:
+            # ------------------------------------------------------
+            # Find free parameters (fk and Zk)
+            # ------------------------------------------------------
+
+            Zk = (Zeff - fZq2 - fZj2) / (1 - fZq - fZj)
+            
+            # I need a single value
+            Zk_ave = CALCtools.integrateFS(Zk, self.profiles["rmin(m)"], self.derived["volp_miller"])[-1] / self.derived["volume"]
+
+            fk = (1 - fZq - fZj) / Zk_ave
+
+            # ------------------------------------------------------
+            # Insert
+            # ------------------------------------------------------
+
+            self.profiles['z'][ion_pos] = Zk_ave
+            self.profiles['mass'][ion_pos] = Zk_ave * 2
+            self.profiles["ni(10^19/m^3)"][:, ion_pos] = fk * self.profiles["ne(10^19/m^3)"]
+            
+            if fmain_force is not None:
+                for i in quasineutral_ions:
+                    self.profiles["ni(10^19/m^3)"][:, i] *= fmain_factor
 
         self.readSpecies()
 
-        self.derive_quantities(rederiveGeometry=False)
+        self.deriveQuantities(rederiveGeometry=False)
 
         if enforceSameGradients:
             self.scaleAllThermalDensities()
-            self.derive_quantities(rederiveGeometry=False)
+            self.deriveQuantities(rederiveGeometry=False)
 
-        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) to { self.derived["fi"][:, ion_pos].mean():.2e} to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
+        print(f'\t\t\t* Dilution changed from {fi_orig.mean():.2e} (vol avg) of ion [{Zi_orig:.2f},{Ai_orig:.2f}] to { self.derived["fi"][:, ion_pos].mean():.2e} of ion [{self.profiles["z"][ion_pos]:.2f}, {self.profiles["mass"][ion_pos]:.2f}] to achieve Zeff={self.derived["Zeff_vol"]:.3f} (fDT={self.derived["fmain"]:.3f}) [quasineutrality error = {self.derived["QN_Error"]:.1e}]')
 
     def moveSpecie(self, pos=2, pos_new=1):
         """

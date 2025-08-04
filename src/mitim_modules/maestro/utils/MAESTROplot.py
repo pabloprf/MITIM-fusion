@@ -2,13 +2,13 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import LOGtools, GRAPHICStools
-from mitim_tools.plasmastate_tools import MITIMstate
-from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+import json, re
+from pathlib import Path
+import matplotlib.pyplot as plt
 from IPython import embed
-
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
@@ -53,9 +53,9 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
     m = grabMAESTRO(folder)
 
     # Plot
-    m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
+    ps, ps_lab = m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
 
-    return m
+    return m, ps, ps_lab
 
 def plot_results(self, fn):
 
@@ -75,7 +75,11 @@ def plot_results(self, fn):
 
     for i,beat in enumerate(self.beats.values()):
 
-        _, profs = beat.grab_output()
+        # _, profs = beat.grab_output()
+        if (beat.folder_output / 'input.gacode').exists():
+            profs = PROFILEStools.gacode_state(beat.folder_output / 'input.gacode')
+        else:
+            profs = None
 
         if isinstance(beat, transp_beat):
             key = f'TRANSP b#{i+1}'
@@ -98,10 +102,10 @@ def plot_results(self, fn):
     maxPlot = 5
     if len(ps) > 0:
         # Plot profiles
-        figs = state_plotting.add_figures(fn,fnlab_pre = 'MAESTRO - ')
+        figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
-            state_plotting.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
+            PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
     for p,pl in zip(ps,ps_lab):
         p.printInfo(label = pl)
@@ -195,7 +199,24 @@ def plot_results(self, fn):
         DFHJ
         """
     )
+    
+    plot_special_quantities(ps, ps_lab, axs)
+    
+    if (self.folder_performance / 'timing.jsonl').exists():
+        # ********************************************************************************************************
+        # Timings
+        # ********************************************************************************************************
+        fig = fn.add_figure(label='MAESTRO timings', tab_color=3)
+        axs = fig.subplot_mosaic("""
+                                 A
+                                 B
+                                 """)
+        plot_timings(self.folder_performance / 'timing.jsonl', axs = axs)
+    
+    return ps, ps_lab
 
+def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
+    
     x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
@@ -212,24 +233,37 @@ def plot_results(self, fn):
         xsaw.append(p.derived['rho_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
+    def _special(ax,x):
+        for xi in x:
+            if 'portals' in xi.lower():
+                if legYN:
+                    ax.axvline(xi, color='y', linestyle='-', lw=5, alpha=0.2)
+
     # -----------------------------------------------------------------
     ax = axs['A']
-    ax.plot(x, BetaN, '-s', markersize=7, lw = 1)
+    ax.plot(x, BetaN, '-s', color=color, markersize=7, lw = 1, label = label)
     ax.set_ylabel('$\\beta_N$ (engineering)')
     ax.set_title('Pressure Evolution')
+    if len(label) > 0:
+        ax.legend()
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
+    
+    _special(ax, x)
 
     ax.set_xticklabels([])
 
     ax = axs['D']
-    ax.plot(x, p_th, '-s', markersize=7, lw = 1, label='Thermal <p>')
-    ax.plot(x, p_tot, '-o', markersize=7, lw = 1, label='Total <p>')
-    ax.plot(x, p90, '-*', markersize=7, lw = 1, label='Total, p(rho=0.9)')
+    ax.plot(x, p_th, '-s', color=color, markersize=7, lw = 1, label='Thermal <p>')
+    ax.plot(x, p_tot, '-o', color=color, markersize=7, lw = 1, label='Total <p>')
+    ax.plot(x, p90, '-*', color=color, markersize=7, lw = 1, label='Total, p(rho=0.9)')
     ax.set_ylabel('$p$ (MPa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
-    ax.legend()
+    if legYN:
+        ax.legend()
+        
+    _special(ax, x)
 
     rotation = 90
     fontsize = 6
@@ -238,35 +272,41 @@ def plot_results(self, fn):
     # -----------------------------------------------------------------
 
     ax = axs['B']
-    ax.plot(x, Q, '-s', markersize=7, lw = 1)
+    ax.plot(x, Q, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$Q$')
     ax.set_title('Performance Evolution')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
 
     ax = axs['E']
-    ax.plot(x, Pfus, '-s', markersize=7, lw = 1)
+    ax.plot(x, Pfus, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$P_{fus}$ (MW)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
 
     ax = axs['F']
-    ax.plot(x, Pin, '-s', markersize=7, lw = 1)
+    ax.plot(x, Pin, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$P_{in}$ (MW)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
     ax = axs['G']
-    ax.plot(x, fG, '-s', markersize=7, lw = 1)
+    ax.plot(x, fG, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$f_{G}$')
     ax.set_title('Density Evolution')
     ax.axhline(y=1, color = 'k', lw = 1, ls = '--')
@@ -275,37 +315,46 @@ def plot_results(self, fn):
     ax.set_ylim([0,1.2])
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
     ax = axs['H']
-    ax.plot(x, nu_ne, '-s', markersize=7, lw = 1)
+    ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$\\nu_{ne}$')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom = 0)
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
 
     # -----------------------------------------------------------------
     ax = axs['I']
-    ax.plot(x, q95, '-s', markersize=7, lw = 1, label='q95')
-    ax.plot(x, q0, '-*', markersize=7, lw = 1, label='q0')
+    ax.plot(x, q95, '-s', color=color, markersize=7, lw = 1, label='q95')
+    ax.plot(x, q0, '-*', color=color, markersize=7, lw = 1, label='q0')
     ax.set_ylabel('$q$')
     ax.set_title('Current Evolution')
     GRAPHICStools.addDenseAxis(ax)
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
-    ax.legend()
+    if legYN:
+        ax.legend()
     ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
+    
+    _special(ax, x)
 
     ax = axs['J']
-    ax.plot(x, xsaw, '-s', markersize=7, lw = 1)
+    ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('Inversion radius (rho)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+    
+    _special(ax, x)
 
     # -----------------------------------------------------------------
 
@@ -315,3 +364,113 @@ def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
     g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
     axs[3].plot(g.g['RHOVN'], g.g['PRES']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
     axs[4].plot(g.g['RHOVN'], g.g['QPSI'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+
+# ---------------------------------------------------------------------------
+def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= ''):
+    """
+    Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
+    with vertical lines when the beat number changes.
+
+    Parameters
+    ----------
+    jsonl_path : str | Path
+        File with one JSON record per line.
+    unit : {"s", "min", "h"}
+        Unit for the y-axis.
+    """
+    multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
+
+    scripts, script_time, cumulative, beat_nums, script_restarts = [], [], [], [], []
+    running = 0.0
+    beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
+
+    # ── read the file ───────────────────────────────────────────────────────
+    with Path(jsonl_path).expanduser().open() as f:
+        for line in f:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            
+            if rec["script"] not in scripts:
+            
+                scripts.append(rec["script"])
+                script_time.append(rec["duration_s"] * multiplier)
+                running += rec["duration_s"]* multiplier
+                cumulative.append(running)
+
+                m = beat_pat.search(rec["script"])
+                beat_nums.append(int(m.group(1)) if m else None)
+                
+                script_restarts.append(0.0)
+                
+            else:
+                # If the script is already in the list, it means it was restarted
+                idx = scripts.index(rec["script"])
+                script_restarts[idx] += rec["duration_s"] * multiplier
+
+    if not scripts:
+        raise ValueError(f"No records found in {jsonl_path}")
+
+    beat_nums = [0] + beat_nums  # Start with zero beat
+    scripts = ['ini'] + scripts  # Add initial beat
+    script_time = [0.0] + script_time  # Start with zero time
+    cumulative = [0.0] + cumulative  # Start with zero time
+    script_restarts = [0.0] + script_restarts  # Start with zero restarts
+
+    # ── plot ────────────────────────────────────────────────────────────────
+    x = list(range(len(scripts)))
+    
+    if axs is None:
+        plt.ion()
+        fig = plt.figure()
+        axs = fig.subplot_mosaic("""
+                                A
+                                B
+                                """)
+    
+    
+    ax = axs['A']
+    ax.plot(x, cumulative, "-s", markersize=8, color=color, label=label)
+    
+    # Add restarts as vertical lines
+    for i in range(len(script_restarts)):
+        if script_restarts[i] > 0:
+            ax.plot(
+                [x[i],x[i]],
+                [cumulative[i],cumulative[i]+script_restarts[i]],
+                "-.o", markersize=5, color=color)
+    
+    
+    for i in range(1, len(beat_nums)):
+        if beat_nums[i] != beat_nums[i - 1]:
+            ax.axvline(i - 0.5, color='k',linestyle="-.")
+
+    #ax.set_xlim(left=0)
+    ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
+    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.legend(loc='upper left', fontsize=8)
+
+
+    ax = axs['B']
+    for i in range(len(scripts)-1):
+        ax.plot([x[i], x[i+1]], [0, script_time[i+1]], "-s", markersize=8, color=color)
+
+    # Add restarts as vertical lines
+    for i in range(len(script_restarts)-1):
+        if script_restarts[i] > 0:
+            ax.plot(
+                [x[i+1],x[i+1]],
+                [script_time[i+1],script_time[i+1]+script_restarts[i+1]],
+                "-.o", markersize=5, color=color)
+
+    for i in range(1, len(beat_nums)):
+        if beat_nums[i] != beat_nums[i - 1]:
+            ax.axvline(i - 0.5, color='k',linestyle="-.")
+
+    #ax.set_xlim(left=0)
+    ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
+    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    GRAPHICStools.addDenseAxis(ax)
+    
+    return x, scripts

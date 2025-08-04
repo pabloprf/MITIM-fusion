@@ -196,7 +196,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
             file=file_cgyro,
         )
     )
-    print(f"\t- Suggested function call for mitim evaluation {numPORTALS} (lambda for cgyroing):",typeMsg="i")
+    print(f"\t- Suggested function call for PORTALS evaluation {numPORTALS} (lambda for cgyroing):",typeMsg="i")
     cgyropath = IOtools.expandPath(folder, ensurePathValid=True) / 'Outputs' / 'cgyro_results' / f'cgyro_it_{numPORTALS}.txt'
     print(f"\tcgyroing_file('{cgyropath}')")
 
@@ -265,7 +265,7 @@ def cgyroing(
             FolderEvaluation,
             minErrorPercent=minErrorPercent,
             Qi_criterion_stable=Qi_criterion_stable,
-            percentNeo=percentNeo,
+            percent_tr_neo=percentNeo,
             impurityPosition=impurityPosition,
             OriginalFimp=OriginalFimp,
         )

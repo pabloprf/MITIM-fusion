@@ -92,7 +92,17 @@ def initialization_simple_relax(self):
 """
 
 
-def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_write_csv=None, algorithm = None, solver_options = None, keep_within_bounds = True):
+def flux_match_surrogate(
+            step,
+            profiles,
+            plot_results=False,
+            fn = None,
+            file_write_csv=None,
+            algorithm = None,
+            solver_options = None,
+            keep_within_bounds = True,
+            TargetOptions_use = None,
+            ):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
@@ -142,7 +152,7 @@ def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_writ
             "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
         },
         TransportOptions=TransportOptions,
-        TargetOptions=step.surrogate_parameters["powerstate"].TargetOptions,
+        TargetOptions= step.surrogate_parameters["powerstate"].TargetOptions if TargetOptions_use is None else TargetOptions_use,
         tensor_opts = {
             "dtype": step.surrogate_parameters["powerstate"].dfT.dtype,
             "device": step.surrogate_parameters["powerstate"].dfT.device},

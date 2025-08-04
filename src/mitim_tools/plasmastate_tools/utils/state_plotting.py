@@ -504,6 +504,7 @@ def plot_gradients(
     self,
     axs4,
     color="b",
+    fast_color='r',
     lw=1.0,
     label="",
     ls="-o",
@@ -590,6 +591,19 @@ def plot_gradients(
             markersize=ms,
             alpha=alpha,
         )
+        for i in range(len(self.Species)):
+            if self.Species[i]["S"] != "therm":
+                            ax.plot(
+                            xcoord[:ix],
+                            self.derived["aLTi"][:ix, i],
+                            ls,
+                            c=fast_color,
+                            lw=lw,
+                            markersize=ms,
+                            alpha=alpha,
+                            label=self.Species[i]["N"],
+        )
+        ax.legend(loc="best", fontsize=7)
         ax = axs4[5]
         ax.plot(
             xcoord[:ix],

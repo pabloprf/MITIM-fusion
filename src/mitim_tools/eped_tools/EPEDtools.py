@@ -5,7 +5,7 @@ import subprocess
 import matplotlib.pyplot as plt
 import f90nml
 from pathlib import Path
-from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools, IOtools
+from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools, IOtools, GUItools
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -18,9 +18,10 @@ class EPED:
             folder
             ):
         
-        self.folder = Path(folder)
+        self.folder = Path(folder) if folder is not None else None # None for just reading
 
-        self.folder.mkdir(parents=True, exist_ok=True)
+        if self.folder is not None:
+            self.folder.mkdir(parents=True, exist_ok=True)
 
         self.results = {}
 
@@ -200,8 +201,10 @@ class EPED:
             ):
 
         self.results[label if label is not None else subfolder] = {}
-        
-        output_files = sorted(list((self.folder / subfolder).glob("*.nc")))
+
+        where_is_this = self.folder / subfolder if self.folder is not None else Path(subfolder)
+
+        output_files = sorted(list(where_is_this.glob("*.nc")))
 
         for output_file in output_files:
 
@@ -236,9 +239,13 @@ class EPED:
     def plot(
             self,
             labels = ['run1'],
+            axs = None,
             ):
 
-        plt.ion(); fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+        if axs is None:
+            self.fn = GUItools.FigureNotebook("EPED",  geometry="900x900")
+            fig = self.fn.add_figure(label="Pedestal Top")
+            axs = fig.subplots(2, 1)
 
         colors = GRAPHICStools.listColors()
 

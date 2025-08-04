@@ -31,6 +31,9 @@ N_FIELD=3
 #Data field output flag
 MOMENT_PRINT_FLAG=1
 
+#Make EM fields available as output
+FIELD_PRINT_FLAG=1
+
 #Velocity Order
 #VELOCITY_ORDER=2
 

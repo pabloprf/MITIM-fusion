@@ -5,7 +5,7 @@ from mitim_tools import __mitimroot__
 cold_start = True
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
-folder = __mitimroot__ / "tests" / "scratch" / "cgyro_test2"
+folder = __mitimroot__ / "tests" / "scratch" / "cgyro_test"
 
 if cold_start and folder.exists():
     os.system(f"rm -r {folder}")
@@ -24,7 +24,7 @@ cgyro.run(
         'KY':0.3,
         'MAX_TIME': 1E1, # Short, I just want to test the run
     },
-    submit_via_qsub=True # NERSC: True #TODO change this
+    submit_via_qsub=False # NERSC: True #TODO change this
     )
 
 cgyro.check(every_n_minutes=1)
@@ -33,5 +33,5 @@ cgyro.delete()
 
 cgyro.read(label="cgyro1")
 
-cgyro.plotLS()
+cgyro.plot(labels=["cgyro1"])
 cgyro.fn.show()

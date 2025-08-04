@@ -115,7 +115,7 @@ class portals_beat(beat):
 
     def _flux_match_for_first_point(self):
 
-        print('\t- Running flux match for first point')
+        print('\n\t- Running flux match for first point')
 
         # Flux-match first
         folder_fm = self.folder / 'flux_match'
@@ -123,7 +123,13 @@ class portals_beat(beat):
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
-        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv')
+        _ = PORTALSoptimization.flux_match_surrogate(
+            portals.step,
+            p,
+            TargetOptions_use = self.mitim_bo.optimization_object.powerstate.TargetOptions,   # Use the TargetOptions of the new run, not the old one (which may be with fixed targets if soft)
+            file_write_csv=folder_fm / 'optimization_data.csv'
+            )
+
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
@@ -367,7 +373,7 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
-        fileTraining = stepSettings['folderOutputs'] / 'surrogate_data.csv'
+        fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
         
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining

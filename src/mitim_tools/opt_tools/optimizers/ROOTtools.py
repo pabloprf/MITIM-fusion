@@ -1,12 +1,14 @@
 import torch
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import optim
 from mitim_tools.opt_tools.utils import TESTtools
+from mitim_tools.misc_tools import GRAPHICStools
 from IPython import embed
 
-def optimize_function(fun, optimization_params = {}, writeTrajectory=False, method = 'scipy_root'):
+def optimize_function(fun, optimization_params = {}, writeTrajectory=False, method = 'scipy_root', debugYN=False):
     
     np.random.seed(fun.seed)
 
@@ -104,8 +106,26 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # --------------------------------------------------------------------------------------------------------
 
     print("************************************************************************************************")
-    x_res, _, _, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    x_res, y_history, x_history, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
+
+    if debugYN:
+        fig, axs = plt.subplots(nrows= 2, figsize=(6, 10))
+        ax = axs[0]
+        ax.plot(np.array(x_history))
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("X")
+        GRAPHICStools.addDenseAxis(ax)
+        
+        ax = axs[1]
+        ax.plot(np.abs(np.array(y_history)))
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("|Y|")
+        ax.set_yscale("log")
+        GRAPHICStools.addDenseAxis(ax)
+
+        plt.show()
+        embed()
 
     # --------------------------------------------------------------------------------------------------------
     # Post-process

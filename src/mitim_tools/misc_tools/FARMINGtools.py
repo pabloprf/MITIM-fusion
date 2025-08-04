@@ -1246,7 +1246,15 @@ def perform_quick_remote_execution(
     job.run(check_if_files_received=check_if_files_received)
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False, ensure_files = True):
+def retrieve_files_from_remote(
+    folder_local,
+    machine,
+    files_remote = [],
+    folders_remote = [],
+    only_folder_structure_with_files = None, # If not None, only the folder structure is retrieved, with files in the list
+    purge_tmp_files = False,
+    ensure_files = True
+    ):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 

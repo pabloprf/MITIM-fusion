@@ -78,6 +78,7 @@ mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--su
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
+mitim_plot_eped = "mitim_tools.eped_tools.scripts.plot_eped:main"
 
 mitim_run_tglf = "mitim_tools.gacode_tools.scripts.run_tglf:main"        # (folder input.tglf)  [--gacode input.gacode] [--scan RLTS_2] [--drives True]
 

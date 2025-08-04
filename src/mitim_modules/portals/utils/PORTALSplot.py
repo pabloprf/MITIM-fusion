@@ -2027,93 +2027,97 @@ def PORTALSanalyzer_plotModelComparison(
     metrics = {}
 
     # te
-    quantityX = "QeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Qe"
-    quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
-    quantityY = "QeGB_sim_turb"
-    quantityY_stds = "QeGB_sim_turb_stds"
-    metrics["Qe"] = plotModelComparison_quantity(
-        self,
-        axs[cont],
-        quantityX=quantityX,
-        quantityX_stds=quantityX_stds,
-        quantityY=quantityY,
-        quantityY_stds=quantityY_stds,
-        quantity_label="$Q_e^{GB}$",
-        title="Electron energy flux (GB)",
-        includeErrors=includeErrors,
-        includeMetric=includeMetric,
-        includeLeg=True,
-    )
-
-    axs[cont].set_xscale("log")
-    axs[cont].set_yscale("log")
-
-    cont += 1
-
-    # ti
-    quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
-    quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
-    quantityY = "QiGBIons_sim_turb_thr"
-    quantityY_stds = "QiGBIons_sim_turb_thr_stds"
-    metrics["Qi"] = plotModelComparison_quantity(
-        self,
-        axs[cont],
-        quantityX=quantityX,
-        quantityX_stds=quantityX_stds,
-        quantityY=quantityY,
-        quantityY_stds=quantityY_stds,
-        quantity_label="$Q_i^{GB}$",
-        title="Ion energy flux (GB)",
-        includeErrors=includeErrors,
-        includeMetric=includeMetric,
-        includeLeg=includeLegAll,
-    )
-
-    axs[cont].set_xscale("log")
-    axs[cont].set_yscale("log")
-
-    cont += 1
-
-    # ne
-    quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
-    quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
-    quantityY = "GeGB_sim_turb"
-    quantityY_stds = "GeGB_sim_turb_stds"
-    metrics["Ge"] = plotModelComparison_quantity(
-        self,
-        axs[cont],
-        quantityX=quantityX,
-        quantityX_stds=quantityX_stds,
-        quantityY=quantityY,
-        quantityY_stds=quantityY_stds,
-        quantity_label="$\\Gamma_e^{GB}$",
-        title="Electron particle flux (GB)",
-        includeErrors=includeErrors,
-        includeMetric=includeMetric,
-        includeLeg=includeLegAll,
-    )
-
-    if UseTGLFfull_x is None:
-        val_calc = self.mitim_runs[0]["powerstate"].model_results.__dict__[quantityX][0, 1:]
-    else:
-        val_calc = np.array(
-            [
-                self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
-                    quantityX.replace("[TGLF]", "")
-                ]
-                for j in range(len(self.rhos))
-            ]
+    if 'te' in self.ProfilesPredicted:
+        quantityX = "QeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Qe"
+        quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
+        quantityY = "QeGB_sim_turb"
+        quantityY_stds = "QeGB_sim_turb_stds"
+        metrics["Qe"] = plotModelComparison_quantity(
+            self,
+            axs[cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$Q_e^{GB}$",
+            title="Electron energy flux (GB)",
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=True,
         )
 
-    try:
-        thre = 10 ** round(np.log10(np.abs(val_calc).min()))
-        axs[cont].set_xscale("symlog", linthresh=thre)
-        axs[cont].set_yscale("symlog", linthresh=thre)
-        # axs[2].tick_params(axis="both", which="major", labelsize=8)
-    except OverflowError:
-        pass
+        axs[cont].set_xscale("log")
+        axs[cont].set_yscale("log")
 
-    cont += 1
+        cont += 1
+
+    # ti
+    if 'ti' in self.ProfilesPredicted:
+        quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
+        quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
+        quantityY = "QiGBIons_sim_turb_thr"
+        quantityY_stds = "QiGBIons_sim_turb_thr_stds"
+        metrics["Qi"] = plotModelComparison_quantity(
+            self,
+            axs[cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$Q_i^{GB}$",
+            title="Ion energy flux (GB)",
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=includeLegAll,
+        )
+
+        axs[cont].set_xscale("log")
+        axs[cont].set_yscale("log")
+
+        cont += 1
+
+    # ne
+    if 'ne' in self.ProfilesPredicted:
+        quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
+        quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
+        quantityY = "GeGB_sim_turb"
+        quantityY_stds = "GeGB_sim_turb_stds"
+        metrics["Ge"] = plotModelComparison_quantity(
+            self,
+            axs[cont],
+            quantityX=quantityX,
+            quantityX_stds=quantityX_stds,
+            quantityY=quantityY,
+            quantityY_stds=quantityY_stds,
+            quantity_label="$\\Gamma_e^{GB}$",
+            title="Electron particle flux (GB)",
+            includeErrors=includeErrors,
+            includeMetric=includeMetric,
+            includeLeg=includeLegAll,
+        )
+
+        if UseTGLFfull_x is None:
+            val_calc = self.mitim_runs[0]["powerstate"].model_results.__dict__[quantityX][0, 1:]
+        else:
+            val_calc = np.array(
+                [
+                    self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
+                        quantityX.replace("[TGLF]", "")
+                    ]
+                    for j in range(len(self.rhos))
+                ]
+            )
+
+        try:
+            thre = 10 ** round(np.log10(np.abs(val_calc).min()))
+            axs[cont].set_xscale("symlog", linthresh=thre)
+            axs[cont].set_yscale("symlog", linthresh=thre)
+            # axs[2].tick_params(axis="both", which="major", labelsize=8)
+        except OverflowError:
+            pass
+
+        cont += 1
+
 
     if "nZ" in self.ProfilesPredicted:
 

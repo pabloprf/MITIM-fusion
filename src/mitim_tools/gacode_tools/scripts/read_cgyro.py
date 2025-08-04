@@ -1,6 +1,7 @@
 import argparse
+from xml.etree.ElementInclude import include
+import matplotlib.pyplot as plt
 from IPython import embed
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
 
 """
@@ -11,27 +12,39 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--linear", action="store_true", help="linear run")
+    parser.add_argument("--two", action="store_true", help="Include 2D plots")
+    parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
+    parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
     args = parser.parse_args()
 
     folders = args.folders
     linear = args.linear
-
+    tmin = args.tmin
+    include_2D = args.two
+    
+    if tmin is None:
+        tmin = [0.0] * len(folders)
+        last_tmin_for_linear = True
+    else:
+        last_tmin_for_linear = False
+    
     # Read
     c = CGYROtools.CGYRO()
 
     labels = []
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
-        c.read(label=labels[-1], folder=folder)
+        c.read(label=labels[-1], folder=folder, tmin=tmin[i], last_tmin_for_linear=last_tmin_for_linear)
 
     if linear:
         # Plot linear spectrum
-        c.plotLS(labels=labels)
+        c.plot_quick_linear(labels=labels)
+        plt.show()
     else:
-        c.plot(labels=labels)
+        c.plot(labels=labels, include_2D=include_2D, common_colorbar=True)
+        c.fn.show()
 
-    c.fn.show()
+    
     embed()
 
 if __name__ == "__main__":

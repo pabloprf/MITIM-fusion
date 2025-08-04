@@ -144,7 +144,7 @@ def parse_maestro_nml(file_path):
                         p.lumpImpurities()
                     if enforce_same_density_gradients:
                         p.enforce_same_density_gradients()
-                    p.write_state(file=file_profs)
+                    p.writeCurrentStatus(file=file_profs)
                 beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
 
         else:
@@ -156,7 +156,7 @@ def parse_maestro_nml(file_path):
 
     return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
 
-@mitim_timer('\t\t* MAESTRO')
+@mitim_timer('MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
         parameters_initialize, 
@@ -178,7 +178,13 @@ def run_maestro_local(
     if folder is None:
         folder = IOtools.expandPath('./')
 
-    m = maestro(folder, master_seed = seed, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
+    m = maestro(
+        folder, 
+        master_seed = seed, 
+        terminal_outputs = terminal_outputs, 
+        overall_log_file = True,
+        master_cold_start = force_cold_start, 
+        keep_all_files = keep_all_files)
 
     # -------------------------------------------------------------------------
     # Loop through beats
@@ -221,6 +227,8 @@ def run_maestro_local(
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
             run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+        elif maestro_beats["beats"][0] in ["eped"]:
+            run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])
         m.run(**run_namelist)
@@ -246,8 +254,8 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    shutil.copy2(file_path, folder / 'maestro_namelist.json')
-
+    IOtools.recursive_backup(folder / 'maestro_namelist.json')
+    
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 

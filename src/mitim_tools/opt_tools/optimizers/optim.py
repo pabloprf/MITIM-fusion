@@ -127,7 +127,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     # Perform optimization
     # --------------------------------------------------------------------------------------------------------
 
-    with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
+    with IOtools.timer(name="SCIPY.ROOT multi-variate root finding method"):
         sol = root(function_for_optimizer, x_initial0, jac=jac_ad, method=solver, tol=tol, options=algorithm_options)
 
     # --------------------------------------------------------------------------------------------------------
@@ -193,7 +193,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
     relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
     relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
-    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
+    relax_dyn_tol_rel = solver_options.get("relax_dyn_tol_rel", 5e-2)  # Tolerance to consider that the residual is not decreasing (relative, 0.1 -> 10% minimum change)
 
     print_each = solver_options.get("print_each", 1e2)
     
@@ -258,9 +258,8 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
             break
 
         if relax_dyn and (i-its_since_last_dyn_relax > relax_dyn_num):
-            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol,i+1)
-            if changed:
-                its_since_last_dyn_relax = i
+            relax, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel,i+1)
+            its_since_last_dyn_relax = i
             if hardbreak:
                 break
 
@@ -288,38 +287,67 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     
     # The best candidate, regardless of the restarts
     x_best = x_history[index_best,:].unsqueeze(0)
-
+    
     return x_best, y_history, x_history, metric_history
 
 
-def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol, it, min_relax=1e-6):
+def _dynamic_relaxation(relax, relax_dyn_decrease, y_history, relax_dyn_num, relax_dyn_tol_rel, it, min_relax=1e-6):
     '''
     Logic:  If the metric is not improving enough, decrease the relax parameter. To determine
             if the metric is improving enough, I will fit a line to the last relax_dyn_num points and
             check if the slope is small enough. If it is, I will decrease the relax parameter.
     '''
 
-    metric_history_considered = torch.Tensor(metric_history[-relax_dyn_num:])
+    # Only consider a number of last iterations
+    y_history = torch.stack(y_history)
+    y_history_considered = y_history[-relax_dyn_num:].abs()
 
-    # Linear fit to the time series
-    x = np.arange(len(metric_history_considered))
-    y = metric_history_considered
-    slope, intercept = np.polyfit(x, y, 1)
-    metric0 = intercept
-    metric1 = slope * len(metric_history_considered) + intercept
-    change_in_metric = metric1 - metric0
+    # ---------------------------------------------------------
+    # Calculate improvement in each dimension
+    # ---------------------------------------------------------
+    
+    # Linear fit to the time series for each radius
+    x_fit = np.arange(len(y_history_considered))
+    n_radii = y_history_considered.shape[1]  # Number of radius points
+    
+    # Initialize arrays to store results for each radius
+    change_in_metric = torch.zeros(n_radii)
+    
+    # Fit line to each radius dimension separately
+    for i_radius in range(n_radii):
+        
+        # Fit a line that fits all the considered history
+        y_fit = y_history_considered[:, i_radius].cpu().numpy()
+        slope, intercept = np.polyfit(x_fit, y_fit, 1)
+        
+        # Calculate the relative change in metric
+        metric0 = slope * x_fit[0]  + intercept
+        metric1 = slope * x_fit[-1] + intercept
+        
+        change_in_metric[i_radius] = np.abs((metric1 - metric0) / metric0)
 
-    if (change_in_metric < relax_dyn_tol):
-        if relax.all() > min_relax:
-            print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax.max():.1e} to {relax.max()/relax_dyn_decrease:.1e}")
-            relax = relax / relax_dyn_decrease
-            return relax, True, False
-        else:
+    # ---------------------------------------------------------
+    # Determine which dimensions will need a reduction in relax
+    # ---------------------------------------------------------
+
+    mask_reduction = change_in_metric < relax_dyn_tol_rel
+
+    if mask_reduction.any():
+        
+        if (relax[:,mask_reduction] < min_relax).all():
             print(f"\t\t\t<> Metric not improving enough (@{it}), relax already at minimum of {min_relax:.1e}, not worth continuing", typeMsg="i")
-            return relax, False, True
+            return relax, True
+        
+        print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax for {mask_reduction.sum()} out of {n_radii} channels")
+        relax[:,mask_reduction] = relax[:,mask_reduction] / relax_dyn_decrease
+        print(f"\t\t\t\t- New relax values: from {relax.min():.1e} to {relax.max():.1e}")
+        
+        return relax, False        
     else:
-        return relax, False, False
-
+        print(f"\t\t\t<> Metric improving enough (@{it}), relax remains at  {relax.min():.1e} to {relax.max():.1e}")
+        
+        return relax, False
+        
 def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10):
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
     dx = relax * (QT - Q) / (Q**2 + QT**2).clamp(min=threshold_zero_flux_issue) ** 0.5
