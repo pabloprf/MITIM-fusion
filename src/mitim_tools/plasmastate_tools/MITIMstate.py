@@ -7,8 +7,6 @@ from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtool
 from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools import CDFtools
-from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
@@ -1898,6 +1896,7 @@ class mitim_state:
         print(
             f"\t- Will implement sawtooth ohmic power correction inside rho={mixRadius}"
         )
+        from mitim_tools.transp_tools import CDFtools
         Psaw = CDFtools.profilePower(
             self.profiles["rho(-)"],
             dvol,
@@ -2388,6 +2387,7 @@ class mitim_state:
         folder = IOtools.expandPath(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
+        from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
             transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
